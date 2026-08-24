@@ -3,103 +3,488 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
-type StageCode='ROLLING'|'HOLLOW_HEAT_TREATMENT'|'DRAW'|'HEAT_TREATMENT'|'FINISHING';
-type QueueRow={work_order_id:string;work_order_no:string;customer_name:string|null;uom:'Pcs'|'Mtrs';route_id:string;route_code:string;route_name:string;stage_id:string;stage_code:StageCode;stage_name:string;sequence_no:number;balance_to_make:number};
-type EntryRow=QueueRow&{production_qty:string;rejection_qty:string;heat_lot_no:string;remarks:string};
+type StageCode =
+  | 'ROLLING'
+  | 'HOLLOW_HEAT_TREATMENT'
+  | 'DRAW'
+  | 'HEAT_TREATMENT'
+  | 'FINISHING';
 
-const stages:{code:StageCode;label:string}[]=[
- {code:'ROLLING',label:'Rolling'},
- {code:'HOLLOW_HEAT_TREATMENT',label:'Hollow Heat Treatment'},
- {code:'DRAW',label:'Draw'},
- {code:'HEAT_TREATMENT',label:'Heat Treatment'},
- {code:'FINISHING',label:'Finishing'},
-];
+type QueueRow = {
+  work_order_id: string;
+  work_order_no: string;
+  customer_name: string | null;
+  uom: 'Pcs' | 'Mtrs';
+  route_id: string;
+  route_code: string;
+  route_name: string;
+  stage_id: string;
+  stage_code: StageCode;
+  stage_name: string;
+  sequence_no: number;
+  balance_to_make: number;
+};
 
-export default function ProductionEntryGrid(){
- const supabase=createClient();
- const [stage,setStage]=useState<StageCode>('ROLLING');
- const [date,setDate]=useState(()=>new Date().toISOString().slice(0,10));
- const [rows,setRows]=useState<EntryRow[]>([]);
- const [loading,setLoading]=useState(false);
- const [saving,setSaving]=useState(false);
- const [message,setMessage]=useState('');
+type EntryRow = QueueRow & {
+  production_qty: string;
+  rejection_qty: string;
+  heat_lot_no: string;
+  remarks: string;
+};
 
- async function loadQueue(){
-  setLoading(true); setMessage('');
-  const {data,error}=await supabase.rpc('get_production_entry_queue',{p_stage_code:stage});
-  if(error){setRows([]);setMessage(error.message);}
-  else setRows(((data??[]) as QueueRow[]).map(r=>({...r,production_qty:'',rejection_qty:'',heat_lot_no:'',remarks:''})));
-  setLoading(false);
- }
- useEffect(()=>{void loadQueue();},[stage]);
+type ProductionEntryGridProps = {
+  stageCode: StageCode;
+};
 
- function update(id:string,field:'production_qty'|'rejection_qty'|'heat_lot_no'|'remarks',value:string){
-  setRows(rs=>rs.map(r=>r.work_order_id+r.route_id===id?{...r,[field]:value}:r));
- }
+const stageLabels: Record<StageCode, string> = {
+  ROLLING: 'Rolling',
+  HOLLOW_HEAT_TREATMENT: 'Hollow Heat Treatment',
+  DRAW: 'Draw',
+  HEAT_TREATMENT: 'Heat Treatment',
+  FINISHING: 'Finishing',
+};
 
- async function save(){
-  const entries=rows.filter(r=>Number(r.production_qty)>0);
-  if(!entries.length){setMessage('Enter production quantity for at least one row.');return;}
-  for(const r of entries){
-   const qty=Number(r.production_qty), rej=Number(r.rejection_qty||0);
-   if(!Number.isFinite(qty)||qty<=0){setMessage(`Invalid production quantity for ${r.work_order_no}.`);return;}
-   if(qty>Number(r.balance_to_make)){setMessage(`${r.work_order_no} (${r.route_code}): production exceeds Balance to Make ${r.balance_to_make} ${r.uom}.`);return;}
-   if(rej<0||rej>qty){setMessage(`${r.work_order_no}: rejection must be between 0 and production quantity.`);return;}
+export default function ProductionEntryGrid({
+  stageCode,
+}: ProductionEntryGridProps) {
+  const supabase = createClient();
+
+  const [date, setDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+
+  const [rows, setRows] = useState<EntryRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const stageLabel = stageLabels[stageCode];
+
+  async function loadQueue() {
+    setLoading(true);
+    setMessage('');
+
+    const { data, error } = await supabase.rpc(
+      'get_production_entry_queue',
+      {
+        p_stage_code: stageCode,
+      }
+    );
+
+    if (error) {
+      setRows([]);
+      setMessage(error.message);
+      setLoading(false);
+      return;
+    }
+
+    const queue = (data ?? []) as QueueRow[];
+
+    const entryRows: EntryRow[] = queue
+      .filter((row) => Number(row.balance_to_make) > 0)
+      .map((row) => ({
+        ...row,
+        production_qty: '',
+        rejection_qty: '',
+        heat_lot_no: '',
+        remarks: '',
+      }));
+
+    setRows(entryRows);
+    setLoading(false);
   }
-  setSaving(true);setMessage('');
-  try{
-   for(const r of entries){
-    const qty=Number(r.production_qty),rej=Number(r.rejection_qty||0);
-    const {error}=await supabase.rpc('record_production',{
-     p_work_order_id:r.work_order_id,p_route_id:r.route_id,p_stage_code:r.stage_code,
-     p_process_date:date,p_input_qty:qty,p_output_qty:qty,p_rejection_qty:rej,
-     p_heat_lot_no:r.heat_lot_no.trim()||null,p_remarks:r.remarks.trim()||null
-    });
-    if(error)throw error;
-   }
-   setMessage(`${entries.length} production row(s) saved successfully.`);
-   await loadQueue();
-  }catch(e){setMessage(e instanceof Error?e.message:'Production entry failed.');}
-  finally{setSaving(false);}
- }
 
- return <div className="space-y-5">
-  <div className="flex flex-wrap items-end gap-4">
-   <label className="text-sm font-medium">Work Center
-    <select className="ml-2 h-10 rounded-md border bg-background px-3" value={stage} onChange={e=>setStage(e.target.value as StageCode)}>
-     {stages.map(s=><option key={s.code} value={s.code}>{s.label}</option>)}
-    </select>
-   </label>
-   <label className="text-sm font-medium">Production Date
-    <input type="date" className="ml-2 h-10 rounded-md border bg-background px-3" value={date} onChange={e=>setDate(e.target.value)}/>
-   </label>
-   <div className="rounded-md border px-3 py-2 text-sm">Only <b>Balance to Make &gt; 0</b> orders</div>
-  </div>
+  useEffect(() => {
+    void loadQueue();
+  }, [stageCode]);
 
-  {message&&<div className="rounded-md border p-3 text-sm">{message}</div>}
+  function updateRow(
+    id: string,
+    field:
+      | 'production_qty'
+      | 'rejection_qty'
+      | 'heat_lot_no'
+      | 'remarks',
+    value: string
+  ) {
+    setRows((currentRows) =>
+      currentRows.map((row) => {
+        const rowId = `${row.work_order_id}-${row.route_id}`;
 
-  <div className="overflow-auto rounded-xl border">
-   <table className="min-w-[1150px] w-full text-sm">
-    <thead className="bg-muted/50"><tr className="border-b">
-     {['S.No.','Work Order','Customer','Route','UOM','Balance to Make','Production Qty','Rejection','Heat/Lot No. (Optional)','Remarks'].map(h=><th key={h} className="p-3 text-left">{h}</th>)}
-    </tr></thead>
-    <tbody>
-     {loading?<tr><td colSpan={10} className="p-6 text-center">Loading…</td></tr>:
-      rows.length===0?<tr><td colSpan={10} className="p-6 text-center">No eligible orders.</td></tr>:
-      rows.map((r,i)=>{const key=r.work_order_id+r.route_id;return <tr key={key} className="border-b">
-       <td className="p-3">{i+1}</td><td className="p-3 font-medium">{r.work_order_no}</td><td className="p-3">{r.customer_name||'—'}</td>
-       <td className="p-3">{r.route_code}</td><td className="p-3 font-medium">{r.uom}</td>
-       <td className="p-3 text-right">{Number(r.balance_to_make).toLocaleString()} {r.uom}</td>
-       <td className="p-2"><input type="number" min="0" max={r.balance_to_make} step="any" className="h-9 w-32 rounded-md border px-2 text-right" value={r.production_qty} onChange={e=>update(key,'production_qty',e.target.value)}/></td>
-       <td className="p-2"><input type="number" min="0" step="any" className="h-9 w-28 rounded-md border px-2 text-right" value={r.rejection_qty} onChange={e=>update(key,'rejection_qty',e.target.value)}/></td>
-       <td className="p-2"><input className="h-9 w-44 rounded-md border px-2" placeholder="Optional" value={r.heat_lot_no} onChange={e=>update(key,'heat_lot_no',e.target.value)}/></td>
-       <td className="p-2"><input className="h-9 w-52 rounded-md border px-2" value={r.remarks} onChange={e=>update(key,'remarks',e.target.value)}/></td>
-      </tr>})}
-    </tbody>
-   </table>
-  </div>
-  <button type="button" onClick={()=>void save()} disabled={saving||loading||rows.length===0} className="rounded-md border px-5 py-2 font-medium disabled:opacity-50">
-   {saving?'Saving…':'Save Production'}
-  </button>
- </div>;
+        if (rowId !== id) {
+          return row;
+        }
+
+        return {
+          ...row,
+          [field]: value,
+        };
+      })
+    );
+  }
+
+  async function saveProduction() {
+    setMessage('');
+
+    const entries = rows.filter(
+      (row) => Number(row.production_qty) > 0
+    );
+
+    if (entries.length === 0) {
+      setMessage(
+        'Enter Production Qty for at least one work order.'
+      );
+      return;
+    }
+
+    for (const row of entries) {
+      const productionQty = Number(row.production_qty);
+      const rejectionQty = Number(row.rejection_qty || 0);
+      const balanceToMake = Number(row.balance_to_make);
+
+      if (!Number.isFinite(productionQty) || productionQty <= 0) {
+        setMessage(
+          `Invalid Production Qty for ${row.work_order_no}.`
+        );
+        return;
+      }
+
+      if (productionQty > balanceToMake) {
+        setMessage(
+          `${row.work_order_no}: Production Qty cannot exceed Balance to Make (${balanceToMake} ${row.uom}).`
+        );
+        return;
+      }
+
+      if (
+        !Number.isFinite(rejectionQty) ||
+        rejectionQty < 0
+      ) {
+        setMessage(
+          `${row.work_order_no}: Invalid rejection quantity.`
+        );
+        return;
+      }
+
+      if (rejectionQty > productionQty) {
+        setMessage(
+          `${row.work_order_no}: Rejection cannot be greater than Production Qty.`
+        );
+        return;
+      }
+    }
+
+    setSaving(true);
+
+    try {
+      for (const row of entries) {
+        const productionQty = Number(row.production_qty);
+        const rejectionQty = Number(row.rejection_qty || 0);
+
+        const { error } = await supabase.rpc(
+          'record_production',
+          {
+            p_work_order_id: row.work_order_id,
+            p_route_id: row.route_id,
+            p_stage_code: row.stage_code,
+            p_process_date: date,
+            p_input_qty: productionQty,
+            p_output_qty: productionQty,
+            p_rejection_qty: rejectionQty,
+            p_heat_lot_no:
+              row.heat_lot_no.trim() || null,
+            p_remarks:
+              row.remarks.trim() || null,
+          }
+        );
+
+        if (error) {
+          throw error;
+        }
+      }
+
+      setMessage(
+        `${entries.length} production row(s) saved successfully.`
+      );
+
+      await loadQueue();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Production entry failed.'
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">
+            Production Entry
+          </h1>
+
+          <p className="mt-1 text-sm text-muted-foreground">
+            {stageLabel}
+          </p>
+        </div>
+
+        <label className="text-sm font-medium">
+          Production Date
+
+          <input
+            type="date"
+            className="mt-1 block h-10 rounded-md border bg-background px-3"
+            value={date}
+            onChange={(event) =>
+              setDate(event.target.value)
+            }
+          />
+        </label>
+      </div>
+
+      {/* Stage information */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="rounded-md border bg-muted/30 px-4 py-2 text-sm">
+          <span className="text-muted-foreground">
+            Work Center:
+          </span>{' '}
+          <strong>{stageLabel}</strong>
+        </div>
+
+        <div className="rounded-md border bg-muted/30 px-4 py-2 text-sm">
+          Only orders with{' '}
+          <strong>Balance to Make &gt; 0</strong>
+        </div>
+      </div>
+
+      {/* Message */}
+      {message && (
+        <div className="rounded-md border p-3 text-sm">
+          {message}
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && (
+        <div className="rounded-xl border p-8 text-center text-sm">
+          Loading eligible work orders…
+        </div>
+      )}
+
+      {/* Empty */}
+      {!loading && rows.length === 0 && (
+        <div className="rounded-xl border p-8 text-center">
+          <div className="font-medium">
+            No eligible orders
+          </div>
+
+          <div className="mt-1 text-sm text-muted-foreground">
+            No work order with Balance to Make greater than
+            zero is available for {stageLabel}.
+          </div>
+        </div>
+      )}
+
+      {/* Production Table */}
+      {!loading && rows.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border">
+          <table className="min-w-[1250px] w-full text-sm">
+            <thead className="bg-muted/50">
+              <tr className="border-b">
+                <th className="p-3 text-left">
+                  S No
+                </th>
+
+                <th className="p-3 text-left">
+                  Work Order
+                </th>
+
+                <th className="p-3 text-left">
+                  Customer
+                </th>
+
+                <th className="p-3 text-left">
+                  Route
+                </th>
+
+                <th className="p-3 text-left">
+                  UOM
+                </th>
+
+                <th className="p-3 text-right">
+                  Balance to Make
+                </th>
+
+                <th className="p-3 text-right">
+                  Production Qty
+                </th>
+
+                <th className="p-3 text-right">
+                  Rejection
+                </th>
+
+                <th className="p-3 text-left">
+                  Heat / Lot No.
+                </th>
+
+                <th className="p-3 text-left">
+                  Remarks
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {rows.map((row, index) => {
+                const rowId = `${row.work_order_id}-${row.route_id}`;
+
+                return (
+                  <tr
+                    key={rowId}
+                    className="border-b last:border-b-0"
+                  >
+                    {/* S No */}
+                    <td className="p-3">
+                      {index + 1}
+                    </td>
+
+                    {/* Work Order */}
+                    <td className="p-3 font-medium">
+                      {row.work_order_no}
+                    </td>
+
+                    {/* Customer */}
+                    <td className="p-3">
+                      {row.customer_name || '—'}
+                    </td>
+
+                    {/* Route */}
+                    <td className="p-3">
+                      <div className="font-medium">
+                        {row.route_code}
+                      </div>
+
+                      {row.route_name && (
+                        <div className="text-xs text-muted-foreground">
+                          {row.route_name}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* UOM */}
+                    <td className="p-3 font-semibold">
+                      {row.uom}
+                    </td>
+
+                    {/* Balance */}
+                    <td className="p-3 text-right font-medium">
+                      {Number(
+                        row.balance_to_make
+                      ).toLocaleString()}{' '}
+                      {row.uom}
+                    </td>
+
+                    {/* Production */}
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        min="0"
+                        max={row.balance_to_make}
+                        step="any"
+                        className="h-9 w-32 rounded-md border px-2 text-right"
+                        placeholder="0"
+                        value={row.production_qty}
+                        onChange={(event) =>
+                          updateRow(
+                            rowId,
+                            'production_qty',
+                            event.target.value
+                          )
+                        }
+                      />
+                    </td>
+
+                    {/* Rejection */}
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        className="h-9 w-28 rounded-md border px-2 text-right"
+                        placeholder="0"
+                        value={row.rejection_qty}
+                        onChange={(event) =>
+                          updateRow(
+                            rowId,
+                            'rejection_qty',
+                            event.target.value
+                          )
+                        }
+                      />
+                    </td>
+
+                    {/* Heat / Lot */}
+                    <td className="p-2">
+                      <input
+                        type="text"
+                        className="h-9 w-44 rounded-md border px-2"
+                        placeholder="Optional"
+                        value={row.heat_lot_no}
+                        onChange={(event) =>
+                          updateRow(
+                            rowId,
+                            'heat_lot_no',
+                            event.target.value
+                          )
+                        }
+                      />
+                    </td>
+
+                    {/* Remarks */}
+                    <td className="p-2">
+                      <input
+                        type="text"
+                        className="h-9 w-52 rounded-md border px-2"
+                        placeholder="Remarks"
+                        value={row.remarks}
+                        onChange={(event) =>
+                          updateRow(
+                            rowId,
+                            'remarks',
+                            event.target.value
+                          )
+                        }
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Save */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void saveProduction()}
+          disabled={
+            saving ||
+            loading ||
+            rows.length === 0
+          }
+          className="rounded-md border px-6 py-2.5 font-medium disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving
+            ? 'Saving…'
+            : 'Save Production'}
+        </button>
+      </div>
+    </div>
+  );
 }
