@@ -1,2 +1,9 @@
-import WIPLogger from '@/components/production/WIPLogger';
-export default function Page(){return <main className="max-w-xl p-6"><WIPLogger stageCode="DRAW"/></main>}
+import ProductionEntryGrid from "@/components/production/ProductionEntryGrid";
+
+export default function Page() {
+  return (
+    <main className="p-6">
+      <ProductionEntryGrid stageCode="DRAW" />
+    </main>
+  );
+}
