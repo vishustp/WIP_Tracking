@@ -10,44 +10,70 @@ type ImportRow = {
   specification: string;
   od: number | null;
   wl: number | null;
+
   ordered_qty_pcs: number;
   ordered_qty_mtr: number;
   ordered_qty_mt: number;
+
   balance_qty_pcs: number;
   balance_qty_mtr: number;
   balance_qty_mt: number;
+
   error?: string;
   duplicate?: boolean;
 };
 
-const clean = (value: unknown) => String(value ?? '').trim();
+const clean = (value: unknown): string => {
+  return String(value ?? '').trim();
+};
 
 const num = (value: unknown): number => {
-  if (value === null || value === undefined || value === '') return 0;
+  if (value === null || value === undefined || value === '') {
+    return 0;
+  }
 
-  const parsed = Number(
+  const n = Number(
     String(value)
       .replace(/,/g, '')
-      .replace(/\s+/g, '')
+      .replace(/\s+/g, ' ')
       .trim()
   );
 
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(n) ? n : 0;
 };
 
-function normalize(value: string) {
-  return value
-    .toLowerCase()
+/**
+ * Makes Excel headers tolerant of:
+ * - NBSP
+ * - <br>
+ * - multiple spaces
+ * - dots
+ * - underscores
+ * - hyphens
+ * - different casing
+ */
+function normalizeHeader(value: unknown): string {
+  return String(value ?? '')
     .replace(/\u00a0/g, ' ')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/[._-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function findColumn(headers: string[], names: string[]) {
-  const normalizedHeaders = headers.map(normalize);
+function findColumn(
+  headers: string[],
+  names: string[]
+): string | undefined {
+  const normalizedHeaders = headers.map(normalizeHeader);
 
   for (const name of names) {
-    const index = normalizedHeaders.indexOf(normalize(name));
+    const target = normalizeHeader(name);
+
+    const index = normalizedHeaders.indexOf(target);
 
     if (index >= 0) {
       return headers[index];
@@ -58,23 +84,20 @@ function findColumn(headers: string[], names: string[]) {
 }
 
 export default function ExcelImporter() {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [rows, setRows] = useState<ImportRow[]>([]);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
-
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [fileName, setFileName] = useState('');
 
   const stats = useMemo(
     () => ({
       total: rows.length,
-      valid: rows.filter((row) => !row.error).length,
-      invalid: rows.filter((row) => !!row.error).length,
-      duplicates: rows.filter((row) => row.duplicate).length,
+      valid: rows.filter((r) => !r.error).length,
+      invalid: rows.filter((r) => !!r.error).length,
+      duplicates: rows.filter((r) => r.duplicate).length,
     }),
     [rows]
   );
@@ -82,15 +105,10 @@ export default function ExcelImporter() {
   async function parseFile(file: File) {
     setParsing(true);
     setMessage('');
-    setError('');
+    setRows([]);
+    setFileName(file.name);
 
     try {
-      if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
-        throw new Error('Please select an Excel file (.xlsx, .xls or .csv).');
-      }
-
-      setSelectedFile(file);
-
       const buffer = await file.arrayBuffer();
 
       const workbook = XLSX.read(buffer, {
@@ -101,30 +119,54 @@ export default function ExcelImporter() {
       const sheetName = workbook.SheetNames[0];
 
       if (!sheetName) {
-        throw new Error('No worksheet found in the selected file.');
+        throw new Error('No worksheet found in Excel file.');
       }
 
       const sheet = workbook.Sheets[sheetName];
 
-      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-        defval: '',
-        raw: false,
-      });
+      if (!sheet) {
+        throw new Error('Unable to read worksheet.');
+      }
+
+      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+        sheet,
+        {
+          defval: '',
+          raw: false,
+        }
+      );
 
       if (!raw.length) {
-        setRows([]);
-        setMessage('The selected Excel sheet is empty.');
+        setMessage('Excel sheet is empty.');
         return;
       }
 
       const headers = Object.keys(raw[0]);
 
+      /*
+       * ACTUAL EXCEL COLUMN MAPPING
+       *
+       * W.no          -> Work Order No
+       * Customer      -> Customer
+       * SPECIFICATION -> Specification
+       * OD            -> OD
+       * WL            -> WL
+       * Order Pcs     -> Order Qty Pcs
+       * Order Metre   -> Order Qty Mtr
+       * Order MT      -> Order Qty MT
+       *
+       * Balance Qty ... FOR BUNDLING
+       *                  -> Balance Qty
+       */
+
       const cWO = findColumn(headers, [
+        'W.no',
+        'W.no.',
+        'W no',
+        'W No',
+        'W NO',
         'Work Order No',
-        'Work Order',
-        'WO',
-        'W.O',
-        'W.O.',
+        'Work Order Number',
       ]);
 
       const cCustomer = findColumn(headers, [
@@ -136,76 +178,84 @@ export default function ExcelImporter() {
         'SPECIFICATION',
         'Specification',
         'Spec',
-        'Grade',
       ]);
 
       const cOD = findColumn(headers, [
         'OD',
-        'Outside Diameter',
+        'OD (mm)',
       ]);
 
       const cWL = findColumn(headers, [
         'WL',
-        'WT',
         'Wall',
         'Wall Thickness',
+        'WT',
       ]);
 
       const cOrderPcs = findColumn(headers, [
         'Order Pcs',
         'Order PCS',
-        'Ordered Pcs',
-        'Order Qty (Pcs)',
+        'Order Qty Pcs',
       ]);
 
       const cOrderMtr = findColumn(headers, [
         'Order Metre',
-        'Order Metres',
+        'Order Metre ',
         'Order Mtr',
         'Order MTR',
         'Order Meter',
-        'Order Meters',
+        'Order Qty Mtr',
       ]);
 
       const cOrderMT = findColumn(headers, [
         'Order MT',
-        'Ordered MT',
-        'Order Qty (MT)',
+        'Order Mt',
+        'Order Qty MT',
       ]);
 
       const cBalPcs = findColumn(headers, [
-        'Balance Qty (Pcs)',
         'Balance Qty (Pcs) FOR BUNDLING',
-        'Balance Pcs',
-        'Balance PCS',
+        'Balance Qty (Pcs)   FOR BUNDLING',
+        'Balance Qty (Pcs)',
+        'Balance Qty Pcs',
       ]);
 
       const cBalMtr = findColumn(headers, [
-        'Balance Qty (Mtr)',
         'Balance Qty (Mtr) FOR BUNDLING',
-        'Balance Mtr',
-        'Balance MTR',
+        'Balance Qty (Mtr)   FOR BUNDLING',
+        'Balance Qty (Mtr)',
+        'Balance Qty Mtr',
       ]);
 
       const cBalMT = findColumn(headers, [
-        'Balance Qty (MT)',
         'Balance Qty (MT) FOR BUNDLING',
-        'Balance MT',
+        'Balance Qty (MT)   FOR BUNDLING',
+        'Balance Qty (MT)',
+        'Balance Qty MT',
       ]);
+
+      /*
+       * Only W.no is mandatory.
+       *
+       * Other columns can be absent because some Excel exports
+       * may not contain every optional field.
+       */
 
       if (!cWO) {
         throw new Error(
-          'Column "Work Order No" was not found in the Excel file.'
+          `Column "W.no" was not found in the Excel file.\n\nDetected columns:\n${headers.join(
+            ', '
+          )}`
         );
       }
 
       const seen = new Set<string>();
 
       const parsed: ImportRow[] = raw.map((record) => {
-        const workOrderNo = clean(record[cWO]);
+        const wo = clean(record[cWO]);
 
         const row: ImportRow = {
-          work_order_no: workOrderNo,
+          work_order_no: wo,
 
           customer_name: cCustomer
             ? clean(record[cCustomer])
@@ -248,39 +298,38 @@ export default function ExcelImporter() {
             : 0,
         };
 
-        const validationErrors: string[] = [];
+        const errors: string[] = [];
 
-        if (!workOrderNo) {
-          validationErrors.push('Work Order No missing');
+        if (!wo) {
+          errors.push('Work Order No missing');
         }
 
         if (row.od === null || row.od <= 0) {
-          validationErrors.push('OD missing/invalid');
+          errors.push('OD missing/invalid');
         }
 
-        if (
-          row.ordered_qty_pcs <= 0 &&
-          row.ordered_qty_mtr <= 0 &&
-          row.ordered_qty_mt <= 0
-        ) {
-          validationErrors.push('Order Qty missing');
+        const hasOrderQty =
+          row.ordered_qty_pcs > 0 ||
+          row.ordered_qty_mtr > 0 ||
+          row.ordered_qty_mt > 0;
+
+        if (!hasOrderQty) {
+          errors.push('Order Qty missing');
         }
 
         row.duplicate =
-          !!workOrderNo && seen.has(workOrderNo);
+          !!wo && seen.has(wo);
 
         if (row.duplicate) {
-          validationErrors.push(
-            'Duplicate WO in this Excel file'
-          );
+          errors.push('Duplicate WO in this file');
         }
 
-        if (workOrderNo) {
-          seen.add(workOrderNo);
+        if (wo) {
+          seen.add(wo);
         }
 
-        if (validationErrors.length) {
-          row.error = validationErrors.join('; ');
+        if (errors.length > 0) {
+          row.error = errors.join('; ');
         }
 
         return row;
@@ -289,64 +338,33 @@ export default function ExcelImporter() {
       setRows(parsed);
 
       setMessage(
-        `Excel loaded successfully — ${parsed.length} row(s) found in "${sheetName}".`
+        `Loaded ${parsed.length} rows from "${sheetName}".`
       );
-    } catch (err) {
+    } catch (error) {
       setRows([]);
-      setSelectedFile(null);
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to read the Excel file.'
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to read Excel file.'
       );
     } finally {
       setParsing(false);
     }
   }
 
-  function handleFileChange(
-    event: React.ChangeEvent<HTMLInputElement>
-  ) {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    void parseFile(file);
-  }
-
-  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-
-    const file = event.dataTransfer.files?.[0];
-
-    if (!file) return;
-
-    void parseFile(file);
-  }
-
-  function clearFile() {
-    setRows([]);
-    setSelectedFile(null);
-    setMessage('');
-    setError('');
-
-    if (inputRef.current) {
-      inputRef.current.value = '';
-    }
-  }
-
   async function importRows() {
-    const validRows = rows.filter((row) => !row.error);
+    const validRows = rows.filter(
+      (row) => !row.error
+    );
 
     if (!validRows.length) {
-      setError('There are no valid rows available for import.');
+      setMessage('There are no valid rows to import.');
       return;
     }
 
     setLoading(true);
     setMessage('');
-    setError('');
 
     try {
       const supabase = createClient();
@@ -354,54 +372,77 @@ export default function ExcelImporter() {
       let imported = 0;
       let failed = 0;
 
-      const failures: string[] = [];
+      const errors: string[] = [];
 
       for (const row of validRows) {
-        const { error: rpcError } = await supabase.rpc(
+        const { error } = await supabase.rpc(
           'import_work_order',
           {
-            p_work_order_no: row.work_order_no,
-            p_customer_name: row.customer_name,
-            p_specification: row.specification,
-            p_od: row.od,
-            p_wl: row.wl,
-            p_ordered_qty_pcs: row.ordered_qty_pcs,
-            p_ordered_qty_mtr: row.ordered_qty_mtr,
-            p_ordered_qty_mt: row.ordered_qty_mt,
-            p_balance_qty_pcs: row.balance_qty_pcs,
-            p_balance_qty_mtr: row.balance_qty_mtr,
-            p_balance_qty_mt: row.balance_qty_mt,
+            p_work_order_no:
+              row.work_order_no,
+
+            p_customer_name:
+              row.customer_name,
+
+            p_specification:
+              row.specification,
+
+            p_od:
+              row.od,
+
+            p_wl:
+              row.wl,
+
+            p_ordered_qty_pcs:
+              row.ordered_qty_pcs,
+
+            p_ordered_qty_mtr:
+              row.ordered_qty_mtr,
+
+            p_ordered_qty_mt:
+              row.ordered_qty_mt,
+
+            p_balance_qty_pcs:
+              row.balance_qty_pcs,
+
+            p_balance_qty_mtr:
+              row.balance_qty_mtr,
+
+            p_balance_qty_mt:
+              row.balance_qty_mt,
           }
         );
 
-        if (rpcError) {
+        if (error) {
           failed++;
 
-          failures.push(
-            `${row.work_order_no}: ${rpcError.message}`
-          );
+          if (errors.length < 5) {
+            errors.push(
+              `${row.work_order_no}: ${error.message}`
+            );
+          }
         } else {
           imported++;
         }
       }
 
-      if (failed === 0) {
+      if (failed > 0) {
         setMessage(
-          `Import completed successfully — ${imported} Work Order(s) imported.`
+          `Import completed: ${imported} successful, ${failed} failed.${
+            errors.length
+              ? ` Errors: ${errors.join(' | ')}`
+              : ''
+          }`
         );
       } else {
         setMessage(
-          `Import completed — ${imported} successful, ${failed} failed.`
+          `Import completed successfully: ${imported} Work Orders imported.`
         );
-
-        if (failures.length) {
-          setError(failures.slice(0, 5).join('\n'));
-        }
       }
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
           : 'Import failed.'
       );
     } finally {
@@ -409,296 +450,300 @@ export default function ExcelImporter() {
     }
   }
 
+  function clearImport() {
+    setRows([]);
+    setMessage('');
+    setFileName('');
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }
+
   return (
     <div className="space-y-6">
-      {/* HEADER */}
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-2xl font-semibold">
           Excel Import
         </h1>
 
         <p className="mt-1 text-sm text-muted-foreground">
-          Import Work Orders for PPC planning.
+          Import Work Orders from the PPC Excel file.
         </p>
       </div>
 
-      {/* UPLOAD CARD */}
+      {/* Upload Area */}
       <div
-        className="rounded-xl border bg-card p-6"
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={handleDrop}
+        className="rounded-xl border-2 border-dashed p-8 text-center transition hover:bg-muted/30"
+        onDragOver={(event) => {
+          event.preventDefault();
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+
+          const file =
+            event.dataTransfer.files?.[0];
+
+          if (file) {
+            void parseFile(file);
+          }
+        }}
       >
-        <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted text-xl">
-            ↑
+        <div className="space-y-4">
+          <div className="text-4xl">
+            📊
           </div>
 
-          <h2 className="text-base font-medium">
-            Upload Work Order Excel
-          </h2>
+          <div>
+            <p className="font-medium">
+              Upload Excel File
+            </p>
 
-          <p className="mt-1 text-sm text-muted-foreground">
-            Drag & drop your Excel file here
-          </p>
-
-          <p className="mt-1 text-xs text-muted-foreground">
-            Supported formats: .xlsx, .xls, .csv
-          </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Drag & drop your Excel file here
+              or select it manually.
+            </p>
+          </div>
 
           <input
-            ref={inputRef}
+            ref={fileInputRef}
             type="file"
             accept=".xlsx,.xls,.csv"
-            onChange={handleFileChange}
             className="hidden"
+            onChange={(event) => {
+              const file =
+                event.target.files?.[0];
+
+              if (file) {
+                void parseFile(file);
+              }
+            }}
           />
 
           <button
             type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={parsing || loading}
-            className="mt-5 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() =>
+              fileInputRef.current?.click()
+            }
+            disabled={parsing}
+            className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
-            {parsing ? 'Reading Excel…' : 'Select Excel File'}
+            {parsing
+              ? 'Reading Excel…'
+              : 'Select Excel File'}
           </button>
+
+          {fileName && (
+            <p className="text-sm font-medium">
+              Selected: {fileName}
+            </p>
+          )}
         </div>
-
-        {/* SELECTED FILE */}
-        {selectedFile && (
-          <div className="mt-4 flex items-center justify-between rounded-lg border p-4">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">
-                {selectedFile.name}
-              </p>
-
-              <p className="mt-1 text-xs text-muted-foreground">
-                {(selectedFile.size / 1024).toFixed(1)} KB
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={clearFile}
-              disabled={loading}
-              className="ml-4 rounded-md border px-3 py-1.5 text-xs font-medium"
-            >
-              Remove
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* SUCCESS */}
+      {/* Message */}
       {message && (
-        <div className="whitespace-pre-line rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm">
+        <div className="whitespace-pre-wrap rounded-lg border p-3 text-sm">
           {message}
         </div>
       )}
 
-      {/* ERROR */}
-      {error && (
-        <div className="whitespace-pre-line rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
-          {error}
-        </div>
-      )}
-
-      {/* PREVIEW */}
+      {/* Statistics */}
       {rows.length > 0 && (
         <>
-          {/* STATS */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-lg border bg-card p-4">
-              <p className="text-xs text-muted-foreground">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">
                 Total Rows
-              </p>
-
-              <p className="mt-1 text-2xl font-semibold">
+              </div>
+              <div className="mt-1 text-xl font-semibold">
                 {stats.total}
-              </p>
+              </div>
             </div>
 
-            <div className="rounded-lg border bg-card p-4">
-              <p className="text-xs text-muted-foreground">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">
                 Valid
-              </p>
-
-              <p className="mt-1 text-2xl font-semibold">
+              </div>
+              <div className="mt-1 text-xl font-semibold">
                 {stats.valid}
-              </p>
+              </div>
             </div>
 
-            <div className="rounded-lg border bg-card p-4">
-              <p className="text-xs text-muted-foreground">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">
                 Invalid
-              </p>
-
-              <p className="mt-1 text-2xl font-semibold">
+              </div>
+              <div className="mt-1 text-xl font-semibold">
                 {stats.invalid}
-              </p>
+              </div>
             </div>
 
-            <div className="rounded-lg border bg-card p-4">
-              <p className="text-xs text-muted-foreground">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-muted-foreground">
                 Duplicates
-              </p>
-
-              <p className="mt-1 text-2xl font-semibold">
+              </div>
+              <div className="mt-1 text-xl font-semibold">
                 {stats.duplicates}
-              </p>
+              </div>
             </div>
           </div>
 
-          {/* TABLE */}
-          <div className="rounded-xl border bg-card">
-            <div className="flex items-center justify-between border-b p-4">
-              <div>
-                <h2 className="font-medium">
-                  Import Preview
-                </h2>
+          {/* Preview */}
+          <div className="overflow-auto rounded-xl border">
+            <table className="min-w-[1200px] text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="p-2 text-left">
+                    WO
+                  </th>
 
-                <p className="text-xs text-muted-foreground">
-                  Showing up to 100 rows
-                </p>
-              </div>
+                  <th className="p-2 text-left">
+                    Customer
+                  </th>
 
-              <button
-                type="button"
-                onClick={clearFile}
-                disabled={loading}
-                className="rounded-lg border px-3 py-2 text-sm"
-              >
-                Clear
-              </button>
-            </div>
+                  <th className="p-2 text-left">
+                    Specification
+                  </th>
 
-            <div className="overflow-auto">
-              <table className="min-w-[1200px] text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="p-3 text-left">WO</th>
-                    <th className="p-3 text-left">
-                      Customer
-                    </th>
-                    <th className="p-3 text-left">
-                      Specification
-                    </th>
-                    <th className="p-3 text-right">OD</th>
-                    <th className="p-3 text-right">WL</th>
-                    <th className="p-3 text-right">
-                      Order Pcs
-                    </th>
-                    <th className="p-3 text-right">
-                      Order Mtr
-                    </th>
-                    <th className="p-3 text-right">
-                      Order MT
-                    </th>
-                    <th className="p-3 text-right">
-                      Balance Pcs
-                    </th>
-                    <th className="p-3 text-right">
-                      Balance Mtr
-                    </th>
-                    <th className="p-3 text-right">
-                      Balance MT
-                    </th>
-                    <th className="p-3 text-left">
-                      Validation
-                    </th>
-                  </tr>
-                </thead>
+                  <th className="p-2 text-right">
+                    OD
+                  </th>
 
-                <tbody>
-                  {rows.slice(0, 100).map((row, index) => (
+                  <th className="p-2 text-right">
+                    WL
+                  </th>
+
+                  <th className="p-2 text-right">
+                    Order Pcs
+                  </th>
+
+                  <th className="p-2 text-right">
+                    Order Mtr
+                  </th>
+
+                  <th className="p-2 text-right">
+                    Order MT
+                  </th>
+
+                  <th className="p-2 text-right">
+                    Balance Pcs
+                  </th>
+
+                  <th className="p-2 text-right">
+                    Balance Mtr
+                  </th>
+
+                  <th className="p-2 text-right">
+                    Balance MT
+                  </th>
+
+                  <th className="p-2 text-left">
+                    Validation
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {rows.slice(0, 100).map(
+                  (row, index) => (
                     <tr
                       key={`${row.work_order_no}-${index}`}
-                      className="border-b last:border-0"
+                      className="border-b"
                     >
-                      <td className="p-3 font-medium">
+                      <td className="p-2 font-medium">
                         {row.work_order_no}
                       </td>
 
-                      <td className="p-3">
+                      <td className="p-2">
                         {row.customer_name}
                       </td>
 
-                      <td className="p-3">
+                      <td className="p-2">
                         {row.specification}
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="p-2 text-right">
                         {row.od ?? ''}
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="p-2 text-right">
                         {row.wl ?? ''}
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="p-2 text-right">
                         {row.ordered_qty_pcs || ''}
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="p-2 text-right">
                         {row.ordered_qty_mtr || ''}
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="p-2 text-right">
                         {row.ordered_qty_mt || ''}
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="p-2 text-right">
                         {row.balance_qty_pcs || ''}
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="p-2 text-right">
                         {row.balance_qty_mtr || ''}
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="p-2 text-right">
                         {row.balance_qty_mt || ''}
                       </td>
 
                       <td
-                        className={`p-3 ${
+                        className={`p-2 ${
                           row.error
-                            ? 'font-medium text-destructive'
-                            : 'text-muted-foreground'
+                            ? 'font-medium'
+                            : ''
                         }`}
                       >
                         {row.error || 'OK'}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  )
+                )}
+              </tbody>
+            </table>
           </div>
 
-          {/* IMPORT ACTION */}
-          <div className="flex items-center justify-between rounded-xl border bg-card p-4">
-            <div>
-              <p className="text-sm font-medium">
-                Ready to import
-              </p>
+          {rows.length > 100 && (
+            <p className="text-sm text-muted-foreground">
+              Showing first 100 rows of {rows.length}.
+            </p>
+          )}
 
-              <p className="mt-1 text-xs text-muted-foreground">
-                {stats.valid} valid Work Order(s) will be imported.
-              </p>
-            </div>
-
+          {/* Actions */}
+          <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => void importRows()}
+              onClick={() =>
+                void importRows()
+              }
               disabled={
                 loading ||
                 parsing ||
                 stats.valid === 0
               }
-              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-primary px-5 py-2.5 font-medium text-primary-foreground disabled:opacity-50"
             >
               {loading
                 ? 'Importing…'
                 : `Import ${stats.valid} Valid Rows`}
+            </button>
+
+            <button
+              type="button"
+              onClick={clearImport}
+              disabled={loading}
+              className="rounded-lg border px-5 py-2.5 font-medium disabled:opacity-50"
+            >
+              Clear
             </button>
           </div>
         </>
