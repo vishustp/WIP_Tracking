@@ -10,6 +10,8 @@ type ImportRow = {
   specification: string;
   od: number | null;
   wl: number | null;
+  l1: number | null;
+  l2: number | null;
   ordered_qty_pcs: number;
   ordered_qty_mtr: number;
   ordered_qty_mt: number;
@@ -30,17 +32,8 @@ const num = (value: unknown): number => {
 };
 
 function normalizeHeader(value: unknown): string {
-  return String(value ?? '')
-    .replace(/\u00a0/g, ' ')
-    .replace(/<br\s*\/?>/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase()
-    .replace(/[._-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return String(value ?? '').replace(/\u00a0/g, ' ').replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim().toLowerCase().replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
-
 function findColumn(headers: string[], names: string[]) {
   const normalized = headers.map(normalizeHeader);
   for (const name of names) {
@@ -66,10 +59,7 @@ export default function ExcelImporter() {
   }), [rows]);
 
   async function parseFile(file: File) {
-    setParsing(true);
-    setMessage('');
-    setRows([]);
-    setFileName(file.name);
+    setParsing(true); setMessage(''); setRows([]); setFileName(file.name);
     try {
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -77,12 +67,8 @@ export default function ExcelImporter() {
       if (!sheetName) throw new Error('No worksheet found in Excel file.');
       const sheet = workbook.Sheets[sheetName];
       if (!sheet) throw new Error('Unable to read worksheet.');
-
       const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
-      if (!raw.length) {
-        setMessage('Excel sheet is empty.');
-        return;
-      }
+      if (!raw.length) { setMessage('Excel sheet is empty.'); return; }
 
       const headers = Object.keys(raw[0]);
       const cWO = findColumn(headers, ['W.no', 'W.no.', 'W no', 'Work Order No', 'Work Order Number']);
@@ -90,6 +76,8 @@ export default function ExcelImporter() {
       const cSpec = findColumn(headers, ['SPECIFICATION', 'Specification', 'Spec']);
       const cOD = findColumn(headers, ['OD', 'OD (mm)']);
       const cWL = findColumn(headers, ['WL', 'Wall', 'Wall Thickness', 'WT']);
+      const cL1 = findColumn(headers, ['L1', 'L 1']);
+      const cL2 = findColumn(headers, ['L2', 'L 2']);
       const cOrderPcs = findColumn(headers, ['Order Pcs', 'Order PCS', 'Order Qty Pcs']);
       const cOrderMtr = findColumn(headers, ['Order Metre', 'Order Mtr', 'Order MTR', 'Order Meter', 'Order Qty Mtr']);
       const cOrderMT = findColumn(headers, ['Order MT', 'Order Mt', 'Order Qty MT']);
@@ -98,7 +86,6 @@ export default function ExcelImporter() {
       const cBalMT = findColumn(headers, ['Balance Qty (MT) FOR BUNDLING', 'Balance Qty (MT)', 'Balance Qty MT']);
       const cBalToMakeMtr = findColumn(headers, ['Bal to Make Mtr.', 'Bal to Make Mtr', 'Bal to Make MTR', 'Bal to Make Meter']);
       const cStatus = findColumn(headers, ['Current Status', 'Status']);
-
       if (!cWO) throw new Error(`Column "W.no" was not found in the Excel file.\n\nDetected columns:\n${headers.join(', ')}`);
       if (!cBalToMakeMtr) throw new Error(`Column "Bal to Make Mtr." was not found in the Excel file.\n\nDetected columns:\n${headers.join(', ')}`);
 
@@ -113,6 +100,8 @@ export default function ExcelImporter() {
           specification: cSpec ? clean(record[cSpec]) : '',
           od: cOD ? num(record[cOD]) || null : null,
           wl: cWL ? num(record[cWL]) || null : null,
+          l1: cL1 ? num(record[cL1]) || null : null,
+          l2: cL2 ? num(record[cL2]) || null : null,
           ordered_qty_pcs: cOrderPcs ? num(record[cOrderPcs]) : 0,
           ordered_qty_mtr: cOrderMtr ? num(record[cOrderMtr]) : 0,
           ordered_qty_mt: cOrderMT ? num(record[cOrderMT]) : 0,
@@ -122,12 +111,10 @@ export default function ExcelImporter() {
           current_status: currentStatus,
           balance_to_make_mtr: balanceToMakeMtr,
         };
-
         const errors: string[] = [];
         if (!wo) errors.push('Work Order No missing');
         if (row.od === null || row.od <= 0) errors.push('OD missing/invalid');
         if (row.ordered_qty_pcs <= 0 && row.ordered_qty_mtr <= 0 && row.ordered_qty_mt <= 0) errors.push('Order Qty missing');
-        // Current Status may be blank. If populated, it must be Pending.
         if (currentStatus && currentStatus.toLowerCase() !== 'pending') errors.push('Skipped: Current Status is not Pending or blank');
         if (balanceToMakeMtr <= 5) errors.push('Skipped: Bal to Make Mtr. is not greater than 5');
         row.duplicate = !!wo && seen.has(wo);
@@ -136,31 +123,21 @@ export default function ExcelImporter() {
         if (errors.length) row.error = errors.join('; ');
         return row;
       });
-
       setRows(parsed);
       const eligible = parsed.filter((r) => !r.error).length;
       setMessage(`Loaded ${parsed.length} rows from "${sheetName}". ${eligible} rows meet import criteria: Current Status is blank or Pending and Bal to Make Mtr. > 5.`);
     } catch (error) {
-      setRows([]);
-      setMessage(error instanceof Error ? error.message : 'Unable to read Excel file.');
-    } finally {
-      setParsing(false);
-    }
+      setRows([]); setMessage(error instanceof Error ? error.message : 'Unable to read Excel file.');
+    } finally { setParsing(false); }
   }
 
   async function importRows() {
     const validRows = rows.filter((row) => !row.error);
-    if (!validRows.length) {
-      setMessage('There are no rows meeting the import criteria.');
-      return;
-    }
-    setLoading(true);
-    setMessage('Importing eligible Work Orders…');
+    if (!validRows.length) { setMessage('There are no rows meeting the import criteria.'); return; }
+    setLoading(true); setMessage('Importing eligible Work Orders…');
     try {
       const supabase = createClient();
-      let imported = 0;
-      let failed = 0;
-      const errors: string[] = [];
+      let imported = 0; let failed = 0; const errors: string[] = [];
       for (const row of validRows) {
         const { error } = await supabase.rpc('import_work_order', {
           p_work_order_no: row.work_order_no,
@@ -168,6 +145,8 @@ export default function ExcelImporter() {
           p_specification: row.specification,
           p_od: row.od,
           p_wl: row.wl,
+          p_l1: row.l1,
+          p_l2: row.l2,
           p_ordered_qty_pcs: row.ordered_qty_pcs,
           p_ordered_qty_mtr: row.ordered_qty_mtr,
           p_ordered_qty_mt: row.ordered_qty_mt,
@@ -175,71 +154,30 @@ export default function ExcelImporter() {
           p_balance_qty_mtr: row.balance_qty_mtr,
           p_balance_qty_mt: row.balance_qty_mt,
         });
-        if (error) {
-          failed++;
-          if (errors.length < 5) errors.push(`${row.work_order_no}: ${error.message}`);
-        } else imported++;
+        if (error) { failed++; if (errors.length < 5) errors.push(`${row.work_order_no}: ${error.message}`); } else imported++;
       }
       setMessage(failed ? `Import completed: ${imported} successful, ${failed} failed. ${errors.join(' | ')}` : `Import completed successfully: ${imported} Work Orders imported.`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Import failed.');
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Import failed.'); }
+    finally { setLoading(false); }
   }
 
-  function clearImport() {
-    setRows([]);
-    setMessage('');
-    setFileName('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }
+  function clearImport() { setRows([]); setMessage(''); setFileName(''); if (fileInputRef.current) fileInputRef.current.value = ''; }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Excel Import</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Import only Work Orders where Current Status is blank or Pending and Bal to Make Mtr. is greater than 5.</p>
-      </div>
-
+      <div><h1 className="text-2xl font-semibold">Excel Import</h1><p className="mt-1 text-sm text-muted-foreground">Import only Work Orders where Current Status is blank or Pending and Bal to Make Mtr. is greater than 5.</p></div>
       <div className="rounded-xl border-2 border-dashed p-8 text-center transition hover:bg-muted/30" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const file = e.dataTransfer.files?.[0]; if (file) void parseFile(file); }}>
-        <div className="space-y-4">
-          <div className="text-4xl">📊</div>
-          <div>
-            <p className="font-medium">Upload Excel File</p>
-            <p className="mt-1 text-sm text-muted-foreground">Only rows with blank/Pending status and Bal to Make Mtr. &gt; 5 will be imported.</p>
-          </div>
+        <div className="space-y-4"><div className="text-4xl">📊</div><div><p className="font-medium">Upload Excel File</p><p className="mt-1 text-sm text-muted-foreground">Only rows with blank/Pending status and Bal to Make Mtr. &gt; 5 will be imported.</p></div>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) void parseFile(file); }} />
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={parsing} className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{parsing ? 'Reading Excel…' : 'Select Excel File'}</button>
           {fileName && <p className="text-sm font-medium">Selected: {fileName}</p>}
         </div>
       </div>
-
       {message && <div className="whitespace-pre-wrap rounded-lg border p-3 text-sm">{message}</div>}
-
       {rows.length > 0 && <>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Total Rows</div><div className="mt-1 text-xl font-semibold">{stats.total}</div></div>
-          <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Eligible</div><div className="mt-1 text-xl font-semibold">{stats.valid}</div></div>
-          <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Skipped / Invalid</div><div className="mt-1 text-xl font-semibold">{stats.invalid}</div></div>
-          <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Duplicates</div><div className="mt-1 text-xl font-semibold">{stats.duplicates}</div></div>
-        </div>
-
-        <div className="overflow-auto rounded-xl border">
-          <table className="min-w-[1450px] text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="p-2 text-left">WO</th><th className="p-2 text-left">Customer</th><th className="p-2 text-left">Specification</th><th className="p-2 text-right">OD</th><th className="p-2 text-right">WL</th><th className="p-2 text-right">Order Pcs</th><th className="p-2 text-right">Order Mtr</th><th className="p-2 text-right">Order MT</th><th className="p-2 text-right">Bal to Make Mtr</th><th className="p-2 text-left">Current Status</th><th className="p-2 text-left">Validation</th>
-            </tr></thead>
-            <tbody>{rows.slice(0, 100).map((r, i) => <tr key={`${r.work_order_no}-${i}`} className="border-b">
-              <td className="p-2">{r.work_order_no}</td><td className="p-2">{r.customer_name}</td><td className="p-2">{r.specification}</td><td className="p-2 text-right">{r.od ?? ''}</td><td className="p-2 text-right">{r.wl ?? ''}</td><td className="p-2 text-right">{r.ordered_qty_pcs || ''}</td><td className="p-2 text-right">{r.ordered_qty_mtr || ''}</td><td className="p-2 text-right">{r.ordered_qty_mt || ''}</td><td className="p-2 text-right">{r.balance_to_make_mtr || ''}</td><td className="p-2">{r.current_status || '—'}</td><td className="p-2">{r.error || 'OK — eligible'}</td>
-            </tr>)}</tbody>
-          </table>
-        </div>
-
-        <div className="flex gap-3">
-          <button type="button" onClick={() => void importRows()} disabled={loading || stats.valid === 0} className="rounded-lg border px-4 py-2 font-medium disabled:opacity-50">{loading ? 'Importing…' : `Import ${stats.valid} eligible rows`}</button>
-          <button type="button" onClick={clearImport} disabled={loading} className="rounded-lg border px-4 py-2 font-medium disabled:opacity-50">Clear</button>
-        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4"><div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Total Rows</div><div className="mt-1 text-xl font-semibold">{stats.total}</div></div><div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Eligible</div><div className="mt-1 text-xl font-semibold">{stats.valid}</div></div><div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Skipped / Invalid</div><div className="mt-1 text-xl font-semibold">{stats.invalid}</div></div><div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Duplicates</div><div className="mt-1 text-xl font-semibold">{stats.duplicates}</div></div></div>
+        <div className="overflow-auto rounded-xl border"><table className="min-w-[1550px] text-sm"><thead><tr className="border-b bg-muted/50"><th className="p-2 text-left">WO</th><th className="p-2 text-left">Customer</th><th className="p-2 text-left">Specification</th><th className="p-2 text-right">OD</th><th className="p-2 text-right">WL</th><th className="p-2 text-right">L1</th><th className="p-2 text-right">L2</th><th className="p-2 text-right">Order Pcs</th><th className="p-2 text-right">Order Mtr</th><th className="p-2 text-right">Order MT</th><th className="p-2 text-right">Bal to Make Mtr</th><th className="p-2 text-left">Current Status</th><th className="p-2 text-left">Validation</th></tr></thead><tbody>{rows.slice(0, 100).map((r, i) => <tr key={`${r.work_order_no}-${i}`} className="border-b"><td className="p-2">{r.work_order_no}</td><td className="p-2">{r.customer_name}</td><td className="p-2">{r.specification}</td><td className="p-2 text-right">{r.od ?? ''}</td><td className="p-2 text-right">{r.wl ?? ''}</td><td className="p-2 text-right">{r.l1 ?? ''}</td><td className="p-2 text-right">{r.l2 ?? ''}</td><td className="p-2 text-right">{r.ordered_qty_pcs || ''}</td><td className="p-2 text-right">{r.ordered_qty_mtr || ''}</td><td className="p-2 text-right">{r.ordered_qty_mt || ''}</td><td className="p-2 text-right">{r.balance_to_make_mtr || ''}</td><td className="p-2">{r.current_status || '—'}</td><td className="p-2">{r.error || 'OK — eligible'}</td></tr>)}</tbody></table></div>
+        <div className="flex gap-3"><button type="button" onClick={() => void importRows()} disabled={loading || stats.valid === 0} className="rounded-lg border px-4 py-2 font-medium disabled:opacity-50">{loading ? 'Importing…' : `Import ${stats.valid} eligible rows`}</button><button type="button" onClick={clearImport} disabled={loading} className="rounded-lg border px-4 py-2 font-medium disabled:opacity-50">Clear</button></div>
       </>}
     </div>
   );
