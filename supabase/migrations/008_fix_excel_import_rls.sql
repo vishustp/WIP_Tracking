@@ -1,5 +1,5 @@
--- Fix Excel import for authenticated users when work_orders has RLS enabled.
--- Run after 007_import_work_orders.sql.
+-- Excel import: RLS-safe, no duplicate Work Orders, update only when data changes.
+-- Run this migration in Supabase SQL Editor.
 
 create or replace function public.import_work_orders_batch(p_rows jsonb)
 returns table(imported integer, failed integer, errors jsonb)
@@ -72,7 +72,19 @@ begin
         balance_qty_pcs = excluded.balance_qty_pcs,
         balance_qty_mtr = excluded.balance_qty_mtr,
         balance_qty_mt = excluded.balance_qty_mt,
-        updated_at = now();
+        updated_at = now()
+      where public.work_orders.customer_name is distinct from excluded.customer_name
+         or public.work_orders.size_od is distinct from excluded.size_od
+         or public.work_orders.size_wt is distinct from excluded.size_wt
+         or public.work_orders.grade is distinct from excluded.grade
+         or public.work_orders.ordered_qty is distinct from excluded.ordered_qty
+         or public.work_orders.uom is distinct from excluded.uom
+         or public.work_orders.ordered_qty_pcs is distinct from excluded.ordered_qty_pcs
+         or public.work_orders.ordered_qty_mtr is distinct from excluded.ordered_qty_mtr
+         or public.work_orders.ordered_qty_mt is distinct from excluded.ordered_qty_mt
+         or public.work_orders.balance_qty_pcs is distinct from excluded.balance_qty_pcs
+         or public.work_orders.balance_qty_mtr is distinct from excluded.balance_qty_mtr
+         or public.work_orders.balance_qty_mt is distinct from excluded.balance_qty_mt;
 
       v_imported := v_imported + 1;
     exception when others then
@@ -149,7 +161,23 @@ begin
     balance_qty_mtr = excluded.balance_qty_mtr,
     balance_qty_mt = excluded.balance_qty_mt,
     updated_at = now()
+  where public.work_orders.customer_name is distinct from excluded.customer_name
+     or public.work_orders.size_od is distinct from excluded.size_od
+     or public.work_orders.size_wt is distinct from excluded.size_wt
+     or public.work_orders.grade is distinct from excluded.grade
+     or public.work_orders.ordered_qty is distinct from excluded.ordered_qty
+     or public.work_orders.uom is distinct from excluded.uom
+     or public.work_orders.ordered_qty_pcs is distinct from excluded.ordered_qty_pcs
+     or public.work_orders.ordered_qty_mtr is distinct from excluded.ordered_qty_mtr
+     or public.work_orders.ordered_qty_mt is distinct from excluded.ordered_qty_mt
+     or public.work_orders.balance_qty_pcs is distinct from excluded.balance_qty_pcs
+     or public.work_orders.balance_qty_mtr is distinct from excluded.balance_qty_mtr
+     or public.work_orders.balance_qty_mt is distinct from excluded.balance_qty_mt
   returning id into v_id;
+
+  if v_id is null then
+    select id into v_id from public.work_orders where work_order_no = trim(p_work_order_no);
+  end if;
 
   return v_id;
 end;
