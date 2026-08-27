@@ -52,19 +52,14 @@ type RecentEntry = {
 
 const STAGES: { code: StageCode; label: string }[] = [
   { code: "ROLLING", label: "Rolling" },
-  { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
+  {
+    code: "HOLLOW_HEAT_TREATMENT",
+    label: "Hollow Heat Treatment",
+  },
   { code: "DRAW", label: "Draw" },
   { code: "HEAT_TREATMENT", label: "Heat Treatment" },
   { code: "FINISHING", label: "Finishing" },
 ];
-
-const STAGE_LABELS: Record<StageCode, string> = {
-  ROLLING: "Rolling",
-  HOLLOW_HEAT_TREATMENT: "Hollow Heat Treatment",
-  DRAW: "Draw",
-  HEAT_TREATMENT: "Heat Treatment",
-  FINISHING: "Finishing",
-};
 
 const emptyEdit = {
   id: "",
@@ -78,16 +73,23 @@ const emptyEdit = {
 
 export default function ProductionEntryGrid() {
   const supabase = useMemo(() => createClient(), []);
+
   const [stage, setStage] = useState<StageCode>("ROLLING");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+
   const [rows, setRows] = useState<EntryRow[]>([]);
   const [recent, setRecent] = useState<RecentEntry[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [recentLoading, setRecentLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState("");
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
   const [edit, setEdit] = useState(emptyEdit);
 
   const loadQueue = useCallback(async () => {
@@ -96,7 +98,9 @@ export default function ProductionEntryGrid() {
 
     const { data, error: rpcError } = await supabase.rpc(
       "get_production_entry_queue",
-      { p_stage_code: stage }
+      {
+        p_stage_code: stage,
+      }
     );
 
     if (rpcError) {
@@ -123,7 +127,9 @@ export default function ProductionEntryGrid() {
 
     const { data, error: rpcError } = await supabase.rpc(
       "get_recent_production_entries",
-      { p_limit: 50 }
+      {
+        p_limit: 50,
+      }
     );
 
     if (rpcError) {
@@ -166,7 +172,9 @@ export default function ProductionEntryGrid() {
     setMessage("");
     setError("");
 
-    const entries = rows.filter((r) => Number(r.production_qty) > 0);
+    const entries = rows.filter(
+      (r) => Number(r.production_qty) > 0
+    );
 
     if (!entries.length) {
       setError("Enter production quantity for at least one row.");
@@ -179,7 +187,9 @@ export default function ProductionEntryGrid() {
       const htcOk = Number(r.htc_ok || 0);
 
       if (!Number.isFinite(qty) || qty <= 0) {
-        setError(`Invalid production quantity for ${r.work_order_no}.`);
+        setError(
+          `Invalid production quantity for ${r.work_order_no}.`
+        );
         return;
       }
 
@@ -192,7 +202,11 @@ export default function ProductionEntryGrid() {
         return;
       }
 
-      if (!Number.isFinite(rejection) || rejection < 0 || rejection > qty) {
+      if (
+        !Number.isFinite(rejection) ||
+        rejection < 0 ||
+        rejection > qty
+      ) {
         setError(
           `${r.work_order_no}: rejection must be between 0 and production quantity.`
         );
@@ -210,7 +224,9 @@ export default function ProductionEntryGrid() {
       }
 
       if (stage === "ROLLING" && htcOk > qty - rejection) {
-        setError(`${r.work_order_no}: HTC OK cannot exceed net rolling production.`);
+        setError(
+          `${r.work_order_no}: HTC OK cannot exceed net rolling production.`
+        );
         return;
       }
     }
@@ -219,26 +235,46 @@ export default function ProductionEntryGrid() {
 
     try {
       for (const r of entries) {
-        const { error: rpcError } = await supabase.rpc("record_production", {
-          p_work_order_id: r.work_order_id,
-          p_route_id: r.route_id,
-          p_stage_code: r.stage_code,
-          p_process_date: date,
-          p_input_qty: Number(r.production_qty),
-          p_output_qty: Number(r.production_qty),
-          p_rejection_qty: Number(r.rejection_qty || 0),
-          p_htc_ok: stage === "ROLLING" ? Number(r.htc_ok || 0) : 0,
-          p_heat_lot_no: r.heat_lot_no.trim() || null,
-          p_remarks: r.remarks.trim() || null,
-        });
+        const { error: rpcError } = await supabase.rpc(
+          "record_production",
+          {
+            p_work_order_id: r.work_order_id,
+            p_route_id: r.route_id,
+            p_stage_code: r.stage_code,
+            p_process_date: date,
+            p_input_qty: Number(r.production_qty),
+            p_output_qty: Number(r.production_qty),
+            p_rejection_qty: Number(r.rejection_qty || 0),
+            p_htc_ok:
+              stage === "ROLLING"
+                ? Number(r.htc_ok || 0)
+                : 0,
+            p_heat_lot_no:
+              r.heat_lot_no.trim() || null,
+            p_remarks:
+              r.remarks.trim() || null,
+          }
+        );
 
-        if (rpcError) throw rpcError;
+        if (rpcError) {
+          throw rpcError;
+        }
       }
 
-      setMessage(`${entries.length} production row(s) saved successfully.`);
-      await Promise.all([loadQueue(), loadRecent()]);
+      setMessage(
+        `${entries.length} production row(s) saved successfully.`
+      );
+
+      await Promise.all([
+        loadQueue(),
+        loadRecent(),
+      ]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Production entry failed.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Production entry failed."
+      );
     } finally {
       setSaving(false);
     }
@@ -276,7 +312,10 @@ export default function ProductionEntryGrid() {
   async function saveEdit() {
     if (!edit.id) return;
 
-    const current = recent.find((r) => r.id === edit.id);
+    const current = recent.find(
+      (r) => r.id === edit.id
+    );
+
     if (!current) return;
 
     const output = Number(edit.output_qty);
@@ -284,22 +323,36 @@ export default function ProductionEntryGrid() {
     const htcOk = Number(edit.htc_ok || 0);
 
     if (!Number.isFinite(output) || output <= 0) {
-      setError("Corrected production quantity must be positive.");
+      setError(
+        "Corrected production quantity must be positive."
+      );
       return;
     }
 
-    if (rejection < 0 || rejection > output) {
-      setError("Rejection must be between 0 and corrected production quantity.");
+    if (
+      rejection < 0 ||
+      rejection > output
+    ) {
+      setError(
+        "Rejection must be between 0 and corrected production quantity."
+      );
       return;
     }
 
     if (current.stage_code !== "ROLLING" && htcOk !== 0) {
-      setError("HTC OK can only be entered at Rolling.");
+      setError(
+        "HTC OK can only be entered at Rolling."
+      );
       return;
     }
 
-    if (current.stage_code === "ROLLING" && htcOk > output - rejection) {
-      setError("HTC OK cannot exceed net rolling production.");
+    if (
+      current.stage_code === "ROLLING" &&
+      htcOk > output - rejection
+    ) {
+      setError(
+        "HTC OK cannot exceed net rolling production."
+      );
       return;
     }
 
@@ -308,23 +361,45 @@ export default function ProductionEntryGrid() {
     setMessage("");
 
     try {
-      const { error: rpcError } = await supabase.rpc("update_production_entry", {
-        p_production_id: edit.id,
-        p_output_qty: output,
-        p_rejection_qty: rejection,
-        p_htc_ok: current.stage_code === "ROLLING" ? htcOk : 0,
-        p_heat_lot_no: edit.heat_lot_no.trim() || null,
-        p_remarks: edit.remarks.trim() || null,
-      });
+      const { error: rpcError } =
+        await supabase.rpc(
+          "update_production_entry",
+          {
+            p_production_id: edit.id,
+            p_process_date: edit.process_date,
+            p_output_qty: output,
+            p_rejection_qty: rejection,
+            p_htc_ok:
+              current.stage_code === "ROLLING"
+                ? htcOk
+                : 0,
+            p_heat_lot_no:
+              edit.heat_lot_no.trim() || null,
+            p_remarks:
+              edit.remarks.trim() || null,
+          }
+        );
 
-      if (rpcError) throw rpcError;
+      if (rpcError) {
+        throw rpcError;
+      }
 
-      setMessage("Production entry corrected successfully.");
+      setMessage(
+        "Production entry corrected successfully."
+      );
+
       setEdit(emptyEdit);
 
-      await Promise.all([loadQueue(), loadRecent()]);
+      await Promise.all([
+        loadQueue(),
+        loadRecent(),
+      ]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Correction failed.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Correction failed."
+      );
     } finally {
       setBusyId("");
     }
@@ -345,7 +420,7 @@ export default function ProductionEntryGrid() {
 
     if (
       !window.confirm(
-        `Delete production entry for ${entry.work_order_no} / ${entry.route_code} / ${STAGE_LABELS[entry.stage_code]}?`
+        `Delete production entry for ${entry.work_order_no} / ${entry.route_code} / ${entry.stage_code}?`
       )
     ) {
       return;
@@ -356,29 +431,48 @@ export default function ProductionEntryGrid() {
     setMessage("");
 
     try {
-      const { error: rpcError } = await supabase.rpc(
-        "delete_production_entry",
-        { p_production_id: entry.id }
+      const { error: rpcError } =
+        await supabase.rpc(
+          "delete_production_entry",
+          {
+            p_production_id: entry.id,
+          }
+        );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      setMessage(
+        "Production entry deleted successfully."
       );
-
-      if (rpcError) throw rpcError;
-
-      setMessage("Production entry deleted successfully.");
 
       if (edit.id === entry.id) {
         setEdit(emptyEdit);
       }
 
-      await Promise.all([loadQueue(), loadRecent()]);
+      await Promise.all([
+        loadQueue(),
+        loadRecent(),
+      ]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Deletion failed.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Deletion failed."
+      );
     } finally {
       setBusyId("");
     }
   }
 
+  const stageLabel =
+    STAGES.find((s) => s.code === stage)?.label ??
+    stage;
+
   return (
     <div className="space-y-6">
+      {/* HEADER / FILTERS */}
       <section className="rounded-xl border bg-background p-4">
         <div className="flex flex-wrap items-end gap-4">
           <label className="text-sm font-medium">
@@ -386,10 +480,17 @@ export default function ProductionEntryGrid() {
             <select
               className="mt-1 block h-10 min-w-64 rounded-md border bg-background px-3"
               value={stage}
-              onChange={(e) => setStage(e.target.value as StageCode)}
+              onChange={(e) =>
+                setStage(
+                  e.target.value as StageCode
+                )
+              }
             >
               {STAGES.map((s) => (
-                <option key={s.code} value={s.code}>
+                <option
+                  key={s.code}
+                  value={s.code}
+                >
                   {s.label}
                 </option>
               ))}
@@ -402,36 +503,47 @@ export default function ProductionEntryGrid() {
               type="date"
               className="mt-1 block h-10 rounded-md border bg-background px-3"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) =>
+                setDate(e.target.value)
+              }
             />
           </label>
 
           <div className="rounded-md border px-3 py-2 text-sm">
-            Only <b>Balance to Make &gt; 0</b> orders are shown.
+            Only orders with{" "}
+            <b>Balance to Make &gt; 0</b> are shown.
           </div>
         </div>
       </section>
 
+      {/* MESSAGE */}
       {(message || error) && (
         <div
           className={`rounded-md border p-3 text-sm ${
-            error ? "border-red-300" : "border-green-300"
+            error
+              ? "border-red-300 text-red-700"
+              : "border-green-300 text-green-700"
           }`}
         >
           {error || message}
         </div>
       )}
 
+      {/* PRODUCTION ENTRY */}
       <section className="overflow-hidden rounded-xl border">
         <div className="border-b px-4 py-3">
-          <h2 className="font-semibold">Production Entry</h2>
+          <h2 className="font-semibold">
+            Production Entry — {stageLabel}
+          </h2>
+
           <p className="text-xs text-muted-foreground">
-            Select the Work Center above. This is the single production entry form.
+            Enter production only for the eligible Work
+            Orders shown below.
           </p>
         </div>
 
         <div className="overflow-auto">
-          <table className="min-w-[1400px] w-full text-sm">
+          <table className="min-w-[1450px] w-full text-sm">
             <thead className="bg-muted/50">
               <tr className="border-b">
                 {[
@@ -446,11 +558,16 @@ export default function ProductionEntryGrid() {
                   "Balance to Make",
                   "Production Qty",
                   "Rejection",
-                  ...(stage === "ROLLING" ? ["HTC OK"] : []),
+                  ...(stage === "ROLLING"
+                    ? ["HTC OK"]
+                    : []),
                   "Heat/Lot No. (Optional)",
                   "Remarks",
                 ].map((h) => (
-                  <th key={h} className="p-3 text-left font-medium">
+                  <th
+                    key={h}
+                    className="p-3 text-left font-medium"
+                  >
                     {h}
                   </th>
                 ))}
@@ -460,17 +577,29 @@ export default function ProductionEntryGrid() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={15} className="p-8 text-center">
+                  <td
+                    colSpan={
+                      stage === "ROLLING"
+                        ? 14
+                        : 13
+                    }
+                    className="p-8 text-center"
+                  >
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={15}
+                    colSpan={
+                      stage === "ROLLING"
+                        ? 14
+                        : 13
+                    }
                     className="p-8 text-center text-muted-foreground"
                   >
-                    No eligible orders for this Work Center.
+                    No eligible orders for{" "}
+                    {stageLabel}.
                   </td>
                 </tr>
               ) : (
@@ -478,18 +607,47 @@ export default function ProductionEntryGrid() {
                   const key = `${r.work_order_id}|${r.route_id}`;
 
                   return (
-                    <tr key={key} className="border-b last:border-0">
-                      <td className="p-3">{i + 1}</td>
-                      <td className="p-3 font-medium">{r.work_order_no}</td>
-                      <td className="p-3">{r.customer_name || "—"}</td>
-                      <td className="p-3">{r.specification || "—"}</td>
-                      <td className="p-3">{r.od ?? "—"}</td>
-                      <td className="p-3">{r.wl ?? "—"}</td>
-                      <td className="p-3">{r.route_code}</td>
-                      <td className="p-3 font-semibold">{r.uom}</td>
+                    <tr
+                      key={key}
+                      className="border-b last:border-0"
+                    >
+                      <td className="p-3">
+                        {i + 1}
+                      </td>
+
+                      <td className="p-3 font-medium">
+                        {r.work_order_no}
+                      </td>
+
+                      <td className="p-3">
+                        {r.customer_name || "—"}
+                      </td>
+
+                      <td className="p-3">
+                        {r.specification || "—"}
+                      </td>
+
+                      <td className="p-3">
+                        {r.od ?? "—"}
+                      </td>
+
+                      <td className="p-3">
+                        {r.wl ?? "—"}
+                      </td>
+
+                      <td className="p-3 font-medium">
+                        {r.route_code}
+                      </td>
+
+                      <td className="p-3 font-semibold">
+                        {r.uom}
+                      </td>
 
                       <td className="p-3 text-right">
-                        {Number(r.balance_to_make).toLocaleString()} {r.uom}
+                        {Number(
+                          r.balance_to_make
+                        ).toLocaleString()}{" "}
+                        {r.uom}
                       </td>
 
                       <td className="p-2">
@@ -499,7 +657,9 @@ export default function ProductionEntryGrid() {
                           max={r.balance_to_make}
                           step="any"
                           className="h-9 w-32 rounded-md border px-2 text-right"
-                          value={r.production_qty}
+                          value={
+                            r.production_qty
+                          }
                           onChange={(e) =>
                             updateRow(
                               key,
@@ -516,7 +676,9 @@ export default function ProductionEntryGrid() {
                           min="0"
                           step="any"
                           className="h-9 w-28 rounded-md border px-2 text-right"
-                          value={r.rejection_qty}
+                          value={
+                            r.rejection_qty
+                          }
                           onChange={(e) =>
                             updateRow(
                               key,
@@ -533,7 +695,7 @@ export default function ProductionEntryGrid() {
                             type="number"
                             min="0"
                             step="any"
-                            className="h-9 w-28 rounded-md border px-2 text-right"
+                            className="h-28 rounded-md border px-2 text-right w-28"
                             value={r.htc_ok}
                             onChange={(e) =>
                               updateRow(
@@ -550,7 +712,9 @@ export default function ProductionEntryGrid() {
                         <input
                           className="h-9 w-48 rounded-md border px-2"
                           placeholder="Optional"
-                          value={r.heat_lot_no}
+                          value={
+                            r.heat_lot_no
+                          }
                           onChange={(e) =>
                             updateRow(
                               key,
@@ -566,7 +730,11 @@ export default function ProductionEntryGrid() {
                           className="h-9 w-56 rounded-md border px-2"
                           value={r.remarks}
                           onChange={(e) =>
-                            updateRow(key, "remarks", e.target.value)
+                            updateRow(
+                              key,
+                              "remarks",
+                              e.target.value
+                            )
                           }
                         />
                       </td>
@@ -582,19 +750,30 @@ export default function ProductionEntryGrid() {
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || loading || rows.length === 0}
+            disabled={
+              saving ||
+              loading ||
+              rows.length === 0
+            }
             className="rounded-md border px-5 py-2 font-medium disabled:opacity-50"
           >
-            {saving ? "Saving…" : "Save Production"}
+            {saving
+              ? "Saving…"
+              : "Save Production"}
           </button>
         </div>
       </section>
 
+      {/* RECENT ENTRIES */}
       <section className="overflow-hidden rounded-xl border">
         <div className="border-b px-4 py-3">
-          <h2 className="font-semibold">Recent Production Entries</h2>
+          <h2 className="font-semibold">
+            Recent Production Entries
+          </h2>
+
           <p className="text-xs text-muted-foreground">
-            Only the latest entry for the same Work Order + Route can be corrected or deleted.
+            Only the latest entry for a Work Order +
+            Route can be corrected or deleted.
           </p>
         </div>
 
@@ -616,7 +795,10 @@ export default function ProductionEntryGrid() {
                   "Remarks",
                   "Action",
                 ].map((h) => (
-                  <th key={h} className="p-3 text-left font-medium">
+                  <th
+                    key={h}
+                    className="p-3 text-left font-medium"
+                  >
                     {h}
                   </th>
                 ))}
@@ -626,7 +808,10 @@ export default function ProductionEntryGrid() {
             <tbody>
               {recentLoading ? (
                 <tr>
-                  <td colSpan={12} className="p-8 text-center">
+                  <td
+                    colSpan={12}
+                    className="p-8 text-center"
+                  >
                     Loading…
                   </td>
                 </tr>
@@ -642,59 +827,110 @@ export default function ProductionEntryGrid() {
               ) : (
                 recent.map((entry) => {
                   const key = `${entry.work_order_no}|${entry.route_code}`;
-                  const isLatest = latestIds.get(key) === entry.id;
+
+                  const isLatest =
+                    latestIds.get(key) ===
+                    entry.id;
 
                   return (
-                    <tr key={entry.id} className="border-b last:border-0">
-                      <td className="p-3">{entry.process_date}</td>
-                      <td className="p-3 font-medium">{entry.work_order_no}</td>
-                      <td className="p-3">{entry.customer_name || "—"}</td>
-                      <td className="p-3">{entry.route_code}</td>
+                    <tr
+                      key={entry.id}
+                      className="border-b last:border-0"
+                    >
                       <td className="p-3">
-                        {STAGE_LABELS[entry.stage_code]}
+                        {entry.process_date}
                       </td>
+
+                      <td className="p-3 font-medium">
+                        {entry.work_order_no}
+                      </td>
+
+                      <td className="p-3">
+                        {entry.customer_name ||
+                          "—"}
+                      </td>
+
+                      <td className="p-3">
+                        {entry.route_code}
+                      </td>
+
+                      <td className="p-3">
+                        {STAGES.find(
+                          (s) =>
+                            s.code ===
+                            entry.stage_code
+                        )?.label ??
+                          entry.stage_code}
+                      </td>
+
                       <td className="p-3 text-right">
-                        {Number(entry.input_qty).toLocaleString()}
+                        {Number(
+                          entry.input_qty
+                        ).toLocaleString()}
                       </td>
+
                       <td className="p-3 text-right">
-                        {Number(entry.output_qty).toLocaleString()}
+                        {Number(
+                          entry.output_qty
+                        ).toLocaleString()}
                       </td>
+
                       <td className="p-3 text-right">
-                        {Number(entry.rejection_qty).toLocaleString()}
+                        {Number(
+                          entry.rejection_qty
+                        ).toLocaleString()}
                       </td>
+
                       <td className="p-3 text-right">
-                        {Number(entry.htc_ok).toLocaleString()}
+                        {Number(
+                          entry.htc_ok
+                        ).toLocaleString()}
                       </td>
-                      <td className="p-3">{entry.heat_lot_no || "—"}</td>
-                      <td className="p-3">{entry.remarks || "—"}</td>
+
+                      <td className="p-3">
+                        {entry.heat_lot_no ||
+                          "—"}
+                      </td>
+
+                      <td className="p-3">
+                        {entry.remarks || "—"}
+                      </td>
+
                       <td className="p-2">
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            disabled={!isLatest || busyId === entry.id}
-                            onClick={() => openEdit(entry)}
-                            className="rounded-md border px-3 py-1.5 disabled:opacity-40"
-                            title={
-                              isLatest
-                                ? "Correct last entry"
-                                : "Only last entry can be corrected"
+                            disabled={
+                              !isLatest ||
+                              busyId ===
+                                entry.id
                             }
+                            onClick={() =>
+                              openEdit(entry)
+                            }
+                            className="rounded-md border px-3 py-1.5 disabled:opacity-40"
                           >
                             Edit
                           </button>
 
                           <button
                             type="button"
-                            disabled={!isLatest || busyId === entry.id}
-                            onClick={() => void deleteEntry(entry)}
-                            className="rounded-md border px-3 py-1.5 disabled:opacity-40"
-                            title={
-                              isLatest
-                                ? "Delete last entry"
-                                : "Only last entry can be deleted"
+                            disabled={
+                              !isLatest ||
+                              busyId ===
+                                entry.id
                             }
+                            onClick={() =>
+                              void deleteEntry(
+                                entry
+                              )
+                            }
+                            className="rounded-md border px-3 py-1.5 disabled:opacity-40"
                           >
-                            {busyId === entry.id ? "…" : "Delete"}
+                            {busyId ===
+                            entry.id
+                              ? "…"
+                              : "Delete"}
                           </button>
                         </div>
                       </td>
@@ -707,20 +943,27 @@ export default function ProductionEntryGrid() {
         </div>
       </section>
 
+      {/* EDIT */}
       {edit.id && (
         <section className="rounded-xl border p-4">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="font-semibold">Correct Production Entry</h2>
+              <h2 className="font-semibold">
+                Correct Production Entry
+              </h2>
+
               <p className="text-xs text-muted-foreground">
-                Backend will reject the correction if a later entry exists for this Work Order + Route.
+                Backend will reject the correction
+                if another later entry exists.
               </p>
             </div>
 
             <button
               type="button"
               className="rounded-md border px-3 py-1.5"
-              onClick={() => setEdit(emptyEdit)}
+              onClick={() =>
+                setEdit(emptyEdit)
+              }
             >
               Cancel
             </button>
@@ -736,7 +979,8 @@ export default function ProductionEntryGrid() {
                 onChange={(e) =>
                   setEdit({
                     ...edit,
-                    process_date: e.target.value,
+                    process_date:
+                      e.target.value,
                   })
                 }
               />
@@ -753,7 +997,8 @@ export default function ProductionEntryGrid() {
                 onChange={(e) =>
                   setEdit({
                     ...edit,
-                    output_qty: e.target.value,
+                    output_qty:
+                      e.target.value,
                   })
                 }
               />
@@ -766,11 +1011,14 @@ export default function ProductionEntryGrid() {
                 min="0"
                 step="any"
                 className="mt-1 h-10 w-full rounded-md border px-2"
-                value={edit.rejection_qty}
+                value={
+                  edit.rejection_qty
+                }
                 onChange={(e) =>
                   setEdit({
                     ...edit,
-                    rejection_qty: e.target.value,
+                    rejection_qty:
+                      e.target.value,
                   })
                 }
               />
@@ -784,28 +1032,39 @@ export default function ProductionEntryGrid() {
                 step="any"
                 className="mt-1 h-10 w-full rounded-md border px-2"
                 value={edit.htc_ok}
+                disabled={
+                  recent.find(
+                    (r) =>
+                      r.id === edit.id
+                  )?.stage_code !==
+                  "ROLLING"
+                }
                 onChange={(e) =>
                   setEdit({
                     ...edit,
-                    htc_ok: e.target.value,
+                    htc_ok:
+                      e.target.value,
                   })
-                }
-                disabled={
-                  recent.find((r) => r.id === edit.id)?.stage_code !==
-                  "ROLLING"
                 }
               />
             </label>
 
             <label className="text-sm font-medium">
-              Heat/Lot No. <span className="font-normal">(Optional)</span>
+              Heat/Lot No.
+              <span className="font-normal">
+                {" "}
+                (Optional)
+              </span>
               <input
                 className="mt-1 h-10 w-full rounded-md border px-2"
-                value={edit.heat_lot_no}
+                value={
+                  edit.heat_lot_no
+                }
                 onChange={(e) =>
                   setEdit({
                     ...edit,
-                    heat_lot_no: e.target.value,
+                    heat_lot_no:
+                      e.target.value,
                   })
                 }
               />
@@ -819,7 +1078,8 @@ export default function ProductionEntryGrid() {
                 onChange={(e) =>
                   setEdit({
                     ...edit,
-                    remarks: e.target.value,
+                    remarks:
+                      e.target.value,
                   })
                 }
               />
@@ -828,11 +1088,17 @@ export default function ProductionEntryGrid() {
 
           <button
             type="button"
-            onClick={() => void saveEdit()}
-            disabled={busyId === edit.id}
+            onClick={() =>
+              void saveEdit()
+            }
+            disabled={
+              busyId === edit.id
+            }
             className="mt-4 rounded-md border px-5 py-2 font-medium disabled:opacity-50"
           >
-            {busyId === edit.id ? "Saving…" : "Save Correction"}
+            {busyId === edit.id
+              ? "Saving…"
+              : "Save Correction"}
           </button>
         </section>
       )}
