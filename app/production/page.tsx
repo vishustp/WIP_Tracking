@@ -6,7 +6,7 @@ export default function Page() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Production Entry</h1>
         <p className="text-sm text-muted-foreground">
-          Rolling Production Entry — select the Work Center from the common production form.
+          Select the Work Center and enter production against available WIP.
         </p>
       </div>
       <ProductionEntryGrid />
