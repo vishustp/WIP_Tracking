@@ -1,15 +1,5 @@
-import ProductionEntryGrid from "@/components/production/ProductionEntryGrid";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return (
-    <main className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Production Entry</h1>
-        <p className="text-sm text-muted-foreground">
-          Finishing Production Entry — select the Work Center from the common production form.
-        </p>
-      </div>
-      <ProductionEntryGrid />
-    </main>
-  );
+  redirect("/production");
 }
