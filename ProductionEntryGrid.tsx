@@ -21,10 +21,7 @@ type QueueRow = {
   route_id: string;
   route_code: string;
   route_name: string;
-  stage_id: string;
   stage_code: StageCode;
-  stage_name: string;
-  sequence_no: number;
   balance_to_make: number;
   multiple: number;
 };
@@ -39,15 +36,11 @@ type EntryRow = QueueRow & {
 
 type RecentEntry = {
   id: string;
-  process_date: string;
-  work_order_id: string;
   work_order_no: string;
   customer_name: string | null;
-  route_id: string;
   route_code: string;
-  stage_id: string;
   stage_code: StageCode;
-  stage_name: string;
+  process_date: string;
   input_qty: number;
   output_qty: number;
   rejection_qty: number;
@@ -75,9 +68,11 @@ const emptyEdit = {
   remarks: "",
 };
 
-export default function ProductionEntryGrid() {
+export type ProductionEntryGridProps = { stageCode?: StageCode };
+
+export default function ProductionEntryGrid({ stageCode }: ProductionEntryGridProps = {}) {
   const supabase = useMemo(() => createClient(), []);
-  const [stage, setStage] = useState<StageCode>("ROLLING");
+  const [stage, setStage] = useState<StageCode>(stageCode ?? "ROLLING");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [rows, setRows] = useState<EntryRow[]>([]);
   const [recent, setRecent] = useState<RecentEntry[]>([]);
@@ -88,6 +83,10 @@ export default function ProductionEntryGrid() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [edit, setEdit] = useState(emptyEdit);
+
+  useEffect(() => {
+    if (stageCode) setStage(stageCode);
+  }, [stageCode]);
 
   const loadQueue = useCallback(async () => {
     setLoading(true);
@@ -234,7 +233,7 @@ export default function ProductionEntryGrid() {
   const latestIds = useMemo(() => {
     const map = new Map<string, string>();
     for (const entry of recent) {
-      const key = `${entry.work_order_id}|${entry.route_id}`;
+      const key = `${entry.work_order_no}|${entry.route_code}`;
       if (!map.has(key)) map.set(key, entry.id);
     }
     return map;
@@ -291,9 +290,8 @@ export default function ProductionEntryGrid() {
 
     try {
       const { error: rpcError } = await supabase.rpc("update_production_entry", {
-        p_id: edit.id,
+        p_production_id: edit.id,
         p_process_date: edit.process_date,
-        p_input_qty: output,
         p_output_qty: output,
         p_rejection_qty: rejection,
         p_htc_ok: current.stage_code === "ROLLING" ? htcOk : 0,
@@ -314,8 +312,8 @@ export default function ProductionEntryGrid() {
   }
 
   async function deleteEntry(entry: RecentEntry) {
-    if (!latestIds.has(`${entry.work_order_id}|${entry.route_id}`) ||
-        latestIds.get(`${entry.work_order_id}|${entry.route_id}`) !== entry.id) {
+    if (!latestIds.has(`${entry.work_order_no}|${entry.route_code}`) ||
+        latestIds.get(`${entry.work_order_no}|${entry.route_code}`) !== entry.id) {
       setError("Only the last production entry for that Work Order and Route can be deleted.");
       return;
     }
@@ -330,7 +328,7 @@ export default function ProductionEntryGrid() {
 
     try {
       const { error: rpcError } = await supabase.rpc("delete_production_entry", {
-        p_id: entry.id,
+        p_production_id: entry.id,
       });
 
       if (rpcError) throw rpcError;
@@ -576,7 +574,7 @@ export default function ProductionEntryGrid() {
                 </tr>
               ) : (
                 recent.map((entry) => {
-                  const key = `${entry.work_order_id}|${entry.route_id}`;
+                  const key = `${entry.work_order_no}|${entry.route_code}`;
                   const isLatest = latestIds.get(key) === entry.id;
 
                   return (
@@ -585,7 +583,7 @@ export default function ProductionEntryGrid() {
                       <td className="p-3 font-medium">{entry.work_order_no}</td>
                       <td className="p-3">{entry.customer_name || "—"}</td>
                       <td className="p-3">{entry.route_code}</td>
-                      <td className="p-3">{entry.stage_name}</td>
+                      <td className="p-3">{entry.stage_code}</td>
                       <td className="p-3 text-right">{Number(entry.input_qty).toLocaleString()}</td>
                       <td className="p-3 text-right">{Number(entry.output_qty).toLocaleString()}</td>
                       <td className="p-3 text-right">{Number(entry.rejection_qty).toLocaleString()}</td>

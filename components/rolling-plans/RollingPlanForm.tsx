@@ -13,12 +13,12 @@ type Route={id:string;route_code:string;route_name:string;material_category:stri
 export default function RollingPlanForm(){
  const [wos,setWos]=useState<WO[]>([]); const [routes,setRoutes]=useState<Route[]>([]);
  const [wo,setWo]=useState(''); const [qty,setQty]=useState(''); const [route,setRoute]=useState('');
- const [date,setDate]=useState(new Date().toISOString().slice(0,10)); const [mother,setMother]=useState('');
+ const [date,setDate]=useState(new Date().toISOString().slice(0,10)); const [mother,setMother]=useState(''); const [multiple,setMultiple]=useState('1');
  const [available,setAvailable]=useState<number|null>(null); const [loading,setLoading]=useState(false);
  useEffect(()=>{const s=createClient(); Promise.all([s.from('work_orders').select('id,work_order_no,customer_name,grade,ordered_qty').order('work_order_no'),s.from('process_routes').select('id,route_code,route_name,material_category').eq('active',true).order('route_code')]).then(([a,b])=>{setWos((a.data??[]) as WO[]);setRoutes((b.data??[]) as Route[]);if(a.error)toast.error(a.error.message);if(b.error)toast.error(b.error.message);});},[]);
  const selected=useMemo(()=>wos.find(x=>x.id===wo),[wos,wo]);
  const lookup=async(id=wo)=>{if(!id){setAvailable(null);return;} const {data,error}=await createClient().rpc('get_unplanned_qty',{p_work_order_id:id}); if(error) toast.error(error.message); else setAvailable(Number(data??0));};
- const submit=async(e:React.FormEvent)=>{e.preventDefault(); if(!wo||!route) return toast.error('Select Work Order and route'); if(available!==null&&Number(qty)>available) return toast.error(`Planned quantity exceeds available ${available}`); setLoading(true); const {data,error}=await createClient().rpc('create_rolling_plan',{p_work_order_id:wo,p_planned_qty:Number(qty),p_rolling_date:date,p_route_id:route,p_target_mother_size:mother||null}); setLoading(false); if(error) toast.error(error.message); else {toast.success(`Rolling plan ${data} created`);setQty('');setMother('');lookup();}};
+ const submit=async(e:React.FormEvent)=>{e.preventDefault(); if(!wo||!route) return toast.error('Select Work Order and route'); if(available!==null&&Number(qty)>available) return toast.error(`Planned quantity exceeds available ${available}`); setLoading(true); const {data,error}=await createClient().rpc('create_rolling_plan',{p_work_order_id:wo,p_planned_qty:Number(qty),p_rolling_date:date,p_route_id:route,p_target_mother_size:mother||null,p_multiple:Number(multiple)}); setLoading(false); if(error) toast.error(error.message); else {toast.success(`Rolling plan ${data} created`);setQty('');setMother('');setMultiple('1');lookup();}};
  return <form onSubmit={submit} className="space-y-5 rounded-xl border bg-white p-6 shadow-sm">
   <div><h1 className="text-2xl font-bold">Issue Rolling Plan</h1><p className="text-sm text-slate-500">Route is selected here for the planned quantity. Heat, machine and operator are not planning fields.</p></div>
   <div className="grid gap-4 md:grid-cols-2">
@@ -29,6 +29,7 @@ export default function RollingPlanForm(){
    <div><label className="mb-1 block text-sm font-medium">Planned Qty</label><Input type="number" min="0.001" step="0.001" value={qty} onChange={e=>setQty(e.target.value)} required/></div>
    <div><label className="mb-1 block text-sm font-medium">Rolling Date</label><Input type="date" value={date} onChange={e=>setDate(e.target.value)} required/></div>
    <div className="md:col-span-2"><label className="mb-1 block text-sm font-medium">Target Mother Size</label><Input placeholder="e.g. 8 inch / 219.1 x 12.7" value={mother} onChange={e=>setMother(e.target.value)}/></div>
+   <div><label className="mb-1 block text-sm font-medium">Multiple</label><Input type="number" min="0.001" step="0.001" value={multiple} onChange={e=>setMultiple(e.target.value)} required/></div>
   </div>
   <Button disabled={loading}>{loading?'Creating...':'Create Rolling Plan'}</Button>
  </form>

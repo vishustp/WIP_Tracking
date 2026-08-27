@@ -291,6 +291,7 @@ export default function ProductionEntryGrid({ stageCode }: ProductionEntryGridPr
     try {
       const { error: rpcError } = await supabase.rpc("update_production_entry", {
         p_production_id: edit.id,
+        p_process_date: edit.process_date,
         p_output_qty: output,
         p_rejection_qty: rejection,
         p_htc_ok: current.stage_code === "ROLLING" ? htcOk : 0,
