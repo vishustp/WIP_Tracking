@@ -78,9 +78,7 @@ export default function ExcelImporter() {
       const sheet = workbook.Sheets[sheetName];
       if (!sheet) throw new Error('Unable to read worksheet.');
 
-      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-        defval: '', raw: false,
-      });
+      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
       if (!raw.length) {
         setMessage('Excel sheet is empty.');
         return;
@@ -101,20 +99,13 @@ export default function ExcelImporter() {
       const cBalToMakeMtr = findColumn(headers, ['Bal to Make Mtr.', 'Bal to Make Mtr', 'Bal to Make MTR', 'Bal to Make Meter']);
       const cStatus = findColumn(headers, ['Current Status', 'Status']);
 
-      if (!cWO) {
-        throw new Error(`Column "W.no" was not found in the Excel file.\n\nDetected columns:\n${headers.join(', ')}`);
-      }
-      if (!cBalToMakeMtr) {
-        throw new Error(`Column "Bal to Make Mtr." was not found in the Excel file.\n\nDetected columns:\n${headers.join(', ')}`);
-      }
-      if (!cStatus) {
-        throw new Error(`Column "Current Status" was not found in the Excel file.\n\nDetected columns:\n${headers.join(', ')}`);
-      }
+      if (!cWO) throw new Error(`Column "W.no" was not found in the Excel file.\n\nDetected columns:\n${headers.join(', ')}`);
+      if (!cBalToMakeMtr) throw new Error(`Column "Bal to Make Mtr." was not found in the Excel file.\n\nDetected columns:\n${headers.join(', ')}`);
 
       const seen = new Set<string>();
       const parsed: ImportRow[] = raw.map((record) => {
         const wo = clean(record[cWO]);
-        const currentStatus = clean(record[cStatus]);
+        const currentStatus = cStatus ? clean(record[cStatus]) : '';
         const balanceToMakeMtr = num(record[cBalToMakeMtr]);
         const row: ImportRow = {
           work_order_no: wo,
@@ -136,7 +127,8 @@ export default function ExcelImporter() {
         if (!wo) errors.push('Work Order No missing');
         if (row.od === null || row.od <= 0) errors.push('OD missing/invalid');
         if (row.ordered_qty_pcs <= 0 && row.ordered_qty_mtr <= 0 && row.ordered_qty_mt <= 0) errors.push('Order Qty missing');
-        if (currentStatus.toLowerCase() !== 'pending') errors.push('Skipped: Current Status is not Pending');
+        // Current Status may be blank. If populated, it must be Pending.
+        if (currentStatus && currentStatus.toLowerCase() !== 'pending') errors.push('Skipped: Current Status is not Pending or blank');
         if (balanceToMakeMtr <= 5) errors.push('Skipped: Bal to Make Mtr. is not greater than 5');
         row.duplicate = !!wo && seen.has(wo);
         if (row.duplicate) errors.push('Duplicate WO in this file');
@@ -147,7 +139,7 @@ export default function ExcelImporter() {
 
       setRows(parsed);
       const eligible = parsed.filter((r) => !r.error).length;
-      setMessage(`Loaded ${parsed.length} rows from "${sheetName}". ${eligible} rows meet import criteria: Current Status = Pending and Bal to Make Mtr. > 5.`);
+      setMessage(`Loaded ${parsed.length} rows from "${sheetName}". ${eligible} rows meet import criteria: Current Status is blank or Pending and Bal to Make Mtr. > 5.`);
     } catch (error) {
       setRows([]);
       setMessage(error instanceof Error ? error.message : 'Unable to read Excel file.');
@@ -207,7 +199,7 @@ export default function ExcelImporter() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Excel Import</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Import only Pending Work Orders with Bal to Make Mtr. greater than 5.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Import only Work Orders where Current Status is blank or Pending and Bal to Make Mtr. is greater than 5.</p>
       </div>
 
       <div className="rounded-xl border-2 border-dashed p-8 text-center transition hover:bg-muted/30" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const file = e.dataTransfer.files?.[0]; if (file) void parseFile(file); }}>
@@ -215,7 +207,7 @@ export default function ExcelImporter() {
           <div className="text-4xl">📊</div>
           <div>
             <p className="font-medium">Upload Excel File</p>
-            <p className="mt-1 text-sm text-muted-foreground">Only rows with Pending status and Bal to Make Mtr. &gt; 5 will be imported.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Only rows with blank/Pending status and Bal to Make Mtr. &gt; 5 will be imported.</p>
           </div>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) void parseFile(file); }} />
           <button type="button" onClick={() => fileInputRef.current?.click()} disabled={parsing} className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{parsing ? 'Reading Excel…' : 'Select Excel File'}</button>
@@ -239,7 +231,7 @@ export default function ExcelImporter() {
               <th className="p-2 text-left">WO</th><th className="p-2 text-left">Customer</th><th className="p-2 text-left">Specification</th><th className="p-2 text-right">OD</th><th className="p-2 text-right">WL</th><th className="p-2 text-right">Order Pcs</th><th className="p-2 text-right">Order Mtr</th><th className="p-2 text-right">Order MT</th><th className="p-2 text-right">Bal to Make Mtr</th><th className="p-2 text-left">Current Status</th><th className="p-2 text-left">Validation</th>
             </tr></thead>
             <tbody>{rows.slice(0, 100).map((r, i) => <tr key={`${r.work_order_no}-${i}`} className="border-b">
-              <td className="p-2">{r.work_order_no}</td><td className="p-2">{r.customer_name}</td><td className="p-2">{r.specification}</td><td className="p-2 text-right">{r.od ?? ''}</td><td className="p-2 text-right">{r.wl ?? ''}</td><td className="p-2 text-right">{r.ordered_qty_pcs || ''}</td><td className="p-2 text-right">{r.ordered_qty_mtr || ''}</td><td className="p-2 text-right">{r.ordered_qty_mt || ''}</td><td className="p-2 text-right">{r.balance_to_make_mtr || ''}</td><td className="p-2">{r.current_status}</td><td className="p-2">{r.error || 'OK — eligible'}</td>
+              <td className="p-2">{r.work_order_no}</td><td className="p-2">{r.customer_name}</td><td className="p-2">{r.specification}</td><td className="p-2 text-right">{r.od ?? ''}</td><td className="p-2 text-right">{r.wl ?? ''}</td><td className="p-2 text-right">{r.ordered_qty_pcs || ''}</td><td className="p-2 text-right">{r.ordered_qty_mtr || ''}</td><td className="p-2 text-right">{r.ordered_qty_mt || ''}</td><td className="p-2 text-right">{r.balance_to_make_mtr || ''}</td><td className="p-2">{r.current_status || '—'}</td><td className="p-2">{r.error || 'OK — eligible'}</td>
             </tr>)}</tbody>
           </table>
         </div>
