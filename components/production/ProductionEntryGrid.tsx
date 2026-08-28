@@ -386,7 +386,6 @@ export default function ProductionEntryGrid() {
                     <td className="p-2"><input type="text" inputMode="decimal" className="h-9 w-32 rounded-md border px-2 text-right" value={r.pcs} onChange={(e) => updateRow(key, "pcs", e.target.value)} /></td>
                     <td className="p-2">
                       <input type="text" inputMode="decimal" className="h-9 w-32 rounded-md border px-2 text-right" value={r.mtr} placeholder="Calculated" onChange={(e) => updateRow(key, "mtr", e.target.value)} />
-                      <div className="text-[11px] text-muted-foreground">Auto: {d.calculatedMtr > 0 ? fmt(d.calculatedMtr, " MTR") : "—"}</div>
                     </td>
                     <td className="p-3 text-right font-semibold">{d.mt > 0 ? fmt(d.mt, " MT") : "—"}</td>
                     <td className="p-2"><input type="number" min="0" step="any" className="h-9 w-28 rounded-md border px-2 text-right" value={r.rejection_mtr} onChange={(e) => updateRow(key, "rejection_mtr", e.target.value)} /></td>
