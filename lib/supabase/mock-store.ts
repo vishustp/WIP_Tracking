@@ -403,13 +403,22 @@ class MockStore {
       const l2 = Number(wo.l2 || 0);
       const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 6.0;
 
-      // Calculate balance_to_make_mtr based on stage sequence
+      // Calculate balance_to_make_mtr based on stage sequence and route type
       let balanceMtr = 0;
       let htNos = 0;
       let htProdNos = 0;
       let htRejNos = 0;
+      let prevStageCode = '';
+      let prevStageName = '';
+      let prevGrossOutput = 0;
+      let prevRejection = 0;
+      let prevNetOutput = 0;
+      let plannedRollingTotal = 0;
+      let maxAllowedMtr = 0;
 
-      const htPieceLength = avgLength * multiple;
+      const isHfs = route.route_code.toUpperCase().includes('HFS');
+      const isCds = route.route_code.toUpperCase().includes('CDS');
+      const motherPieceLength = avgLength * multiple;
 
       if (stageCode === 'ROLLING') {
         const plannedRolling = this.rollingPlans
@@ -421,8 +430,12 @@ class MockStore {
         const rollingInput = this.productionLogs
           .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === 'stage-1')
           .reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
-        balanceMtr = Math.max(0, plannedRolling + divertedIn - rollingInput);
-        const motherPieceLength = avgLength * multiple;
+        
+        plannedRollingTotal = plannedRolling + divertedIn;
+        balanceMtr = Math.max(0, plannedRollingTotal - rollingInput);
+        // Rule 1: For Rolling entry, Max Production can be done = Plan + 10% (110% of Plan)
+        maxAllowedMtr = Math.max(0, plannedRollingTotal * 1.1 - rollingInput);
+        
         htNos = motherPieceLength > 0 ? Number((balanceMtr / motherPieceLength).toFixed(2)) : 0;
         htProdNos = htNos;
         htRejNos = 0;
@@ -433,32 +446,41 @@ class MockStore {
           .sort((a, b) => a.sequence_no - b.sequence_no);
         const currentIdx = allStagesInRoute.findIndex(s => s.stage_id === stage.id);
         if (currentIdx > 0) {
-          const prevStageId = allStagesInRoute[currentIdx - 1].stage_id;
-          const prevGrossOutput = this.productionLogs
-            .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === prevStageId)
+          const prevStageInfo = allStagesInRoute[currentIdx - 1];
+          const prevStageObj = this.stages.find(s => s.id === prevStageInfo.stage_id);
+          prevStageCode = prevStageObj?.stage_code || '';
+          prevStageName = prevStageObj?.stage_name || '';
+
+          prevGrossOutput = this.productionLogs
+            .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === prevStageInfo.stage_id)
             .reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
-          const prevRejection = this.productionLogs
-            .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === prevStageId)
+          prevRejection = this.productionLogs
+            .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === prevStageInfo.stage_id)
             .reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
-          const prevNetOutput = Math.max(0, prevGrossOutput - prevRejection);
+          
+          prevNetOutput = Math.max(0, prevGrossOutput - prevRejection);
           const thisInput = this.productionLogs
             .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === stage.id)
             .reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+          
           balanceMtr = Math.max(0, prevNetOutput - thisInput);
+          maxAllowedMtr = balanceMtr;
 
-          // HT piece length = Finished Avg Length * Multiple
-          // HT Nos = Heat Treatment Production Nos - Rejection Nos
-          if (htPieceLength > 0) {
-            htProdNos = Number((prevGrossOutput / htPieceLength).toFixed(2));
-            htRejNos = Number((prevRejection / htPieceLength).toFixed(2));
-            htNos = Number((balanceMtr / htPieceLength).toFixed(2));
+          // Mother pieces calculation based on mother piece length (avgLength * multiple)
+          if (motherPieceLength > 0) {
+            htProdNos = Number((prevGrossOutput / motherPieceLength).toFixed(2));
+            htRejNos = Number((prevRejection / motherPieceLength).toFixed(2));
+            htNos = Number((balanceMtr / motherPieceLength).toFixed(2));
           }
         }
       }
 
       const od = Number(wo.size_od ?? wo.od ?? 0);
       const wt = Number(wo.size_wt ?? wo.wt ?? wo.wl ?? 0);
-      // Finishing pieces = Multiple * Heat Treatment Nos (where HT Nos = HT Production Nos - Rejection Nos)
+      
+      // Finishing pieces calculation:
+      // - For HFS route: Finishing production = Rolling Net Nos * multiple
+      // - For CDS route: Finishing production = Heat treatment Net Nos (HT Prod - Rej) * multiple
       const pcs = stageCode === 'FINISHING' ? htNos * multiple : (avgLength > 0 ? balanceMtr / avgLength : 0);
       const mt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * balanceMtr;
 
@@ -476,6 +498,15 @@ class MockStore {
         route_code: route.route_code,
         route_name: route.route_name,
         stage_code: stageCode,
+        is_hfs: isHfs,
+        is_cds: isCds,
+        prev_stage_code: prevStageCode,
+        prev_stage_name: prevStageName,
+        prev_gross_output: prevGrossOutput,
+        prev_rejection: prevRejection,
+        prev_net_output: prevNetOutput,
+        planned_rolling_total: plannedRollingTotal,
+        max_allowed_mtr: maxAllowedMtr,
         balance_to_make_mtr: balanceMtr,
         balance_to_make_pcs: pcs,
         balance_to_make_mt: mt,

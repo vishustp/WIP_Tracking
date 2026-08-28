@@ -33,6 +33,15 @@ type Row = {
   route_code: string;
   route_name: string;
   stage_code: StageCode;
+  is_hfs?: boolean;
+  is_cds?: boolean;
+  prev_stage_code?: string;
+  prev_stage_name?: string;
+  prev_gross_output?: number;
+  prev_rejection?: number;
+  prev_net_output?: number;
+  planned_rolling_total?: number;
+  max_allowed_mtr?: number;
   balance_to_make_mtr: number | null;
   balance_to_make_pcs: number | null;
   balance_to_make_mt: number | null;
@@ -150,22 +159,29 @@ export default function ProductionEntryGrid() {
       setError(rpcError.message);
       setRows([]);
     } else {
-      const formatted: Row[] = (data ?? []).map((r: any) => ({
-        ...r,
-        multiple: r.multiple ?? 1,
-        ht_nos: r.ht_nos ?? 0,
-        ht_prod_nos: r.ht_prod_nos ?? r.ht_nos ?? 0,
-        ht_rej_nos: r.ht_rej_nos ?? 0,
-        ht_input_nos: "",
-        pcs: "",
-        mtr: "",
-        rejection_pcs: "",
-        rejection_mtr: "0",
-        htc_ok_pcs: "",
-        htc_ok_mtr: "0",
-        heat_lot_no: "",
-        remarks: "",
-      }));
+      const formatted: Row[] = (data ?? []).map((r: any) => {
+        const routeCodeUpper = String(r.route_code || "").toUpperCase();
+        const isHfs = Boolean(r.is_hfs ?? routeCodeUpper.includes("HFS"));
+        const isCds = Boolean(r.is_cds ?? routeCodeUpper.includes("CDS"));
+        return {
+          ...r,
+          is_hfs: isHfs,
+          is_cds: isCds,
+          multiple: r.multiple ?? 1,
+          ht_nos: r.ht_nos ?? 0,
+          ht_prod_nos: r.ht_prod_nos ?? r.ht_nos ?? 0,
+          ht_rej_nos: r.ht_rej_nos ?? 0,
+          ht_input_nos: "",
+          pcs: "",
+          mtr: "",
+          rejection_pcs: "",
+          rejection_mtr: "0",
+          htc_ok_pcs: "",
+          htc_ok_mtr: "0",
+          heat_lot_no: "",
+          remarks: "",
+        };
+      });
       setRows(formatted);
     }
     setLoading(false);
@@ -351,13 +367,26 @@ export default function ProductionEntryGrid() {
     for (const r of selected) {
       const d = calc(r);
       const balance = n(r.balance_to_make_mtr);
-      const allowed = stage === "ROLLING" ? balance * 1.1 : balance;
+      const allowed = stage === "ROLLING" 
+        ? (n(r.max_allowed_mtr) > 0 ? n(r.max_allowed_mtr) : balance * 1.1)
+        : balance;
 
       if (d.avg <= 0) return setError(`${r.work_order_no}: L1/L2 is missing, so MTR cannot be calculated.`);
       if (d.prodMtr <= 0) return setError(`${r.work_order_no}: enter valid Production PCS/MTR.`);
-      if (balance <= 0) return setError(`${r.work_order_no}: Balance to Make MTR is unavailable.`);
-      if (d.prodMtr > allowed + 0.000001)
-        return setError(`${r.work_order_no}: ${fmt(d.prodMtr, " MTR")} exceeds allowed ${fmt(allowed, " MTR")}.`);
+      if (balance <= 0 && stage !== "ROLLING") return setError(`${r.work_order_no}: Available balance from previous stage is 0.`);
+      if (d.prodMtr > allowed + 0.000001) {
+        if (stage === "ROLLING") {
+          return setError(`${r.work_order_no}: Rolling production ${fmt(d.prodMtr, " MTR")} exceeds max allowed 110% of Plan (${fmt(allowed, " MTR")}).`);
+        } else if (stage === "DRAW") {
+          return setError(`${r.work_order_no}: Draw production ${fmt(d.prodMtr, " MTR")} exceeds available Net Rolling production (${fmt(allowed, " MTR")}).`);
+        } else if (stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") {
+          return setError(`${r.work_order_no}: Heat Treatment production ${fmt(d.prodMtr, " MTR")} exceeds available Net Draw Bench production (${fmt(allowed, " MTR")}).`);
+        } else if (stage === "FINISHING") {
+          const feederStage = r.is_hfs ? "Rolling" : "Heat Treatment";
+          return setError(`${r.work_order_no}: Finishing production ${fmt(d.prodMtr, " MTR")} exceeds available Net ${feederStage} production (${fmt(allowed, " MTR")}).`);
+        }
+        return setError(`${r.work_order_no}: ${fmt(d.prodMtr, " MTR")} exceeds allowed limit of ${fmt(allowed, " MTR")}.`);
+      }
       if (d.rejMtr < 0 || d.rejMtr > d.prodMtr)
         return setError(`${r.work_order_no}: rejection MTR is invalid.`);
       if (stage !== "ROLLING" && d.htcMtr !== 0)
@@ -553,10 +582,38 @@ export default function ProductionEntryGrid() {
         </div>
 
         {stage === "ROLLING" && (
-          <div className="mt-3 flex items-center justify-end">
-            <span className="font-semibold text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-              Rolling Tolerance: up to 110% of Planned MTR
-            </span>
+          <div id="rolling-rule-banner" className="mt-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-950">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-600 text-[10px] font-bold text-white">
+                1
+              </span>
+              <div>
+                <span className="font-bold">Rule 1 — Rolling Production Limit: </span>
+                <span className="font-semibold text-amber-900">Max Production = Plan + 10% Overage Tolerance</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] font-medium bg-white/90 border border-amber-200 px-2.5 py-1 rounded-lg shadow-xs">
+              <span className="text-slate-600">Max Allowed:</span>
+              <code className="font-mono font-bold text-amber-700">Planned MTR × 1.10 (110% of Plan)</code>
+            </div>
+          </div>
+        )}
+
+        {stage === "DRAW" && (
+          <div id="draw-rule-banner" className="mt-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 rounded-xl border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-950">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
+                2
+              </span>
+              <div>
+                <span className="font-bold">Rule 2 — Draw Bench Production Limit: </span>
+                <span className="font-semibold text-blue-900">Max Production = Available Net Rolling Production</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] font-medium bg-white/90 border border-blue-200 px-2.5 py-1 rounded-lg shadow-xs">
+              <span className="text-slate-600">Feeder Source:</span>
+              <code className="font-mono font-bold text-blue-700">Rolling Gross − Rolling Rejection</code>
+            </div>
           </div>
         )}
 
@@ -564,36 +621,40 @@ export default function ProductionEntryGrid() {
           <div id="ht-conversion-banner" className="mt-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-950">
             <div className="flex items-center gap-2">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-600 text-[10px] font-bold text-white">
-                🔥
+                3
               </span>
               <div>
-                <span className="font-bold">Heat Treatment Output Rule: </span>
-                <span className="font-semibold text-amber-900">HT Nos = Heat Treatment Production Nos − Rejection Nos</span>
+                <span className="font-bold">Rule 3 — Heat Treatment Production Limit: </span>
+                <span className="font-semibold text-amber-900">Max Production = Available Draw Bench Production</span>
               </div>
             </div>
             <div className="flex items-center gap-2 text-[11px] font-medium bg-white/90 border border-amber-200 px-2.5 py-1 rounded-lg shadow-xs">
-              <span className="text-slate-600">Net Usable Tubes:</span>
-              <code className="font-mono font-bold text-amber-700">Net HT Nos = HT Prod (PCS) − Rej (PCS)</code>
+              <span className="text-slate-600">Feeder Source:</span>
+              <code className="font-mono font-bold text-amber-700">Draw Bench Gross − Draw Rejection</code>
             </div>
           </div>
         )}
 
         {stage === "FINISHING" && (
-          <div id="finishing-conversion-banner" className="mt-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 rounded-xl border border-indigo-200 bg-indigo-50/80 p-3 text-xs text-indigo-950">
+          <div id="finishing-conversion-banner" className="mt-3 flex flex-col md:flex-row items-start md:items-center justify-between gap-2.5 rounded-xl border border-indigo-200 bg-indigo-50/80 p-3 text-xs text-indigo-950">
             <div className="flex items-center gap-2">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">
-                ⚡
+                4
               </span>
               <div>
-                <span className="font-bold">Finishing Production Entry Logic: </span>
-                <span className="font-semibold text-indigo-900">
-                  Multiple ($M$) × HT Nos <span className="font-normal text-indigo-700">(where HT Nos = Heat Treatment Production Nos − Rejection Nos)</span>
+                <span className="font-bold">Rule 4 — Finishing Production Conversion (Route-Specific): </span>
+                <span className="font-medium text-indigo-900">
+                  <strong>HFS Route:</strong> Rolling × Multiple ($M$) &nbsp;|&nbsp; <strong>CDS Route:</strong> Heat Treatment × Multiple ($M$)
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2 text-[11px] font-medium bg-white/90 border border-indigo-200 px-2.5 py-1 rounded-lg shadow-xs">
-              <span className="text-slate-600">Formula:</span>
-              <code className="font-mono font-bold text-indigo-700">Finishing PCS = Multiple × (HT Prod − HT Rej)</code>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium">
+              <span className="bg-white/90 border border-emerald-200 px-2 py-0.5 rounded shadow-xs text-emerald-800 font-mono">
+                HFS: Fin PCS = Rolling Nos × M
+              </span>
+              <span className="bg-white/90 border border-indigo-200 px-2 py-0.5 rounded shadow-xs text-indigo-800 font-mono">
+                CDS: Fin PCS = (HT Prod − HT Rej) × M
+              </span>
             </div>
           </div>
         )}
@@ -648,14 +709,16 @@ export default function ProductionEntryGrid() {
                       "L2 (m)",
                       "Finished Avg L",
                       "Route",
+                      "Route Type",
                       "Multiple (M)",
-                      "HT Prod (Nos)",
-                      "HT Rej (Nos)",
-                      "Net HT Avail (Nos)",
+                      "Feeder Source",
+                      "Feeder Gross (Nos)",
+                      "Feeder Rej (Nos)",
+                      "Net Feeder Avail (Nos)",
                       "Balance MTR",
                       "Balance MT",
-                      "HT Processed (Nos)",
-                      "Finishing PCS (M × HT)",
+                      "Feeder Processed (Nos)",
+                      "Finishing PCS (M × Feeder)",
                       "Finishing MTR",
                       "Finishing MT",
                       "Rej PCS",
@@ -678,8 +741,8 @@ export default function ProductionEntryGrid() {
                       "Avg L (m)",
                       "Route",
                       "Multiple (M)",
-                      "Balance MTR",
-                      "Balance PCS",
+                      "Draw Bench Net Avail (MTR)",
+                      "Draw Bench Net Avail (PCS)",
                       "Balance MT",
                       "HT Prod PCS",
                       "HT Prod MTR",
@@ -688,6 +751,32 @@ export default function ProductionEntryGrid() {
                       "HT Rej MTR",
                       "HT Rej MT",
                       "Net HT OK (Prod − Rej)",
+                      "Heat / Lot No.",
+                      "Remarks",
+                    ]
+                  : stage === "DRAW"
+                  ? [
+                      "S.No.",
+                      "Work Order",
+                      "Customer",
+                      "Specification",
+                      "OD (mm)",
+                      "WT (mm)",
+                      "L1 (m)",
+                      "L2 (m)",
+                      "Avg L (m)",
+                      "Route",
+                      "Multiple (M)",
+                      "Rolling Net Avail (MTR)",
+                      "Rolling Net Avail (PCS)",
+                      "Balance MT",
+                      "Draw Prod PCS",
+                      "Draw Prod MTR",
+                      "Draw Prod MT",
+                      "Draw Rej PCS",
+                      "Draw Rej MTR",
+                      "Draw Rej MT",
+                      "Net Draw OK (PCS)",
                       "Heat / Lot No.",
                       "Remarks",
                     ]
@@ -703,21 +792,25 @@ export default function ProductionEntryGrid() {
                       "Avg L (m)",
                       "Route",
                       "Multiple (M)",
+                      "Plan (MTR)",
+                      "Max Allowed (Plan + 10%)",
                       "Balance MTR",
                       "Balance PCS",
                       "Balance MT",
-                      "Prod PCS",
-                      "Prod MTR",
-                      "Prod MT",
-                      "Rej PCS",
-                      "Rej MTR",
-                      "Rej MT",
-                      ...(stage === "ROLLING" ? ["HTC OK PCS", "HTC OK MTR", "HTC OK MT"] : []),
+                      "Rolling Prod PCS",
+                      "Rolling Prod MTR",
+                      "Rolling Prod MT",
+                      "Rolling Rej PCS",
+                      "Rolling Rej MTR",
+                      "Rolling Rej MT",
+                      "HTC OK PCS",
+                      "HTC OK MTR",
+                      "HTC OK MT",
                       "Heat / Lot No.",
                       "Remarks",
                     ]
                 ).map((h) => (
-                  <th key={h} className="py-2.5 px-3 text-left font-semibold">
+                  <th key={h} className="py-2.5 px-3 text-left font-semibold whitespace-nowrap">
                     {h}
                   </th>
                 ))}
@@ -726,13 +819,13 @@ export default function ProductionEntryGrid() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={26} className="p-8 text-center text-slate-400">
+                  <td colSpan={28} className="p-8 text-center text-slate-400">
                     Loading stage queue…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={26} className="p-8 text-center text-slate-500">
+                  <td colSpan={28} className="p-8 text-center text-slate-500">
                     No pending orders for {currentStageInfo?.label}. Check preceding stages or create a new rolling plan.
                   </td>
                 </tr>
@@ -740,9 +833,12 @@ export default function ProductionEntryGrid() {
                 rows.map((r, i) => {
                   const key = `${r.work_order_id}|${r.route_id}`;
                   const d = calc(r);
-                  const allowed = stage === "ROLLING" ? n(r.balance_to_make_mtr) * 1.1 : n(r.balance_to_make_mtr);
+                  const allowed = stage === "ROLLING" 
+                    ? (n(r.max_allowed_mtr) > 0 ? n(r.max_allowed_mtr) : n(r.balance_to_make_mtr) * 1.1)
+                    : n(r.balance_to_make_mtr);
                   const isFilled = n(r.pcs) > 0 || n(r.mtr) > 0 || n(r.ht_input_nos) > 0;
                   const rejectionRate = d.prodMtr > 0 ? (d.rejMtr / d.prodMtr) * 100 : 0;
+                  const feederName = r.is_hfs ? "Rolling" : "Heat Treatment";
 
                   return (
                     <tr
@@ -766,6 +862,22 @@ export default function ProductionEntryGrid() {
                           {r.route_code}
                         </span>
                       </td>
+
+                      {/* Route Type Badge for Finishing */}
+                      {stage === "FINISHING" && (
+                        <td className="py-2 px-3">
+                          {r.is_hfs ? (
+                            <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                              HFS Route
+                            </span>
+                          ) : (
+                            <span className="rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200">
+                              CDS Route
+                            </span>
+                          )}
+                        </td>
+                      )}
+
                       <td className="py-2 px-3">
                         <span className="rounded bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 border border-indigo-200">
                           {r.multiple || 1}x
@@ -774,15 +886,23 @@ export default function ProductionEntryGrid() {
 
                       {stage === "FINISHING" ? (
                         <>
-                          {/* HT Gross Production Nos */}
+                          {/* Feeder Source Name */}
+                          <td className="py-2 px-3">
+                            <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              r.is_hfs ? "bg-amber-100 text-amber-800" : "bg-purple-100 text-purple-800"
+                            }`}>
+                              {feederName}
+                            </span>
+                          </td>
+                          {/* Feeder Gross Production Nos */}
                           <td className="py-2 px-3 text-right font-mono text-slate-700">
                             {fmt(r.ht_prod_nos ?? r.ht_nos)} <span className="text-[10px] text-slate-400 font-normal">Nos</span>
                           </td>
-                          {/* HT Rejection Nos */}
+                          {/* Feeder Rejection Nos */}
                           <td className="py-2 px-3 text-right font-mono text-rose-600">
                             {fmt(r.ht_rej_nos ?? 0)} <span className="text-[10px] text-rose-400 font-normal">Nos</span>
                           </td>
-                          {/* Net HT Available Nos (HT Prod - Rej) */}
+                          {/* Net Feeder Available Nos (Feeder Prod - Rej) */}
                           <td className="py-2 px-3 text-right font-semibold text-indigo-900 font-mono bg-indigo-50/40 rounded">
                             {fmt(r.ht_nos)} <span className="text-[10px] text-indigo-500 font-normal">Nos</span>
                           </td>
@@ -793,14 +913,14 @@ export default function ProductionEntryGrid() {
                             {fmt(r.balance_to_make_mt, " MT")}
                           </td>
 
-                          {/* HT Processed Input Nos */}
+                          {/* Feeder Processed Input Nos */}
                           <td className="py-1.5 px-2">
                             <input
                               id={`ht-input-${r.work_order_id}`}
                               type="text"
                               inputMode="decimal"
                               className="h-8 w-20 rounded border border-indigo-300 bg-indigo-50/40 px-2 text-right font-bold text-indigo-900 focus:border-indigo-700 focus:ring-1 focus:ring-indigo-700"
-                              placeholder="0 Nos"
+                              placeholder={r.is_hfs ? "Roll Nos" : "HT Nos"}
                               value={r.ht_input_nos}
                               onChange={(e) => updateRow(key, "ht_input_nos", e.target.value)}
                             />
@@ -837,11 +957,58 @@ export default function ProductionEntryGrid() {
                             {d.prodMt > 0 ? fmt(d.prodMt, " MT") : "—"}
                           </td>
                         </>
-                      ) : (
+                      ) : stage === "ROLLING" ? (
                         <>
+                          {/* Plan MTR */}
+                          <td className="py-2 px-3 text-right font-mono text-slate-700 font-semibold">
+                            {fmt(r.planned_rolling_total || r.balance_to_make_mtr, " MTR")}
+                          </td>
+                          {/* Max Allowed (Plan + 10%) */}
+                          <td className="py-2 px-3 text-right font-mono text-amber-800 font-bold bg-amber-50/50 rounded">
+                            {fmt(allowed, " MTR")}
+                            <span className="ml-1 text-[9px] bg-amber-200/80 text-amber-900 px-1 py-0.2 rounded font-sans">
+                              +10%
+                            </span>
+                          </td>
+                          {/* Balance MTR */}
                           <td className="py-2 px-3 text-right font-semibold text-slate-900">
                             {fmt(r.balance_to_make_mtr, " MTR")}
-                            <div className="text-[10px] text-slate-400 font-normal">Max: {fmt(allowed)}</div>
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-600 font-mono">{fmt(r.balance_to_make_pcs)}</td>
+                          <td className="py-2 px-3 text-right text-slate-600 font-mono">{fmt(r.balance_to_make_mt, " MT")}</td>
+                          
+                          {/* Production Inputs */}
+                          <td className="py-1.5 px-2">
+                            <input
+                              id={`pcs-input-${r.work_order_id}`}
+                              type="text"
+                              inputMode="decimal"
+                              className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                              placeholder="0"
+                              value={r.pcs}
+                              onChange={(e) => updateRow(key, "pcs", e.target.value)}
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              id={`mtr-input-${r.work_order_id}`}
+                              type="text"
+                              inputMode="decimal"
+                              className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                              placeholder="Calc / MTR"
+                              value={r.mtr}
+                              onChange={(e) => updateRow(key, "mtr", e.target.value)}
+                            />
+                          </td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">
+                            {d.prodMt > 0 ? fmt(d.prodMt, " MT") : "—"}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          {/* Available Net From Previous Stage */}
+                          <td className="py-2 px-3 text-right font-semibold text-slate-900">
+                            {fmt(r.balance_to_make_mtr, " MTR")}
                           </td>
                           <td className="py-2 px-3 text-right text-slate-600 font-mono">{fmt(r.balance_to_make_pcs)}</td>
                           <td className="py-2 px-3 text-right text-slate-600 font-mono">{fmt(r.balance_to_make_mt, " MT")}</td>
