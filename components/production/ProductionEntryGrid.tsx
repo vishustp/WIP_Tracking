@@ -844,6 +844,7 @@ export default function ProductionEntryGrid() {
                 <input
                   type="text"
                   inputMode="decimal"
+                  placeholder="Enter PCS"
                   className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
                   value={editPcs}
                   onChange={(e) => {
@@ -854,10 +855,11 @@ export default function ProductionEntryGrid() {
                 />
               </label>
               <label className="font-semibold text-slate-700">
-                Production MTR (Editable)
+                Production MTR
                 <input
                   type="text"
                   inputMode="decimal"
+                  placeholder="Auto-calculated (editable)"
                   className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
                   value={editMtr}
                   onChange={(e) => setEditMtr(e.target.value)}
