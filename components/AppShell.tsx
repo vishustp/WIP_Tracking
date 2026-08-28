@@ -5,8 +5,7 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
-  LayoutDashboard, LogOut, Menu, PackageCheck, Settings,
-  Shuffle, X, CalendarClock
+  LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock
 } from 'lucide-react';
 
 const groups = [
@@ -22,9 +21,7 @@ const groups = [
   },
   {
     label: 'Production',
-    items: [
-      { href: '/production', label: 'Production Entry', icon: Factory },
-    ],
+    items: [{ href: '/production', label: 'Production Entry', icon: Factory }],
   },
   {
     label: 'Reports',
@@ -38,9 +35,7 @@ const groups = [
   },
   {
     label: 'System',
-    items: [
-      { href: '/settings', label: 'Settings', icon: Settings },
-    ],
+    items: [{ href: '/settings', label: 'Settings', icon: Settings }],
   },
 ];
 
@@ -58,40 +53,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <aside className={`fixed inset-y-0 left-0 z-40 w-72 border-r bg-white transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex h-16 items-center justify-between border-b px-5">
-          <div>
-            <div className="font-bold text-slate-900">Seamless WIP</div>
-            <div className="text-xs text-slate-500">PPC & Production Control</div>
-          </div>
-          <button className="lg:hidden" onClick={() => setOpen(false)} aria-label="Close menu"><X size={20}/></button>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <aside className={`fixed inset-y-0 left-0 z-40 w-60 border-r bg-white transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex h-14 items-center justify-between border-b px-4">
+          <div className="font-semibold tracking-tight">Seamless WIP</div>
+          <button className="lg:hidden rounded-md p-1.5 hover:bg-slate-100" onClick={() => setOpen(false)} aria-label="Close menu"><X size={18} /></button>
         </div>
 
-        <nav className="h-[calc(100vh-4rem)] overflow-y-auto p-3">
-          {groups.map(group => (
-            <div key={group.label} className="mb-5">
-              <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                {group.label}
-              </div>
-              <div className="space-y-1">
-                {group.items.map(item => {
+        <nav className="h-[calc(100vh-3.5rem)] overflow-y-auto p-2">
+          {groups.map((group) => (
+            <div key={group.label} className="mb-4">
+              <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-slate-400">{group.label}</div>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
                   const Icon = item.icon;
-                  const active =
-                    pathname === item.href ||
-                    (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
-
+                  const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
                   return (
                     <button
                       key={item.href}
                       onClick={() => { router.push(item.href); setOpen(false); }}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
-                        active
-                          ? 'bg-slate-900 text-white'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
+                      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition ${active ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
                     >
-                      <Icon size={18} />
+                      <Icon size={17} />
                       <span>{item.label}</span>
                     </button>
                   );
@@ -99,37 +82,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           ))}
-
-          <button
-            onClick={signOut}
-            className="mt-3 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-red-600 hover:bg-red-50"
-          >
-            <LogOut size={18}/>
-            Sign out
+          <button onClick={signOut} className="mt-2 flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-red-600 hover:bg-red-50">
+            <LogOut size={17} />
+            <span>Sign out</span>
           </button>
         </nav>
       </aside>
 
-      <div className="lg:pl-72">
-        <header className="sticky top-0 z-30 flex h-16 items-center border-b bg-white/95 px-4 backdrop-blur lg:px-6">
-          <button
-            className="mr-3 rounded-lg p-2 hover:bg-slate-100 lg:hidden"
-            onClick={() => setOpen(true)}
-            aria-label="Open menu"
-          >
-            <Menu size={22}/>
-          </button>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-slate-800">
-              Seamless Steel Pipe WIP & Production Planning
-            </div>
-            <div className="text-xs text-slate-500">
-              Route-aware manufacturing control
-            </div>
-          </div>
+      <div className="lg:pl-60">
+        <header className="sticky top-0 z-30 flex h-14 items-center border-b bg-white/95 px-4 backdrop-blur lg:px-5">
+          <button className="mr-2 rounded-md p-1.5 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu size={20} /></button>
+          <div className="text-sm font-semibold">{pathname === '/dashboard' ? 'Dashboard' : pathname.split('/').filter(Boolean).slice(-1)[0]?.replace(/-/g, ' ')}</div>
         </header>
-
-        <main className="p-4 lg:p-6">{children}</main>
+        <main className="mx-auto w-full max-w-[1800px] p-4 lg:p-5">{children}</main>
       </div>
     </div>
   );
