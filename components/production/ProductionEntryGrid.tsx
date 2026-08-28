@@ -10,6 +10,7 @@ type QueueRow = {
   work_order_no: string;
   customer_name: string | null;
   specification: string | null;
+
   od: number | null;
   wl: number | null;
   l1: number | null;
@@ -36,7 +37,26 @@ type Stage = {
   stage_name: string;
 };
 
-export default function ProductionPage() {
+const STAGES = [
+  {
+    code: "ROLLING",
+    label: "Rolling",
+  },
+  {
+    code: "DRAW",
+    label: "Draw Bench",
+  },
+  {
+    code: "HEAT_TREATMENT",
+    label: "Heat Treatment",
+  },
+  {
+    code: "FINISHING",
+    label: "Finishing",
+  },
+];
+
+export default function ProductionEntryGrid() {
   const [stageCode, setStageCode] = useState("ROLLING");
 
   const [queue, setQueue] = useState<QueueRow[]>([]);
@@ -45,7 +65,7 @@ export default function ProductionPage() {
   const [selected, setSelected] = useState<QueueRow | null>(null);
 
   const [processDate, setProcessDate] = useState(
-    new Date().toISOString().split("T")[0]
+    getLocalDate()
   );
 
   const [outputQty, setOutputQty] = useState("");
@@ -56,34 +76,39 @@ export default function ProductionPage() {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  /* ---------------------------------------------------------
-     LOAD STAGES
-  --------------------------------------------------------- */
+  /*
+   * ---------------------------------------------------------
+   * LOAD PROCESS STAGES
+   * ---------------------------------------------------------
+   */
 
   useEffect(() => {
     loadStages();
   }, []);
 
   async function loadStages() {
-  const { data, error } = await supabase
-    .from("process_stages")
-    .select("id, stage_code, stage_name")
-    .eq("active", true);
+    const { data, error } = await supabase
+      .from("process_stages")
+      .select("id, stage_code, stage_name")
+      .eq("active", true);
 
-  if (error) {
-    setError(error.message);
-    return;
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    setStages((data || []) as Stage[]);
   }
 
-  setStages(data || []);
-}
-
-  /* ---------------------------------------------------------
-     LOAD PRODUCTION QUEUE
-  --------------------------------------------------------- */
+  /*
+   * ---------------------------------------------------------
+   * LOAD PRODUCTION QUEUE
+   * ---------------------------------------------------------
+   */
 
   useEffect(() => {
     loadQueue();
@@ -104,17 +129,19 @@ export default function ProductionPage() {
     setLoading(false);
 
     if (error) {
-      setError(error.message);
       setQueue([]);
+      setError(error.message);
       return;
     }
 
     setQueue((data || []) as QueueRow[]);
   }
 
-  /* ---------------------------------------------------------
-     SELECT WO
-  --------------------------------------------------------- */
+  /*
+   * ---------------------------------------------------------
+   * SELECT WORK ORDER
+   * ---------------------------------------------------------
+   */
 
   function selectRow(row: QueueRow) {
     setSelected(row);
@@ -124,58 +151,102 @@ export default function ProductionPage() {
     setHtcOk("");
     setHeatLotNo("");
     setRemarks("");
+
     setError("");
     setSuccess("");
   }
 
-  /* ---------------------------------------------------------
-     STAGE LABEL
-  --------------------------------------------------------- */
+  /*
+   * ---------------------------------------------------------
+   * STAGE LABEL
+   * ---------------------------------------------------------
+   */
 
   const stageLabel = useMemo(() => {
-    switch (stageCode) {
-      case "ROLLING":
-        return "Rolling";
-
-      case "DRAW":
-        return "Draw Bench";
-
-      case "HEAT_TREATMENT":
-        return "Heat Treatment";
-
-      case "FINISHING":
-        return "Finishing";
-
-      default:
-        return stageCode;
-    }
+    return (
+      STAGES.find((x) => x.code === stageCode)?.label ||
+      stageCode
+    );
   }, [stageCode]);
 
-  /* ---------------------------------------------------------
-     MAXIMUM
-     
-     IMPORTANT:
-     max_allowed_mtr comes directly from backend.
-     Do NOT independently calculate it here.
-  --------------------------------------------------------- */
-
-  const maxAllowed = selected
-    ? Number(selected.max_allowed_mtr || 0)
-    : 0;
+  /*
+   * ---------------------------------------------------------
+   * SELECTED VALUES
+   *
+   * max_allowed_mtr ALWAYS COMES FROM BACKEND
+   * ---------------------------------------------------------
+   */
 
   const balanceMtr = selected
     ? Number(selected.balance_to_make_mtr || 0)
+    : 0;
+
+  const balancePcs = selected
+    ? Number(selected.balance_to_make_pcs || 0)
+    : 0;
+
+  const balanceMt = selected
+    ? Number(selected.balance_to_make_mt || 0)
     : 0;
 
   const multiple = selected
     ? Number(selected.multiple || 1)
     : 1;
 
-  /* ---------------------------------------------------------
-     FORM VALIDATION
-  --------------------------------------------------------- */
+  const maxAllowed = selected
+    ? Number(selected.max_allowed_mtr || 0)
+    : 0;
+
+  /*
+   * ---------------------------------------------------------
+   * MAXIMUM FORMULA LABEL
+   * ---------------------------------------------------------
+   */
+
+  function getMaximumFormula(row: QueueRow | null) {
+    if (!row) return "";
+
+    switch (stageCode) {
+      case "ROLLING":
+        return "Plan × 110%";
+
+      case "DRAW":
+        return "Rolling Production";
+
+      case "HEAT_TREATMENT":
+        return "Draw Bench Production";
+
+      case "FINISHING":
+        if (
+          row.route_code === "HFS" ||
+          row.route_code === "ALLOY_HFS"
+        ) {
+          return "Rolling HTC OK × Multiple";
+        }
+
+        if (
+          row.route_code === "CDS" ||
+          row.route_code === "ALLOY_CDS"
+        ) {
+          return "Heat Treatment × Multiple";
+        }
+
+        return "Route based maximum";
+
+      default:
+        return "";
+    }
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * VALIDATION
+   * ---------------------------------------------------------
+   */
 
   function validateForm() {
+    setError("");
+
     if (!selected) {
       setError("Please select a Work Order.");
       return false;
@@ -190,18 +261,24 @@ export default function ProductionPage() {
       return false;
     }
 
-    if (!qty || qty <= 0) {
-      setError("Production MTR must be greater than zero.");
+    if (!outputQty || qty <= 0) {
+      setError(
+        "Production MTR must be greater than zero."
+      );
       return false;
     }
 
     if (rejection < 0) {
-      setError("Rejection MTR cannot be negative.");
+      setError(
+        "Rejection MTR cannot be negative."
+      );
       return false;
     }
 
     if (rejection > qty) {
-      setError("Rejection MTR cannot exceed Production MTR.");
+      setError(
+        "Rejection MTR cannot exceed Production MTR."
+      );
       return false;
     }
 
@@ -210,13 +287,29 @@ export default function ProductionPage() {
       return false;
     }
 
-    if (stageCode !== "ROLLING" && htc !== 0) {
-      setError("HTC OK can only be entered at Rolling.");
+    /*
+     * HTC OK only at Rolling
+     */
+
+    if (
+      stageCode !== "ROLLING" &&
+      htc !== 0
+    ) {
+      setError(
+        "HTC OK can only be entered at Rolling."
+      );
       return false;
     }
 
+    /*
+     * Rolling HTC OK cannot exceed net rolling production
+     */
+
     if (stageCode === "ROLLING") {
-      if (htc > qty - rejection) {
+      const netRolling =
+        qty - rejection;
+
+      if (htc > netRolling + 0.000001) {
         setError(
           "HTC OK cannot exceed Net Rolling Production."
         );
@@ -224,50 +317,100 @@ export default function ProductionPage() {
       }
     }
 
-    if (qty > maxAllowed + 0.000001) {
+    /*
+     * IMPORTANT:
+     *
+     * Maximum comes directly from backend.
+     */
+
+    if (
+      qty >
+      maxAllowed + 0.000001
+    ) {
       setError(
-        `Production exceeds Maximum Allowed ${maxAllowed.toFixed(
+        `Production exceeds Maximum Allowed ${formatNumber(
+          maxAllowed,
           3
         )} MTR.`
       );
+
       return false;
     }
 
     return true;
   }
 
-  /* ---------------------------------------------------------
-     SAVE
-  --------------------------------------------------------- */
+  /*
+   * ---------------------------------------------------------
+   * SAVE PRODUCTION
+   * ---------------------------------------------------------
+   */
 
   async function saveProduction() {
     setError("");
     setSuccess("");
 
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      return;
+    }
 
-    if (!selected) return;
+    if (!selected) {
+      return;
+    }
+
+    const stage = stages.find(
+      (s) =>
+        s.stage_code === selected.stage_code
+    );
+
+    if (!stage) {
+      setError(
+        `Process stage ${selected.stage_code} not found.`
+      );
+      return;
+    }
 
     setSaving(true);
 
-    const { data, error } = await supabase.rpc(
-      "create_production_entry",
-      {
-        p_work_order_id: selected.work_order_id,
-        p_rolling_plan_id: null,
-        p_stage_id:
-          stages.find(
-            (s) => s.stage_code === selected.stage_code
-          )?.id || null,
-        p_process_route_id: selected.route_id,
-        p_process_date: processDate,
-        p_output_qty: Number(outputQty),
-        p_rejection_qty: Number(rejectionQty || 0),
-        p_htc_ok: Number(htcOk || 0),
-        p_heat_lot_no: heatLotNo || null,
-        p_remarks: remarks || null,
-      }
-    );
+    const { data, error } =
+      await supabase.rpc(
+        "create_production_entry",
+        {
+          p_work_order_id:
+            selected.work_order_id,
+
+          /*
+           * Currently queue does not return
+           * rolling_plan_id.
+           *
+           * Backend column allows NULL.
+           */
+          p_rolling_plan_id: null,
+
+          p_stage_id: stage.id,
+
+          p_process_route_id:
+            selected.route_id,
+
+          p_process_date:
+            processDate,
+
+          p_output_qty:
+            Number(outputQty),
+
+          p_rejection_qty:
+            Number(rejectionQty || 0),
+
+          p_htc_ok:
+            Number(htcOk || 0),
+
+          p_heat_lot_no:
+            heatLotNo.trim() || null,
+
+          p_remarks:
+            remarks.trim() || null,
+        }
+      );
 
     setSaving(false);
 
@@ -277,8 +420,12 @@ export default function ProductionPage() {
     }
 
     setSuccess(
-      `Production entry saved successfully. ID: ${data}`
+      `Production entry saved successfully.`
     );
+
+    /*
+     * Clear form
+     */
 
     setOutputQty("");
     setRejectionQty("");
@@ -286,27 +433,48 @@ export default function ProductionPage() {
     setHeatLotNo("");
     setRemarks("");
 
+    /*
+     * Reload WIP
+     */
+
     await loadQueue();
   }
 
-  /* ---------------------------------------------------------
-     FORMAT
-  --------------------------------------------------------- */
+  /*
+   * ---------------------------------------------------------
+   * FORMAT HELPERS
+   * ---------------------------------------------------------
+   */
 
-  function n(value: number | null | undefined, digits = 3) {
-    if (value === null || value === undefined) return "-";
+  function formatNumber(
+    value: number | null | undefined,
+    digits = 3
+  ) {
+    if (
+      value === null ||
+      value === undefined ||
+      Number.isNaN(Number(value))
+    ) {
+      return "-";
+    }
 
-    return Number(value).toLocaleString("en-IN", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: digits,
-    });
+    return Number(value).toLocaleString(
+      "en-IN",
+      {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: digits,
+      }
+    );
   }
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-7xl">
 
-        {/* HEADER */}
+        {/* =====================================================
+            HEADER
+        ===================================================== */}
+
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-slate-900">
             Production Entry
@@ -317,7 +485,10 @@ export default function ProductionPage() {
           </p>
         </div>
 
-        {/* STAGE SELECTOR */}
+        {/* =====================================================
+            STAGE SELECTOR
+        ===================================================== */}
+
         <div className="mb-5 rounded-xl border bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-4">
 
@@ -328,26 +499,21 @@ export default function ProductionPage() {
 
               <select
                 value={stageCode}
-                onChange={(e) =>
-                  setStageCode(e.target.value)
-                }
+                onChange={(e) => {
+                  setStageCode(e.target.value);
+                  setError("");
+                  setSuccess("");
+                }}
                 className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500"
               >
-                <option value="ROLLING">
-                  Rolling
-                </option>
-
-                <option value="DRAW">
-                  Draw Bench
-                </option>
-
-                <option value="HEAT_TREATMENT">
-                  Heat Treatment
-                </option>
-
-                <option value="FINISHING">
-                  Finishing
-                </option>
+                {STAGES.map((stage) => (
+                  <option
+                    key={stage.code}
+                    value={stage.code}
+                  >
+                    {stage.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -364,29 +530,38 @@ export default function ProductionPage() {
             <button
               type="button"
               onClick={loadQueue}
-              className="ml-auto rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+              disabled={loading}
+              className="ml-auto rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
             >
-              Refresh
+              {loading ? "Refreshing..." : "Refresh"}
             </button>
-
           </div>
         </div>
 
-        {/* ERROR */}
+        {/* =====================================================
+            ERROR
+        ===================================================== */}
+
         {error && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         )}
 
-        {/* SUCCESS */}
+        {/* =====================================================
+            SUCCESS
+        ===================================================== */}
+
         {success && (
           <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
             {success}
           </div>
         )}
 
-        {/* QUEUE */}
+        {/* =====================================================
+            QUEUE
+        ===================================================== */}
+
         <div className="mb-6 overflow-hidden rounded-xl border bg-white shadow-sm">
 
           <div className="border-b px-5 py-4">
@@ -401,7 +576,8 @@ export default function ProductionPage() {
             </div>
           ) : queue.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">
-              No production WIP available for {stageLabel}.
+              No production WIP available for{" "}
+              {stageLabel}.
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -447,10 +623,12 @@ export default function ProductionPage() {
                 <tbody className="divide-y">
 
                   {queue.map((row) => {
+
                     const isSelected =
                       selected?.work_order_id ===
                         row.work_order_id &&
-                      selected?.route_id === row.route_id;
+                      selected?.route_id ===
+                        row.route_id;
 
                     return (
                       <tr
@@ -481,15 +659,22 @@ export default function ProductionPage() {
                         </td>
 
                         <td className="px-4 py-3 text-right font-medium">
-                          {n(row.balance_to_make_mtr)}
+                          {formatNumber(
+                            row.balance_to_make_mtr
+                          )}
                         </td>
 
                         <td className="px-4 py-3 text-right">
-                          {n(row.multiple, 2)}
+                          {formatNumber(
+                            row.multiple,
+                            2
+                          )}
                         </td>
 
-                        <td className="px-4 py-3 text-right font-bold">
-                          {n(row.max_allowed_mtr)}
+                        <td className="px-4 py-3 text-right font-bold text-blue-700">
+                          {formatNumber(
+                            row.max_allowed_mtr
+                          )}
                         </td>
 
                         <td className="px-4 py-3">
@@ -521,11 +706,17 @@ export default function ProductionPage() {
           )}
         </div>
 
-        {/* ENTRY FORM */}
+        {/* =====================================================
+            ENTRY SECTION
+        ===================================================== */}
+
         {selected && (
           <div className="grid gap-6 lg:grid-cols-3">
 
-            {/* WO INFORMATION */}
+            {/* =================================================
+                WORK ORDER INFORMATION
+            ================================================= */}
+
             <div className="rounded-xl border bg-white p-5 shadow-sm">
 
               <h2 className="mb-4 font-semibold text-slate-900">
@@ -536,20 +727,24 @@ export default function ProductionPage() {
 
                 <Info
                   label="WO No."
-                  value={selected.work_order_no}
+                  value={
+                    selected.work_order_no
+                  }
                 />
 
                 <Info
                   label="Customer"
                   value={
-                    selected.customer_name || "-"
+                    selected.customer_name ||
+                    "-"
                   }
                 />
 
                 <Info
                   label="Specification"
                   value={
-                    selected.specification || "-"
+                    selected.specification ||
+                    "-"
                   }
                 />
 
@@ -560,7 +755,10 @@ export default function ProductionPage() {
 
                 <Info
                   label="OD × WT"
-                  value={`${n(selected.od, 2)} × ${n(
+                  value={`${formatNumber(
+                    selected.od,
+                    2
+                  )} × ${formatNumber(
                     selected.wl,
                     2
                   )}`}
@@ -568,16 +766,30 @@ export default function ProductionPage() {
 
                 <Info
                   label="L1 × L2"
-                  value={`${n(selected.l1, 2)} × ${n(
+                  value={`${formatNumber(
+                    selected.l1,
+                    2
+                  )} × ${formatNumber(
                     selected.l2,
                     2
                   )}`}
                 />
 
+                <Info
+                  label="Average Length"
+                  value={`${formatNumber(
+                    selected.avg_length,
+                    3
+                  )} m`}
+                />
+
               </div>
             </div>
 
-            {/* CAPACITY */}
+            {/* =================================================
+                CAPACITY
+            ================================================= */}
+
             <div className="rounded-xl border bg-white p-5 shadow-sm">
 
               <h2 className="mb-4 font-semibold text-slate-900">
@@ -588,13 +800,35 @@ export default function ProductionPage() {
 
                 <Capacity
                   label="Balance to Make"
-                  value={`${n(balanceMtr)} MTR`}
+                  value={`${formatNumber(
+                    balanceMtr
+                  )} MTR`}
+                />
+
+                <Capacity
+                  label="Balance PCS"
+                  value={formatNumber(
+                    balancePcs,
+                    0
+                  )}
+                />
+
+                <Capacity
+                  label="Balance MT"
+                  value={`${formatNumber(
+                    balanceMt
+                  )} MT`}
                 />
 
                 <Capacity
                   label="Multiple"
-                  value={`${n(multiple, 2)} ×`}
+                  value={`${formatNumber(
+                    multiple,
+                    2
+                  )} ×`}
                 />
+
+                {/* MAXIMUM */}
 
                 <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-4">
 
@@ -603,31 +837,15 @@ export default function ProductionPage() {
                   </div>
 
                   <div className="mt-1 text-2xl font-bold text-blue-900">
-                    {n(maxAllowed)} MTR
+                    {formatNumber(
+                      maxAllowed
+                    )} MTR
                   </div>
 
-                  <div className="mt-1 text-xs text-blue-700">
-                    {stageCode === "ROLLING" &&
-                      "Plan × 110%"}
-
-                    {stageCode === "DRAW" &&
-                      "Rolling Production"}
-
-                    {stageCode ===
-                      "HEAT_TREATMENT" &&
-                      "Draw Bench Production"}
-
-                    {stageCode === "FINISHING" &&
-                      selected.route_code.includes(
-                        "HFS"
-                      ) &&
-                      "Rolling HTC OK × Multiple"}
-
-                    {stageCode === "FINISHING" &&
-                      selected.route_code.includes(
-                        "CDS"
-                      ) &&
-                      "Heat Treatment × Multiple"}
+                  <div className="mt-1 text-xs font-medium text-blue-700">
+                    {getMaximumFormula(
+                      selected
+                    )}
                   </div>
 
                 </div>
@@ -635,7 +853,10 @@ export default function ProductionPage() {
               </div>
             </div>
 
-            {/* ENTRY */}
+            {/* =================================================
+                PRODUCTION ENTRY
+            ================================================= */}
+
             <div className="rounded-xl border bg-white p-5 shadow-sm">
 
               <h2 className="mb-4 font-semibold text-slate-900">
@@ -645,6 +866,7 @@ export default function ProductionPage() {
               <div className="space-y-4">
 
                 {/* DATE */}
+
                 <Field label="Production Date">
                   <input
                     type="date"
@@ -658,30 +880,39 @@ export default function ProductionPage() {
                   />
                 </Field>
 
-                {/* OUTPUT */}
+                {/* PRODUCTION */}
+
                 <Field label="Production MTR">
+
                   <input
                     type="number"
                     min="0"
                     step="0.001"
                     value={outputQty}
                     onChange={(e) =>
-                      setOutputQty(e.target.value)
+                      setOutputQty(
+                        e.target.value
+                      )
                     }
                     placeholder="Enter production MTR"
                     className="input"
                   />
 
                   <div className="mt-1 text-xs text-slate-500">
-                    Maximum:{" "}
-                    <strong>
-                      {n(maxAllowed)} MTR
+                    Maximum Allowed:{" "}
+                    <strong className="text-slate-700">
+                      {formatNumber(
+                        maxAllowed
+                      )} MTR
                     </strong>
                   </div>
+
                 </Field>
 
                 {/* REJECTION */}
+
                 <Field label="Rejection MTR">
+
                   <input
                     type="number"
                     min="0"
@@ -695,34 +926,42 @@ export default function ProductionPage() {
                     placeholder="0"
                     className="input"
                   />
+
                 </Field>
 
                 {/* HTC */}
+
                 {stageCode === "ROLLING" && (
                   <Field label="HTC OK MTR">
+
                     <input
                       type="number"
                       min="0"
                       step="0.001"
                       value={htcOk}
                       onChange={(e) =>
-                        setHtcOk(e.target.value)
+                        setHtcOk(
+                          e.target.value
+                        )
                       }
                       placeholder="Enter HTC OK"
                       className="input"
                     />
 
                     <div className="mt-1 text-xs text-slate-500">
-                      HTC OK cannot exceed net
-                      Rolling Production.
+                      HTC OK cannot exceed
+                      Net Rolling Production.
                     </div>
+
                   </Field>
                 )}
 
                 {/* HEAT LOT */}
+
                 {stageCode ===
                   "HEAT_TREATMENT" && (
                   <Field label="Heat Lot No.">
+
                     <input
                       type="text"
                       value={heatLotNo}
@@ -734,12 +973,16 @@ export default function ProductionPage() {
                       placeholder="Enter heat lot no."
                       className="input"
                     />
+
                   </Field>
                 )}
 
-                {/* HEAT LOT CAN ALSO BE USED WHERE REQUIRED */}
-                {stageCode === "FINISHING" && (
+                {/* FINISHING HEAT LOT */}
+
+                {stageCode ===
+                  "FINISHING" && (
                   <Field label="Heat Lot No.">
+
                     <input
                       type="text"
                       value={heatLotNo}
@@ -751,23 +994,30 @@ export default function ProductionPage() {
                       placeholder="Enter heat lot no."
                       className="input"
                     />
+
                   </Field>
                 )}
 
                 {/* REMARKS */}
+
                 <Field label="Remarks">
+
                   <textarea
                     value={remarks}
                     onChange={(e) =>
-                      setRemarks(e.target.value)
+                      setRemarks(
+                        e.target.value
+                      )
                     }
                     rows={3}
                     placeholder="Optional remarks"
                     className="input resize-none"
                   />
+
                 </Field>
 
                 {/* SAVE */}
+
                 <button
                   type="button"
                   disabled={saving}
@@ -786,7 +1036,10 @@ export default function ProductionPage() {
         )}
       </div>
 
-      {/* SIMPLE INPUT CSS */}
+      {/* =======================================================
+          INPUT CSS
+      ======================================================= */}
+
       <style jsx global>{`
         .input {
           width: 100%;
@@ -802,14 +1055,38 @@ export default function ProductionPage() {
           border-color: rgb(59 130 246);
           box-shadow: 0 0 0 2px rgb(191 219 254);
         }
+
+        .input:disabled {
+          background: rgb(241 245 249);
+          cursor: not-allowed;
+        }
       `}</style>
     </div>
   );
 }
 
-/* ---------------------------------------------------------
-   SMALL COMPONENTS
---------------------------------------------------------- */
+/* =========================================================
+   LOCAL DATE
+========================================================= */
+
+function getLocalDate() {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(
+    now.getMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    now.getDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+/* =========================================================
+   INFO
+========================================================= */
 
 function Info({
   label,
@@ -820,6 +1097,7 @@ function Info({
 }) {
   return (
     <div className="flex justify-between gap-4 border-b pb-2">
+
       <span className="text-slate-500">
         {label}
       </span>
@@ -827,9 +1105,14 @@ function Info({
       <span className="text-right font-medium text-slate-800">
         {value}
       </span>
+
     </div>
   );
 }
+
+/* =========================================================
+   CAPACITY
+========================================================= */
 
 function Capacity({
   label,
@@ -840,6 +1123,7 @@ function Capacity({
 }) {
   return (
     <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
+
       <span className="text-sm text-slate-500">
         {label}
       </span>
@@ -847,9 +1131,14 @@ function Capacity({
       <span className="font-semibold text-slate-900">
         {value}
       </span>
+
     </div>
   );
 }
+
+/* =========================================================
+   FIELD
+========================================================= */
 
 function Field({
   label,
@@ -860,11 +1149,13 @@ function Field({
 }) {
   return (
     <div>
+
       <label className="mb-1.5 block text-sm font-medium text-slate-700">
         {label}
       </label>
 
       {children}
+
     </div>
   );
 }
