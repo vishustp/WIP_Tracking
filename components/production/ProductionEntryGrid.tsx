@@ -68,19 +68,18 @@ export default function ProductionPage() {
   }, []);
 
   async function loadStages() {
-    const { data, error } = await supabase
-      .from("process_stages")
-      .select("id, stage_code, stage_name")
-      .eq("active", true)
-      .order("sequence_no");
+  const { data, error } = await supabase
+    .from("process_stages")
+    .select("id, stage_code, stage_name")
+    .eq("active", true);
 
-    if (error) {
-      setError(error.message);
-      return;
-    }
-
-    setStages(data || []);
+  if (error) {
+    setError(error.message);
+    return;
   }
+
+  setStages(data || []);
+}
 
   /* ---------------------------------------------------------
      LOAD PRODUCTION QUEUE
