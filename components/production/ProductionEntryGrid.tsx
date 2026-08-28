@@ -37,6 +37,8 @@ type Row = {
   balance_to_make_pcs: number | null;
   balance_to_make_mt: number | null;
   multiple: number | null;
+  ht_nos: number | null;
+  ht_input_nos: string;
   pcs: string;
   mtr: string;
   rejection_pcs: string;
@@ -148,6 +150,9 @@ export default function ProductionEntryGrid() {
     } else {
       const formatted: Row[] = (data ?? []).map((r: any) => ({
         ...r,
+        multiple: r.multiple ?? 1,
+        ht_nos: r.ht_nos ?? 0,
+        ht_input_nos: "",
         pcs: "",
         mtr: "",
         rejection_pcs: "",
@@ -197,21 +202,98 @@ export default function ProductionEntryGrid() {
 
   const updateRow = (
     key: string,
-    field: keyof Pick<Row, "pcs" | "mtr" | "rejection_pcs" | "rejection_mtr" | "htc_ok_pcs" | "htc_ok_mtr" | "heat_lot_no" | "remarks">,
+    field: keyof Pick<
+      Row,
+      | "ht_input_nos"
+      | "pcs"
+      | "mtr"
+      | "rejection_pcs"
+      | "rejection_mtr"
+      | "htc_ok_pcs"
+      | "htc_ok_mtr"
+      | "heat_lot_no"
+      | "remarks"
+    >,
     value: string
   ) => {
     setRows((current) =>
       current.map((r) => {
         if (`${r.work_order_id}|${r.route_id}` !== key) return r;
+        const multiple = Math.max(1, n(r.multiple) || 1);
+        const avg = n(r.avg_length);
+
+        if (field === "ht_input_nos") {
+          if (value === "") {
+            return { ...r, ht_input_nos: "", pcs: "", mtr: "" };
+          }
+          const htVal = n(value);
+          const pcsVal = Math.round(htVal * multiple);
+          const mtrVal = mtrFromPcs(pcsVal, avg);
+          return {
+            ...r,
+            ht_input_nos: value,
+            pcs: String(pcsVal),
+            mtr: String(mtrVal),
+          };
+        }
+
         if (field === "pcs") {
-          return { ...r, pcs: value, mtr: value === "" ? "" : String(mtrFromPcs(n(value), n(r.avg_length))) };
+          if (value === "") {
+            return { ...r, pcs: "", ht_input_nos: "", mtr: "" };
+          }
+          const pcsVal = n(value);
+          const htVal = pcsVal > 0 ? pcsVal / multiple : 0;
+          const formattedHt = Number.isInteger(htVal) ? String(htVal) : htVal.toFixed(2);
+          const mtrVal = mtrFromPcs(pcsVal, avg);
+          return {
+            ...r,
+            pcs: value,
+            ht_input_nos: formattedHt,
+            mtr: String(mtrVal),
+          };
         }
+
+        if (field === "mtr") {
+          if (value === "") {
+            return { ...r, mtr: "", pcs: "", ht_input_nos: "" };
+          }
+          const mtrVal = n(value);
+          const pcsVal = avg > 0 ? Math.round(mtrVal / avg) : 0;
+          const htVal = pcsVal > 0 ? pcsVal / multiple : 0;
+          const formattedHt = Number.isInteger(htVal) ? String(htVal) : htVal.toFixed(2);
+          return {
+            ...r,
+            mtr: value,
+            pcs: String(pcsVal),
+            ht_input_nos: formattedHt,
+          };
+        }
+
         if (field === "rejection_pcs") {
-          return { ...r, rejection_pcs: value, rejection_mtr: value === "" ? "0" : String(mtrFromPcs(n(value), n(r.avg_length))) };
+          return {
+            ...r,
+            rejection_pcs: value,
+            rejection_mtr: value === "" ? "0" : String(mtrFromPcs(n(value), avg)),
+          };
         }
+
+        if (field === "rejection_mtr") {
+          const rejPcs = avg > 0 && n(value) > 0 ? Math.round(n(value) / avg) : 0;
+          return {
+            ...r,
+            rejection_mtr: value,
+            rejection_pcs: value === "" || value === "0" ? "0" : String(rejPcs),
+          };
+        }
+
         if (field === "htc_ok_pcs") {
-          return { ...r, htc_ok_pcs: value, htc_ok_mtr: value === "" ? "0" : String(mtrFromPcs(n(value), n(r.avg_length))) };
+          return {
+            ...r,
+            htc_ok_pcs: value,
+            htc_ok_mtr: value === "" ? "0" : String(mtrFromPcs(n(value), avg)),
+          };
         }
+
         return { ...r, [field]: value };
       })
     );
@@ -468,11 +550,30 @@ export default function ProductionEntryGrid() {
             </span>
           </div>
         )}
+
+        {stage === "FINISHING" && (
+          <div id="finishing-conversion-banner" className="mt-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 rounded-xl border border-indigo-200 bg-indigo-50/80 p-3 text-xs text-indigo-950">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">
+                ⚡
+              </span>
+              <div>
+                <span className="font-bold">Finishing Production Entry Logic: </span>
+                <span className="font-semibold text-indigo-900">Multiple ($M$) × Heat Treatment (HT) Production Nos</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] font-medium bg-white/90 border border-indigo-200 px-2.5 py-1 rounded-lg shadow-xs">
+              <span className="text-slate-600">Formula:</span>
+              <code className="font-mono font-bold text-indigo-700">Finishing PCS = Multiple × HT Nos</code>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Messages */}
       {(message || error) && (
         <div
+          id="production-entry-status-message"
           className={`flex items-center gap-2 rounded-xl border p-3.5 text-sm ${
             error ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-800"
           }`}
@@ -492,6 +593,7 @@ export default function ProductionEntryGrid() {
             </p>
           </div>
           <button
+            id="refresh-queue-btn"
             type="button"
             onClick={() => void loadQueue()}
             disabled={loading}
@@ -502,33 +604,61 @@ export default function ProductionEntryGrid() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[2100px] w-full text-xs">
+          <table id="production-queue-table" className="min-w-[2200px] w-full text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
               <tr>
-                {[
-                  "S.No.",
-                  "Work Order",
-                  "Customer",
-                  "Specification",
-                  "OD (mm)",
-                  "WT (mm)",
-                  "L1 (m)",
-                  "L2 (m)",
-                  "Avg L (m)",
-                  "Route",
-                  "Balance MTR",
-                  "Balance PCS",
-                  "Balance MT",
-                  "Prod PCS",
-                  "Prod MTR",
-                  "Prod MT",
-                  "Rej PCS",
-                  "Rej MTR",
-                  "Rej MT",
-                  ...(stage === "ROLLING" ? ["HTC OK PCS", "HTC OK MTR", "HTC OK MT"] : []),
-                  "Heat / Lot No.",
-                  "Remarks",
-                ].map((h) => (
+                {(stage === "FINISHING"
+                  ? [
+                      "S.No.",
+                      "Work Order",
+                      "Customer",
+                      "Specification",
+                      "OD (mm)",
+                      "WT (mm)",
+                      "L1 (m)",
+                      "L2 (m)",
+                      "Finished Avg L",
+                      "Route",
+                      "Multiple (M)",
+                      "HT Avail (Nos)",
+                      "Balance MTR",
+                      "Balance MT",
+                      "HT Processed (Nos)",
+                      "Finishing PCS (M × HT)",
+                      "Finishing MTR",
+                      "Finishing MT",
+                      "Rej PCS",
+                      "Rej MTR",
+                      "Rej MT",
+                      "Heat / Lot No.",
+                      "Remarks",
+                    ]
+                  : [
+                      "S.No.",
+                      "Work Order",
+                      "Customer",
+                      "Specification",
+                      "OD (mm)",
+                      "WT (mm)",
+                      "L1 (m)",
+                      "L2 (m)",
+                      "Avg L (m)",
+                      "Route",
+                      "Multiple (M)",
+                      "Balance MTR",
+                      "Balance PCS",
+                      "Balance MT",
+                      "Prod PCS",
+                      "Prod MTR",
+                      "Prod MT",
+                      "Rej PCS",
+                      "Rej MTR",
+                      "Rej MT",
+                      ...(stage === "ROLLING" ? ["HTC OK PCS", "HTC OK MTR", "HTC OK MT"] : []),
+                      "Heat / Lot No.",
+                      "Remarks",
+                    ]
+                ).map((h) => (
                   <th key={h} className="py-2.5 px-3 text-left font-semibold">
                     {h}
                   </th>
@@ -538,13 +668,13 @@ export default function ProductionEntryGrid() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={24} className="p-8 text-center text-slate-400">
+                  <td colSpan={25} className="p-8 text-center text-slate-400">
                     Loading stage queue…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={24} className="p-8 text-center text-slate-500">
+                  <td colSpan={25} className="p-8 text-center text-slate-500">
                     No pending orders for {currentStageInfo?.label}. Check preceding stages or create a new rolling plan.
                   </td>
                 </tr>
@@ -553,12 +683,13 @@ export default function ProductionEntryGrid() {
                   const key = `${r.work_order_id}|${r.route_id}`;
                   const d = calc(r);
                   const allowed = stage === "ROLLING" ? n(r.balance_to_make_mtr) * 1.1 : n(r.balance_to_make_mtr);
-                  const isFilled = n(r.pcs) > 0 || n(r.mtr) > 0;
+                  const isFilled = n(r.pcs) > 0 || n(r.mtr) > 0 || n(r.ht_input_nos) > 0;
                   const rejectionRate = d.prodMtr > 0 ? (d.rejMtr / d.prodMtr) * 100 : 0;
 
                   return (
                     <tr
                       key={key}
+                      id={`queue-row-${r.work_order_id}`}
                       className={`hover:bg-slate-50/70 transition-colors ${
                         isFilled ? "bg-blue-50/30" : ""
                       }`}
@@ -577,41 +708,110 @@ export default function ProductionEntryGrid() {
                           {r.route_code}
                         </span>
                       </td>
-                      <td className="py-2 px-3 text-right font-semibold text-slate-900">
-                        {fmt(r.balance_to_make_mtr, " MTR")}
-                        <div className="text-[10px] text-slate-400 font-normal">Max: {fmt(allowed)}</div>
+                      <td className="py-2 px-3">
+                        <span className="rounded bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 border border-indigo-200">
+                          {r.multiple || 1}x
+                        </span>
                       </td>
-                      <td className="py-2 px-3 text-right text-slate-600 font-mono">{fmt(r.balance_to_make_pcs)}</td>
-                      <td className="py-2 px-3 text-right text-slate-600 font-mono">{fmt(r.balance_to_make_mt, " MT")}</td>
-                      
-                      {/* Production Inputs */}
-                      <td className="py-1.5 px-2">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
-                          placeholder="0"
-                          value={r.pcs}
-                          onChange={(e) => updateRow(key, "pcs", e.target.value)}
-                        />
-                      </td>
-                      <td className="py-1.5 px-2">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
-                          placeholder="Calc / MTR"
-                          value={r.mtr}
-                          onChange={(e) => updateRow(key, "mtr", e.target.value)}
-                        />
-                      </td>
-                      <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">
-                        {d.prodMt > 0 ? fmt(d.prodMt, " MT") : "—"}
-                      </td>
+
+                      {stage === "FINISHING" ? (
+                        <>
+                          <td className="py-2 px-3 text-right font-semibold text-indigo-900 font-mono">
+                            {fmt(r.ht_nos)} <span className="text-[10px] text-slate-400 font-normal">Nos</span>
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold text-slate-900">
+                            {fmt(r.balance_to_make_mtr, " MTR")}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-600 font-mono">
+                            {fmt(r.balance_to_make_mt, " MT")}
+                          </td>
+
+                          {/* HT Processed Input Nos */}
+                          <td className="py-1.5 px-2">
+                            <input
+                              id={`ht-input-${r.work_order_id}`}
+                              type="text"
+                              inputMode="decimal"
+                              className="h-8 w-20 rounded border border-indigo-300 bg-indigo-50/40 px-2 text-right font-bold text-indigo-900 focus:border-indigo-700 focus:ring-1 focus:ring-indigo-700"
+                              placeholder="0 Nos"
+                              value={r.ht_input_nos}
+                              onChange={(e) => updateRow(key, "ht_input_nos", e.target.value)}
+                            />
+                          </td>
+
+                          {/* Finishing PCS Input */}
+                          <td className="py-1.5 px-2">
+                            <input
+                              id={`pcs-input-${r.work_order_id}`}
+                              type="text"
+                              inputMode="decimal"
+                              className="h-8 w-20 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                              placeholder="0"
+                              value={r.pcs}
+                              onChange={(e) => updateRow(key, "pcs", e.target.value)}
+                            />
+                          </td>
+
+                          {/* Finishing MTR Input */}
+                          <td className="py-1.5 px-2">
+                            <input
+                              id={`mtr-input-${r.work_order_id}`}
+                              type="text"
+                              inputMode="decimal"
+                              className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                              placeholder="Calc / MTR"
+                              value={r.mtr}
+                              onChange={(e) => updateRow(key, "mtr", e.target.value)}
+                            />
+                          </td>
+
+                          {/* Finishing MT */}
+                          <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">
+                            {d.prodMt > 0 ? fmt(d.prodMt, " MT") : "—"}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="py-2 px-3 text-right font-semibold text-slate-900">
+                            {fmt(r.balance_to_make_mtr, " MTR")}
+                            <div className="text-[10px] text-slate-400 font-normal">Max: {fmt(allowed)}</div>
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-600 font-mono">{fmt(r.balance_to_make_pcs)}</td>
+                          <td className="py-2 px-3 text-right text-slate-600 font-mono">{fmt(r.balance_to_make_mt, " MT")}</td>
+                          
+                          {/* Production Inputs */}
+                          <td className="py-1.5 px-2">
+                            <input
+                              id={`pcs-input-${r.work_order_id}`}
+                              type="text"
+                              inputMode="decimal"
+                              className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                              placeholder="0"
+                              value={r.pcs}
+                              onChange={(e) => updateRow(key, "pcs", e.target.value)}
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              id={`mtr-input-${r.work_order_id}`}
+                              type="text"
+                              inputMode="decimal"
+                              className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                              placeholder="Calc / MTR"
+                              value={r.mtr}
+                              onChange={(e) => updateRow(key, "mtr", e.target.value)}
+                            />
+                          </td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">
+                            {d.prodMt > 0 ? fmt(d.prodMt, " MT") : "—"}
+                          </td>
+                        </>
+                      )}
 
                       {/* Rejection Inputs */}
                       <td className="py-1.5 px-2">
                         <input
+                          id={`rej-pcs-input-${r.work_order_id}`}
                           type="text"
                           inputMode="decimal"
                           className="h-8 w-20 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800"
@@ -623,6 +823,7 @@ export default function ProductionEntryGrid() {
                       <td className="py-1.5 px-2">
                         <div className="relative">
                           <input
+                            id={`rej-mtr-input-${r.work_order_id}`}
                             type="text"
                             inputMode="decimal"
                             className={`h-8 w-24 rounded border px-2 text-right font-medium focus:border-slate-800 ${
@@ -647,6 +848,7 @@ export default function ProductionEntryGrid() {
                         <>
                           <td className="py-1.5 px-2">
                             <input
+                              id={`htc-pcs-input-${r.work_order_id}`}
                               type="text"
                               inputMode="decimal"
                               placeholder="0"
@@ -657,6 +859,7 @@ export default function ProductionEntryGrid() {
                           </td>
                           <td className="py-1.5 px-2">
                             <input
+                              id={`htc-mtr-input-${r.work_order_id}`}
                               type="text"
                               inputMode="decimal"
                               className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800"
@@ -672,6 +875,7 @@ export default function ProductionEntryGrid() {
 
                       <td className="py-1.5 px-2">
                         <input
+                          id={`heat-lot-input-${r.work_order_id}`}
                           className="h-8 w-36 rounded border border-slate-300 px-2 text-xs"
                           placeholder="Heat / Lot #"
                           value={r.heat_lot_no}
@@ -680,6 +884,7 @@ export default function ProductionEntryGrid() {
                       </td>
                       <td className="py-1.5 px-2">
                         <input
+                          id={`remarks-input-${r.work_order_id}`}
                           className="h-8 w-44 rounded border border-slate-300 px-2 text-xs"
                           placeholder="Remarks"
                           value={r.remarks}

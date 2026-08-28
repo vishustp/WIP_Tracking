@@ -47,6 +47,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (pathname === '/login') return <>{children}</>;
 
   const signOut = async () => {
+    document.cookie = 'demo_user=; path=/; max-age=0';
     await createClient().auth.signOut();
     router.replace('/login');
     router.refresh();

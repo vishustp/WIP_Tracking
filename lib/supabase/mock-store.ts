@@ -394,12 +394,19 @@ class MockStore {
       const rs = this.routeStages.find(s => s.route_id === route.id && s.stage_id === stage.id);
       if (!rs) continue;
 
+      // Retrieve Multiple from Rolling Plan or Diversion for this WO & Route
+      const plan = this.rollingPlans.find(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id);
+      const diversion = this.diversions.find(dp => dp.target_wo_id === wo.id && dp.process_route_id === route.id);
+      const multiple = Math.max(1, Number(plan?.multiple ?? diversion?.multiple ?? 1));
+
       const l1 = Number(wo.l1 || 0);
       const l2 = Number(wo.l2 || 0);
       const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 6.0;
 
       // Calculate balance_to_make_mtr based on stage sequence
       let balanceMtr = 0;
+      let htNos = 0;
+
       if (stageCode === 'ROLLING') {
         const plannedRolling = this.rollingPlans
           .filter(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id)
@@ -411,6 +418,8 @@ class MockStore {
           .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === 'stage-1')
           .reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
         balanceMtr = Math.max(0, plannedRolling + divertedIn - rollingInput);
+        const motherPieceLength = avgLength * multiple;
+        htNos = motherPieceLength > 0 ? Number((balanceMtr / motherPieceLength).toFixed(2)) : 0;
       } else {
         // Look up previous stage in route
         const allStagesInRoute = this.routeStages
@@ -426,12 +435,17 @@ class MockStore {
             .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === stage.id)
             .reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
           balanceMtr = Math.max(0, prevNetOutput - thisInput);
+
+          // If stage is FINISHING, HT piece length = Finished Avg Length * Multiple
+          const htPieceLength = avgLength * multiple;
+          htNos = htPieceLength > 0 ? Number((balanceMtr / htPieceLength).toFixed(2)) : 0;
         }
       }
 
       const od = Number(wo.size_od ?? wo.od ?? 0);
       const wt = Number(wo.size_wt ?? wo.wt ?? wo.wl ?? 0);
-      const pcs = avgLength > 0 ? balanceMtr / avgLength : 0;
+      // Finishing pieces = Multiple * Heat Treatment Nos
+      const pcs = stageCode === 'FINISHING' ? htNos * multiple : (avgLength > 0 ? balanceMtr / avgLength : 0);
       const mt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * balanceMtr;
 
       queue.push({
@@ -451,7 +465,8 @@ class MockStore {
         balance_to_make_mtr: balanceMtr,
         balance_to_make_pcs: pcs,
         balance_to_make_mt: mt,
-        multiple: 1,
+        multiple: multiple,
+        ht_nos: htNos,
       });
     }
 
