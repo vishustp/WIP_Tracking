@@ -20,7 +20,7 @@ export default function WorkOrders(){
  const createWO=async(e:React.FormEvent)=>{e.preventDefault(); const s=createClient(); const payload={work_order_no:form.work_order_no.trim(),customer_name:form.customer_name||null,size_od:form.size_od?Number(form.size_od):null,size_wt:form.size_wt?Number(form.size_wt):null,grade:form.grade||null,ordered_qty:Number(form.ordered_qty),uom:form.uom,target_date:form.target_date||null}; const {error}=await s.from('work_orders').insert(payload); if(error) toast.error(error.message); else {toast.success('Work Order created');setForm({work_order_no:'',customer_name:'',size_od:'',size_wt:'',grade:'',ordered_qty:'',uom:'Mtrs',target_date:''});load();}};
  const exportExcel=()=>{const ws=XLSX.utils.json_to_sheet(filtered); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Work Orders'); XLSX.writeFile(wb,'work-orders.xlsx');};
  return <div className="space-y-6">
-  <div><h1 className="text-2xl font-bold">Work Orders</h1><p className="text-sm text-slate-500">Commercial order identity. Route is assigned later during planning.</p></div>
+  <div><h1 className="text-2xl font-bold">Work Orders</h1></div>
   <form onSubmit={createWO} className="rounded-xl border bg-white p-5 shadow-sm">
    <h2 className="mb-4 font-semibold">Create Work Order</h2>
    <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
