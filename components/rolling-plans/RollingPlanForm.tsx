@@ -7,9 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { toast } from 'sonner';
 
-type WO = { id:string; work_order_no:string; customer_name:string|null; grade:string|null; size_od:number|null; size_wt:number|null; l1:number|null; l2:number|null; ordered_qty:number; uom:'Pcs'|'Mtrs'; balance_qty_mtr:number };
+type WO = { id:string; work_order_no:string; customer_name:string|null; grade:string|null; size_od:number|null; size_wt:number|null; od?:number|null; wt?:number|null; l1:number|null; l2:number|null; ordered_qty:number; uom:'Pcs'|'Mtrs'; balance_qty_mtr:number };
 type Route = { id:string; route_code:string; route_name:string; material_category:string };
-type Plan = { id:string; plan_no:string; work_order_id:string; work_order_no:string; customer_name:string|null; grade:string|null; od:number|null; wt:number|null; l1:number|null; l2:number|null; avg_length:number|null; route_id:string; route_code:string; route_name:string; planned_rolling_date:string; planned_mtr:number; planned_pcs:number; planned_mt:number; target_mother_size:string|null; multiple:number; status:string; created_at:string; updated_at:string; can_modify:boolean };
+type Plan = { id:string; plan_no:string; work_order_id:string; work_order_no:string; customer_name:string|null; grade:string|null; size_od?:number|null; size_wt?:number|null; od:number|null; wt:number|null; l1:number|null; l2:number|null; avg_length:number|null; route_id:string; route_code:string; route_name:string; planned_rolling_date:string; planned_mtr:number; planned_pcs:number; planned_mt:number; target_mother_size:string|null; multiple:number; status:string; created_at:string; updated_at:string; can_modify:boolean };
 const fmt=(n:number|null|undefined)=>n==null?'—':Number(n).toLocaleString(undefined,{maximumFractionDigits:3});
 const calc=(wo:WO|Plan|null, pcs:number)=>{if(!wo)return {avg:0,mtr:0,mt:0};const l1=Number(wo.l1||0),l2=Number(wo.l2||0),avg=l1>0&&l2>0?(l1+l2)/2:l1>0?l1:l2>0?l2:0;const mtr=pcs*avg;const mt=(Number(wo.size_od??wo.od??0)-Number(wo.size_wt??wo.wt??0))*Number(wo.size_wt??wo.wt??0)*0.0246615*0.001*mtr;return{avg,mtr,mt};};
 
