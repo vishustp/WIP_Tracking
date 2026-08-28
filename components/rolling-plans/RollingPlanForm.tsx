@@ -8,17 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
-  Calendar,
-  Layers,
   Edit2,
   Trash2,
   RefreshCw,
   Search,
-  CheckCircle2,
-  AlertTriangle,
-  Sparkles,
-  ArrowRight,
-  TrendingUp,
 } from 'lucide-react';
 
 type WO = {
@@ -51,22 +44,34 @@ type Plan = {
   work_order_no: string;
   customer_name: string | null;
   grade: string | null;
+
   size_od?: number | null;
   size_wt?: number | null;
+
   od: number | null;
   wt: number | null;
   l1: number | null;
   l2: number | null;
   avg_length: number | null;
+
   route_id: string;
   route_code: string;
   route_name: string;
+
   planned_rolling_date: string;
+
   planned_mtr: number;
   planned_pcs: number;
   planned_mt: number;
-  target_mother_size: string | null;
+
+  mh_od: number | null;
+  mh_wt: number | null;
+  mh_l1: number | null;
+  mh_l2: number | null;
+  pass_required: number;
+
   multiple: number;
+
   status: string;
   created_at: string;
   updated_at: string;
@@ -74,123 +79,365 @@ type Plan = {
 };
 
 const fmt = (n: number | null | undefined) =>
-  n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 3 });
+  n == null
+    ? '—'
+    : Number(n).toLocaleString(undefined, {
+        maximumFractionDigits: 3,
+      });
 
 const calc = (wo: WO | Plan | null, pcs: number) => {
-  if (!wo) return { avg: 0, mtr: 0, mt: 0 };
+  if (!wo) {
+    return {
+      avg: 0,
+      mtr: 0,
+      mt: 0,
+    };
+  }
+
   const l1 = Number(wo.l1 || 0);
   const l2 = Number(wo.l2 || 0);
-  const avg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 0;
+
+  const avg =
+    l1 > 0 && l2 > 0
+      ? (l1 + l2) / 2
+      : l1 > 0
+        ? l1
+        : l2 > 0
+          ? l2
+          : 0;
+
   const mtr = pcs * avg;
-  const od = Number((wo as any).size_od ?? (wo as any).od ?? 0);
-  const wt = Number((wo as any).size_wt ?? (wo as any).wt ?? 0);
-  const mt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * mtr;
-  return { avg, mtr, mt };
+
+  const od = Number(
+    (wo as any).size_od ??
+      (wo as any).od ??
+      0
+  );
+
+  const wt = Number(
+    (wo as any).size_wt ??
+      (wo as any).wt ??
+      0
+  );
+
+  const mt =
+    Math.max(od - wt, 0) *
+    Math.max(wt, 0) *
+    0.0246615 *
+    0.001 *
+    mtr;
+
+  return {
+    avg,
+    mtr,
+    mt,
+  };
 };
 
 export default function RollingPlanForm() {
   const searchParams = useSearchParams();
-  const initialWoId = searchParams?.get('wo') || '';
+
+  const initialWoId =
+    searchParams?.get('wo') || '';
 
   const [wos, setWos] = useState<WO[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
+
   const [wo, setWo] = useState(initialWoId);
   const [qtyPcs, setQtyPcs] = useState('');
+
   const [route, setRoute] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [mother, setMother] = useState('');
-  const [multiple, setMultiple] = useState('1');
-  const [availableMtr, setAvailableMtr] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [search, setSearch] = useState('');
-  const [filterRoute, setFilterRoute] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [plansLoading, setPlansLoading] = useState(false);
+  const [date, setDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
 
-  const [editing, setEditing] = useState<Plan | null>(null);
-  const [editQtyPcs, setEditQtyPcs] = useState('');
-  const [editDate, setEditDate] = useState('');
-  const [editRoute, setEditRoute] = useState('');
-  const [editMother, setEditMother] = useState('');
-  const [editMultiple, setEditMultiple] = useState('1');
-  const [editSaving, setEditSaving] = useState(false);
+  /* Mother Hollow fields */
+  const [mhOd, setMhOd] = useState('');
+  const [mhWt, setMhWt] = useState('');
+  const [mhL1, setMhL1] = useState('');
+  const [mhL2, setMhL2] = useState('');
+
+  /* Pass */
+  const [passRequired, setPassRequired] =
+    useState('1');
+
+  /* Multiple */
+  const [multiple, setMultiple] =
+    useState('1');
+
+  const [availableMtr, setAvailableMtr] =
+    useState<number | null>(null);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  /* Plans */
+  const [plans, setPlans] =
+    useState<Plan[]>([]);
+
+  const [search, setSearch] =
+    useState('');
+
+  const [filterRoute, setFilterRoute] =
+    useState('');
+
+  const [fromDate, setFromDate] =
+    useState('');
+
+  const [toDate, setToDate] =
+    useState('');
+
+  const [plansLoading, setPlansLoading] =
+    useState(false);
+
+  /* Edit */
+  const [editing, setEditing] =
+    useState<Plan | null>(null);
+
+  const [editQtyPcs, setEditQtyPcs] =
+    useState('');
+
+  const [editDate, setEditDate] =
+    useState('');
+
+  const [editRoute, setEditRoute] =
+    useState('');
+
+  const [editMhOd, setEditMhOd] =
+    useState('');
+
+  const [editMhWt, setEditMhWt] =
+    useState('');
+
+  const [editMhL1, setEditMhL1] =
+    useState('');
+
+  const [editMhL2, setEditMhL2] =
+    useState('');
+
+  const [editPassRequired, setEditPassRequired] =
+    useState('1');
+
+  const [editMultiple, setEditMultiple] =
+    useState('1');
+
+  const [editSaving, setEditSaving] =
+    useState(false);
+
+  /* --------------------------------------------------
+     Load plans
+  -------------------------------------------------- */
 
   const loadPlans = useCallback(async () => {
     setPlansLoading(true);
+
     const s = createClient();
-    const { data, error } = await s.rpc('get_rolling_plans', {
-      p_search: search.trim() || null,
-      p_route_code: filterRoute || null,
-      p_from_date: fromDate || null,
-      p_to_date: toDate || null,
-      p_limit: 2000,
-      p_offset: 0,
-    });
-    if (error) toast.error(error.message);
-    else setPlans((data ?? []) as Plan[]);
+
+    const { data, error } =
+      await s.rpc('get_rolling_plans', {
+        p_search:
+          search.trim() || null,
+
+        p_route_code:
+          filterRoute || null,
+
+        p_from_date:
+          fromDate || null,
+
+        p_to_date:
+          toDate || null,
+
+        p_limit: 2000,
+        p_offset: 0,
+      });
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      setPlans(
+        (data ?? []) as Plan[]
+      );
+    }
+
     setPlansLoading(false);
-  }, [filterRoute, fromDate, search, toDate]);
+  }, [
+    filterRoute,
+    fromDate,
+    search,
+    toDate,
+  ]);
+
+  /* --------------------------------------------------
+     Load work orders + routes
+  -------------------------------------------------- */
 
   useEffect(() => {
     const s = createClient();
+
     Promise.all([
       s
         .from('work_orders')
-        .select('id,work_order_no,customer_name,grade,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_mtr')
+        .select(
+          'id,work_order_no,customer_name,grade,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_mtr'
+        )
         .order('work_order_no'),
-      s.from('process_routes').select('id,route_code,route_name,material_category').eq('active', true).order('route_code'),
+
+      s
+        .from('process_routes')
+        .select(
+          'id,route_code,route_name,material_category'
+        )
+        .eq('active', true)
+        .order('route_code'),
     ]).then(([a, b]) => {
-      if (a.error) toast.error(a.error.message);
-      else {
-        setWos((a.data ?? []) as WO[]);
+      if (a.error) {
+        toast.error(a.error.message);
+      } else {
+        setWos(
+          (a.data ?? []) as WO[]
+        );
+
         if (initialWoId) {
           lookup(initialWoId);
         }
       }
-      if (b.error) toast.error(b.error.message);
-      else {
-        const routeList = (b.data ?? []) as Route[];
+
+      if (b.error) {
+        toast.error(b.error.message);
+      } else {
+        const routeList =
+          (b.data ?? []) as Route[];
+
         setRoutes(routeList);
-        if (routeList.length > 0 && !route) {
+
+        if (
+          routeList.length > 0 &&
+          !route
+        ) {
           setRoute(routeList[0].id);
         }
       }
     });
   }, [initialWoId]);
 
+  /* --------------------------------------------------
+     Load plans
+  -------------------------------------------------- */
+
   useEffect(() => {
     void loadPlans();
   }, [loadPlans]);
 
-  const selected = useMemo(() => wos.find(x => x.id === wo), [wos, wo]);
-  const derived = useMemo(() => calc(selected ?? null, Number(qtyPcs || 0)), [selected, qtyPcs]);
+  /* --------------------------------------------------
+     Selected WO
+  -------------------------------------------------- */
+
+  const selected = useMemo(
+    () =>
+      wos.find(
+        x => x.id === wo
+      ),
+    [wos, wo]
+  );
+
+  const derived = useMemo(
+    () =>
+      calc(
+        selected ?? null,
+        Number(qtyPcs || 0)
+      ),
+    [selected, qtyPcs]
+  );
+
+  /* --------------------------------------------------
+     Work order lookup
+  -------------------------------------------------- */
 
   const lookup = async (id: string) => {
     setWo(id);
     setQtyPcs('');
+
     if (!id) {
       setAvailableMtr(null);
       return;
     }
-    const { data, error } = await createClient().rpc('get_unplanned_qty', { p_work_order_id: id });
-    if (error) toast.error(error.message);
-    else setAvailableMtr(Number(data ?? 0));
+
+    const {
+      data,
+      error,
+    } = await createClient().rpc(
+      'get_unplanned_qty',
+      {
+        p_work_order_id: id,
+      }
+    );
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      setAvailableMtr(
+        Number(data ?? 0)
+      );
+    }
   };
 
-  // Calculation of Allocation Bar metrics
-  const allocation = useMemo(() => {
-    if (!selected || availableMtr === null) return null;
-    const totalOrderMtr = Number(selected.balance_qty_mtr || selected.ordered_qty || 0);
-    const plannedSoFar = Math.max(0, totalOrderMtr - availableMtr);
-    const newlyPlannedMtr = derived.mtr;
-    const remainingUnplanned = Math.max(0, availableMtr - newlyPlannedMtr);
+  /* --------------------------------------------------
+     Allocation
+  -------------------------------------------------- */
 
-    const plannedPct = Math.min(100, (plannedSoFar / (totalOrderMtr || 1)) * 100);
-    const newPct = Math.min(100 - plannedPct, (newlyPlannedMtr / (totalOrderMtr || 1)) * 100);
-    const remainingPct = Math.max(0, 100 - plannedPct - newPct);
+  const allocation = useMemo(() => {
+    if (
+      !selected ||
+      availableMtr === null
+    ) {
+      return null;
+    }
+
+    const totalOrderMtr =
+      Number(
+        selected.balance_qty_mtr ||
+          selected.ordered_qty ||
+          0
+      );
+
+    const plannedSoFar = Math.max(
+      0,
+      totalOrderMtr -
+        availableMtr
+    );
+
+    const newlyPlannedMtr =
+      derived.mtr;
+
+    const remainingUnplanned =
+      Math.max(
+        0,
+        availableMtr -
+          newlyPlannedMtr
+      );
+
+    const plannedPct = Math.min(
+      100,
+      (plannedSoFar /
+        (totalOrderMtr || 1)) *
+        100
+    );
+
+    const newPct = Math.min(
+      100 - plannedPct,
+      (newlyPlannedMtr /
+        (totalOrderMtr || 1)) *
+        100
+    );
+
+    const remainingPct =
+      Math.max(
+        0,
+        100 -
+          plannedPct -
+          newPct
+      );
 
     return {
       totalOrderMtr,
@@ -201,287 +448,1005 @@ export default function RollingPlanForm() {
       newPct,
       remainingPct,
     };
-  }, [selected, availableMtr, derived.mtr]);
+  }, [
+    selected,
+    availableMtr,
+    derived.mtr,
+  ]);
 
-  async function submit(e: React.FormEvent) {
+  /* --------------------------------------------------
+     Create rolling plan
+  -------------------------------------------------- */
+
+  async function submit(
+    e: React.FormEvent
+  ) {
     e.preventDefault();
-    if (!wo || !route) return toast.error('Select Work Order and route');
-    const pcs = Number(qtyPcs);
-    if (!Number.isFinite(pcs) || pcs <= 0) return toast.error('Enter a valid Planned PCS.');
-    const d = calc(selected ?? null, pcs);
-    if (availableMtr !== null && d.mtr > availableMtr) {
-      return toast.error(`Calculated MTR ${fmt(d.mtr)} exceeds available ${fmt(availableMtr)} MTR`);
+
+    if (!wo || !route) {
+      return toast.error(
+        'Select Work Order and route'
+      );
+    }
+
+    const pcs =
+      Number(qtyPcs);
+
+    if (
+      !Number.isFinite(pcs) ||
+      pcs <= 0
+    ) {
+      return toast.error(
+        'Enter a valid Planned PCS.'
+      );
+    }
+
+    const d = calc(
+      selected ?? null,
+      pcs
+    );
+
+    if (
+      availableMtr !== null &&
+      d.mtr > availableMtr
+    ) {
+      return toast.error(
+        `Calculated MTR ${fmt(
+          d.mtr
+        )} exceeds available ${fmt(
+          availableMtr
+        )} MTR`
+      );
+    }
+
+    const mhOdValue =
+      Number(mhOd);
+
+    const mhWtValue =
+      Number(mhWt);
+
+    const mhL1Value =
+      Number(mhL1);
+
+    const mhL2Value =
+      Number(mhL2);
+
+    const passValue =
+      Number(passRequired);
+
+    const multipleValue =
+      Number(multiple);
+
+    if (
+      !Number.isFinite(mhOdValue) ||
+      mhOdValue <= 0
+    ) {
+      return toast.error(
+        'Enter valid MH OD.'
+      );
+    }
+
+    if (
+      !Number.isFinite(mhWtValue) ||
+      mhWtValue <= 0
+    ) {
+      return toast.error(
+        'Enter valid MH WT.'
+      );
+    }
+
+    if (
+      !Number.isFinite(mhL1Value) ||
+      mhL1Value <= 0
+    ) {
+      return toast.error(
+        'Enter valid MH L1.'
+      );
+    }
+
+    if (
+      !Number.isFinite(mhL2Value) ||
+      mhL2Value <= 0
+    ) {
+      return toast.error(
+        'Enter valid MH L2.'
+      );
+    }
+
+    if (
+      ![1, 2, 3].includes(
+        passValue
+      )
+    ) {
+      return toast.error(
+        'Pass Required must be 1, 2 or 3.'
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        multipleValue
+      ) ||
+      multipleValue <= 0
+    ) {
+      return toast.error(
+        'Multiple must be positive.'
+      );
     }
 
     setLoading(true);
-    const { data, error } = await createClient().rpc('create_rolling_plan', {
-      p_work_order_id: wo,
-      p_planned_qty: d.mtr,
-      p_rolling_date: date,
-      p_route_id: route,
-      p_target_mother_size: mother.trim() || null,
-      p_multiple: Number(multiple),
-    });
+
+    const {
+      data,
+      error,
+    } = await createClient().rpc(
+      'create_rolling_plan',
+      {
+        p_work_order_id: wo,
+
+        p_planned_qty: d.mtr,
+
+        p_rolling_date: date,
+
+        p_route_id: route,
+
+        p_mh_od: mhOdValue,
+
+        p_mh_wt: mhWtValue,
+
+        p_mh_l1: mhL1Value,
+
+        p_mh_l2: mhL2Value,
+
+        p_pass_required:
+          passValue,
+
+        p_multiple:
+          multipleValue,
+      }
+    );
+
     setLoading(false);
 
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success(`Rolling plan ${data} created for ${fmt(pcs)} PCS (${fmt(d.mtr)} MTR)`);
+      toast.success(
+        `Rolling plan ${data} created for ${fmt(
+          pcs
+        )} PCS (${fmt(
+          d.mtr
+        )} MTR)`
+      );
+
       setQtyPcs('');
-      setMother('');
+
+      setMhOd('');
+      setMhWt('');
+      setMhL1('');
+      setMhL2('');
+
+      setPassRequired('1');
       setMultiple('1');
-      await Promise.all([lookup(wo), loadPlans()]);
+
+      await Promise.all([
+        lookup(wo),
+        loadPlans(),
+      ]);
     }
   }
 
-  function startEdit(p: Plan) {
+  /* --------------------------------------------------
+     Start edit
+  -------------------------------------------------- */
+
+  function startEdit(
+    p: Plan
+  ) {
     setEditing(p);
-    setEditQtyPcs(String(p.planned_pcs || ((p.avg_length || 0) > 0 ? p.planned_mtr / (p.avg_length || 1) : 0)));
-    setEditDate(p.planned_rolling_date);
-    setEditRoute(p.route_id);
-    setEditMother(p.target_mother_size ?? '');
-    setEditMultiple(String(p.multiple ?? 1));
+
+    setEditQtyPcs(
+      String(
+        p.planned_pcs ||
+          (
+            (p.avg_length || 0) > 0
+              ? p.planned_mtr /
+                (p.avg_length || 1)
+              : 0
+          )
+      )
+    );
+
+    setEditDate(
+      p.planned_rolling_date
+    );
+
+    setEditRoute(
+      p.route_id
+    );
+
+    setEditMhOd(
+      String(p.mh_od ?? '')
+    );
+
+    setEditMhWt(
+      String(p.mh_wt ?? '')
+    );
+
+    setEditMhL1(
+      String(p.mh_l1 ?? '')
+    );
+
+    setEditMhL2(
+      String(p.mh_l2 ?? '')
+    );
+
+    setEditPassRequired(
+      String(
+        p.pass_required ?? 1
+      )
+    );
+
+    setEditMultiple(
+      String(
+        p.multiple ?? 1
+      )
+    );
   }
 
+  /* --------------------------------------------------
+     Save edit
+  -------------------------------------------------- */
+
   async function saveEdit() {
-    if (!editing) return;
-    const pcs = Number(editQtyPcs);
-    if (!Number.isFinite(pcs) || pcs <= 0) return toast.error('Enter a valid Planned PCS.');
-    const d = calc(editing, pcs);
-    const mult = Number(editMultiple);
-    if (!Number.isFinite(mult) || mult <= 0) return toast.error('Multiple must be positive.');
+    if (!editing) {
+      return;
+    }
+
+    const pcs =
+      Number(editQtyPcs);
+
+    if (
+      !Number.isFinite(pcs) ||
+      pcs <= 0
+    ) {
+      return toast.error(
+        'Enter a valid Planned PCS.'
+      );
+    }
+
+    const d = calc(
+      editing,
+      pcs
+    );
+
+    const mhOdValue =
+      Number(editMhOd);
+
+    const mhWtValue =
+      Number(editMhWt);
+
+    const mhL1Value =
+      Number(editMhL1);
+
+    const mhL2Value =
+      Number(editMhL2);
+
+    const passValue =
+      Number(editPassRequired);
+
+    const mult =
+      Number(editMultiple);
+
+    if (
+      !Number.isFinite(mhOdValue) ||
+      mhOdValue <= 0
+    ) {
+      return toast.error(
+        'Enter valid MH OD.'
+      );
+    }
+
+    if (
+      !Number.isFinite(mhWtValue) ||
+      mhWtValue <= 0
+    ) {
+      return toast.error(
+        'Enter valid MH WT.'
+      );
+    }
+
+    if (
+      !Number.isFinite(mhL1Value) ||
+      mhL1Value <= 0
+    ) {
+      return toast.error(
+        'Enter valid MH L1.'
+      );
+    }
+
+    if (
+      !Number.isFinite(mhL2Value) ||
+      mhL2Value <= 0
+    ) {
+      return toast.error(
+        'Enter valid MH L2.'
+      );
+    }
+
+    if (
+      ![1, 2, 3].includes(
+        passValue
+      )
+    ) {
+      return toast.error(
+        'Pass Required must be 1, 2 or 3.'
+      );
+    }
+
+    if (
+      !Number.isFinite(mult) ||
+      mult <= 0
+    ) {
+      return toast.error(
+        'Multiple must be positive.'
+      );
+    }
 
     setEditSaving(true);
-    const { error } = await createClient().rpc('update_rolling_plan', {
-      p_plan_id: editing.id,
-      p_planned_qty: d.mtr,
-      p_rolling_date: editDate,
-      p_route_id: editRoute,
-      p_target_mother_size: editMother.trim() || null,
-      p_multiple: mult,
-    });
+
+    const {
+      error,
+    } = await createClient().rpc(
+      'update_rolling_plan',
+      {
+        p_plan_id: editing.id,
+
+        p_planned_qty: d.mtr,
+
+        p_rolling_date:
+          editDate,
+
+        p_route_id:
+          editRoute,
+
+        p_mh_od:
+          mhOdValue,
+
+        p_mh_wt:
+          mhWtValue,
+
+        p_mh_l1:
+          mhL1Value,
+
+        p_mh_l2:
+          mhL2Value,
+
+        p_pass_required:
+          passValue,
+
+        p_multiple:
+          mult,
+      }
+    );
+
     setEditSaving(false);
 
     if (error) {
-      toast.error(error.message);
+      toast.error(
+        error.message
+      );
     } else {
-      toast.success('Rolling plan updated successfully.');
+      toast.success(
+        'Rolling plan updated successfully.'
+      );
+
       setEditing(null);
+
       await loadPlans();
     }
   }
 
-  async function removePlan(p: Plan) {
-    if (!window.confirm(`Delete Rolling Plan ${p.plan_no} for WO ${p.work_order_no}?`)) return;
-    const { error } = await createClient().rpc('delete_rolling_plan', { p_plan_id: p.id });
-    if (error) toast.error(error.message);
-    else {
-      toast.success('Rolling plan deleted successfully.');
+  /* --------------------------------------------------
+     Delete
+  -------------------------------------------------- */
+
+  async function removePlan(
+    p: Plan
+  ) {
+    if (
+      !window.confirm(
+        `Delete Rolling Plan ${p.plan_no} for WO ${p.work_order_no}?`
+      )
+    ) {
+      return;
+    }
+
+    const {
+      error,
+    } = await createClient().rpc(
+      'delete_rolling_plan',
+      {
+        p_plan_id: p.id,
+      }
+    );
+
+    if (error) {
+      toast.error(
+        error.message
+      );
+    } else {
+      toast.success(
+        'Rolling plan deleted successfully.'
+      );
+
       await loadPlans();
     }
   }
 
-  const routesInPlans = useMemo(() => Array.from(new Set(plans.map(p => p.route_code))).sort(), [plans]);
+  const routesInPlans =
+    useMemo(
+      () =>
+        Array.from(
+          new Set(
+            plans.map(
+              p => p.route_code
+            )
+          )
+        ).sort(),
+      [plans]
+    );
 
   return (
     <div className="space-y-6">
-      {/* 4. Rolling Plan Form with Live Allocation Progress Bar */}
-      <form onSubmit={submit} className="space-y-5 rounded-xl border border-slate-200/90 bg-white p-6 shadow-sm">
+
+      {/* ==================================================
+          ROLLING PLAN FORM
+      ================================================== */}
+
+      <form
+        onSubmit={submit}
+        className="space-y-5 rounded-xl border border-slate-200/90 bg-white p-6 shadow-sm"
+      >
+
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Issue Rolling Plan</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Plan production campaign by entering PCS. Route-aware MTR and MT weights are computed automatically.
-          </p>
+          <h1 className="text-xl font-bold text-slate-900">
+            Issue Rolling Plan
+          </h1>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
+
+          {/* Work Order */}
+
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">Work Order *</label>
-            <Select value={wo} onChange={e => void lookup(e.target.value)} required>
-              <option value="">Select Work Order to Plan</option>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              Work Order *
+            </label>
+
+            <Select
+              value={wo}
+              onChange={e =>
+                void lookup(
+                  e.target.value
+                )
+              }
+              required
+            >
+              <option value="">
+                Select Work Order
+              </option>
+
               {wos.map(x => (
-                <option key={x.id} value={x.id}>
-                  {x.work_order_no} · {x.customer_name || 'No Customer'} · {x.size_od}×{x.size_wt}mm ({x.grade})
+                <option
+                  key={x.id}
+                  value={x.id}
+                >
+                  {x.work_order_no} ·{' '}
+                  {x.customer_name ||
+                    'No Customer'} ·{' '}
+                  {x.size_od}×
+                  {x.size_wt}mm (
+                  {x.grade})
                 </option>
               ))}
             </Select>
           </div>
+
+          {/* Route */}
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">Target Process Route *</label>
-            <Select value={route} onChange={e => setRoute(e.target.value)} required>
-              <option value="">Select Route</option>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              Target Process Route *
+            </label>
+
+            <Select
+              value={route}
+              onChange={e =>
+                setRoute(
+                  e.target.value
+                )
+              }
+              required
+            >
+              <option value="">
+                Select Route
+              </option>
+
               {routes.map(r => (
-                <option key={r.id} value={r.id}>
-                  {r.route_code} — {r.route_name} ({r.material_category})
+                <option
+                  key={r.id}
+                  value={r.id}
+                >
+                  {r.route_code} —{' '}
+                  {r.route_name} (
+                  {
+                    r.material_category
+                  }
+                  )
                 </option>
               ))}
             </Select>
           </div>
 
-          {/* Allocation Progress Bar */}
+          {/* Allocation */}
+
           {allocation && (
-            <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+            <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-800">Order Allocation Breakdown</span>
-                <span className="text-slate-500 font-mono">Total Order: {fmt(allocation.totalOrderMtr)} MTR</span>
+                <span className="font-semibold text-slate-800">
+                  Order Allocation
+                </span>
+
+                <span className="font-mono text-slate-500">
+                  Total:{' '}
+                  {fmt(
+                    allocation.totalOrderMtr
+                  )}{' '}
+                  MTR
+                </span>
               </div>
 
-              {/* Progress Track */}
-              <div className="h-3 w-full rounded-full bg-slate-200 overflow-hidden flex">
+              <div className="mt-2 flex h-3 w-full overflow-hidden rounded-full bg-slate-200">
+
                 <div
-                  className="bg-blue-600 transition-all duration-300"
-                  style={{ width: `${allocation.plannedPct}%` }}
-                  title={`Previously Planned: ${fmt(allocation.plannedSoFar)} MTR`}
+                  className="bg-blue-600"
+                  style={{
+                    width: `${allocation.plannedPct}%`,
+                  }}
                 />
+
                 <div
-                  className="bg-emerald-500 transition-all duration-300"
-                  style={{ width: `${allocation.newPct}%` }}
-                  title={`New Plan (This Batch): ${fmt(allocation.newlyPlannedMtr)} MTR`}
+                  className="bg-emerald-500"
+                  style={{
+                    width: `${allocation.newPct}%`,
+                  }}
                 />
+
                 <div
-                  className="bg-slate-300 transition-all duration-300"
-                  style={{ width: `${allocation.remainingPct}%` }}
-                  title={`Remaining Unplanned: ${fmt(allocation.remainingUnplanned)} MTR`}
+                  className="bg-slate-300"
+                  style={{
+                    width: `${allocation.remainingPct}%`,
+                  }}
                 />
+
               </div>
 
-              {/* Legend */}
-              <div className="flex flex-wrap items-center gap-4 text-[11px] pt-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                  <span className="text-slate-600">Prev Planned: <b>{fmt(allocation.plannedSoFar)} MTR</b></span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                  <span className="text-slate-600">This Batch: <b>{fmt(allocation.newlyPlannedMtr)} MTR</b></span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
-                  <span className="text-slate-600">Remaining Available: <b>{fmt(allocation.remainingUnplanned)} MTR</b></span>
-                </div>
+              <div className="mt-2 flex flex-wrap gap-4 text-[11px]">
+
+                <span>
+                  Prev Planned:{' '}
+                  <b>
+                    {fmt(
+                      allocation.plannedSoFar
+                    )}{' '}
+                    MTR
+                  </b>
+                </span>
+
+                <span>
+                  This Batch:{' '}
+                  <b>
+                    {fmt(
+                      allocation.newlyPlannedMtr
+                    )}{' '}
+                    MTR
+                  </b>
+                </span>
+
+                <span>
+                  Remaining:{' '}
+                  <b>
+                    {fmt(
+                      allocation.remainingUnplanned
+                    )}{' '}
+                    MTR
+                  </b>
+                </span>
+
               </div>
             </div>
           )}
+
+          {/* Summary */}
 
           {selected && (
-            <div className="md:col-span-2 grid gap-3 grid-cols-2 sm:grid-cols-4">
-              <div className="rounded-lg border border-slate-200 bg-white p-3">
-                <div className="text-xs text-slate-500">Average Length</div>
-                <div className="text-base font-bold text-slate-900 mt-0.5">{fmt(derived.avg)} m</div>
+            <div className="md:col-span-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-slate-500">
+                  Average Length
+                </div>
+
+                <div className="mt-0.5 text-base font-bold">
+                  {fmt(
+                    derived.avg
+                  )}{' '}
+                  m
+                </div>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-3">
-                <div className="text-xs text-slate-500">Planned PCS</div>
-                <div className="text-base font-bold text-slate-900 mt-0.5">{fmt(Number(qtyPcs || 0))} PCS</div>
+
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-slate-500">
+                  Planned PCS
+                </div>
+
+                <div className="mt-0.5 text-base font-bold">
+                  {fmt(
+                    Number(
+                      qtyPcs || 0
+                    )
+                  )}{' '}
+                  PCS
+                </div>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-3">
-                <div className="text-xs text-slate-500">Calculated MTR</div>
-                <div className="text-base font-bold text-blue-600 mt-0.5">{fmt(derived.mtr)} MTR</div>
+
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-slate-500">
+                  Planned MTR
+                </div>
+
+                <div className="mt-0.5 text-base font-bold">
+                  {fmt(
+                    derived.mtr
+                  )}{' '}
+                  MTR
+                </div>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-3">
-                <div className="text-xs text-slate-500">Calculated Weight</div>
-                <div className="text-base font-bold text-emerald-600 mt-0.5">{fmt(derived.mt)} MT</div>
+
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-slate-500">
+                  Planned MT
+                </div>
+
+                <div className="mt-0.5 text-base font-bold">
+                  {fmt(
+                    derived.mt
+                  )}{' '}
+                  MT
+                </div>
               </div>
+
             </div>
           )}
 
+          {/* Planned PCS */}
+
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">Planned Quantity (PCS) *</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              Planned Quantity (PCS) *
+            </label>
+
             <Input
               type="number"
               min="1"
               step="1"
-              max={selected && derived.avg > 0 && availableMtr != null ? Math.floor(availableMtr / derived.avg) : undefined}
-              placeholder="e.g. 50"
+              max={
+                selected &&
+                derived.avg > 0 &&
+                availableMtr != null
+                  ? Math.floor(
+                      availableMtr /
+                        derived.avg
+                    )
+                  : undefined
+              }
               value={qtyPcs}
-              onChange={e => setQtyPcs(e.target.value)}
+              onChange={e =>
+                setQtyPcs(
+                  e.target.value
+                )
+              }
               required
             />
-            <p className="mt-1 text-[11px] text-slate-500">Enter pieces count. Total meters will be derived automatically.</p>
           </div>
+
+          {/* Date */}
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">Planned Rolling Date *</label>
-            <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
-          </div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              Planned Rolling Date *
+            </label>
 
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-xs font-semibold text-slate-700">Target Mother Hollow Size</label>
             <Input
-              placeholder="e.g. 108 x 10.0 or 139.7 x 12.0 mm"
-              value={mother}
-              onChange={e => setMother(e.target.value)}
+              type="date"
+              value={date}
+              onChange={e =>
+                setDate(
+                  e.target.value
+                )
+              }
+              required
             />
           </div>
 
+          {/* MH OD */}
+
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">Length Multiple Factor</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              MH OD *
+            </label>
+
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              value={mhOd}
+              onChange={e =>
+                setMhOd(
+                  e.target.value
+                )
+              }
+              required
+            />
+          </div>
+
+          {/* MH WT */}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              MH WT *
+            </label>
+
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              value={mhWt}
+              onChange={e =>
+                setMhWt(
+                  e.target.value
+                )
+              }
+              required
+            />
+          </div>
+
+          {/* MH L1 */}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              MH L1 *
+            </label>
+
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              value={mhL1}
+              onChange={e =>
+                setMhL1(
+                  e.target.value
+                )
+              }
+              required
+            />
+          </div>
+
+          {/* MH L2 */}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              MH L2 *
+            </label>
+
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              value={mhL2}
+              onChange={e =>
+                setMhL2(
+                  e.target.value
+                )
+              }
+              required
+            />
+          </div>
+
+          {/* Pass */}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              Pass *
+            </label>
+
+            <Select
+              value={passRequired}
+              onChange={e =>
+                setPassRequired(
+                  e.target.value
+                )
+              }
+              required
+            >
+              <option value="1">
+                1
+              </option>
+
+              <option value="2">
+                2
+              </option>
+
+              <option value="3">
+                3
+              </option>
+            </Select>
+          </div>
+
+          {/* Multiple */}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">
+              Multiple *
+            </label>
+
             <Input
               type="number"
               min="0.001"
               step="0.001"
               value={multiple}
-              onChange={e => setMultiple(e.target.value)}
+              onChange={e =>
+                setMultiple(
+                  e.target.value
+                )
+              }
               required
             />
           </div>
+
         </div>
 
-        <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-          <Button disabled={loading} className="bg-slate-900 text-white hover:bg-slate-800">
-            {loading ? 'Creating Plan…' : 'Issue Rolling Plan'}
+        <div className="flex justify-end border-t border-slate-100 pt-3">
+
+          <Button
+            disabled={loading}
+            className="bg-slate-900 text-white hover:bg-slate-800"
+          >
+            {loading
+              ? 'Creating Plan…'
+              : 'Issue Rolling Plan'}
           </Button>
+
         </div>
+
       </form>
 
-      {/* Plan History Table */}
+      {/* ==================================================
+          PLAN HISTORY
+      ================================================== */}
+
       <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm">
+
         <div className="border-b border-slate-100 p-5">
+
           <div className="flex flex-wrap items-center justify-between gap-3">
+
             <div>
-              <h2 className="text-base font-bold text-slate-900">Issued Rolling Plans</h2>
-              <p className="text-xs text-slate-500">
-                Active rolling campaigns ready for mill shop-floor execution.
-              </p>
+              <h2 className="text-base font-bold text-slate-900">
+                Issued Rolling Plans
+              </h2>
             </div>
+
             <button
               type="button"
-              onClick={() => void loadPlans()}
+              onClick={() =>
+                void loadPlans()
+              }
               disabled={plansLoading}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-50"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${plansLoading ? 'animate-spin' : ''}`} /> Refresh
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${
+                  plansLoading
+                    ? 'animate-spin'
+                    : ''
+                }`}
+              />
+
+              Refresh
             </button>
+
           </div>
 
           <div className="mt-3.5 grid gap-2.5 md:grid-cols-2 lg:grid-cols-4">
+
             <div className="relative">
+
               <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+
               <Input
-                className="pl-8 text-xs h-9"
+                className="h-9 pl-8 text-xs"
                 placeholder="Search Plan / WO / Customer / Grade"
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e =>
+                  setSearch(
+                    e.target.value
+                  )
+                }
               />
+
             </div>
-            <Select className="text-xs h-9" value={filterRoute} onChange={e => setFilterRoute(e.target.value)}>
-              <option value="">All Routes</option>
-              {routesInPlans.map(r => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
+
+            <Select
+              className="h-9 text-xs"
+              value={filterRoute}
+              onChange={e =>
+                setFilterRoute(
+                  e.target.value
+                )
+              }
+            >
+              <option value="">
+                All Routes
+              </option>
+
+              {routesInPlans.map(
+                r => (
+                  <option
+                    key={r}
+                    value={r}
+                  >
+                    {r}
+                  </option>
+                )
+              )}
             </Select>
-            <Input className="text-xs h-9" type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} title="From" />
-            <Input className="text-xs h-9" type="date" value={toDate} onChange={e => setToDate(e.target.value)} title="To" />
+
+            <Input
+              className="h-9 text-xs"
+              type="date"
+              value={fromDate}
+              onChange={e =>
+                setFromDate(
+                  e.target.value
+                )
+              }
+            />
+
+            <Input
+              className="h-9 text-xs"
+              type="date"
+              value={toDate}
+              onChange={e =>
+                setToDate(
+                  e.target.value
+                )
+              }
+            />
+
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1750px] w-full text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+
+          <table className="min-w-[2100px] w-full text-xs">
+
+            <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
+
               <tr>
+
                 {[
                   'Plan No',
                   'Date',
@@ -497,185 +1462,565 @@ export default function RollingPlanForm() {
                   'Planned PCS',
                   'Planned MTR',
                   'Planned MT',
-                  'Mother Size',
+                  'MH OD',
+                  'MH WT',
+                  'MH L1',
+                  'MH L2',
+                  'Pass',
                   'Multiple',
                   'Status',
                   'Actions',
                 ].map(h => (
-                  <th key={h} className="py-2.5 px-3 text-left font-semibold">
+                  <th
+                    key={h}
+                    className="px-3 py-2.5 text-left font-semibold"
+                  >
                     {h}
                   </th>
                 ))}
+
               </tr>
+
             </thead>
+
             <tbody className="divide-y divide-slate-100">
+
               {plansLoading ? (
+
                 <tr>
-                  <td colSpan={18} className="p-8 text-center text-slate-400">
+                  <td
+                    colSpan={22}
+                    className="p-8 text-center text-slate-400"
+                  >
                     Loading plans…
                   </td>
                 </tr>
+
               ) : plans.length === 0 ? (
+
                 <tr>
-                  <td colSpan={18} className="p-8 text-center text-slate-500">
+                  <td
+                    colSpan={22}
+                    className="p-8 text-center text-slate-500"
+                  >
                     No rolling plans found.
                   </td>
                 </tr>
+
               ) : (
+
                 plans.map(p => (
-                  <tr key={p.id} className="hover:bg-slate-50/50">
-                    <td className="py-2 px-3 font-bold text-slate-900">{p.plan_no}</td>
-                    <td className="py-2 px-3 text-slate-600 font-mono">{p.planned_rolling_date}</td>
-                    <td className="py-2 px-3 font-semibold text-slate-900">{p.work_order_no}</td>
-                    <td className="py-2 px-3 text-slate-600 max-w-[140px] truncate">{p.customer_name || '—'}</td>
-                    <td className="py-2 px-3 text-slate-600 max-w-[140px] truncate">{p.grade || '—'}</td>
-                    <td className="py-2 px-3 font-mono">{fmt(p.od)}</td>
-                    <td className="py-2 px-3 font-mono">{fmt(p.wt)}</td>
-                    <td className="py-2 px-3 font-mono">{fmt(p.l1)}</td>
-                    <td className="py-2 px-3 font-mono">{fmt(p.l2)}</td>
-                    <td className="py-2 px-3 font-mono">{fmt(p.avg_length)}</td>
-                    <td className="py-2 px-3">
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700">
+
+                  <tr
+                    key={p.id}
+                    className="hover:bg-slate-50/50"
+                  >
+
+                    <td className="px-3 py-2 font-bold">
+                      {p.plan_no}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono text-slate-600">
+                      {p.planned_rolling_date}
+                    </td>
+
+                    <td className="px-3 py-2 font-semibold">
+                      {p.work_order_no}
+                    </td>
+
+                    <td className="max-w-[140px] truncate px-3 py-2">
+                      {p.customer_name ||
+                        '—'}
+                    </td>
+
+                    <td className="max-w-[140px] truncate px-3 py-2">
+                      {p.grade ||
+                        '—'}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono">
+                      {fmt(p.od)}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono">
+                      {fmt(p.wt)}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono">
+                      {fmt(p.l1)}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono">
+                      {fmt(p.l2)}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono">
+                      {fmt(
+                        p.avg_length
+                      )}
+                    </td>
+
+                    <td className="px-3 py-2">
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold">
                         {p.route_code}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-right font-mono font-medium">{fmt(p.planned_pcs)}</td>
-                    <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{fmt(p.planned_mtr)}</td>
-                    <td className="py-2 px-3 text-right font-mono font-semibold">{fmt(p.planned_mt)}</td>
-                    <td className="py-2 px-3 text-slate-700">{p.target_mother_size || '—'}</td>
-                    <td className="py-2 px-3 text-slate-600 font-mono">{fmt(p.multiple)}</td>
-                    <td className="py-2 px-3">
-                      <span className="rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+
+                    <td className="px-3 py-2 text-right font-mono">
+                      {fmt(
+                        p.planned_pcs
+                      )}
+                    </td>
+
+                    <td className="px-3 py-2 text-right font-mono font-bold">
+                      {fmt(
+                        p.planned_mtr
+                      )}
+                    </td>
+
+                    <td className="px-3 py-2 text-right font-mono">
+                      {fmt(
+                        p.planned_mt
+                      )}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono">
+                      {fmt(p.mh_od)}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono">
+                      {fmt(p.mh_wt)}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono">
+                      {fmt(p.mh_l1)}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono">
+                      {fmt(p.mh_l2)}
+                    </td>
+
+                    <td className="px-3 py-2 text-center font-semibold">
+                      {p.pass_required}
+                    </td>
+
+                    <td className="px-3 py-2 font-mono">
+                      {fmt(
+                        p.multiple
+                      )}
+                    </td>
+
+                    <td className="px-3 py-2">
+
+                      <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
                         {p.status}
                       </span>
+
                     </td>
-                    <td className="py-1.5 px-2">
+
+                    <td className="px-2 py-1.5">
+
                       <div className="flex gap-1.5">
+
                         {p.can_modify ? (
+
                           <>
+
                             <button
                               type="button"
-                              onClick={() => startEdit(p)}
+                              onClick={() =>
+                                startEdit(p)
+                              }
                               className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
                             >
-                              <Edit2 className="h-3 w-3" /> Edit
+                              <Edit2 className="h-3 w-3" />
+                              Edit
                             </button>
+
                             <button
                               type="button"
-                              onClick={() => void removePlan(p)}
+                              onClick={() =>
+                                void removePlan(
+                                  p
+                                )
+                              }
                               className="inline-flex items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
                             >
-                              <Trash2 className="h-3 w-3" /> Delete
+                              <Trash2 className="h-3 w-3" />
+                              Delete
                             </button>
+
                           </>
+
                         ) : (
-                          <span className="text-[11px] text-slate-400">Locked (Production logged)</span>
+
+                          <span className="text-[11px] text-slate-400">
+                            Locked
+                          </span>
+
                         )}
+
                       </div>
+
                     </td>
+
                   </tr>
+
                 ))
+
               )}
+
             </tbody>
+
           </table>
+
         </div>
+
       </section>
 
-      {/* Edit Rolling Plan Modal */}
+      {/* ==================================================
+          EDIT MODAL
+      ================================================== */}
+
       {editing && (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+
               <div>
-                <h3 className="text-base font-bold text-slate-900">Edit Rolling Plan {editing.plan_no}</h3>
-                <p className="text-xs text-slate-500">Work Order: {editing.work_order_no}</p>
+
+                <h3 className="text-base font-bold text-slate-900">
+                  Edit Rolling Plan{' '}
+                  {editing.plan_no}
+                </h3>
+
+                <p className="text-xs text-slate-500">
+                  Work Order:{' '}
+                  {editing.work_order_no}
+                </p>
+
               </div>
+
               <button
                 type="button"
-                onClick={() => setEditing(null)}
+                onClick={() =>
+                  setEditing(null)
+                }
                 className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
               >
                 Close
               </button>
+
             </div>
 
             <div className="mt-4 grid gap-3.5 sm:grid-cols-2 text-xs">
+
+              {/* PCS */}
+
               <div>
-                <label className="font-semibold text-slate-700">Planned PCS</label>
+
+                <label className="font-semibold text-slate-700">
+                  Planned PCS
+                </label>
+
                 <Input
                   type="number"
                   min="1"
                   step="1"
                   className="mt-1 text-xs"
                   value={editQtyPcs}
-                  onChange={e => setEditQtyPcs(e.target.value)}
+                  onChange={e =>
+                    setEditQtyPcs(
+                      e.target.value
+                    )
+                  }
                 />
+
               </div>
+
+              {/* Calculated */}
+
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-                <div className="text-slate-500">Calculated MTR / Weight</div>
-                <div className="text-sm font-bold text-slate-900 mt-0.5">
-                  {fmt(calc(editing, Number(editQtyPcs || 0)).mtr)} MTR · {fmt(calc(editing, Number(editQtyPcs || 0)).mt)} MT
+
+                <div className="text-slate-500">
+                  Calculated MTR / Weight
                 </div>
+
+                <div className="mt-0.5 text-sm font-bold text-slate-900">
+
+                  {fmt(
+                    calc(
+                      editing,
+                      Number(
+                        editQtyPcs ||
+                          0
+                      )
+                    ).mtr
+                  )}{' '}
+                  MTR ·{' '}
+
+                  {fmt(
+                    calc(
+                      editing,
+                      Number(
+                        editQtyPcs ||
+                          0
+                      )
+                    ).mt
+                  )}{' '}
+                  MT
+
+                </div>
+
               </div>
+
+              {/* Date */}
+
               <div>
-                <label className="font-semibold text-slate-700">Rolling Date</label>
+
+                <label className="font-semibold text-slate-700">
+                  Rolling Date
+                </label>
+
                 <Input
                   type="date"
                   className="mt-1 text-xs"
                   value={editDate}
-                  onChange={e => setEditDate(e.target.value)}
+                  onChange={e =>
+                    setEditDate(
+                      e.target.value
+                    )
+                  }
                 />
+
               </div>
+
+              {/* Route */}
+
               <div>
-                <label className="font-semibold text-slate-700">Process Route</label>
-                <Select className="mt-1 text-xs" value={editRoute} onChange={e => setEditRoute(e.target.value)}>
-                  {routes.map(r => (
-                    <option key={r.id} value={r.id}>
-                      {r.route_code} — {r.route_name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="sm:col-span-2">
-                <label className="font-semibold text-slate-700">Target Mother Hollow Size</label>
-                <Input
+
+                <label className="font-semibold text-slate-700">
+                  Process Route
+                </label>
+
+                <Select
                   className="mt-1 text-xs"
-                  value={editMother}
-                  onChange={e => setEditMother(e.target.value)}
-                />
+                  value={editRoute}
+                  onChange={e =>
+                    setEditRoute(
+                      e.target.value
+                    )
+                  }
+                >
+
+                  {routes.map(r => (
+
+                    <option
+                      key={r.id}
+                      value={r.id}
+                    >
+                      {r.route_code} —{' '}
+                      {r.route_name}
+                    </option>
+
+                  ))}
+
+                </Select>
+
               </div>
+
+              {/* MH OD */}
+
               <div>
-                <label className="font-semibold text-slate-700">Multiple Factor</label>
+
+                <label className="font-semibold text-slate-700">
+                  MH OD
+                </label>
+
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  className="mt-1 text-xs"
+                  value={editMhOd}
+                  onChange={e =>
+                    setEditMhOd(
+                      e.target.value
+                    )
+                  }
+                />
+
+              </div>
+
+              {/* MH WT */}
+
+              <div>
+
+                <label className="font-semibold text-slate-700">
+                  MH WT
+                </label>
+
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  className="mt-1 text-xs"
+                  value={editMhWt}
+                  onChange={e =>
+                    setEditMhWt(
+                      e.target.value
+                    )
+                  }
+                />
+
+              </div>
+
+              {/* MH L1 */}
+
+              <div>
+
+                <label className="font-semibold text-slate-700">
+                  MH L1
+                </label>
+
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  className="mt-1 text-xs"
+                  value={editMhL1}
+                  onChange={e =>
+                    setEditMhL1(
+                      e.target.value
+                    )
+                  }
+                />
+
+              </div>
+
+              {/* MH L2 */}
+
+              <div>
+
+                <label className="font-semibold text-slate-700">
+                  MH L2
+                </label>
+
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  className="mt-1 text-xs"
+                  value={editMhL2}
+                  onChange={e =>
+                    setEditMhL2(
+                      e.target.value
+                    )
+                  }
+                />
+
+              </div>
+
+              {/* Pass */}
+
+              <div>
+
+                <label className="font-semibold text-slate-700">
+                  Pass
+                </label>
+
+                <Select
+                  className="mt-1 text-xs"
+                  value={
+                    editPassRequired
+                  }
+                  onChange={e =>
+                    setEditPassRequired(
+                      e.target.value
+                    )
+                  }
+                >
+
+                  <option value="1">
+                    1
+                  </option>
+
+                  <option value="2">
+                    2
+                  </option>
+
+                  <option value="3">
+                    3
+                  </option>
+
+                </Select>
+
+              </div>
+
+              {/* Multiple */}
+
+              <div>
+
+                <label className="font-semibold text-slate-700">
+                  Multiple
+                </label>
+
                 <Input
                   type="number"
                   min="0.001"
                   step="0.001"
                   className="mt-1 text-xs"
-                  value={editMultiple}
-                  onChange={e => setEditMultiple(e.target.value)}
+                  value={
+                    editMultiple
+                  }
+                  onChange={e =>
+                    setEditMultiple(
+                      e.target.value
+                    )
+                  }
                 />
+
               </div>
+
             </div>
 
             <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-3">
+
               <button
                 type="button"
-                onClick={() => setEditing(null)}
+                onClick={() =>
+                  setEditing(null)
+                }
                 className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
+
               <Button
-                disabled={editSaving}
-                onClick={() => void saveEdit()}
+                disabled={
+                  editSaving
+                }
+                onClick={() =>
+                  void saveEdit()
+                }
                 className="bg-slate-900 text-white hover:bg-slate-800"
               >
-                {editSaving ? 'Saving…' : 'Save Changes'}
+                {editSaving
+                  ? 'Saving…'
+                  : 'Save Changes'}
               </Button>
+
             </div>
+
           </div>
+
         </div>
+
       )}
+
     </div>
   );
 }
