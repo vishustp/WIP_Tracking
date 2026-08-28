@@ -21,8 +21,6 @@ type WO = {
   grade: string | null;
   size_od: number | null;
   size_wt: number | null;
-  od?: number | null;
-  wt?: number | null;
   l1: number | null;
   l2: number | null;
   ordered_qty: number;
@@ -45,9 +43,6 @@ type Plan = {
   customer_name: string | null;
   grade: string | null;
 
-  size_od?: number | null;
-  size_wt?: number | null;
-
   od: number | null;
   wt: number | null;
   l1: number | null;
@@ -59,7 +54,6 @@ type Plan = {
   route_name: string;
 
   planned_rolling_date: string;
-
   planned_mtr: number;
   planned_pcs: number;
   planned_mt: number;
@@ -68,8 +62,8 @@ type Plan = {
   mh_wt: number | null;
   mh_l1: number | null;
   mh_l2: number | null;
-  pass_required: number;
 
+  pass_required: number;
   multiple: number;
 
   status: string;
@@ -85,7 +79,10 @@ const fmt = (n: number | null | undefined) =>
         maximumFractionDigits: 3,
       });
 
-const calc = (wo: WO | Plan | null, pcs: number) => {
+const calc = (
+  wo: WO | Plan | null,
+  pcs: number
+) => {
   if (!wo) {
     return {
       avg: 0,
@@ -101,10 +98,10 @@ const calc = (wo: WO | Plan | null, pcs: number) => {
     l1 > 0 && l2 > 0
       ? (l1 + l2) / 2
       : l1 > 0
-        ? l1
-        : l2 > 0
-          ? l2
-          : 0;
+      ? l1
+      : l2 > 0
+      ? l2
+      : 0;
 
   const mtr = pcs * avg;
 
@@ -136,83 +133,55 @@ const calc = (wo: WO | Plan | null, pcs: number) => {
 
 export default function RollingPlanForm() {
   const searchParams = useSearchParams();
-
-  const initialWoId =
-    searchParams?.get('wo') || '';
+  const initialWoId = searchParams?.get('wo') || '';
 
   const [wos, setWos] = useState<WO[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
 
   const [wo, setWo] = useState(initialWoId);
   const [qtyPcs, setQtyPcs] = useState('');
-
   const [route, setRoute] = useState('');
-
   const [date, setDate] = useState(
     new Date().toISOString().slice(0, 10)
   );
 
-  /* Mother Hollow fields */
   const [mhOd, setMhOd] = useState('');
   const [mhWt, setMhWt] = useState('');
   const [mhL1, setMhL1] = useState('');
   const [mhL2, setMhL2] = useState('');
 
-  /* Pass */
-  const [passRequired, setPassRequired] =
-    useState('1');
-
-  /* Multiple */
-  const [multiple, setMultiple] =
-    useState('1');
+  const [passRequired, setPassRequired] = useState('1');
+  const [multiple, setMultiple] = useState('1');
 
   const [availableMtr, setAvailableMtr] =
     useState<number | null>(null);
 
-  const [loading, setLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
 
-  /* Plans */
-  const [plans, setPlans] =
-    useState<Plan[]>([]);
-
-  const [search, setSearch] =
-    useState('');
-
-  const [filterRoute, setFilterRoute] =
-    useState('');
-
-  const [fromDate, setFromDate] =
-    useState('');
-
-  const [toDate, setToDate] =
-    useState('');
-
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [search, setSearch] = useState('');
+  const [filterRoute, setFilterRoute] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [plansLoading, setPlansLoading] =
     useState(false);
 
-  /* Edit */
   const [editing, setEditing] =
     useState<Plan | null>(null);
 
   const [editQtyPcs, setEditQtyPcs] =
     useState('');
-
   const [editDate, setEditDate] =
     useState('');
-
   const [editRoute, setEditRoute] =
     useState('');
 
   const [editMhOd, setEditMhOd] =
     useState('');
-
   const [editMhWt, setEditMhWt] =
     useState('');
-
   const [editMhL1, setEditMhL1] =
     useState('');
-
   const [editMhL2, setEditMhL2] =
     useState('');
 
@@ -225,39 +194,27 @@ export default function RollingPlanForm() {
   const [editSaving, setEditSaving] =
     useState(false);
 
-  /* --------------------------------------------------
-     Load plans
-  -------------------------------------------------- */
-
   const loadPlans = useCallback(async () => {
     setPlansLoading(true);
 
     const s = createClient();
 
-    const { data, error } =
-      await s.rpc('get_rolling_plans', {
-        p_search:
-          search.trim() || null,
-
-        p_route_code:
-          filterRoute || null,
-
-        p_from_date:
-          fromDate || null,
-
-        p_to_date:
-          toDate || null,
-
+    const { data, error } = await s.rpc(
+      'get_rolling_plans',
+      {
+        p_search: search.trim() || null,
+        p_route_code: filterRoute || null,
+        p_from_date: fromDate || null,
+        p_to_date: toDate || null,
         p_limit: 2000,
         p_offset: 0,
-      });
+      }
+    );
 
     if (error) {
       toast.error(error.message);
     } else {
-      setPlans(
-        (data ?? []) as Plan[]
-      );
+      setPlans((data ?? []) as Plan[]);
     }
 
     setPlansLoading(false);
@@ -268,9 +225,29 @@ export default function RollingPlanForm() {
     toDate,
   ]);
 
-  /* --------------------------------------------------
-     Load work orders + routes
-  -------------------------------------------------- */
+  const lookup = async (id: string) => {
+    setWo(id);
+    setQtyPcs('');
+
+    if (!id) {
+      setAvailableMtr(null);
+      return;
+    }
+
+    const { data, error } =
+      await createClient().rpc(
+        'get_unplanned_qty',
+        {
+          p_work_order_id: id,
+        }
+      );
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      setAvailableMtr(Number(data ?? 0));
+    }
+  };
 
   useEffect(() => {
     const s = createClient();
@@ -294,12 +271,11 @@ export default function RollingPlanForm() {
       if (a.error) {
         toast.error(a.error.message);
       } else {
-        setWos(
-          (a.data ?? []) as WO[]
-        );
+        const woList = (a.data ?? []) as WO[];
+        setWos(woList);
 
         if (initialWoId) {
-          lookup(initialWoId);
+          void lookup(initialWoId);
         }
       }
 
@@ -321,23 +297,13 @@ export default function RollingPlanForm() {
     });
   }, [initialWoId]);
 
-  /* --------------------------------------------------
-     Load plans
-  -------------------------------------------------- */
-
   useEffect(() => {
     void loadPlans();
   }, [loadPlans]);
 
-  /* --------------------------------------------------
-     Selected WO
-  -------------------------------------------------- */
-
   const selected = useMemo(
     () =>
-      wos.find(
-        x => x.id === wo
-      ),
+      wos.find((x) => x.id === wo),
     [wos, wo]
   );
 
@@ -350,42 +316,6 @@ export default function RollingPlanForm() {
     [selected, qtyPcs]
   );
 
-  /* --------------------------------------------------
-     Work order lookup
-  -------------------------------------------------- */
-
-  const lookup = async (id: string) => {
-    setWo(id);
-    setQtyPcs('');
-
-    if (!id) {
-      setAvailableMtr(null);
-      return;
-    }
-
-    const {
-      data,
-      error,
-    } = await createClient().rpc(
-      'get_unplanned_qty',
-      {
-        p_work_order_id: id,
-      }
-    );
-
-    if (error) {
-      toast.error(error.message);
-    } else {
-      setAvailableMtr(
-        Number(data ?? 0)
-      );
-    }
-  };
-
-  /* --------------------------------------------------
-     Allocation
-  -------------------------------------------------- */
-
   const allocation = useMemo(() => {
     if (
       !selected ||
@@ -394,17 +324,15 @@ export default function RollingPlanForm() {
       return null;
     }
 
-    const totalOrderMtr =
-      Number(
-        selected.balance_qty_mtr ||
-          selected.ordered_qty ||
-          0
-      );
+    const totalOrderMtr = Number(
+      selected.balance_qty_mtr ||
+        selected.ordered_qty ||
+        0
+    );
 
     const plannedSoFar = Math.max(
       0,
-      totalOrderMtr -
-        availableMtr
+      totalOrderMtr - availableMtr
     );
 
     const newlyPlannedMtr =
@@ -413,8 +341,7 @@ export default function RollingPlanForm() {
     const remainingUnplanned =
       Math.max(
         0,
-        availableMtr -
-          newlyPlannedMtr
+        availableMtr - newlyPlannedMtr
       );
 
     const plannedPct = Math.min(
@@ -431,13 +358,12 @@ export default function RollingPlanForm() {
         100
     );
 
-    const remainingPct =
-      Math.max(
-        0,
-        100 -
-          plannedPct -
-          newPct
-      );
+    const remainingPct = Math.max(
+      0,
+      100 -
+        plannedPct -
+        newPct
+    );
 
     return {
       totalOrderMtr,
@@ -454,31 +380,88 @@ export default function RollingPlanForm() {
     derived.mtr,
   ]);
 
-  /* --------------------------------------------------
-     Create rolling plan
-  -------------------------------------------------- */
-
   async function submit(
     e: React.FormEvent
   ) {
     e.preventDefault();
 
     if (!wo || !route) {
-      return toast.error(
-        'Select Work Order and route'
+      toast.error(
+        'Select Work Order and Route.'
       );
+      return;
     }
 
-    const pcs =
-      Number(qtyPcs);
+    const pcs = Number(qtyPcs);
 
     if (
       !Number.isFinite(pcs) ||
       pcs <= 0
     ) {
-      return toast.error(
+      toast.error(
         'Enter a valid Planned PCS.'
       );
+      return;
+    }
+
+    const mhOdValue = Number(mhOd);
+    const mhWtValue = Number(mhWt);
+    const mhL1Value = Number(mhL1);
+    const mhL2Value = Number(mhL2);
+
+    if (
+      !Number.isFinite(mhOdValue) ||
+      mhOdValue <= 0
+    ) {
+      toast.error('Enter MH OD.');
+      return;
+    }
+
+    if (
+      !Number.isFinite(mhWtValue) ||
+      mhWtValue <= 0
+    ) {
+      toast.error('Enter MH WT.');
+      return;
+    }
+
+    if (
+      !Number.isFinite(mhL1Value) ||
+      mhL1Value <= 0
+    ) {
+      toast.error('Enter MH L1.');
+      return;
+    }
+
+    if (
+      !Number.isFinite(mhL2Value) ||
+      mhL2Value <= 0
+    ) {
+      toast.error('Enter MH L2.');
+      return;
+    }
+
+    const pass = Number(
+      passRequired
+    );
+
+    if (![1, 2, 3].includes(pass)) {
+      toast.error(
+        'Pass must be 1, 2 or 3.'
+      );
+      return;
+    }
+
+    const mult = Number(multiple);
+
+    if (
+      !Number.isFinite(mult) ||
+      mult <= 0
+    ) {
+      toast.error(
+        'Multiple must be positive.'
+      );
+      return;
     }
 
     const d = calc(
@@ -490,170 +473,74 @@ export default function RollingPlanForm() {
       availableMtr !== null &&
       d.mtr > availableMtr
     ) {
-      return toast.error(
+      toast.error(
         `Calculated MTR ${fmt(
           d.mtr
         )} exceeds available ${fmt(
           availableMtr
         )} MTR`
       );
-    }
-
-    const mhOdValue =
-      Number(mhOd);
-
-    const mhWtValue =
-      Number(mhWt);
-
-    const mhL1Value =
-      Number(mhL1);
-
-    const mhL2Value =
-      Number(mhL2);
-
-    const passValue =
-      Number(passRequired);
-
-    const multipleValue =
-      Number(multiple);
-
-    if (
-      !Number.isFinite(mhOdValue) ||
-      mhOdValue <= 0
-    ) {
-      return toast.error(
-        'Enter valid MH OD.'
-      );
-    }
-
-    if (
-      !Number.isFinite(mhWtValue) ||
-      mhWtValue <= 0
-    ) {
-      return toast.error(
-        'Enter valid MH WT.'
-      );
-    }
-
-    if (
-      !Number.isFinite(mhL1Value) ||
-      mhL1Value <= 0
-    ) {
-      return toast.error(
-        'Enter valid MH L1.'
-      );
-    }
-
-    if (
-      !Number.isFinite(mhL2Value) ||
-      mhL2Value <= 0
-    ) {
-      return toast.error(
-        'Enter valid MH L2.'
-      );
-    }
-
-    if (
-      ![1, 2, 3].includes(
-        passValue
-      )
-    ) {
-      return toast.error(
-        'Pass Required must be 1, 2 or 3.'
-      );
-    }
-
-    if (
-      !Number.isFinite(
-        multipleValue
-      ) ||
-      multipleValue <= 0
-    ) {
-      return toast.error(
-        'Multiple must be positive.'
-      );
+      return;
     }
 
     setLoading(true);
 
-    const {
-      data,
-      error,
-    } = await createClient().rpc(
-      'create_rolling_plan',
-      {
-        p_work_order_id: wo,
+    const { data, error } =
+      await createClient().rpc(
+        'create_rolling_plan',
+        {
+          p_work_order_id: wo,
+          p_planned_qty: d.mtr,
+          p_rolling_date: date,
+          p_route_id: route,
 
-        p_planned_qty: d.mtr,
+          p_mh_od: mhOdValue,
+          p_mh_wt: mhWtValue,
+          p_mh_l1: mhL1Value,
+          p_mh_l2: mhL2Value,
 
-        p_rolling_date: date,
-
-        p_route_id: route,
-
-        p_mh_od: mhOdValue,
-
-        p_mh_wt: mhWtValue,
-
-        p_mh_l1: mhL1Value,
-
-        p_mh_l2: mhL2Value,
-
-        p_pass_required:
-          passValue,
-
-        p_multiple:
-          multipleValue,
-      }
-    );
+          p_pass_required: pass,
+          p_multiple: mult,
+        }
+      );
 
     setLoading(false);
 
     if (error) {
       toast.error(error.message);
-    } else {
-      toast.success(
-        `Rolling plan ${data} created for ${fmt(
-          pcs
-        )} PCS (${fmt(
-          d.mtr
-        )} MTR)`
-      );
-
-      setQtyPcs('');
-
-      setMhOd('');
-      setMhWt('');
-      setMhL1('');
-      setMhL2('');
-
-      setPassRequired('1');
-      setMultiple('1');
-
-      await Promise.all([
-        lookup(wo),
-        loadPlans(),
-      ]);
+      return;
     }
+
+    toast.success(
+      `Rolling plan ${data} created.`
+    );
+
+    setQtyPcs('');
+
+    setMhOd('');
+    setMhWt('');
+    setMhL1('');
+    setMhL2('');
+
+    setPassRequired('1');
+    setMultiple('1');
+
+    await Promise.all([
+      lookup(wo),
+      loadPlans(),
+    ]);
   }
 
-  /* --------------------------------------------------
-     Start edit
-  -------------------------------------------------- */
-
-  function startEdit(
-    p: Plan
-  ) {
+  function startEdit(p: Plan) {
     setEditing(p);
 
     setEditQtyPcs(
       String(
         p.planned_pcs ||
-          (
-            (p.avg_length || 0) > 0
-              ? p.planned_mtr /
-                (p.avg_length || 1)
-              : 0
-          )
+          ((p.avg_length || 0) > 0
+            ? p.planned_mtr /
+              (p.avg_length || 1)
+            : 0)
       )
     );
 
@@ -661,64 +548,57 @@ export default function RollingPlanForm() {
       p.planned_rolling_date
     );
 
-    setEditRoute(
-      p.route_id
-    );
+    setEditRoute(p.route_id);
 
     setEditMhOd(
-      String(p.mh_od ?? '')
+      p.mh_od != null
+        ? String(p.mh_od)
+        : ''
     );
 
     setEditMhWt(
-      String(p.mh_wt ?? '')
+      p.mh_wt != null
+        ? String(p.mh_wt)
+        : ''
     );
 
     setEditMhL1(
-      String(p.mh_l1 ?? '')
+      p.mh_l1 != null
+        ? String(p.mh_l1)
+        : ''
     );
 
     setEditMhL2(
-      String(p.mh_l2 ?? '')
+      p.mh_l2 != null
+        ? String(p.mh_l2)
+        : ''
     );
 
     setEditPassRequired(
-      String(
-        p.pass_required ?? 1
-      )
+      String(p.pass_required ?? 1)
     );
 
     setEditMultiple(
-      String(
-        p.multiple ?? 1
-      )
+      String(p.multiple ?? 1)
     );
   }
 
-  /* --------------------------------------------------
-     Save edit
-  -------------------------------------------------- */
-
   async function saveEdit() {
-    if (!editing) {
-      return;
-    }
+    if (!editing) return;
 
-    const pcs =
-      Number(editQtyPcs);
+    const pcs = Number(
+      editQtyPcs
+    );
 
     if (
       !Number.isFinite(pcs) ||
       pcs <= 0
     ) {
-      return toast.error(
+      toast.error(
         'Enter a valid Planned PCS.'
       );
+      return;
     }
-
-    const d = calc(
-      editing,
-      pcs
-    );
 
     const mhOdValue =
       Number(editMhOd);
@@ -732,124 +612,104 @@ export default function RollingPlanForm() {
     const mhL2Value =
       Number(editMhL2);
 
-    const passValue =
-      Number(editPassRequired);
-
-    const mult =
-      Number(editMultiple);
-
     if (
       !Number.isFinite(mhOdValue) ||
       mhOdValue <= 0
     ) {
-      return toast.error(
-        'Enter valid MH OD.'
-      );
+      toast.error('Enter MH OD.');
+      return;
     }
 
     if (
       !Number.isFinite(mhWtValue) ||
       mhWtValue <= 0
     ) {
-      return toast.error(
-        'Enter valid MH WT.'
-      );
+      toast.error('Enter MH WT.');
+      return;
     }
 
     if (
       !Number.isFinite(mhL1Value) ||
       mhL1Value <= 0
     ) {
-      return toast.error(
-        'Enter valid MH L1.'
-      );
+      toast.error('Enter MH L1.');
+      return;
     }
 
     if (
       !Number.isFinite(mhL2Value) ||
       mhL2Value <= 0
     ) {
-      return toast.error(
-        'Enter valid MH L2.'
-      );
+      toast.error('Enter MH L2.');
+      return;
     }
 
-    if (
-      ![1, 2, 3].includes(
-        passValue
-      )
-    ) {
-      return toast.error(
-        'Pass Required must be 1, 2 or 3.'
+    const pass = Number(
+      editPassRequired
+    );
+
+    if (![1, 2, 3].includes(pass)) {
+      toast.error(
+        'Pass must be 1, 2 or 3.'
       );
+      return;
     }
+
+    const mult = Number(
+      editMultiple
+    );
 
     if (
       !Number.isFinite(mult) ||
       mult <= 0
     ) {
-      return toast.error(
+      toast.error(
         'Multiple must be positive.'
       );
+      return;
     }
+
+    const d = calc(
+      editing,
+      pcs
+    );
 
     setEditSaving(true);
 
-    const {
-      error,
-    } = await createClient().rpc(
-      'update_rolling_plan',
-      {
-        p_plan_id: editing.id,
+    const { error } =
+      await createClient().rpc(
+        'update_rolling_plan',
+        {
+          p_plan_id: editing.id,
+          p_planned_qty: d.mtr,
+          p_rolling_date: editDate,
+          p_route_id: editRoute,
 
-        p_planned_qty: d.mtr,
+          p_mh_od: mhOdValue,
+          p_mh_wt: mhWtValue,
+          p_mh_l1: mhL1Value,
+          p_mh_l2: mhL2Value,
 
-        p_rolling_date:
-          editDate,
-
-        p_route_id:
-          editRoute,
-
-        p_mh_od:
-          mhOdValue,
-
-        p_mh_wt:
-          mhWtValue,
-
-        p_mh_l1:
-          mhL1Value,
-
-        p_mh_l2:
-          mhL2Value,
-
-        p_pass_required:
-          passValue,
-
-        p_multiple:
-          mult,
-      }
-    );
+          p_pass_required: pass,
+          p_multiple: mult,
+        }
+      );
 
     setEditSaving(false);
 
     if (error) {
-      toast.error(
-        error.message
-      );
-    } else {
-      toast.success(
-        'Rolling plan updated successfully.'
-      );
-
-      setEditing(null);
-
-      await loadPlans();
+      toast.error(error.message);
+      return;
     }
-  }
 
-  /* --------------------------------------------------
-     Delete
-  -------------------------------------------------- */
+    toast.success(
+      'Rolling plan updated successfully.'
+    );
+
+    setEditing(null);
+
+    await loadPlans();
+  }
 
   async function removePlan(
     p: Plan
@@ -862,19 +722,16 @@ export default function RollingPlanForm() {
       return;
     }
 
-    const {
-      error,
-    } = await createClient().rpc(
-      'delete_rolling_plan',
-      {
-        p_plan_id: p.id,
-      }
-    );
+    const { error } =
+      await createClient().rpc(
+        'delete_rolling_plan',
+        {
+          p_plan_id: p.id,
+        }
+      );
 
     if (error) {
-      toast.error(
-        error.message
-      );
+      toast.error(error.message);
     } else {
       toast.success(
         'Rolling plan deleted successfully.'
@@ -884,32 +741,28 @@ export default function RollingPlanForm() {
     }
   }
 
-  const routesInPlans =
-    useMemo(
-      () =>
-        Array.from(
-          new Set(
-            plans.map(
-              p => p.route_code
-            )
+  const routesInPlans = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          plans.map(
+            (p) => p.route_code
           )
-        ).sort(),
-      [plans]
-    );
+        )
+      ).sort(),
+    [plans]
+  );
 
   return (
     <div className="space-y-6">
 
-      {/* ==================================================
-          ROLLING PLAN FORM
-      ================================================== */}
+      {/* Issue Rolling Plan */}
 
       <form
         onSubmit={submit}
-        className="space-y-5 rounded-xl border border-slate-200/90 bg-white p-6 shadow-sm"
+        className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
       >
-
-        <div>
+        <div className="mb-5">
           <h1 className="text-xl font-bold text-slate-900">
             Issue Rolling Plan
           </h1>
@@ -926,7 +779,7 @@ export default function RollingPlanForm() {
 
             <Select
               value={wo}
-              onChange={e =>
+              onChange={(e) =>
                 void lookup(
                   e.target.value
                 )
@@ -937,17 +790,17 @@ export default function RollingPlanForm() {
                 Select Work Order
               </option>
 
-              {wos.map(x => (
+              {wos.map((x) => (
                 <option
                   key={x.id}
                   value={x.id}
                 >
                   {x.work_order_no} ·{' '}
                   {x.customer_name ||
-                    'No Customer'} ·{' '}
-                  {x.size_od}×
-                  {x.size_wt}mm (
-                  {x.grade})
+                    'No Customer'}{' '}
+                  · {x.size_od}×
+                  {x.size_wt}mm ·{' '}
+                  {x.grade}
                 </option>
               ))}
             </Select>
@@ -962,7 +815,7 @@ export default function RollingPlanForm() {
 
             <Select
               value={route}
-              onChange={e =>
+              onChange={(e) =>
                 setRoute(
                   e.target.value
                 )
@@ -973,163 +826,20 @@ export default function RollingPlanForm() {
                 Select Route
               </option>
 
-              {routes.map(r => (
+              {routes.map((r) => (
                 <option
                   key={r.id}
                   value={r.id}
                 >
                   {r.route_code} —{' '}
-                  {r.route_name} (
-                  {
-                    r.material_category
-                  }
-                  )
+                  {r.route_name}
+                  {' ('}
+                  {r.material_category}
+                  {')'}
                 </option>
               ))}
             </Select>
           </div>
-
-          {/* Allocation */}
-
-          {allocation && (
-            <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
-
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-800">
-                  Order Allocation
-                </span>
-
-                <span className="font-mono text-slate-500">
-                  Total:{' '}
-                  {fmt(
-                    allocation.totalOrderMtr
-                  )}{' '}
-                  MTR
-                </span>
-              </div>
-
-              <div className="mt-2 flex h-3 w-full overflow-hidden rounded-full bg-slate-200">
-
-                <div
-                  className="bg-blue-600"
-                  style={{
-                    width: `${allocation.plannedPct}%`,
-                  }}
-                />
-
-                <div
-                  className="bg-emerald-500"
-                  style={{
-                    width: `${allocation.newPct}%`,
-                  }}
-                />
-
-                <div
-                  className="bg-slate-300"
-                  style={{
-                    width: `${allocation.remainingPct}%`,
-                  }}
-                />
-
-              </div>
-
-              <div className="mt-2 flex flex-wrap gap-4 text-[11px]">
-
-                <span>
-                  Prev Planned:{' '}
-                  <b>
-                    {fmt(
-                      allocation.plannedSoFar
-                    )}{' '}
-                    MTR
-                  </b>
-                </span>
-
-                <span>
-                  This Batch:{' '}
-                  <b>
-                    {fmt(
-                      allocation.newlyPlannedMtr
-                    )}{' '}
-                    MTR
-                  </b>
-                </span>
-
-                <span>
-                  Remaining:{' '}
-                  <b>
-                    {fmt(
-                      allocation.remainingUnplanned
-                    )}{' '}
-                    MTR
-                  </b>
-                </span>
-
-              </div>
-            </div>
-          )}
-
-          {/* Summary */}
-
-          {selected && (
-            <div className="md:col-span-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
-
-              <div className="rounded-lg border p-3">
-                <div className="text-xs text-slate-500">
-                  Average Length
-                </div>
-
-                <div className="mt-0.5 text-base font-bold">
-                  {fmt(
-                    derived.avg
-                  )}{' '}
-                  m
-                </div>
-              </div>
-
-              <div className="rounded-lg border p-3">
-                <div className="text-xs text-slate-500">
-                  Planned PCS
-                </div>
-
-                <div className="mt-0.5 text-base font-bold">
-                  {fmt(
-                    Number(
-                      qtyPcs || 0
-                    )
-                  )}{' '}
-                  PCS
-                </div>
-              </div>
-
-              <div className="rounded-lg border p-3">
-                <div className="text-xs text-slate-500">
-                  Planned MTR
-                </div>
-
-                <div className="mt-0.5 text-base font-bold">
-                  {fmt(
-                    derived.mtr
-                  )}{' '}
-                  MTR
-                </div>
-              </div>
-
-              <div className="rounded-lg border p-3">
-                <div className="text-xs text-slate-500">
-                  Planned MT
-                </div>
-
-                <div className="mt-0.5 text-base font-bold">
-                  {fmt(
-                    derived.mt
-                  )}{' '}
-                  MT
-                </div>
-              </div>
-
-            </div>
-          )}
 
           {/* Planned PCS */}
 
@@ -1153,7 +863,7 @@ export default function RollingPlanForm() {
                   : undefined
               }
               value={qtyPcs}
-              onChange={e =>
+              onChange={(e) =>
                 setQtyPcs(
                   e.target.value
                 )
@@ -1172,7 +882,7 @@ export default function RollingPlanForm() {
             <Input
               type="date"
               value={date}
-              onChange={e =>
+              onChange={(e) =>
                 setDate(
                   e.target.value
                 )
@@ -1190,10 +900,10 @@ export default function RollingPlanForm() {
 
             <Input
               type="number"
-              step="any"
               min="0"
+              step="0.001"
               value={mhOd}
-              onChange={e =>
+              onChange={(e) =>
                 setMhOd(
                   e.target.value
                 )
@@ -1211,10 +921,10 @@ export default function RollingPlanForm() {
 
             <Input
               type="number"
-              step="any"
               min="0"
+              step="0.001"
               value={mhWt}
-              onChange={e =>
+              onChange={(e) =>
                 setMhWt(
                   e.target.value
                 )
@@ -1232,10 +942,10 @@ export default function RollingPlanForm() {
 
             <Input
               type="number"
-              step="any"
               min="0"
+              step="0.001"
               value={mhL1}
-              onChange={e =>
+              onChange={(e) =>
                 setMhL1(
                   e.target.value
                 )
@@ -1253,10 +963,10 @@ export default function RollingPlanForm() {
 
             <Input
               type="number"
-              step="any"
               min="0"
+              step="0.001"
               value={mhL2}
-              onChange={e =>
+              onChange={(e) =>
                 setMhL2(
                   e.target.value
                 )
@@ -1274,7 +984,7 @@ export default function RollingPlanForm() {
 
             <Select
               value={passRequired}
-              onChange={e =>
+              onChange={(e) =>
                 setPassRequired(
                   e.target.value
                 )
@@ -1307,7 +1017,7 @@ export default function RollingPlanForm() {
               min="0.001"
               step="0.001"
               value={multiple}
-              onChange={e =>
+              onChange={(e) =>
                 setMultiple(
                   e.target.value
                 )
@@ -1316,38 +1026,162 @@ export default function RollingPlanForm() {
             />
           </div>
 
+          {/* Allocation */}
+
+          {allocation && (
+            <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+
+              <div className="mb-2 flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-800">
+                  Order Allocation
+                </span>
+
+                <span className="font-mono text-slate-500">
+                  {fmt(
+                    allocation.totalOrderMtr
+                  )}{' '}
+                  MTR
+                </span>
+              </div>
+
+              <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="bg-blue-600"
+                  style={{
+                    width: `${allocation.plannedPct}%`,
+                  }}
+                />
+
+                <div
+                  className="bg-emerald-500"
+                  style={{
+                    width: `${allocation.newPct}%`,
+                  }}
+                />
+
+                <div
+                  className="bg-slate-300"
+                  style={{
+                    width: `${allocation.remainingPct}%`,
+                  }}
+                />
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-slate-600">
+                <span>
+                  Prev: <b>
+                    {fmt(
+                      allocation.plannedSoFar
+                    )}
+                  </b>{' '}
+                  MTR
+                </span>
+
+                <span>
+                  This Plan: <b>
+                    {fmt(
+                      allocation.newlyPlannedMtr
+                    )}
+                  </b>{' '}
+                  MTR
+                </span>
+
+                <span>
+                  Remaining: <b>
+                    {fmt(
+                      allocation.remainingUnplanned
+                    )}
+                  </b>{' '}
+                  MTR
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Calculated values */}
+
+          {selected && (
+            <div className="md:col-span-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="text-xs text-slate-500">
+                  Avg Length
+                </div>
+
+                <div className="mt-1 font-bold">
+                  {fmt(
+                    derived.avg
+                  )}{' '}
+                  m
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="text-xs text-slate-500">
+                  Planned PCS
+                </div>
+
+                <div className="mt-1 font-bold">
+                  {fmt(
+                    Number(
+                      qtyPcs || 0
+                    )
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="text-xs text-slate-500">
+                  Planned MTR
+                </div>
+
+                <div className="mt-1 font-bold text-blue-600">
+                  {fmt(
+                    derived.mtr
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 p-3">
+                <div className="text-xs text-slate-500">
+                  Planned MT
+                </div>
+
+                <div className="mt-1 font-bold text-emerald-600">
+                  {fmt(
+                    derived.mt
+                  )}
+                </div>
+              </div>
+
+            </div>
+          )}
         </div>
 
-        <div className="flex justify-end border-t border-slate-100 pt-3">
-
+        <div className="mt-5 flex justify-end border-t border-slate-100 pt-4">
           <Button
+            type="submit"
             disabled={loading}
             className="bg-slate-900 text-white hover:bg-slate-800"
           >
             {loading
-              ? 'Creating Plan…'
+              ? 'Creating…'
               : 'Issue Rolling Plan'}
           </Button>
-
         </div>
-
       </form>
 
-      {/* ==================================================
-          PLAN HISTORY
-      ================================================== */}
+      {/* Issued Plans */}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
 
         <div className="border-b border-slate-100 p-5">
 
           <div className="flex flex-wrap items-center justify-between gap-3">
 
-            <div>
-              <h2 className="text-base font-bold text-slate-900">
-                Issued Rolling Plans
-              </h2>
-            </div>
+            <h2 className="text-base font-bold text-slate-900">
+              Issued Rolling Plans
+            </h2>
 
             <button
               type="button"
@@ -1355,7 +1189,7 @@ export default function RollingPlanForm() {
                 void loadPlans()
               }
               disabled={plansLoading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
               <RefreshCw
                 className={`h-3.5 w-3.5 ${
@@ -1367,32 +1201,29 @@ export default function RollingPlanForm() {
 
               Refresh
             </button>
-
           </div>
 
-          <div className="mt-3.5 grid gap-2.5 md:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-3 grid gap-2.5 md:grid-cols-2 lg:grid-cols-4">
 
             <div className="relative">
-
               <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
 
               <Input
                 className="h-9 pl-8 text-xs"
                 placeholder="Search Plan / WO / Customer / Grade"
                 value={search}
-                onChange={e =>
+                onChange={(e) =>
                   setSearch(
                     e.target.value
                   )
                 }
               />
-
             </div>
 
             <Select
               className="h-9 text-xs"
               value={filterRoute}
-              onChange={e =>
+              onChange={(e) =>
                 setFilterRoute(
                   e.target.value
                 )
@@ -1403,7 +1234,7 @@ export default function RollingPlanForm() {
               </option>
 
               {routesInPlans.map(
-                r => (
+                (r) => (
                   <option
                     key={r}
                     value={r}
@@ -1418,7 +1249,7 @@ export default function RollingPlanForm() {
               className="h-9 text-xs"
               type="date"
               value={fromDate}
-              onChange={e =>
+              onChange={(e) =>
                 setFromDate(
                   e.target.value
                 )
@@ -1429,24 +1260,22 @@ export default function RollingPlanForm() {
               className="h-9 text-xs"
               type="date"
               value={toDate}
-              onChange={e =>
+              onChange={(e) =>
                 setToDate(
                   e.target.value
                 )
               }
             />
-
           </div>
         </div>
 
         <div className="overflow-x-auto">
 
-          <table className="min-w-[2100px] w-full text-xs">
+          <table className="min-w-[1900px] w-full text-xs">
 
             <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
 
               <tr>
-
                 {[
                   'Plan No',
                   'Date',
@@ -1470,7 +1299,7 @@ export default function RollingPlanForm() {
                   'Multiple',
                   'Status',
                   'Actions',
-                ].map(h => (
+                ].map((h) => (
                   <th
                     key={h}
                     className="px-3 py-2.5 text-left font-semibold"
@@ -1478,7 +1307,6 @@ export default function RollingPlanForm() {
                     {h}
                   </th>
                 ))}
-
               </tr>
 
             </thead>
@@ -1486,18 +1314,15 @@ export default function RollingPlanForm() {
             <tbody className="divide-y divide-slate-100">
 
               {plansLoading ? (
-
                 <tr>
                   <td
                     colSpan={22}
                     className="p-8 text-center text-slate-400"
                   >
-                    Loading plans…
+                    Loading…
                   </td>
                 </tr>
-
               ) : plans.length === 0 ? (
-
                 <tr>
                   <td
                     colSpan={22}
@@ -1506,21 +1331,17 @@ export default function RollingPlanForm() {
                     No rolling plans found.
                   </td>
                 </tr>
-
               ) : (
-
-                plans.map(p => (
-
+                plans.map((p) => (
                   <tr
                     key={p.id}
                     className="hover:bg-slate-50/50"
                   >
-
                     <td className="px-3 py-2 font-bold">
                       {p.plan_no}
                     </td>
 
-                    <td className="px-3 py-2 font-mono text-slate-600">
+                    <td className="px-3 py-2 font-mono">
                       {p.planned_rolling_date}
                     </td>
 
@@ -1534,8 +1355,7 @@ export default function RollingPlanForm() {
                     </td>
 
                     <td className="max-w-[140px] truncate px-3 py-2">
-                      {p.grade ||
-                        '—'}
+                      {p.grade || '—'}
                     </td>
 
                     <td className="px-3 py-2 font-mono">
@@ -1561,7 +1381,7 @@ export default function RollingPlanForm() {
                     </td>
 
                     <td className="px-3 py-2">
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold">
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold">
                         {p.route_code}
                       </span>
                     </td>
@@ -1605,103 +1425,79 @@ export default function RollingPlanForm() {
                     </td>
 
                     <td className="px-3 py-2 font-mono">
-                      {fmt(
-                        p.multiple
-                      )}
+                      {fmt(p.multiple)}
                     </td>
 
                     <td className="px-3 py-2">
-
                       <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
                         {p.status}
                       </span>
-
                     </td>
 
                     <td className="px-2 py-1.5">
 
-                      <div className="flex gap-1.5">
+                      {p.can_modify ? (
+                        <div className="flex gap-1.5">
 
-                        {p.can_modify ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              startEdit(p)
+                            }
+                            className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium hover:bg-slate-50"
+                          >
+                            <Edit2 className="h-3 w-3" />
+                            Edit
+                          </button>
 
-                          <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void removePlan(
+                                p
+                              )
+                            }
+                            className="inline-flex items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Delete
+                          </button>
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                startEdit(p)
-                              }
-                              className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
-                            >
-                              <Edit2 className="h-3 w-3" />
-                              Edit
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void removePlan(
-                                  p
-                                )
-                              }
-                              className="inline-flex items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              Delete
-                            </button>
-
-                          </>
-
-                        ) : (
-
-                          <span className="text-[11px] text-slate-400">
-                            Locked
-                          </span>
-
-                        )}
-
-                      </div>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-400">
+                          Locked
+                        </span>
+                      )}
 
                     </td>
-
                   </tr>
-
                 ))
-
               )}
 
             </tbody>
-
           </table>
-
         </div>
-
       </section>
 
-      {/* ==================================================
-          EDIT MODAL
-      ================================================== */}
+      {/* Edit Modal */}
 
       {editing && (
-
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
 
           <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
 
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
 
               <div>
-
                 <h3 className="text-base font-bold text-slate-900">
                   Edit Rolling Plan{' '}
                   {editing.plan_no}
                 </h3>
 
-                <p className="text-xs text-slate-500">
-                  Work Order:{' '}
+                <div className="mt-0.5 text-xs text-slate-500">
                   {editing.work_order_no}
-                </p>
-
+                </div>
               </div>
 
               <button
@@ -1709,115 +1505,69 @@ export default function RollingPlanForm() {
                 onClick={() =>
                   setEditing(null)
                 }
-                className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs"
               >
                 Close
               </button>
 
             </div>
 
-            <div className="mt-4 grid gap-3.5 sm:grid-cols-2 text-xs">
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
 
               {/* PCS */}
 
               <div>
-
-                <label className="font-semibold text-slate-700">
-                  Planned PCS
+                <label className="mb-1 block text-xs font-semibold">
+                  Planned PCS *
                 </label>
 
                 <Input
                   type="number"
                   min="1"
                   step="1"
-                  className="mt-1 text-xs"
                   value={editQtyPcs}
-                  onChange={e =>
+                  onChange={(e) =>
                     setEditQtyPcs(
                       e.target.value
                     )
                   }
                 />
-
-              </div>
-
-              {/* Calculated */}
-
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-
-                <div className="text-slate-500">
-                  Calculated MTR / Weight
-                </div>
-
-                <div className="mt-0.5 text-sm font-bold text-slate-900">
-
-                  {fmt(
-                    calc(
-                      editing,
-                      Number(
-                        editQtyPcs ||
-                          0
-                      )
-                    ).mtr
-                  )}{' '}
-                  MTR ·{' '}
-
-                  {fmt(
-                    calc(
-                      editing,
-                      Number(
-                        editQtyPcs ||
-                          0
-                      )
-                    ).mt
-                  )}{' '}
-                  MT
-
-                </div>
-
               </div>
 
               {/* Date */}
 
               <div>
-
-                <label className="font-semibold text-slate-700">
-                  Rolling Date
+                <label className="mb-1 block text-xs font-semibold">
+                  Rolling Date *
                 </label>
 
                 <Input
                   type="date"
-                  className="mt-1 text-xs"
                   value={editDate}
-                  onChange={e =>
+                  onChange={(e) =>
                     setEditDate(
                       e.target.value
                     )
                   }
                 />
-
               </div>
 
               {/* Route */}
 
               <div>
-
-                <label className="font-semibold text-slate-700">
-                  Process Route
+                <label className="mb-1 block text-xs font-semibold">
+                  Process Route *
                 </label>
 
                 <Select
-                  className="mt-1 text-xs"
                   value={editRoute}
-                  onChange={e =>
+                  onChange={(e) =>
                     setEditRoute(
                       e.target.value
                     )
                   }
                 >
-
-                  {routes.map(r => (
-
+                  {routes.map((r) => (
                     <option
                       key={r.id}
                       value={r.id}
@@ -1825,125 +1575,27 @@ export default function RollingPlanForm() {
                       {r.route_code} —{' '}
                       {r.route_name}
                     </option>
-
                   ))}
-
                 </Select>
-
-              </div>
-
-              {/* MH OD */}
-
-              <div>
-
-                <label className="font-semibold text-slate-700">
-                  MH OD
-                </label>
-
-                <Input
-                  type="number"
-                  step="any"
-                  min="0"
-                  className="mt-1 text-xs"
-                  value={editMhOd}
-                  onChange={e =>
-                    setEditMhOd(
-                      e.target.value
-                    )
-                  }
-                />
-
-              </div>
-
-              {/* MH WT */}
-
-              <div>
-
-                <label className="font-semibold text-slate-700">
-                  MH WT
-                </label>
-
-                <Input
-                  type="number"
-                  step="any"
-                  min="0"
-                  className="mt-1 text-xs"
-                  value={editMhWt}
-                  onChange={e =>
-                    setEditMhWt(
-                      e.target.value
-                    )
-                  }
-                />
-
-              </div>
-
-              {/* MH L1 */}
-
-              <div>
-
-                <label className="font-semibold text-slate-700">
-                  MH L1
-                </label>
-
-                <Input
-                  type="number"
-                  step="any"
-                  min="0"
-                  className="mt-1 text-xs"
-                  value={editMhL1}
-                  onChange={e =>
-                    setEditMhL1(
-                      e.target.value
-                    )
-                  }
-                />
-
-              </div>
-
-              {/* MH L2 */}
-
-              <div>
-
-                <label className="font-semibold text-slate-700">
-                  MH L2
-                </label>
-
-                <Input
-                  type="number"
-                  step="any"
-                  min="0"
-                  className="mt-1 text-xs"
-                  value={editMhL2}
-                  onChange={e =>
-                    setEditMhL2(
-                      e.target.value
-                    )
-                  }
-                />
-
               </div>
 
               {/* Pass */}
 
               <div>
-
-                <label className="font-semibold text-slate-700">
-                  Pass
+                <label className="mb-1 block text-xs font-semibold">
+                  Pass *
                 </label>
 
                 <Select
-                  className="mt-1 text-xs"
                   value={
                     editPassRequired
                   }
-                  onChange={e =>
+                  onChange={(e) =>
                     setEditPassRequired(
                       e.target.value
                     )
                   }
                 >
-
                   <option value="1">
                     1
                   </option>
@@ -1955,54 +1607,157 @@ export default function RollingPlanForm() {
                   <option value="3">
                     3
                   </option>
-
                 </Select>
+              </div>
 
+              {/* MH OD */}
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold">
+                  MH OD *
+                </label>
+
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={editMhOd}
+                  onChange={(e) =>
+                    setEditMhOd(
+                      e.target.value
+                    )
+                  }
+                />
+              </div>
+
+              {/* MH WT */}
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold">
+                  MH WT *
+                </label>
+
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={editMhWt}
+                  onChange={(e) =>
+                    setEditMhWt(
+                      e.target.value
+                    )
+                  }
+                />
+              </div>
+
+              {/* MH L1 */}
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold">
+                  MH L1 *
+                </label>
+
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={editMhL1}
+                  onChange={(e) =>
+                    setEditMhL1(
+                      e.target.value
+                    )
+                  }
+                />
+              </div>
+
+              {/* MH L2 */}
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold">
+                  MH L2 *
+                </label>
+
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={editMhL2}
+                  onChange={(e) =>
+                    setEditMhL2(
+                      e.target.value
+                    )
+                  }
+                />
               </div>
 
               {/* Multiple */}
 
               <div>
-
-                <label className="font-semibold text-slate-700">
-                  Multiple
+                <label className="mb-1 block text-xs font-semibold">
+                  Multiple *
                 </label>
 
                 <Input
                   type="number"
                   min="0.001"
                   step="0.001"
-                  className="mt-1 text-xs"
-                  value={
-                    editMultiple
-                  }
-                  onChange={e =>
+                  value={editMultiple}
+                  onChange={(e) =>
                     setEditMultiple(
                       e.target.value
                     )
                   }
                 />
+              </div>
 
+              {/* Calculated */}
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="text-xs text-slate-500">
+                  Calculated MTR / MT
+                </div>
+
+                <div className="mt-1 font-bold">
+                  {fmt(
+                    calc(
+                      editing,
+                      Number(
+                        editQtyPcs ||
+                          0
+                      )
+                    ).mtr
+                  )}{' '}
+                  MTR ·{' '}
+                  {fmt(
+                    calc(
+                      editing,
+                      Number(
+                        editQtyPcs ||
+                          0
+                      )
+                    ).mt
+                  )}{' '}
+                  MT
+                </div>
               </div>
 
             </div>
 
-            <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-3">
+            <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4">
 
               <button
                 type="button"
                 onClick={() =>
                   setEditing(null)
                 }
-                className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium"
               >
                 Cancel
               </button>
 
               <Button
-                disabled={
-                  editSaving
-                }
+                type="button"
+                disabled={editSaving}
                 onClick={() =>
                   void saveEdit()
                 }
@@ -2016,11 +1771,8 @@ export default function RollingPlanForm() {
             </div>
 
           </div>
-
         </div>
-
       )}
-
     </div>
   );
 }
