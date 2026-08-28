@@ -39,7 +39,9 @@ type Row = {
   multiple: number | null;
   pcs: string;
   mtr: string;
+  rejection_pcs: string;
   rejection_mtr: string;
+  htc_ok_pcs: string;
   htc_ok_mtr: string;
   heat_lot_no: string;
   remarks: string;
@@ -126,8 +128,10 @@ export default function ProductionEntryGrid() {
   const [editPcs, setEditPcs] = useState<string>("");
   const [editMtr, setEditMtr] = useState<string>("");
   const [editDate, setEditDate] = useState<string>("");
-  const [editRejection, setEditRejection] = useState<string>("0");
-  const [editHtc, setEditHtc] = useState<string>("0");
+  const [editRejectionPcs, setEditRejectionPcs] = useState<string>("0");
+  const [editRejectionMtr, setEditRejectionMtr] = useState<string>("0");
+  const [editHtcPcs, setEditHtcPcs] = useState<string>("0");
+  const [editHtcMtr, setEditHtcMtr] = useState<string>("0");
   const [editHeatLot, setEditHeatLot] = useState<string>("");
   const [editRemarks, setEditRemarks] = useState<string>("");
   const [editSaving, setEditSaving] = useState<boolean>(false);
@@ -146,7 +150,9 @@ export default function ProductionEntryGrid() {
         ...r,
         pcs: "",
         mtr: "",
+        rejection_pcs: "",
         rejection_mtr: "0",
+        htc_ok_pcs: "",
         htc_ok_mtr: "0",
         heat_lot_no: "",
         remarks: "",
@@ -191,7 +197,7 @@ export default function ProductionEntryGrid() {
 
   const updateRow = (
     key: string,
-    field: keyof Pick<Row, "pcs" | "mtr" | "rejection_mtr" | "htc_ok_mtr" | "heat_lot_no" | "remarks">,
+    field: keyof Pick<Row, "pcs" | "mtr" | "rejection_pcs" | "rejection_mtr" | "htc_ok_pcs" | "htc_ok_mtr" | "heat_lot_no" | "remarks">,
     value: string
   ) => {
     setRows((current) =>
@@ -200,6 +206,12 @@ export default function ProductionEntryGrid() {
         if (field === "pcs") {
           return { ...r, pcs: value, mtr: value === "" ? "" : String(mtrFromPcs(n(value), n(r.avg_length))) };
         }
+        if (field === "rejection_pcs") {
+          return { ...r, rejection_pcs: value, rejection_mtr: value === "" ? "0" : String(mtrFromPcs(n(value), n(r.avg_length))) };
+        }
+        if (field === "htc_ok_pcs") {
+          return { ...r, htc_ok_pcs: value, htc_ok_mtr: value === "" ? "0" : String(mtrFromPcs(n(value), n(r.avg_length))) };
+        }
         return { ...r, [field]: value };
       })
     );
@@ -207,11 +219,25 @@ export default function ProductionEntryGrid() {
 
   const calc = (r: Row) => {
     const avg = n(r.avg_length);
-    const pcs = n(r.pcs);
-    const calculatedMtr = mtrFromPcs(pcs, avg);
-    const mtr = r.mtr.trim() === "" ? calculatedMtr : n(r.mtr);
-    const mt = mtFromMtr(mtr, n(r.od), n(r.wl));
-    return { avg, pcs, calculatedMtr, mtr, mt };
+    const od = n(r.od);
+    const wl = n(r.wl);
+
+    // Production
+    const prodPcs = n(r.pcs);
+    const prodMtr = r.mtr.trim() === "" ? mtrFromPcs(prodPcs, avg) : n(r.mtr);
+    const prodMt = mtFromMtr(prodMtr, od, wl);
+
+    // Rejection
+    const rejPcs = n(r.rejection_pcs);
+    const rejMtr = r.rejection_mtr.trim() === "" ? mtrFromPcs(rejPcs, avg) : n(r.rejection_mtr);
+    const rejMt = mtFromMtr(rejMtr, od, wl);
+
+    // HTC OK
+    const htcPcs = n(r.htc_ok_pcs);
+    const htcMtr = r.htc_ok_mtr.trim() === "" ? mtrFromPcs(htcPcs, avg) : n(r.htc_ok_mtr);
+    const htcMt = mtFromMtr(htcMtr, od, wl);
+
+    return { avg, prodPcs, prodMtr, prodMt, rejPcs, rejMtr, rejMt, htcPcs, htcMtr, htcMt };
   };
 
   // Keyboard shortcut: Press Enter to save production when valid
@@ -235,19 +261,17 @@ export default function ProductionEntryGrid() {
       const d = calc(r);
       const balance = n(r.balance_to_make_mtr);
       const allowed = stage === "ROLLING" ? balance * 1.1 : balance;
-      const rejection = n(r.rejection_mtr);
-      const htc = n(r.htc_ok_mtr);
 
       if (d.avg <= 0) return setError(`${r.work_order_no}: L1/L2 is missing, so MTR cannot be calculated.`);
-      if (d.mtr <= 0) return setError(`${r.work_order_no}: enter valid Production PCS/MTR.`);
+      if (d.prodMtr <= 0) return setError(`${r.work_order_no}: enter valid Production PCS/MTR.`);
       if (balance <= 0) return setError(`${r.work_order_no}: Balance to Make MTR is unavailable.`);
-      if (d.mtr > allowed + 0.000001)
-        return setError(`${r.work_order_no}: ${fmt(d.mtr, " MTR")} exceeds allowed ${fmt(allowed, " MTR")}.`);
-      if (rejection < 0 || rejection > d.mtr)
+      if (d.prodMtr > allowed + 0.000001)
+        return setError(`${r.work_order_no}: ${fmt(d.prodMtr, " MTR")} exceeds allowed ${fmt(allowed, " MTR")}.`);
+      if (d.rejMtr < 0 || d.rejMtr > d.prodMtr)
         return setError(`${r.work_order_no}: rejection MTR is invalid.`);
-      if (stage !== "ROLLING" && htc !== 0)
+      if (stage !== "ROLLING" && d.htcMtr !== 0)
         return setError("HTC OK can only be entered at Rolling.");
-      if (stage === "ROLLING" && htc > d.mtr - rejection)
+      if (stage === "ROLLING" && d.htcMtr > d.prodMtr - d.rejMtr)
         return setError(`${r.work_order_no}: HTC OK cannot exceed net production MTR.`);
     }
 
@@ -260,10 +284,10 @@ export default function ProductionEntryGrid() {
           p_route_id: r.route_id,
           p_stage_code: r.stage_code,
           p_process_date: date,
-          p_input_qty: d.mtr,
-          p_output_qty: d.mtr,
-          p_rejection_qty: n(r.rejection_mtr),
-          p_htc_ok: stage === "ROLLING" ? n(r.htc_ok_mtr) : 0,
+          p_input_qty: d.prodMtr,
+          p_output_qty: d.prodMtr,
+          p_rejection_qty: d.rejMtr,
+          p_htc_ok: stage === "ROLLING" ? d.htcMtr : 0,
           p_heat_lot_no: r.heat_lot_no.trim() || null,
           p_remarks: r.remarks.trim() || null,
         });
@@ -282,11 +306,21 @@ export default function ProductionEntryGrid() {
     setError("");
     setMessage("");
     setEditing(entry);
-    setEditPcs(String(entry.input_pcs ?? ""));
-    setEditMtr(String(entry.input_mtr ?? ""));
+    setEditPcs(String(entry.output_pcs || entry.input_pcs || ""));
+    setEditMtr(String(entry.output_mtr || entry.input_mtr || ""));
     setEditDate(entry.process_date);
-    setEditRejection(String(entry.rejection_mtr ?? 0));
-    setEditHtc(String(entry.htc_ok_mtr ?? 0));
+    
+    const avg = n(entry.avg_length) || 1;
+    const rejMtr = n(entry.rejection_mtr);
+    const rejPcs = entry.rejection_pcs || (avg > 0 && rejMtr > 0 ? Math.round(rejMtr / avg) : 0);
+    setEditRejectionPcs(rejPcs > 0 ? String(rejPcs) : "0");
+    setEditRejectionMtr(String(rejMtr));
+
+    const htcMtr = n(entry.htc_ok_mtr);
+    const htcPcs = avg > 0 && htcMtr > 0 ? Math.round(htcMtr / avg) : 0;
+    setEditHtcPcs(htcPcs > 0 ? String(htcPcs) : "0");
+    setEditHtcMtr(String(htcMtr));
+
     setEditHeatLot(entry.heat_lot_no ?? "");
     setEditRemarks(entry.remarks ?? "");
   }
@@ -297,8 +331,8 @@ export default function ProductionEntryGrid() {
     const pcs = n(editPcs);
     const calculatedMtr = mtrFromPcs(pcs, avg);
     const mtr = n(editMtr);
-    const rejection = n(editRejection);
-    const htc = n(editHtc);
+    const rejection = n(editRejectionMtr);
+    const htc = n(editHtcMtr);
 
     if (avg <= 0 || pcs <= 0) {
       setError("Corrected PCS must be positive and L1/L2 must be available.");
@@ -468,7 +502,7 @@ export default function ProductionEntryGrid() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1900px] w-full text-xs">
+          <table className="min-w-[2100px] w-full text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
               <tr>
                 {[
@@ -488,8 +522,10 @@ export default function ProductionEntryGrid() {
                   "Prod PCS",
                   "Prod MTR",
                   "Prod MT",
-                  "Rejection MTR",
-                  ...(stage === "ROLLING" ? ["HTC OK MTR"] : []),
+                  "Rej PCS",
+                  "Rej MTR",
+                  "Rej MT",
+                  ...(stage === "ROLLING" ? ["HTC OK PCS", "HTC OK MTR", "HTC OK MT"] : []),
                   "Heat / Lot No.",
                   "Remarks",
                 ].map((h) => (
@@ -502,13 +538,13 @@ export default function ProductionEntryGrid() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={20} className="p-8 text-center text-slate-400">
+                  <td colSpan={24} className="p-8 text-center text-slate-400">
                     Loading stage queue…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={20} className="p-8 text-center text-slate-500">
+                  <td colSpan={24} className="p-8 text-center text-slate-500">
                     No pending orders for {currentStageInfo?.label}. Check preceding stages or create a new rolling plan.
                   </td>
                 </tr>
@@ -518,7 +554,7 @@ export default function ProductionEntryGrid() {
                   const d = calc(r);
                   const allowed = stage === "ROLLING" ? n(r.balance_to_make_mtr) * 1.1 : n(r.balance_to_make_mtr);
                   const isFilled = n(r.pcs) > 0 || n(r.mtr) > 0;
-                  const rejectionRate = d.mtr > 0 ? (n(r.rejection_mtr) / d.mtr) * 100 : 0;
+                  const rejectionRate = d.prodMtr > 0 ? (d.rejMtr / d.prodMtr) * 100 : 0;
 
                   return (
                     <tr
@@ -548,12 +584,12 @@ export default function ProductionEntryGrid() {
                       <td className="py-2 px-3 text-right text-slate-600 font-mono">{fmt(r.balance_to_make_pcs)}</td>
                       <td className="py-2 px-3 text-right text-slate-600 font-mono">{fmt(r.balance_to_make_mt, " MT")}</td>
                       
-                      {/* Inputs */}
+                      {/* Production Inputs */}
                       <td className="py-1.5 px-2">
                         <input
                           type="text"
                           inputMode="decimal"
-                          className="h-8 w-28 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                          className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
                           placeholder="0"
                           value={r.pcs}
                           onChange={(e) => updateRow(key, "pcs", e.target.value)}
@@ -563,21 +599,32 @@ export default function ProductionEntryGrid() {
                         <input
                           type="text"
                           inputMode="decimal"
-                          className="h-8 w-28 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                          className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
                           placeholder="Calc / MTR"
                           value={r.mtr}
                           onChange={(e) => updateRow(key, "mtr", e.target.value)}
                         />
                       </td>
                       <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">
-                        {d.mt > 0 ? fmt(d.mt, " MT") : "—"}
+                        {d.prodMt > 0 ? fmt(d.prodMt, " MT") : "—"}
+                      </td>
+
+                      {/* Rejection Inputs */}
+                      <td className="py-1.5 px-2">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          className="h-8 w-20 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800"
+                          placeholder="0"
+                          value={r.rejection_pcs}
+                          onChange={(e) => updateRow(key, "rejection_pcs", e.target.value)}
+                        />
                       </td>
                       <td className="py-1.5 px-2">
                         <div className="relative">
                           <input
-                            type="number"
-                            min="0"
-                            step="any"
+                            type="text"
+                            inputMode="decimal"
                             className={`h-8 w-24 rounded border px-2 text-right font-medium focus:border-slate-800 ${
                               rejectionRate > 5 ? "border-amber-400 bg-amber-50 text-amber-900" : "border-slate-300"
                             }`}
@@ -591,18 +638,38 @@ export default function ProductionEntryGrid() {
                           )}
                         </div>
                       </td>
+                      <td className="py-2 px-3 text-right font-semibold text-rose-600 font-mono">
+                        {d.rejMt > 0 ? fmt(d.rejMt, " MT") : "0 MT"}
+                      </td>
+
+                      {/* HTC OK Inputs (Rolling only) */}
                       {stage === "ROLLING" && (
-                        <td className="py-1.5 px-2">
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800"
-                            value={r.htc_ok_mtr}
-                            onChange={(e) => updateRow(key, "htc_ok_mtr", e.target.value)}
-                          />
-                        </td>
+                        <>
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="0"
+                              className="h-8 w-20 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800"
+                              value={r.htc_ok_pcs}
+                              onChange={(e) => updateRow(key, "htc_ok_pcs", e.target.value)}
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              className="h-8 w-24 rounded border border-slate-300 px-2 text-right font-medium focus:border-slate-800"
+                              value={r.htc_ok_mtr}
+                              onChange={(e) => updateRow(key, "htc_ok_mtr", e.target.value)}
+                            />
+                          </td>
+                          <td className="py-2 px-3 text-right font-semibold text-slate-700 font-mono">
+                            {d.htcMt > 0 ? fmt(d.htcMt, " MT") : "0 MT"}
+                          </td>
+                        </>
                       )}
+
                       <td className="py-1.5 px-2">
                         <input
                           className="h-8 w-36 rounded border border-slate-300 px-2 text-xs"
@@ -715,7 +782,7 @@ export default function ProductionEntryGrid() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1800px] w-full text-xs">
+          <table className="min-w-[2000px] w-full text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
               <tr>
                 {[
@@ -730,8 +797,9 @@ export default function ProductionEntryGrid() {
                   "Output PCS",
                   "Output MTR",
                   "Output MT",
-                  "Rejection MTR",
-                  "Rejection MT",
+                  "Rej PCS",
+                  "Rej MTR",
+                  "Rej MT",
                   "HTC OK MTR",
                   "Heat / Lot No.",
                   "Remarks",
@@ -746,63 +814,68 @@ export default function ProductionEntryGrid() {
             <tbody className="divide-y divide-slate-100">
               {entriesLoading ? (
                 <tr>
-                  <td colSpan={17} className="p-8 text-center text-slate-400">
+                  <td colSpan={18} className="p-8 text-center text-slate-400">
                     Loading entries…
                   </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={17} className="p-8 text-center text-slate-500">
+                  <td colSpan={18} className="p-8 text-center text-slate-500">
                     No production entries found.
                   </td>
                 </tr>
               ) : (
-                entries.map((e) => (
-                  <tr key={e.id} className="hover:bg-slate-50/50">
-                    <td className="py-2 px-3 text-slate-600 font-mono">{e.process_date}</td>
-                    <td className="py-2 px-3 font-bold text-slate-900">{e.work_order_no}</td>
-                    <td className="py-2 px-3 text-slate-600 max-w-[140px] truncate">{e.customer_name || "—"}</td>
-                    <td className="py-2 px-3 font-semibold text-slate-700">{e.route_code}</td>
-                    <td className="py-2 px-3">
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-800">
-                        {e.stage_code}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 text-right font-mono">{fmt(e.input_pcs)}</td>
-                    <td className="py-2 px-3 text-right font-mono font-medium">{fmt(e.input_mtr)}</td>
-                    <td className="py-2 px-3 text-right font-mono">{fmt(e.input_mt)}</td>
-                    <td className="py-2 px-3 text-right font-mono">{fmt(e.output_pcs)}</td>
-                    <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{fmt(e.output_mtr)}</td>
-                    <td className="py-2 px-3 text-right font-mono font-semibold">{fmt(e.output_mt)}</td>
-                    <td className="py-2 px-3 text-right font-mono text-rose-600 font-medium">{fmt(e.rejection_mtr)}</td>
-                    <td className="py-2 px-3 text-right font-mono text-rose-600">{fmt(e.rejection_mt)}</td>
-                    <td className="py-2 px-3 text-right font-mono text-slate-600">{fmt(e.htc_ok_mtr)}</td>
-                    <td className="py-2 px-3 text-slate-700">{e.heat_lot_no || "—"}</td>
-                    <td className="py-2 px-3 text-slate-500 max-w-[150px] truncate">{e.remarks || "—"}</td>
-                    <td className="py-1.5 px-2">
-                      {e.can_modify ? (
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(e)}
-                            className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            <Edit2 className="h-3 w-3" /> Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void removeEntry(e)}
-                            className="inline-flex items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
-                          >
-                            <Trash2 className="h-3 w-3" /> Delete
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-slate-400">Locked (Downstream WIP exists)</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                entries.map((e) => {
+                  const avg = n(e.avg_length) || 1;
+                  const rejPcs = e.rejection_pcs || (avg > 0 && e.rejection_mtr > 0 ? Math.round(e.rejection_mtr / avg) : 0);
+                  return (
+                    <tr key={e.id} className="hover:bg-slate-50/50">
+                      <td className="py-2 px-3 text-slate-600 font-mono">{e.process_date}</td>
+                      <td className="py-2 px-3 font-bold text-slate-900">{e.work_order_no}</td>
+                      <td className="py-2 px-3 text-slate-600 max-w-[140px] truncate">{e.customer_name || "—"}</td>
+                      <td className="py-2 px-3 font-semibold text-slate-700">{e.route_code}</td>
+                      <td className="py-2 px-3">
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-800">
+                          {e.stage_code}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono">{fmt(e.input_pcs)}</td>
+                      <td className="py-2 px-3 text-right font-mono font-medium">{fmt(e.input_mtr)}</td>
+                      <td className="py-2 px-3 text-right font-mono">{fmt(e.input_mt)}</td>
+                      <td className="py-2 px-3 text-right font-mono">{fmt(e.output_pcs)}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{fmt(e.output_mtr)}</td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold">{fmt(e.output_mt)}</td>
+                      <td className="py-2 px-3 text-right font-mono text-rose-600">{rejPcs > 0 ? fmt(rejPcs) : "0"}</td>
+                      <td className="py-2 px-3 text-right font-mono text-rose-600 font-medium">{fmt(e.rejection_mtr)}</td>
+                      <td className="py-2 px-3 text-right font-mono text-rose-600">{fmt(e.rejection_mt)}</td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-600">{fmt(e.htc_ok_mtr)}</td>
+                      <td className="py-2 px-3 text-slate-700">{e.heat_lot_no || "—"}</td>
+                      <td className="py-2 px-3 text-slate-500 max-w-[150px] truncate">{e.remarks || "—"}</td>
+                      <td className="py-1.5 px-2">
+                        {e.can_modify ? (
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => startEdit(e)}
+                              className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                              <Edit2 className="h-3 w-3" /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void removeEntry(e)}
+                              className="inline-flex items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
+                            >
+                              <Trash2 className="h-3 w-3" /> Delete
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">Locked (Downstream WIP exists)</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -829,88 +902,156 @@ export default function ProductionEntryGrid() {
               </button>
             </div>
 
-            <div className="mt-4 grid gap-3.5 sm:grid-cols-2 text-xs">
-              <label className="font-semibold text-slate-700">
-                Production Date
-                <input
-                  type="date"
-                  className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                />
-              </label>
-              <label className="font-semibold text-slate-700">
-                Production PCS
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="Enter PCS"
-                  className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
-                  value={editPcs}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setEditPcs(value);
-                    setEditMtr(value === "" ? "" : String(mtrFromPcs(n(value), n(editing.avg_length))));
-                  }}
-                />
-              </label>
-              <label className="font-semibold text-slate-700">
-                Production MTR
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="Auto-calculated (editable)"
-                  className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
-                  value={editMtr}
-                  onChange={(e) => setEditMtr(e.target.value)}
-                />
-              </label>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-                <div className="text-slate-500">Recalculated MT Weight</div>
-                <div className="text-sm font-bold text-slate-900 mt-0.5">
-                  {fmt(mtFromMtr(n(editMtr), n(editing.od), n(editing.wl)), " MT")}
-                </div>
-              </div>
-              <label className="font-semibold text-slate-700">
-                Rejection Scrap (MTR)
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
-                  value={editRejection}
-                  onChange={(e) => setEditRejection(e.target.value)}
-                />
-              </label>
-              {editing.stage_code === "ROLLING" && (
+            <div className="mt-4 space-y-4 text-xs">
+              <div>
                 <label className="font-semibold text-slate-700">
-                  HTC OK (MTR)
+                  Production Date
                   <input
-                    type="number"
-                    min="0"
-                    step="any"
+                    type="date"
                     className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
-                    value={editHtc}
-                    onChange={(e) => setEditHtc(e.target.value)}
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
                   />
                 </label>
+              </div>
+
+              {/* Production Group */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+                <div className="text-xs font-bold text-slate-800 mb-2">Production Output</div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="font-medium text-slate-700">
+                    Output PCS
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0"
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800 bg-white"
+                      value={editPcs}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setEditPcs(value);
+                        setEditMtr(value === "" ? "" : String(mtrFromPcs(n(value), n(editing.avg_length))));
+                      }}
+                    />
+                  </label>
+                  <label className="font-medium text-slate-700">
+                    Output MTR
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Auto / Editable"
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800 bg-white"
+                      value={editMtr}
+                      onChange={(e) => setEditMtr(e.target.value)}
+                    />
+                  </label>
+                  <div className="flex flex-col justify-center">
+                    <span className="font-medium text-slate-500">Output MT</span>
+                    <span className="mt-1 flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 font-bold text-slate-900 font-mono">
+                      {fmt(mtFromMtr(n(editMtr), n(editing.od), n(editing.wl)), " MT")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rejection Group */}
+              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
+                <div className="text-xs font-bold text-rose-900 mb-2">Rejection Scrap</div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="font-medium text-slate-700">
+                    Rejection PCS
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0"
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800 bg-white"
+                      value={editRejectionPcs}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setEditRejectionPcs(value);
+                        setEditRejectionMtr(value === "" ? "0" : String(mtrFromPcs(n(value), n(editing.avg_length))));
+                      }}
+                    />
+                  </label>
+                  <label className="font-medium text-slate-700">
+                    Rejection MTR
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Auto / Editable"
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800 bg-white"
+                      value={editRejectionMtr}
+                      onChange={(e) => setEditRejectionMtr(e.target.value)}
+                    />
+                  </label>
+                  <div className="flex flex-col justify-center">
+                    <span className="font-medium text-slate-500">Rejection MT</span>
+                    <span className="mt-1 flex h-9 items-center rounded-lg border border-rose-200 bg-white px-3 font-bold text-rose-700 font-mono">
+                      {fmt(mtFromMtr(n(editRejectionMtr), n(editing.od), n(editing.wl)), " MT")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* HTC OK Group (Rolling only) */}
+              {editing.stage_code === "ROLLING" && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+                  <div className="text-xs font-bold text-blue-900 mb-2">HTC OK</div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="font-medium text-slate-700">
+                      HTC OK PCS
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0"
+                        className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800 bg-white"
+                        value={editHtcPcs}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setEditHtcPcs(value);
+                          setEditHtcMtr(value === "" ? "0" : String(mtrFromPcs(n(value), n(editing.avg_length))));
+                        }}
+                      />
+                    </label>
+                    <label className="font-medium text-slate-700">
+                      HTC OK MTR
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Auto / Editable"
+                        className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800 bg-white"
+                        value={editHtcMtr}
+                        onChange={(e) => setEditHtcMtr(e.target.value)}
+                      />
+                    </label>
+                    <div className="flex flex-col justify-center">
+                      <span className="font-medium text-slate-500">HTC OK MT</span>
+                      <span className="mt-1 flex h-9 items-center rounded-lg border border-blue-200 bg-white px-3 font-bold text-blue-800 font-mono">
+                        {fmt(mtFromMtr(n(editHtcMtr), n(editing.od), n(editing.wl)), " MT")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               )}
-              <label className="font-semibold text-slate-700">
-                Heat / Lot No.
-                <input
-                  className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
-                  value={editHeatLot}
-                  onChange={(e) => setEditHeatLot(e.target.value)}
-                />
-              </label>
-              <label className="font-semibold text-slate-700">
-                Remarks
-                <input
-                  className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
-                  value={editRemarks}
-                  onChange={(e) => setEditRemarks(e.target.value)}
-                />
-              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="font-semibold text-slate-700">
+                  Heat / Lot No.
+                  <input
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
+                    value={editHeatLot}
+                    onChange={(e) => setEditHeatLot(e.target.value)}
+                  />
+                </label>
+                <label className="font-semibold text-slate-700">
+                  Remarks
+                  <input
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-3 text-xs font-normal focus:border-slate-800"
+                    value={editRemarks}
+                    onChange={(e) => setEditRemarks(e.target.value)}
+                  />
+                </label>
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-3">
