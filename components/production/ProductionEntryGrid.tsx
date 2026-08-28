@@ -359,7 +359,7 @@ export default function ProductionEntryGrid() {
           <table className="min-w-[1800px] w-full text-sm">
             <thead className="bg-muted/50">
               <tr className="border-b">
-                {["S.No.","Work Order","Customer","Specification","OD","WT","L1","L2","Avg L1/L2","Route","Balance MTR","Balance PCS","Balance MT","Production PCS","Production MTR (Auto)","Production MT (Auto)","Rejection MTR",...(stage === "ROLLING" ? ["HTC OK MTR"] : []),"Heat/Lot No. (Optional)","Remarks"].map((h) => <th key={h} className="p-3 text-left font-medium">{h}</th>)}
+                {["S.No.","Work Order","Customer","Specification","OD","WT","L1","L2","Avg L1/L2","Route","Balance MTR","Balance PCS","Balance MT","Production PCS","Production MTR","Production MT","Rejection MTR",...(stage === "ROLLING" ? ["HTC OK MTR"] : []),"Heat/Lot No. (Optional)","Remarks"].map((h) => <th key={h} className="p-3 text-left font-medium">{h}</th>)}
               </tr>
             </thead>
             <tbody>
