@@ -7,37 +7,420 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import Link from 'next/link';
+import {
+  Calendar,
+  Layers,
+  PlusCircle,
+  FileSpreadsheet,
+  ArrowRight,
+  TrendingUp,
+  GitFork,
+  MoreVertical,
+  CheckCircle2,
+  Clock,
+  Search,
+  Filter,
+} from 'lucide-react';
 
-type WO={id:string;work_order_no:string;customer_name:string|null;size_od:number|null;size_wt:number|null;grade:string|null;ordered_qty:number;uom:string;target_date:string|null;status:string};
+type WO = {
+  id: string;
+  work_order_no: string;
+  customer_name: string | null;
+  size_od: number | null;
+  size_wt: number | null;
+  l1?: number | null;
+  l2?: number | null;
+  grade: string | null;
+  specification?: string | null;
+  ordered_qty: number;
+  uom: string;
+  target_date: string | null;
+  status: string;
+};
 
-export default function WorkOrders(){
- const [rows,setRows]=useState<WO[]>([]); const [loading,setLoading]=useState(true);
- const [q,setQ]=useState(''); const [status,setStatus]=useState('');
- const [form,setForm]=useState({work_order_no:'',customer_name:'',size_od:'',size_wt:'',grade:'',ordered_qty:'',uom:'Mtrs',target_date:''});
- const load=async()=>{setLoading(true); const s=createClient(); let query=s.from('work_orders').select('*').order('target_date',{ascending:true}).limit(200); if(status) query=query.eq('status',status); const {data,error}=await query; if(error) toast.error(error.message); setRows((data??[]) as WO[]); setLoading(false);};
- useEffect(()=>{load()},[status]);
- const filtered=useMemo(()=>rows.filter(r=>!q || [r.work_order_no,r.customer_name,r.grade].join(' ').toLowerCase().includes(q.toLowerCase())),[rows,q]);
- const createWO=async(e:React.FormEvent)=>{e.preventDefault(); const s=createClient(); const payload={work_order_no:form.work_order_no.trim(),customer_name:form.customer_name||null,size_od:form.size_od?Number(form.size_od):null,size_wt:form.size_wt?Number(form.size_wt):null,grade:form.grade||null,ordered_qty:Number(form.ordered_qty),uom:form.uom,target_date:form.target_date||null}; const {error}=await s.from('work_orders').insert(payload); if(error) toast.error(error.message); else {toast.success('Work Order created');setForm({work_order_no:'',customer_name:'',size_od:'',size_wt:'',grade:'',ordered_qty:'',uom:'Mtrs',target_date:''});load();}};
- const exportExcel=()=>{const ws=XLSX.utils.json_to_sheet(filtered); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Work Orders'); XLSX.writeFile(wb,'work-orders.xlsx');};
- return <div className="space-y-6">
-  <div><h1 className="text-2xl font-bold">Work Orders</h1></div>
-  <form onSubmit={createWO} className="rounded-xl border bg-white p-5 shadow-sm">
-   <h2 className="mb-4 font-semibold">Create Work Order</h2>
-   <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-    <Input placeholder="WO No. *" value={form.work_order_no} onChange={e=>setForm({...form,work_order_no:e.target.value})} required/>
-    <Input placeholder="Customer" value={form.customer_name} onChange={e=>setForm({...form,customer_name:e.target.value})}/>
-    <Input type="number" step="0.001" placeholder="OD" value={form.size_od} onChange={e=>setForm({...form,size_od:e.target.value})}/>
-    <Input type="number" step="0.001" placeholder="WT" value={form.size_wt} onChange={e=>setForm({...form,size_wt:e.target.value})}/>
-    <Input placeholder="Grade" value={form.grade} onChange={e=>setForm({...form,grade:e.target.value})}/>
-    <Input type="number" min="0.001" step="0.001" placeholder="Ordered Qty *" value={form.ordered_qty} onChange={e=>setForm({...form,ordered_qty:e.target.value})} required/>
-    <Select value={form.uom} onChange={e=>setForm({...form,uom:e.target.value})}><option>Pcs</option><option>Mtrs</option></Select>
-    <Input type="date" value={form.target_date} onChange={e=>setForm({...form,target_date:e.target.value})}/>
-   </div>
-   <div className="mt-4"><Button>Create Work Order</Button></div>
-  </form>
-  <div className="rounded-xl border bg-white shadow-sm">
-   <div className="flex flex-col gap-3 border-b p-4 md:flex-row"><Input className="md:max-w-sm" placeholder="Search WO / customer / grade" value={q} onChange={e=>setQ(e.target.value)}/><Select className="md:max-w-xs" value={status} onChange={e=>setStatus(e.target.value)}><option value="">All statuses</option><option>Pending Plan</option><option>Scheduled</option><option>In Progress</option><option>Completed</option><option>Diverted</option></Select><Button type="button" className="md:ml-auto" onClick={exportExcel}>Export Excel</Button></div>
-   <div className="overflow-auto">{loading?<div className="p-6 text-sm text-slate-500">Loading...</div>:<table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['WO','Customer','OD','WT','Grade','Ordered','Status','Target'].map(h=><th key={h} className="p-3 text-left">{h}</th>)}</tr></thead><tbody>{filtered.map(w=><tr key={w.id} className="border-t"><td className="p-3 font-medium">{w.work_order_no}</td><td className="p-3">{w.customer_name||'—'}</td><td className="p-3">{w.size_od??'—'}</td><td className="p-3">{w.size_wt??'—'}</td><td className="p-3">{w.grade||'—'}</td><td className="p-3">{w.ordered_qty} {w.uom}</td><td className="p-3">{w.status}</td><td className="p-3">{w.target_date||'—'}</td></tr>)}</tbody></table>}</div>
-  </div>
- </div>
+export default function WorkOrders() {
+  const [rows, setRows] = useState<WO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
+
+  const [form, setForm] = useState({
+    work_order_no: '',
+    customer_name: '',
+    size_od: '',
+    size_wt: '',
+    l1: '6.0',
+    l2: '6.5',
+    grade: '',
+    ordered_qty: '',
+    uom: 'Mtrs',
+    target_date: '',
+  });
+
+  const load = async () => {
+    setLoading(true);
+    const s = createClient();
+    let query = s.from('work_orders').select('*').order('target_date', { ascending: true }).limit(200);
+    if (status) query = query.eq('status', status);
+    const { data, error } = await query;
+    if (error) toast.error(error.message);
+    setRows((data ?? []) as WO[]);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+  }, [status]);
+
+  const filtered = useMemo(
+    () =>
+      rows.filter(
+        r =>
+          !q ||
+          [r.work_order_no, r.customer_name, r.grade, r.specification]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+            .includes(q.toLowerCase())
+      ),
+    [rows, q]
+  );
+
+  const createWO = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const s = createClient();
+    const payload = {
+      work_order_no: form.work_order_no.trim(),
+      customer_name: form.customer_name || null,
+      size_od: form.size_od ? Number(form.size_od) : null,
+      size_wt: form.size_wt ? Number(form.size_wt) : null,
+      l1: form.l1 ? Number(form.l1) : null,
+      l2: form.l2 ? Number(form.l2) : null,
+      grade: form.grade || null,
+      specification: form.grade || null,
+      ordered_qty: Number(form.ordered_qty),
+      ordered_qty_mtr: form.uom === 'Mtrs' ? Number(form.ordered_qty) : null,
+      balance_qty_mtr: form.uom === 'Mtrs' ? Number(form.ordered_qty) : null,
+      uom: form.uom,
+      target_date: form.target_date || null,
+      status: 'Pending Plan',
+    };
+    const { error } = await s.from('work_orders').insert(payload);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('Work Order created successfully');
+      setForm({
+        work_order_no: '',
+        customer_name: '',
+        size_od: '',
+        size_wt: '',
+        l1: '6.0',
+        l2: '6.5',
+        grade: '',
+        ordered_qty: '',
+        uom: 'Mtrs',
+        target_date: '',
+      });
+      setShowCreate(false);
+      load();
+    }
+  };
+
+  const exportExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(filtered);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Work Orders');
+    XLSX.writeFile(wb, 'work-orders.xlsx');
+  };
+
+  const getSLA = (targetDate?: string | null) => {
+    if (!targetDate) return { label: 'No Target', cls: 'bg-slate-100 text-slate-600' };
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const target = new Date(targetDate);
+    const diff = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (diff < 0) return { label: `Overdue ${Math.abs(diff)}d`, cls: 'bg-red-50 text-red-700 border-red-200' };
+    if (diff <= 7) return { label: `Due in ${diff}d`, cls: 'bg-amber-50 text-amber-800 border-amber-200' };
+    return { label: `Target: ${targetDate}`, cls: 'bg-slate-50 text-slate-600 border-slate-200' };
+  };
+
+  const getStatusBadge = (st: string) => {
+    switch (st) {
+      case 'Pending Plan':
+        return 'bg-amber-50 text-amber-800 border-amber-200';
+      case 'Scheduled':
+        return 'bg-blue-50 text-blue-800 border-blue-200';
+      case 'In Progress':
+        return 'bg-indigo-50 text-indigo-800 border-indigo-200';
+      case 'Completed':
+        return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+      case 'Diverted':
+        return 'bg-purple-50 text-purple-800 border-purple-200';
+      default:
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Top Header */}
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Work Orders Directory</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Manage customer work orders, review sizing, trigger rolling plans, and track production.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/excel-import"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Import Excel
+          </Link>
+          <Button
+            onClick={() => setShowCreate(!showCreate)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white shadow hover:bg-slate-800"
+          >
+            <PlusCircle className="h-4 w-4" /> {showCreate ? 'Close Form' : 'Create Work Order'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Collapsible Create Work Order Form */}
+      {showCreate && (
+        <form onSubmit={createWO} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Create New Customer Work Order</h2>
+              <p className="text-xs text-slate-500">Provide tube dimension specs, ordered volume, and target dispatch date.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCreate(false)}
+              className="text-xs font-medium text-slate-500 hover:text-slate-900"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 text-xs">
+            <div>
+              <label className="font-semibold text-slate-700">Work Order No. *</label>
+              <Input
+                className="mt-1"
+                placeholder="e.g. WO-2025-101"
+                value={form.work_order_no}
+                onChange={e => setForm({ ...form, work_order_no: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Customer Name</label>
+              <Input
+                className="mt-1"
+                placeholder="e.g. Apex Precision Tubes"
+                value={form.customer_name}
+                onChange={e => setForm({ ...form, customer_name: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Finished OD (mm)</label>
+              <Input
+                type="number"
+                step="0.001"
+                className="mt-1"
+                placeholder="e.g. 88.9"
+                value={form.size_od}
+                onChange={e => setForm({ ...form, size_od: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Finished WT (mm)</label>
+              <Input
+                type="number"
+                step="0.001"
+                className="mt-1"
+                placeholder="e.g. 7.62"
+                value={form.size_wt}
+                onChange={e => setForm({ ...form, size_wt: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Length Range L1 - L2 (m)</label>
+              <div className="mt-1 flex gap-1">
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="L1 (6.0)"
+                  value={form.l1}
+                  onChange={e => setForm({ ...form, l1: e.target.value })}
+                />
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="L2 (6.5)"
+                  value={form.l2}
+                  onChange={e => setForm({ ...form, l2: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Grade / Spec</label>
+              <Input
+                className="mt-1"
+                placeholder="e.g. ASTM A106 Gr.B"
+                value={form.grade}
+                onChange={e => setForm({ ...form, grade: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Ordered Qty *</label>
+              <Input
+                type="number"
+                min="0.001"
+                step="0.001"
+                className="mt-1"
+                placeholder="Qty"
+                value={form.ordered_qty}
+                onChange={e => setForm({ ...form, ordered_qty: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">UOM</label>
+              <Select className="mt-1" value={form.uom} onChange={e => setForm({ ...form, uom: e.target.value })}>
+                <option>Mtrs</option>
+                <option>Pcs</option>
+              </Select>
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Target Delivery Date</label>
+              <Input
+                type="date"
+                className="mt-1"
+                value={form.target_date}
+                onChange={e => setForm({ ...form, target_date: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button className="bg-slate-900 text-white hover:bg-slate-800">Save Work Order</Button>
+          </div>
+        </form>
+      )}
+
+      {/* Main Table with Row Actions */}
+      <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center justify-between">
+          <div className="flex flex-1 items-center gap-3">
+            <div className="relative max-w-sm w-full">
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Input
+                className="pl-8 text-xs h-9"
+                placeholder="Search WO No, Customer, Grade..."
+                value={q}
+                onChange={e => setQ(e.target.value)}
+              />
+            </div>
+            <Select className="max-w-[180px] text-xs h-9" value={status} onChange={e => setStatus(e.target.value)}>
+              <option value="">All Statuses</option>
+              <option>Pending Plan</option>
+              <option>Scheduled</option>
+              <option>In Progress</option>
+              <option>Completed</option>
+              <option>Diverted</option>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" onClick={exportExcel} className="border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs h-9">
+              Export Excel
+            </Button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="p-8 text-center text-xs text-slate-500">Loading work orders...</div>
+          ) : filtered.length === 0 ? (
+            <div className="p-8 text-center text-xs text-slate-500">No work orders match the criteria.</div>
+          ) : (
+            <table className="min-w-full text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                <tr>
+                  <th className="py-2.5 px-3 text-left font-semibold">WO Number</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Customer</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Size (OD × WT)</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Grade / Spec</th>
+                  <th className="py-2.5 px-3 text-right font-semibold">Ordered Qty</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Delivery SLA</th>
+                  <th className="py-2.5 px-3 text-center font-semibold">Status</th>
+                  <th className="py-2.5 px-3 text-right font-semibold">Quick Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map(w => {
+                  const sla = getSLA(w.target_date);
+                  return (
+                    <tr key={w.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-2.5 px-3 font-bold text-slate-900">{w.work_order_no}</td>
+                      <td className="py-2.5 px-3 text-slate-700 max-w-[150px] truncate">{w.customer_name || '—'}</td>
+                      <td className="py-2.5 px-3 font-mono text-slate-800">
+                        {w.size_od ? `${w.size_od} × ${w.size_wt ?? '—'} mm` : '—'}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate">{w.grade || w.specification || '—'}</td>
+                      <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">
+                        {w.ordered_qty} {w.uom}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${sla.cls}`}>
+                          {sla.label}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${getStatusBadge(w.status)}`}>
+                          {w.status}
+                        </span>
+                      </td>
+                      {/* Row Action Trigger Menu */}
+                      <td className="py-2 px-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Link
+                            href={`/rolling-plans?wo=${w.id}`}
+                            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                            title="Issue Rolling Plan"
+                          >
+                            <Calendar className="h-3 w-3 text-blue-600" /> Plan
+                          </Link>
+                          <Link
+                            href="/production"
+                            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                            title="Record Production"
+                          >
+                            <TrendingUp className="h-3 w-3 text-emerald-600" /> Prod
+                          </Link>
+                          <Link
+                            href={`/diversions?source=${w.id}`}
+                            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                            title="Divert Stock"
+                          >
+                            <GitFork className="h-3 w-3 text-purple-600" /> Divert
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
