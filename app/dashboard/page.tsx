@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import Link from 'next/link';
-import { ArrowRight, AlertTriangle, Factory, ClipboardList, CalendarClock } from 'lucide-react';
 
 export default async function Dashboard(){
   const supabase=await createClient();
@@ -22,7 +21,7 @@ export default async function Dashboard(){
   ];
   return <div className="space-y-6">
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-      <div><h1 className="text-3xl font-bold">Production Dashboard</h1><p className="text-slate-500">Seamless pipe WIP & PPC control</p></div>
+      <div><h1 className="text-3xl font-bold">Production Dashboard</h1></div>
       <div className="flex flex-wrap gap-2">
         <Link href="/work-orders" className="rounded-lg border bg-white px-3 py-2 text-sm font-medium">Work Orders</Link>
         <Link href="/rolling-plans" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white">Issue Rolling Plan</Link>
