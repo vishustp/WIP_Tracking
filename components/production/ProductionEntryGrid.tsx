@@ -38,6 +38,8 @@ type Row = {
   balance_to_make_mt: number | null;
   multiple: number | null;
   ht_nos: number | null;
+  ht_prod_nos?: number | null;
+  ht_rej_nos?: number | null;
   ht_input_nos: string;
   pcs: string;
   mtr: string;
@@ -152,6 +154,8 @@ export default function ProductionEntryGrid() {
         ...r,
         multiple: r.multiple ?? 1,
         ht_nos: r.ht_nos ?? 0,
+        ht_prod_nos: r.ht_prod_nos ?? r.ht_nos ?? 0,
+        ht_rej_nos: r.ht_rej_nos ?? 0,
         ht_input_nos: "",
         pcs: "",
         mtr: "",
@@ -314,12 +318,17 @@ export default function ProductionEntryGrid() {
     const rejMtr = r.rejection_mtr.trim() === "" ? mtrFromPcs(rejPcs, avg) : n(r.rejection_mtr);
     const rejMt = mtFromMtr(rejMtr, od, wl);
 
+    // Net Output
+    const netPcs = Math.max(0, prodPcs - rejPcs);
+    const netMtr = Math.max(0, prodMtr - rejMtr);
+    const netMt = Math.max(0, prodMt - rejMt);
+
     // HTC OK
     const htcPcs = n(r.htc_ok_pcs);
     const htcMtr = r.htc_ok_mtr.trim() === "" ? mtrFromPcs(htcPcs, avg) : n(r.htc_ok_mtr);
     const htcMt = mtFromMtr(htcMtr, od, wl);
 
-    return { avg, prodPcs, prodMtr, prodMt, rejPcs, rejMtr, rejMt, htcPcs, htcMtr, htcMt };
+    return { avg, prodPcs, prodMtr, prodMt, rejPcs, rejMtr, rejMt, netPcs, netMtr, netMt, htcPcs, htcMtr, htcMt };
   };
 
   // Keyboard shortcut: Press Enter to save production when valid
@@ -551,6 +560,24 @@ export default function ProductionEntryGrid() {
           </div>
         )}
 
+        {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
+          <div id="ht-conversion-banner" className="mt-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-xs text-amber-950">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-600 text-[10px] font-bold text-white">
+                🔥
+              </span>
+              <div>
+                <span className="font-bold">Heat Treatment Output Rule: </span>
+                <span className="font-semibold text-amber-900">HT Nos = Heat Treatment Production Nos − Rejection Nos</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] font-medium bg-white/90 border border-amber-200 px-2.5 py-1 rounded-lg shadow-xs">
+              <span className="text-slate-600">Net Usable Tubes:</span>
+              <code className="font-mono font-bold text-amber-700">Net HT Nos = HT Prod (PCS) − Rej (PCS)</code>
+            </div>
+          </div>
+        )}
+
         {stage === "FINISHING" && (
           <div id="finishing-conversion-banner" className="mt-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 rounded-xl border border-indigo-200 bg-indigo-50/80 p-3 text-xs text-indigo-950">
             <div className="flex items-center gap-2">
@@ -559,12 +586,14 @@ export default function ProductionEntryGrid() {
               </span>
               <div>
                 <span className="font-bold">Finishing Production Entry Logic: </span>
-                <span className="font-semibold text-indigo-900">Multiple ($M$) × Heat Treatment (HT) Production Nos</span>
+                <span className="font-semibold text-indigo-900">
+                  Multiple ($M$) × HT Nos <span className="font-normal text-indigo-700">(where HT Nos = Heat Treatment Production Nos − Rejection Nos)</span>
+                </span>
               </div>
             </div>
             <div className="flex items-center gap-2 text-[11px] font-medium bg-white/90 border border-indigo-200 px-2.5 py-1 rounded-lg shadow-xs">
               <span className="text-slate-600">Formula:</span>
-              <code className="font-mono font-bold text-indigo-700">Finishing PCS = Multiple × HT Nos</code>
+              <code className="font-mono font-bold text-indigo-700">Finishing PCS = Multiple × (HT Prod − HT Rej)</code>
             </div>
           </div>
         )}
@@ -620,7 +649,9 @@ export default function ProductionEntryGrid() {
                       "Finished Avg L",
                       "Route",
                       "Multiple (M)",
-                      "HT Avail (Nos)",
+                      "HT Prod (Nos)",
+                      "HT Rej (Nos)",
+                      "Net HT Avail (Nos)",
                       "Balance MTR",
                       "Balance MT",
                       "HT Processed (Nos)",
@@ -630,6 +661,33 @@ export default function ProductionEntryGrid() {
                       "Rej PCS",
                       "Rej MTR",
                       "Rej MT",
+                      "Net Fin PCS",
+                      "Heat / Lot No.",
+                      "Remarks",
+                    ]
+                  : (stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT")
+                  ? [
+                      "S.No.",
+                      "Work Order",
+                      "Customer",
+                      "Specification",
+                      "OD (mm)",
+                      "WT (mm)",
+                      "L1 (m)",
+                      "L2 (m)",
+                      "Avg L (m)",
+                      "Route",
+                      "Multiple (M)",
+                      "Balance MTR",
+                      "Balance PCS",
+                      "Balance MT",
+                      "HT Prod PCS",
+                      "HT Prod MTR",
+                      "HT Prod MT",
+                      "HT Rej PCS",
+                      "HT Rej MTR",
+                      "HT Rej MT",
+                      "Net HT OK (Prod − Rej)",
                       "Heat / Lot No.",
                       "Remarks",
                     ]
@@ -668,13 +726,13 @@ export default function ProductionEntryGrid() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={25} className="p-8 text-center text-slate-400">
+                  <td colSpan={26} className="p-8 text-center text-slate-400">
                     Loading stage queue…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={25} className="p-8 text-center text-slate-500">
+                  <td colSpan={26} className="p-8 text-center text-slate-500">
                     No pending orders for {currentStageInfo?.label}. Check preceding stages or create a new rolling plan.
                   </td>
                 </tr>
@@ -716,8 +774,17 @@ export default function ProductionEntryGrid() {
 
                       {stage === "FINISHING" ? (
                         <>
-                          <td className="py-2 px-3 text-right font-semibold text-indigo-900 font-mono">
-                            {fmt(r.ht_nos)} <span className="text-[10px] text-slate-400 font-normal">Nos</span>
+                          {/* HT Gross Production Nos */}
+                          <td className="py-2 px-3 text-right font-mono text-slate-700">
+                            {fmt(r.ht_prod_nos ?? r.ht_nos)} <span className="text-[10px] text-slate-400 font-normal">Nos</span>
+                          </td>
+                          {/* HT Rejection Nos */}
+                          <td className="py-2 px-3 text-right font-mono text-rose-600">
+                            {fmt(r.ht_rej_nos ?? 0)} <span className="text-[10px] text-rose-400 font-normal">Nos</span>
+                          </td>
+                          {/* Net HT Available Nos (HT Prod - Rej) */}
+                          <td className="py-2 px-3 text-right font-semibold text-indigo-900 font-mono bg-indigo-50/40 rounded">
+                            {fmt(r.ht_nos)} <span className="text-[10px] text-indigo-500 font-normal">Nos</span>
                           </td>
                           <td className="py-2 px-3 text-right font-semibold text-slate-900">
                             {fmt(r.balance_to_make_mtr, " MTR")}
@@ -842,6 +909,21 @@ export default function ProductionEntryGrid() {
                       <td className="py-2 px-3 text-right font-semibold text-rose-600 font-mono">
                         {d.rejMt > 0 ? fmt(d.rejMt, " MT") : "0 MT"}
                       </td>
+
+                      {/* Net Finishing PCS or Net HT OK Column */}
+                      {stage === "FINISHING" ? (
+                        <td className="py-2 px-3 text-right font-mono font-bold text-indigo-900 bg-indigo-50/20">
+                          {d.netPcs > 0 ? fmt(d.netPcs, " PCS") : "—"}
+                        </td>
+                      ) : (stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") ? (
+                        <td className="py-2 px-3 text-right font-mono font-bold text-amber-900 bg-amber-50/30">
+                          {d.netPcs > 0 ? (
+                            <span className="inline-flex items-center gap-1 font-bold">
+                              {fmt(d.netPcs)} <span className="text-[10px] text-amber-700 font-normal">Nos</span>
+                            </span>
+                          ) : "—"}
+                        </td>
+                      ) : null}
 
                       {/* HTC OK Inputs (Rolling only) */}
                       {stage === "ROLLING" && (
