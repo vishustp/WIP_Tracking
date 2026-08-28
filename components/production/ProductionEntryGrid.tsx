@@ -427,17 +427,13 @@ export default function ProductionEntryGrid() {
           })}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 border border-slate-100">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-slate-700">Formula Rule:</span>
-            <span>Production MTR is calculated as <code>PCS × Avg(L1, L2)</code>. MT calculated from <code>(OD - WT) × WT × 0.0246615 × MTR</code>.</span>
-          </div>
-          {stage === "ROLLING" && (
-            <span className="font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+        {stage === "ROLLING" && (
+          <div className="mt-3 flex items-center justify-end">
+            <span className="font-semibold text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
               Rolling Tolerance: up to 110% of Planned MTR
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </section>
 
       {/* Messages */}
