@@ -209,6 +209,10 @@ export function createMockClient() {
           return { data: list, error: null };
         }
         case 'create_rolling_plan': {
+          const activeUser = mockStore.getCurrentUser();
+          if (activeUser.role !== 'admin' && activeUser.role !== 'manager') {
+            return { data: null, error: new Error(`Access Denied: Rolling plans can only be created by Admin or Plant Manager. Current role: ${activeUser.role_title}`) };
+          }
           const wo = mockStore.workOrders.find(w => w.id === args.p_work_order_id);
           if (!wo) return { data: null, error: new Error('Work Order not found') };
           const avail = mockStore.getUnplannedQty(args.p_work_order_id);
@@ -237,10 +241,22 @@ export function createMockClient() {
           if (wo.status === 'Pending Plan') {
             wo.status = 'Scheduled';
           }
+          mockStore.addAuditLog({
+            user_email: activeUser.email,
+            user_name: activeUser.name,
+            action_type: 'ROLLING_PLAN_CREATE',
+            entity_type: 'Rolling Plan',
+            entity_id: planNo,
+            details: `Created rolling plan ${planNo} for WO ${wo.work_order_no} (${args.p_planned_qty} Mtrs)`,
+          });
           mockStore.saveToStorage();
           return { data: planNo, error: null };
         }
         case 'update_rolling_plan': {
+          const activeUser = mockStore.getCurrentUser();
+          if (activeUser.role !== 'admin' && activeUser.role !== 'manager') {
+            return { error: new Error(`Access Denied: Only Admin and Plant Manager can modify rolling plans. Current role: ${activeUser.role_title}`) };
+          }
           const plan = mockStore.rollingPlans.find(p => p.id === args.p_plan_id);
           if (!plan) return { error: new Error('Plan not found') };
           plan.planned_qty = Number(args.p_planned_qty);
@@ -258,11 +274,30 @@ export function createMockClient() {
           return { error: null };
         }
         case 'delete_rolling_plan': {
+          const activeUser = mockStore.getCurrentUser();
+          if (activeUser.role !== 'admin' && activeUser.role !== 'manager') {
+            return { error: new Error(`Access Denied: Only Admin and Plant Manager can delete rolling plans. Current role: ${activeUser.role_title}`) };
+          }
+          const plan = mockStore.rollingPlans.find(p => p.id === args.p_plan_id);
           mockStore.rollingPlans = mockStore.rollingPlans.filter(p => p.id !== args.p_plan_id);
+          if (plan) {
+            mockStore.addAuditLog({
+              user_email: activeUser.email,
+              user_name: activeUser.name,
+              action_type: 'USER_UPDATE',
+              entity_type: 'Rolling Plan',
+              entity_id: plan.plan_no,
+              details: `Deleted rolling plan ${plan.plan_no}`,
+            });
+          }
           mockStore.saveToStorage();
           return { error: null };
         }
         case 'create_diversion': {
+          const activeUser = mockStore.getCurrentUser();
+          if (activeUser.role !== 'admin' && activeUser.role !== 'manager') {
+            return { error: new Error(`Access Denied: Only Admin and Plant Manager can authorize pipe diversions. Current role: ${activeUser.role_title}`) };
+          }
           if (args.p_source === args.p_target) {
             return { error: new Error('Source and target WO cannot be same') };
           }
@@ -279,13 +314,26 @@ export function createMockClient() {
             process_route_id: args.p_route,
             multiple: Number(args.p_multiple || 1),
             reason: args.p_reason || '',
+            approved_by: activeUser.name,
             diversion_date: args.p_date || new Date().toISOString().slice(0, 10),
             created_at: new Date().toISOString(),
+          });
+          mockStore.addAuditLog({
+            user_email: activeUser.email,
+            user_name: activeUser.name,
+            action_type: 'DIVERSION_CREATE',
+            entity_type: 'Pipe Diversion',
+            entity_id: id,
+            details: `Created diversion: ${args.p_qty} Mtrs from source to target WO (Approved by: ${activeUser.name})`,
           });
           mockStore.saveToStorage();
           return { data: id, error: null };
         }
         case 'record_production': {
+          const activeUser = mockStore.getCurrentUser();
+          if (activeUser.role === 'auditor') {
+            return { error: new Error('Access Denied: Auditor role has read-only permissions.') };
+          }
           const stage = mockStore.stages.find(s => s.stage_code === args.p_stage_code);
           const stageId = stage?.id || 'stage-1';
           const id = `pl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -307,10 +355,22 @@ export function createMockClient() {
           if (wo && wo.status !== 'Completed') {
             wo.status = 'In Progress';
           }
+          mockStore.addAuditLog({
+            user_email: activeUser.email,
+            user_name: activeUser.name,
+            action_type: 'PRODUCTION_ENTRY',
+            entity_type: 'Production Log',
+            entity_id: id,
+            details: `Recorded ${args.p_stage_code} production of ${args.p_output_qty} Mtrs (Rejection: ${args.p_rejection_qty || 0}) for WO ${wo?.work_order_no || args.p_work_order_id}`,
+          });
           mockStore.saveToStorage();
           return { data: id, error: null };
         }
         case 'record_production_batch': {
+          const activeUser = mockStore.getCurrentUser();
+          if (activeUser.role === 'auditor') {
+            return { error: new Error('Access Denied: Auditor role has read-only permissions.') };
+          }
           const entries = args.entries || [];
           const processDate = args.p_process_date || new Date().toISOString().slice(0, 10);
           for (const item of entries) {
@@ -336,10 +396,21 @@ export function createMockClient() {
               wo.status = 'In Progress';
             }
           }
+          mockStore.addAuditLog({
+            user_email: activeUser.email,
+            user_name: activeUser.name,
+            action_type: 'PRODUCTION_ENTRY',
+            entity_type: 'Production Batch',
+            details: `Logged batch of ${entries.length} production entries on ${processDate}`,
+          });
           mockStore.saveToStorage();
           return { data: true, error: null };
         }
         case 'update_production_entry': {
+          const activeUser = mockStore.getCurrentUser();
+          if (activeUser.role === 'auditor') {
+            return { error: new Error('Access Denied: Auditor role has read-only permissions.') };
+          }
           const entry = mockStore.productionLogs.find(p => p.id === args.p_production_id);
           if (!entry) return { error: new Error('Production entry not found') };
           entry.process_date = args.p_process_date;
@@ -348,11 +419,36 @@ export function createMockClient() {
           entry.htc_ok = Number(args.p_htc_ok || 0);
           entry.heat_lot_no = args.p_heat_lot_no || null;
           entry.remarks = args.p_remarks || null;
+          mockStore.addAuditLog({
+            user_email: activeUser.email,
+            user_name: activeUser.name,
+            action_type: 'PRODUCTION_ENTRY',
+            entity_type: 'Production Log',
+            entity_id: entry.id,
+            details: `Updated entry ${entry.id}: output ${args.p_output_qty} Mtrs, rej ${args.p_rejection_qty || 0} Mtrs`,
+          });
           mockStore.saveToStorage();
           return { error: null };
         }
         case 'delete_production_entry': {
+          const activeUser = mockStore.getCurrentUser();
+          if (activeUser.role !== 'admin' && activeUser.role !== 'manager') {
+            return {
+              error: new Error(`Access Denied: Deletion requires PPC Administrator or Plant Operations Head permissions. Current role: ${activeUser.role_title}`),
+            };
+          }
+          const entryToDelete = mockStore.productionLogs.find(p => p.id === args.p_production_id);
           mockStore.productionLogs = mockStore.productionLogs.filter(p => p.id !== args.p_production_id);
+          if (entryToDelete) {
+            mockStore.addAuditLog({
+              user_email: activeUser.email,
+              user_name: activeUser.name,
+              action_type: 'USER_UPDATE',
+              entity_type: 'Production Log',
+              entity_id: entryToDelete.id,
+              details: `Deleted production entry ${entryToDelete.id} (WO: ${entryToDelete.work_order_id}, Qty: ${entryToDelete.output_qty} Mtrs)`,
+            });
+          }
           mockStore.saveToStorage();
           return { error: null };
         }
