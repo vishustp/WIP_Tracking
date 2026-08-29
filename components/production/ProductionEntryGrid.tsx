@@ -142,6 +142,7 @@ export default function ProductionEntryGrid() {
       setMessage("All production entries saved successfully.");
       await Promise.all([reloadQueue(), reloadHistory()]);
     } catch (e: unknown) {
+       console.error("🔥 Full error:", e);
       setError(e instanceof Error ? e.message : "Failed to save production.");
     } finally {
       setSaving(false);
