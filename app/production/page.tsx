@@ -9,7 +9,6 @@ export default function ProductionPage() {
             Production Entry
           </h1>
           <p className="text-sm text-muted-foreground">
-            Record production against the assigned Work Order routing.
           </p>
         </div>
 
