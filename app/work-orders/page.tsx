@@ -40,14 +40,23 @@ type WO = {
 };
 
 type WipStage = {
+  work_order_id?: string;
   work_order_no: string;
   route_code: string;
   stage_name: string;
   sequence_no: number;
   input_qty: number;
+  input_pcs?: number;
   output_qty: number;
+  output_pcs?: number;
   rejection_qty: number;
+  rejection_pcs?: number;
+  net_output_qty?: number;
+  net_output_pcs?: number;
+  htc_ok_qty?: number;
+  htc_ok_pcs?: number;
   current_wip: number;
+  current_wip_pcs?: number;
 };
 
 export default function WorkOrders() {
@@ -88,8 +97,14 @@ export default function WorkOrders() {
     if (wipData) {
       const map: Record<string, WipStage[]> = {};
       (wipData as WipStage[]).forEach((item) => {
-        if (!map[item.work_order_no]) map[item.work_order_no] = [];
-        map[item.work_order_no].push(item);
+        if (item.work_order_no) {
+          if (!map[item.work_order_no]) map[item.work_order_no] = [];
+          map[item.work_order_no].push(item);
+        }
+        if (item.work_order_id && item.work_order_id !== item.work_order_no) {
+          if (!map[item.work_order_id]) map[item.work_order_id] = [];
+          map[item.work_order_id].push(item);
+        }
       });
       setWipMap(map);
     }
@@ -392,9 +407,10 @@ export default function WorkOrders() {
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(w => {
                   const sla = getSLA(w.target_date);
-                  const wips = wipMap[w.work_order_no] || [];
+                  const wips = wipMap[w.work_order_no] || (w.id ? wipMap[w.id] : []) || [];
                   const isWipExpanded = !!expandedWip[w.id];
                   const avg = w.l1 && w.l2 ? (w.l1 + w.l2) / 2 : w.l1 || w.l2 || 6.0;
+                  const activeWips = wips.filter(wp => Number(wp.current_wip) > 0);
 
                   return (
                     <React.Fragment key={w.id}>
@@ -425,20 +441,25 @@ export default function WorkOrders() {
                         </td>
                         {/* Work Center WIP summary badge */}
                         <td className="py-2.5 px-3">
-                          {wips.length === 0 ? (
-                            <span className="text-[11px] text-slate-400">No active WIP</span>
-                          ) : (
+                          {activeWips.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
-                              {wips.map(wp => (
-                                <span
-                                  key={wp.stage_name}
-                                  className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 font-mono"
-                                  title={`${wp.stage_name}: ${wp.current_wip} MTR (${avg > 0 ? (wp.current_wip / avg).toFixed(1) : 0} PCS)`}
-                                >
-                                  {wp.stage_name.replace(' Stage', '')}: {wp.current_wip}m
-                                </span>
-                              ))}
+                              {activeWips.map(wp => {
+                                const pcsVal = wp.current_wip_pcs ?? (avg > 0 ? Number((wp.current_wip / avg).toFixed(1)) : 0);
+                                return (
+                                  <span
+                                    key={wp.stage_name}
+                                    className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 font-mono"
+                                    title={`${wp.stage_name}: ${wp.current_wip} MTR (${pcsVal} PCS)`}
+                                  >
+                                    {wp.stage_name.replace(' Stage', '')}: {pcsVal} PCS ({wp.current_wip}m)
+                                  </span>
+                                );
+                              })}
                             </div>
+                          ) : wips.length > 0 ? (
+                            <span className="text-[11px] text-slate-400">Route clear / Ready</span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">No active WIP</span>
                           )}
                         </td>
                         <td className="py-2.5 px-3">
@@ -498,10 +519,10 @@ export default function WorkOrders() {
                               </div>
                               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                                 {wips.map(wp => {
-                                  const wipPcs = avg > 0 ? (wp.current_wip / avg).toFixed(2) : '0';
-                                  const inPcs = avg > 0 ? (wp.input_qty / avg).toFixed(2) : '0';
-                                  const outPcs = avg > 0 ? (wp.output_qty / avg).toFixed(2) : '0';
-                                  const rejPcs = avg > 0 ? (wp.rejection_qty / avg).toFixed(2) : '0';
+                                  const wipPcs = wp.current_wip_pcs ?? (avg > 0 ? (wp.current_wip / avg).toFixed(2) : '0');
+                                  const inPcs = wp.input_pcs ?? (avg > 0 ? (wp.input_qty / avg).toFixed(2) : '0');
+                                  const outPcs = wp.output_pcs ?? (avg > 0 ? (wp.output_qty / avg).toFixed(2) : '0');
+                                  const rejPcs = wp.rejection_pcs ?? (avg > 0 ? (wp.rejection_qty / avg).toFixed(2) : '0');
 
                                   return (
                                     <div key={wp.stage_name} className="rounded-md border border-slate-200 bg-slate-50/50 p-2 text-xs space-y-1">
@@ -510,17 +531,23 @@ export default function WorkOrders() {
                                         <span className="text-[10px] text-blue-700 font-mono">Seq {wp.sequence_no}</span>
                                       </div>
                                       <div className="flex justify-between text-[11px]">
-                                        <span className="text-slate-500">Current WIP:</span>
-                                        <span className="font-bold font-mono text-slate-900">{wipPcs} PCS ({wp.current_wip}m)</span>
+                                        <span className="text-slate-500 font-medium">Available WIP:</span>
+                                        <span className="font-bold font-mono text-blue-800">{wipPcs} PCS ({wp.current_wip}m)</span>
                                       </div>
                                       <div className="flex justify-between text-[10px] text-slate-600">
                                         <span>Input / Output:</span>
-                                        <span className="font-mono">{inPcs} / {outPcs} PCS</span>
+                                        <span className="font-mono">{inPcs} / {outPcs} PCS ({wp.input_qty} / {wp.output_qty}m)</span>
                                       </div>
                                       <div className="flex justify-between text-[10px] text-rose-600">
                                         <span>Rejection:</span>
                                         <span className="font-mono">{rejPcs} PCS ({wp.rejection_qty}m)</span>
                                       </div>
+                                      {wp.htc_ok_qty !== undefined && wp.htc_ok_qty > 0 && (
+                                        <div className="flex justify-between text-[10px] text-emerald-700 font-medium">
+                                          <span>HTC OK:</span>
+                                          <span className="font-mono">{wp.htc_ok_pcs ?? (avg > 0 ? (wp.htc_ok_qty / avg).toFixed(1) : 0)} PCS ({wp.htc_ok_qty}m)</span>
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}

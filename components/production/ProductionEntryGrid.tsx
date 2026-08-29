@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -71,6 +71,21 @@ export default function ProductionEntryGrid() {
     fromDate,
     toDate
   );
+
+  const [factoryWip, setFactoryWip] = useState<any[]>([]);
+
+  const loadFactoryWip = useCallback(async () => {
+    try {
+      const { data } = await supabase.from("vw_route_stage_wip").select("*");
+      if (data) setFactoryWip(data);
+    } catch {
+      // ignore
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    loadFactoryWip();
+  }, [loadFactoryWip, rows]);
 
   const routes = useMemo(
     () => Array.from(new Set(entries.map((e) => e.route_code))).sort(),
@@ -143,7 +158,7 @@ export default function ProductionEntryGrid() {
     );
   };
 
-  // --- Aggregate WIP across all work orders in current queue ---
+  // --- Aggregate WIP across all work orders in current queue & factory-wide ---
   const workCenterSummary = useMemo(() => {
     const summary: Record<string, { label: string; stage_code: StageCode; availMtr: number; availPcs: number; count: number }> = {
       ROLLING: { label: "Rolling Mill", stage_code: "ROLLING", availMtr: 0, availPcs: 0, count: 0 },
@@ -153,20 +168,33 @@ export default function ProductionEntryGrid() {
       FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, count: 0 },
     };
 
-    rows.forEach((r) => {
-      if (r.work_centers_wip) {
-        r.work_centers_wip.forEach((w) => {
-          if (summary[w.stage_code]) {
-            summary[w.stage_code].availMtr += w.available_mtr || 0;
-            summary[w.stage_code].availPcs += w.available_pcs || 0;
-            if (w.available_mtr > 0) summary[w.stage_code].count += 1;
-          }
-        });
-      }
-    });
+    if (factoryWip.length > 0) {
+      factoryWip.forEach((w) => {
+        const sc = (w.stage_code || "").toUpperCase();
+        if (summary[sc]) {
+          const mtr = Number(w.current_wip ?? w.available_mtr ?? 0);
+          const pcs = Number(w.current_wip_pcs ?? w.available_pcs ?? 0);
+          summary[sc].availMtr += mtr;
+          summary[sc].availPcs += pcs;
+          if (mtr > 0 || pcs > 0) summary[sc].count += 1;
+        }
+      });
+    } else {
+      rows.forEach((r) => {
+        if (r.work_centers_wip) {
+          r.work_centers_wip.forEach((w) => {
+            if (summary[w.stage_code]) {
+              summary[w.stage_code].availMtr += w.available_mtr || 0;
+              summary[w.stage_code].availPcs += w.available_pcs || 0;
+              if (w.available_mtr > 0) summary[w.stage_code].count += 1;
+            }
+          });
+        }
+      });
+    }
 
     return Object.values(summary);
-  }, [rows]);
+  }, [factoryWip, rows]);
 
   // --- Batch save (atomic) ---
   async function save() {
@@ -211,7 +239,7 @@ export default function ProductionEntryGrid() {
       if (rpcError) throw rpcError;
 
       setMessage("All production entries saved successfully.");
-      await Promise.all([reloadQueue(), reloadHistory()]);
+      await Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()]);
     } catch (e: unknown) {
       console.error("Full error:", e);
       setError(e instanceof Error ? e.message : "Failed to save production.");

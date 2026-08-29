@@ -385,17 +385,26 @@ class MockStore {
 
     const queue: any[] = [];
 
-    // Find all WOs associated with rolling plans or diversions
+    // Find all WOs associated with rolling plans, diversions, or production logs
     const targets: { woId: string; routeId: string }[] = [];
-    for (const rp of this.rollingPlans) {
-      if (!targets.some(t => t.woId === rp.work_order_id && t.routeId === rp.process_route_id)) {
-        targets.push({ woId: rp.work_order_id, routeId: rp.process_route_id });
+
+    const addTarget = (wId?: string, rId?: string) => {
+      if (!wId || !rId) return;
+      const wo = this.workOrders.find(w => w.id === wId || w.work_order_no === wId);
+      const route = this.routes.find(r => r.id === rId || r.route_code === rId);
+      if (wo && route && !targets.some(t => t.woId === wo.id && t.routeId === route.id)) {
+        targets.push({ woId: wo.id, routeId: route.id });
       }
+    };
+
+    for (const rp of this.rollingPlans) {
+      addTarget(rp.work_order_id, rp.process_route_id);
     }
     for (const dp of this.diversions) {
-      if (!targets.some(t => t.woId === dp.target_wo_id && t.routeId === dp.process_route_id)) {
-        targets.push({ woId: dp.target_wo_id, routeId: dp.process_route_id });
-      }
+      addTarget(dp.target_wo_id, dp.process_route_id);
+    }
+    for (const pl of this.productionLogs) {
+      addTarget(pl.work_order_id, pl.process_route_id);
     }
 
     for (const target of targets) {
@@ -448,9 +457,11 @@ class MockStore {
       // Stage logs helpers for this WO and Route
       const getStageLogs = (sc: string) => {
         const sObj = this.stages.find(s => s.stage_code === sc);
-        if (!sObj) return [];
         return this.productionLogs.filter(
-          pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === sObj.id
+          pl =>
+            (pl.work_order_id === wo.id || (wo.work_order_no && pl.work_order_id === wo.work_order_no)) &&
+            (pl.process_route_id === route.id || pl.process_route_id === route.route_code) &&
+            (pl.stage_id === sObj?.id || pl.stage_id === sc || pl.stage_id === sObj?.stage_code)
         );
       };
 
@@ -956,35 +967,207 @@ class MockStore {
 
   getRouteStageWIP() {
     const list: any[] = [];
+    const targets: { woId: string; routeId: string }[] = [];
+
+    const addTarget = (wId?: string, rId?: string) => {
+      if (!wId || !rId) return;
+      const wo = this.workOrders.find(w => w.id === wId || w.work_order_no === wId);
+      const route = this.routes.find(r => r.id === rId || r.route_code === rId);
+      if (wo && route && !targets.some(t => t.woId === wo.id && t.routeId === route.id)) {
+        targets.push({ woId: wo.id, routeId: route.id });
+      }
+    };
+
+    for (const rp of this.rollingPlans) {
+      addTarget(rp.work_order_id, rp.process_route_id);
+    }
+    for (const dp of this.diversions) {
+      addTarget(dp.target_wo_id, dp.process_route_id);
+    }
+    for (const pl of this.productionLogs) {
+      addTarget(pl.work_order_id, pl.process_route_id);
+    }
+
+    // Also include any active work orders with their default or assigned route
     for (const wo of this.workOrders) {
-      for (const route of this.routes) {
-        const rsList = this.routeStages
-          .filter(rs => rs.route_id === route.id)
-          .sort((a, b) => a.sequence_no - b.sequence_no);
-        for (const rs of rsList) {
-          const stage = this.stages.find(s => s.id === rs.stage_id);
-          const logs = this.productionLogs.filter(
-            pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === rs.stage_id
-          );
-          const inQty = logs.reduce((sum, l) => sum + Number(l.input_qty || 0), 0);
-          const outQty = logs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-          const rejQty = logs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-          const wip = Math.max(0, inQty - outQty);
-          if (wip > 0 || inQty > 0) {
-            list.push({
-              work_order_no: wo.work_order_no,
-              route_code: route.route_code,
-              stage_name: stage?.stage_name ?? 'Stage',
-              sequence_no: rs.sequence_no,
-              input_qty: inQty,
-              output_qty: outQty,
-              rejection_qty: rejQty,
-              current_wip: wip,
-            });
-          }
-        }
+      if (!targets.some(t => t.woId === wo.id)) {
+        const defaultRoute = this.routes[0];
+        if (defaultRoute) targets.push({ woId: wo.id, routeId: defaultRoute.id });
       }
     }
+
+    for (const target of targets) {
+      const wo = this.workOrders.find(w => w.id === target.woId);
+      const route = this.routes.find(r => r.id === target.routeId && r.active);
+      if (!wo || !route) continue;
+
+      const plan = this.rollingPlans.find(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id);
+      const diversion = this.diversions.find(dp => dp.target_wo_id === wo.id && dp.process_route_id === route.id);
+      const multiple = Math.max(1, Number(plan?.multiple ?? diversion?.multiple ?? 1));
+
+      const l1 = Number(wo.l1 || 0);
+      const l2 = Number(wo.l2 || 0);
+      const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 6.0;
+
+      let mhL1 = plan?.mh_l1 ? Number(plan.mh_l1) : null;
+      let mhL2 = plan?.mh_l2 ? Number(plan.mh_l2) : null;
+      const mhAvgLength =
+        mhL1 && mhL2 && mhL1 > 0 && mhL2 > 0
+          ? (mhL1 + mhL2) / 2
+          : mhL1 && mhL1 > 0
+          ? mhL1
+          : mhL2 && mhL2 > 0
+          ? mhL2
+          : avgLength * multiple;
+
+      const getStageLogs = (sc: string) => {
+        const sObj = this.stages.find(s => s.stage_code === sc);
+        return this.productionLogs.filter(
+          pl =>
+            (pl.work_order_id === wo.id || (wo.work_order_no && pl.work_order_id === wo.work_order_no)) &&
+            (pl.process_route_id === route.id || pl.process_route_id === route.route_code) &&
+            (pl.stage_id === sObj?.id || pl.stage_id === sc || pl.stage_id === sObj?.stage_code)
+        );
+      };
+
+      const rollingLogs = getStageLogs('ROLLING');
+      const rollingInput = rollingLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+      const rollingGross = rollingLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+      const rollingRej = rollingLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+      const rollingHtcOk = rollingLogs.reduce((sum, pl) => sum + Number(pl.htc_ok || 0), 0);
+      const rollingNet = Math.max(0, rollingGross - rollingRej);
+
+      const hhtLogs = getStageLogs('HOLLOW_HEAT_TREATMENT');
+      const hhtInput = hhtLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+      const hhtGross = hhtLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+      const hhtRej = hhtLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+      const hhtNet = Math.max(0, hhtGross - hhtRej);
+
+      const drawLogs = getStageLogs('DRAW');
+      const drawInput = drawLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+      const drawGross = drawLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+      const drawRej = drawLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+      const drawNet = Math.max(0, drawGross - drawRej);
+
+      const htLogs = getStageLogs('HEAT_TREATMENT');
+      const htInput = htLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+      const htGross = htLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+      const htRej = htLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+      const htNet = Math.max(0, htGross - htRej);
+
+      const finishingLogs = getStageLogs('FINISHING');
+      const finishingInput = finishingLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+      const finishingGross = finishingLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+      const finishingRej = finishingLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+      const finishingNet = Math.max(0, finishingGross - finishingRej);
+
+      const plannedRolling = this.rollingPlans
+        .filter(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id)
+        .reduce((sum, rp) => sum + Number(rp.planned_qty || 0), 0);
+      const divertedIn = this.diversions
+        .filter(dp => dp.target_wo_id === wo.id && dp.process_route_id === route.id)
+        .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
+      const plannedRollingTotal = plannedRolling + divertedIn;
+
+      const orderTotalMtr = Number(wo.balance_qty_mtr ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0);
+      const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross);
+
+      const routeStagesList = this.routeStages
+        .filter(rs => rs.route_id === route.id)
+        .sort((a, b) => a.sequence_no - b.sequence_no);
+
+      for (const rsItem of routeStagesList) {
+        const sObj = this.stages.find(s => s.id === rsItem.stage_id);
+        if (!sObj) continue;
+        const sc = sObj.stage_code;
+
+        let wcAvailMtr = 0;
+        let wcInputMtr = 0;
+        let wcGrossMtr = 0;
+        let wcRejMtr = 0;
+        let wcNetMtr = 0;
+        let wcHtcOkMtr = 0;
+
+        if (sc === 'ROLLING') {
+          wcAvailMtr = Math.max(0, plannedRollingTotal * 1.1 - rollingInput);
+          wcInputMtr = rollingInput;
+          wcGrossMtr = rollingGross;
+          wcRejMtr = rollingRej;
+          wcNetMtr = rollingNet;
+          wcHtcOkMtr = rollingHtcOk;
+        } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
+          wcAvailMtr = Math.max(0, rollingHtcOk - hhtInput);
+          wcInputMtr = hhtInput;
+          wcGrossMtr = hhtGross;
+          wcRejMtr = hhtRej;
+          wcNetMtr = hhtNet;
+        } else if (sc === 'DRAW') {
+          wcAvailMtr =
+            route.route_code.toUpperCase() === 'ALLOY_CDS'
+              ? Math.max(0, hhtNet - drawInput)
+              : Math.max(0, rollingHtcOk - drawInput);
+          wcInputMtr = drawInput;
+          wcGrossMtr = drawGross;
+          wcRejMtr = drawRej;
+          wcNetMtr = drawNet;
+        } else if (sc === 'HEAT_TREATMENT') {
+          wcAvailMtr = Math.max(0, drawNet - htInput);
+          wcInputMtr = htInput;
+          wcGrossMtr = htGross;
+          wcRejMtr = htRej;
+          wcNetMtr = htNet;
+        } else if (sc === 'FINISHING') {
+          let availFromPreceding = 0;
+          if (route.route_code.toUpperCase() === 'HFS') {
+            availFromPreceding = Math.max(0, rollingHtcOk * multiple - finishingInput);
+          } else if (route.route_code.toUpperCase() === 'ALLOY_HFS') {
+            availFromPreceding = Math.max(0, hhtNet * multiple - finishingInput);
+          } else {
+            availFromPreceding = Math.max(0, htNet * multiple - finishingInput);
+          }
+          wcAvailMtr = Math.min(availFromPreceding, orderBalanceMtr);
+          wcInputMtr = finishingInput;
+          wcGrossMtr = finishingGross;
+          wcRejMtr = finishingRej;
+          wcNetMtr = finishingNet;
+        }
+
+        const stageAvg = sc === 'ROLLING' && mhAvgLength > 0 ? mhAvgLength : avgLength;
+        const wcAvailPcs = stageAvg > 0 ? Number((wcAvailMtr / stageAvg).toFixed(2)) : 0;
+        const wcInputPcs = stageAvg > 0 ? Number((wcInputMtr / stageAvg).toFixed(2)) : 0;
+        const wcGrossPcs = stageAvg > 0 ? Number((wcGrossMtr / stageAvg).toFixed(2)) : 0;
+        const wcRejPcs = stageAvg > 0 ? Number((wcRejMtr / stageAvg).toFixed(2)) : 0;
+        const wcNetPcs = stageAvg > 0 ? Number((wcNetMtr / stageAvg).toFixed(2)) : 0;
+        const wcHtcOkPcs = stageAvg > 0 ? Number((wcHtcOkMtr / stageAvg).toFixed(2)) : 0;
+
+        list.push({
+          work_order_id: wo.id,
+          work_order_no: wo.work_order_no,
+          customer_name: wo.customer_name,
+          route_id: route.id,
+          route_code: route.route_code,
+          stage_id: sObj.id,
+          stage_code: sc,
+          stage_name: sObj.stage_name,
+          sequence_no: rsItem.sequence_no,
+          input_qty: wcInputMtr,
+          input_pcs: wcInputPcs,
+          output_qty: wcGrossMtr,
+          output_pcs: wcGrossPcs,
+          rejection_qty: wcRejMtr,
+          rejection_pcs: wcRejPcs,
+          net_output_qty: wcNetMtr,
+          net_output_pcs: wcNetPcs,
+          htc_ok_qty: sc === 'ROLLING' ? wcHtcOkMtr : undefined,
+          htc_ok_pcs: sc === 'ROLLING' ? wcHtcOkPcs : undefined,
+          current_wip: wcAvailMtr,
+          current_wip_pcs: wcAvailPcs,
+          avg_length: stageAvg,
+          multiple: multiple,
+        });
+      }
+    }
+
     return list;
   }
 
