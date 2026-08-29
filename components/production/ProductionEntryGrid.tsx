@@ -13,6 +13,10 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueue } from "@/hooks/useQueue";
+const { rows, setRows, loading: queueLoading, error: queueError, reload: reloadQueue } = useQueue(stage);
+console.log("🔍 rows from useQueue:", rows);
+console.log("🔍 queueLoading:", queueLoading);
+console.log("🔍 queueError:", queueError);
 import { useHistory } from "@/hooks/useHistory";
 import { validateProductionEntry } from "@/lib/productionValidation";
 import { calc, fmt, n, mtrFromPcs, pcsFromMtr } from "@/lib/productionUtils";
