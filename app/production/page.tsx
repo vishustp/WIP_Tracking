@@ -6,7 +6,6 @@ export default function ProductionPage() {
       <div className="mx-auto max-w-[1800px]">
         <div className="mb-6">
           <h1 className="text-2xl font-bold">
-            Production Entry
           </h1>
           <p className="text-sm text-muted-foreground">
           </p>
