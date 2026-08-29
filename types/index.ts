@@ -6,6 +6,22 @@ export type StageCode =
   | "HEAT_TREATMENT"
   | "FINISHING";
 
+export interface WorkCenterWipInfo {
+  stage_code: StageCode;
+  stage_name: string;
+  sequence_no: number;
+  available_mtr: number;
+  available_pcs: number;
+  gross_output_mtr: number;
+  gross_output_pcs: number;
+  rejection_mtr: number;
+  rejection_pcs: number;
+  net_output_mtr: number;
+  net_output_pcs: number;
+  htc_ok_mtr?: number;
+  htc_ok_pcs?: number;
+}
+
 export interface Row {
   work_order_id: string;
   work_order_no: string;
@@ -56,6 +72,9 @@ export interface Row {
   htc_ok_mtr: string;
   heat_lot_no: string;
   remarks: string;
+
+  // Work Center WIP Breakdown across the entire route
+  work_centers_wip?: WorkCenterWipInfo[];
 }
 
 export interface ProductionEntry {
@@ -80,6 +99,7 @@ export interface ProductionEntry {
   rejection_pcs: number;
   rejection_mt: number;
   htc_ok_mtr: number;
+  htc_ok_pcs?: number;
   heat_lot_no: string | null;
   remarks: string | null;
   created_at: string;

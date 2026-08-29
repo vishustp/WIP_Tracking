@@ -9,13 +9,20 @@ import {
   Edit2,
   Trash2,
   X,
+  Layers,
+  ChevronDown,
+  ChevronRight,
+  Factory,
+  ArrowRight,
+  Info,
+  SlidersHorizontal,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueue } from "@/hooks/useQueue";
 import { useHistory } from "@/hooks/useHistory";
 import { validateProductionEntry } from "@/lib/productionValidation";
-import { calc, fmt, n, mtrFromPcs, pcsFromMtr } from "@/lib/productionUtils";
-import { StageCode, STAGES, Row, ProductionEntry } from "@/types";
+import { calc, fmt, n, mtrFromPcs, pcsFromMtr, mtFromMtr } from "@/lib/productionUtils";
+import { StageCode, STAGES, Row, ProductionEntry, WorkCenterWipInfo } from "@/types";
 
 export default function ProductionEntryGrid() {
   const supabase = useMemo(() => createClient(), []);
@@ -34,13 +41,19 @@ export default function ProductionEntryGrid() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  // Expandable work center WIP breakdown per row
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [showWipSummary, setShowWipSummary] = useState(true);
+
   // Edit modal state
   const [editing, setEditing] = useState<ProductionEntry | null>(null);
   const [editMtr, setEditMtr] = useState("");
   const [editPcs, setEditPcs] = useState("");
   const [editDate, setEditDate] = useState("");
-  const [editRejection, setEditRejection] = useState("");
-  const [editHtc, setEditHtc] = useState("");
+  const [editRejectionMtr, setEditRejectionMtr] = useState("");
+  const [editRejectionPcs, setEditRejectionPcs] = useState("");
+  const [editHtcMtr, setEditHtcMtr] = useState("");
+  const [editHtcPcs, setEditHtcPcs] = useState("");
   const [editHeatLot, setEditHeatLot] = useState("");
   const [editRemarks, setEditRemarks] = useState("");
   const [editSaving, setEditSaving] = useState(false);
@@ -64,7 +77,25 @@ export default function ProductionEntryGrid() {
     [entries]
   );
 
-  // --- Row update helper ---
+  // Toggle single row expansion
+  const toggleRowExpansion = (key: string) => {
+    setExpandedRows((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  // Toggle all rows expansion
+  const toggleAllRows = () => {
+    const allExpanded = rows.every((r) => expandedRows[`${r.work_order_id}|${r.route_id}`]);
+    const newState: Record<string, boolean> = {};
+    rows.forEach((r) => {
+      newState[`${r.work_order_id}|${r.route_id}`] = !allExpanded;
+    });
+    setExpandedRows(newState);
+  };
+
+  // --- Row update helper with bidirectional PCS <-> MTR conversion ---
   const updateRow = (
     key: string,
     field: keyof Pick<
@@ -76,41 +107,66 @@ export default function ProductionEntryGrid() {
     setRows((current) =>
       current.map((r) => {
         if (`${r.work_order_id}|${r.route_id}` !== key) return r;
-        
-        // Rule 5: Rolling Mtr and MT will be calculated based on MH OD, MH WT and MH Length
+
+        // Rule 5: Rolling Mtr and MT calculated based on MH dimensions if applicable
         const effectiveAvg =
           stage === "ROLLING" && r.mh_avg_length && r.mh_avg_length > 0
             ? Number(r.mh_avg_length)
             : n(r.avg_length);
 
         if (field === "pcs") {
-          const mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg));
+          const mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
           return { ...r, pcs: value, mtr };
         }
         if (field === "mtr") {
-          const pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
+          const pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
           return { ...r, mtr: value, pcs };
         }
         if (field === "rejection_pcs") {
-          const rejection_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg));
+          const rejection_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
           return { ...r, rejection_pcs: value, rejection_mtr };
         }
         if (field === "rejection_mtr") {
-          const rejection_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
+          const rejection_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
           return { ...r, rejection_mtr: value, rejection_pcs };
         }
         if (field === "htc_ok_pcs") {
-          const htc_ok_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg));
+          const htc_ok_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
           return { ...r, htc_ok_pcs: value, htc_ok_mtr };
         }
         if (field === "htc_ok_mtr") {
-          const htc_ok_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
+          const htc_ok_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
           return { ...r, htc_ok_mtr: value, htc_ok_pcs };
         }
         return { ...r, [field]: value };
       })
     );
   };
+
+  // --- Aggregate WIP across all work orders in current queue ---
+  const workCenterSummary = useMemo(() => {
+    const summary: Record<string, { label: string; stage_code: StageCode; availMtr: number; availPcs: number; count: number }> = {
+      ROLLING: { label: "Rolling Mill", stage_code: "ROLLING", availMtr: 0, availPcs: 0, count: 0 },
+      HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, count: 0 },
+      DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, count: 0 },
+      HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, count: 0 },
+      FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, count: 0 },
+    };
+
+    rows.forEach((r) => {
+      if (r.work_centers_wip) {
+        r.work_centers_wip.forEach((w) => {
+          if (summary[w.stage_code]) {
+            summary[w.stage_code].availMtr += w.available_mtr || 0;
+            summary[w.stage_code].availPcs += w.available_pcs || 0;
+            if (w.available_mtr > 0) summary[w.stage_code].count += 1;
+          }
+        });
+      }
+    });
+
+    return Object.values(summary);
+  }, [rows]);
 
   // --- Batch save (atomic) ---
   async function save() {
@@ -157,36 +213,85 @@ export default function ProductionEntryGrid() {
       setMessage("All production entries saved successfully.");
       await Promise.all([reloadQueue(), reloadHistory()]);
     } catch (e: unknown) {
-       console.error("🔥 Full error:", e);
+      console.error("Full error:", e);
       setError(e instanceof Error ? e.message : "Failed to save production.");
     } finally {
       setSaving(false);
     }
   }
 
-  // --- Edit handlers ---
+  // --- Edit handlers with bidirectional PCS <-> MTR ---
   function openEdit(entry: ProductionEntry) {
     setEditing(entry);
+    const avg = n(entry.avg_length) > 0 ? n(entry.avg_length) : 6.0;
     setEditDate(entry.process_date.slice(0, 10));
-    setEditMtr(String(entry.output_mtr || 0));
-    setEditPcs(String(entry.output_pcs || 0));
-    setEditRejection(String(entry.rejection_mtr || 0));
-    setEditHtc(String(entry.htc_ok_mtr || 0));
+    setEditMtr(String(entry.output_mtr || ""));
+    setEditPcs(String(entry.output_pcs || (entry.output_mtr ? (entry.output_mtr / avg).toFixed(2) : "")));
+    setEditRejectionMtr(String(entry.rejection_mtr || ""));
+    setEditRejectionPcs(String(entry.rejection_pcs || (entry.rejection_mtr ? (entry.rejection_mtr / avg).toFixed(2) : "")));
+    setEditHtcMtr(String(entry.htc_ok_mtr || ""));
+    setEditHtcPcs(String(entry.htc_ok_pcs || (entry.htc_ok_mtr ? (entry.htc_ok_mtr / avg).toFixed(2) : "")));
     setEditHeatLot(entry.heat_lot_no || "");
     setEditRemarks(entry.remarks || "");
   }
 
   function changeEditPcs(value: string) {
     setEditPcs(value);
-    if (editing && n(editing.avg_length) > 0) {
-      setEditMtr(String(mtrFromPcs(n(value), n(editing.avg_length))));
+    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    if (value === "") {
+      setEditMtr("");
+    } else {
+      setEditMtr(String(mtrFromPcs(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
     }
   }
 
   function changeEditMtr(value: string) {
     setEditMtr(value);
-    if (editing && n(editing.avg_length) > 0) {
-      setEditPcs(String(pcsFromMtr(n(value), n(editing.avg_length))));
+    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    if (value === "") {
+      setEditPcs("");
+    } else {
+      setEditPcs(String(pcsFromMtr(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
+    }
+  }
+
+  function changeEditRejectionPcs(value: string) {
+    setEditRejectionPcs(value);
+    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    if (value === "") {
+      setEditRejectionMtr("");
+    } else {
+      setEditRejectionMtr(String(mtrFromPcs(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
+    }
+  }
+
+  function changeEditRejectionMtr(value: string) {
+    setEditRejectionMtr(value);
+    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    if (value === "") {
+      setEditRejectionPcs("");
+    } else {
+      setEditRejectionPcs(String(pcsFromMtr(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
+    }
+  }
+
+  function changeEditHtcPcs(value: string) {
+    setEditHtcPcs(value);
+    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    if (value === "") {
+      setEditHtcMtr("");
+    } else {
+      setEditHtcMtr(String(mtrFromPcs(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
+    }
+  }
+
+  function changeEditHtcMtr(value: string) {
+    setEditHtcMtr(value);
+    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    if (value === "") {
+      setEditHtcPcs("");
+    } else {
+      setEditHtcPcs(String(pcsFromMtr(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
     }
   }
 
@@ -197,8 +302,8 @@ export default function ProductionEntryGrid() {
     setMessage("");
 
     const mtr = n(editMtr);
-    const rejection = n(editRejection);
-    const htc = n(editHtc);
+    const rejection = n(editRejectionMtr);
+    const htc = n(editHtcMtr);
 
     if (!editDate) {
       setError("Production date is required.");
@@ -206,12 +311,12 @@ export default function ProductionEntryGrid() {
       return;
     }
     if (mtr <= 0) {
-      setError("Production MTR must be positive.");
+      setError("Production quantity (PCS / MTR) must be greater than zero.");
       setEditSaving(false);
       return;
     }
     if (rejection < 0 || rejection > mtr) {
-      setError("Rejection MTR cannot exceed production MTR.");
+      setError("Rejection cannot exceed production quantity.");
       setEditSaving(false);
       return;
     }
@@ -224,7 +329,7 @@ export default function ProductionEntryGrid() {
       return;
     }
     if (editing.stage_code === "ROLLING" && htc > mtr - rejection) {
-      setError("HTC OK cannot exceed Net Rolling production.");
+      setError("HTC OK cannot exceed Net Rolling output (Production - Rejection).");
       setEditSaving(false);
       return;
     }
@@ -286,225 +391,409 @@ export default function ProductionEntryGrid() {
       return "Plan × 110% (Nos / MTR)";
     }
     if (stage === "HOLLOW_HEAT_TREATMENT") {
-      return "Rolling HTC OK";
+      return "Rolling HTC OK Nos";
     }
     if (stage === "DRAW") {
       if (route === "ALLOY_CDS") {
-        return "Hollow HT Net Output";
+        return "Hollow Heat Treatment Nos";
       }
-      return "Rolling HTC OK";
+      return "Rolling HTC OK Nos";
     }
     if (stage === "HEAT_TREATMENT") {
-      return "Draw Bench Net Output";
+      return "Draw Bench Nos";
     }
     if (stage === "FINISHING") {
       if (route === "HFS") {
-        return "min(Rolling HTC OK × Multiple, Balance)";
+        return "min(HTC OK Nos × Mult, Balance to make)";
       }
       if (route === "ALLOY_HFS") {
-        return "min(Hollow HT Net × Multiple, Balance)";
+        return "min(Hollow HT Nos × Mult, Balance to make)";
       }
-      return "min(Heat Treatment × Multiple, Balance)";
+      return "min(Heat Treatment Nos × Mult, Balance to make)";
     }
     return "Previous Stage Output";
   }
 
-  // --- RENDER ---
   return (
     <div className="space-y-6">
-      {/* HEADER */}
+      {/* Top Header & Stage Selector */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Production Entry</h1>
-          <p className="text-sm text-muted-foreground">
-            Route-wise production entry, correction and history.
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Production Entry & WIP Tracking</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Enter and calculate production and rejection in PCS and MTR. Monitor work center WIP across every stage.
           </p>
         </div>
-        <div className="flex gap-2">
-          <select
-            value={stage}
-            onChange={(e) => setStage(e.target.value as StageCode)}
-            className="rounded-lg border px-3 py-2"
-          >
-            {STAGES.map((s) => (
-              <option key={s.code} value={s.code}>
-                {s.label}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white p-1 shadow-sm">
+            <span className="text-xs font-semibold text-slate-500 pl-2">Active Work Center:</span>
+            <select
+              value={stage}
+              onChange={(e) => setStage(e.target.value as StageCode)}
+              className="rounded-md border-0 bg-transparent px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:ring-0 cursor-pointer"
+            >
+              {STAGES.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             type="button"
             onClick={() => Promise.all([reloadQueue(), reloadHistory()])}
-            className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 hover:bg-muted"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
           >
-            <RefreshCw size={16} />
+            <RefreshCw size={14} className={queueLoading || historyLoading ? "animate-spin text-blue-600" : ""} />
             Refresh
           </button>
         </div>
       </div>
 
-      {/* MESSAGES */}
+      {/* Messages */}
       {message && (
-        <div className="flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-700">
-          <CheckCircle2 size={18} />
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800 shadow-sm">
+          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
           {message}
         </div>
       )}
       {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-800 shadow-sm">
+          <AlertTriangle size={16} className="mt-0.5 text-red-600 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      {/* DATE PICKER */}
-      <div className="rounded-xl border bg-background p-4">
-        <div className="grid gap-4 md:grid-cols-3">
+      {/* Work Centers WIP Overview Banner */}
+      <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Factory className="h-4 w-4 text-blue-600" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Work Center WIP Availability Summary
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowWipSummary(!showWipSummary)}
+            className="text-xs font-medium text-slate-600 hover:text-slate-900"
+          >
+            {showWipSummary ? "Hide Overview" : "Show Overview"}
+          </button>
+        </div>
+
+        {showWipSummary && (
+          <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-5 bg-slate-50/30">
+            {workCenterSummary.map((wc) => {
+              const isSelected = wc.stage_code === stage;
+              return (
+                <div
+                  key={wc.stage_code}
+                  onClick={() => setStage(wc.stage_code)}
+                  className={`cursor-pointer rounded-lg border p-3 transition-all ${
+                    isSelected
+                      ? "border-blue-500 bg-blue-50/50 shadow-sm ring-1 ring-blue-500"
+                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-700 truncate">{wc.label}</span>
+                    {isSelected && (
+                      <span className="rounded-full bg-blue-600 px-1.5 py-0.2 text-[9px] font-bold text-white">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-baseline gap-1.5">
+                    <span className="text-base font-bold font-mono text-slate-900">
+                      {fmt(wc.availPcs)}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-500">PCS</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    {fmt(wc.availMtr, " MTR")}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Production Date & Entry Controls */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
           <div>
-            <label className="mb-1 block text-sm font-medium">Production Date</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600">
+              Shift Process Date
+            </label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2"
+              className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
+          <div className="border-l border-slate-200 pl-3">
+            <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600">
+              Queue Work Orders
+            </span>
+            <span className="mt-1 inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-800">
+              {rows.length} Orders with WIP
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleAllRows}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+          >
+            <Layers size={13} className="text-slate-500" />
+            {rows.every((r) => expandedRows[`${r.work_order_id}|${r.route_id}`])
+              ? "Collapse All WIP Flows"
+              : "Expand All WIP Flows"}
+          </button>
         </div>
       </div>
 
-      {/* QUEUE TABLE */}
-      <div className="overflow-hidden rounded-xl border bg-background">
-        <div className="flex items-center justify-between border-b px-4 py-3">
+      {/* Queue Entry Grid Table */}
+      <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-3">
           <div>
-            <h2 className="font-semibold">
-              {STAGES.find((x) => x.code === stage)?.label || stage} Queue
+            <h2 className="text-sm font-bold text-slate-900">
+              {STAGES.find((x) => x.code === stage)?.label || stage} Production Entry Queue
             </h2>
-            <p className="text-xs text-muted-foreground">
-              Maximum allowed is calculated by backend.
+            <p className="text-[11px] text-slate-500">
+              Enter quantity in either PCS or MTR (auto-converts with pipe/MH length). Maximum capped according to route rules.
             </p>
           </div>
         </div>
 
         {queueLoading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            Loading production queue...
-          </div>
+          <div className="p-8 text-center text-xs text-slate-500">Loading work order production queue...</div>
         ) : rows.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            No production WIP available.
+          <div className="p-8 text-center text-xs text-slate-500">
+            No WIP available in queue for {STAGES.find((x) => x.code === stage)?.label}. Record production in preceding stages first.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[1500px] w-full text-sm">
-              <thead className="bg-muted/50">
+            <table className="min-w-full text-xs">
+              <thead className="border-b border-slate-200 bg-slate-100/70 text-slate-700">
                 <tr>
-                  <th className="px-3 py-3 text-left">WO</th>
-                  <th className="px-3 py-3 text-left">Customer</th>
-                  <th className="px-3 py-3 text-left">Grade</th>
-                  <th className="px-3 py-3 text-left">Route</th>
-                  <th className="px-3 py-3 text-right">Balance MTR</th>
-                  <th className="px-3 py-3 text-right">Multiple</th>
-                  <th className="px-3 py-3 text-left">Maximum</th>
-                  <th className="px-3 py-3 text-right">PCS</th>
-                  <th className="px-3 py-3 text-right">MTR</th>
-                  <th className="px-3 py-3 text-right">Rejection</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Work Order & Specs</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Route</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Available WIP & Capping</th>
+                  <th className="py-2.5 px-3 text-center font-semibold bg-blue-50/50">Production (PCS & MTR) *</th>
+                  <th className="py-2.5 px-3 text-center font-semibold bg-rose-50/40">Rejection (PCS & MTR)</th>
                   {stage === "ROLLING" && (
-                    <th className="px-3 py-3 text-right">HTC OK</th>
+                    <th className="py-2.5 px-3 text-center font-semibold bg-emerald-50/40">HTC OK (PCS & MTR)</th>
                   )}
                   {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
-                    <th className="px-3 py-3 text-left">Heat Lot No.</th>
+                    <th className="py-2.5 px-3 text-left font-semibold">Heat Lot No. *</th>
                   )}
-                  <th className="px-3 py-3 text-left">Remarks</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Remarks</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100">
                 {rows.map((r) => {
                   const key = `${r.work_order_id}|${r.route_id}`;
+                  const isExpanded = !!expandedRows[key];
                   const d = calc(r);
                   const maxAllowed =
-                    n(r.max_allowed_mtr) > 0
-                      ? n(r.max_allowed_mtr)
-                      : n(r.balance_to_make_mtr);
+                    n(r.max_allowed_mtr) > 0 ? n(r.max_allowed_mtr) : n(r.balance_to_make_mtr);
+                  const maxAllowedPcs =
+                    n(r.max_allowed_pcs) > 0
+                      ? n(r.max_allowed_pcs)
+                      : d.avg > 0
+                      ? maxAllowed / d.avg
+                      : 0;
 
                   return (
-                    <tr key={key} className="border-t">
-                      <td className="px-3 py-3 font-medium">{r.work_order_no}</td>
-                      <td className="px-3 py-3">{r.customer_name || "—"}</td>
-                      <td className="px-3 py-3">{r.specification || "—"}</td>
-                      <td className="px-3 py-3">
-                        <span className="rounded-md bg-muted px-2 py-1">{r.route_code}</span>
+                    <tr key={key} className="hover:bg-slate-50/50 transition-colors group">
+                      {/* Work Order Info */}
+                      <td className="py-3 px-3 align-top">
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                          <span>{r.work_order_no}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleRowExpansion(key)}
+                            title="Toggle Work Center WIP Pipeline"
+                            className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold border transition-colors ${
+                              isExpanded
+                                ? "bg-blue-600 text-white border-blue-600"
+                                : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                            }`}
+                          >
+                            <Layers size={10} />
+                            WIP Flow
+                            {isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                          </button>
+                        </div>
+                        <div className="text-[11px] text-slate-600 mt-0.5 truncate max-w-[170px]">
+                          {r.customer_name || "—"}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                          {r.od ? `${r.od} × ${r.wl ?? "—"} mm` : "—"} · Avg: {fmt(d.avg, "m")}
+                        </div>
+                        {stage === "ROLLING" && r.mh_od && (
+                          <div className="text-[10px] text-indigo-700 font-mono bg-indigo-50/80 rounded px-1 py-0.2 mt-0.5 inline-block">
+                            MH: {r.mh_od} × {r.mh_wt} mm ({fmt(r.mh_avg_length, "m")})
+                          </div>
+                        )}
                       </td>
-                      <td className="px-3 py-3 text-right">
-                        {fmt(r.balance_to_make_mtr, " MTR")}
+
+                      {/* Route */}
+                      <td className="py-3 px-3 align-top">
+                        <span className="inline-flex rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-800">
+                          {r.route_code}
+                        </span>
+                        <div className="text-[10px] text-slate-500 mt-1">
+                          Mult: ×{fmt(r.multiple || 1)}
+                        </div>
                       </td>
-                      <td className="px-3 py-3 text-right">× {fmt(r.multiple || 1)}</td>
-                      <td className="px-3 py-3">
-                        <div className="font-medium">{fmt(maxAllowed, " MTR")}</div>
-                        <div className="text-xs text-muted-foreground">
+
+                      {/* Available WIP & Capping */}
+                      <td className="py-3 px-3 align-top">
+                        <div className="flex items-baseline gap-1">
+                          <span className="font-bold text-slate-900 font-mono text-xs">
+                            {fmt(maxAllowedPcs)}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-500">PCS</span>
+                          <span className="text-slate-400">/</span>
+                          <span className="font-semibold text-slate-700 font-mono text-xs">
+                            {fmt(maxAllowed, " MTR")}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-0.5 max-w-[200px]">
                           {getMaximumFormula(r)}
                         </div>
                       </td>
-                      <td className="px-3 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={r.pcs}
-                          onChange={(e) => updateRow(key, "pcs", e.target.value)}
-                          className="w-28 rounded-md border px-2 py-1.5 text-right"
-                        />
-                      </td>
-                      <td className="px-3 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={r.mtr}
-                          onChange={(e) => updateRow(key, "mtr", e.target.value)}
-                          className="w-32 rounded-md border px-2 py-1.5 text-right"
-                        />
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {fmt(d.mt, " MT")}
+
+                      {/* Production Inputs (PCS & MTR) */}
+                      <td className="py-3 px-3 align-top bg-blue-50/20">
+                        <div className="flex items-center gap-1.5 justify-center">
+                          <div className="flex flex-col">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              placeholder="PCS"
+                              value={r.pcs}
+                              onChange={(e) => updateRow(key, "pcs", e.target.value)}
+                              className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            />
+                            <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">PCS</span>
+                          </div>
+                          <span className="text-slate-400 font-bold mb-3">=</span>
+                          <div className="flex flex-col">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              placeholder="MTR"
+                              value={r.mtr}
+                              onChange={(e) => updateRow(key, "mtr", e.target.value)}
+                              className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            />
+                            <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">
+                              {d.mt > 0 ? fmt(d.mt, " MT") : "MTR"}
+                            </span>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-3 py-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={r.rejection_mtr}
-                          onChange={(e) => updateRow(key, "rejection_mtr", e.target.value)}
-                          className="w-28 rounded-md border px-2 py-1.5 text-right"
-                        />
+
+                      {/* Rejection Inputs (PCS & MTR) */}
+                      <td className="py-3 px-3 align-top bg-rose-50/20">
+                        <div className="flex items-center gap-1.5 justify-center">
+                          <div className="flex flex-col">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              placeholder="PCS"
+                              value={r.rejection_pcs}
+                              onChange={(e) => updateRow(key, "rejection_pcs", e.target.value)}
+                              className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs text-rose-700 shadow-sm focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                            />
+                            <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">PCS</span>
+                          </div>
+                          <span className="text-slate-400 font-bold mb-3">=</span>
+                          <div className="flex flex-col">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              placeholder="MTR"
+                              value={r.rejection_mtr}
+                              onChange={(e) => updateRow(key, "rejection_mtr", e.target.value)}
+                              className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs text-rose-700 shadow-sm focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                            />
+                            <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">
+                              {d.rejectionMt > 0 ? fmt(d.rejectionMt, " MT") : "MTR"}
+                            </span>
+                          </div>
+                        </div>
                       </td>
+
+                      {/* HTC OK Inputs (Rolling Stage only) */}
                       {stage === "ROLLING" && (
-                        <td className="px-3 py-3">
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={r.htc_ok_mtr}
-                            onChange={(e) => updateRow(key, "htc_ok_mtr", e.target.value)}
-                            className="w-28 rounded-md border px-2 py-1.5 text-right"
-                          />
+                        <td className="py-3 px-3 align-top bg-emerald-50/20">
+                          <div className="flex items-center gap-1.5 justify-center">
+                            <div className="flex flex-col">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                placeholder="PCS"
+                                value={r.htc_ok_pcs}
+                                onChange={(e) => updateRow(key, "htc_ok_pcs", e.target.value)}
+                                className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-emerald-700 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                              />
+                              <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">PCS</span>
+                            </div>
+                            <span className="text-slate-400 font-bold mb-3">=</span>
+                            <div className="flex flex-col">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                placeholder="MTR"
+                                value={r.htc_ok_mtr}
+                                onChange={(e) => updateRow(key, "htc_ok_mtr", e.target.value)}
+                                className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-emerald-700 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                              />
+                              <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">
+                                {d.htcMt > 0 ? fmt(d.htcMt, " MT") : "MTR"}
+                              </span>
+                            </div>
+                          </div>
                         </td>
                       )}
+
+                      {/* Heat Lot No. (Heat Treatment only) */}
                       {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
-                        <td className="px-3 py-3">
+                        <td className="py-3 px-3 align-top">
                           <input
                             type="text"
+                            placeholder="e.g. HT-8842"
                             value={r.heat_lot_no}
                             onChange={(e) => updateRow(key, "heat_lot_no", e.target.value)}
-                            className="w-36 rounded-md border px-2 py-1.5"
+                            className="w-28 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                           />
                         </td>
                       )}
-                      <td className="px-3 py-3">
+
+                      {/* Remarks */}
+                      <td className="py-3 px-3 align-top">
                         <input
                           type="text"
+                          placeholder="Shift notes..."
                           value={r.remarks}
                           onChange={(e) => updateRow(key, "remarks", e.target.value)}
-                          className="w-44 rounded-md border px-2 py-1.5"
+                          className="w-36 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                         />
                       </td>
                     </tr>
@@ -515,36 +804,147 @@ export default function ProductionEntryGrid() {
           </div>
         )}
 
-        <div className="flex justify-end border-t p-4">
+        {/* Expandable Work Center WIP Breakdown Pipeline for expanded rows */}
+        {rows.some((r) => expandedRows[`${r.work_order_id}|${r.route_id}`]) && (
+          <div className="border-t border-slate-200 bg-slate-50/50 p-4 space-y-4">
+            <div className="flex items-center gap-2">
+              <Layers className="h-4 w-4 text-blue-600" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                Work Center WIP Breakdown Across Full Process Route
+              </h3>
+            </div>
+
+            {rows
+              .filter((r) => expandedRows[`${r.work_order_id}|${r.route_id}`])
+              .map((r) => {
+                const key = `${r.work_order_id}|${r.route_id}`;
+                return (
+                  <div key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 text-sm">{r.work_order_no}</span>
+                        <span className="text-xs text-slate-500 font-mono">({r.customer_name || "Direct"})</span>
+                        <span className="rounded bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                          Route: {r.route_code}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleRowExpansion(key)}
+                        className="text-xs font-semibold text-slate-500 hover:text-slate-900"
+                      >
+                        Close Breakdown
+                      </button>
+                    </div>
+
+                    {/* Flow steps */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                      {r.work_centers_wip?.map((w, idx) => {
+                        const isCurrent = w.stage_code === stage;
+                        return (
+                          <div
+                            key={w.stage_code}
+                            className={`rounded-lg border p-3 space-y-2 relative transition-all ${
+                              isCurrent
+                                ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-500 shadow-sm"
+                                : "border-slate-200 bg-slate-50/30"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between border-b border-slate-200/60 pb-1.5">
+                              <span className="text-[11px] font-bold text-slate-800">
+                                {idx + 1}. {w.stage_name}
+                              </span>
+                              {isCurrent && (
+                                <span className="rounded-full bg-blue-600 px-1.5 py-0.2 text-[9px] font-bold text-white">
+                                  Current
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-1 text-xs">
+                              <div className="flex justify-between items-baseline">
+                                <span className="text-slate-500 text-[11px]">Available WIP:</span>
+                                <span className="font-bold font-mono text-slate-900 text-[11px]">
+                                  {fmt(w.available_pcs)} PCS ({fmt(w.available_mtr, "m")})
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-baseline">
+                                <span className="text-slate-500 text-[11px]">Gross Output:</span>
+                                <span className="font-semibold font-mono text-slate-800 text-[11px]">
+                                  {fmt(w.gross_output_pcs)} PCS ({fmt(w.gross_output_mtr, "m")})
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-baseline">
+                                <span className="text-slate-500 text-[11px]">Rejection:</span>
+                                <span className="font-semibold font-mono text-rose-600 text-[11px]">
+                                  {fmt(w.rejection_pcs)} PCS ({fmt(w.rejection_mtr, "m")})
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-baseline border-t border-slate-100 pt-1">
+                                <span className="text-slate-700 font-semibold text-[11px]">Net Output:</span>
+                                <span className="font-bold font-mono text-emerald-700 text-[11px]">
+                                  {fmt(w.net_output_pcs)} PCS ({fmt(w.net_output_mtr, "m")})
+                                </span>
+                              </div>
+                              {w.stage_code === "ROLLING" && (
+                                <div className="flex justify-between items-baseline border-t border-slate-100 pt-1">
+                                  <span className="text-indigo-700 font-semibold text-[11px]">HTC OK:</span>
+                                  <span className="font-bold font-mono text-indigo-700 text-[11px]">
+                                    {fmt(w.htc_ok_pcs)} PCS ({fmt(w.htc_ok_mtr, "m")})
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
+
+        {/* Batch Save Action Footer */}
+        <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/80 p-4">
+          <span className="text-xs text-slate-500">
+            Entries are verified for length geometry, route-specific capping, and preceding stage WIP before atomic commitment.
+          </span>
           <button
             type="button"
             disabled={saving || queueLoading}
             onClick={save}
-            className="rounded-lg bg-black px-6 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded-lg bg-slate-900 px-6 py-2.5 text-xs font-bold text-white shadow hover:bg-slate-800 disabled:opacity-50 transition-colors"
           >
-            {saving ? "Saving..." : "Save Production"}
+            {saving ? "Saving Production..." : "Commit Production Batch"}
           </button>
         </div>
       </div>
 
-      {/* PRODUCTION HISTORY */}
-      <div className="overflow-hidden rounded-xl border bg-background">
-        <div className="border-b p-4">
-          <div className="mb-4 flex items-center gap-2">
-            <Search size={18} />
-            <h2 className="font-semibold">Production History</h2>
+      {/* Production History Table */}
+      <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+        <div className="border-b border-slate-100 p-4 bg-slate-50/70">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Search size={16} className="text-slate-500" />
+              <h2 className="text-sm font-bold text-slate-900">Production & Rejection Log History</h2>
+            </div>
+            <span className="text-xs font-semibold text-slate-500">
+              {entries.length} Logged Record{entries.length === 1 ? "" : "s"}
+            </span>
           </div>
-          <div className="grid gap-3 md:grid-cols-5">
+
+          <div className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-5 text-xs">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search WO / customer / grade"
-              className="rounded-lg border px-3 py-2"
+              placeholder="Search WO, customer, grade..."
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
             <select
               value={entryStage}
               onChange={(e) => setEntryStage(e.target.value)}
-              className="rounded-lg border px-3 py-2"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
               <option value="">All Stages</option>
               {STAGES.map((s) => (
@@ -556,7 +956,7 @@ export default function ProductionEntryGrid() {
             <select
               value={entryRoute}
               onChange={(e) => setEntryRoute(e.target.value)}
-              className="rounded-lg border px-3 py-2"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
               <option value="">All Routes</option>
               {routes.map((route) => (
@@ -569,77 +969,89 @@ export default function ProductionEntryGrid() {
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              className="rounded-lg border px-3 py-2"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
             <input
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              className="rounded-lg border px-3 py-2"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
         </div>
 
         {historyLoading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            Loading production history...
-          </div>
+          <div className="p-8 text-center text-xs text-slate-500">Loading production history...</div>
         ) : entries.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            No production entries found.
-          </div>
+          <div className="p-8 text-center text-xs text-slate-500">No production entries match the criteria.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[1450px] w-full text-sm">
-              <thead className="bg-muted/50">
+            <table className="min-w-full text-xs">
+              <thead className="border-b border-slate-200 bg-slate-100/70 text-slate-700">
                 <tr>
-                  <th className="px-3 py-3 text-left">Date</th>
-                  <th className="px-3 py-3 text-left">WO</th>
-                  <th className="px-3 py-3 text-left">Customer</th>
-                  <th className="px-3 py-3 text-left">Route</th>
-                  <th className="px-3 py-3 text-left">Stage</th>
-                  <th className="px-3 py-3 text-right">Production MTR</th>
-                  <th className="px-3 py-3 text-right">Production PCS</th>
-                  <th className="px-3 py-3 text-right">Rejection</th>
-                  <th className="px-3 py-3 text-right">HTC OK</th>
-                  <th className="px-3 py-3 text-left">Heat Lot</th>
-                  <th className="px-3 py-3 text-left">Remarks</th>
-                  <th className="px-3 py-3 text-center">Action</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Date</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Work Order</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Route & Stage</th>
+                  <th className="py-2.5 px-3 text-right font-semibold">Production (PCS & MTR)</th>
+                  <th className="py-2.5 px-3 text-right font-semibold">Rejection (PCS & MTR)</th>
+                  <th className="py-2.5 px-3 text-right font-semibold">HTC OK</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Heat Lot</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Remarks</th>
+                  <th className="py-2.5 px-3 text-center font-semibold">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100">
                 {entries.map((entry) => (
-                  <tr key={entry.id} className="border-t">
-                    <td className="px-3 py-3">{entry.process_date}</td>
-                    <td className="px-3 py-3 font-medium">{entry.work_order_no}</td>
-                    <td className="px-3 py-3">{entry.customer_name || "—"}</td>
-                    <td className="px-3 py-3">
-                      <span className="rounded-md bg-muted px-2 py-1">{entry.route_code}</span>
+                  <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-2.5 px-3 font-mono text-slate-700">{entry.process_date}</td>
+                    <td className="py-2.5 px-3 font-bold text-slate-900">
+                      {entry.work_order_no}
+                      <div className="text-[10px] font-normal text-slate-500 truncate max-w-[130px]">
+                        {entry.customer_name || "—"}
+                      </div>
                     </td>
-                    <td className="px-3 py-3">
-                      {STAGES.find((s) => s.code === entry.stage_code)?.label || entry.stage_code}
+                    <td className="py-2.5 px-3">
+                      <span className="rounded bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-800">
+                        {entry.route_code}
+                      </span>
+                      <div className="text-[11px] text-slate-600 font-medium mt-0.5">
+                        {STAGES.find((s) => s.code === entry.stage_code)?.label || entry.stage_code}
+                      </div>
                     </td>
-                    <td className="px-3 py-3 text-right">{fmt(entry.output_mtr, " MTR")}</td>
-                    <td className="px-3 py-3 text-right">{fmt(entry.output_pcs)}</td>
-                    <td className="px-3 py-3 text-right">{fmt(entry.rejection_mtr, " MTR")}</td>
-                    <td className="px-3 py-3 text-right">{fmt(entry.htc_ok_mtr, " MTR")}</td>
-                    <td className="px-3 py-3">{entry.heat_lot_no || "—"}</td>
-                    <td className="max-w-[250px] truncate px-3 py-3">{entry.remarks || "—"}</td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center justify-center gap-2">
+                    <td className="py-2.5 px-3 text-right font-mono">
+                      <div className="font-bold text-slate-900">{fmt(entry.output_pcs)} PCS</div>
+                      <div className="text-[10px] text-slate-500">{fmt(entry.output_mtr, " MTR")}</div>
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono">
+                      <div className="font-bold text-rose-600">{fmt(entry.rejection_pcs)} PCS</div>
+                      <div className="text-[10px] text-slate-500">{fmt(entry.rejection_mtr, " MTR")}</div>
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono text-emerald-700">
+                      {entry.htc_ok_mtr > 0 ? (
+                        <>
+                          <div className="font-bold">{fmt(entry.htc_ok_pcs)} PCS</div>
+                          <div className="text-[10px] text-slate-500">{fmt(entry.htc_ok_mtr, " MTR")}</div>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-slate-800">{entry.heat_lot_no || "—"}</td>
+                    <td className="py-2.5 px-3 text-slate-600 max-w-[180px] truncate">{entry.remarks || "—"}</td>
+                    <td className="py-2.5 px-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
                         <button
                           type="button"
                           disabled={!entry.can_modify}
                           onClick={() => openEdit(entry)}
                           title={
                             entry.can_modify
-                              ? "Edit"
-                              : "Cannot edit: later production exists"
+                              ? "Edit Entry"
+                              : "Locked: subsequent production logs exist for this order"
                           }
-                          className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          <Edit2 size={15} />
-                          Edit
+                          <Edit2 size={12} /> Edit
                         </button>
                         <button
                           type="button"
@@ -647,13 +1059,12 @@ export default function ProductionEntryGrid() {
                           onClick={() => setDeleteId(entry.id)}
                           title={
                             entry.can_modify
-                              ? "Delete"
-                              : "Cannot delete: later production exists"
+                              ? "Delete Entry"
+                              : "Locked: subsequent production logs exist for this order"
                           }
-                          className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2.5 py-1.5 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          <Trash2 size={15} />
-                          Delete
+                          <Trash2 size={12} /> Delete
                         </button>
                       </div>
                     </td>
@@ -665,111 +1076,141 @@ export default function ProductionEntryGrid() {
         )}
       </div>
 
-      {/* EDIT MODAL */}
+      {/* Edit Entry Modal */}
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-background shadow-2xl">
-            <div className="flex items-center justify-between border-b p-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-6 py-4">
               <div>
-                <h2 className="text-lg font-semibold">Edit Production Entry</h2>
-                <p className="text-sm text-muted-foreground">
-                  WO {editing.work_order_no} · {editing.route_code} ·{" "}
+                <h2 className="text-base font-bold text-slate-900">Edit Production Record</h2>
+                <p className="text-xs text-slate-500">
+                  {editing.work_order_no} · {editing.route_code} ·{" "}
                   {STAGES.find((s) => s.code === editing.stage_code)?.label}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setEditing(null)}
-                className="rounded-lg p-2 hover:bg-muted"
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <div className="grid gap-4 p-5 md:grid-cols-2">
+            <div className="grid gap-4 p-6 sm:grid-cols-2 text-xs">
               <div>
-                <label className="mb-1 block text-sm font-medium">Production Date</label>
+                <label className="block font-semibold text-slate-700 mb-1">Process Date *</label>
                 <input
                   type="date"
                   value={editDate}
                   onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium"
                 />
               </div>
+
               <div>
-                <label className="mb-1 block text-sm font-medium">Production PCS</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={editPcs}
-                  onChange={(e) => changeEditPcs(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Production MTR</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={editMtr}
-                  onChange={(e) => changeEditMtr(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Rejection MTR</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={editRejection}
-                  onChange={(e) => setEditRejection(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2"
-                />
-              </div>
-              {editing.stage_code === "ROLLING" && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium">HTC OK MTR</label>
+                <label className="block font-semibold text-slate-700 mb-1">Production (PCS & MTR) *</label>
+                <div className="flex items-center gap-2">
                   <input
                     type="number"
                     min="0"
                     step="any"
-                    value={editHtc}
-                    onChange={(e) => setEditHtc(e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
+                    placeholder="PCS"
+                    value={editPcs}
+                    onChange={(e) => changeEditPcs(e.target.value)}
+                    className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs font-bold"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    placeholder="MTR"
+                    value={editMtr}
+                    onChange={(e) => changeEditMtr(e.target.value)}
+                    className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs font-bold"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Rejection (PCS & MTR)</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    placeholder="PCS"
+                    value={editRejectionPcs}
+                    onChange={(e) => changeEditRejectionPcs(e.target.value)}
+                    className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs text-rose-700"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    placeholder="MTR"
+                    value={editRejectionMtr}
+                    onChange={(e) => changeEditRejectionMtr(e.target.value)}
+                    className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs text-rose-700"
+                  />
+                </div>
+              </div>
+
+              {editing.stage_code === "ROLLING" && (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">HTC OK (PCS & MTR)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="PCS"
+                      value={editHtcPcs}
+                      onChange={(e) => changeEditHtcPcs(e.target.value)}
+                      className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs text-emerald-700 font-bold"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="MTR"
+                      value={editHtcMtr}
+                      onChange={(e) => changeEditHtcMtr(e.target.value)}
+                      className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs text-emerald-700 font-bold"
+                    />
+                  </div>
+                </div>
               )}
+
               {(editing.stage_code === "HEAT_TREATMENT" || editing.stage_code === "HOLLOW_HEAT_TREATMENT") && (
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Heat Lot No.</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Heat Lot No. *</label>
                   <input
                     type="text"
                     value={editHeatLot}
                     onChange={(e) => setEditHeatLot(e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium"
                   />
                 </div>
               )}
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium">Remarks</label>
-                <textarea
+
+              <div className="sm:col-span-2">
+                <label className="block font-semibold text-slate-700 mb-1">Remarks</label>
+                <input
+                  type="text"
                   value={editRemarks}
                   onChange={(e) => setEditRemarks(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-lg border px-3 py-2"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
                 />
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 border-t p-5">
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-6 py-4">
               <button
                 type="button"
                 onClick={() => setEditing(null)}
                 disabled={editSaving}
-                className="rounded-lg border px-4 py-2"
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
@@ -777,34 +1218,37 @@ export default function ProductionEntryGrid() {
                 type="button"
                 onClick={updateEntry}
                 disabled={editSaving}
-                className="rounded-lg bg-black px-5 py-2 text-white disabled:opacity-50"
+                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow hover:bg-slate-800 disabled:opacity-50"
               >
-                {editSaving ? "Updating..." : "Update Production"}
+                {editSaving ? "Saving..." : "Update Production Entry"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* DELETE CONFIRMATION */}
+      {/* Delete Confirmation Modal */}
       {deleteId && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-background p-6 shadow-2xl">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="rounded-full bg-red-100 p-2 text-red-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-rose-100 p-2.5 text-rose-600">
                 <Trash2 size={20} />
               </div>
-              <h2 className="text-lg font-semibold">Delete Production Entry?</h2>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Delete Production Entry</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Are you sure you want to delete this entry? WIP balances will be recalculated immediately.
+                </p>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              This production entry will be permanently deleted. The WIP will then be recalculated automatically.
-            </p>
+
             <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
                 disabled={deleteBusy}
                 onClick={() => setDeleteId(null)}
-                className="rounded-lg border px-4 py-2"
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>
@@ -812,9 +1256,9 @@ export default function ProductionEntryGrid() {
                 type="button"
                 disabled={deleteBusy}
                 onClick={deleteEntry}
-                className="rounded-lg bg-red-600 px-5 py-2 text-white disabled:opacity-50"
+                className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-rose-700 disabled:opacity-50"
               >
-                {deleteBusy ? "Deleting..." : "Delete"}
+                {deleteBusy ? "Deleting..." : "Confirm Delete"}
               </button>
             </div>
           </div>

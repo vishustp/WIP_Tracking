@@ -54,19 +54,49 @@ export const calc = (row: {
     isRolling && row.mh_wt && row.mh_wt > 0 ? Number(row.mh_wt) : n(row.wl);
 
   const avg = effectiveAvg;
-  const pcs = n(row.pcs);
+  const pcs = row.pcs.trim() === "" && row.mtr.trim() !== "" ? pcsFromMtr(n(row.mtr), avg) : n(row.pcs);
   const calculatedMtr = mtrFromPcs(pcs, avg);
   const mtr = row.mtr.trim() === "" ? calculatedMtr : n(row.mtr);
-  const rejection =
+  const rejectionMtr =
     row.rejection_mtr.trim() === ""
       ? mtrFromPcs(n(row.rejection_pcs), avg)
       : n(row.rejection_mtr);
-  const htc =
+  const rejectionPcs =
+    row.rejection_pcs.trim() === ""
+      ? pcsFromMtr(rejectionMtr, avg)
+      : n(row.rejection_pcs);
+  const htcMtr =
     row.htc_ok_mtr.trim() === ""
       ? mtrFromPcs(n(row.htc_ok_pcs), avg)
       : n(row.htc_ok_mtr);
-  const mt = mtFromMtr(mtr, effectiveOd, effectiveWt);
+  const htcPcs =
+    row.htc_ok_pcs.trim() === ""
+      ? pcsFromMtr(htcMtr, avg)
+      : n(row.htc_ok_pcs);
 
-  return { avg, pcs, mtr, mt, rejection, htc, effectiveOd, effectiveWt };
+  const mt = mtFromMtr(mtr, effectiveOd, effectiveWt);
+  const rejectionMt = mtFromMtr(rejectionMtr, effectiveOd, effectiveWt);
+  const htcMt = mtFromMtr(htcMtr, effectiveOd, effectiveWt);
+  const netMtr = Math.max(0, mtr - rejectionMtr);
+  const netPcs = Math.max(0, pcs - rejectionPcs);
+
+  return {
+    avg,
+    pcs,
+    mtr,
+    mt,
+    rejection: rejectionMtr,
+    rejectionMtr,
+    rejectionPcs,
+    rejectionMt,
+    htc: htcMtr,
+    htcMtr,
+    htcPcs,
+    htcMt,
+    netMtr,
+    netPcs,
+    effectiveOd,
+    effectiveWt,
+  };
 };
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,8 +39,21 @@ type WO = {
   status: string;
 };
 
+type WipStage = {
+  work_order_no: string;
+  route_code: string;
+  stage_name: string;
+  sequence_no: number;
+  input_qty: number;
+  output_qty: number;
+  rejection_qty: number;
+  current_wip: number;
+};
+
 export default function WorkOrders() {
   const [rows, setRows] = useState<WO[]>([]);
+  const [wipMap, setWipMap] = useState<Record<string, WipStage[]>>({});
+  const [expandedWip, setExpandedWip] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
@@ -65,9 +78,21 @@ export default function WorkOrders() {
     const s = createClient();
     let query = s.from('work_orders').select('*').order('target_date', { ascending: true }).limit(200);
     if (status) query = query.eq('status', status);
-    const { data, error } = await query;
+    const [{ data, error }, { data: wipData }] = await Promise.all([
+      query,
+      s.from('vw_route_stage_wip').select('*'),
+    ]);
     if (error) toast.error(error.message);
     setRows((data ?? []) as WO[]);
+
+    if (wipData) {
+      const map: Record<string, WipStage[]> = {};
+      (wipData as WipStage[]).forEach((item) => {
+        if (!map[item.work_order_no]) map[item.work_order_no] = [];
+        map[item.work_order_no].push(item);
+      });
+      setWipMap(map);
+    }
     setLoading(false);
   };
 
@@ -358,6 +383,7 @@ export default function WorkOrders() {
                   <th className="py-2.5 px-3 text-left font-semibold">Size (OD × WT)</th>
                   <th className="py-2.5 px-3 text-left font-semibold">Grade / Spec</th>
                   <th className="py-2.5 px-3 text-right font-semibold">Ordered Qty</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">Work Center WIP</th>
                   <th className="py-2.5 px-3 text-left font-semibold">Delivery SLA</th>
                   <th className="py-2.5 px-3 text-center font-semibold">Status</th>
                   <th className="py-2.5 px-3 text-right font-semibold">Quick Actions</th>
@@ -366,54 +392,144 @@ export default function WorkOrders() {
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(w => {
                   const sla = getSLA(w.target_date);
+                  const wips = wipMap[w.work_order_no] || [];
+                  const isWipExpanded = !!expandedWip[w.id];
+                  const avg = w.l1 && w.l2 ? (w.l1 + w.l2) / 2 : w.l1 || w.l2 || 6.0;
+
                   return (
-                    <tr key={w.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{w.work_order_no}</td>
-                      <td className="py-2.5 px-3 text-slate-700 max-w-[150px] truncate">{w.customer_name || '—'}</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-800">
-                        {w.size_od ? `${w.size_od} × ${w.size_wt ?? '—'} mm` : '—'}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate">{w.grade || w.specification || '—'}</td>
-                      <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">
-                        {w.ordered_qty} {w.uom}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${sla.cls}`}>
-                          {sla.label}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${getStatusBadge(w.status)}`}>
-                          {w.status}
-                        </span>
-                      </td>
-                      {/* Row Action Trigger Menu */}
-                      <td className="py-2 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Link
-                            href={`/rolling-plans?wo=${w.id}`}
-                            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                            title="Issue Rolling Plan"
-                          >
-                            <Calendar className="h-3 w-3 text-blue-600" /> Plan
-                          </Link>
-                          <Link
-                            href="/production"
-                            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                            title="Record Production"
-                          >
-                            <TrendingUp className="h-3 w-3 text-emerald-600" /> Prod
-                          </Link>
-                          <Link
-                            href={`/diversions?source=${w.id}`}
-                            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                            title="Divert Stock"
-                          >
-                            <GitFork className="h-3 w-3 text-purple-600" /> Divert
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
+                    <React.Fragment key={w.id}>
+                      <tr className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-2.5 px-3 font-bold text-slate-900">
+                          <div className="flex items-center gap-1.5">
+                            <span>{w.work_order_no}</span>
+                            {wips.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedWip(prev => ({ ...prev, [w.id]: !prev[w.id] }))}
+                                className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                title="Toggle Work Center WIP Pipeline"
+                              >
+                                <Layers size={10} />
+                                {wips.length} WC
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700 max-w-[150px] truncate">{w.customer_name || '—'}</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-800">
+                          {w.size_od ? `${w.size_od} × ${w.size_wt ?? '—'} mm` : '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate">{w.grade || w.specification || '—'}</td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">
+                          {w.ordered_qty} {w.uom}
+                        </td>
+                        {/* Work Center WIP summary badge */}
+                        <td className="py-2.5 px-3">
+                          {wips.length === 0 ? (
+                            <span className="text-[11px] text-slate-400">No active WIP</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {wips.map(wp => (
+                                <span
+                                  key={wp.stage_name}
+                                  className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 font-mono"
+                                  title={`${wp.stage_name}: ${wp.current_wip} MTR (${avg > 0 ? (wp.current_wip / avg).toFixed(1) : 0} PCS)`}
+                                >
+                                  {wp.stage_name.replace(' Stage', '')}: {wp.current_wip}m
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${sla.cls}`}>
+                            {sla.label}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${getStatusBadge(w.status)}`}>
+                            {w.status}
+                          </span>
+                        </td>
+                        {/* Row Action Trigger Menu */}
+                        <td className="py-2 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Link
+                              href={`/rolling-plans?wo=${w.id}`}
+                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                              title="Issue Rolling Plan"
+                            >
+                              <Calendar className="h-3 w-3 text-blue-600" /> Plan
+                            </Link>
+                            <Link
+                              href="/production"
+                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                              title="Record Production"
+                            >
+                              <TrendingUp className="h-3 w-3 text-emerald-600" /> Prod
+                            </Link>
+                            <Link
+                              href={`/diversions?source=${w.id}`}
+                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                              title="Divert Stock"
+                            >
+                              <GitFork className="h-3 w-3 text-purple-600" /> Divert
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expandable Work Center WIP Details */}
+                      {isWipExpanded && (
+                        <tr className="bg-slate-50/70 border-b border-slate-200">
+                          <td colSpan={9} className="p-3">
+                            <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                                <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                                  Work Center WIP Breakdown for {w.work_order_no} (Avg Length: {avg}m)
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedWip(prev => ({ ...prev, [w.id]: false }))}
+                                  className="text-[10px] font-semibold text-slate-500 hover:text-slate-900"
+                                >
+                                  Close
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                {wips.map(wp => {
+                                  const wipPcs = avg > 0 ? (wp.current_wip / avg).toFixed(2) : '0';
+                                  const inPcs = avg > 0 ? (wp.input_qty / avg).toFixed(2) : '0';
+                                  const outPcs = avg > 0 ? (wp.output_qty / avg).toFixed(2) : '0';
+                                  const rejPcs = avg > 0 ? (wp.rejection_qty / avg).toFixed(2) : '0';
+
+                                  return (
+                                    <div key={wp.stage_name} className="rounded-md border border-slate-200 bg-slate-50/50 p-2 text-xs space-y-1">
+                                      <div className="font-bold text-slate-900 flex justify-between">
+                                        <span>{wp.stage_name}</span>
+                                        <span className="text-[10px] text-blue-700 font-mono">Seq {wp.sequence_no}</span>
+                                      </div>
+                                      <div className="flex justify-between text-[11px]">
+                                        <span className="text-slate-500">Current WIP:</span>
+                                        <span className="font-bold font-mono text-slate-900">{wipPcs} PCS ({wp.current_wip}m)</span>
+                                      </div>
+                                      <div className="flex justify-between text-[10px] text-slate-600">
+                                        <span>Input / Output:</span>
+                                        <span className="font-mono">{inPcs} / {outPcs} PCS</span>
+                                      </div>
+                                      <div className="flex justify-between text-[10px] text-rose-600">
+                                        <span>Rejection:</span>
+                                        <span className="font-mono">{rejPcs} PCS ({wp.rejection_qty}m)</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

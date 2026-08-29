@@ -193,5 +193,48 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       expect(errors[0].message).toContain("Hollow Heat Treatment × Multiple or Balance to make");
     });
   });
+
+  describe("PCS-based Production, Rejection & HTC OK calculations", () => {
+    it("converts PCS input into MTR and MT for production, rejection and HTC OK", () => {
+      const rowWithPcs: Row = {
+        ...baseRow,
+        avg_length: 6.0,
+        pcs: "20",
+        mtr: "120",
+        rejection_pcs: "2",
+        rejection_mtr: "12",
+        htc_ok_pcs: "18",
+        htc_ok_mtr: "108",
+      };
+
+      const result = calc(rowWithPcs);
+      expect(result.pcs).toBe(20);
+      expect(result.mtr).toBe(120);
+      expect(result.rejectionPcs).toBe(2);
+      expect(result.rejection).toBe(12);
+      expect(result.htcPcs).toBe(18);
+      expect(result.htc).toBe(108);
+      expect(result.netMtr).toBe(108);
+      expect(result.netPcs).toBe(18);
+    });
+
+    it("calculates PCS when only MTR is provided", () => {
+      const rowWithMtrOnly: Row = {
+        ...baseRow,
+        avg_length: 6.0,
+        pcs: "",
+        mtr: "120",
+        rejection_pcs: "",
+        rejection_mtr: "12",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "108",
+      };
+
+      const result = calc(rowWithMtrOnly);
+      expect(result.pcs).toBe(20);
+      expect(result.rejectionPcs).toBe(2);
+      expect(result.htcPcs).toBe(18);
+    });
+  });
 });
 

@@ -482,6 +482,8 @@ class MockStore {
       const finishingLogs = getStageLogs('FINISHING');
       const finishingInput = finishingLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
       const finishingGross = finishingLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+      const finishingRej = finishingLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+      const finishingNet = Math.max(0, finishingGross - finishingRej);
 
       const plannedRolling = this.rollingPlans
         .filter(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id)
@@ -493,6 +495,86 @@ class MockStore {
 
       const orderTotalMtr = Number(wo.balance_qty_mtr ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0);
       const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross);
+
+      // Build work center WIP availability across all stages in this route
+      const routeStagesList = this.routeStages
+        .filter(rs => rs.route_id === route.id)
+        .sort((a, b) => a.sequence_no - b.sequence_no);
+
+      const workCentersWip: any[] = [];
+      for (const rsItem of routeStagesList) {
+        const sObj = this.stages.find(s => s.id === rsItem.stage_id);
+        if (!sObj) continue;
+        const sc = sObj.stage_code;
+
+        let wcAvailMtr = 0;
+        let wcGrossMtr = 0;
+        let wcRejMtr = 0;
+        let wcNetMtr = 0;
+        let wcHtcOkMtr = 0;
+
+        if (sc === 'ROLLING') {
+          wcAvailMtr = Math.max(0, plannedRollingTotal * 1.1 - rollingInput);
+          wcGrossMtr = rollingGross;
+          wcRejMtr = rollingRej;
+          wcNetMtr = rollingNet;
+          wcHtcOkMtr = rollingHtcOk;
+        } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
+          wcAvailMtr = Math.max(0, rollingHtcOk - hhtInput);
+          wcGrossMtr = hhtGross;
+          wcRejMtr = hhtRej;
+          wcNetMtr = hhtNet;
+        } else if (sc === 'DRAW') {
+          wcAvailMtr =
+            route.route_code.toUpperCase() === 'ALLOY_CDS'
+              ? Math.max(0, hhtNet - drawInput)
+              : Math.max(0, rollingHtcOk - drawInput);
+          wcGrossMtr = drawGross;
+          wcRejMtr = drawRej;
+          wcNetMtr = drawNet;
+        } else if (sc === 'HEAT_TREATMENT') {
+          wcAvailMtr = Math.max(0, drawNet - htInput);
+          wcGrossMtr = htGross;
+          wcRejMtr = htRej;
+          wcNetMtr = htNet;
+        } else if (sc === 'FINISHING') {
+          let availFromPreceding = 0;
+          if (route.route_code.toUpperCase() === 'HFS') {
+            availFromPreceding = Math.max(0, rollingHtcOk * multiple - finishingInput);
+          } else if (route.route_code.toUpperCase() === 'ALLOY_HFS') {
+            availFromPreceding = Math.max(0, hhtNet * multiple - finishingInput);
+          } else {
+            availFromPreceding = Math.max(0, htNet * multiple - finishingInput);
+          }
+          wcAvailMtr = Math.min(availFromPreceding, orderBalanceMtr);
+          wcGrossMtr = finishingGross;
+          wcRejMtr = finishingRej;
+          wcNetMtr = finishingNet;
+        }
+
+        const stageAvg = sc === 'ROLLING' && mhAvgLength > 0 ? mhAvgLength : avgLength;
+        const wcAvailPcs = stageAvg > 0 ? Number((wcAvailMtr / stageAvg).toFixed(2)) : 0;
+        const wcGrossPcs = stageAvg > 0 ? Number((wcGrossMtr / stageAvg).toFixed(2)) : 0;
+        const wcRejPcs = stageAvg > 0 ? Number((wcRejMtr / stageAvg).toFixed(2)) : 0;
+        const wcNetPcs = stageAvg > 0 ? Number((wcNetMtr / stageAvg).toFixed(2)) : 0;
+        const wcHtcOkPcs = stageAvg > 0 ? Number((wcHtcOkMtr / stageAvg).toFixed(2)) : 0;
+
+        workCentersWip.push({
+          stage_code: sc,
+          stage_name: sObj.stage_name,
+          sequence_no: rsItem.sequence_no,
+          available_mtr: wcAvailMtr,
+          available_pcs: wcAvailPcs,
+          gross_output_mtr: wcGrossMtr,
+          gross_output_pcs: wcGrossPcs,
+          rejection_mtr: wcRejMtr,
+          rejection_pcs: wcRejPcs,
+          net_output_mtr: wcNetMtr,
+          net_output_pcs: wcNetPcs,
+          htc_ok_mtr: sc === 'ROLLING' ? wcHtcOkMtr : undefined,
+          htc_ok_pcs: sc === 'ROLLING' ? wcHtcOkPcs : undefined,
+        });
+      }
 
       let balanceMtr = 0;
       let maxAllowedMtr = 0;
@@ -671,6 +753,7 @@ class MockStore {
         ht_nos: htNos,
         ht_prod_nos: htProdNos,
         ht_rej_nos: htRejNos,
+        work_centers_wip: workCentersWip,
       });
     }
 
@@ -737,6 +820,7 @@ class MockStore {
         rejection_pcs: rejPcs,
         rejection_mt: rejMt,
         htc_ok_mtr: Number(pl.htc_ok || 0),
+        htc_ok_pcs: avg > 0 ? Number((Number(pl.htc_ok || 0) / avg).toFixed(2)) : 0,
         heat_lot_no: pl.heat_lot_no,
         remarks: pl.remarks,
         created_at: pl.created_at,
