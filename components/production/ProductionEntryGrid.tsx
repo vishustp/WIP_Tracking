@@ -168,33 +168,82 @@ export default function ProductionEntryGrid() {
       FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, count: 0 },
     };
 
-    if (factoryWip.length > 0) {
+    const resolveStageCode = (w: any): StageCode | null => {
+      if (!w) return null;
+      const raw = String(w.stage_code || w.stage_name || w.stage_id || "").toUpperCase().trim();
+      if (raw === "HOLLOW_HEAT_TREATMENT" || raw.includes("HOLLOW")) return "HOLLOW_HEAT_TREATMENT";
+      if (raw === "ROLLING" || raw.includes("ROLL")) return "ROLLING";
+      if (raw === "DRAW" || raw.includes("DRAW")) return "DRAW";
+      if (raw === "HEAT_TREATMENT" || raw.includes("HEAT")) return "HEAT_TREATMENT";
+      if (raw === "FINISHING" || raw.includes("FINISH")) return "FINISHING";
+      return null;
+    };
+
+    // 1. Process factoryWip if available
+    let hasFactoryData = false;
+    if (factoryWip && factoryWip.length > 0) {
       factoryWip.forEach((w) => {
-        const sc = (w.stage_code || "").toUpperCase();
-        if (summary[sc]) {
+        const sc = resolveStageCode(w);
+        if (sc && summary[sc]) {
           const mtr = Number(w.current_wip ?? w.available_mtr ?? 0);
-          const pcs = Number(w.current_wip_pcs ?? w.available_pcs ?? 0);
-          summary[sc].availMtr += mtr;
-          summary[sc].availPcs += pcs;
-          if (mtr > 0 || pcs > 0) summary[sc].count += 1;
-        }
-      });
-    } else {
-      rows.forEach((r) => {
-        if (r.work_centers_wip) {
-          r.work_centers_wip.forEach((w) => {
-            if (summary[w.stage_code]) {
-              summary[w.stage_code].availMtr += w.available_mtr || 0;
-              summary[w.stage_code].availPcs += w.available_pcs || 0;
-              if (w.available_mtr > 0) summary[w.stage_code].count += 1;
-            }
-          });
+          let pcs = Number(w.current_wip_pcs ?? w.available_pcs ?? 0);
+          const avgLen = Number(w.avg_length || 6.0);
+          if (pcs === 0 && mtr > 0 && avgLen > 0) {
+            pcs = Number((mtr / avgLen).toFixed(2));
+          }
+          if (mtr > 0 || pcs > 0) {
+            summary[sc].availMtr += mtr;
+            summary[sc].availPcs += pcs;
+            summary[sc].count += 1;
+            hasFactoryData = true;
+          }
         }
       });
     }
 
+    // 2. Also ensure rows in active queue contribute if factoryWip was empty or incomplete
+    if (rows && rows.length > 0) {
+      rows.forEach((r) => {
+        if (r.work_centers_wip && r.work_centers_wip.length > 0) {
+          r.work_centers_wip.forEach((w) => {
+            const sc = resolveStageCode(w);
+            if (sc && summary[sc]) {
+              const mtr = Number(w.available_mtr || 0);
+              const pcs = Number(w.available_pcs || 0);
+              if (!hasFactoryData) {
+                summary[sc].availMtr += mtr;
+                summary[sc].availPcs += pcs;
+                if (mtr > 0 || pcs > 0) summary[sc].count += 1;
+              }
+            }
+          });
+        } else {
+          const sc = resolveStageCode({ stage_code: r.stage_code || stage });
+          if (sc && summary[sc] && !hasFactoryData) {
+            const mtr = Number(r.max_allowed_mtr || r.balance_to_make_mtr || 0);
+            const pcs = Number(r.max_allowed_pcs || r.balance_to_make_pcs || 0);
+            summary[sc].availMtr += mtr;
+            summary[sc].availPcs += pcs;
+            if (mtr > 0 || pcs > 0) summary[sc].count += 1;
+          }
+        }
+      });
+
+      // Guarantee the active selected stage card at least shows what is displayed in the active queue table
+      const activeSc = resolveStageCode({ stage_code: stage });
+      if (activeSc && summary[activeSc]) {
+        const queueTotalMtr = rows.reduce((sum, r) => sum + Number(r.max_allowed_mtr || r.balance_to_make_mtr || 0), 0);
+        const queueTotalPcs = rows.reduce((sum, r) => sum + Number(r.max_allowed_pcs || r.balance_to_make_pcs || 0), 0);
+        if (queueTotalMtr > summary[activeSc].availMtr || queueTotalPcs > summary[activeSc].availPcs) {
+          summary[activeSc].availMtr = Math.max(summary[activeSc].availMtr, queueTotalMtr);
+          summary[activeSc].availPcs = Math.max(summary[activeSc].availPcs, queueTotalPcs);
+          summary[activeSc].count = Math.max(summary[activeSc].count, rows.length);
+        }
+      }
+    }
+
     return Object.values(summary);
-  }, [factoryWip, rows]);
+  }, [factoryWip, rows, stage]);
 
   // --- Batch save (atomic) ---
   async function save() {

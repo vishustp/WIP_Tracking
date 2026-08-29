@@ -1162,6 +1162,8 @@ class MockStore {
           htc_ok_pcs: sc === 'ROLLING' ? wcHtcOkPcs : undefined,
           current_wip: wcAvailMtr,
           current_wip_pcs: wcAvailPcs,
+          available_mtr: wcAvailMtr,
+          available_pcs: wcAvailPcs,
           avg_length: stageAvg,
           multiple: multiple,
         });
