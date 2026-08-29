@@ -255,7 +255,7 @@ export default function ProductionEntryGrid() {
     }
   }
 
-  // --- Helper to get formula text (optional) ---
+  // --- Helper to get formula text ---
   function getMaximumFormula(row: Row) {
     if (stage === "ROLLING") return "Plan × 110%";
     if (stage === "DRAW") return "Rolling Production";
@@ -271,66 +271,515 @@ export default function ProductionEntryGrid() {
     return "";
   }
 
-  // --- Render (abbreviated – you can copy the full JSX from your existing file) ---
+  // --- RENDER ---
   return (
     <div className="space-y-6">
-      {/* Header & controls – same as before */}
+      {/* HEADER */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Production Entry</h1>
-          <p className="text-sm text-muted-foreground">Route-wise production entry, correction and history.</p>
+          <p className="text-sm text-muted-foreground">
+            Route-wise production entry, correction and history.
+          </p>
         </div>
         <div className="flex gap-2">
-          <select value={stage} onChange={(e) => setStage(e.target.value as StageCode)} className="rounded-lg border px-3 py-2">
-            {STAGES.map((s) => (<option key={s.code} value={s.code}>{s.label}</option>))}
+          <select
+            value={stage}
+            onChange={(e) => setStage(e.target.value as StageCode)}
+            className="rounded-lg border px-3 py-2"
+          >
+            {STAGES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.label}
+              </option>
+            ))}
           </select>
-          <button onClick={() => Promise.all([reloadQueue(), reloadHistory()])} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 hover:bg-muted">
-            <RefreshCw size={16} /> Refresh
+          <button
+            type="button"
+            onClick={() => Promise.all([reloadQueue(), reloadHistory()])}
+            className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 hover:bg-muted"
+          >
+            <RefreshCw size={16} />
+            Refresh
           </button>
         </div>
       </div>
 
-      {/* Messages */}
-      {message && <div className="flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-700"><CheckCircle2 size={18} />{message}</div>}
-      {error && <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700"><AlertTriangle size={18} className="mt-0.5 shrink-0" /><span>{error}</span></div>}
+      {/* MESSAGES */}
+      {message && (
+        <div className="flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <CheckCircle2 size={18} />
+          {message}
+        </div>
+      )}
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
-      {/* Date picker */}
+      {/* DATE PICKER */}
       <div className="rounded-xl border bg-background p-4">
         <div className="grid gap-4 md:grid-cols-3">
           <div>
             <label className="mb-1 block text-sm font-medium">Production Date</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border px-3 py-2" />
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full rounded-lg border px-3 py-2"
+            />
           </div>
         </div>
       </div>
 
-      {/* Queue Table – paste your existing table rendering here, using rows, updateRow, calc, etc. */}
+      {/* QUEUE TABLE */}
       <div className="overflow-hidden rounded-xl border bg-background">
-        {/* ... your existing queue table JSX ... */}
-        {/* Just replace the save button with the new one below */}
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <h2 className="font-semibold">
+              {STAGES.find((x) => x.code === stage)?.label || stage} Queue
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Maximum allowed is calculated by backend.
+            </p>
+          </div>
+        </div>
+
+        {queueLoading ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            Loading production queue...
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            No production WIP available.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-[1500px] w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="px-3 py-3 text-left">WO</th>
+                  <th className="px-3 py-3 text-left">Customer</th>
+                  <th className="px-3 py-3 text-left">Grade</th>
+                  <th className="px-3 py-3 text-left">Route</th>
+                  <th className="px-3 py-3 text-right">Balance MTR</th>
+                  <th className="px-3 py-3 text-right">Multiple</th>
+                  <th className="px-3 py-3 text-left">Maximum</th>
+                  <th className="px-3 py-3 text-right">PCS</th>
+                  <th className="px-3 py-3 text-right">MTR</th>
+                  <th className="px-3 py-3 text-right">Rejection</th>
+                  {stage === "ROLLING" && (
+                    <th className="px-3 py-3 text-right">HTC OK</th>
+                  )}
+                  {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
+                    <th className="px-3 py-3 text-left">Heat Lot No.</th>
+                  )}
+                  <th className="px-3 py-3 text-left">Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const key = `${r.work_order_id}|${r.route_id}`;
+                  const d = calc(r);
+                  const maxAllowed =
+                    n(r.max_allowed_mtr) > 0
+                      ? n(r.max_allowed_mtr)
+                      : n(r.balance_to_make_mtr);
+
+                  return (
+                    <tr key={key} className="border-t">
+                      <td className="px-3 py-3 font-medium">{r.work_order_no}</td>
+                      <td className="px-3 py-3">{r.customer_name || "—"}</td>
+                      <td className="px-3 py-3">{r.specification || "—"}</td>
+                      <td className="px-3 py-3">
+                        <span className="rounded-md bg-muted px-2 py-1">{r.route_code}</span>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        {fmt(r.balance_to_make_mtr, " MTR")}
+                      </td>
+                      <td className="px-3 py-3 text-right">× {fmt(r.multiple || 1)}</td>
+                      <td className="px-3 py-3">
+                        <div className="font-medium">{fmt(maxAllowed, " MTR")}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {getMaximumFormula(r)}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={r.pcs}
+                          onChange={(e) => updateRow(key, "pcs", e.target.value)}
+                          className="w-28 rounded-md border px-2 py-1.5 text-right"
+                        />
+                      </td>
+                      <td className="px-3 py-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={r.mtr}
+                          onChange={(e) => updateRow(key, "mtr", e.target.value)}
+                          className="w-32 rounded-md border px-2 py-1.5 text-right"
+                        />
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {fmt(d.mt, " MT")}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={r.rejection_mtr}
+                          onChange={(e) => updateRow(key, "rejection_mtr", e.target.value)}
+                          className="w-28 rounded-md border px-2 py-1.5 text-right"
+                        />
+                      </td>
+                      {stage === "ROLLING" && (
+                        <td className="px-3 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={r.htc_ok_mtr}
+                            onChange={(e) => updateRow(key, "htc_ok_mtr", e.target.value)}
+                            className="w-28 rounded-md border px-2 py-1.5 text-right"
+                          />
+                        </td>
+                      )}
+                      {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
+                        <td className="px-3 py-3">
+                          <input
+                            type="text"
+                            value={r.heat_lot_no}
+                            onChange={(e) => updateRow(key, "heat_lot_no", e.target.value)}
+                            className="w-36 rounded-md border px-2 py-1.5"
+                          />
+                        </td>
+                      )}
+                      <td className="px-3 py-3">
+                        <input
+                          type="text"
+                          value={r.remarks}
+                          onChange={(e) => updateRow(key, "remarks", e.target.value)}
+                          className="w-44 rounded-md border px-2 py-1.5"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         <div className="flex justify-end border-t p-4">
-          <button disabled={saving || queueLoading} onClick={save} className="rounded-lg bg-black px-6 py-2.5 text-sm font-medium text-white disabled:opacity-50">
+          <button
+            type="button"
+            disabled={saving || queueLoading}
+            onClick={save}
+            className="rounded-lg bg-black px-6 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+          >
             {saving ? "Saving..." : "Save Production"}
           </button>
         </div>
       </div>
 
-      {/* History Table – paste your existing history JSX */}
+      {/* PRODUCTION HISTORY */}
       <div className="overflow-hidden rounded-xl border bg-background">
-        {/* ... your existing history table ... */}
+        <div className="border-b p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <Search size={18} />
+            <h2 className="font-semibold">Production History</h2>
+          </div>
+          <div className="grid gap-3 md:grid-cols-5">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search WO / customer / grade"
+              className="rounded-lg border px-3 py-2"
+            />
+            <select
+              value={entryStage}
+              onChange={(e) => setEntryStage(e.target.value)}
+              className="rounded-lg border px-3 py-2"
+            >
+              <option value="">All Stages</option>
+              {STAGES.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={entryRoute}
+              onChange={(e) => setEntryRoute(e.target.value)}
+              className="rounded-lg border px-3 py-2"
+            >
+              <option value="">All Routes</option>
+              {routes.map((route) => (
+                <option key={route} value={route}>
+                  {route}
+                </option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="rounded-lg border px-3 py-2"
+            />
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="rounded-lg border px-3 py-2"
+            />
+          </div>
+        </div>
+
+        {historyLoading ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            Loading production history...
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            No production entries found.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-[1450px] w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="px-3 py-3 text-left">Date</th>
+                  <th className="px-3 py-3 text-left">WO</th>
+                  <th className="px-3 py-3 text-left">Customer</th>
+                  <th className="px-3 py-3 text-left">Route</th>
+                  <th className="px-3 py-3 text-left">Stage</th>
+                  <th className="px-3 py-3 text-right">Production MTR</th>
+                  <th className="px-3 py-3 text-right">Production PCS</th>
+                  <th className="px-3 py-3 text-right">Rejection</th>
+                  <th className="px-3 py-3 text-right">HTC OK</th>
+                  <th className="px-3 py-3 text-left">Heat Lot</th>
+                  <th className="px-3 py-3 text-left">Remarks</th>
+                  <th className="px-3 py-3 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry) => (
+                  <tr key={entry.id} className="border-t">
+                    <td className="px-3 py-3">{entry.process_date}</td>
+                    <td className="px-3 py-3 font-medium">{entry.work_order_no}</td>
+                    <td className="px-3 py-3">{entry.customer_name || "—"}</td>
+                    <td className="px-3 py-3">
+                      <span className="rounded-md bg-muted px-2 py-1">{entry.route_code}</span>
+                    </td>
+                    <td className="px-3 py-3">
+                      {STAGES.find((s) => s.code === entry.stage_code)?.label || entry.stage_code}
+                    </td>
+                    <td className="px-3 py-3 text-right">{fmt(entry.output_mtr, " MTR")}</td>
+                    <td className="px-3 py-3 text-right">{fmt(entry.output_pcs)}</td>
+                    <td className="px-3 py-3 text-right">{fmt(entry.rejection_mtr, " MTR")}</td>
+                    <td className="px-3 py-3 text-right">{fmt(entry.htc_ok_mtr, " MTR")}</td>
+                    <td className="px-3 py-3">{entry.heat_lot_no || "—"}</td>
+                    <td className="max-w-[250px] truncate px-3 py-3">{entry.remarks || "—"}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          disabled={!entry.can_modify}
+                          onClick={() => openEdit(entry)}
+                          title={
+                            entry.can_modify
+                              ? "Edit"
+                              : "Cannot edit: later production exists"
+                          }
+                          className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Edit2 size={15} />
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!entry.can_modify}
+                          onClick={() => setDeleteId(entry.id)}
+                          title={
+                            entry.can_modify
+                              ? "Delete"
+                              : "Cannot delete: later production exists"
+                          }
+                          className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2.5 py-1.5 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Trash2 size={15} />
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Edit Modal – paste your existing modal JSX, using the state above */}
+      {/* EDIT MODAL */}
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          {/* ... your modal content ... */}
+          <div className="w-full max-w-2xl rounded-2xl bg-background shadow-2xl">
+            <div className="flex items-center justify-between border-b p-5">
+              <div>
+                <h2 className="text-lg font-semibold">Edit Production Entry</h2>
+                <p className="text-sm text-muted-foreground">
+                  WO {editing.work_order_no} · {editing.route_code} ·{" "}
+                  {STAGES.find((s) => s.code === editing.stage_code)?.label}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditing(null)}
+                className="rounded-lg p-2 hover:bg-muted"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="grid gap-4 p-5 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium">Production Date</label>
+                <input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Production PCS</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={editPcs}
+                  onChange={(e) => changeEditPcs(e.target.value)}
+                  className="w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Production MTR</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={editMtr}
+                  onChange={(e) => changeEditMtr(e.target.value)}
+                  className="w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Rejection MTR</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={editRejection}
+                  onChange={(e) => setEditRejection(e.target.value)}
+                  className="w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+              {editing.stage_code === "ROLLING" && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium">HTC OK MTR</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={editHtc}
+                    onChange={(e) => setEditHtc(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2"
+                  />
+                </div>
+              )}
+              {(editing.stage_code === "HEAT_TREATMENT" || editing.stage_code === "HOLLOW_HEAT_TREATMENT") && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium">Heat Lot No.</label>
+                  <input
+                    type="text"
+                    value={editHeatLot}
+                    onChange={(e) => setEditHeatLot(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2"
+                  />
+                </div>
+              )}
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium">Remarks</label>
+                <textarea
+                  value={editRemarks}
+                  onChange={(e) => setEditRemarks(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t p-5">
+              <button
+                type="button"
+                onClick={() => setEditing(null)}
+                disabled={editSaving}
+                className="rounded-lg border px-4 py-2"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={updateEntry}
+                disabled={editSaving}
+                className="rounded-lg bg-black px-5 py-2 text-white disabled:opacity-50"
+              >
+                {editSaving ? "Updating..." : "Update Production"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Delete Modal – paste your existing delete modal */}
+      {/* DELETE CONFIRMATION */}
       {deleteId && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-          {/* ... your delete content ... */}
+          <div className="w-full max-w-md rounded-2xl bg-background p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-full bg-red-100 p-2 text-red-600">
+                <Trash2 size={20} />
+              </div>
+              <h2 className="text-lg font-semibold">Delete Production Entry?</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              This production entry will be permanently deleted. The WIP will then be recalculated automatically.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => setDeleteId(null)}
+                className="rounded-lg border px-4 py-2"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={deleteEntry}
+                className="rounded-lg bg-red-600 px-5 py-2 text-white disabled:opacity-50"
+              >
+                {deleteBusy ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
