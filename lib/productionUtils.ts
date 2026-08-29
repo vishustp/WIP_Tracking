@@ -17,7 +17,6 @@ export const pcsFromMtr = (mtr: number, avg: number) =>
 export const mtrFromPcs = (pcs: number, avg: number) =>
   avg > 0 ? pcs * avg : 0;
 
-// wt = wall thickness (mm)
 export const mtFromMtr = (mtr: number, od: number, wt: number) =>
   Math.max(od - wt, 0) *
   Math.max(wt, 0) *
