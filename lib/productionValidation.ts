@@ -1,5 +1,5 @@
 // lib/productionValidation.ts
-import { StageCode } from "@/types";
+import { StageCode } from "@/types";  // <-- fix: import StageCode
 import { n, calc, fmt } from "./productionUtils";
 
 export type ValidationError = { workOrder: string; message: string };
