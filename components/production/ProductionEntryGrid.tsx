@@ -722,7 +722,7 @@ export default function ProductionEntryGrid() {
                         <div className="text-[11px] text-slate-600 mt-0.5 truncate max-w-[170px]">
                           {r.customer_name || "—"}
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                        <div className="text-[12px] text-slate-500 font-mono mt-0.5">
                           {r.od ? `${r.od} × ${r.wl ?? "—"} mm` : "—"} · Avg: {fmt(d.avg, "m")}
                         </div>
                         {stage === "ROLLING" && r.mh_od && (
