@@ -570,20 +570,30 @@ class MockStore {
         const wcNetPcs = stageAvg > 0 ? Number((wcNetMtr / stageAvg).toFixed(2)) : 0;
         const wcHtcOkPcs = stageAvg > 0 ? Number((wcHtcOkMtr / stageAvg).toFixed(2)) : 0;
 
+        const effectiveOd = sc === 'ROLLING' && mhOd && mhOd > 0 ? mhOd : Number(wo.size_od || 0);
+        const effectiveWt = sc === 'ROLLING' && mhWt && mhWt > 0 ? mhWt : Number(wo.size_wt || 0);
+        const calcMtVal = (mVal: number) =>
+          Number((Math.max(effectiveOd - effectiveWt, 0) * Math.max(effectiveWt, 0) * 0.0246615 * 0.001 * Math.max(mVal, 0)).toFixed(3));
+
         workCentersWip.push({
           stage_code: sc,
           stage_name: sObj.stage_name,
           sequence_no: rsItem.sequence_no,
           available_mtr: wcAvailMtr,
           available_pcs: wcAvailPcs,
+          available_mt: calcMtVal(wcAvailMtr),
           gross_output_mtr: wcGrossMtr,
           gross_output_pcs: wcGrossPcs,
+          gross_output_mt: calcMtVal(wcGrossMtr),
           rejection_mtr: wcRejMtr,
           rejection_pcs: wcRejPcs,
+          rejection_mt: calcMtVal(wcRejMtr),
           net_output_mtr: wcNetMtr,
           net_output_pcs: wcNetPcs,
+          net_output_mt: calcMtVal(wcNetMtr),
           htc_ok_mtr: sc === 'ROLLING' ? wcHtcOkMtr : undefined,
           htc_ok_pcs: sc === 'ROLLING' ? wcHtcOkPcs : undefined,
+          htc_ok_mt: sc === 'ROLLING' ? calcMtVal(wcHtcOkMtr) : undefined,
         });
       }
 
@@ -1009,8 +1019,18 @@ class MockStore {
       const l2 = Number(wo.l2 || 0);
       const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 6.0;
 
+      let mhOd = plan?.mh_od ? Number(plan.mh_od) : null;
+      let mhWt = plan?.mh_wt ? Number(plan.mh_wt) : null;
       let mhL1 = plan?.mh_l1 ? Number(plan.mh_l1) : null;
       let mhL2 = plan?.mh_l2 ? Number(plan.mh_l2) : null;
+
+      if ((!mhOd || !mhWt) && plan?.target_mother_size) {
+        const parts = plan.target_mother_size.split(/[xX*]/);
+        if (parts.length === 2) {
+          if (!mhOd) mhOd = parseFloat(parts[0].trim()) || null;
+          if (!mhWt) mhWt = parseFloat(parts[1].trim()) || null;
+        }
+      }
       const mhAvgLength =
         mhL1 && mhL2 && mhL1 > 0 && mhL2 > 0
           ? (mhL1 + mhL2) / 2
@@ -1140,6 +1160,11 @@ class MockStore {
         const wcNetPcs = stageAvg > 0 ? Number((wcNetMtr / stageAvg).toFixed(2)) : 0;
         const wcHtcOkPcs = stageAvg > 0 ? Number((wcHtcOkMtr / stageAvg).toFixed(2)) : 0;
 
+        const effectiveOd = sc === 'ROLLING' && mhOd && mhOd > 0 ? mhOd : Number(wo.size_od || 0);
+        const effectiveWt = sc === 'ROLLING' && mhWt && mhWt > 0 ? mhWt : Number(wo.size_wt || 0);
+        const calcMtVal = (mVal: number) =>
+          Number((Math.max(effectiveOd - effectiveWt, 0) * Math.max(effectiveWt, 0) * 0.0246615 * 0.001 * Math.max(mVal, 0)).toFixed(3));
+
         list.push({
           work_order_id: wo.id,
           work_order_no: wo.work_order_no,
@@ -1152,18 +1177,24 @@ class MockStore {
           sequence_no: rsItem.sequence_no,
           input_qty: wcInputMtr,
           input_pcs: wcInputPcs,
+          input_mt: calcMtVal(wcInputMtr),
           output_qty: wcGrossMtr,
           output_pcs: wcGrossPcs,
+          output_mt: calcMtVal(wcGrossMtr),
           rejection_qty: wcRejMtr,
           rejection_pcs: wcRejPcs,
+          rejection_mt: calcMtVal(wcRejMtr),
           net_output_qty: wcNetMtr,
           net_output_pcs: wcNetPcs,
+          net_output_mt: calcMtVal(wcNetMtr),
           htc_ok_qty: sc === 'ROLLING' ? wcHtcOkMtr : undefined,
           htc_ok_pcs: sc === 'ROLLING' ? wcHtcOkPcs : undefined,
+          htc_ok_mt: sc === 'ROLLING' ? calcMtVal(wcHtcOkMtr) : undefined,
           current_wip: wcAvailMtr,
           current_wip_pcs: wcAvailPcs,
           available_mtr: wcAvailMtr,
           available_pcs: wcAvailPcs,
+          available_mt: calcMtVal(wcAvailMtr),
           avg_length: stageAvg,
           multiple: multiple,
         });

@@ -12,14 +12,19 @@ export interface WorkCenterWipInfo {
   sequence_no: number;
   available_mtr: number;
   available_pcs: number;
+  available_mt?: number;
   gross_output_mtr: number;
   gross_output_pcs: number;
+  gross_output_mt?: number;
   rejection_mtr: number;
   rejection_pcs: number;
+  rejection_mt?: number;
   net_output_mtr: number;
   net_output_pcs: number;
+  net_output_mt?: number;
   htc_ok_mtr?: number;
   htc_ok_pcs?: number;
+  htc_ok_mt?: number;
 }
 
 export interface Row {

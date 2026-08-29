@@ -160,12 +160,12 @@ export default function ProductionEntryGrid() {
 
   // --- Aggregate WIP across all work orders in current queue & factory-wide ---
   const workCenterSummary = useMemo(() => {
-    const summary: Record<string, { label: string; stage_code: StageCode; availMtr: number; availPcs: number; count: number }> = {
-      ROLLING: { label: "Rolling Mill", stage_code: "ROLLING", availMtr: 0, availPcs: 0, count: 0 },
-      HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, count: 0 },
-      DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, count: 0 },
-      HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, count: 0 },
-      FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, count: 0 },
+    const summary: Record<string, { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }> = {
+      ROLLING: { label: "Rolling Mill", stage_code: "ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
     };
 
     const resolveStageCode = (w: any): StageCode | null => {
@@ -191,9 +191,15 @@ export default function ProductionEntryGrid() {
           if (pcs === 0 && mtr > 0 && avgLen > 0) {
             pcs = Number((mtr / avgLen).toFixed(2));
           }
+          const isRoll = sc === "ROLLING";
+          const od = isRoll && w.mh_od ? Number(w.mh_od) : Number(w.od || w.size_od || 0);
+          const wt = isRoll && w.mh_wt ? Number(w.mh_wt) : Number(w.wl || w.wt || w.size_wt || 0);
+          const mt = Number(w.available_mt ?? w.current_wip_mt ?? mtFromMtr(mtr, od, wt));
+
           if (mtr > 0 || pcs > 0) {
             summary[sc].availMtr += mtr;
             summary[sc].availPcs += pcs;
+            summary[sc].availMt += mt;
             summary[sc].count += 1;
             hasFactoryData = true;
           }
@@ -210,9 +216,14 @@ export default function ProductionEntryGrid() {
             if (sc && summary[sc]) {
               const mtr = Number(w.available_mtr || 0);
               const pcs = Number(w.available_pcs || 0);
+              const isRoll = sc === "ROLLING";
+              const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
+              const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+              const mt = Number(w.available_mt ?? mtFromMtr(mtr, od, wt));
               if (!hasFactoryData) {
                 summary[sc].availMtr += mtr;
                 summary[sc].availPcs += pcs;
+                summary[sc].availMt += mt;
                 if (mtr > 0 || pcs > 0) summary[sc].count += 1;
               }
             }
@@ -222,8 +233,13 @@ export default function ProductionEntryGrid() {
           if (sc && summary[sc] && !hasFactoryData) {
             const mtr = Number(r.max_allowed_mtr || r.balance_to_make_mtr || 0);
             const pcs = Number(r.max_allowed_pcs || r.balance_to_make_pcs || 0);
+            const isRoll = sc === "ROLLING";
+            const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
+            const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+            const mt = mtFromMtr(mtr, od, wt);
             summary[sc].availMtr += mtr;
             summary[sc].availPcs += pcs;
+            summary[sc].availMt += mt;
             if (mtr > 0 || pcs > 0) summary[sc].count += 1;
           }
         }
@@ -234,9 +250,18 @@ export default function ProductionEntryGrid() {
       if (activeSc && summary[activeSc]) {
         const queueTotalMtr = rows.reduce((sum, r) => sum + Number(r.max_allowed_mtr || r.balance_to_make_mtr || 0), 0);
         const queueTotalPcs = rows.reduce((sum, r) => sum + Number(r.max_allowed_pcs || r.balance_to_make_pcs || 0), 0);
+        const queueTotalMt = rows.reduce((sum, r) => {
+          const isRoll = activeSc === "ROLLING";
+          const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
+          const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+          const mtrVal = Number(r.max_allowed_mtr || r.balance_to_make_mtr || 0);
+          return sum + mtFromMtr(mtrVal, od, wt);
+        }, 0);
+
         if (queueTotalMtr > summary[activeSc].availMtr || queueTotalPcs > summary[activeSc].availPcs) {
           summary[activeSc].availMtr = Math.max(summary[activeSc].availMtr, queueTotalMtr);
           summary[activeSc].availPcs = Math.max(summary[activeSc].availPcs, queueTotalPcs);
+          summary[activeSc].availMt = Math.max(summary[activeSc].availMt, queueTotalMt);
           summary[activeSc].count = Math.max(summary[activeSc].count, rows.length);
         }
       }
@@ -485,22 +510,18 @@ export default function ProductionEntryGrid() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Header & Stage Selector */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Production Entry & WIP Tracking</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Enter and calculate production and rejection in PCS and MTR. Monitor work center WIP across every stage.
-          </p>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Production Entry & WIP Tracking</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white p-1 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500 pl-2">Active Work Center:</span>
+          <div className="flex items-center rounded-lg border border-slate-300 bg-white p-0.5 shadow-xs">
             <select
               value={stage}
               onChange={(e) => setStage(e.target.value as StageCode)}
-              className="rounded-md border-0 bg-transparent px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:ring-0 cursor-pointer"
+              className="rounded-md border-0 bg-transparent px-3 py-1.5 text-xs font-bold text-slate-900 focus:ring-0 cursor-pointer"
             >
               {STAGES.map((s) => (
                 <option key={s.code} value={s.code}>
@@ -513,9 +534,9 @@ export default function ProductionEntryGrid() {
           <button
             type="button"
             onClick={() => Promise.all([reloadQueue(), reloadHistory()])}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50"
           >
-            <RefreshCw size={14} className={queueLoading || historyLoading ? "animate-spin text-blue-600" : ""} />
+            <RefreshCw size={13} className={queueLoading || historyLoading ? "animate-spin text-blue-600" : ""} />
             Refresh
           </button>
         </div>
@@ -582,7 +603,7 @@ export default function ProductionEntryGrid() {
                     <span className="text-[10px] font-bold text-slate-500">PCS</span>
                   </div>
                   <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                    {fmt(wc.availMtr, " MTR")}
+                    {fmt(wc.availMtr, " MTR")} · <span className="text-blue-700 font-semibold">{fmt(wc.availMt, " MT")}</span>
                   </div>
                 </div>
               );
@@ -632,14 +653,9 @@ export default function ProductionEntryGrid() {
       {/* Queue Entry Grid Table */}
       <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-3">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">
-              {STAGES.find((x) => x.code === stage)?.label || stage} Production Entry Queue
-            </h2>
-            <p className="text-[11px] text-slate-500">
-              Enter quantity in either PCS or MTR (auto-converts with pipe/MH length). Maximum capped according to route rules.
-            </p>
-          </div>
+          <h2 className="text-sm font-bold text-slate-900">
+            {STAGES.find((x) => x.code === stage)?.label || stage} Queue
+          </h2>
         </div>
 
         {queueLoading ? (
@@ -656,10 +672,10 @@ export default function ProductionEntryGrid() {
                   <th className="py-2.5 px-3 text-left font-semibold">Work Order & Specs</th>
                   <th className="py-2.5 px-3 text-left font-semibold">Route</th>
                   <th className="py-2.5 px-3 text-left font-semibold">Available WIP & Capping</th>
-                  <th className="py-2.5 px-3 text-center font-semibold bg-blue-50/50">Production (PCS & MTR) *</th>
-                  <th className="py-2.5 px-3 text-center font-semibold bg-rose-50/40">Rejection (PCS & MTR)</th>
+                  <th className="py-2.5 px-3 text-center font-semibold bg-blue-50/50">Production *</th>
+                  <th className="py-2.5 px-3 text-center font-semibold bg-rose-50/40">Rejection</th>
                   {stage === "ROLLING" && (
-                    <th className="py-2.5 px-3 text-center font-semibold bg-emerald-50/40">HTC OK (PCS & MTR)</th>
+                    <th className="py-2.5 px-3 text-center font-semibold bg-emerald-50/40">HTC OK</th>
                   )}
                   {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
                     <th className="py-2.5 px-3 text-left font-semibold">Heat Lot No.</th>
@@ -727,7 +743,7 @@ export default function ProductionEntryGrid() {
 
                       {/* Available WIP & Capping */}
                       <td className="py-3 px-3 align-top">
-                        <div className="flex items-baseline gap-1">
+                        <div className="flex items-baseline gap-1 flex-wrap">
                           <span className="font-bold text-slate-900 font-mono text-xs">
                             {fmt(maxAllowedPcs)}
                           </span>
@@ -736,9 +752,17 @@ export default function ProductionEntryGrid() {
                           <span className="font-semibold text-slate-700 font-mono text-xs">
                             {fmt(maxAllowed, " MTR")}
                           </span>
-                        </div>
-                        <div className="text-[10px] text-slate-500 mt-0.5 max-w-[200px]">
-                          {getMaximumFormula(r)}
+                          <span className="text-slate-400">/</span>
+                          <span className="font-semibold text-blue-700 font-mono text-[11px]">
+                            {fmt(
+                              mtFromMtr(
+                                maxAllowed,
+                                stage === "ROLLING" && r.mh_od ? r.mh_od : (r.od || 0),
+                                stage === "ROLLING" && r.mh_wt ? r.mh_wt : (r.wl || 0)
+                              ),
+                              " MT"
+                            )}
+                          </span>
                         </div>
                       </td>
 
@@ -911,6 +935,16 @@ export default function ProductionEntryGrid() {
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                       {r.work_centers_wip?.map((w, idx) => {
                         const isCurrent = w.stage_code === stage;
+                        const isRoll = w.stage_code === "ROLLING";
+                        const stageOd = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
+                        const stageWt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+
+                        const availMt = w.available_mt ?? mtFromMtr(w.available_mtr, stageOd, stageWt);
+                        const grossMt = w.gross_output_mt ?? mtFromMtr(w.gross_output_mtr, stageOd, stageWt);
+                        const rejMt = w.rejection_mt ?? mtFromMtr(w.rejection_mtr, stageOd, stageWt);
+                        const netMt = w.net_output_mt ?? mtFromMtr(w.net_output_mtr, stageOd, stageWt);
+                        const htcMt = w.htc_ok_mt ?? mtFromMtr(w.htc_ok_mtr || 0, stageOd, stageWt);
+
                         return (
                           <div
                             key={w.stage_code}
@@ -935,32 +969,32 @@ export default function ProductionEntryGrid() {
                               <div className="flex justify-between items-baseline">
                                 <span className="text-slate-500 text-[11px]">Available WIP:</span>
                                 <span className="font-bold font-mono text-slate-900 text-[11px]">
-                                  {fmt(w.available_pcs)} PCS ({fmt(w.available_mtr, "m")})
+                                  {fmt(w.available_pcs)} PCS ({fmt(w.available_mtr, "m")} · <span className="text-blue-700">{fmt(availMt, " MT")}</span>)
                                 </span>
                               </div>
                               <div className="flex justify-between items-baseline">
                                 <span className="text-slate-500 text-[11px]">Gross Output:</span>
                                 <span className="font-semibold font-mono text-slate-800 text-[11px]">
-                                  {fmt(w.gross_output_pcs)} PCS ({fmt(w.gross_output_mtr, "m")})
+                                  {fmt(w.gross_output_pcs)} PCS ({fmt(w.gross_output_mtr, "m")} · <span className="text-slate-600">{fmt(grossMt, " MT")}</span>)
                                 </span>
                               </div>
                               <div className="flex justify-between items-baseline">
                                 <span className="text-slate-500 text-[11px]">Rejection:</span>
                                 <span className="font-semibold font-mono text-rose-600 text-[11px]">
-                                  {fmt(w.rejection_pcs)} PCS ({fmt(w.rejection_mtr, "m")})
+                                  {fmt(w.rejection_pcs)} PCS ({fmt(w.rejection_mtr, "m")} · <span className="text-rose-600">{fmt(rejMt, " MT")}</span>)
                                 </span>
                               </div>
                               <div className="flex justify-between items-baseline border-t border-slate-100 pt-1">
                                 <span className="text-slate-700 font-semibold text-[11px]">Net Output:</span>
                                 <span className="font-bold font-mono text-emerald-700 text-[11px]">
-                                  {fmt(w.net_output_pcs)} PCS ({fmt(w.net_output_mtr, "m")})
+                                  {fmt(w.net_output_pcs)} PCS ({fmt(w.net_output_mtr, "m")} · <span className="text-emerald-700">{fmt(netMt, " MT")}</span>)
                                 </span>
                               </div>
                               {w.stage_code === "ROLLING" && (
                                 <div className="flex justify-between items-baseline border-t border-slate-100 pt-1">
                                   <span className="text-indigo-700 font-semibold text-[11px]">HTC OK:</span>
                                   <span className="font-bold font-mono text-indigo-700 text-[11px]">
-                                    {fmt(w.htc_ok_pcs)} PCS ({fmt(w.htc_ok_mtr, "m")})
+                                    {fmt(w.htc_ok_pcs)} PCS ({fmt(w.htc_ok_mtr, "m")} · <span className="text-indigo-700">{fmt(htcMt, " MT")}</span>)
                                   </span>
                                 </div>
                               )}
@@ -976,17 +1010,14 @@ export default function ProductionEntryGrid() {
         )}
 
         {/* Batch Save Action Footer */}
-        <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/80 p-4">
-          <span className="text-xs text-slate-500">
-            Entries are verified for length geometry, route-specific capping, and preceding stage WIP before atomic commitment.
-          </span>
+        <div className="flex items-center justify-end border-t border-slate-200 bg-slate-50/80 p-3 sm:p-4">
           <button
             type="button"
             disabled={saving || queueLoading}
             onClick={save}
-            className="rounded-lg bg-slate-900 px-6 py-2.5 text-xs font-bold text-white shadow hover:bg-slate-800 disabled:opacity-50 transition-colors"
+            className="rounded-lg bg-slate-900 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-slate-800 disabled:opacity-50 transition-colors"
           >
-            {saving ? "Saving Production..." : "Commit Production Batch"}
+            {saving ? "Saving..." : "Commit Production Batch"}
           </button>
         </div>
       </div>
@@ -996,10 +1027,10 @@ export default function ProductionEntryGrid() {
         <div className="border-b border-slate-100 p-4 bg-slate-50/70">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Search size={16} className="text-slate-500" />
-              <h2 className="text-sm font-bold text-slate-900">Production & Rejection Log History</h2>
+              <Search size={15} className="text-slate-500" />
+              <h2 className="text-sm font-bold text-slate-900">Production History</h2>
             </div>
-            <span className="text-xs font-semibold text-slate-500">
+            <span className="text-xs font-semibold text-slate-500 font-mono">
               {entries.length} Logged Record{entries.length === 1 ? "" : "s"}
             </span>
           </div>

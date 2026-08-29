@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/select';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
+import { mtFromMtr, fmt } from '@/lib/productionUtils';
 import {
   Calendar,
   Layers,
@@ -47,16 +48,22 @@ type WipStage = {
   sequence_no: number;
   input_qty: number;
   input_pcs?: number;
+  input_mt?: number;
   output_qty: number;
   output_pcs?: number;
+  output_mt?: number;
   rejection_qty: number;
   rejection_pcs?: number;
+  rejection_mt?: number;
   net_output_qty?: number;
   net_output_pcs?: number;
+  net_output_mt?: number;
   htc_ok_qty?: number;
   htc_ok_pcs?: number;
+  htc_ok_mt?: number;
   current_wip: number;
   current_wip_pcs?: number;
+  available_mt?: number;
 };
 
 export default function WorkOrders() {
@@ -206,25 +213,22 @@ export default function WorkOrders() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Header */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Work Orders Directory</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Manage customer work orders, review sizing, trigger rolling plans, and track production.
-          </p>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Work Orders Directory</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/excel-import"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Import Excel
           </Link>
           <Button
             onClick={() => setShowCreate(!showCreate)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white shadow hover:bg-slate-800"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-slate-800"
           >
             <PlusCircle className="h-4 w-4" /> {showCreate ? 'Close Form' : 'Create Work Order'}
           </Button>
@@ -233,12 +237,9 @@ export default function WorkOrders() {
 
       {/* Collapsible Create Work Order Form */}
       {showCreate && (
-        <form onSubmit={createWO} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Create New Customer Work Order</h2>
-              <p className="text-xs text-slate-500">Provide tube dimension specs, ordered volume, and target dispatch date.</p>
-            </div>
+        <form onSubmit={createWO} className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <h2 className="text-sm font-bold text-slate-900">New Work Order</h2>
             <button
               type="button"
               onClick={() => setShowCreate(false)}
@@ -445,13 +446,14 @@ export default function WorkOrders() {
                             <div className="flex flex-wrap gap-1">
                               {activeWips.map(wp => {
                                 const pcsVal = wp.current_wip_pcs ?? (avg > 0 ? Number((wp.current_wip / avg).toFixed(1)) : 0);
+                                const wpMt = wp.available_mt ?? mtFromMtr(wp.current_wip, w.size_od || 0, w.size_wt || 0);
                                 return (
                                   <span
                                     key={wp.stage_name}
                                     className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 font-mono"
-                                    title={`${wp.stage_name}: ${wp.current_wip} MTR (${pcsVal} PCS)`}
+                                    title={`${wp.stage_name}: ${wp.current_wip} MTR (${pcsVal} PCS · ${fmt(wpMt, ' MT')})`}
                                   >
-                                    {wp.stage_name.replace(' Stage', '')}: {pcsVal} PCS ({wp.current_wip}m)
+                                    {wp.stage_name.replace(' Stage', '')}: {pcsVal} PCS ({wp.current_wip}m · {fmt(wpMt, ' MT')})
                                   </span>
                                 );
                               })}
@@ -524,6 +526,12 @@ export default function WorkOrders() {
                                   const outPcs = wp.output_pcs ?? (avg > 0 ? (wp.output_qty / avg).toFixed(2) : '0');
                                   const rejPcs = wp.rejection_pcs ?? (avg > 0 ? (wp.rejection_qty / avg).toFixed(2) : '0');
 
+                                  const wipMt = wp.available_mt ?? mtFromMtr(wp.current_wip, w.size_od || 0, w.size_wt || 0);
+                                  const inMt = wp.input_mt ?? mtFromMtr(wp.input_qty, w.size_od || 0, w.size_wt || 0);
+                                  const outMt = wp.output_mt ?? mtFromMtr(wp.output_qty, w.size_od || 0, w.size_wt || 0);
+                                  const rejMt = wp.rejection_mt ?? mtFromMtr(wp.rejection_qty, w.size_od || 0, w.size_wt || 0);
+                                  const htcMt = wp.htc_ok_mt ?? mtFromMtr(wp.htc_ok_qty || 0, w.size_od || 0, w.size_wt || 0);
+
                                   return (
                                     <div key={wp.stage_name} className="rounded-md border border-slate-200 bg-slate-50/50 p-2 text-xs space-y-1">
                                       <div className="font-bold text-slate-900 flex justify-between">
@@ -532,20 +540,20 @@ export default function WorkOrders() {
                                       </div>
                                       <div className="flex justify-between text-[11px]">
                                         <span className="text-slate-500 font-medium">Available WIP:</span>
-                                        <span className="font-bold font-mono text-blue-800">{wipPcs} PCS ({wp.current_wip}m)</span>
+                                        <span className="font-bold font-mono text-blue-800">{wipPcs} PCS ({wp.current_wip}m · {fmt(wipMt, ' MT')})</span>
                                       </div>
                                       <div className="flex justify-between text-[10px] text-slate-600">
                                         <span>Input / Output:</span>
-                                        <span className="font-mono">{inPcs} / {outPcs} PCS ({wp.input_qty} / {wp.output_qty}m)</span>
+                                        <span className="font-mono">{inPcs} / {outPcs} PCS ({wp.input_qty} / {wp.output_qty}m · {fmt(outMt, ' MT')})</span>
                                       </div>
                                       <div className="flex justify-between text-[10px] text-rose-600">
                                         <span>Rejection:</span>
-                                        <span className="font-mono">{rejPcs} PCS ({wp.rejection_qty}m)</span>
+                                        <span className="font-mono">{rejPcs} PCS ({wp.rejection_qty}m · {fmt(rejMt, ' MT')})</span>
                                       </div>
                                       {wp.htc_ok_qty !== undefined && wp.htc_ok_qty > 0 && (
                                         <div className="flex justify-between text-[10px] text-emerald-700 font-medium">
                                           <span>HTC OK:</span>
-                                          <span className="font-mono">{wp.htc_ok_pcs ?? (avg > 0 ? (wp.htc_ok_qty / avg).toFixed(1) : 0)} PCS ({wp.htc_ok_qty}m)</span>
+                                          <span className="font-mono">{wp.htc_ok_pcs ?? (avg > 0 ? (wp.htc_ok_qty / avg).toFixed(1) : 0)} PCS ({wp.htc_ok_qty}m · {fmt(htcMt, ' MT')})</span>
                                         </div>
                                       )}
                                     </div>

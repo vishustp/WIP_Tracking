@@ -259,18 +259,15 @@ export default function ExcelImporter() {
   }, [rows, filterMode, searchQuery]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Excel Work Order Import & Validation</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Upload PPC production schedules. The pre-import validator checks OD/WT dimensional sanity, filters out completed orders, and flags duplicates.
-        </p>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Excel Work Order Import</h1>
       </div>
 
-      {/* 7. Drag-and-Drop & Interactive Upload Zone */}
+      {/* Drag-and-Drop Upload Zone */}
       <div
-        className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-8 text-center transition hover:border-slate-400 hover:bg-slate-50/50"
+        className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-6 text-center transition hover:border-slate-400 hover:bg-slate-50/50"
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
@@ -278,13 +275,12 @@ export default function ExcelImporter() {
           if (file) void parseFile(file);
         }}
       >
-        <div className="mx-auto flex max-w-md flex-col items-center space-y-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
-            <UploadCloud className="h-6 w-6" />
+        <div className="mx-auto flex max-w-md flex-col items-center space-y-2.5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+            <UploadCloud className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-900">Drop your Excel spreadsheet here</p>
-            <p className="text-xs text-slate-500 mt-0.5">Supports .xlsx, .xls, and .csv files</p>
+            <p className="text-xs font-semibold text-slate-900">Drop Excel schedule (.xlsx, .xls, .csv)</p>
           </div>
 
           <input
@@ -302,9 +298,9 @@ export default function ExcelImporter() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={parsing}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-slate-800 disabled:opacity-50 transition-colors"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-slate-800 disabled:opacity-50 transition-colors"
           >
-            {parsing ? 'Parsing Sheet Structure…' : 'Browse Excel File'}
+            {parsing ? 'Parsing Sheet...' : 'Browse File'}
           </button>
 
           {fileName && (

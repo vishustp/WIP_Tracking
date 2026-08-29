@@ -129,31 +129,28 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Header */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Plant Operations Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Real-time shop-floor WIP balances, stage bottlenecks, and order delivery SLA tracker.
-          </p>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Plant Operations Dashboard</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/work-orders"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
           >
             Work Orders
           </Link>
           <Link
             href="/production"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
           >
             Production Entry
           </Link>
           <Link
             href="/rolling-plans"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white shadow hover:bg-slate-800"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-slate-800"
           >
             Issue Rolling Plan
           </Link>
@@ -161,19 +158,19 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid gap-3.5 grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-4 lg:grid-cols-8">
         {cards.map(c => {
           const Icon = c.icon;
           return (
-            <Card key={c.label} className="border-slate-200/80 shadow-sm hover:border-slate-300 transition-colors">
-              <CardContent className="p-3.5">
+            <Card key={c.label} className="border-slate-200/80 shadow-xs hover:border-slate-300 transition-colors">
+              <CardContent className="p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-500 truncate">{c.label}</span>
+                  <span className="text-[11px] font-medium text-slate-500 truncate">{c.label}</span>
                   <div className={`p-1 rounded ${c.bg}`}>
-                    <Icon className={`h-3.5 w-3.5 ${c.color}`} />
+                    <Icon className={`h-3 w-3 ${c.color}`} />
                   </div>
                 </div>
-                <div className={`mt-2 text-2xl font-bold tracking-tight ${c.color}`}>{c.value}</div>
+                <div className={`mt-1.5 text-xl font-bold font-mono tracking-tight ${c.color}`}>{c.value}</div>
               </CardContent>
             </Card>
           );
@@ -181,22 +178,21 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
       </div>
 
       {/* Stage WIP Bottleneck Flowchart */}
-      <Card className="border-slate-200/80 shadow-sm">
-        <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
+      <Card className="border-slate-200/80 shadow-xs">
+        <CardHeader className="p-3.5 border-b border-slate-100 flex flex-row items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Stage-wise WIP Distribution & Bottleneck Analysis</h2>
-            <p className="text-xs text-slate-500">Live accumulation of in-process meters across production stages</p>
+            <h2 className="text-sm font-bold text-slate-900">Stage WIP Distribution</h2>
           </div>
           {uniqueRoutes.length > 1 && (
             <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-slate-500 font-medium">Filter Route:</span>
+              <span className="text-slate-500 font-medium text-[11px]">Route:</span>
               <div className="flex rounded-md border border-slate-200 p-0.5 bg-slate-50">
                 {uniqueRoutes.map(r => (
                   <button
                     key={r}
                     onClick={() => setSelectedRoute(r)}
-                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                      selectedRoute === r ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600 hover:text-slate-900'
+                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                      selectedRoute === r ? 'bg-white shadow-xs text-slate-900 font-semibold' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     {r}
@@ -208,22 +204,22 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
         </CardHeader>
         <CardContent className="p-4">
           {stageDistribution.length === 0 ? (
-            <div className="py-12 text-center text-sm text-slate-400">
-              No WIP records currently found for selected route filter.
+            <div className="py-8 text-center text-xs text-slate-400">
+              No WIP records found.
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="h-64 w-full">
+              <div className="h-60 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={stageDistribution} margin={{ top: 10, right: 20, left: -10, bottom: 20 }}>
-                    <XAxis dataKey="stage" tick={{ fontSize: 12 }} angle={-15} textAnchor="end" height={45} />
-                    <YAxis tick={{ fontSize: 12 }} />
+                  <BarChart data={stageDistribution} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
+                    <XAxis dataKey="stage" tick={{ fontSize: 11 }} angle={-15} textAnchor="end" height={40} />
+                    <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip
-                      formatter={(val: any) => [`${val} Mtrs`, 'WIP Accumulation']}
+                      formatter={(val: any) => [`${val} Mtrs`, 'WIP']}
                       labelFormatter={(label) => `Stage: ${label}`}
-                      contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                      contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px' }}
                     />
-                    <Bar dataKey="wip" radius={[4, 4, 0, 0]} barSize={42}>
+                    <Bar dataKey="wip" radius={[4, 4, 0, 0]} barSize={36}>
                       {stageDistribution.map((entry, idx) => (
                         <Cell
                           key={`cell-${idx}`}
@@ -242,14 +238,14 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-slate-700 truncate">{s.stage}</span>
                       {idx === 0 && s.wip > 0 && (
-                        <span className="inline-flex items-center gap-0.5 rounded-full bg-rose-100 px-1.5 py-0.2 text-[10px] font-semibold text-rose-700">
-                          Highest Load
+                        <span className="inline-flex items-center rounded-full bg-rose-100 px-1.5 py-0.2 text-[9px] font-bold text-rose-700">
+                          Highest
                         </span>
                       )}
                     </div>
                     <div className="mt-1 flex items-baseline gap-1">
-                      <span className="text-lg font-bold text-slate-900">{s.wip}</span>
-                      <span className="text-xs text-slate-500">Mtr ({s.orderCount} WOs)</span>
+                      <span className="text-base font-bold font-mono text-slate-900">{s.wip}</span>
+                      <span className="text-[11px] text-slate-500 font-mono">Mtr ({s.orderCount} WOs)</span>
                     </div>
                   </div>
                 ))}
@@ -260,21 +256,18 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
       </Card>
 
       {/* Tables: Route-aware WIP & Priority Pending Orders */}
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid gap-5 xl:grid-cols-2">
         {/* Route Stage WIP Table */}
-        <Card className="border-slate-200/80 shadow-sm">
-          <CardHeader className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">Current Route-aware WIP Inventory</h2>
-              <p className="text-xs text-slate-500">Active Work Orders with positive inventory at specific stages</p>
-            </div>
-            <Link href="/reports/wip" className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1">
-              View Detailed Report <ArrowRight className="h-3 w-3" />
+        <Card className="border-slate-200/80 shadow-xs">
+          <CardHeader className="p-3.5 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-slate-900">Current WIP Inventory</h2>
+            <Link href="/reports/wip" className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1">
+              View Report <ArrowRight className="h-3 w-3" />
             </Link>
           </CardHeader>
           <CardContent className="p-0">
             {wip.length === 0 ? (
-              <p className="p-6 text-sm text-slate-500 text-center">No positive WIP currently available.</p>
+              <p className="p-6 text-xs text-slate-500 text-center">No positive WIP currently available.</p>
             ) : (
               <div className="overflow-x-auto max-h-[380px]">
                 <table className="min-w-full text-xs">
@@ -282,7 +275,7 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
                     <tr>
                       <th className="py-2.5 px-3 text-left font-semibold">WO No.</th>
                       <th className="py-2.5 px-3 text-left font-semibold">Route</th>
-                      <th className="py-2.5 px-3 text-left font-semibold">Current Stage</th>
+                      <th className="py-2.5 px-3 text-left font-semibold">Stage</th>
                       <th className="py-2.5 px-3 text-right font-semibold">WIP (Mtr)</th>
                       <th className="py-2.5 px-3 text-center font-semibold">Action</th>
                     </tr>
@@ -290,18 +283,18 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
                   <tbody className="divide-y divide-slate-100">
                     {wip.map((x: any) => (
                       <tr key={`${x.work_order_no}-${x.route_code}-${x.stage_name}`} className="hover:bg-slate-50/50">
-                        <td className="py-2 px-3 font-semibold text-slate-900">{x.work_order_no}</td>
+                        <td className="py-2 px-3 font-bold text-slate-900">{x.work_order_no}</td>
                         <td className="py-2 px-3">
-                          <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
+                          <span className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700">
                             {x.route_code}
                           </span>
                         </td>
                         <td className="py-2 px-3 text-slate-700">{x.stage_name}</td>
-                        <td className="py-2 px-3 text-right font-bold text-slate-900">{x.current_wip}</td>
+                        <td className="py-2 px-3 text-right font-bold font-mono text-slate-900">{x.current_wip}</td>
                         <td className="py-2 px-3 text-center">
                           <Link
                             href="/production"
-                            className="inline-flex rounded border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                            className="inline-flex rounded border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900"
                           >
                             Log Entry
                           </Link>
@@ -316,52 +309,49 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
         </Card>
 
         {/* Priority Pending Orders with SLA Tracker */}
-        <Card className="border-slate-200/80 shadow-sm">
-          <CardHeader className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">Priority Pending Orders & Delivery SLA</h2>
-              <p className="text-xs text-slate-500">Unfulfilled work orders ordered by target delivery date</p>
-            </div>
-            <Link href="/reports/pending-orders" className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1">
-              View All Pending <ArrowRight className="h-3 w-3" />
+        <Card className="border-slate-200/80 shadow-xs">
+          <CardHeader className="p-3.5 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-slate-900">Priority Orders & Delivery SLA</h2>
+            <Link href="/reports/pending-orders" className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1">
+              View All <ArrowRight className="h-3 w-3" />
             </Link>
           </CardHeader>
           <CardContent className="p-3">
             {pending.length === 0 ? (
-              <p className="p-4 text-sm text-slate-500 text-center">No pending orders.</p>
+              <p className="p-4 text-xs text-slate-500 text-center">No pending orders.</p>
             ) : (
-              <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
                 {pending.map((x: any) => {
                   const sla = getSLAStatus(x.target_date);
                   return (
                     <div
                       key={x.work_order_id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-slate-200/80 p-3 hover:border-slate-300 transition-colors bg-white"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-slate-200/80 p-2.5 hover:border-slate-300 transition-colors bg-white text-xs"
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 text-sm">{x.work_order_no}</span>
-                          <span className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] ${sla.color}`}>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-slate-900">{x.work_order_no}</span>
+                          <span className={`inline-flex rounded border px-1.5 py-0.2 text-[10px] ${sla.color}`}>
                             {sla.label}
                           </span>
                         </div>
-                        <div className="text-xs text-slate-500">
+                        <div className="text-[11px] text-slate-500">
                           {x.customer ?? 'Customer Unspecified'}
                           {x.grade ? ` · ${x.grade}` : ''}
                           {x.od && x.wt ? ` (${x.od} × ${x.wt} mm)` : ''}
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                      <div className="flex items-center justify-between sm:justify-end gap-3 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                         <div className="text-right">
-                          <div className="text-sm font-bold text-slate-900">{x.total_pending} Mtr Pending</div>
-                          <div className="text-[11px] text-slate-400">
+                          <div className="text-xs font-bold font-mono text-slate-900">{x.total_pending} Mtr Pending</div>
+                          <div className="text-[10px] text-slate-400">
                             Target: {x.target_date || 'None'}
                           </div>
                         </div>
                         <Link
                           href={`/rolling-plans?wo=${x.work_order_id}`}
-                          className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                          className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
                         >
                           Plan
                         </Link>
