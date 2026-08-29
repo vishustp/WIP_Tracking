@@ -15,7 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useQueue } from "@/hooks/useQueue";
 import { useHistory } from "@/hooks/useHistory";
 import { validateProductionEntry } from "@/lib/productionValidation";
-import { calc, fmt, n } from "@/lib/productionUtils";
+import { calc, fmt, n, mtrFromPcs, pcsFromMtr } from "@/lib/productionUtils";
 import { StageCode, STAGES, Row, ProductionEntry } from "@/types";
 
 export default function ProductionEntryGrid() {
