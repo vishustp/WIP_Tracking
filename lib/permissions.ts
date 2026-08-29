@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { mockStore, MockUserProfile, UserRole, DEFAULT_USERS } from './supabase/mock-store';
+import { mockStore, MockUserProfile, UserGroup, UserRole, DEFAULT_USERS } from './supabase/mock-store';
 import { StageCode } from '@/types';
 
 export type PermissionAction =
@@ -16,300 +16,211 @@ export type PermissionAction =
   | 'import_work_orders'
   | 'manage_users'
   | 'access_admin_panel'
+  | 'modify_settings'
   | 'view_audit_logs'
   | 'system_reset';
 
-export interface RoleConfig {
-  role: UserRole;
-  title: string;
-  department: string;
+export interface GroupConfig {
+  group: UserGroup;
+  name: string;
   badgeClass: string;
+  iconColor: string;
   description: string;
-  canDeleteProductionEntry: boolean;
-  canEditProductionEntry: boolean;
-  canDeleteRollingPlan: boolean;
-  canCreateRollingPlan: boolean;
-  canEditRollingPlan: boolean;
-  canCreateDiversion: boolean;
-  canDeleteDiversion: boolean;
-  canImportWorkOrders: boolean;
-  canManageUsers: boolean;
-  canAccessAdminPanel: boolean;
-  canViewAuditLogs: boolean;
-  canResetSystem: boolean;
-  allowedStages: StageCode[];
-  permissionsList: string[];
+  capabilities: string[];
 }
 
-export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
+export const GROUP_CONFIGS: Record<UserGroup, GroupConfig> = {
   admin: {
-    role: 'admin',
-    title: 'PPC Administrator',
-    department: 'Production Planning & Control (PPC)',
+    group: 'admin',
+    name: 'Admin Group',
     badgeClass: 'bg-blue-600 text-white border-blue-500',
-    description: 'Master administrative authority over work orders, planning, production deletion, and system security.',
-    canDeleteProductionEntry: true,
-    canEditProductionEntry: true,
-    canDeleteRollingPlan: true,
-    canCreateRollingPlan: true,
-    canEditRollingPlan: true,
-    canCreateDiversion: true,
-    canDeleteDiversion: true,
-    canImportWorkOrders: true,
-    canManageUsers: true,
-    canAccessAdminPanel: true,
-    canViewAuditLogs: true,
-    canResetSystem: true,
-    allowedStages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'],
-    permissionsList: [
-      'Delete and void production logs across all stages',
-      'Import and modify work orders',
-      'Create, edit, and delete rolling plans and diversions',
-      'Manage user accounts, roles, and security pins',
-      'Full administrative control and audit trail inspection',
+    iconColor: 'text-blue-500',
+    description: 'Master authority: Delete data from any work center, add/edit/remove users, and modify any system settings.',
+    capabilities: [
+      'Delete data across all work centers',
+      'Add, edit, and remove user accounts & security PINs',
+      'Modify system settings, guardrails, and process routes',
+      'Create and manage rolling plans & pipe diversions',
+      'Full audit trail and system maintenance',
     ],
   },
-  manager: {
-    role: 'manager',
-    title: 'Plant Operations Head',
-    department: 'Plant Operations & Engineering',
+  super_user: {
+    group: 'super_user',
+    name: 'Super User Group',
     badgeClass: 'bg-purple-600 text-white border-purple-500',
-    description: 'Executive plant oversight, rolling schedule approval, diversion authorization, and production deletion capability.',
-    canDeleteProductionEntry: true,
-    canEditProductionEntry: true,
-    canDeleteRollingPlan: true,
-    canCreateRollingPlan: true,
-    canEditRollingPlan: true,
-    canCreateDiversion: true,
-    canDeleteDiversion: true,
-    canImportWorkOrders: true,
-    canManageUsers: false,
-    canAccessAdminPanel: true,
-    canViewAuditLogs: true,
-    canResetSystem: false,
-    allowedStages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'],
-    permissionsList: [
-      'Authorized to delete/void erroneous production entries',
-      'Approve and manage rolling plans and pipe diversions',
-      'Full factory WIP and bottleneck oversight',
-      'Audit log and yield compliance inspection',
+    iconColor: 'text-purple-500',
+    description: 'Global plant authority: Can delete and edit data from ANY work center across the factory floor.',
+    capabilities: [
+      'Delete and void production entries from ANY work center',
+      'Edit unfinalized production logs in all work centers',
+      'Create, edit, and delete rolling plans and pipe diversions',
+      'Import and manage work orders',
+      'View plant performance reports and audit logs',
     ],
   },
-  rolling_incharge: {
-    role: 'rolling_incharge',
-    title: 'Rolling Mill In-charge',
-    department: 'Hot Rolling & Piercing Mill',
+  user: {
+    group: 'user',
+    name: 'User Group',
     badgeClass: 'bg-amber-600 text-white border-amber-500',
-    description: 'Hot piercing and rolling mill floor execution; HTC OK tracking. Restricted from deleting past records.',
-    canDeleteProductionEntry: false,
-    canEditProductionEntry: true,
-    canDeleteRollingPlan: false,
-    canCreateRollingPlan: false,
-    canEditRollingPlan: false,
-    canCreateDiversion: false,
-    canDeleteDiversion: false,
-    canImportWorkOrders: false,
-    canManageUsers: false,
-    canAccessAdminPanel: false,
-    canViewAuditLogs: false,
-    canResetSystem: false,
-    allowedStages: ['ROLLING'],
-    permissionsList: [
-      'Log Hot Rolling production, scrap rejection & HTC OK output',
-      'Edit unfinalized Rolling stage entries',
-      'View active rolling plans and daily piercing targets',
-      'Deletion restricted (Requires Admin or Manager approval)',
-    ],
-  },
-  draw_operator: {
-    role: 'draw_operator',
-    title: 'Cold Draw Operator',
-    department: 'Cold Draw Bench & Pilgering',
-    badgeClass: 'bg-indigo-600 text-white border-indigo-500',
-    description: 'Cold draw bench and pilgering operations logging. Restricted to Draw stage; no deletion rights.',
-    canDeleteProductionEntry: false,
-    canEditProductionEntry: true,
-    canDeleteRollingPlan: false,
-    canCreateRollingPlan: false,
-    canEditRollingPlan: false,
-    canCreateDiversion: false,
-    canDeleteDiversion: false,
-    canImportWorkOrders: false,
-    canManageUsers: false,
-    canAccessAdminPanel: false,
-    canViewAuditLogs: false,
-    canResetSystem: false,
-    allowedStages: ['DRAW'],
-    permissionsList: [
-      'Enter Cold Draw bench production and pass yields',
-      'Log draw scrap and tag mother hollow lots',
-      'View Mother Hollow Available Queue for Cold Draw',
-      'Deletion restricted (Requires Admin or Manager approval)',
-    ],
-  },
-  qa_inspector: {
-    role: 'qa_inspector',
-    title: 'Quality & NDT Inspector',
-    department: 'Quality Assurance & Metallurgical Lab',
-    badgeClass: 'bg-emerald-600 text-white border-emerald-500',
-    description: 'Metallurgical inspection, heat treatment clearance sign-off, and non-destructive testing verification.',
-    canDeleteProductionEntry: false,
-    canEditProductionEntry: true,
-    canDeleteRollingPlan: false,
-    canCreateRollingPlan: false,
-    canEditRollingPlan: false,
-    canCreateDiversion: false,
-    canDeleteDiversion: false,
-    canImportWorkOrders: false,
-    canManageUsers: false,
-    canAccessAdminPanel: false,
-    canViewAuditLogs: false,
-    canResetSystem: false,
-    allowedStages: ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'],
-    permissionsList: [
-      'Log Heat Treatment & Hollow Heat Treatment clearance',
-      'Inspect rejection heat lots & metallographic samples',
-      'Sign off QA tags and HTC batch integrity',
-      'Deletion restricted (Requires Admin or Manager approval)',
-    ],
-  },
-  auditor: {
-    role: 'auditor',
-    title: 'Internal Auditor',
-    department: 'Management & Audit Team',
-    badgeClass: 'bg-slate-600 text-white border-slate-500',
-    description: 'Independent compliance and quality verification. Purely read-only access to all production records and logs.',
-    canDeleteProductionEntry: false,
-    canEditProductionEntry: false,
-    canDeleteRollingPlan: false,
-    canCreateRollingPlan: false,
-    canEditRollingPlan: false,
-    canCreateDiversion: false,
-    canDeleteDiversion: false,
-    canImportWorkOrders: false,
-    canManageUsers: false,
-    canAccessAdminPanel: false,
-    canViewAuditLogs: true,
-    canResetSystem: false,
-    allowedStages: [],
-    permissionsList: [
-      'Read-only inspection of work orders, WIP queues, and logs',
-      'Export production reconciliation and yield audit reports',
-      'Inspect complete system audit trail and user activities',
-      'All modification & deletion actions strictly restricted',
+    iconColor: 'text-amber-500',
+    description: 'Work Center Operators: Can only create, edit, and delete data from their specifically assigned work center.',
+    capabilities: [
+      'Create production entries for assigned work center',
+      'Edit production logs for assigned work center only',
+      'Delete unfinalized entries in assigned work center only',
+      'Cannot delete or edit data from other work centers',
+      'No user management or system settings access',
     ],
   },
 };
 
-export function getRoleConfig(role?: string | null): RoleConfig {
-  if (!role || !(role in ROLE_CONFIGS)) {
-    return ROLE_CONFIGS.admin;
+export const WORK_CENTER_LABELS: Record<string, string> = {
+  ALL: 'All Work Centers (Global)',
+  ROLLING: 'Hot Rolling & Piercing Mill',
+  HOLLOW_HEAT_TREATMENT: 'Hollow Heat Treatment & Annealing',
+  DRAW: 'Cold Draw Bench & Pilgering',
+  HEAT_TREATMENT: 'Final Heat Treatment & QA Lab',
+  FINISHING: 'Finishing, Straightening & Dispatch',
+};
+
+export function getGroupConfig(group?: UserGroup | string | null): GroupConfig {
+  if (!group || !(group in GROUP_CONFIGS)) {
+    return GROUP_CONFIGS.admin;
   }
-  return ROLE_CONFIGS[role as UserRole];
+  return GROUP_CONFIGS[group as UserGroup];
 }
 
-export function checkRolePermission(role: string | null | undefined, action: PermissionAction, stageCode?: string): {
+/**
+ * Validates if the user is authorized to delete a production entry for a specific work center stage
+ */
+export function checkCanDelete(user: MockUserProfile | null | undefined, stageCode: string): {
   allowed: boolean;
   reason?: string;
 } {
-  const config = getRoleConfig(role);
+  if (!user) return { allowed: false, reason: 'Unauthenticated session' };
 
-  switch (action) {
-    case 'delete_production_entry':
-      if (config.canDeleteProductionEntry) return { allowed: true };
-      return {
-        allowed: false,
-        reason: `Deletion requires PPC Administrator or Plant Operations Head privileges. Current role: ${config.title}.`,
-      };
-
-    case 'edit_production_entry':
-      if (config.role === 'auditor') {
-        return { allowed: false, reason: 'Auditor role has read-only access.' };
-      }
-      if (config.canEditProductionEntry) {
-        if (stageCode && !config.allowedStages.includes(stageCode as StageCode)) {
-          return {
-            allowed: false,
-            reason: `${config.title} is only authorized to edit entries in: ${config.allowedStages.join(', ')}.`,
-          };
-        }
-        return { allowed: true };
-      }
-      return { allowed: false, reason: 'Unauthorized to edit production entries.' };
-
-    case 'create_production_entry':
-      if (config.role === 'auditor') {
-        return { allowed: false, reason: 'Auditor role has read-only access.' };
-      }
-      if (stageCode && !config.allowedStages.includes(stageCode as StageCode)) {
-        return {
-          allowed: false,
-          reason: `${config.title} is assigned to ${config.allowedStages.join(', ')}. Please switch to your authorized stage.`,
-        };
-      }
-      return { allowed: true };
-
-    case 'delete_rolling_plan':
-      if (config.canDeleteRollingPlan) return { allowed: true };
-      return {
-        allowed: false,
-        reason: `Rolling plan deletion is restricted to Admin and Plant Manager. Current role: ${config.title}.`,
-      };
-
-    case 'create_rolling_plan':
-    case 'edit_rolling_plan':
-      if (config.canCreateRollingPlan) return { allowed: true };
-      return {
-        allowed: false,
-        reason: `Rolling plan modification requires Admin or Plant Manager role. Current role: ${config.title}.`,
-      };
-
-    case 'create_diversion':
-    case 'delete_diversion':
-      if (config.canCreateDiversion) return { allowed: true };
-      return {
-        allowed: false,
-        reason: `Pipe diversion operations require Admin or Plant Manager role. Current role: ${config.title}.`,
-      };
-
-    case 'import_work_orders':
-      if (config.canImportWorkOrders) return { allowed: true };
-      return {
-        allowed: false,
-        reason: `Work Order importing is restricted to PPC Administrator and Plant Head.`,
-      };
-
-    case 'manage_users':
-      if (config.canManageUsers) return { allowed: true };
-      return {
-        allowed: false,
-        reason: `User account management is strictly restricted to PPC Administrator.`,
-      };
-
-    case 'access_admin_panel':
-      if (config.canAccessAdminPanel) return { allowed: true };
-      return {
-        allowed: false,
-        reason: `Admin control panel access is restricted.`,
-      };
-
-    case 'view_audit_logs':
-      if (config.canViewAuditLogs) return { allowed: true };
-      return {
-        allowed: false,
-        reason: `Audit log view is restricted to Admin, Manager, and Auditor roles.`,
-      };
-
-    case 'system_reset':
-      if (config.canResetSystem) return { allowed: true };
-      return {
-        allowed: false,
-        reason: `System data reset is strictly restricted to PPC Administrator.`,
-      };
-
-    default:
-      return { allowed: false, reason: 'Operation not permitted.' };
+  if (user.group === 'admin') {
+    return { allowed: true, reason: 'Admin Group has global deletion privileges across all work centers.' };
   }
+
+  if (user.group === 'super_user') {
+    return { allowed: true, reason: 'Super User Group can delete data from any work center.' };
+  }
+
+  if (user.group === 'user') {
+    const isAssigned = user.work_center === stageCode || user.allowed_stages?.includes(stageCode) || user.default_stage === stageCode;
+    if (isAssigned) {
+      return { allowed: true, reason: `User Group operator authorized for ${WORK_CENTER_LABELS[stageCode] || stageCode}.` };
+    }
+    return {
+      allowed: false,
+      reason: `Access Denied: User group can only delete data from their assigned work center (${WORK_CENTER_LABELS[user.work_center] || user.work_center}). This record belongs to ${WORK_CENTER_LABELS[stageCode] || stageCode}.`,
+    };
+  }
+
+  return { allowed: false, reason: 'Deletion unauthorized.' };
+}
+
+/**
+ * Validates if the user is authorized to edit a production entry for a specific work center stage
+ */
+export function checkCanEdit(user: MockUserProfile | null | undefined, stageCode: string): {
+  allowed: boolean;
+  reason?: string;
+} {
+  if (!user) return { allowed: false, reason: 'Unauthenticated session' };
+
+  if (user.group === 'admin' || user.group === 'super_user') {
+    return { allowed: true };
+  }
+
+  if (user.group === 'user') {
+    const isAssigned = user.work_center === stageCode || user.allowed_stages?.includes(stageCode) || user.default_stage === stageCode;
+    if (isAssigned) {
+      return { allowed: true };
+    }
+    return {
+      allowed: false,
+      reason: `Access Denied: User group can only edit data from their assigned work center (${WORK_CENTER_LABELS[user.work_center] || user.work_center}). This entry is from ${WORK_CENTER_LABELS[stageCode] || stageCode}.`,
+    };
+  }
+
+  return { allowed: false, reason: 'Editing unauthorized.' };
+}
+
+/**
+ * Validates if the user is authorized to create/record a production entry for a specific work center stage
+ */
+export function checkCanCreate(user: MockUserProfile | null | undefined, stageCode: string): {
+  allowed: boolean;
+  reason?: string;
+} {
+  if (!user) return { allowed: false, reason: 'Unauthenticated session' };
+
+  if (user.group === 'admin' || user.group === 'super_user') {
+    return { allowed: true };
+  }
+
+  if (user.group === 'user') {
+    const isAssigned = user.work_center === stageCode || user.allowed_stages?.includes(stageCode) || user.default_stage === stageCode;
+    if (isAssigned) {
+      return { allowed: true };
+    }
+    return {
+      allowed: false,
+      reason: `User is assigned to ${WORK_CENTER_LABELS[user.work_center] || user.work_center}. Switch to your authorized work center to record production.`,
+    };
+  }
+
+  return { allowed: false, reason: 'Recording unauthorized.' };
+}
+
+/**
+ * Only Admin Group can add, edit, remove, or manage users
+ */
+export function checkCanManageUsers(user: MockUserProfile | null | undefined): {
+  allowed: boolean;
+  reason?: string;
+} {
+  if (user?.group === 'admin') {
+    return { allowed: true };
+  }
+  return {
+    allowed: false,
+    reason: 'Access Denied: Only Admin Group accounts can add, edit, or remove users.',
+  };
+}
+
+/**
+ * Only Admin Group can modify system settings, guardrails, routes, and reset data
+ */
+export function checkCanModifySettings(user: MockUserProfile | null | undefined): {
+  allowed: boolean;
+  reason?: string;
+} {
+  if (user?.group === 'admin') {
+    return { allowed: true };
+  }
+  return {
+    allowed: false,
+    reason: 'Access Denied: Only Admin Group can modify system settings and guardrails.',
+  };
+}
+
+/**
+ * Admin and Super User groups can create and manage rolling plans & pipe diversions
+ */
+export function checkCanManagePlans(user: MockUserProfile | null | undefined): {
+  allowed: boolean;
+  reason?: string;
+} {
+  if (user?.group === 'admin' || user?.group === 'super_user') {
+    return { allowed: true };
+  }
+  return {
+    allowed: false,
+    reason: 'Rolling plans and diversions require Admin Group or Super User Group authorization.',
+  };
 }
 
 export function usePermissions() {
@@ -338,42 +249,89 @@ export function usePermissions() {
     return () => window.removeEventListener('storage', handleStorage);
   }, [refreshUser]);
 
-  const roleConfig = getRoleConfig(user.role);
+  const group = user.group || (user.role === 'admin' ? 'admin' : user.role === 'manager' ? 'super_user' : 'user');
+  const groupConfig = getGroupConfig(group);
+  const workCenter = user.work_center || (group === 'admin' || group === 'super_user' ? 'ALL' : user.default_stage || 'ROLLING');
+  const workCenterLabel = WORK_CENTER_LABELS[workCenter] || workCenter;
+
+  const canDeleteForStage = useCallback(
+    (stageCode: string) => checkCanDelete(user, stageCode),
+    [user]
+  );
+
+  const canEditForStage = useCallback(
+    (stageCode: string) => checkCanEdit(user, stageCode),
+    [user]
+  );
+
+  const canCreateForStage = useCallback(
+    (stageCode: string) => checkCanCreate(user, stageCode),
+    [user]
+  );
 
   const can = useCallback(
-    (action: PermissionAction, stageCode?: string) => {
-      return checkRolePermission(user.role, action, stageCode);
+    (action: PermissionAction, stageCode?: string): { allowed: boolean; reason?: string } => {
+      switch (action) {
+        case 'delete_production_entry':
+          return checkCanDelete(user, stageCode || user.default_stage || 'ROLLING');
+        case 'edit_production_entry':
+          return checkCanEdit(user, stageCode || user.default_stage || 'ROLLING');
+        case 'create_production_entry':
+          return checkCanCreate(user, stageCode || user.default_stage || 'ROLLING');
+        case 'manage_users':
+          return checkCanManageUsers(user);
+        case 'modify_settings':
+        case 'system_reset':
+          return checkCanModifySettings(user);
+        case 'access_admin_panel':
+          return group === 'admin'
+            ? { allowed: true }
+            : { allowed: false, reason: 'Admin panel is restricted to Admin Group' };
+        case 'create_rolling_plan':
+        case 'edit_rolling_plan':
+        case 'delete_rolling_plan':
+        case 'create_diversion':
+        case 'delete_diversion':
+        case 'import_work_orders':
+          return checkCanManagePlans(user);
+        case 'view_audit_logs':
+          return { allowed: true };
+        default:
+          return { allowed: false, reason: 'Action not allowed' };
+      }
     },
-    [user.role]
+    [user, group]
   );
 
   const isStageAllowed = useCallback(
     (stageCode: string): boolean => {
-      if (user.role === 'admin' || user.role === 'manager') return true;
-      return roleConfig.allowedStages.includes(stageCode as StageCode);
+      if (group === 'admin' || group === 'super_user') return true;
+      return workCenter === stageCode || user.allowed_stages?.includes(stageCode) || user.default_stage === stageCode;
     },
-    [user.role, roleConfig.allowedStages]
+    [group, workCenter, user.allowed_stages, user.default_stage]
   );
 
   return {
     user,
+    group,
+    groupConfig,
     role: user.role,
-    roleTitle: roleConfig.title,
-    roleConfig,
-    department: user.department || roleConfig.department,
-    badgeClass: roleConfig.badgeClass,
+    roleTitle: user.role_title,
+    department: user.department,
+    workCenter,
+    workCenterLabel,
+    isAdmin: group === 'admin',
+    isSuperUser: group === 'super_user',
+    isUserGroup: group === 'user',
+    canDeleteForStage,
+    canEditForStage,
+    canCreateForStage,
     can,
     isStageAllowed,
-    canDeleteEntry: roleConfig.canDeleteProductionEntry,
-    canEditEntry: roleConfig.canEditProductionEntry,
-    canDeletePlan: roleConfig.canDeleteRollingPlan,
-    canCreatePlan: roleConfig.canCreateRollingPlan,
-    canCreateDiversion: roleConfig.canCreateDiversion,
-    canImportOrders: roleConfig.canImportWorkOrders,
-    canManageUsers: roleConfig.canManageUsers,
-    canAccessAdmin: roleConfig.canAccessAdminPanel,
-    canViewAudit: roleConfig.canViewAuditLogs,
-    isAuditor: user.role === 'auditor',
+    canDeleteGlobal: group === 'admin' || group === 'super_user',
+    canManageUsers: group === 'admin',
+    canModifySettings: group === 'admin',
+    canManagePlans: group === 'admin' || group === 'super_user',
     refreshUser,
   };
 }

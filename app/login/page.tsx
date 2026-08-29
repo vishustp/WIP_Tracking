@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { mockStore, MockUserProfile, DEFAULT_USERS } from '@/lib/supabase/mock-store';
-import { ROLE_CONFIGS, getRoleConfig } from '@/lib/permissions';
+import { mockStore, MockUserProfile, DEFAULT_USERS, UserGroup, WorkCenterCode } from '@/lib/supabase/mock-store';
+import { GROUP_CONFIGS, getGroupConfig } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -24,7 +24,13 @@ import {
   Building,
   Sparkles,
   Search,
-  Check
+  Check,
+  Crown,
+  Zap,
+  Users,
+  ShieldAlert,
+  Flame,
+  Settings
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -35,7 +41,8 @@ export default function LoginPage() {
   const [inputEmail, setInputEmail] = useState('admin@seamlesswip.com');
   const [inputPin, setInputPin] = useState('1234');
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'personas' | 'custom'>('personas');
+  const [activeTab, setActiveTab] = useState<'groups' | 'custom'>('groups');
+  const [selectedGroupFilter, setSelectedGroupFilter] = useState<'ALL' | UserGroup>('ALL');
 
   useEffect(() => {
     mockStore.loadFromStorage();
@@ -59,14 +66,14 @@ export default function LoginPage() {
       }
 
       if (!matchedUser.active) {
-        toast.error('This user account has been disabled by the PPC Administrator.');
+        toast.error('This user account has been disabled by the Administrator.');
         setLoading(false);
         return;
       }
 
       // Check PIN if provided from custom form
       if (pinProvided && matchedUser.pin && matchedUser.pin !== pinProvided && pinProvided !== '1234') {
-        toast.error(`Invalid Security PIN for ${matchedUser.name}. Try default PIN.`);
+        toast.error(`Invalid Security PIN for ${matchedUser.name}. Default is 1234.`);
         setLoading(false);
         return;
       }
@@ -91,7 +98,7 @@ export default function LoginPage() {
         // demo fallback
       }
 
-      toast.success(`Logged in as ${matchedUser.name} (${matchedUser.role_title})`);
+      toast.success(`Logged in as ${matchedUser.name} (${matchedUser.role_title || matchedUser.group})`);
       router.push('/dashboard');
     } catch (err: any) {
       toast.error(err?.message || 'Login encountered an issue');
@@ -111,9 +118,15 @@ export default function LoginPage() {
     executeLogin(userItem.email);
   };
 
+  const filteredUsers = users.filter(u => {
+    if (selectedGroupFilter === 'ALL') return true;
+    const uGroup = u.group || (u.role === 'admin' ? 'admin' : u.role === 'manager' ? 'super_user' : 'user');
+    return uGroup === selectedGroupFilter;
+  });
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
-      <div className="w-full max-w-4xl space-y-6">
+      <div className="w-full max-w-5xl space-y-6">
         {/* Header Branding */}
         <div className="text-center space-y-2.5">
           <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-lg shadow-blue-900/20">
@@ -122,24 +135,60 @@ export default function LoginPage() {
           <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
             Seamless WIP Portal
           </h1>
-          <p className="text-sm text-slate-400 max-w-lg mx-auto">
-            Tube Mill Production Planning, Stage WIP Tracking & Role-Based Access Control
+          <p className="text-sm text-slate-400 max-w-xl mx-auto">
+            Industrial Pipe Mill WIP Tracking with Role & Group Authorization Hierarchy
           </p>
+        </div>
+
+        {/* Group Hierarchy Explaination Banner */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-xl border border-blue-500/30 bg-blue-950/40 p-3.5 text-xs space-y-1.5 backdrop-blur-xs">
+            <div className="flex items-center gap-1.5 font-bold text-blue-300">
+              <Crown className="h-4 w-4 text-blue-400" />
+              <span>Admin Group</span>
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Global deletion authority, user management (add/edit/remove), system configuration & full admin panel.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-purple-500/30 bg-purple-950/40 p-3.5 text-xs space-y-1.5 backdrop-blur-xs">
+            <div className="flex items-center gap-1.5 font-bold text-purple-300">
+              <Zap className="h-4 w-4 text-purple-400" />
+              <span>Super User Group</span>
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Can delete production records from <strong>ANY</strong> work center plant-wide. Cannot modify user accounts or admin settings.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-amber-500/30 bg-amber-950/40 p-3.5 text-xs space-y-1.5 backdrop-blur-xs">
+            <div className="flex items-center gap-1.5 font-bold text-amber-300">
+              <Users className="h-4 w-4 text-amber-400" />
+              <span>User Group</span>
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Strictly restricted: can <strong>ONLY</strong> edit and delete data from their assigned work center (e.g. Rolling Mill or Draw Bench).
+            </p>
+          </div>
         </div>
 
         {/* Active Session Card (If logged in) */}
         {activeUser && (
-          <div className="rounded-2xl border border-blue-500/30 bg-blue-950/40 p-4 backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/30 p-4 backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
             <div className="flex items-center gap-3 text-left">
-              <div className="h-10 w-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+              <div className="h-10 w-10 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
                 {activeUser.name.charAt(0)}
               </div>
               <div>
-                <div className="text-xs text-blue-300 font-medium">Currently active session:</div>
+                <div className="text-xs text-emerald-300 font-medium">Currently active session:</div>
                 <div className="text-sm font-bold text-white flex items-center gap-2">
                   {activeUser.name}
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/30 font-medium">
-                    {activeUser.role_title}
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 font-semibold uppercase">
+                    {activeUser.group || activeUser.role}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-mono">
+                    WC: {activeUser.work_center || 'ALL'}
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-400">{activeUser.department}</div>
@@ -147,10 +196,10 @@ export default function LoginPage() {
             </div>
             <Link
               href="/dashboard"
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-blue-900/30 hover:bg-blue-500 transition-all cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-emerald-900/30 hover:bg-emerald-500 transition-all cursor-pointer whitespace-nowrap"
             >
               <LayoutDashboard className="h-4 w-4" />
-              Continue to Dashboard
+              Enter Work Center Dashboard
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -160,14 +209,14 @@ export default function LoginPage() {
         <div className="flex items-center justify-center gap-2 border-b border-slate-800 pb-3">
           <button
             type="button"
-            onClick={() => setActiveTab('personas')}
+            onClick={() => setActiveTab('groups')}
             className={`px-4 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-              activeTab === 'personas'
+              activeTab === 'groups'
                 ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
           >
-            Role Profiles & 1-Click Login (6 Personas)
+            Group Profiles & 1-Click Login
           </button>
           <button
             type="button"
@@ -183,20 +232,37 @@ export default function LoginPage() {
         </div>
 
         {/* Role Cards Grid Tab */}
-        {activeTab === 'personas' && (
+        {activeTab === 'groups' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Select a Persona to test Role-Based Permissions:
-              </span>
-              <span className="text-[11px] text-slate-500">
-                Click any profile to instantly authenticate
+            {/* Filter Pills */}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-slate-400 font-medium">Filter by Group:</span>
+                {(['ALL', 'admin', 'super_user', 'user'] as const).map((grp) => (
+                  <button
+                    key={grp}
+                    type="button"
+                    onClick={() => setSelectedGroupFilter(grp)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      selectedGroupFilter === grp
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    {grp === 'ALL' ? 'All Accounts' : grp === 'admin' ? 'Admin Group' : grp === 'super_user' ? 'Super User Group' : 'User Group'}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Click any profile card to authenticate instantly
               </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {users.map((userItem) => {
-                const config = getRoleConfig(userItem.role);
+              {filteredUsers.map((userItem) => {
+                const uGroup = (userItem.group || (userItem.role === 'admin' ? 'admin' : userItem.role === 'manager' ? 'super_user' : 'user')) as UserGroup;
+                const grpConfig = GROUP_CONFIGS[uGroup] || GROUP_CONFIGS.user;
+                const userWorkCenter = userItem.work_center || (uGroup === 'admin' || uGroup === 'super_user' ? 'ALL' : 'ROLLING');
                 const isCurrent = activeUser?.email === userItem.email;
 
                 return (
@@ -231,16 +297,16 @@ export default function LoginPage() {
                         </div>
 
                         {isCurrent ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-400 bg-blue-950/80 px-2 py-0.5 rounded-full border border-blue-500/40">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40">
                             <Check className="h-3 w-3" /> Active
                           </span>
                         ) : (
                           <span
-                            className={`text-[9px] font-semibold px-2 py-0.5 rounded-md border uppercase tracking-wider ${
-                              config.badgeClass
+                            className={`text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wider ${
+                              grpConfig.badgeClass
                             }`}
                           >
-                            {userItem.role}
+                            {grpConfig.name}
                           </span>
                         )}
                       </div>
@@ -255,30 +321,42 @@ export default function LoginPage() {
                         </div>
                       </div>
 
-                      {/* Deletion Permission Indicator */}
-                      <div className="my-2.5 p-2 rounded-xl bg-slate-900/90 border border-slate-800/80 text-[11px] space-y-1">
+                      {/* Deletion & Authority Scope Box */}
+                      <div className="my-2.5 p-2.5 rounded-xl bg-slate-900/90 border border-slate-800/80 text-[11px] space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <span className="text-slate-400 font-medium">Delete Entries:</span>
-                          {config.canDeleteProductionEntry ? (
-                            <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                              <CheckCircle2 className="h-3 w-3" /> Allowed (Admin)
+                          <span className="text-slate-400 font-medium">Assigned WC:</span>
+                          <span className="font-mono text-slate-200 font-semibold">
+                            {userWorkCenter === 'ALL' ? 'Plant-Wide (ALL)' : userWorkCenter}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 font-medium">Delete Authority:</span>
+                          {uGroup === 'admin' ? (
+                            <span className="text-blue-400 font-semibold flex items-center gap-1">
+                              <Crown className="h-3 w-3" /> All Work Centers
+                            </span>
+                          ) : uGroup === 'super_user' ? (
+                            <span className="text-purple-400 font-semibold flex items-center gap-1">
+                              <Zap className="h-3 w-3" /> Any Work Center
                             </span>
                           ) : (
-                            <span className="text-rose-400 font-semibold flex items-center gap-1">
-                              <Lock className="h-3 w-3" /> Restricted
+                            <span className="text-amber-400 font-semibold flex items-center gap-1">
+                              <Lock className="h-3 w-3" /> {userWorkCenter} Only
                             </span>
                           )}
                         </div>
+
                         <div className="flex items-center justify-between">
-                          <span className="text-slate-400 font-medium">Create Plans:</span>
+                          <span className="text-slate-400 font-medium">Admin Settings:</span>
                           <span
                             className={
-                              config.canCreateRollingPlan
-                                ? 'text-emerald-400 font-semibold'
-                                : 'text-slate-400'
+                              uGroup === 'admin'
+                                ? 'text-blue-400 font-semibold'
+                                : 'text-slate-500'
                             }
                           >
-                            {config.canCreateRollingPlan ? 'Yes' : 'View Only'}
+                            {uGroup === 'admin' ? 'Full Control' : 'Locked'}
                           </span>
                         </div>
                       </div>
@@ -331,7 +409,7 @@ export default function LoginPage() {
                   required
                 />
                 <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
-                  <span>Default demo PIN: 1234</span>
+                  <span>Default PIN: 1234</span>
                   <span>(Admin: 1234, Manager: 5566)</span>
                 </div>
               </div>
@@ -360,3 +438,4 @@ export default function LoginPage() {
     </main>
   );
 }
+

@@ -2,23 +2,59 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import {
-  mockStore, MockUserProfile, MockAuditLog, MockRoute, MockStage, UserRole, DEFAULT_USERS
+  mockStore, MockUserProfile, MockAuditLog, MockRoute, MockStage, UserRole, UserGroup, WorkCenterCode, DEFAULT_USERS
 } from '@/lib/supabase/mock-store';
+import { GROUP_CONFIGS } from '@/lib/permissions';
 import {
   ShieldCheck, Users, Sliders, Activity, Database, Plus, Search,
   Edit2, Trash2, CheckCircle2, XCircle, RotateCcw, Download, Upload,
   KeyRound, Shield, AlertTriangle, RefreshCw, Layers, Check, X,
-  Save, Filter, Lock, HardHat, Factory
+  Save, Filter, Lock, HardHat, Factory, UserCheck, ShieldAlert
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color: string }[] = [
-  { value: 'admin', label: 'PPC Administrator', department: 'Production Planning & Control (PPC)', color: 'bg-blue-600 text-white' },
-  { value: 'manager', label: 'Plant Operations Head', department: 'Plant Operations & Engineering', color: 'bg-purple-600 text-white' },
-  { value: 'rolling_incharge', label: 'Rolling Mill In-charge', department: 'Hot Rolling & Piercing Mill', color: 'bg-amber-600 text-white' },
-  { value: 'draw_operator', label: 'Cold Draw Operator', department: 'Cold Draw Bench & Pilgering', color: 'bg-indigo-600 text-white' },
-  { value: 'qa_inspector', label: 'Quality & NDT Inspector', department: 'Quality Assurance & Metallurgical Lab', color: 'bg-emerald-600 text-white' },
-  { value: 'auditor', label: 'Internal Auditor', department: 'Management & Audit Team', color: 'bg-slate-600 text-white' },
+export const GROUP_OPTIONS: { value: UserGroup; label: string; description: string; badge: string; iconColor: string }[] = [
+  {
+    value: 'admin',
+    label: 'Admin Group',
+    description: 'Global authority: Delete data across all work centers, create/edit/remove users, and modify system settings.',
+    badge: 'bg-blue-100 text-blue-800 border-blue-200',
+    iconColor: 'text-blue-600',
+  },
+  {
+    value: 'super_user',
+    label: 'Super User Group',
+    description: 'Global authority: Delete data from any work center, manage plans, and perform operations plant-wide.',
+    badge: 'bg-purple-100 text-purple-800 border-purple-200',
+    iconColor: 'text-purple-600',
+  },
+  {
+    value: 'user',
+    label: 'User Group',
+    description: 'Work Center constrained: Can only edit/delete data from their specifically assigned work center.',
+    badge: 'bg-amber-100 text-amber-800 border-amber-200',
+    iconColor: 'text-amber-600',
+  },
+];
+
+export const WORK_CENTER_OPTIONS: { value: WorkCenterCode; label: string; stages: string[] }[] = [
+  { value: 'ALL', label: 'All Work Centers (Global Access)', stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'] },
+  { value: 'ROLLING', label: 'Hot Rolling & Piercing Mill', stages: ['ROLLING'] },
+  { value: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment', stages: ['HOLLOW_HEAT_TREATMENT'] },
+  { value: 'DRAW', label: 'Cold Draw Bench & Pilgering', stages: ['DRAW'] },
+  { value: 'HEAT_TREATMENT', label: 'Heat Treatment & Furnace', stages: ['HEAT_TREATMENT'] },
+  { value: 'FINISHING', label: 'Finishing & NDT Inspection', stages: ['FINISHING'] },
+  { value: 'QA', label: 'Quality Assurance & Metallurgical Lab', stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'] },
+  { value: 'AUDIT', label: 'Audit & Compliance (Read-only)', stages: [] },
+];
+
+const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color: string; defaultGroup: UserGroup; defaultWorkCenter: WorkCenterCode }[] = [
+  { value: 'admin', label: 'PPC Administrator', department: 'Production Planning & Control (PPC)', color: 'bg-blue-600 text-white', defaultGroup: 'admin', defaultWorkCenter: 'ALL' },
+  { value: 'manager', label: 'Plant Operations Head', department: 'Plant Operations & Engineering', color: 'bg-purple-600 text-white', defaultGroup: 'super_user', defaultWorkCenter: 'ALL' },
+  { value: 'rolling_incharge', label: 'Rolling Mill In-charge', department: 'Hot Rolling & Piercing Mill', color: 'bg-amber-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'ROLLING' },
+  { value: 'draw_operator', label: 'Cold Draw Operator', department: 'Cold Draw Bench & Pilgering', color: 'bg-indigo-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'DRAW' },
+  { value: 'qa_inspector', label: 'Quality & NDT Inspector', department: 'Quality Assurance & Metallurgical Lab', color: 'bg-emerald-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'QA' },
+  { value: 'auditor', label: 'Internal Auditor', department: 'Management & Audit Team', color: 'bg-slate-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'AUDIT' },
 ];
 
 export default function AdminControlPanelClient() {
@@ -32,6 +68,7 @@ export default function AdminControlPanelClient() {
   // User search & filters
   const [userSearch, setUserSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
+  const [groupFilter, setGroupFilter] = useState('ALL');
 
   // Audit search & filters
   const [auditSearch, setAuditSearch] = useState('');
@@ -44,6 +81,8 @@ export default function AdminControlPanelClient() {
     name: '',
     email: '',
     employee_id: '',
+    group: 'user' as UserGroup,
+    work_center: 'ROLLING' as WorkCenterCode,
     role: 'rolling_incharge' as UserRole,
     department: 'Hot Rolling & Piercing Mill',
     shift: 'Shift A (06:00 - 14:00)',
@@ -87,14 +126,16 @@ export default function AdminControlPanelClient() {
   const filteredUsers = useMemo(() => {
     return users.filter(u => {
       const matchRole = roleFilter === 'ALL' || u.role === roleFilter;
+      const matchGroup = groupFilter === 'ALL' || (u.group || 'user') === groupFilter;
       const matchSearch =
         u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
         u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
         u.employee_id.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.department.toLowerCase().includes(userSearch.toLowerCase());
-      return matchRole && matchSearch;
+        u.department.toLowerCase().includes(userSearch.toLowerCase()) ||
+        (u.work_center && u.work_center.toLowerCase().includes(userSearch.toLowerCase()));
+      return matchRole && matchGroup && matchSearch;
     });
-  }, [users, roleFilter, userSearch]);
+  }, [users, roleFilter, groupFilter, userSearch]);
 
   // Filtered audit logs
   const filteredAuditLogs = useMemo(() => {
@@ -116,6 +157,8 @@ export default function AdminControlPanelClient() {
       name: '',
       email: '',
       employee_id: `EMP-${Math.floor(100 + Math.random() * 900)}`,
+      group: 'user',
+      work_center: 'ROLLING',
       role: 'rolling_incharge',
       department: 'Hot Rolling & Piercing Mill',
       shift: 'Shift A (06:00 - 14:00)',
@@ -133,6 +176,8 @@ export default function AdminControlPanelClient() {
       name: user.name,
       email: user.email,
       employee_id: user.employee_id,
+      group: user.group || (user.role === 'admin' ? 'admin' : user.role === 'manager' ? 'super_user' : 'user'),
+      work_center: (user.work_center as WorkCenterCode) || (user.role === 'admin' || user.role === 'manager' ? 'ALL' : 'ROLLING'),
       role: user.role,
       department: user.department,
       shift: user.shift,
@@ -155,9 +200,21 @@ export default function AdminControlPanelClient() {
     const roleTitle = roleConfig?.label || 'User';
     const avatarColor = roleConfig?.color || 'bg-slate-600 text-white';
 
+    // Compute allowed stages based on group and work center
+    let allowedStages: string[] = [];
+    if (formData.group === 'admin' || formData.group === 'super_user' || formData.work_center === 'ALL') {
+      allowedStages = ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'];
+    } else {
+      const wcOpt = WORK_CENTER_OPTIONS.find(w => w.value === formData.work_center);
+      allowedStages = wcOpt ? wcOpt.stages : [formData.work_center];
+    }
+
     if (editingUser) {
       mockStore.updateUserProfile(editingUser.id, {
         name: formData.name.trim(),
+        group: formData.group,
+        work_center: formData.work_center,
+        allowed_stages: allowedStages,
         role: formData.role,
         role_title: roleTitle,
         department: formData.department,
@@ -167,12 +224,15 @@ export default function AdminControlPanelClient() {
         pin: formData.pin.trim() || '1234',
         avatar_color: avatarColor,
       });
-      toast.success(`User ${formData.name} updated successfully`);
+      toast.success(`User ${formData.name} updated (${formData.group.toUpperCase()})`);
     } else {
       mockStore.createUser({
         name: formData.name.trim(),
         email: formData.email.trim().toLowerCase(),
         employee_id: formData.employee_id.trim() || `EMP-${Date.now().toString().slice(-4)}`,
+        group: formData.group,
+        work_center: formData.work_center,
+        allowed_stages: allowedStages,
         role: formData.role,
         role_title: roleTitle,
         department: formData.department,
@@ -183,7 +243,7 @@ export default function AdminControlPanelClient() {
         active: true,
         pin: formData.pin.trim() || '1234',
       });
-      toast.success(`New user account created for ${formData.name}`);
+      toast.success(`New ${formData.group.toUpperCase()} account created for ${formData.name}`);
     }
 
     setIsUserModalOpen(false);
@@ -414,23 +474,37 @@ export default function AdminControlPanelClient() {
       {activeTab === 'users' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex flex-1 items-center gap-2">
-              <div className="relative flex-1 max-w-sm">
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search user by name, email, badge, dept..."
+                  placeholder="Search by name, email, badge, work center..."
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-hidden focus:border-blue-500"
                 />
               </div>
+
+              {/* Group Filter */}
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                className="text-xs rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium text-slate-700 focus:outline-hidden"
+              >
+                <option value="ALL">All Groups ({users.length})</option>
+                <option value="admin">Admin Group</option>
+                <option value="super_user">Super User Group</option>
+                <option value="user">User Group (Work Center)</option>
+              </select>
+
+              {/* Role Filter */}
               <select
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
-                className="text-xs rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-hidden"
+                className="text-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-700 focus:outline-hidden"
               >
-                <option value="ALL">All Roles ({users.length})</option>
+                <option value="ALL">All Roles</option>
                 <option value="admin">PPC Administrator</option>
                 <option value="manager">Plant Operations Head</option>
                 <option value="rolling_incharge">Rolling Mill In-charge</option>
@@ -457,9 +531,10 @@ export default function AdminControlPanelClient() {
                 <thead className="bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                   <tr>
                     <th className="py-3 px-4">Operator / Staff</th>
-                    <th className="py-3 px-4">Role & Access Scope</th>
-                    <th className="py-3 px-4">Department</th>
-                    <th className="py-3 px-4">Shift & Stage</th>
+                    <th className="py-3 px-4">User Group & Authority</th>
+                    <th className="py-3 px-4">Assigned Work Center</th>
+                    <th className="py-3 px-4">Role & Department</th>
+                    <th className="py-3 px-4">Shift</th>
                     <th className="py-3 px-4">Terminal PIN</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Actions</th>
@@ -468,89 +543,114 @@ export default function AdminControlPanelClient() {
                 <tbody className="divide-y divide-slate-100">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-slate-400">
+                      <td colSpan={8} className="py-8 text-center text-slate-400">
                         No users matching the filter criteria.
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((user) => (
-                      <tr key={user.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className={`h-8 w-8 rounded-lg flex items-center justify-center font-bold text-xs ${user.avatar_color || 'bg-slate-600 text-white'}`}>
-                              {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                            </div>
-                            <div>
-                              <div className="font-semibold text-slate-900">{user.name}</div>
-                              <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                                <span className="font-mono">{user.employee_id}</span>
-                                <span>•</span>
-                                <span>{user.email}</span>
+                    filteredUsers.map((user) => {
+                      const grp = (user.group || (user.role === 'admin' ? 'admin' : user.role === 'manager' ? 'super_user' : 'user')) as UserGroup;
+                      const grpConfig = GROUP_CONFIGS[grp] || GROUP_CONFIGS.user;
+                      const wc = user.work_center || (grp === 'admin' || grp === 'super_user' ? 'ALL' : 'ROLLING');
+                      const wcLabel = WORK_CENTER_OPTIONS.find(w => w.value === wc)?.label || wc;
+
+                      return (
+                        <tr key={user.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className={`h-8 w-8 rounded-lg flex items-center justify-center font-bold text-xs ${user.avatar_color || 'bg-slate-600 text-white'}`}>
+                                {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-semibold text-slate-900">{user.name}</div>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                                  <span className="font-mono">{user.employee_id}</span>
+                                  <span>•</span>
+                                  <span>{user.email}</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="py-3 px-4">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-200">
-                            {user.role_title}
-                          </span>
-                        </td>
+                          <td className="py-3 px-4">
+                            <div className="space-y-1">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${grpConfig.badgeClass}`}>
+                                {grpConfig.name}
+                              </span>
+                              <div className="text-[10px] text-slate-500 font-medium">
+                                {grp === 'admin' ? (
+                                  <span className="text-blue-700 font-semibold">Global Delete + Users & Settings</span>
+                                ) : grp === 'super_user' ? (
+                                  <span className="text-purple-700 font-semibold">Global Delete (Any Work Center)</span>
+                                ) : (
+                                  <span className="text-amber-700 font-semibold">Work Center Delete & Edit Only</span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
 
-                        <td className="py-3 px-4 text-slate-600 font-medium">
-                          {user.department}
-                        </td>
+                          <td className="py-3 px-4">
+                            <span className="inline-flex items-center gap-1 font-medium text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">
+                              <Factory size={11} className="text-slate-500" />
+                              {wc === 'ALL' ? 'Global (All Centers)' : wcLabel}
+                            </span>
+                          </td>
 
-                        <td className="py-3 px-4">
-                          <div className="text-slate-800">{user.shift}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">Pref: {user.default_stage || 'ROLLING'}</div>
-                        </td>
+                          <td className="py-3 px-4">
+                            <div className="font-medium text-slate-900">{user.role_title}</div>
+                            <div className="text-[10px] text-slate-500">{user.department}</div>
+                          </td>
 
-                        <td className="py-3 px-4">
-                          <span className="font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">
-                            •••• ({user.pin || '1234'})
-                          </span>
-                        </td>
+                          <td className="py-3 px-4">
+                            <div className="text-slate-800">{user.shift}</div>
+                          </td>
 
-                        <td className="py-3 px-4">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleUser(user.id)}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition cursor-pointer ${
-                              user.active
-                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                : 'bg-rose-100 text-rose-800 hover:bg-rose-200'
-                            }`}
-                          >
-                            {user.active ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                            <span>{user.active ? 'Active' : 'Disabled'}</span>
-                          </button>
-                        </td>
+                          <td className="py-3 px-4">
+                            <span className="font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">
+                              •••• ({user.pin || '1234'})
+                            </span>
+                          </td>
 
-                        <td className="py-3 px-4 text-right">
-                          <div className="inline-flex items-center gap-1.5">
+                          <td className="py-3 px-4">
                             <button
                               type="button"
-                              onClick={() => openEditUser(user)}
-                              className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors"
-                              title="Edit User Details"
+                              onClick={() => handleToggleUser(user.id)}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition cursor-pointer ${
+                                user.active
+                                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                  : 'bg-rose-100 text-rose-800 hover:bg-rose-200'
+                              }`}
                             >
-                              <Edit2 className="h-3.5 w-3.5" />
+                              {user.active ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                              <span>{user.active ? 'Active' : 'Disabled'}</span>
                             </button>
-                            {user.email !== 'admin@seamlesswip.com' && (
+                          </td>
+
+                          <td className="py-3 px-4 text-right">
+                            <div className="inline-flex items-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => handleDeleteUser(user)}
-                                className="p-1.5 rounded-md hover:bg-rose-50 text-rose-500 hover:text-rose-700 transition-colors"
-                                title="Delete User"
+                                onClick={() => openEditUser(user)}
+                                className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors"
+                                title="Edit User Details"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Edit2 className="h-3.5 w-3.5" />
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                              {user.email !== 'admin@seamlesswip.com' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteUser(user)}
+                                  className="p-1.5 rounded-md hover:bg-rose-50 text-rose-500 hover:text-rose-700 transition-colors"
+                                  title="Delete User"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -828,11 +928,16 @@ export default function AdminControlPanelClient() {
       {/* User Modal (Add / Edit) */}
       {isUserModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900">
-                {editingUser ? 'Edit User Credentials & Role' : 'Add New Plant Operator / Staff'}
-              </h3>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {editingUser ? 'Edit User Credentials & Permissions' : 'Add New Plant Operator / Staff'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Configure group authorization, work center boundaries, and employee profile.
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsUserModalOpen(false)}
@@ -843,7 +948,78 @@ export default function AdminControlPanelClient() {
             </div>
 
             <form onSubmit={handleSaveUser} className="space-y-4 mt-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Group Selection */}
+              <div className="space-y-2">
+                <label className="font-bold text-slate-800 block">Select User Group & Authority Level *</label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  {GROUP_OPTIONS.map((grp) => {
+                    const isSelected = formData.group === grp.value;
+                    return (
+                      <button
+                        key={grp.value}
+                        type="button"
+                        onClick={() => {
+                          const newWc = grp.value === 'admin' || grp.value === 'super_user' ? 'ALL' : (formData.work_center === 'ALL' ? 'ROLLING' : formData.work_center);
+                          setFormData({
+                            ...formData,
+                            group: grp.value,
+                            work_center: newWc,
+                          });
+                        }}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-500/20'
+                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900 text-xs">{grp.label}</span>
+                            {isSelected && <CheckCircle2 size={14} className="text-blue-600" />}
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                            {grp.description}
+                          </p>
+                        </div>
+                        <div className="mt-2.5">
+                          <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md ${grp.badge}`}>
+                            {grp.value.toUpperCase()}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Work Center Assignment */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2">
+                <label className="font-bold text-slate-800 block">
+                  Assigned Work Center *
+                </label>
+                <select
+                  value={formData.work_center}
+                  onChange={(e) => setFormData({ ...formData, work_center: e.target.value as WorkCenterCode })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white focus:border-blue-500 focus:outline-hidden"
+                >
+                  {WORK_CENTER_OPTIONS.map(wc => (
+                    <option
+                      key={wc.value}
+                      value={wc.value}
+                      disabled={formData.group === 'user' && wc.value === 'ALL'}
+                    >
+                      {wc.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-500">
+                  {formData.group === 'user'
+                    ? '⚠️ User group accounts can ONLY edit and delete production data within their assigned work center.'
+                    : '✓ Admin and Super User accounts have global deletion authority across all work centers.'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">Full Name *</label>
                   <input

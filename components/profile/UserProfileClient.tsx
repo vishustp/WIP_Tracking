@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { mockStore, MockUserProfile, MockAuditLog, DEFAULT_USERS } from '@/lib/supabase/mock-store';
+import { mockStore, MockUserProfile, MockAuditLog, DEFAULT_USERS, UserGroup, WorkCenterCode } from '@/lib/supabase/mock-store';
+import { GROUP_CONFIGS } from '@/lib/permissions';
 import {
   User, ShieldCheck, HardHat, Mail, Phone, Building, Clock,
   KeyRound, BellRing, History, CheckCircle2, AlertTriangle, Save,
-  RefreshCw, Check, UserCheck, Sparkles, Layers
+  RefreshCw, Check, UserCheck, Sparkles, Layers, Factory, ShieldAlert
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -157,6 +158,10 @@ export default function UserProfileClient() {
     );
   }
 
+  const userGroup = (currentUser.group || (currentUser.role === 'admin' ? 'admin' : currentUser.role === 'manager' ? 'super_user' : 'user')) as UserGroup;
+  const grpConfig = GROUP_CONFIGS[userGroup] || GROUP_CONFIGS.user;
+  const userWorkCenter = currentUser.work_center || (userGroup === 'admin' || userGroup === 'super_user' ? 'ALL' : 'ROLLING');
+
   const roleInfo = ROLE_PERMISSIONS[currentUser.role] || {
     label: currentUser.role_title || 'User',
     badgeClass: 'bg-slate-100 text-slate-800 border-slate-200',
@@ -173,8 +178,11 @@ export default function UserProfileClient() {
               {currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight text-slate-900">{currentUser.name}</h1>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${grpConfig.badgeClass}`}>
+                  {grpConfig.name}
+                </span>
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${roleInfo.badgeClass}`}>
                   {roleInfo.label}
                 </span>
@@ -182,10 +190,15 @@ export default function UserProfileClient() {
                   {currentUser.employee_id}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-1 flex items-center gap-3">
+              <p className="text-xs text-slate-500 mt-1.5 flex flex-wrap items-center gap-3">
                 <span className="flex items-center gap-1">
                   <Mail className="h-3.5 w-3.5" />
                   {currentUser.email}
+                </span>
+                <span>•</span>
+                <span className="flex items-center gap-1">
+                  <Factory className="h-3.5 w-3.5 text-slate-400" />
+                  Work Center: <strong className="text-slate-700">{userWorkCenter === 'ALL' ? 'Plant-Wide (Global)' : userWorkCenter}</strong>
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
@@ -213,27 +226,30 @@ export default function UserProfileClient() {
         <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2 text-slate-500 font-medium">
             <UserCheck className="h-4 w-4 text-slate-400" />
-            <span>Switch active demo profile:</span>
+            <span>Switch active user (test different group roles):</span>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {allUsers.map(u => (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => switchActiveUser(u.email)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
-                  u.email.toLowerCase() === currentUser.email.toLowerCase()
-                    ? 'bg-slate-900 text-white font-semibold shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <span>{u.name.split(' ')[0]}</span>
-                <span className="text-[10px] opacity-70">({u.role_title.split(' ')[0]})</span>
-                {u.email.toLowerCase() === currentUser.email.toLowerCase() && (
-                  <Check className="h-3 w-3 text-white" />
-                )}
-              </button>
-            ))}
+            {allUsers.map(u => {
+              const uGrp = u.group || (u.role === 'admin' ? 'admin' : u.role === 'manager' ? 'super_user' : 'user');
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => switchActiveUser(u.email)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                    u.email.toLowerCase() === currentUser.email.toLowerCase()
+                      ? 'bg-slate-900 text-white font-semibold shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>{u.name.split(' ')[0]}</span>
+                  <span className="text-[10px] opacity-80 uppercase font-semibold">[{uGrp}]</span>
+                  {u.email.toLowerCase() === currentUser.email.toLowerCase() && (
+                    <Check className="h-3 w-3 text-white" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -432,11 +448,37 @@ export default function UserProfileClient() {
 
         {/* Right 1 Col: Role Matrix & Activity */}
         <div className="space-y-6">
+          {/* Group Authority & Deletion Card */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-slate-900 font-semibold text-sm">
+                <ShieldCheck className="h-4 w-4 text-blue-600" />
+                <span>Group Authority & Deletion</span>
+              </div>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${grpConfig.badgeClass}`}>
+                {grpConfig.name.toUpperCase()}
+              </span>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-100 text-xs space-y-2">
+              <div className="font-semibold text-slate-900">
+                {userGroup === 'admin' && '👑 Full Administrator Access'}
+                {userGroup === 'super_user' && '⚡ Super User Access'}
+                {userGroup === 'user' && '🔒 Work-Center Restricted User'}
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                {userGroup === 'admin' && 'Can delete data across all work centers, create/edit/remove user accounts, and configure system settings.'}
+                {userGroup === 'super_user' && 'Can delete data from ANY work center across the entire plant. Cannot manage system users or administrative settings.'}
+                {userGroup === 'user' && `Can ONLY edit and delete production data within assigned work center (${userWorkCenter}). Deletions in other work centers are strictly blocked.`}
+              </p>
+            </div>
+          </div>
+
           {/* Role & Permissions Card */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
             <div className="flex items-center gap-2 text-slate-900 font-semibold text-sm border-b border-slate-100 pb-3">
-              <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              <span>Assigned Role Privileges</span>
+              <HardHat className="h-4 w-4 text-amber-600" />
+              <span>Plant Role Privileges</span>
             </div>
 
             <div>

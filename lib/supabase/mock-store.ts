@@ -101,6 +101,8 @@ export type MockProductionLog = {
   created_at: string;
 };
 
+export type UserGroup = 'admin' | 'super_user' | 'user';
+export type WorkCenterCode = 'ALL' | 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'FINISHING' | 'QA' | 'AUDIT';
 export type UserRole = 'admin' | 'manager' | 'rolling_incharge' | 'draw_operator' | 'qa_inspector' | 'auditor';
 
 export type MockUserProfile = {
@@ -108,10 +110,13 @@ export type MockUserProfile = {
   email: string;
   name: string;
   employee_id: string;
+  group: UserGroup;
   role: UserRole;
   role_title: string;
   department: string;
   shift: string;
+  work_center: string;
+  allowed_stages: string[];
   default_stage?: string;
   phone?: string;
   avatar_color?: string;
@@ -139,10 +144,13 @@ export const DEFAULT_USERS: MockUserProfile[] = [
     email: 'admin@seamlesswip.com',
     name: 'Vishal Mishra',
     employee_id: 'PPC-001',
+    group: 'admin',
     role: 'admin',
     role_title: 'PPC Administrator',
     department: 'Production Planning & Control (PPC)',
     shift: 'General (09:00 - 17:30)',
+    work_center: 'ALL',
+    allowed_stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'],
     default_stage: 'ROLLING',
     phone: '+91 98765 43210',
     avatar_color: 'bg-blue-600 text-white',
@@ -152,14 +160,37 @@ export const DEFAULT_USERS: MockUserProfile[] = [
     last_login: new Date().toISOString(),
   },
   {
+    id: 'user-manager-05',
+    email: 'manager@seamlesswip.com',
+    name: 'Anand Verma',
+    employee_id: 'PLT-002',
+    group: 'super_user',
+    role: 'manager',
+    role_title: 'Plant Operations Head (Super User)',
+    department: 'Plant Operations & Engineering',
+    shift: 'General (09:00 - 17:30)',
+    work_center: 'ALL',
+    allowed_stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'],
+    default_stage: 'ROLLING',
+    phone: '+91 98445 67890',
+    avatar_color: 'bg-purple-600 text-white',
+    active: true,
+    pin: '5566',
+    created_at: '2025-01-05T08:00:00.000Z',
+    last_login: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
     id: 'user-rolling-02',
     email: 'rolling@seamlesswip.com',
     name: 'Rajesh Sharma',
     employee_id: 'MIL-104',
+    group: 'user',
     role: 'rolling_incharge',
     role_title: 'Rolling Mill In-charge',
     department: 'Hot Rolling & Piercing Mill',
     shift: 'Shift A (06:00 - 14:00)',
+    work_center: 'ROLLING',
+    allowed_stages: ['ROLLING'],
     default_stage: 'ROLLING',
     phone: '+91 98112 34567',
     avatar_color: 'bg-amber-600 text-white',
@@ -173,10 +204,13 @@ export const DEFAULT_USERS: MockUserProfile[] = [
     email: 'draw@seamlesswip.com',
     name: 'Sunil Kumar',
     employee_id: 'DRW-202',
+    group: 'user',
     role: 'draw_operator',
     role_title: 'Cold Draw Operator',
     department: 'Cold Draw Bench & Pilgering',
     shift: 'Shift B (14:00 - 22:00)',
+    work_center: 'DRAW',
+    allowed_stages: ['DRAW'],
     default_stage: 'DRAW',
     phone: '+91 98223 45678',
     avatar_color: 'bg-indigo-600 text-white',
@@ -190,10 +224,13 @@ export const DEFAULT_USERS: MockUserProfile[] = [
     email: 'qa@seamlesswip.com',
     name: 'Dr. Amit Patel',
     employee_id: 'QAC-301',
+    group: 'user',
     role: 'qa_inspector',
     role_title: 'Quality & NDT Inspector',
     department: 'Quality Assurance & Metallurgical Lab',
     shift: 'Shift A (06:00 - 14:00)',
+    work_center: 'HEAT_TREATMENT',
+    allowed_stages: ['HEAT_TREATMENT', 'HOLLOW_HEAT_TREATMENT'],
     default_stage: 'HEAT_TREATMENT',
     phone: '+91 98334 56789',
     avatar_color: 'bg-emerald-600 text-white',
@@ -203,34 +240,20 @@ export const DEFAULT_USERS: MockUserProfile[] = [
     last_login: new Date(Date.now() - 86400000 * 3).toISOString(),
   },
   {
-    id: 'user-manager-05',
-    email: 'manager@seamlesswip.com',
-    name: 'Anand Verma',
-    employee_id: 'PLT-002',
-    role: 'manager',
-    role_title: 'Plant Operations Head',
-    department: 'Plant Operations & Engineering',
-    shift: 'General (09:00 - 17:30)',
-    default_stage: 'FINISHING',
-    phone: '+91 98445 67890',
-    avatar_color: 'bg-purple-600 text-white',
-    active: true,
-    pin: '5566',
-    created_at: '2025-01-05T08:00:00.000Z',
-    last_login: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-  {
-    id: 'user-auditor-06',
-    email: 'auditor@seamlesswip.com',
+    id: 'user-finishing-06',
+    email: 'finishing@seamlesswip.com',
     name: 'Meera Sen',
-    employee_id: 'AUD-505',
+    employee_id: 'FNS-505',
+    group: 'user',
     role: 'auditor',
-    role_title: 'Internal Audit & Compliance',
-    department: 'Management & Audit Team',
+    role_title: 'Finishing & Dispatch Operator',
+    department: 'Finishing, Straightening & Dispatch',
     shift: 'General (09:00 - 17:30)',
+    work_center: 'FINISHING',
+    allowed_stages: ['FINISHING'],
     default_stage: 'FINISHING',
     phone: '+91 98556 78901',
-    avatar_color: 'bg-slate-600 text-white',
+    avatar_color: 'bg-cyan-600 text-white',
     active: true,
     pin: '7788',
     created_at: '2025-02-18T08:00:00.000Z',
@@ -564,7 +587,22 @@ class MockStore {
       const dp = localStorage.getItem('seamless_wip_diversions');
       if (dp) this.diversions = JSON.parse(dp);
       const usr = localStorage.getItem('seamless_wip_users');
-      if (usr) this.users = JSON.parse(usr);
+      if (usr) {
+        const loadedUsers = JSON.parse(usr);
+        this.users = loadedUsers.map((u: any) => {
+          let grp: UserGroup = u.group || (u.role === 'admin' ? 'admin' : u.role === 'manager' ? 'super_user' : 'user');
+          let wc = u.work_center || (grp === 'admin' || grp === 'super_user' ? 'ALL' : u.default_stage || 'ROLLING');
+          let allowed = u.allowed_stages || (grp === 'admin' || grp === 'super_user' 
+            ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
+            : [wc]);
+          return {
+            ...u,
+            group: grp,
+            work_center: wc,
+            allowed_stages: allowed,
+          };
+        });
+      }
       const aud = localStorage.getItem('seamless_wip_audit_logs');
       if (aud) this.auditLogs = JSON.parse(aud);
       const rts = localStorage.getItem('seamless_wip_routes');

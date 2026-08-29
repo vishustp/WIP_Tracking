@@ -29,11 +29,26 @@ import { useHistory } from "@/hooks/useHistory";
 import { validateProductionEntry } from "@/lib/productionValidation";
 import { calc, fmt, n, mtrFromPcs, pcsFromMtr, mtFromMtr } from "@/lib/productionUtils";
 import { StageCode, STAGES, Row, ProductionEntry, WorkCenterWipInfo } from "@/types";
-import { usePermissions, getRoleConfig } from "@/lib/permissions";
+import { usePermissions, getGroupConfig } from "@/lib/permissions";
 
 export default function ProductionEntryGrid() {
   const supabase = useMemo(() => createClient(), []);
-  const { user, role, roleTitle, department, isStageAllowed, canDeleteEntry, isAuditor, can } = usePermissions();
+  const {
+    user,
+    group,
+    groupConfig,
+    roleTitle,
+    department,
+    workCenter,
+    workCenterLabel,
+    isStageAllowed,
+    canDeleteForStage,
+    canEditForStage,
+    canCreateForStage,
+    isAdmin,
+    isSuperUser,
+    isUserGroup,
+  } = usePermissions();
 
   // --- State ---
   const [stage, setStage] = useState<StageCode>("ROLLING");
@@ -283,13 +298,8 @@ export default function ProductionEntryGrid() {
     setMessage("");
     setError("");
 
-    if (isAuditor) {
-      setError("Access Restricted: Internal Auditor role has read-only permissions and cannot record production entries.");
-      return;
-    }
-
     if (!isStageAllowed(stage)) {
-      setError(`Permission Denied: Your assigned role (${roleTitle}) is not authorized to record production entries for ${STAGES.find(s => s.code === stage)?.label || stage}.`);
+      setError(`Permission Denied: Your account (${groupConfig.name}) is assigned to ${workCenterLabel}. You can only record data for your assigned work center.`);
       return;
     }
 
@@ -421,14 +431,9 @@ export default function ProductionEntryGrid() {
     setError("");
     setMessage("");
 
-    if (isAuditor) {
-      setError("Access Denied: Internal Auditor role has read-only access.");
-      setEditSaving(false);
-      return;
-    }
-
-    if (!can('edit_production_entry', editing.stage_code)) {
-      setError(`Permission Denied: Your role (${roleTitle}) is not permitted to modify entries for stage ${editing.stage_code}.`);
+    const editCheck = canEditForStage(editing.stage_code);
+    if (!editCheck.allowed) {
+      setError(editCheck.reason || `Permission Denied: Your user group cannot modify entries for stage ${editing.stage_code}.`);
       setEditSaving(false);
       return;
     }
@@ -494,10 +499,14 @@ export default function ProductionEntryGrid() {
     setError("");
     setMessage("");
 
-    if (!canDeleteEntry) {
-      setError(`Permission Denied: Production entry deletion is restricted to PPC Administrator and Plant Operations Head roles. Current role: ${roleTitle}`);
-      setDeleteBusy(false);
-      return;
+    const targetEntry = entries.find((e) => e.id === deleteId);
+    if (targetEntry) {
+      const delCheck = canDeleteForStage(targetEntry.stage_code);
+      if (!delCheck.allowed) {
+        setError(delCheck.reason || "Permission Denied: Unauthorized to delete this entry.");
+        setDeleteBusy(false);
+        return;
+      }
     }
 
     try {
@@ -551,36 +560,34 @@ export default function ProductionEntryGrid() {
       {/* Active Role & Permissions Banner */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 font-bold text-white text-sm shadow-md">
+          <div className={`flex h-10 w-10 items-center justify-center rounded-xl font-bold text-white text-sm shadow-md ${
+            isAdmin ? "bg-blue-600" : isSuperUser ? "bg-purple-600" : "bg-amber-600"
+          }`}>
             {user?.name?.charAt(0) || "U"}
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-bold text-slate-900">{user?.name || "Active Operator"}</span>
-              <span className="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
-                {roleTitle}
+              <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${groupConfig.badgeClass}`}>
+                {groupConfig.name}
               </span>
-              <span className="text-xs text-slate-500 font-medium">({department})</span>
+              <span className="text-xs text-slate-500 font-medium">({user?.role_title} · {user?.department})</span>
             </div>
             <div className="mt-1 flex items-center gap-3 text-[11px] text-slate-600 flex-wrap">
               <span className="flex items-center gap-1 font-medium">
-                <span className="text-slate-400">Entry Scope:</span>
-                {isAuditor ? (
-                  <span className="text-amber-700 font-semibold">Audit Read-Only</span>
-                ) : (
-                  <span className="text-slate-800 font-semibold">{isStageAllowed(stage) ? "Authorized for this Stage" : "View-Only for this Stage"}</span>
-                )}
+                <span className="text-slate-400">Assigned Work Center:</span>
+                <span className="text-slate-800 font-semibold">{workCenterLabel}</span>
               </span>
               <span className="text-slate-300">•</span>
               <span className="flex items-center gap-1">
-                <span className="text-slate-400">Entry Deletion:</span>
-                {canDeleteEntry ? (
+                <span className="text-slate-400">Deletion Scope:</span>
+                {isAdmin || isSuperUser ? (
                   <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
-                    <CheckCircle2 size={12} /> Admin Authorized
+                    <CheckCircle2 size={12} /> Global Authority (All Work Centers)
                   </span>
                 ) : (
-                  <span className="text-slate-500 font-medium flex items-center gap-0.5">
-                    <Lock size={11} className="text-slate-400" /> Restricted to Admin / Plant Head
+                  <span className="text-amber-700 font-semibold flex items-center gap-0.5">
+                    <CheckCircle2 size={12} /> Work Center Only ({workCenter})
                   </span>
                 )}
               </span>
@@ -594,15 +601,17 @@ export default function ProductionEntryGrid() {
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
           >
             <UserCheck size={14} className="text-slate-500" />
-            Switch Profile
+            Switch User / Role
           </Link>
-          <Link
-            href="/admin"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
-          >
-            <ShieldCheck size={14} className="text-blue-600" />
-            Admin Panel
-          </Link>
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+            >
+              <ShieldCheck size={14} className="text-blue-600" />
+              Admin Panel
+            </Link>
+          )}
         </div>
       </div>
 
@@ -1110,7 +1119,7 @@ export default function ProductionEntryGrid() {
         {/* Batch Save Action Footer */}
         <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/80 p-3 sm:p-4">
           <div className="text-xs text-slate-600">
-            {!isStageAllowed(stage) || isAuditor ? (
+            {!isStageAllowed(stage) || user?.role === 'auditor' ? (
               <span className="inline-flex items-center gap-1.5 text-amber-700 font-medium bg-amber-50 border border-amber-200/80 rounded-lg px-2.5 py-1">
                 <Lock size={13} />
                 Entry is disabled: Active role ({roleTitle}) does not have write permissions for {STAGES.find(s => s.code === stage)?.label}.
@@ -1124,7 +1133,7 @@ export default function ProductionEntryGrid() {
 
           <button
             type="button"
-            disabled={saving || queueLoading || isAuditor || !isStageAllowed(stage)}
+            disabled={saving || queueLoading || user?.role === 'auditor' || !isStageAllowed(stage)}
             onClick={save}
             className="rounded-lg bg-slate-900 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
@@ -1252,48 +1261,56 @@ export default function ProductionEntryGrid() {
                     <td className="py-2.5 px-3 text-slate-600 max-w-[180px] truncate">{entry.remarks || "—"}</td>
                     <td className="py-2.5 px-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          type="button"
-                          disabled={!entry.can_modify || isAuditor || !can('edit_production_entry', entry.stage_code)}
-                          onClick={() => openEdit(entry)}
-                          title={
-                            isAuditor
-                              ? "Auditor role has read-only access"
-                              : !can('edit_production_entry', entry.stage_code)
-                              ? `Role ${roleTitle} is not authorized to edit ${entry.stage_code}`
-                              : entry.can_modify
-                              ? "Edit Entry"
-                              : "Locked: subsequent production logs exist for this order"
-                          }
-                          className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <Edit2 size={12} /> Edit
-                        </button>
-                        
-                        {canDeleteEntry ? (
-                          <button
-                            type="button"
-                            disabled={!entry.can_modify}
-                            onClick={() => setDeleteId(entry.id)}
-                            title={
-                              entry.can_modify
-                                ? "Delete Entry (Admin / Plant Head Authorized)"
-                                : "Locked: subsequent production logs exist for this order"
-                            }
-                            className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Trash2 size={12} /> Delete
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={true}
-                            title={`Deletion restricted: Only PPC Administrator or Plant Operations Head can delete records. Current role: ${roleTitle}`}
-                            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-100/70 px-2 py-1 text-[11px] font-medium text-slate-400 cursor-not-allowed opacity-60"
-                          >
-                            <Lock size={11} /> Delete
-                          </button>
-                        )}
+                        {(() => {
+                          const editCheck = canEditForStage(entry.stage_code);
+                          const delCheck = canDeleteForStage(entry.stage_code);
+
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                disabled={!entry.can_modify || !editCheck.allowed}
+                                onClick={() => openEdit(entry)}
+                                title={
+                                  !editCheck.allowed
+                                    ? editCheck.reason || "Unauthorized to edit"
+                                    : entry.can_modify
+                                    ? `Edit Entry (${entry.stage_code})`
+                                    : "Locked: subsequent production logs exist for this order"
+                                }
+                                className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                {!editCheck.allowed ? <Lock size={11} className="text-slate-400" /> : <Edit2 size={12} />}
+                                Edit
+                              </button>
+                              
+                              {delCheck.allowed ? (
+                                <button
+                                  type="button"
+                                  disabled={!entry.can_modify}
+                                  onClick={() => setDeleteId(entry.id)}
+                                  title={
+                                    entry.can_modify
+                                      ? `Delete Entry (${isAdmin ? "Admin Authority" : isSuperUser ? "Super User Authority" : "Assigned Work Center Authorized"})`
+                                      : "Locked: subsequent production logs exist for this order"
+                                  }
+                                  className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  <Trash2 size={12} /> Delete
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={true}
+                                  title={delCheck.reason || "Deletion restricted"}
+                                  className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-100/70 px-2 py-1 text-[11px] font-medium text-slate-400 cursor-not-allowed opacity-60"
+                                >
+                                  <Lock size={11} /> Delete
+                                </button>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </td>
                   </tr>
@@ -1457,48 +1474,76 @@ export default function ProductionEntryGrid() {
       )}
 
       {/* Delete Confirmation Modal */}
-      {deleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
-            <div className="flex items-center gap-3">
-              <div className={`rounded-full p-2.5 ${canDeleteEntry ? "bg-rose-100 text-rose-600" : "bg-amber-100 text-amber-600"}`}>
-                {canDeleteEntry ? <Trash2 size={20} /> : <ShieldAlert size={20} />}
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  {canDeleteEntry ? "Delete Production Entry" : "Permission Restricted"}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {canDeleteEntry
-                    ? "Are you sure you want to delete this entry? WIP balances will be recalculated immediately and an audit log will be recorded."
-                    : `Only PPC Administrator or Plant Operations Head are permitted to delete production records. Current user role: ${roleTitle}.`}
-                </p>
-              </div>
-            </div>
+      {deleteId && (() => {
+        const targetEntry = entries.find((e) => e.id === deleteId);
+        const delCheck = targetEntry ? canDeleteForStage(targetEntry.stage_code) : { allowed: false, reason: "Entry not found" };
 
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                disabled={deleteBusy}
-                onClick={() => setDeleteId(null)}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-              >
-                {canDeleteEntry ? "Cancel" : "Close"}
-              </button>
-              {canDeleteEntry && (
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
+              <div className="flex items-center gap-3">
+                <div className={`rounded-full p-2.5 ${delCheck.allowed ? "bg-rose-100 text-rose-600" : "bg-amber-100 text-amber-600"}`}>
+                  {delCheck.allowed ? <Trash2 size={20} /> : <ShieldAlert size={20} />}
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {delCheck.allowed ? "Delete Production Entry" : "Permission Restricted"}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {delCheck.allowed
+                      ? `Are you sure you want to delete this ${targetEntry?.stage_code} entry (${targetEntry?.work_order_no})? WIP balances will be recalculated immediately.`
+                      : delCheck.reason || "Unauthorized to delete this record."}
+                  </p>
+                </div>
+              </div>
+
+              {targetEntry && (
+                <div className="mt-4 rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs space-y-1">
+                  <div className="flex justify-between text-slate-600">
+                    <span>Work Order:</span>
+                    <span className="font-mono font-bold text-slate-900">{targetEntry.work_order_no}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Work Center / Stage:</span>
+                    <span className="font-semibold text-slate-800">{targetEntry.stage_code}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Output Qty:</span>
+                    <span className="font-mono font-bold text-slate-900">{targetEntry.output_mtr} MTR ({targetEntry.output_pcs} PCS)</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Authorization:</span>
+                    <span className="font-semibold text-emerald-700">
+                      {isAdmin ? "Admin Group (Global Deletion)" : isSuperUser ? "Super User Group (Global Deletion)" : `User Group (${workCenter} Assigned)`}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-end gap-2">
                 <button
                   type="button"
                   disabled={deleteBusy}
-                  onClick={deleteEntry}
-                  className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-rose-700 disabled:opacity-50"
+                  onClick={() => setDeleteId(null)}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  {deleteBusy ? "Deleting..." : "Confirm Delete"}
+                  {delCheck.allowed ? "Cancel" : "Close"}
                 </button>
-              )}
+                {delCheck.allowed && (
+                  <button
+                    type="button"
+                    disabled={deleteBusy}
+                    onClick={deleteEntry}
+                    className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-rose-700 disabled:opacity-50"
+                  >
+                    {deleteBusy ? "Deleting..." : "Confirm Delete"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

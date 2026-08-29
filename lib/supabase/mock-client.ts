@@ -210,8 +210,9 @@ export function createMockClient() {
         }
         case 'create_rolling_plan': {
           const activeUser = mockStore.getCurrentUser();
-          if (activeUser.role !== 'admin' && activeUser.role !== 'manager') {
-            return { data: null, error: new Error(`Access Denied: Rolling plans can only be created by Admin or Plant Manager. Current role: ${activeUser.role_title}`) };
+          const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
+          if (userGroup !== 'admin' && userGroup !== 'super_user') {
+            return { data: null, error: new Error(`Access Denied: Rolling plans can only be created by Admin Group or Super User Group. Current user: ${activeUser.name} (${activeUser.role_title})`) };
           }
           const wo = mockStore.workOrders.find(w => w.id === args.p_work_order_id);
           if (!wo) return { data: null, error: new Error('Work Order not found') };
@@ -254,8 +255,9 @@ export function createMockClient() {
         }
         case 'update_rolling_plan': {
           const activeUser = mockStore.getCurrentUser();
-          if (activeUser.role !== 'admin' && activeUser.role !== 'manager') {
-            return { error: new Error(`Access Denied: Only Admin and Plant Manager can modify rolling plans. Current role: ${activeUser.role_title}`) };
+          const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
+          if (userGroup !== 'admin' && userGroup !== 'super_user') {
+            return { error: new Error(`Access Denied: Only Admin Group and Super User Group can modify rolling plans. Current user: ${activeUser.name}`) };
           }
           const plan = mockStore.rollingPlans.find(p => p.id === args.p_plan_id);
           if (!plan) return { error: new Error('Plan not found') };
@@ -275,8 +277,9 @@ export function createMockClient() {
         }
         case 'delete_rolling_plan': {
           const activeUser = mockStore.getCurrentUser();
-          if (activeUser.role !== 'admin' && activeUser.role !== 'manager') {
-            return { error: new Error(`Access Denied: Only Admin and Plant Manager can delete rolling plans. Current role: ${activeUser.role_title}`) };
+          const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
+          if (userGroup !== 'admin' && userGroup !== 'super_user') {
+            return { error: new Error(`Access Denied: Only Admin Group and Super User Group can delete rolling plans. Current user: ${activeUser.name}`) };
           }
           const plan = mockStore.rollingPlans.find(p => p.id === args.p_plan_id);
           mockStore.rollingPlans = mockStore.rollingPlans.filter(p => p.id !== args.p_plan_id);
@@ -295,8 +298,9 @@ export function createMockClient() {
         }
         case 'create_diversion': {
           const activeUser = mockStore.getCurrentUser();
-          if (activeUser.role !== 'admin' && activeUser.role !== 'manager') {
-            return { error: new Error(`Access Denied: Only Admin and Plant Manager can authorize pipe diversions. Current role: ${activeUser.role_title}`) };
+          const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
+          if (userGroup !== 'admin' && userGroup !== 'super_user') {
+            return { error: new Error(`Access Denied: Only Admin Group and Super User Group can authorize pipe diversions. Current user: ${activeUser.name}`) };
           }
           if (args.p_source === args.p_target) {
             return { error: new Error('Source and target WO cannot be same') };
@@ -331,9 +335,16 @@ export function createMockClient() {
         }
         case 'record_production': {
           const activeUser = mockStore.getCurrentUser();
-          if (activeUser.role === 'auditor') {
-            return { error: new Error('Access Denied: Auditor role has read-only permissions.') };
+          const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
+          const stageCode = args.p_stage_code;
+          
+          if (userGroup === 'user') {
+            const isAssigned = activeUser.work_center === stageCode || activeUser.allowed_stages?.includes(stageCode) || activeUser.default_stage === stageCode;
+            if (!isAssigned) {
+              return { error: new Error(`Access Denied: User group can only record data for their assigned work center (${activeUser.work_center || activeUser.default_stage}). Stage requested: ${stageCode}`) };
+            }
           }
+
           const stage = mockStore.stages.find(s => s.stage_code === args.p_stage_code);
           const stageId = stage?.id || 'stage-1';
           const id = `pl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -368,11 +379,19 @@ export function createMockClient() {
         }
         case 'record_production_batch': {
           const activeUser = mockStore.getCurrentUser();
-          if (activeUser.role === 'auditor') {
-            return { error: new Error('Access Denied: Auditor role has read-only permissions.') };
-          }
+          const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
           const entries = args.entries || [];
           const processDate = args.p_process_date || new Date().toISOString().slice(0, 10);
+
+          for (const item of entries) {
+            if (userGroup === 'user') {
+              const isAssigned = activeUser.work_center === item.stage_code || activeUser.allowed_stages?.includes(item.stage_code) || activeUser.default_stage === item.stage_code;
+              if (!isAssigned) {
+                return { error: new Error(`Access Denied: User group can only record data for their assigned work center (${activeUser.work_center || activeUser.default_stage}). Requested stage: ${item.stage_code}`) };
+              }
+            }
+          }
+
           for (const item of entries) {
             const stage = mockStore.stages.find(s => s.stage_code === item.stage_code);
             const stageId = stage?.id || 'stage-1';
@@ -408,11 +427,18 @@ export function createMockClient() {
         }
         case 'update_production_entry': {
           const activeUser = mockStore.getCurrentUser();
-          if (activeUser.role === 'auditor') {
-            return { error: new Error('Access Denied: Auditor role has read-only permissions.') };
-          }
+          const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
           const entry = mockStore.productionLogs.find(p => p.id === args.p_production_id);
           if (!entry) return { error: new Error('Production entry not found') };
+
+          const entryStage = mockStore.stages.find(s => s.id === entry.stage_id)?.stage_code || 'ROLLING';
+          if (userGroup === 'user') {
+            const isAssigned = activeUser.work_center === entryStage || activeUser.allowed_stages?.includes(entryStage) || activeUser.default_stage === entryStage;
+            if (!isAssigned) {
+              return { error: new Error(`Access Denied: User group can only edit data from their assigned work center (${activeUser.work_center || activeUser.default_stage}). This entry is in ${entryStage}.`) };
+            }
+          }
+
           entry.process_date = args.p_process_date;
           entry.output_qty = Number(args.p_output_qty);
           entry.rejection_qty = Number(args.p_rejection_qty || 0);
@@ -432,23 +458,30 @@ export function createMockClient() {
         }
         case 'delete_production_entry': {
           const activeUser = mockStore.getCurrentUser();
-          if (activeUser.role !== 'admin' && activeUser.role !== 'manager') {
-            return {
-              error: new Error(`Access Denied: Deletion requires PPC Administrator or Plant Operations Head permissions. Current role: ${activeUser.role_title}`),
-            };
-          }
+          const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
           const entryToDelete = mockStore.productionLogs.find(p => p.id === args.p_production_id);
-          mockStore.productionLogs = mockStore.productionLogs.filter(p => p.id !== args.p_production_id);
-          if (entryToDelete) {
-            mockStore.addAuditLog({
-              user_email: activeUser.email,
-              user_name: activeUser.name,
-              action_type: 'USER_UPDATE',
-              entity_type: 'Production Log',
-              entity_id: entryToDelete.id,
-              details: `Deleted production entry ${entryToDelete.id} (WO: ${entryToDelete.work_order_id}, Qty: ${entryToDelete.output_qty} Mtrs)`,
-            });
+          if (!entryToDelete) return { error: new Error('Production entry not found') };
+
+          const entryStage = mockStore.stages.find(s => s.id === entryToDelete.stage_id)?.stage_code || 'ROLLING';
+          
+          if (userGroup === 'user') {
+            const isAssigned = activeUser.work_center === entryStage || activeUser.allowed_stages?.includes(entryStage) || activeUser.default_stage === entryStage;
+            if (!isAssigned) {
+              return {
+                error: new Error(`Access Denied: User group can only delete data from their assigned work center (${activeUser.work_center || activeUser.default_stage}). This entry belongs to work center ${entryStage}.`),
+              };
+            }
           }
+
+          mockStore.productionLogs = mockStore.productionLogs.filter(p => p.id !== args.p_production_id);
+          mockStore.addAuditLog({
+            user_email: activeUser.email,
+            user_name: activeUser.name,
+            action_type: 'USER_UPDATE',
+            entity_type: 'Production Log',
+            entity_id: entryToDelete.id,
+            details: `Deleted production entry ${entryToDelete.id} in ${entryStage} (WO: ${entryToDelete.work_order_id}, Qty: ${entryToDelete.output_qty} Mtrs)`,
+          });
           mockStore.saveToStorage();
           return { error: null };
         }
