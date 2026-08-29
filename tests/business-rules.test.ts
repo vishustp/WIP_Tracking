@@ -93,7 +93,7 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       expect(errors[0].message).toContain("Rolling HTC OK");
     });
 
-    it("Rule 3: Heat Treatment is capped at Draw Net Output and requires Heat Lot No.", () => {
+    it("Rule 3: Heat Treatment is capped at Draw Net Output and allows optional Heat Lot No.", () => {
       const htRow: Row = {
         ...baseRow,
         stage_code: "HEAT_TREATMENT",
@@ -104,8 +104,9 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       };
       expect(validateProductionEntry(htRow, "HEAT_TREATMENT")).toHaveLength(0);
 
+      // Heat lot no can be null / empty string
       const noLot: Row = { ...htRow, heat_lot_no: "" };
-      expect(validateProductionEntry(noLot, "HEAT_TREATMENT")[0].message).toContain("Heat Lot No. is required");
+      expect(validateProductionEntry(noLot, "HEAT_TREATMENT")).toHaveLength(0);
     });
 
     it("Rule 4: Finishing is capped at Heat Treatment * Multiple and Balance", () => {

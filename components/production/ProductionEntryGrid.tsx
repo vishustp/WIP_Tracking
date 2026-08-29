@@ -348,14 +348,7 @@ export default function ProductionEntryGrid() {
       setEditSaving(false);
       return;
     }
-    if (
-      (editing.stage_code === "HEAT_TREATMENT" || editing.stage_code === "HOLLOW_HEAT_TREATMENT") &&
-      !editHeatLot.trim()
-    ) {
-      setError("Heat Lot No. is required for Heat Treatment.");
-      setEditSaving(false);
-      return;
-    }
+    // Heat Lot No is optional / can be null
     if (editing.stage_code === "ROLLING" && htc > mtr - rejection) {
       setError("HTC OK cannot exceed Net Rolling output (Production - Rejection).");
       setEditSaving(false);
@@ -620,7 +613,7 @@ export default function ProductionEntryGrid() {
                     <th className="py-2.5 px-3 text-center font-semibold bg-emerald-50/40">HTC OK (PCS & MTR)</th>
                   )}
                   {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
-                    <th className="py-2.5 px-3 text-left font-semibold">Heat Lot No. *</th>
+                    <th className="py-2.5 px-3 text-left font-semibold">Heat Lot No.</th>
                   )}
                   <th className="py-2.5 px-3 text-left font-semibold">Remarks</th>
                 </tr>
@@ -1212,9 +1205,10 @@ export default function ProductionEntryGrid() {
 
               {(editing.stage_code === "HEAT_TREATMENT" || editing.stage_code === "HOLLOW_HEAT_TREATMENT") && (
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Heat Lot No. *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Heat Lot No.</label>
                   <input
                     type="text"
+                    placeholder="Optional (e.g. HT-8842)"
                     value={editHeatLot}
                     onChange={(e) => setEditHeatLot(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium"

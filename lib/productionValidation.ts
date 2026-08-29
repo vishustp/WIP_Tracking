@@ -62,16 +62,7 @@ export function validateProductionEntry(
     }
   }
 
-  // 5. Heat Treatment specific requirements (Heat Lot No. is mandatory)
-  if (
-    (stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") &&
-    !row.heat_lot_no?.trim()
-  ) {
-    errors.push({
-      workOrder: row.work_order_no,
-      message: "Heat Lot No. is required for Heat Treatment.",
-    });
-  }
+  // 5. Heat Treatment specific requirements (Heat Lot No. is optional / can be null)
 
   // 6. Maximum Allowed Quantity Checks based on Route & Stage Rules
   const allowed =
