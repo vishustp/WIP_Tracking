@@ -101,6 +101,200 @@ export type MockProductionLog = {
   created_at: string;
 };
 
+export type UserRole = 'admin' | 'manager' | 'rolling_incharge' | 'draw_operator' | 'qa_inspector' | 'auditor';
+
+export type MockUserProfile = {
+  id: string;
+  email: string;
+  name: string;
+  employee_id: string;
+  role: UserRole;
+  role_title: string;
+  department: string;
+  shift: string;
+  default_stage?: string;
+  phone?: string;
+  avatar_color?: string;
+  active: boolean;
+  pin?: string;
+  created_at: string;
+  last_login?: string;
+};
+
+export type MockAuditLog = {
+  id: string;
+  user_email: string;
+  user_name: string;
+  action_type: 'AUTH_LOGIN' | 'PRODUCTION_ENTRY' | 'ROLLING_PLAN_CREATE' | 'DIVERSION_CREATE' | 'WORK_ORDER_IMPORT' | 'USER_CREATE' | 'USER_UPDATE' | 'ROUTE_CONFIG' | 'SYSTEM_RESET';
+  entity_type: string;
+  entity_id?: string;
+  details: string;
+  ip_address?: string;
+  created_at: string;
+};
+
+export const DEFAULT_USERS: MockUserProfile[] = [
+  {
+    id: 'user-admin-01',
+    email: 'admin@seamlesswip.com',
+    name: 'Vishal Mishra',
+    employee_id: 'PPC-001',
+    role: 'admin',
+    role_title: 'PPC Administrator',
+    department: 'Production Planning & Control (PPC)',
+    shift: 'General (09:00 - 17:30)',
+    default_stage: 'ROLLING',
+    phone: '+91 98765 43210',
+    avatar_color: 'bg-blue-600 text-white',
+    active: true,
+    pin: '1234',
+    created_at: '2025-01-10T08:00:00.000Z',
+    last_login: new Date().toISOString(),
+  },
+  {
+    id: 'user-rolling-02',
+    email: 'rolling@seamlesswip.com',
+    name: 'Rajesh Sharma',
+    employee_id: 'MIL-104',
+    role: 'rolling_incharge',
+    role_title: 'Rolling Mill In-charge',
+    department: 'Hot Rolling & Piercing Mill',
+    shift: 'Shift A (06:00 - 14:00)',
+    default_stage: 'ROLLING',
+    phone: '+91 98112 34567',
+    avatar_color: 'bg-amber-600 text-white',
+    active: true,
+    pin: '4321',
+    created_at: '2025-01-15T08:00:00.000Z',
+    last_login: new Date(Date.now() - 3600000 * 2).toISOString(),
+  },
+  {
+    id: 'user-draw-03',
+    email: 'draw@seamlesswip.com',
+    name: 'Sunil Kumar',
+    employee_id: 'DRW-202',
+    role: 'draw_operator',
+    role_title: 'Cold Draw Operator',
+    department: 'Cold Draw Bench & Pilgering',
+    shift: 'Shift B (14:00 - 22:00)',
+    default_stage: 'DRAW',
+    phone: '+91 98223 45678',
+    avatar_color: 'bg-indigo-600 text-white',
+    active: true,
+    pin: '1122',
+    created_at: '2025-02-01T08:00:00.000Z',
+    last_login: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: 'user-qa-04',
+    email: 'qa@seamlesswip.com',
+    name: 'Dr. Amit Patel',
+    employee_id: 'QAC-301',
+    role: 'qa_inspector',
+    role_title: 'Quality & NDT Inspector',
+    department: 'Quality Assurance & Metallurgical Lab',
+    shift: 'Shift A (06:00 - 14:00)',
+    default_stage: 'HEAT_TREATMENT',
+    phone: '+91 98334 56789',
+    avatar_color: 'bg-emerald-600 text-white',
+    active: true,
+    pin: '9988',
+    created_at: '2025-02-10T08:00:00.000Z',
+    last_login: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+  {
+    id: 'user-manager-05',
+    email: 'manager@seamlesswip.com',
+    name: 'Anand Verma',
+    employee_id: 'PLT-002',
+    role: 'manager',
+    role_title: 'Plant Operations Head',
+    department: 'Plant Operations & Engineering',
+    shift: 'General (09:00 - 17:30)',
+    default_stage: 'FINISHING',
+    phone: '+91 98445 67890',
+    avatar_color: 'bg-purple-600 text-white',
+    active: true,
+    pin: '5566',
+    created_at: '2025-01-05T08:00:00.000Z',
+    last_login: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    id: 'user-auditor-06',
+    email: 'auditor@seamlesswip.com',
+    name: 'Meera Sen',
+    employee_id: 'AUD-505',
+    role: 'auditor',
+    role_title: 'Internal Audit & Compliance',
+    department: 'Management & Audit Team',
+    shift: 'General (09:00 - 17:30)',
+    default_stage: 'FINISHING',
+    phone: '+91 98556 78901',
+    avatar_color: 'bg-slate-600 text-white',
+    active: true,
+    pin: '7788',
+    created_at: '2025-02-18T08:00:00.000Z',
+    last_login: new Date(Date.now() - 86400000 * 5).toISOString(),
+  },
+];
+
+export const DEFAULT_AUDIT_LOGS: MockAuditLog[] = [
+  {
+    id: 'audit-001',
+    user_email: 'admin@seamlesswip.com',
+    user_name: 'Vishal Mishra',
+    action_type: 'WORK_ORDER_IMPORT',
+    entity_type: 'Work Order',
+    entity_id: 'WO-2025-001',
+    details: 'Imported work orders batch (5 orders total).',
+    ip_address: '192.168.1.45',
+    created_at: new Date(Date.now() - 86400000 * 4).toISOString(),
+  },
+  {
+    id: 'audit-002',
+    user_email: 'admin@seamlesswip.com',
+    user_name: 'Vishal Mishra',
+    action_type: 'ROLLING_PLAN_CREATE',
+    entity_type: 'Rolling Plan',
+    entity_id: 'RP-2025-001',
+    details: 'Created Rolling Plan RP-2025-001 for 1,200 MTR on CDS route.',
+    ip_address: '192.168.1.45',
+    created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
+  },
+  {
+    id: 'audit-003',
+    user_email: 'rolling@seamlesswip.com',
+    user_name: 'Rajesh Sharma',
+    action_type: 'PRODUCTION_ENTRY',
+    entity_type: 'Production Log',
+    entity_id: 'log-001',
+    details: 'Committed Rolling Mill output 1,320 MTR (176 PCS) with 1 PCS scrap rejection.',
+    ip_address: '192.168.2.110',
+    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+  {
+    id: 'audit-004',
+    user_email: 'draw@seamlesswip.com',
+    user_name: 'Sunil Kumar',
+    action_type: 'PRODUCTION_ENTRY',
+    entity_type: 'Production Log',
+    entity_id: 'log-002',
+    details: 'Logged Draw Bench stage production 1,305 MTR (174 PCS).',
+    ip_address: '192.168.2.115',
+    created_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+  },
+  {
+    id: 'audit-005',
+    user_email: 'admin@seamlesswip.com',
+    user_name: 'Vishal Mishra',
+    action_type: 'AUTH_LOGIN',
+    entity_type: 'Session',
+    details: 'User authenticated with PPC Administrator role.',
+    ip_address: '192.168.1.45',
+    created_at: new Date(Date.now() - 1800000).toISOString(),
+  },
+];
+
 const DEFAULT_ROUTES: MockRoute[] = [
   { id: 'route-1', route_code: 'HFS', route_name: 'Standard HFS', material_category: 'Standard', active: true, created_at: new Date().toISOString() },
   { id: 'route-2', route_code: 'CDS', route_name: 'Standard CDS', material_category: 'Standard', active: true, created_at: new Date().toISOString() },
@@ -335,6 +529,9 @@ class MockStore {
   rollingPlans: MockRollingPlan[] = [...DEFAULT_ROLLING_PLANS];
   diversions: MockDiversionPlan[] = [...DEFAULT_DIVERSIONS];
   productionLogs: MockProductionLog[] = [...DEFAULT_PRODUCTION_LOGS];
+  users: MockUserProfile[] = [...DEFAULT_USERS];
+  auditLogs: MockAuditLog[] = [...DEFAULT_AUDIT_LOGS];
+  activeUserEmail: string = 'admin@seamlesswip.com';
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -349,6 +546,11 @@ class MockStore {
       localStorage.setItem('seamless_wip_rolling_plans', JSON.stringify(this.rollingPlans));
       localStorage.setItem('seamless_wip_diversions', JSON.stringify(this.diversions));
       localStorage.setItem('seamless_wip_production_logs', JSON.stringify(this.productionLogs));
+      localStorage.setItem('seamless_wip_users', JSON.stringify(this.users));
+      localStorage.setItem('seamless_wip_audit_logs', JSON.stringify(this.auditLogs));
+      localStorage.setItem('seamless_wip_routes', JSON.stringify(this.routes));
+      localStorage.setItem('seamless_wip_stages', JSON.stringify(this.stages));
+      localStorage.setItem('seamless_wip_active_user', this.activeUserEmail);
     } catch {}
   }
 
@@ -361,10 +563,29 @@ class MockStore {
       if (rp) this.rollingPlans = JSON.parse(rp);
       const dp = localStorage.getItem('seamless_wip_diversions');
       if (dp) this.diversions = JSON.parse(dp);
+      const usr = localStorage.getItem('seamless_wip_users');
+      if (usr) this.users = JSON.parse(usr);
+      const aud = localStorage.getItem('seamless_wip_audit_logs');
+      if (aud) this.auditLogs = JSON.parse(aud);
+      const rts = localStorage.getItem('seamless_wip_routes');
+      if (rts) this.routes = JSON.parse(rts);
+      const stg = localStorage.getItem('seamless_wip_stages');
+      if (stg) this.stages = JSON.parse(stg);
+      
+      const actUser = localStorage.getItem('seamless_wip_active_user');
+      if (actUser) this.activeUserEmail = actUser;
+
+      // Check cookie for active user if set
+      if (typeof document !== 'undefined') {
+        const match = document.cookie.match(/demo_user=([^;]+)/);
+        if (match && match[1]) {
+          this.activeUserEmail = decodeURIComponent(match[1]);
+        }
+      }
+
       const pl = localStorage.getItem('seamless_wip_production_logs');
       if (pl) {
         this.productionLogs = JSON.parse(pl).map((log: any) => {
-          // If a log was erroneously saved with 1 MTR rejection for a pipe with avg length >= 3m, normalize to 1 full piece (avg length in MTR)
           const targetWo = this.workOrders.find(w => w.id === log.work_order_id);
           const l1 = Number(targetWo?.l1 || 0);
           const l2 = Number(targetWo?.l2 || 0);
@@ -376,6 +597,124 @@ class MockStore {
         });
       }
     } catch {}
+  }
+
+  getCurrentUser(): MockUserProfile {
+    const user = this.users.find(u => u.email.toLowerCase() === this.activeUserEmail.toLowerCase() && u.active);
+    return user || this.users[0] || DEFAULT_USERS[0];
+  }
+
+  setCurrentUser(email: string) {
+    const target = this.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (target) {
+      this.activeUserEmail = target.email;
+      target.last_login = new Date().toISOString();
+      if (typeof document !== 'undefined') {
+        document.cookie = `demo_user=${encodeURIComponent(target.email)}; path=/; max-age=864000; SameSite=None; Secure`;
+      }
+      this.addAuditLog({
+        user_email: target.email,
+        user_name: target.name,
+        action_type: 'AUTH_LOGIN',
+        entity_type: 'Session',
+        details: `Active user switched to ${target.name} (${target.role_title})`,
+      });
+      this.saveToStorage();
+    }
+  }
+
+  updateUserProfile(userId: string, updates: Partial<MockUserProfile>): MockUserProfile | null {
+    const idx = this.users.findIndex(u => u.id === userId);
+    if (idx === -1) return null;
+    this.users[idx] = { ...this.users[idx], ...updates };
+    this.addAuditLog({
+      user_email: this.activeUserEmail,
+      user_name: this.getCurrentUser().name,
+      action_type: 'USER_UPDATE',
+      entity_type: 'User Profile',
+      entity_id: userId,
+      details: `Profile updated for ${this.users[idx].name} (${this.users[idx].email})`,
+    });
+    this.saveToStorage();
+    return this.users[idx];
+  }
+
+  createUser(userData: Omit<MockUserProfile, 'id' | 'created_at'>): MockUserProfile {
+    const newUser: MockUserProfile = {
+      ...userData,
+      id: `user-${Date.now()}`,
+      created_at: new Date().toISOString(),
+    };
+    this.users.push(newUser);
+    this.addAuditLog({
+      user_email: this.activeUserEmail,
+      user_name: this.getCurrentUser().name,
+      action_type: 'USER_CREATE',
+      entity_type: 'User Profile',
+      entity_id: newUser.id,
+      details: `Created new user account: ${newUser.name} (${newUser.role_title})`,
+    });
+    this.saveToStorage();
+    return newUser;
+  }
+
+  toggleUserStatus(userId: string): boolean {
+    const user = this.users.find(u => u.id === userId);
+    if (!user) return false;
+    user.active = !user.active;
+    this.addAuditLog({
+      user_email: this.activeUserEmail,
+      user_name: this.getCurrentUser().name,
+      action_type: 'USER_UPDATE',
+      entity_type: 'User Profile',
+      entity_id: userId,
+      details: `User ${user.name} status changed to ${user.active ? 'Active' : 'Disabled'}`,
+    });
+    this.saveToStorage();
+    return user.active;
+  }
+
+  deleteUser(userId: string): boolean {
+    const idx = this.users.findIndex(u => u.id === userId);
+    if (idx === -1) return false;
+    const removed = this.users[idx];
+    this.users.splice(idx, 1);
+    this.addAuditLog({
+      user_email: this.activeUserEmail,
+      user_name: this.getCurrentUser().name,
+      action_type: 'USER_UPDATE',
+      entity_type: 'User Profile',
+      entity_id: userId,
+      details: `Deleted user ${removed.name} (${removed.email})`,
+    });
+    this.saveToStorage();
+    return true;
+  }
+
+  addAuditLog(log: Omit<MockAuditLog, 'id' | 'created_at'>) {
+    const newLog: MockAuditLog = {
+      ...log,
+      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      created_at: new Date().toISOString(),
+    };
+    this.auditLogs.unshift(newLog);
+    if (this.auditLogs.length > 200) {
+      this.auditLogs = this.auditLogs.slice(0, 200);
+    }
+    this.saveToStorage();
+  }
+
+  resetAllData() {
+    this.workOrders = [...DEFAULT_WORK_ORDERS];
+    this.rollingPlans = [...DEFAULT_ROLLING_PLANS];
+    this.diversions = [...DEFAULT_DIVERSIONS];
+    this.productionLogs = [...DEFAULT_PRODUCTION_LOGS];
+    this.users = [...DEFAULT_USERS];
+    this.auditLogs = [...DEFAULT_AUDIT_LOGS];
+    this.routes = [...DEFAULT_ROUTES];
+    this.stages = [...DEFAULT_STAGES];
+    this.activeUserEmail = 'admin@seamlesswip.com';
+    this.saveToStorage();
   }
 
   getUnplannedQty(woId: string): number {

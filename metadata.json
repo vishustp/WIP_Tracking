@@ -1,6 +1,6 @@
 {
   "name": "Seamless WIP Planning",
-  "description": "Production and Work Order WIP Tracking with route-aware stages, rolling plans, and diversion management.",
+  "description": "Production and Work Order WIP Tracking with route-aware stages, rolling plans, diversion management, user profiles, and admin control panel.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

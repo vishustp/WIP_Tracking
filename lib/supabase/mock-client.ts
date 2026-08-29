@@ -62,6 +62,10 @@ export function createMockClient() {
         data = [...mockStore.diversions];
       } else if (table === 'production_logs') {
         data = [...mockStore.productionLogs];
+      } else if (table === 'users' || table === 'user_profiles') {
+        data = [...mockStore.users];
+      } else if (table === 'audit_logs') {
+        data = [...mockStore.auditLogs];
       }
 
       const filters: ((item: any) => boolean)[] = [];
