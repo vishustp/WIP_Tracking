@@ -1017,7 +1017,7 @@ export default function ProductionEntryGrid() {
             onClick={save}
             className="rounded-lg bg-slate-900 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-slate-800 disabled:opacity-50 transition-colors"
           >
-            {saving ? "Saving..." : "Commit Production Batch"}
+            {saving ? "Saving..." : "Save"}
           </button>
         </div>
       </div>
