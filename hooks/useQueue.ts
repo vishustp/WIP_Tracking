@@ -18,6 +18,7 @@ export function useQueue(stage: StageCode) {
     );
     if (rpcError) {
       setRows([]);
+      
       setError(rpcError.message);
     } else {
       setRows((data ?? []).map((r: any) => emptyRow(r)));
