@@ -362,7 +362,19 @@ class MockStore {
       const dp = localStorage.getItem('seamless_wip_diversions');
       if (dp) this.diversions = JSON.parse(dp);
       const pl = localStorage.getItem('seamless_wip_production_logs');
-      if (pl) this.productionLogs = JSON.parse(pl);
+      if (pl) {
+        this.productionLogs = JSON.parse(pl).map((log: any) => {
+          // If a log was erroneously saved with 1 MTR rejection for a pipe with avg length >= 3m, normalize to 1 full piece (avg length in MTR)
+          const targetWo = this.workOrders.find(w => w.id === log.work_order_id);
+          const l1 = Number(targetWo?.l1 || 0);
+          const l2 = Number(targetWo?.l2 || 0);
+          const avg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 6.0;
+          if (log.rejection_qty > 0 && log.rejection_qty <= 2 && avg >= 3 && log.output_qty >= avg) {
+            return { ...log, rejection_qty: Number((log.rejection_qty * avg).toFixed(2)) };
+          }
+          return log;
+        });
+      }
     } catch {}
   }
 

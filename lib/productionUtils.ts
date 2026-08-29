@@ -57,22 +57,30 @@ export const calc = (row: {
   const pcs = row.pcs.trim() === "" && row.mtr.trim() !== "" ? pcsFromMtr(n(row.mtr), avg) : n(row.pcs);
   const calculatedMtr = mtrFromPcs(pcs, avg);
   const mtr = row.mtr.trim() === "" ? calculatedMtr : n(row.mtr);
-  const rejectionMtr =
-    row.rejection_mtr.trim() === ""
-      ? mtrFromPcs(n(row.rejection_pcs), avg)
-      : n(row.rejection_mtr);
   const rejectionPcs =
-    row.rejection_pcs.trim() === ""
-      ? pcsFromMtr(rejectionMtr, avg)
-      : n(row.rejection_pcs);
-  const htcMtr =
-    row.htc_ok_mtr.trim() === ""
-      ? mtrFromPcs(n(row.htc_ok_pcs), avg)
-      : n(row.htc_ok_mtr);
+    row.rejection_pcs.trim() !== ""
+      ? n(row.rejection_pcs)
+      : row.rejection_mtr.trim() !== ""
+      ? pcsFromMtr(n(row.rejection_mtr), avg)
+      : 0;
+  const rejectionMtr =
+    row.rejection_pcs.trim() !== ""
+      ? mtrFromPcs(rejectionPcs, avg)
+      : row.rejection_mtr.trim() !== ""
+      ? n(row.rejection_mtr)
+      : 0;
   const htcPcs =
-    row.htc_ok_pcs.trim() === ""
-      ? pcsFromMtr(htcMtr, avg)
-      : n(row.htc_ok_pcs);
+    row.htc_ok_pcs.trim() !== ""
+      ? n(row.htc_ok_pcs)
+      : row.htc_ok_mtr.trim() !== ""
+      ? pcsFromMtr(n(row.htc_ok_mtr), avg)
+      : 0;
+  const htcMtr =
+    row.htc_ok_pcs.trim() !== ""
+      ? mtrFromPcs(htcPcs, avg)
+      : row.htc_ok_mtr.trim() !== ""
+      ? n(row.htc_ok_mtr)
+      : 0;
 
   const mt = mtFromMtr(mtr, effectiveOd, effectiveWt);
   const rejectionMt = mtFromMtr(rejectionMtr, effectiveOd, effectiveWt);

@@ -298,8 +298,8 @@ export default function ProductionEntryGrid() {
           stage_code: r.stage_code,
           input_qty: d.mtr,
           output_qty: d.mtr,
-          rejection_qty: d.rejection,
-          htc_ok: stage === "ROLLING" ? d.htc : 0,
+          rejection_qty: d.rejectionMtr,
+          htc_ok: stage === "ROLLING" ? d.htcMtr : 0,
           heat_lot_no: r.heat_lot_no || null,
           remarks: r.remarks || null,
         };
@@ -403,9 +403,10 @@ export default function ProductionEntryGrid() {
     setError("");
     setMessage("");
 
-    const mtr = n(editMtr);
-    const rejection = n(editRejectionMtr);
-    const htc = n(editHtcMtr);
+    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    const mtr = editPcs.trim() !== "" ? mtrFromPcs(n(editPcs), avg) : n(editMtr);
+    const rejection = editRejectionPcs.trim() !== "" ? mtrFromPcs(n(editRejectionPcs), avg) : n(editRejectionMtr);
+    const htc = editHtcPcs.trim() !== "" ? mtrFromPcs(n(editHtcPcs), avg) : n(editHtcMtr);
 
     if (!editDate) {
       setError("Production date is required.");
@@ -721,7 +722,7 @@ export default function ProductionEntryGrid() {
                         <div className="text-[11px] text-slate-600 mt-0.5 truncate max-w-[170px]">
                           {r.customer_name || "—"}
                         </div>
-                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                        <div className="text-[11px] text-slate-500 font-mono mt-0.5">
                           {r.od ? `${r.od} × ${r.wl ?? "—"} mm` : "—"} · Avg: {fmt(d.avg, "m")}
                         </div>
                         {stage === "ROLLING" && r.mh_od && (
