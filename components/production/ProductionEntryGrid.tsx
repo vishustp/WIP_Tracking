@@ -1,4 +1,3 @@
-// app/production/page.tsx (or wherever the grid lives)
 "use client";
 
 import { useMemo, useState } from "react";
@@ -13,10 +12,25 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueue } from "@/hooks/useQueue";
-const { rows, setRows, loading: queueLoading, error: queueError, reload: reloadQueue } = useQueue(stages);
-console.log("🔍 rows from useQueue:", rows);
-console.log("🔍 queueLoading:", queueLoading);
-console.log("🔍 queueError:", queueError);
+import { useHistory } from "@/hooks/useHistory";
+import { validateProductionEntry } from "@/lib/productionValidation";
+import { calc, fmt, n, mtrFromPcs, pcsFromMtr } from "@/lib/productionUtils";
+import { StageCode, STAGES, Row, ProductionEntry } from "@/types";
+
+export default function ProductionEntryGrid() {
+  const supabase = useMemo(() => createClient(), []);
+
+  // --- State ---
+  const [stage, setStage] = useState<StageCode>("ROLLING");
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // --- Data fetching ---
+  const { rows, setRows, loading: queueLoading, error: queueError, reload: reloadQueue } = useQueue(stage);
+  // Note: use `stage` (singular), not `stages`
+
+  console.log("🔍 rows from useQueue:", rows);
+  console.log("🔍 queueLoading:", queueLoading);
+  console.log("🔍 queueError:", queueError);
 import { useHistory } from "@/hooks/useHistory";
 import { validateProductionEntry } from "@/lib/productionValidation";
 import { calc, fmt, n, mtrFromPcs, pcsFromMtr } from "@/lib/productionUtils";
