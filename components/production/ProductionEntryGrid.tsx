@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueue } from "@/hooks/useQueue";
-const { rows, setRows, loading: queueLoading, error: queueError, reload: reloadQueue } = useQueue(stage);
+const { rows, setRows, loading: queueLoading, error: queueError, reload: reloadQueue } = useQueue(stages);
 console.log("🔍 rows from useQueue:", rows);
 console.log("🔍 queueLoading:", queueLoading);
 console.log("🔍 queueError:", queueError);
