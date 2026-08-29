@@ -60,6 +60,11 @@ export type MockRollingPlan = {
   planned_qty: number;
   process_route_id: string;
   target_mother_size: string | null;
+  mh_od?: number | null;
+  mh_wt?: number | null;
+  mh_l1?: number | null;
+  mh_l2?: number | null;
+  pass_required?: number;
   multiple: number;
   status: string;
   created_at: string;
@@ -274,6 +279,10 @@ const DEFAULT_ROLLING_PLANS: MockRollingPlan[] = [
     planned_qty: 600,
     process_route_id: 'route-2', // CDS
     target_mother_size: '108 x 10.0',
+    mh_od: 108,
+    mh_wt: 10,
+    mh_l1: 6,
+    mh_l2: 6.5,
     multiple: 1,
     status: 'Scheduled',
     created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
@@ -287,6 +296,10 @@ const DEFAULT_ROLLING_PLANS: MockRollingPlan[] = [
     planned_qty: 500,
     process_route_id: 'route-4', // ALLOY_CDS
     target_mother_size: '139.7 x 12.0',
+    mh_od: 139.7,
+    mh_wt: 12,
+    mh_l1: 5.8,
+    mh_l2: 6.2,
     multiple: 1,
     status: 'Scheduled',
     created_at: new Date(Date.now() - 86400000 * 1).toISOString(),
@@ -394,7 +407,7 @@ class MockStore {
       const rs = this.routeStages.find(s => s.route_id === route.id && s.stage_id === stage.id);
       if (!rs) continue;
 
-      // Retrieve Multiple from Rolling Plan or Diversion for this WO & Route
+      // Retrieve Multiple and Mother Hollow details from Rolling Plan or Diversion for this WO & Route
       const plan = this.rollingPlans.find(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id);
       const diversion = this.diversions.find(dp => dp.target_wo_id === wo.id && dp.process_route_id === route.id);
       const multiple = Math.max(1, Number(plan?.multiple ?? diversion?.multiple ?? 1));
@@ -403,8 +416,90 @@ class MockStore {
       const l2 = Number(wo.l2 || 0);
       const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 6.0;
 
-      // Calculate balance_to_make_mtr based on stage sequence and route type
+      // Mother Hollow dimensions (Rule 5: MH OD, MH WT, MH Length)
+      let mhOd = plan?.mh_od ? Number(plan.mh_od) : null;
+      let mhWt = plan?.mh_wt ? Number(plan.mh_wt) : null;
+      let mhL1 = plan?.mh_l1 ? Number(plan.mh_l1) : null;
+      let mhL2 = plan?.mh_l2 ? Number(plan.mh_l2) : null;
+
+      if ((!mhOd || !mhWt) && plan?.target_mother_size) {
+        const parts = plan.target_mother_size.split(/[xX*]/);
+        if (parts.length === 2) {
+          if (!mhOd) mhOd = parseFloat(parts[0].trim()) || null;
+          if (!mhWt) mhWt = parseFloat(parts[1].trim()) || null;
+        }
+      }
+
+      const od = Number(wo.size_od ?? wo.od ?? 0);
+      const wt = Number(wo.size_wt ?? wo.wt ?? wo.wl ?? 0);
+
+      // Effective Mother Hollow dimensions
+      const effectiveMhOd = mhOd && mhOd > 0 ? mhOd : od;
+      const effectiveMhWt = mhWt && mhWt > 0 ? mhWt : wt;
+      const mhAvgLength =
+        mhL1 && mhL2 && mhL1 > 0 && mhL2 > 0
+          ? (mhL1 + mhL2) / 2
+          : mhL1 && mhL1 > 0
+          ? mhL1
+          : mhL2 && mhL2 > 0
+          ? mhL2
+          : avgLength * multiple;
+
+      // Stage logs helpers for this WO and Route
+      const getStageLogs = (sc: string) => {
+        const sObj = this.stages.find(s => s.stage_code === sc);
+        if (!sObj) return [];
+        return this.productionLogs.filter(
+          pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === sObj.id
+        );
+      };
+
+      const rollingLogs = getStageLogs('ROLLING');
+      const rollingInput = rollingLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+      const rollingGross = rollingLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+      const rollingRej = rollingLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+      const rollingHtcOk = rollingLogs.reduce((sum, pl) => sum + Number(pl.htc_ok || 0), 0);
+      const rollingNet = Math.max(0, rollingGross - rollingRej);
+
+      const hhtLogs = getStageLogs('HOLLOW_HEAT_TREATMENT');
+      const hhtInput = hhtLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+      const hhtGross = hhtLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+      const hhtRej = hhtLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+      const hhtNet = Math.max(0, hhtGross - hhtRej);
+
+      const drawLogs = getStageLogs('DRAW');
+      const drawInput = drawLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+      const drawGross = drawLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+      const drawRej = drawLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+      const drawNet = Math.max(0, drawGross - drawRej);
+
+      const htLogs = getStageLogs('HEAT_TREATMENT');
+      const htInput = htLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+      const htGross = htLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+      const htRej = htLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+      const htNet = Math.max(0, htGross - htRej);
+
+      const finishingLogs = getStageLogs('FINISHING');
+      const finishingInput = finishingLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+      const finishingGross = finishingLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+
+      const plannedRolling = this.rollingPlans
+        .filter(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id)
+        .reduce((sum, rp) => sum + Number(rp.planned_qty || 0), 0);
+      const divertedIn = this.diversions
+        .filter(dp => dp.target_wo_id === wo.id && dp.process_route_id === route.id)
+        .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
+      const plannedRollingTotal = plannedRolling + divertedIn;
+
+      const orderTotalMtr = Number(wo.balance_qty_mtr ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0);
+      const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross);
+
       let balanceMtr = 0;
+      let maxAllowedMtr = 0;
+      let balancePcs = 0;
+      let maxAllowedPcs = 0;
+      let balanceMt = 0;
+
       let htNos = 0;
       let htProdNos = 0;
       let htRejNos = 0;
@@ -413,76 +508,127 @@ class MockStore {
       let prevGrossOutput = 0;
       let prevRejection = 0;
       let prevNetOutput = 0;
-      let plannedRollingTotal = 0;
-      let maxAllowedMtr = 0;
+      let prevHtcOk = 0;
 
-      const isHfs = route.route_code.toUpperCase().includes('HFS');
-      const isCds = route.route_code.toUpperCase().includes('CDS');
-      const motherPieceLength = avgLength * multiple;
+      const routeCodeUpper = route.route_code.toUpperCase();
+      const isHfs = routeCodeUpper.includes('HFS');
+      const isCds = routeCodeUpper.includes('CDS');
 
       if (stageCode === 'ROLLING') {
-        const plannedRolling = this.rollingPlans
-          .filter(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id)
-          .reduce((sum, rp) => sum + Number(rp.planned_qty || 0), 0);
-        const divertedIn = this.diversions
-          .filter(dp => dp.target_wo_id === wo.id && dp.process_route_id === route.id)
-          .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
-        const rollingInput = this.productionLogs
-          .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === 'stage-1')
-          .reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
-        
-        plannedRollingTotal = plannedRolling + divertedIn;
+        // Rule 1: Rolling qty will be capped at Rolling plan * 110% (Plan + 10%)
         balanceMtr = Math.max(0, plannedRollingTotal - rollingInput);
-        // Rule 1: For Rolling entry, Max Production can be done = Plan + 10% (110% of Plan)
         maxAllowedMtr = Math.max(0, plannedRollingTotal * 1.1 - rollingInput);
-        
-        htNos = motherPieceLength > 0 ? Number((balanceMtr / motherPieceLength).toFixed(2)) : 0;
-        htProdNos = htNos;
+
+        balancePcs = mhAvgLength > 0 ? Number((balanceMtr / mhAvgLength).toFixed(2)) : 0;
+        maxAllowedPcs = mhAvgLength > 0 ? Number((maxAllowedMtr / mhAvgLength).toFixed(2)) : 0;
+
+        // Rule 5: Rolling Mtr and MT will be calculated based on MH OD, MH WT and MH Length
+        balanceMt =
+          Math.max(effectiveMhOd - effectiveMhWt, 0) *
+          Math.max(effectiveMhWt, 0) *
+          0.0246615 *
+          0.001 *
+          balanceMtr;
+
+        htNos = balancePcs;
+        htProdNos = mhAvgLength > 0 ? Number(((plannedRollingTotal * 1.1) / mhAvgLength).toFixed(2)) : 0;
         htRejNos = 0;
-      } else {
-        // Look up previous stage in route
-        const allStagesInRoute = this.routeStages
-          .filter(s => s.route_id === route.id)
-          .sort((a, b) => a.sequence_no - b.sequence_no);
-        const currentIdx = allStagesInRoute.findIndex(s => s.stage_id === stage.id);
-        if (currentIdx > 0) {
-          const prevStageInfo = allStagesInRoute[currentIdx - 1];
-          const prevStageObj = this.stages.find(s => s.id === prevStageInfo.stage_id);
-          prevStageCode = prevStageObj?.stage_code || '';
-          prevStageName = prevStageObj?.stage_name || '';
+      } else if (stageCode === 'HOLLOW_HEAT_TREATMENT') {
+        // ALLOY_CDS & ALLOY_HFS Rule 1: Hollow Heat Treatment qty will be capped at HTC Ok Nos
+        prevStageCode = 'ROLLING';
+        prevStageName = 'Rolling (HTC OK)';
+        prevGrossOutput = rollingGross;
+        prevRejection = rollingRej;
+        prevNetOutput = rollingNet;
+        prevHtcOk = rollingHtcOk;
 
-          prevGrossOutput = this.productionLogs
-            .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === prevStageInfo.stage_id)
-            .reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
-          prevRejection = this.productionLogs
-            .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === prevStageInfo.stage_id)
-            .reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
-          
-          prevNetOutput = Math.max(0, prevGrossOutput - prevRejection);
-          const thisInput = this.productionLogs
-            .filter(pl => pl.work_order_id === wo.id && pl.process_route_id === route.id && pl.stage_id === stage.id)
-            .reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
-          
-          balanceMtr = Math.max(0, prevNetOutput - thisInput);
+        balanceMtr = Math.max(0, rollingHtcOk - hhtInput);
+        maxAllowedMtr = balanceMtr;
+        balancePcs = avgLength > 0 ? Number((balanceMtr / avgLength).toFixed(2)) : 0;
+        maxAllowedPcs = balancePcs;
+
+        balanceMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * balanceMtr;
+        htNos = balancePcs;
+        htProdNos = avgLength > 0 ? Number((rollingHtcOk / avgLength).toFixed(2)) : 0;
+        htRejNos = 0;
+      } else if (stageCode === 'DRAW') {
+        if (routeCodeUpper === 'ALLOY_CDS') {
+          // ALLOY_CDS Rule 2: Draw qty will be capped at Hollow Heat Treatment Production Nos
+          prevStageCode = 'HOLLOW_HEAT_TREATMENT';
+          prevStageName = 'Hollow Heat Treatment';
+          prevGrossOutput = hhtGross;
+          prevRejection = hhtRej;
+          prevNetOutput = hhtNet;
+
+          balanceMtr = Math.max(0, hhtNet - drawInput);
           maxAllowedMtr = balanceMtr;
+          htProdNos = avgLength > 0 ? Number((hhtGross / avgLength).toFixed(2)) : 0;
+          htRejNos = avgLength > 0 ? Number((hhtRej / avgLength).toFixed(2)) : 0;
+        } else {
+          // CDS Rule 2: Draw production will be capped at HTC Ok Nos
+          prevStageCode = 'ROLLING';
+          prevStageName = 'Rolling (HTC OK)';
+          prevGrossOutput = rollingGross;
+          prevRejection = rollingRej;
+          prevNetOutput = rollingHtcOk;
+          prevHtcOk = rollingHtcOk;
 
-          // Mother pieces calculation based on mother piece length (avgLength * multiple)
-          if (motherPieceLength > 0) {
-            htProdNos = Number((prevGrossOutput / motherPieceLength).toFixed(2));
-            htRejNos = Number((prevRejection / motherPieceLength).toFixed(2));
-            htNos = Number((balanceMtr / motherPieceLength).toFixed(2));
-          }
+          balanceMtr = Math.max(0, rollingHtcOk - drawInput);
+          maxAllowedMtr = balanceMtr;
+          htProdNos = avgLength > 0 ? Number((rollingGross / avgLength).toFixed(2)) : 0;
+          htRejNos = avgLength > 0 ? Number((rollingRej / avgLength).toFixed(2)) : 0;
         }
-      }
+        balancePcs = avgLength > 0 ? Number((balanceMtr / avgLength).toFixed(2)) : 0;
+        maxAllowedPcs = balancePcs;
+        balanceMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * balanceMtr;
+        htNos = balancePcs;
+      } else if (stageCode === 'HEAT_TREATMENT') {
+        // CDS & ALLOY_CDS Rule 3: Heat Treatment qty will be capped at Draw Nos (Draw Net Output)
+        prevStageCode = 'DRAW';
+        prevStageName = 'Draw Bench';
+        prevGrossOutput = drawGross;
+        prevRejection = drawRej;
+        prevNetOutput = drawNet;
 
-      const od = Number(wo.size_od ?? wo.od ?? 0);
-      const wt = Number(wo.size_wt ?? wo.wt ?? wo.wl ?? 0);
-      
-      // Finishing pieces calculation:
-      // - For HFS route: Finishing production = Rolling Net Nos * multiple
-      // - For CDS route: Finishing production = Heat treatment Net Nos (HT Prod - Rej) * multiple
-      const pcs = stageCode === 'FINISHING' ? htNos * multiple : (avgLength > 0 ? balanceMtr / avgLength : 0);
-      const mt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * balanceMtr;
+        balanceMtr = Math.max(0, drawNet - htInput);
+        maxAllowedMtr = balanceMtr;
+        balancePcs = avgLength > 0 ? Number((balanceMtr / avgLength).toFixed(2)) : 0;
+        maxAllowedPcs = balancePcs;
+        balanceMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * balanceMtr;
+        htNos = balancePcs;
+        htProdNos = avgLength > 0 ? Number((drawGross / avgLength).toFixed(2)) : 0;
+        htRejNos = avgLength > 0 ? Number((drawRej / avgLength).toFixed(2)) : 0;
+      } else if (stageCode === 'FINISHING') {
+        // Rule 4 / Finishing Caps:
+        // HFS: Finishing qty will be capped at HTC OK No * Multiple and can not be greater than Balance to make.
+        // ALLOY_HFS: Finishing qty will be capped at Hollow Heat treatment No * Multiple and can not be greater than Balance to make.
+        // CDS & ALLOY_CDS: Finishing qty will be capped at Heat treatment No * Multiple and can not be greater than Balance to make.
+        let availableFromPreceding = 0;
+        if (routeCodeUpper === 'HFS') {
+          prevStageCode = 'ROLLING';
+          prevStageName = 'Rolling (HTC OK)';
+          prevNetOutput = rollingHtcOk;
+          availableFromPreceding = Math.max(0, rollingHtcOk * multiple - finishingInput);
+        } else if (routeCodeUpper === 'ALLOY_HFS') {
+          prevStageCode = 'HOLLOW_HEAT_TREATMENT';
+          prevStageName = 'Hollow Heat Treatment';
+          prevNetOutput = hhtNet;
+          availableFromPreceding = Math.max(0, hhtNet * multiple - finishingInput);
+        } else {
+          // CDS or ALLOY_CDS
+          prevStageCode = 'HEAT_TREATMENT';
+          prevStageName = 'Heat Treatment';
+          prevNetOutput = htNet;
+          availableFromPreceding = Math.max(0, htNet * multiple - finishingInput);
+        }
+
+        maxAllowedMtr = Math.min(availableFromPreceding, orderBalanceMtr);
+        balanceMtr = maxAllowedMtr;
+        balancePcs = avgLength > 0 ? Number((balanceMtr / avgLength).toFixed(2)) : 0;
+        maxAllowedPcs = balancePcs;
+        balanceMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * balanceMtr;
+        htNos = balancePcs;
+      }
 
       queue.push({
         work_order_id: wo.id,
@@ -494,6 +640,15 @@ class MockStore {
         l1: wo.l1 ?? null,
         l2: wo.l2 ?? null,
         avg_length: avgLength,
+
+        // Mother Hollow dimensions (for Rolling)
+        mh_od: effectiveMhOd || null,
+        mh_wt: effectiveMhWt || null,
+        mh_l1: mhL1 || null,
+        mh_l2: mhL2 || null,
+        mh_avg_length: mhAvgLength || null,
+        target_mother_size: plan?.target_mother_size || (mhOd && mhWt ? `${mhOd} x ${mhWt}` : null),
+
         route_id: route.id,
         route_code: route.route_code,
         route_name: route.route_name,
@@ -505,11 +660,13 @@ class MockStore {
         prev_gross_output: prevGrossOutput,
         prev_rejection: prevRejection,
         prev_net_output: prevNetOutput,
+        prev_htc_ok: prevHtcOk,
         planned_rolling_total: plannedRollingTotal,
         max_allowed_mtr: maxAllowedMtr,
+        max_allowed_pcs: maxAllowedPcs,
         balance_to_make_mtr: balanceMtr,
-        balance_to_make_pcs: pcs,
-        balance_to_make_mt: mt,
+        balance_to_make_pcs: balancePcs,
+        balance_to_make_mt: balanceMt,
         multiple: multiple,
         ht_nos: htNos,
         ht_prod_nos: htProdNos,

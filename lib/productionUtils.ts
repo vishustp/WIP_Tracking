@@ -34,18 +34,39 @@ export const calc = (row: {
   htc_ok_mtr: string;
   od: number | null;
   wl: number | null;
+  mh_od?: number | null;
+  mh_wt?: number | null;
+  mh_avg_length?: number | null;
+  stage_code?: string;
 }) => {
-  const avg = n(row.avg_length);
+  const isRolling = row.stage_code === "ROLLING";
+  
+  // Rule 5: Rolling Mtr and MT will be calculated based on MH OD, MH WT and MH Length
+  const effectiveAvg =
+    isRolling && row.mh_avg_length && row.mh_avg_length > 0
+      ? Number(row.mh_avg_length)
+      : n(row.avg_length);
+
+  const effectiveOd =
+    isRolling && row.mh_od && row.mh_od > 0 ? Number(row.mh_od) : n(row.od);
+
+  const effectiveWt =
+    isRolling && row.mh_wt && row.mh_wt > 0 ? Number(row.mh_wt) : n(row.wl);
+
+  const avg = effectiveAvg;
   const pcs = n(row.pcs);
   const calculatedMtr = mtrFromPcs(pcs, avg);
   const mtr = row.mtr.trim() === "" ? calculatedMtr : n(row.mtr);
-  const rejection = row.rejection_mtr.trim() === ""
-    ? mtrFromPcs(n(row.rejection_pcs), avg)
-    : n(row.rejection_mtr);
-  const htc = row.htc_ok_mtr.trim() === ""
-    ? mtrFromPcs(n(row.htc_ok_pcs), avg)
-    : n(row.htc_ok_mtr);
-  const mt = mtFromMtr(mtr, n(row.od), n(row.wl));
+  const rejection =
+    row.rejection_mtr.trim() === ""
+      ? mtrFromPcs(n(row.rejection_pcs), avg)
+      : n(row.rejection_mtr);
+  const htc =
+    row.htc_ok_mtr.trim() === ""
+      ? mtrFromPcs(n(row.htc_ok_pcs), avg)
+      : n(row.htc_ok_mtr);
+  const mt = mtFromMtr(mtr, effectiveOd, effectiveWt);
 
-  return { avg, pcs, mtr, mt, rejection, htc };
+  return { avg, pcs, mtr, mt, rejection, htc, effectiveOd, effectiveWt };
 };
+

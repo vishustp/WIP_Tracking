@@ -219,7 +219,12 @@ export function createMockClient() {
             planned_rolling_date: args.p_rolling_date,
             planned_qty: Number(args.p_planned_qty),
             process_route_id: args.p_route_id,
-            target_mother_size: args.p_target_mother_size || null,
+            target_mother_size: args.p_target_mother_size || (args.p_mh_od && args.p_mh_wt ? `${args.p_mh_od} x ${args.p_mh_wt}` : null),
+            mh_od: args.p_mh_od ? Number(args.p_mh_od) : null,
+            mh_wt: args.p_mh_wt ? Number(args.p_mh_wt) : null,
+            mh_l1: args.p_mh_l1 ? Number(args.p_mh_l1) : null,
+            mh_l2: args.p_mh_l2 ? Number(args.p_mh_l2) : null,
+            pass_required: args.p_pass_required ? Number(args.p_pass_required) : 1,
             multiple: Number(args.p_multiple || 1),
             status: 'Scheduled',
             created_at: new Date().toISOString(),
@@ -237,7 +242,12 @@ export function createMockClient() {
           plan.planned_qty = Number(args.p_planned_qty);
           plan.planned_rolling_date = args.p_rolling_date;
           plan.process_route_id = args.p_route_id;
-          plan.target_mother_size = args.p_target_mother_size || null;
+          plan.target_mother_size = args.p_target_mother_size || (args.p_mh_od && args.p_mh_wt ? `${args.p_mh_od} x ${args.p_mh_wt}` : plan.target_mother_size);
+          if (args.p_mh_od !== undefined) plan.mh_od = Number(args.p_mh_od);
+          if (args.p_mh_wt !== undefined) plan.mh_wt = Number(args.p_mh_wt);
+          if (args.p_mh_l1 !== undefined) plan.mh_l1 = Number(args.p_mh_l1);
+          if (args.p_mh_l2 !== undefined) plan.mh_l2 = Number(args.p_mh_l2);
+          if (args.p_pass_required !== undefined) plan.pass_required = Number(args.p_pass_required);
           plan.multiple = Number(args.p_multiple || 1);
           plan.updated_at = new Date().toISOString();
           mockStore.saveToStorage();
@@ -295,6 +305,35 @@ export function createMockClient() {
           }
           mockStore.saveToStorage();
           return { data: id, error: null };
+        }
+        case 'record_production_batch': {
+          const entries = args.entries || [];
+          const processDate = args.p_process_date || new Date().toISOString().slice(0, 10);
+          for (const item of entries) {
+            const stage = mockStore.stages.find(s => s.stage_code === item.stage_code);
+            const stageId = stage?.id || 'stage-1';
+            const id = `pl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+            mockStore.productionLogs.push({
+              id,
+              work_order_id: item.work_order_id,
+              stage_id: stageId,
+              process_route_id: item.route_id,
+              process_date: processDate,
+              input_qty: Number(item.input_qty || item.output_qty || 0),
+              output_qty: Number(item.output_qty || 0),
+              rejection_qty: Number(item.rejection_qty || 0),
+              htc_ok: Number(item.htc_ok || 0),
+              heat_lot_no: item.heat_lot_no || null,
+              remarks: item.remarks || null,
+              created_at: new Date().toISOString(),
+            });
+            const wo = mockStore.workOrders.find(w => w.id === item.work_order_id);
+            if (wo && wo.status !== 'Completed') {
+              wo.status = 'In Progress';
+            }
+          }
+          mockStore.saveToStorage();
+          return { data: true, error: null };
         }
         case 'update_production_entry': {
           const entry = mockStore.productionLogs.find(p => p.id === args.p_production_id);

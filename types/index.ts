@@ -16,6 +16,15 @@ export interface Row {
   l1: number | null;
   l2: number | null;
   avg_length: number | null;
+
+  // Mother Hollow dimensions (for Rolling calculations)
+  mh_od?: number | null;
+  mh_wt?: number | null;
+  mh_l1?: number | null;
+  mh_l2?: number | null;
+  mh_avg_length?: number | null;
+  target_mother_size?: string | null;
+
   route_id: string;
   route_code: string;
   route_name: string;
@@ -27,8 +36,10 @@ export interface Row {
   prev_gross_output?: number;
   prev_rejection?: number;
   prev_net_output?: number;
+  prev_htc_ok?: number;
   planned_rolling_total?: number;
   max_allowed_mtr?: number;
+  max_allowed_pcs?: number;
   balance_to_make_mtr: number | null;
   balance_to_make_pcs: number | null;
   balance_to_make_mt: number | null;

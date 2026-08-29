@@ -76,21 +76,36 @@ export default function ProductionEntryGrid() {
     setRows((current) =>
       current.map((r) => {
         if (`${r.work_order_id}|${r.route_id}` !== key) return r;
+        
+        // Rule 5: Rolling Mtr and MT will be calculated based on MH OD, MH WT and MH Length
+        const effectiveAvg =
+          stage === "ROLLING" && r.mh_avg_length && r.mh_avg_length > 0
+            ? Number(r.mh_avg_length)
+            : n(r.avg_length);
+
         if (field === "pcs") {
-          const mtr = value === "" ? "" : String(mtrFromPcs(n(value), n(r.avg_length)));
+          const mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg));
           return { ...r, pcs: value, mtr };
         }
         if (field === "mtr") {
-          const pcs = value === "" ? "" : String(pcsFromMtr(n(value), n(r.avg_length)));
+          const pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
           return { ...r, mtr: value, pcs };
         }
         if (field === "rejection_pcs") {
-          const rejection_mtr = value === "" ? "" : String(mtrFromPcs(n(value), n(r.avg_length)));
+          const rejection_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg));
           return { ...r, rejection_pcs: value, rejection_mtr };
         }
+        if (field === "rejection_mtr") {
+          const rejection_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
+          return { ...r, rejection_mtr: value, rejection_pcs };
+        }
         if (field === "htc_ok_pcs") {
-          const htc_ok_mtr = value === "" ? "" : String(mtrFromPcs(n(value), n(r.avg_length)));
+          const htc_ok_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg));
           return { ...r, htc_ok_pcs: value, htc_ok_mtr };
+        }
+        if (field === "htc_ok_mtr") {
+          const htc_ok_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
+          return { ...r, htc_ok_mtr: value, htc_ok_pcs };
         }
         return { ...r, [field]: value };
       })
@@ -102,7 +117,7 @@ export default function ProductionEntryGrid() {
     setMessage("");
     setError("");
 
-    const selected = rows.filter((r) => n(r.mtr) > 0);
+    const selected = rows.filter((r) => n(r.mtr) > 0 || n(r.pcs) > 0);
     if (!selected.length) {
       setError("Enter Production PCS/MTR for at least one row.");
       return;
@@ -200,8 +215,16 @@ export default function ProductionEntryGrid() {
       setEditSaving(false);
       return;
     }
+    if (
+      (editing.stage_code === "HEAT_TREATMENT" || editing.stage_code === "HOLLOW_HEAT_TREATMENT") &&
+      !editHeatLot.trim()
+    ) {
+      setError("Heat Lot No. is required for Heat Treatment.");
+      setEditSaving(false);
+      return;
+    }
     if (editing.stage_code === "ROLLING" && htc > mtr - rejection) {
-      setError("HTC OK cannot exceed net Rolling production.");
+      setError("HTC OK cannot exceed Net Rolling production.");
       setEditSaving(false);
       return;
     }
@@ -258,18 +281,32 @@ export default function ProductionEntryGrid() {
 
   // --- Helper to get formula text ---
   function getMaximumFormula(row: Row) {
-    if (stage === "ROLLING") return "Plan × 110%";
-    if (stage === "DRAW") return "Rolling Production";
-    if (stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT")
-      return "Draw Bench Production";
-    if (stage === "FINISHING") {
-      if (row.route_code === "HFS" || row.route_code === "ALLOY_HFS")
-        return "Rolling HTC OK × Multiple";
-      if (row.route_code === "CDS" || row.route_code === "ALLOY_CDS")
-        return "Heat Treatment × Multiple";
-      return "Previous Stage × Multiple";
+    const route = row.route_code || "HFS";
+    if (stage === "ROLLING") {
+      return "Plan × 110% (Nos / MTR)";
     }
-    return "";
+    if (stage === "HOLLOW_HEAT_TREATMENT") {
+      return "Rolling HTC OK";
+    }
+    if (stage === "DRAW") {
+      if (route === "ALLOY_CDS") {
+        return "Hollow HT Net Output";
+      }
+      return "Rolling HTC OK";
+    }
+    if (stage === "HEAT_TREATMENT") {
+      return "Draw Bench Net Output";
+    }
+    if (stage === "FINISHING") {
+      if (route === "HFS") {
+        return "min(Rolling HTC OK × Multiple, Balance)";
+      }
+      if (route === "ALLOY_HFS") {
+        return "min(Hollow HT Net × Multiple, Balance)";
+      }
+      return "min(Heat Treatment × Multiple, Balance)";
+    }
+    return "Previous Stage Output";
   }
 
   // --- RENDER ---

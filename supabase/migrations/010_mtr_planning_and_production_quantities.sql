@@ -95,26 +95,50 @@ with route_stage_union as (
         - coalesce((select sum(pl.input_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
                     where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='ROLLING'),0)
       when b.stage_code='HOLLOW_HEAT_TREATMENT' then
-        coalesce((select sum(pl.output_qty-pl.rejection_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
+        -- Capped at Rolling HTC OK
+        coalesce((select sum(pl.htc_ok) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
                   where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='ROLLING'),0)
         - coalesce((select sum(pl.input_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
                     where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='HOLLOW_HEAT_TREATMENT'),0)
       when b.stage_code='DRAW' then
-        coalesce((select sum(pl.output_qty-pl.rejection_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
-                  where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='HOLLOW_HEAT_TREATMENT'),0)
+        -- For ALLOY_CDS: capped at Hollow Heat Treatment Net Output; For CDS: capped at Rolling HTC OK
+        (case when b.route_code='ALLOY_CDS' then
+          coalesce((select sum(pl.output_qty-pl.rejection_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
+                    where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='HOLLOW_HEAT_TREATMENT'),0)
+         else
+          coalesce((select sum(pl.htc_ok) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
+                    where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='ROLLING'),0)
+         end)
         - coalesce((select sum(pl.input_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
                     where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='DRAW'),0)
       when b.stage_code='HEAT_TREATMENT' then
+        -- Capped at Draw Net Output
         coalesce((select sum(pl.output_qty-pl.rejection_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
                   where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='DRAW'),0)
         - coalesce((select sum(pl.input_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
                     where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='HEAT_TREATMENT'),0)
       when b.stage_code='FINISHING' then
-        coalesce((select sum(pl.output_qty-pl.rejection_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
-                  where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id
-                    and ps.stage_code in('HEAT_TREATMENT','ROLLING')),0)
-        - coalesce((select sum(pl.input_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
-                    where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='FINISHING'),0)
+        -- Capped at (Preceding Stage * Multiple) and not exceeding Order Balance to make
+        least(
+          (case
+            when b.route_code='HFS' then
+              coalesce((select sum(pl.htc_ok) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
+                        where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='ROLLING'),0)
+              * coalesce((select max(rp.multiple) from public.rolling_plans rp where rp.work_order_id=b.work_order_id and rp.process_route_id=b.route_id),1)
+            when b.route_code='ALLOY_HFS' then
+              coalesce((select sum(pl.output_qty-pl.rejection_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
+                        where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='HOLLOW_HEAT_TREATMENT'),0)
+              * coalesce((select max(rp.multiple) from public.rolling_plans rp where rp.work_order_id=b.work_order_id and rp.process_route_id=b.route_id),1)
+            else
+              -- CDS and ALLOY_CDS
+              coalesce((select sum(pl.output_qty-pl.rejection_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
+                        where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='HEAT_TREATMENT'),0)
+              * coalesce((select max(rp.multiple) from public.rolling_plans rp where rp.work_order_id=b.work_order_id and rp.process_route_id=b.route_id),1)
+          end)
+          - coalesce((select sum(pl.input_qty) from public.production_logs pl join public.process_stages ps on ps.id=pl.stage_id
+                      where pl.work_order_id=b.work_order_id and pl.process_route_id=b.route_id and ps.stage_code='FINISHING'),0),
+          coalesce((select wo.balance_qty_mtr from public.work_orders wo where wo.id=b.work_order_id), 0)
+        )
       else 0 end) balance_to_make_mtr
   from route_stage_list b
 )
