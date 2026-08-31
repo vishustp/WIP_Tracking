@@ -223,6 +223,217 @@ export function checkCanManagePlans(user: MockUserProfile | null | undefined): {
   };
 }
 
+/**
+ * Form accessibility descriptors and checking for 3-tier user groups
+ */
+export interface FormAccessResult {
+  formKey: string;
+  formTitle: string;
+  isAllowed: boolean;
+  mode: 'full' | 'view_only';
+  canSubmit: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  group: UserGroup;
+  groupName: string;
+  userWorkCenter: string;
+  userWorkCenterLabel: string;
+  authorizedGroups: string[];
+  bannerTitle: string;
+  bannerMessage: string;
+  reason?: string;
+}
+
+export function getFormAccess(
+  user: MockUserProfile | null | undefined,
+  formKey: 'rolling_plan' | 'production_entry' | 'diversion' | 'work_order' | 'excel_import' | 'admin_panel' | 'settings',
+  stageCode?: string
+): FormAccessResult {
+  const group: UserGroup = user?.group || (user?.role === 'admin' ? 'admin' : user?.role === 'manager' ? 'super_user' : 'user');
+  const groupCfg = getGroupConfig(group);
+  const wc = user?.work_center || (group === 'admin' || group === 'super_user' ? 'ALL' : user?.default_stage || 'ROLLING');
+  const wcLabel = WORK_CENTER_LABELS[wc] || wc;
+  const isAuditor = user?.role === 'auditor';
+
+  // 1. Production Entry Form
+  if (formKey === 'production_entry') {
+    const targetStage = stageCode || 'ROLLING';
+    const targetStageLabel = WORK_CENTER_LABELS[targetStage] || targetStage;
+    const isStageAssigned =
+      group === 'admin' ||
+      group === 'super_user' ||
+      user?.work_center === targetStage ||
+      user?.allowed_stages?.includes(targetStage) ||
+      user?.default_stage === targetStage;
+
+    const isAllowed = isStageAssigned && !isAuditor;
+
+    return {
+      formKey,
+      formTitle: `${targetStageLabel} Production Entry`,
+      isAllowed,
+      mode: isAllowed ? 'full' : 'view_only',
+      canSubmit: isAllowed,
+      canEdit: isAllowed,
+      canDelete: isAllowed,
+      group,
+      groupName: groupCfg.name,
+      userWorkCenter: wc,
+      userWorkCenterLabel: wcLabel,
+      authorizedGroups: ['Admin Group', 'Super User Group', `User Group (${targetStageLabel})`],
+      bannerTitle: isAllowed ? 'Work Center Operator Access' : 'View-Only Accessibility Mode',
+      bannerMessage: isAllowed
+        ? `Authorized to record shift production, log rejections, and save batches for ${targetStageLabel}.`
+        : isAuditor
+        ? 'Auditor role is in read-only inspection mode across all production stages.'
+        : `This stage form is accessible in View-Only mode. Your user profile is assigned to ${wcLabel}. Shift logging and edits for ${targetStageLabel} are restricted to its assigned operators or Admin/Super Users.`,
+      reason: isAllowed ? undefined : `Restricted to ${targetStageLabel} operators or Admin/Super Users.`,
+    };
+  }
+
+  // 2. Rolling Plan Form
+  if (formKey === 'rolling_plan') {
+    const isAllowed = (group === 'admin' || group === 'super_user') && !isAuditor;
+    return {
+      formKey,
+      formTitle: 'Rolling Plan Planning & Allocation',
+      isAllowed,
+      mode: isAllowed ? 'full' : 'view_only',
+      canSubmit: isAllowed,
+      canEdit: isAllowed,
+      canDelete: isAllowed,
+      group,
+      groupName: groupCfg.name,
+      userWorkCenter: wc,
+      userWorkCenterLabel: wcLabel,
+      authorizedGroups: ['Admin Group', 'Super User Group'],
+      bannerTitle: isAllowed ? 'Full Planning Authority' : 'View-Only Accessibility Mode',
+      bannerMessage: isAllowed
+        ? 'Full authority to create, edit, calculate, and issue hot rolling plans.'
+        : `Rolling plan specifications, mother hollow calculations, and issued schedules are viewable in View-Only mode. Creating or modifying rolling plans requires Admin Group or Super User Group authorization.`,
+      reason: isAllowed ? undefined : 'Rolling plan creation is restricted to Admin and Super User groups.',
+    };
+  }
+
+  // 3. Diversion Planning Form
+  if (formKey === 'diversion') {
+    const isAllowed = (group === 'admin' || group === 'super_user') && !isAuditor;
+    return {
+      formKey,
+      formTitle: 'Pipe Diversion Planning',
+      isAllowed,
+      mode: isAllowed ? 'full' : 'view_only',
+      canSubmit: isAllowed,
+      canEdit: isAllowed,
+      canDelete: isAllowed,
+      group,
+      groupName: groupCfg.name,
+      userWorkCenter: wc,
+      userWorkCenterLabel: wcLabel,
+      authorizedGroups: ['Admin Group', 'Super User Group'],
+      bannerTitle: isAllowed ? 'Full Diversion Authority' : 'View-Only Accessibility Mode',
+      bannerMessage: isAllowed
+        ? 'Authorized to divert stock, reallocate work order inventory, and transfer work in progress.'
+        : `Pipe diversion parameters and reallocation histories are accessible in View-Only mode. Reallocating pipe inventory between work orders requires Admin Group or Super User Group authorization.`,
+      reason: isAllowed ? undefined : 'Diversion planning is restricted to Admin and Super User groups.',
+    };
+  }
+
+  // 4. Work Order Form
+  if (formKey === 'work_order') {
+    const isAllowed = (group === 'admin' || group === 'super_user') && !isAuditor;
+    return {
+      formKey,
+      formTitle: 'Work Order Management',
+      isAllowed,
+      mode: isAllowed ? 'full' : 'view_only',
+      canSubmit: isAllowed,
+      canEdit: isAllowed,
+      canDelete: isAllowed,
+      group,
+      groupName: groupCfg.name,
+      userWorkCenter: wc,
+      userWorkCenterLabel: wcLabel,
+      authorizedGroups: ['Admin Group', 'Super User Group'],
+      bannerTitle: isAllowed ? 'Work Order Management' : 'View-Only Accessibility Mode',
+      bannerMessage: isAllowed
+        ? 'Authorized to create, edit, schedule, and track customer work orders.'
+        : `Work orders and order specifications are viewable in View-Only mode. Manual creation or modifications of work orders require Admin Group or Super User Group authorization.`,
+      reason: isAllowed ? undefined : 'Work order creation is restricted to Admin and Super User groups.',
+    };
+  }
+
+  // 5. Excel Import Form
+  if (formKey === 'excel_import') {
+    const isAllowed = (group === 'admin' || group === 'super_user') && !isAuditor;
+    return {
+      formKey,
+      formTitle: 'Excel Work Order Importer',
+      isAllowed,
+      mode: isAllowed ? 'full' : 'view_only',
+      canSubmit: isAllowed,
+      canEdit: isAllowed,
+      canDelete: isAllowed,
+      group,
+      groupName: groupCfg.name,
+      userWorkCenter: wc,
+      userWorkCenterLabel: wcLabel,
+      authorizedGroups: ['Admin Group', 'Super User Group'],
+      bannerTitle: isAllowed ? 'Excel Importer' : 'View-Only Accessibility Mode',
+      bannerMessage: isAllowed
+        ? 'Authorized to parse spreadsheet work orders and commit batch data to the factory ledger.'
+        : `Excel parsing and validation preview is accessible in View-Only mode. Committing imported batches to the live database requires Admin Group or Super User Group authorization.`,
+      reason: isAllowed ? undefined : 'Committing Excel imports is restricted to Admin and Super User groups.',
+    };
+  }
+
+  // 6. Admin Control Panel
+  if (formKey === 'admin_panel') {
+    const isAllowed = group === 'admin';
+    return {
+      formKey,
+      formTitle: 'Admin Control Panel',
+      isAllowed,
+      mode: isAllowed ? 'full' : 'view_only',
+      canSubmit: isAllowed,
+      canEdit: isAllowed,
+      canDelete: isAllowed,
+      group,
+      groupName: groupCfg.name,
+      userWorkCenter: wc,
+      userWorkCenterLabel: wcLabel,
+      authorizedGroups: ['Admin Group'],
+      bannerTitle: isAllowed ? 'Admin Master Control' : 'System Inspection View (Read-Only)',
+      bannerMessage: isAllowed
+        ? 'Master administrative access to manage users, process routes, guardrails, and system resets.'
+        : `You are viewing the Admin Control Panel in Read-Only Inspection mode. Modifying user profiles, PIN credentials, guardrails, or database resets is restricted to Admin Group accounts.`,
+      reason: isAllowed ? undefined : 'Modifications restricted to Admin Group.',
+    };
+  }
+
+  // 7. Settings Form
+  const isAllowed = group === 'admin';
+  return {
+    formKey,
+    formTitle: 'System Settings',
+    isAllowed,
+    mode: isAllowed ? 'full' : 'view_only',
+    canSubmit: isAllowed,
+    canEdit: isAllowed,
+    canDelete: isAllowed,
+    group,
+    groupName: groupCfg.name,
+    userWorkCenter: wc,
+    userWorkCenterLabel: wcLabel,
+    authorizedGroups: ['Admin Group'],
+    bannerTitle: isAllowed ? 'Settings Management' : 'View-Only Settings Inspection',
+    bannerMessage: isAllowed
+      ? 'Authorized to configure master process routes, stages, and parameters.'
+      : 'Process routes and stage master definitions are viewable in read-only mode. Route modifications require Admin Group.',
+    reason: isAllowed ? undefined : 'Restricted to Admin Group.',
+  };
+}
+
 export function usePermissions() {
   const [user, setUser] = useState<MockUserProfile>(() => {
     if (typeof window !== 'undefined') {

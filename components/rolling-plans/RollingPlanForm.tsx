@@ -12,7 +12,11 @@ import {
   Trash2,
   RefreshCw,
   Search,
+  Eye,
+  Lock,
 } from 'lucide-react';
+import { usePermissions, getFormAccess } from '@/lib/permissions';
+import FormAccessBanner from '@/components/common/FormAccessBanner';
 
 type WO = {
   id: string;
@@ -193,6 +197,10 @@ export default function RollingPlanForm() {
 
   const [editSaving, setEditSaving] =
     useState(false);
+
+  const { user } = usePermissions();
+  const formAccess = useMemo(() => getFormAccess(user, 'rolling_plan'), [user]);
+  const canManagePlans = formAccess.isAllowed;
 
   const loadPlans = useCallback(async () => {
     setPlansLoading(true);
@@ -755,6 +763,8 @@ export default function RollingPlanForm() {
 
   return (
     <div className="space-y-6">
+      {/* Form Accessibility Banner */}
+      <FormAccessBanner access={formAccess} />
 
       {/* Issue Rolling Plan */}
 
@@ -779,6 +789,7 @@ export default function RollingPlanForm() {
 
             <Select
               value={wo}
+              disabled={!canManagePlans}
               onChange={(e) =>
                 void lookup(
                   e.target.value
@@ -815,6 +826,7 @@ export default function RollingPlanForm() {
 
             <Select
               value={route}
+              disabled={!canManagePlans}
               onChange={(e) =>
                 setRoute(
                   e.target.value
@@ -852,6 +864,7 @@ export default function RollingPlanForm() {
               type="number"
               min="1"
               step="1"
+              disabled={!canManagePlans}
               max={
                 selected &&
                 derived.avg > 0 &&
@@ -882,6 +895,7 @@ export default function RollingPlanForm() {
             <Input
               type="date"
               value={date}
+              disabled={!canManagePlans}
               onChange={(e) =>
                 setDate(
                   e.target.value
@@ -902,6 +916,7 @@ export default function RollingPlanForm() {
               type="number"
               min="0"
               step="0.001"
+              disabled={!canManagePlans}
               value={mhOd}
               onChange={(e) =>
                 setMhOd(
@@ -923,6 +938,7 @@ export default function RollingPlanForm() {
               type="number"
               min="0"
               step="0.001"
+              disabled={!canManagePlans}
               value={mhWt}
               onChange={(e) =>
                 setMhWt(
@@ -944,6 +960,7 @@ export default function RollingPlanForm() {
               type="number"
               min="0"
               step="0.001"
+              disabled={!canManagePlans}
               value={mhL1}
               onChange={(e) =>
                 setMhL1(
@@ -965,6 +982,7 @@ export default function RollingPlanForm() {
               type="number"
               min="0"
               step="0.001"
+              disabled={!canManagePlans}
               value={mhL2}
               onChange={(e) =>
                 setMhL2(
@@ -984,6 +1002,7 @@ export default function RollingPlanForm() {
 
             <Select
               value={passRequired}
+              disabled={!canManagePlans}
               onChange={(e) =>
                 setPassRequired(
                   e.target.value
@@ -1016,6 +1035,7 @@ export default function RollingPlanForm() {
               type="number"
               min="0.001"
               step="0.001"
+              disabled={!canManagePlans}
               value={multiple}
               onChange={(e) =>
                 setMultiple(
@@ -1158,14 +1178,28 @@ export default function RollingPlanForm() {
           )}
         </div>
 
-        <div className="mt-5 flex justify-end border-t border-slate-100 pt-4">
+        <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+          <div className="text-xs text-slate-500">
+            {!canManagePlans && (
+              <span className="inline-flex items-center gap-1 text-amber-700 font-medium">
+                <Lock className="h-3.5 w-3.5" />
+                Form is in View-Only mode. Creation requires Admin or Super User access.
+              </span>
+            )}
+          </div>
           <Button
             type="submit"
-            disabled={loading}
-            className="bg-slate-900 text-white hover:bg-slate-800"
+            disabled={loading || !canManagePlans}
+            className={`text-white ${
+              canManagePlans
+                ? 'bg-slate-900 hover:bg-slate-800'
+                : 'bg-slate-400 cursor-not-allowed opacity-60'
+            }`}
           >
             {loading
               ? 'Creating…'
+              : !canManagePlans
+              ? 'Issue Plan (View-Only)'
               : 'Issue Rolling Plan'}
           </Button>
         </div>
@@ -1436,7 +1470,7 @@ export default function RollingPlanForm() {
 
                     <td className="px-2 py-1.5">
 
-                      {p.can_modify ? (
+                      {p.can_modify && canManagePlans ? (
                         <div className="flex gap-1.5">
 
                           <button
@@ -1444,7 +1478,7 @@ export default function RollingPlanForm() {
                             onClick={() =>
                               startEdit(p)
                             }
-                            className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium hover:bg-slate-50"
+                            className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium hover:bg-slate-50 cursor-pointer"
                           >
                             <Edit2 className="h-3 w-3" />
                             Edit
@@ -1457,7 +1491,7 @@ export default function RollingPlanForm() {
                                 p
                               )
                             }
-                            className="inline-flex items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
+                            className="inline-flex items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 cursor-pointer"
                           >
                             <Trash2 className="h-3 w-3" />
                             Delete
@@ -1465,8 +1499,9 @@ export default function RollingPlanForm() {
 
                         </div>
                       ) : (
-                        <span className="text-[11px] text-slate-400">
-                          Locked
+                        <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 font-medium">
+                          <Lock className="h-3 w-3" />
+                          {p.can_modify ? 'View Only' : 'Executed / Locked'}
                         </span>
                       )}
 

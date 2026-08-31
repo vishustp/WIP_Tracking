@@ -3,6 +3,8 @@
 import { useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { createClient } from '@/lib/supabase/client';
+import { usePermissions, getFormAccess } from '@/lib/permissions';
+import FormAccessBanner from '@/components/common/FormAccessBanner';
 import {
   FileSpreadsheet,
   UploadCloud,
@@ -16,6 +18,7 @@ import {
   Search,
   FileCheck,
   HelpCircle,
+  Lock,
 } from 'lucide-react';
 
 type ImportRow = {
@@ -67,6 +70,10 @@ function findColumn(headers: string[], names: string[]) {
 }
 
 export default function ExcelImporter() {
+  const { user } = usePermissions();
+  const formAccess = useMemo(() => getFormAccess(user, 'excel_import'), [user]);
+  const canCommit = formAccess.isAllowed;
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -265,6 +272,9 @@ export default function ExcelImporter() {
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Excel Work Order Import</h1>
       </div>
 
+      {/* Form Access Banner */}
+      <FormAccessBanner access={formAccess} />
+
       {/* Drag-and-Drop Upload Zone */}
       <div
         className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-6 text-center transition hover:border-slate-400 hover:bg-slate-50/50"
@@ -427,10 +437,15 @@ export default function ExcelImporter() {
               <button
                 type="button"
                 onClick={() => void importRows()}
-                disabled={loading || stats.valid === 0}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+                disabled={loading || stats.valid === 0 || !canCommit}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold shadow-xs transition-colors ${
+                  canCommit
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50'
+                    : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                }`}
               >
-                {loading ? 'Importing…' : `Import ${stats.valid} Eligible Orders`}
+                {!canCommit && <Lock className="h-3.5 w-3.5" />}
+                {loading ? 'Importing…' : !canCommit ? `Import ${stats.valid} Orders (View-Only)` : `Import ${stats.valid} Eligible Orders`}
               </button>
             </div>
           </div>

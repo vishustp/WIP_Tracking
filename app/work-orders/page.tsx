@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { mtFromMtr, fmt } from '@/lib/productionUtils';
+import { usePermissions, getFormAccess } from '@/lib/permissions';
+import FormAccessBanner from '@/components/common/FormAccessBanner';
 import {
   Calendar,
   Layers,
@@ -22,6 +24,7 @@ import {
   Clock,
   Search,
   Filter,
+  Lock,
 } from 'lucide-react';
 
 type WO = {
@@ -67,6 +70,10 @@ type WipStage = {
 };
 
 export default function WorkOrders() {
+  const { user } = usePermissions();
+  const formAccess = useMemo(() => getFormAccess(user, 'work_order'), [user]);
+  const canCreateWO = formAccess.isAllowed;
+
   const [rows, setRows] = useState<WO[]>([]);
   const [wipMap, setWipMap] = useState<Record<string, WipStage[]>>({});
   const [expandedWip, setExpandedWip] = useState<Record<string, boolean>>({});
@@ -230,16 +237,26 @@ export default function WorkOrders() {
             onClick={() => setShowCreate(!showCreate)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-slate-800"
           >
-            <PlusCircle className="h-4 w-4" /> {showCreate ? 'Close Form' : 'Create Work Order'}
+            <PlusCircle className="h-4 w-4" /> {showCreate ? 'Close Form' : canCreateWO ? 'Create Work Order' : 'Create WO Form (View-Only)'}
           </Button>
         </div>
       </div>
+
+      {/* Form Access Banner */}
+      <FormAccessBanner access={formAccess} />
 
       {/* Collapsible Create Work Order Form */}
       {showCreate && (
         <form onSubmit={createWO} className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-            <h2 className="text-sm font-bold text-slate-900">New Work Order</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-900">New Work Order</h2>
+              {!canCreateWO && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded px-2 py-0.5">
+                  <Lock size={10} /> View-Only Access
+                </span>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setShowCreate(false)}
@@ -255,6 +272,7 @@ export default function WorkOrders() {
               <Input
                 className="mt-1"
                 placeholder="e.g. WO-2025-101"
+                disabled={!canCreateWO}
                 value={form.work_order_no}
                 onChange={e => setForm({ ...form, work_order_no: e.target.value })}
                 required
@@ -265,6 +283,7 @@ export default function WorkOrders() {
               <Input
                 className="mt-1"
                 placeholder="e.g. Apex Precision Tubes"
+                disabled={!canCreateWO}
                 value={form.customer_name}
                 onChange={e => setForm({ ...form, customer_name: e.target.value })}
               />
@@ -276,6 +295,7 @@ export default function WorkOrders() {
                 step="0.001"
                 className="mt-1"
                 placeholder="e.g. 88.9"
+                disabled={!canCreateWO}
                 value={form.size_od}
                 onChange={e => setForm({ ...form, size_od: e.target.value })}
               />
@@ -287,6 +307,7 @@ export default function WorkOrders() {
                 step="0.001"
                 className="mt-1"
                 placeholder="e.g. 7.62"
+                disabled={!canCreateWO}
                 value={form.size_wt}
                 onChange={e => setForm({ ...form, size_wt: e.target.value })}
               />
@@ -298,6 +319,7 @@ export default function WorkOrders() {
                   type="number"
                   step="0.1"
                   placeholder="L1 (6.0)"
+                  disabled={!canCreateWO}
                   value={form.l1}
                   onChange={e => setForm({ ...form, l1: e.target.value })}
                 />
@@ -305,6 +327,7 @@ export default function WorkOrders() {
                   type="number"
                   step="0.1"
                   placeholder="L2 (6.5)"
+                  disabled={!canCreateWO}
                   value={form.l2}
                   onChange={e => setForm({ ...form, l2: e.target.value })}
                 />
@@ -315,6 +338,7 @@ export default function WorkOrders() {
               <Input
                 className="mt-1"
                 placeholder="e.g. ASTM A106 Gr.B"
+                disabled={!canCreateWO}
                 value={form.grade}
                 onChange={e => setForm({ ...form, grade: e.target.value })}
               />
@@ -327,6 +351,7 @@ export default function WorkOrders() {
                 step="0.001"
                 className="mt-1"
                 placeholder="Qty"
+                disabled={!canCreateWO}
                 value={form.ordered_qty}
                 onChange={e => setForm({ ...form, ordered_qty: e.target.value })}
                 required
@@ -334,7 +359,7 @@ export default function WorkOrders() {
             </div>
             <div>
               <label className="font-semibold text-slate-700">UOM</label>
-              <Select className="mt-1" value={form.uom} onChange={e => setForm({ ...form, uom: e.target.value })}>
+              <Select className="mt-1" disabled={!canCreateWO} value={form.uom} onChange={e => setForm({ ...form, uom: e.target.value })}>
                 <option>Mtrs</option>
                 <option>Pcs</option>
               </Select>
@@ -344,14 +369,27 @@ export default function WorkOrders() {
               <Input
                 type="date"
                 className="mt-1"
+                disabled={!canCreateWO}
                 value={form.target_date}
                 onChange={e => setForm({ ...form, target_date: e.target.value })}
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-            <Button className="bg-slate-900 text-white hover:bg-slate-800">Save Work Order</Button>
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+            {!canCreateWO ? (
+              <span className="text-xs text-amber-700 font-medium flex items-center gap-1.5">
+                <Lock size={13} />
+                Work order creation is restricted to Admin and Super User groups.
+              </span>
+            ) : <div />}
+            <Button
+              type="submit"
+              disabled={!canCreateWO}
+              className={canCreateWO ? "bg-slate-900 text-white hover:bg-slate-800" : "bg-slate-300 text-slate-500 cursor-not-allowed"}
+            >
+              {canCreateWO ? 'Save Work Order' : 'Save Work Order (View-Only)'}
+            </Button>
           </div>
         </form>
       )}

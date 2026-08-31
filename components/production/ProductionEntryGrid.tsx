@@ -29,7 +29,8 @@ import { useHistory } from "@/hooks/useHistory";
 import { validateProductionEntry } from "@/lib/productionValidation";
 import { calc, fmt, n, mtrFromPcs, pcsFromMtr, mtFromMtr } from "@/lib/productionUtils";
 import { StageCode, STAGES, Row, ProductionEntry, WorkCenterWipInfo } from "@/types";
-import { usePermissions, getGroupConfig } from "@/lib/permissions";
+import { usePermissions, getGroupConfig, getFormAccess } from "@/lib/permissions";
+import FormAccessBanner from "@/components/common/FormAccessBanner";
 
 export default function ProductionEntryGrid() {
   const supabase = useMemo(() => createClient(), []);
@@ -114,6 +115,11 @@ export default function ProductionEntryGrid() {
     () => Array.from(new Set(entries.map((e) => e.route_code))).sort(),
     [entries]
   );
+
+  const stageFormAccess = useMemo(() => {
+    return getFormAccess(user, 'production_entry', stage);
+  }, [user, stage]);
+  const isAllowed = stageFormAccess.isAllowed;
 
   // Toggle single row expansion
   const toggleRowExpansion = (key: string) => {
@@ -719,6 +725,9 @@ export default function ProductionEntryGrid() {
         )}
       </div>
 
+      {/* Form Access & Permissions Banner */}
+      <FormAccessBanner access={stageFormAccess} className="mb-2" />
+
       {/* Production Date & Entry Controls */}
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
@@ -729,8 +738,9 @@ export default function ProductionEntryGrid() {
             <input
               type="date"
               value={date}
+              disabled={!isAllowed}
               onChange={(e) => setDate(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
             />
           </div>
           <div className="border-l border-slate-200 pl-3">
@@ -882,9 +892,10 @@ export default function ProductionEntryGrid() {
                               min="0"
                               step="any"
                               placeholder="PCS"
+                              disabled={!isAllowed}
                               value={r.pcs}
                               onChange={(e) => updateRow(key, "pcs", e.target.value)}
-                              className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                             <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">PCS</span>
                           </div>
@@ -895,9 +906,10 @@ export default function ProductionEntryGrid() {
                               min="0"
                               step="any"
                               placeholder="MTR"
+                              disabled={!isAllowed}
                               value={r.mtr}
                               onChange={(e) => updateRow(key, "mtr", e.target.value)}
-                              className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                             <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">
                               {d.mt > 0 ? fmt(d.mt, " MT") : "MTR"}
@@ -915,9 +927,10 @@ export default function ProductionEntryGrid() {
                               min="0"
                               step="any"
                               placeholder="PCS"
+                              disabled={!isAllowed}
                               value={r.rejection_pcs}
                               onChange={(e) => updateRow(key, "rejection_pcs", e.target.value)}
-                              className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs text-rose-700 shadow-sm focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                              className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs text-rose-700 shadow-sm focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                             <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">PCS</span>
                           </div>
@@ -928,9 +941,10 @@ export default function ProductionEntryGrid() {
                               min="0"
                               step="any"
                               placeholder="MTR"
+                              disabled={!isAllowed}
                               value={r.rejection_mtr}
                               onChange={(e) => updateRow(key, "rejection_mtr", e.target.value)}
-                              className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs text-rose-700 shadow-sm focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                              className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs text-rose-700 shadow-sm focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                             <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">
                               {d.rejectionMt > 0 ? fmt(d.rejectionMt, " MT") : "MTR"}
@@ -949,9 +963,10 @@ export default function ProductionEntryGrid() {
                                 min="0"
                                 step="any"
                                 placeholder="PCS"
+                                disabled={!isAllowed}
                                 value={r.htc_ok_pcs}
                                 onChange={(e) => updateRow(key, "htc_ok_pcs", e.target.value)}
-                                className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-emerald-700 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-emerald-700 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                               />
                               <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">PCS</span>
                             </div>
@@ -962,9 +977,10 @@ export default function ProductionEntryGrid() {
                                 min="0"
                                 step="any"
                                 placeholder="MTR"
+                                disabled={!isAllowed}
                                 value={r.htc_ok_mtr}
                                 onChange={(e) => updateRow(key, "htc_ok_mtr", e.target.value)}
-                                className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-emerald-700 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                className="w-24 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-right font-mono text-xs font-bold text-emerald-700 shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                               />
                               <span className="text-[9px] text-center font-semibold text-slate-400 mt-0.5">
                                 {d.htcMt > 0 ? fmt(d.htcMt, " MT") : "MTR"}
@@ -980,9 +996,10 @@ export default function ProductionEntryGrid() {
                           <input
                             type="text"
                             placeholder="e.g. HT-8842"
+                            disabled={!isAllowed}
                             value={r.heat_lot_no}
                             onChange={(e) => updateRow(key, "heat_lot_no", e.target.value)}
-                            className="w-28 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            className="w-28 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </td>
                       )}
@@ -992,9 +1009,10 @@ export default function ProductionEntryGrid() {
                         <input
                           type="text"
                           placeholder="Shift notes..."
+                          disabled={!isAllowed}
                           value={r.remarks}
                           onChange={(e) => updateRow(key, "remarks", e.target.value)}
-                          className="w-36 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          className="w-36 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                         />
                       </td>
                     </tr>

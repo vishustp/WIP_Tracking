@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   mockStore, MockUserProfile, MockAuditLog, MockRoute, MockStage, UserRole, UserGroup, WorkCenterCode, DEFAULT_USERS
 } from '@/lib/supabase/mock-store';
-import { GROUP_CONFIGS } from '@/lib/permissions';
+import { GROUP_CONFIGS, usePermissions, getFormAccess } from '@/lib/permissions';
+import FormAccessBanner from '@/components/common/FormAccessBanner';
 import {
   ShieldCheck, Users, Sliders, Activity, Database, Plus, Search,
   Edit2, Trash2, CheckCircle2, XCircle, RotateCcw, Download, Upload,
@@ -58,6 +59,10 @@ const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color:
 ];
 
 export default function AdminControlPanelClient() {
+  const { user } = usePermissions();
+  const formAccess = useMemo(() => getFormAccess(user, 'admin_panel'), [user]);
+  const canAdminister = formAccess.isAllowed;
+
   const [activeTab, setActiveTab] = useState<'users' | 'routes' | 'guardrails' | 'audit' | 'maintenance'>('users');
   const [users, setUsers] = useState<MockUserProfile[]>([]);
   const [routes, setRoutes] = useState<MockRoute[]>([]);
@@ -191,6 +196,10 @@ export default function AdminControlPanelClient() {
   // Handle save user (create or edit)
   const handleSaveUser = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canAdminister) {
+      toast.error('Permission denied: Only Admin Group accounts can create or modify users.');
+      return;
+    }
     if (!formData.name.trim() || !formData.email.trim()) {
       toast.error('Name and Email are required.');
       return;
@@ -252,6 +261,10 @@ export default function AdminControlPanelClient() {
 
   // Handle toggle user active status
   const handleToggleUser = (userId: string) => {
+    if (!canAdminister) {
+      toast.error('Permission denied: Only Admin Group accounts can enable or disable users.');
+      return;
+    }
     const active = mockStore.toggleUserStatus(userId);
     loadData();
     toast.info(`User status changed to ${active ? 'Active' : 'Disabled'}`);
@@ -259,6 +272,10 @@ export default function AdminControlPanelClient() {
 
   // Handle delete user
   const handleDeleteUser = (user: MockUserProfile) => {
+    if (!canAdminister) {
+      toast.error('Permission denied: Only Admin Group accounts can delete users.');
+      return;
+    }
     if (user.email === 'admin@seamlesswip.com') {
       toast.error('Primary Administrator account cannot be removed.');
       return;
@@ -272,6 +289,10 @@ export default function AdminControlPanelClient() {
 
   // Toggle route active
   const handleToggleRoute = (routeId: string) => {
+    if (!canAdminister) {
+      toast.error('Permission denied: Only Admin Group accounts can modify routes.');
+      return;
+    }
     const route = mockStore.routes.find(r => r.id === routeId);
     if (!route) return;
     route.active = !route.active;
@@ -290,6 +311,10 @@ export default function AdminControlPanelClient() {
 
   // Save guardrails settings
   const handleSaveGuardrails = () => {
+    if (!canAdminister) {
+      toast.error('Permission denied: Only Admin Group accounts can update guardrail settings.');
+      return;
+    }
     if (typeof window !== 'undefined') {
       localStorage.setItem('seamless_wip_capping_tol', String(cappingTolerance));
       localStorage.setItem('seamless_wip_density', String(steelDensity));
@@ -333,6 +358,10 @@ export default function AdminControlPanelClient() {
 
   // Reset database to default seed data
   const handleResetData = () => {
+    if (!canAdminister) {
+      toast.error('Permission denied: Only Admin Group accounts can reset factory data.');
+      return;
+    }
     mockStore.resetAllData();
     if (typeof window !== 'undefined') {
       localStorage.removeItem('seamless_wip_capping_tol');
@@ -362,6 +391,9 @@ export default function AdminControlPanelClient() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* Form Accessibility Banner */}
+      <FormAccessBanner access={formAccess} />
+
       {/* Top Banner */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
