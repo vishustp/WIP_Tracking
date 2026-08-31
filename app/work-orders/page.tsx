@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { mtFromMtr, fmt } from '@/lib/productionUtils';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
+import RouteAccessGuard from '@/components/common/RouteAccessGuard';
 import {
   Calendar,
   Layers,
@@ -220,7 +221,8 @@ export default function WorkOrders() {
   };
 
   return (
-    <div className="space-y-5">
+    <RouteAccessGuard allowedGroups={['admin', 'super_user']} formTitle="Work Orders Directory">
+      <div className="space-y-5">
       {/* Top Header */}
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
@@ -611,5 +613,6 @@ export default function WorkOrders() {
         </div>
       </div>
     </div>
+    </RouteAccessGuard>
   );
 }

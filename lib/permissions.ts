@@ -91,6 +91,51 @@ export function getGroupConfig(group?: UserGroup | string | null): GroupConfig {
 }
 
 /**
+ * Only Admin Group can switch active profiles or modify user roles/accounts
+ */
+export function canSwitchProfile(user: MockUserProfile | null | undefined): boolean {
+  return user?.group === 'admin';
+}
+
+/**
+ * Only Admin Group can edit and save profile identity and security settings
+ */
+export function canEditProfile(user: MockUserProfile | null | undefined): boolean {
+  return user?.group === 'admin';
+}
+
+/**
+ * Checks if a specific sidebar/navigation route is visible for a user group
+ */
+export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean {
+  if (group === 'admin') {
+    return true; // Admin has visibility to all routes & forms
+  }
+
+  if (group === 'super_user') {
+    // Super User has visibility to all planning, production, and reporting forms, but not Admin Settings / Admin Panel
+    return !['/admin', '/settings'].includes(href);
+  }
+
+  // User Group (Shop Floor Operator):
+  // ONLY Production Entry, Reports, Dashboard, and their own User Profile are visible.
+  // PPC forms (Work Orders, Excel Import, Rolling Planning, Diversion Planning) and Admin/Settings are strictly HIDDEN.
+  const allowedUserRoutes = [
+    '/production',
+    '/dashboard',
+    '/profile',
+    '/reports',
+    '/reports/pending-orders',
+    '/reports/wip',
+    '/reports/production',
+    '/reports/rolling-plans',
+    '/reports/diversions',
+  ];
+
+  return allowedUserRoutes.some((allowed) => href === allowed || href.startsWith(allowed + '/'));
+}
+
+/**
  * Validates if the user is authorized to delete a production entry for a specific work center stage
  */
 export function checkCanDelete(user: MockUserProfile | null | undefined, stageCode: string): {
@@ -543,6 +588,9 @@ export function usePermissions() {
     canManageUsers: group === 'admin',
     canModifySettings: group === 'admin',
     canManagePlans: group === 'admin' || group === 'super_user',
+    canSwitchProfile: canSwitchProfile(user),
+    canEditProfile: canEditProfile(user),
+    isRouteVisible: (href: string) => isRouteVisibleForGroup(group, href),
     refreshUser,
   };
 }

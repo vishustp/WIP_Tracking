@@ -3,11 +3,12 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { mockStore, MockUserProfile } from '@/lib/supabase/mock-store';
+import { mockStore, MockUserProfile, UserGroup } from '@/lib/supabase/mock-store';
+import { isRouteVisibleForGroup, canSwitchProfile } from '@/lib/permissions';
 import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
-  User, ShieldCheck, ChevronDown, Check, Sparkles
+  User, ShieldCheck, ChevronDown, Check, Sparkles, Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -90,6 +91,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     router.refresh();
   };
 
+  const userGroup = (currentUser?.group || (currentUser?.role === 'admin' ? 'admin' : currentUser?.role === 'manager' ? 'super_user' : 'user')) as UserGroup;
+  const isAdmin = userGroup === 'admin';
+
+  // Filter groups according to current user group visibility rules
+  const visibleGroups = groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => isRouteVisibleForGroup(userGroup, item.href)),
+    }))
+    .filter((group) => group.items.length > 0);
+
   const pageTitle =
     pathname === '/dashboard'
       ? 'Dashboard'
@@ -113,7 +125,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="h-[calc(100vh-7.5rem)] overflow-y-auto p-2">
-          {groups.map((group) => (
+          {visibleGroups.map((group) => (
             <div key={group.label} className="mb-4">
               <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-slate-400">{group.label}</div>
               <div className="space-y-0.5">
@@ -150,7 +162,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold text-slate-900 truncate group-hover:text-blue-600">{currentUser.name}</div>
-                <div className="text-[10px] text-slate-500 truncate">{currentUser.role_title}</div>
+                <div className="text-[10px] text-slate-500 truncate flex items-center gap-1">
+                  <span>{currentUser.role_title}</span>
+                  {isAdmin && <span className="text-[9px] font-bold text-blue-600">[Admin]</span>}
+                </div>
               </div>
             </div>
           </div>
@@ -190,7 +205,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       <div className="font-bold text-slate-900">{currentUser.name}</div>
                       <div className="text-[11px] text-slate-500 font-mono">{currentUser.email}</div>
                       <div className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                        {currentUser.role_title}
+                        {currentUser.role_title} ({userGroup.toUpperCase()})
                       </div>
                     </div>
 
@@ -204,43 +219,54 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         <span>User Profile & Security</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => { router.push('/admin'); setUserDropdownOpen(false); }}
-                        className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-                      >
-                        <ShieldCheck className="h-4 w-4 text-slate-700" />
-                        <span>Admin Control Panel</span>
-                      </button>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => { router.push('/admin'); setUserDropdownOpen(false); }}
+                          className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                        >
+                          <ShieldCheck className="h-4 w-4 text-slate-700" />
+                          <span>Admin Control Panel</span>
+                        </button>
+                      )}
                     </div>
 
-                    <div className="pt-1.5 border-t border-slate-100">
-                      <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                        Switch Active Role
+                    {/* Role Switcher - Only accessible to Admin */}
+                    {isAdmin ? (
+                      <div className="pt-1.5 border-t border-slate-100">
+                        <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                          <span>Switch Active Role</span>
+                          <span className="text-[9px] text-blue-600 font-bold">Admin Authority</span>
+                        </div>
+                        <div className="max-h-40 overflow-y-auto space-y-0.5">
+                          {allUsers.map((u) => (
+                            <button
+                              key={u.id}
+                              type="button"
+                              onClick={() => switchUser(u.email)}
+                              className={`flex w-full items-center justify-between px-2 py-1 rounded-md text-[11px] transition cursor-pointer ${
+                                u.email.toLowerCase() === currentUser.email.toLowerCase()
+                                  ? 'bg-slate-100 font-semibold text-slate-900'
+                                  : 'text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 truncate">
+                                <span className={`h-2 w-2 rounded-full ${u.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                                <span className="truncate">{u.name}</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 shrink-0 font-mono">
+                                {u.role_title.split(' ')[0]}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="max-h-40 overflow-y-auto space-y-0.5">
-                        {allUsers.map((u) => (
-                          <button
-                            key={u.id}
-                            type="button"
-                            onClick={() => switchUser(u.email)}
-                            className={`flex w-full items-center justify-between px-2 py-1 rounded-md text-[11px] transition cursor-pointer ${
-                              u.email.toLowerCase() === currentUser.email.toLowerCase()
-                                ? 'bg-slate-100 font-semibold text-slate-900'
-                                : 'text-slate-600 hover:bg-slate-50'
-                            }`}
-                          >
-                            <div className="flex items-center gap-1.5 truncate">
-                              <span className={`h-2 w-2 rounded-full ${u.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                              <span className="truncate">{u.name}</span>
-                            </div>
-                            <span className="text-[10px] text-slate-400 shrink-0 font-mono">
-                              {u.role_title.split(' ')[0]}
-                            </span>
-                          </button>
-                        ))}
+                    ) : (
+                      <div className="pt-1.5 border-t border-slate-100 px-2.5 py-2 bg-slate-50 rounded-lg text-[11px] text-slate-500 flex items-center gap-1.5">
+                        <Lock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <span>Profile switching restricted to Administrator accounts.</span>
                       </div>
-                    </div>
+                    )}
 
                     <div className="pt-1.5 mt-1 border-t border-slate-100">
                       <button
