@@ -124,7 +124,6 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/production',
     '/dashboard',
     '/profile',
-    '/reports',
     '/reports/pending-orders',
     '/reports/wip',
     '/reports/production',
