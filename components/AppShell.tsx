@@ -85,8 +85,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    document.cookie = 'demo_user=; path=/; max-age=0';
-    await createClient().auth.signOut();
+    if (typeof document !== 'undefined') {
+      document.cookie = 'demo_user=; path=/; max-age=0; SameSite=Lax';
+    }
+    try {
+      await createClient().auth.signOut();
+    } catch {}
+    toast.info('Signed out successfully');
     router.replace('/login');
     router.refresh();
   };
