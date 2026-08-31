@@ -4,12 +4,16 @@ import DataReport from '@/components/reports/DataReport';
 import RouteAccessGuard from '@/components/common/RouteAccessGuard';
 
 const columns = [
-  ['diversion_date', 'Date'],
-  ['source_wo_id', 'Source WO ID'],
-  ['target_wo_id', 'Target WO ID'],
-  ['diverted_qty', 'Qty'],
-  ['process_route_id', 'Route ID'],
+  ['diversion_date', 'Diversion Date'],
+  ['source_wo_no', 'Source WO #'],
+  ['source_customer', 'Source Customer'],
+  ['target_wo_no', 'Target WO #'],
+  ['target_customer', 'Target Customer'],
+  ['diverted_qty', 'Diverted Qty (Mtrs)'],
+  ['multiple', 'Multiple'],
+  ['route_code', 'Process Route'],
   ['reason', 'Reason'],
+  ['approved_by', 'Approved By'],
 ].map(([key, label]) => ({ key, label }));
 
 export default function Page() {

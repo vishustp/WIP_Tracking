@@ -59,7 +59,19 @@ export function createMockClient() {
       } else if (table === 'rolling_plans') {
         data = [...mockStore.rollingPlans];
       } else if (table === 'diversion_plans') {
-        data = [...mockStore.diversions];
+        data = mockStore.diversions.map(d => {
+          const sWo = mockStore.workOrders.find(w => w.id === d.source_wo_id || w.work_order_no === d.source_wo_id);
+          const tWo = mockStore.workOrders.find(w => w.id === d.target_wo_id || w.work_order_no === d.target_wo_id);
+          const r = mockStore.routes.find(rt => rt.id === d.process_route_id || rt.route_code === d.process_route_id);
+          return {
+            ...d,
+            source_wo_no: sWo?.work_order_no || d.source_wo_id,
+            target_wo_no: tWo?.work_order_no || d.target_wo_id,
+            source_customer: sWo?.customer_name || '—',
+            target_customer: tWo?.customer_name || '—',
+            route_code: r?.route_code || d.process_route_id,
+          };
+        });
       } else if (table === 'production_logs') {
         data = [...mockStore.productionLogs];
       } else if (table === 'users' || table === 'user_profiles') {
@@ -326,6 +338,16 @@ export function createMockClient() {
           mockStore.saveToStorage();
           return { error: null };
         }
+        case 'get_unplanned_qty': {
+          const woId = args.p_wo_id || args.work_order_id;
+          const val = mockStore.getUnplannedQty(woId);
+          return { data: val, error: null };
+        }
+        case 'get_work_order_wip_summary': {
+          const woId = args.p_wo_id || args.work_order_id;
+          const summary = mockStore.getWorkOrderWipSummary(woId);
+          return { data: summary, error: null };
+        }
         case 'create_diversion': {
           const activeUser = mockStore.getCurrentUser();
           const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
@@ -335,11 +357,15 @@ export function createMockClient() {
           if (args.p_source === args.p_target) {
             return { error: new Error('Source and target WO cannot be same') };
           }
-          const avail = mockStore.getUnplannedQty(args.p_source);
+          const sourceWip = mockStore.getWorkOrderWipSummary(args.p_source);
+          const avail = sourceWip?.balanceWipMtr ?? mockStore.getUnplannedQty(args.p_source);
           if (Number(args.p_qty) > avail) {
-            return { error: new Error('Diversion exceeds available source quantity') };
+            return { error: new Error(`Diversion (${args.p_qty} Mtrs) exceeds available source WIP balance (${avail} Mtrs)`) };
           }
           const id = `div-${Date.now()}`;
+          const sourceWo = mockStore.workOrders.find(w => w.id === args.p_source || w.work_order_no === args.p_source);
+          const targetWo = mockStore.workOrders.find(w => w.id === args.p_target || w.work_order_no === args.p_target);
+
           mockStore.diversions.push({
             id,
             source_wo_id: args.p_source,
@@ -352,13 +378,19 @@ export function createMockClient() {
             diversion_date: args.p_date || new Date().toISOString().slice(0, 10),
             created_at: new Date().toISOString(),
           });
+
+          // Update Target WO status to Scheduled or In Progress if it was Pending Plan
+          if (targetWo && targetWo.status === 'Pending Plan') {
+            targetWo.status = 'Scheduled';
+          }
+
           mockStore.addAuditLog({
             user_email: activeUser.email,
             user_name: activeUser.name,
             action_type: 'DIVERSION_CREATE',
             entity_type: 'Pipe Diversion',
             entity_id: id,
-            details: `Created diversion: ${args.p_qty} Mtrs from source to target WO (Approved by: ${activeUser.name})`,
+            details: `Created diversion: ${args.p_qty} Mtrs diverted from ${sourceWo?.work_order_no || args.p_source} to ${targetWo?.work_order_no || args.p_target} (Approved by: ${activeUser.name})`,
           });
           mockStore.saveToStorage();
           return { data: id, error: null };

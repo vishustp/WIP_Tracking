@@ -895,6 +895,17 @@ class MockStore {
       const rollingHtcOk = rollingLogs.reduce((sum, pl) => sum + Number(pl.htc_ok || 0), 0);
       const rollingNet = Math.max(0, rollingGross - rollingRej);
 
+      // Deduct diverted out for source WO, add diverted in for target WO
+      const divertedOut = this.diversions
+        .filter(dp => dp.source_wo_id === wo.id || (wo.work_order_no && dp.source_wo_id === wo.work_order_no))
+        .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
+
+      const divertedIn = this.diversions
+        .filter(dp => (dp.target_wo_id === wo.id || (wo.work_order_no && dp.target_wo_id === wo.work_order_no)) && dp.process_route_id === route.id)
+        .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
+
+      const effectiveRollingHtcOk = Math.max(0, rollingHtcOk - divertedOut);
+
       const hhtLogs = getStageLogs('HOLLOW_HEAT_TREATMENT');
       const hhtInput = hhtLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
       const hhtGross = hhtLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
@@ -922,13 +933,10 @@ class MockStore {
       const plannedRolling = this.rollingPlans
         .filter(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id)
         .reduce((sum, rp) => sum + Number(rp.planned_qty || 0), 0);
-      const divertedIn = this.diversions
-        .filter(dp => dp.target_wo_id === wo.id && dp.process_route_id === route.id)
-        .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
-      const plannedRollingTotal = plannedRolling + divertedIn;
+      const plannedRollingTotal = Math.max(0, plannedRolling - divertedOut) + divertedIn;
 
       const orderTotalMtr = Number(wo.balance_qty_mtr ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0);
-      const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross);
+      const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross - divertedOut);
 
       // Build work center WIP availability across all stages in this route
       const routeStagesList = this.routeStages
@@ -952,17 +960,17 @@ class MockStore {
           wcGrossMtr = rollingGross;
           wcRejMtr = rollingRej;
           wcNetMtr = rollingNet;
-          wcHtcOkMtr = rollingHtcOk;
+          wcHtcOkMtr = effectiveRollingHtcOk;
         } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
-          wcAvailMtr = Math.max(0, rollingHtcOk - hhtInput);
+          wcAvailMtr = Math.max(0, effectiveRollingHtcOk - hhtInput);
           wcGrossMtr = hhtGross;
           wcRejMtr = hhtRej;
           wcNetMtr = hhtNet;
         } else if (sc === 'DRAW') {
           wcAvailMtr =
             route.route_code.toUpperCase() === 'ALLOY_CDS'
-              ? Math.max(0, hhtNet - drawInput)
-              : Math.max(0, rollingHtcOk - drawInput);
+              ? Math.max(0, hhtNet + divertedIn - drawInput)
+              : Math.max(0, effectiveRollingHtcOk + divertedIn - drawInput);
           wcGrossMtr = drawGross;
           wcRejMtr = drawRej;
           wcNetMtr = drawNet;
@@ -974,9 +982,9 @@ class MockStore {
         } else if (sc === 'FINISHING') {
           let availFromPreceding = 0;
           if (route.route_code.toUpperCase() === 'HFS') {
-            availFromPreceding = Math.max(0, rollingHtcOk * multiple - finishingInput);
+            availFromPreceding = Math.max(0, (effectiveRollingHtcOk + divertedIn) * multiple - finishingInput);
           } else if (route.route_code.toUpperCase() === 'ALLOY_HFS') {
-            availFromPreceding = Math.max(0, hhtNet * multiple - finishingInput);
+            availFromPreceding = Math.max(0, (hhtNet + divertedIn) * multiple - finishingInput);
           } else {
             availFromPreceding = Math.max(0, htNet * multiple - finishingInput);
           }
@@ -1485,6 +1493,16 @@ class MockStore {
       const rollingHtcOk = rollingLogs.reduce((sum, pl) => sum + Number(pl.htc_ok || 0), 0);
       const rollingNet = Math.max(0, rollingGross - rollingRej);
 
+      const divertedOut = this.diversions
+        .filter(dp => dp.source_wo_id === wo.id || (wo.work_order_no && dp.source_wo_id === wo.work_order_no))
+        .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
+
+      const divertedIn = this.diversions
+        .filter(dp => (dp.target_wo_id === wo.id || (wo.work_order_no && dp.target_wo_id === wo.work_order_no)) && dp.process_route_id === route.id)
+        .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
+
+      const effectiveRollingHtcOk = Math.max(0, rollingHtcOk - divertedOut);
+
       const hhtLogs = getStageLogs('HOLLOW_HEAT_TREATMENT');
       const hhtInput = hhtLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
       const hhtGross = hhtLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
@@ -1512,13 +1530,10 @@ class MockStore {
       const plannedRolling = this.rollingPlans
         .filter(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id)
         .reduce((sum, rp) => sum + Number(rp.planned_qty || 0), 0);
-      const divertedIn = this.diversions
-        .filter(dp => dp.target_wo_id === wo.id && dp.process_route_id === route.id)
-        .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
-      const plannedRollingTotal = plannedRolling + divertedIn;
+      const plannedRollingTotal = Math.max(0, plannedRolling - divertedOut) + divertedIn;
 
       const orderTotalMtr = Number(wo.balance_qty_mtr ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0);
-      const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross);
+      const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross - divertedOut);
 
       const routeStagesList = this.routeStages
         .filter(rs => rs.route_id === route.id)
@@ -1542,9 +1557,9 @@ class MockStore {
           wcGrossMtr = rollingGross;
           wcRejMtr = rollingRej;
           wcNetMtr = rollingNet;
-          wcHtcOkMtr = rollingHtcOk;
+          wcHtcOkMtr = effectiveRollingHtcOk;
         } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
-          wcAvailMtr = Math.max(0, rollingHtcOk - hhtInput);
+          wcAvailMtr = Math.max(0, effectiveRollingHtcOk - hhtInput);
           wcInputMtr = hhtInput;
           wcGrossMtr = hhtGross;
           wcRejMtr = hhtRej;
@@ -1552,8 +1567,8 @@ class MockStore {
         } else if (sc === 'DRAW') {
           wcAvailMtr =
             route.route_code.toUpperCase() === 'ALLOY_CDS'
-              ? Math.max(0, hhtNet - drawInput)
-              : Math.max(0, rollingHtcOk - drawInput);
+              ? Math.max(0, hhtNet + divertedIn - drawInput)
+              : Math.max(0, effectiveRollingHtcOk + divertedIn - drawInput);
           wcInputMtr = drawInput;
           wcGrossMtr = drawGross;
           wcRejMtr = drawRej;
@@ -1567,9 +1582,9 @@ class MockStore {
         } else if (sc === 'FINISHING') {
           let availFromPreceding = 0;
           if (route.route_code.toUpperCase() === 'HFS') {
-            availFromPreceding = Math.max(0, rollingHtcOk * multiple - finishingInput);
+            availFromPreceding = Math.max(0, (effectiveRollingHtcOk + divertedIn) * multiple - finishingInput);
           } else if (route.route_code.toUpperCase() === 'ALLOY_HFS') {
-            availFromPreceding = Math.max(0, hhtNet * multiple - finishingInput);
+            availFromPreceding = Math.max(0, (hhtNet + divertedIn) * multiple - finishingInput);
           } else {
             availFromPreceding = Math.max(0, htNet * multiple - finishingInput);
           }
@@ -1630,6 +1645,95 @@ class MockStore {
     }
 
     return list;
+  }
+
+  getWorkOrderWipSummary(woId: string) {
+    const wo = this.workOrders.find(w => w.id === woId || w.work_order_no === woId);
+    if (!wo) return null;
+
+    const od = Number(wo.size_od ?? wo.od ?? 0);
+    const wt = Number(wo.size_wt ?? wo.wt ?? wo.wl ?? 0);
+    const l1 = Number(wo.l1 || 0);
+    const l2 = Number(wo.l2 || 0);
+    const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 6.0;
+
+    const orderedMtr = Number(wo.ordered_qty_mtr ?? (wo.uom === 'Mtrs' ? wo.ordered_qty : 0) ?? wo.ordered_qty ?? 0);
+    const orderedPcs = Number(wo.ordered_qty_pcs ?? (avgLength > 0 ? orderedMtr / avgLength : 0));
+    const orderedMt = Number(wo.ordered_qty_mt ?? (od > wt ? (od - wt) * wt * 0.0246615 * 0.001 * orderedMtr : 0));
+
+    // Rolling production logs
+    const rollingLogs = this.productionLogs.filter(
+      pl => (pl.work_order_id === wo.id || pl.work_order_id === wo.work_order_no) &&
+            (pl.stage_id === 'stage-1' || pl.stage_id === 'ROLLING' || pl.stage_id === (this.stages.find(s => s.stage_code === 'ROLLING')?.id))
+    );
+    const rollingGrossMtr = rollingLogs.reduce((sum, pl) => sum + Number(pl.output_qty || 0), 0);
+    const rollingRejMtr = rollingLogs.reduce((sum, pl) => sum + Number(pl.rejection_qty || 0), 0);
+    const rollingHtcOkMtr = rollingLogs.reduce((sum, pl) => sum + Number(pl.htc_ok || 0), 0);
+    const rollingNetMtr = Math.max(0, rollingGrossMtr - rollingRejMtr);
+
+    // Diversions
+    const divertedOutMtr = this.diversions
+      .filter(d => d.source_wo_id === wo.id || d.source_wo_id === wo.work_order_no)
+      .reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0);
+
+    const divertedInMtr = this.diversions
+      .filter(d => d.target_wo_id === wo.id || d.target_wo_id === wo.work_order_no)
+      .reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0);
+
+    // Downstream consumption
+    const downstreamLogs = this.productionLogs.filter(
+      pl => (pl.work_order_id === wo.id || pl.work_order_id === wo.work_order_no) &&
+            pl.stage_id !== 'stage-1' && pl.stage_id !== 'ROLLING' && pl.stage_id !== (this.stages.find(s => s.stage_code === 'ROLLING')?.id)
+    );
+    const downstreamInputMtr = downstreamLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
+
+    // Physical WIP available at Rolling / Mother stage
+    const physicalAvailableMtr = Math.max(0, (rollingHtcOkMtr > 0 ? rollingHtcOkMtr : rollingNetMtr) - divertedOutMtr - downstreamInputMtr);
+
+    // Planned / Unplanned
+    const plannedRollingMtr = this.rollingPlans
+      .filter(rp => rp.work_order_id === wo.id || rp.work_order_id === wo.work_order_no)
+      .reduce((sum, rp) => sum + Number(rp.planned_qty || 0), 0);
+
+    const unplannedOrderMtr = Math.max(0, orderedMtr - plannedRollingMtr - divertedOutMtr);
+
+    // Balance WIP available for diversion
+    const balanceWipMtr = physicalAvailableMtr > 0 ? physicalAvailableMtr : unplannedOrderMtr;
+    const balanceWipPcs = avgLength > 0 ? Number((balanceWipMtr / avgLength).toFixed(2)) : 0;
+    const balanceWipMt = od > wt ? Number(((od - wt) * wt * 0.0246615 * 0.001 * balanceWipMtr).toFixed(3)) : 0;
+
+    // Station breakdown
+    const stageBreakdown = this.getRouteStageWIP().filter(w => w.work_order_id === wo.id || w.work_order_no === wo.work_order_no);
+
+    return {
+      wo,
+      od,
+      wt,
+      l1,
+      l2,
+      avgLength,
+      orderedMtr,
+      orderedPcs: Number(orderedPcs.toFixed(2)),
+      orderedMt: Number(orderedMt.toFixed(3)),
+      rollingGrossMtr,
+      rollingRejMtr,
+      rollingNetMtr,
+      rollingHtcOkMtr,
+      rollingHtcOkPcs: avgLength > 0 ? Number((rollingHtcOkMtr / avgLength).toFixed(2)) : 0,
+      rollingHtcOkMt: od > wt ? Number(((od - wt) * wt * 0.0246615 * 0.001 * rollingHtcOkMtr).toFixed(3)) : 0,
+      divertedOutMtr,
+      divertedOutPcs: avgLength > 0 ? Number((divertedOutMtr / avgLength).toFixed(2)) : 0,
+      divertedOutMt: od > wt ? Number(((od - wt) * wt * 0.0246615 * 0.001 * divertedOutMtr).toFixed(3)) : 0,
+      divertedInMtr,
+      divertedInPcs: avgLength > 0 ? Number((divertedInMtr / avgLength).toFixed(2)) : 0,
+      divertedInMt: od > wt ? Number(((od - wt) * wt * 0.0246615 * 0.001 * divertedInMtr).toFixed(3)) : 0,
+      physicalAvailableMtr,
+      unplannedOrderMtr,
+      balanceWipMtr,
+      balanceWipPcs,
+      balanceWipMt,
+      stageBreakdown,
+    };
   }
 
   getWorkOrderSummary() {
