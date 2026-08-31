@@ -511,36 +511,150 @@ export function createMockClient() {
           mockStore.saveToStorage();
           return { error: null };
         }
+        case 'import_work_orders_batch': {
+          const activeUser = mockStore.getCurrentUser();
+          const rows = Array.isArray(args.p_rows) ? args.p_rows : [];
+          let importedCount = 0;
+          for (const r of rows) {
+            const woNo = String(r.work_order_no || r.p_work_order_no || '').trim();
+            if (!woNo) continue;
+            const existingIdx = mockStore.workOrders.findIndex(w => w.work_order_no === woNo);
+            const odVal = Number(r.od ?? r.p_od ?? r.size_od ?? 0) || null;
+            const wtVal = Number(r.wl ?? r.wt ?? r.p_wl ?? r.p_wt ?? r.size_wt ?? 0) || null;
+            const l1Val = Number(r.l1 ?? r.p_l1 ?? 6.0) || 6.0;
+            const l2Val = Number(r.l2 ?? r.p_l2 ?? 6.5) || 6.5;
+            const ordPcs = Number(r.ordered_qty_pcs ?? r.p_ordered_qty_pcs ?? 0);
+            const ordMtr = Number(r.ordered_qty_mtr ?? r.p_ordered_qty_mtr ?? 0);
+            const ordMt = Number(r.ordered_qty_mt ?? r.p_ordered_qty_mt ?? 0);
+            const balPcs = Number(r.balance_qty_pcs ?? r.p_balance_qty_pcs ?? 0);
+            const balMtr = Number(r.balance_qty_mtr ?? r.p_balance_qty_mtr ?? r.balance_to_make_mtr ?? 0);
+            const balMt = Number(r.balance_qty_mt ?? r.p_balance_qty_mt ?? 0);
+            const spec = r.specification || r.p_specification || r.grade || null;
+            const cust = r.customer_name || r.p_customer_name || null;
+            const targetDate = r.target_date || r.p_target_date || null;
+
+            const baseOrderQty = ordMtr > 0 ? ordMtr : ordPcs > 0 ? ordPcs : 100;
+
+            const woData: any = {
+              work_order_no: woNo,
+              customer_name: cust,
+              specification: spec,
+              grade: spec,
+              size_od: odVal,
+              size_wt: wtVal,
+              od: odVal,
+              wt: wtVal,
+              wl: wtVal,
+              l1: l1Val,
+              l2: l2Val,
+              ordered_qty: baseOrderQty,
+              ordered_qty_pcs: ordPcs,
+              ordered_qty_mtr: ordMtr,
+              ordered_qty_mt: ordMt,
+              balance_qty_pcs: balPcs,
+              balance_qty_mtr: balMtr > 0 ? balMtr : ordMtr,
+              balance_qty_mt: balMt,
+              uom: ordMtr > 0 ? 'Mtrs' : ordPcs > 0 ? 'Pcs' : 'Mtrs',
+              target_date: targetDate,
+              status: r.current_status && r.current_status.toLowerCase() !== 'pending' ? r.current_status : 'Pending Plan',
+              updated_at: new Date().toISOString(),
+            };
+
+            if (existingIdx >= 0) {
+              mockStore.workOrders[existingIdx] = {
+                ...mockStore.workOrders[existingIdx],
+                ...woData,
+              };
+            } else {
+              mockStore.workOrders.unshift({
+                id: `wo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                created_at: new Date().toISOString(),
+                ...woData,
+              });
+            }
+            importedCount++;
+          }
+          mockStore.addAuditLog({
+            user_email: activeUser.email,
+            user_name: activeUser.name,
+            action_type: 'WORK_ORDER_IMPORT',
+            entity_type: 'Work Order',
+            details: `Imported batch of ${importedCount} work orders from Excel schedule.`,
+          });
+          mockStore.saveToStorage();
+          return { data: importedCount, error: null };
+        }
         case 'import_work_order': {
-          const wo: any = {
-            id: `wo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            work_order_no: args.p_work_order_no,
-            customer_name: args.p_customer_name || null,
-            specification: args.p_specification || null,
-            grade: args.p_specification || null,
-            size_od: args.p_od,
-            size_wt: args.p_wl,
-            od: args.p_od,
-            wt: args.p_wl,
-            wl: args.p_wl,
-            l1: args.p_l1,
-            l2: args.p_l2,
-            ordered_qty: args.p_ordered_qty_mtr || args.p_ordered_qty_pcs || 100,
-            ordered_qty_pcs: args.p_ordered_qty_pcs || 0,
-            ordered_qty_mtr: args.p_ordered_qty_mtr || 0,
-            ordered_qty_mt: args.p_ordered_qty_mt || 0,
-            balance_qty_pcs: args.p_balance_qty_pcs || 0,
-            balance_qty_mtr: args.p_balance_qty_mtr || 0,
-            balance_qty_mt: args.p_balance_qty_mt || 0,
-            uom: 'Mtrs',
-            target_date: null,
+          const activeUser = mockStore.getCurrentUser();
+          const woNo = String(args.p_work_order_no || '').trim();
+          const existingIdx = mockStore.workOrders.findIndex(w => w.work_order_no === woNo);
+          const odVal = Number(args.p_od) || null;
+          const wtVal = Number(args.p_wl ?? args.p_wt) || null;
+          const l1Val = Number(args.p_l1) || 6.0;
+          const l2Val = Number(args.p_l2) || 6.5;
+          const ordPcs = Number(args.p_ordered_qty_pcs || 0);
+          const ordMtr = Number(args.p_ordered_qty_mtr || 0);
+          const ordMt = Number(args.p_ordered_qty_mt || 0);
+          const balPcs = Number(args.p_balance_qty_pcs || 0);
+          const balMtr = Number(args.p_balance_qty_mtr || 0);
+          const balMt = Number(args.p_balance_qty_mt || 0);
+          const spec = args.p_specification || null;
+          const cust = args.p_customer_name || null;
+          const targetDate = args.p_target_date || null;
+
+          const baseOrderQty = ordMtr > 0 ? ordMtr : ordPcs > 0 ? ordPcs : 100;
+
+          const woData: any = {
+            work_order_no: woNo,
+            customer_name: cust,
+            specification: spec,
+            grade: spec,
+            size_od: odVal,
+            size_wt: wtVal,
+            od: odVal,
+            wt: wtVal,
+            wl: wtVal,
+            l1: l1Val,
+            l2: l2Val,
+            ordered_qty: baseOrderQty,
+            ordered_qty_pcs: ordPcs,
+            ordered_qty_mtr: ordMtr,
+            ordered_qty_mt: ordMt,
+            balance_qty_pcs: balPcs,
+            balance_qty_mtr: balMtr > 0 ? balMtr : ordMtr,
+            balance_qty_mt: balMt,
+            uom: ordMtr > 0 ? 'Mtrs' : ordPcs > 0 ? 'Pcs' : 'Mtrs',
+            target_date: targetDate,
             status: 'Pending Plan',
-            created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           };
-          mockStore.workOrders.push(wo);
+
+          let targetId = '';
+          if (existingIdx >= 0) {
+            targetId = mockStore.workOrders[existingIdx].id;
+            mockStore.workOrders[existingIdx] = {
+              ...mockStore.workOrders[existingIdx],
+              ...woData,
+            };
+          } else {
+            targetId = `wo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+            mockStore.workOrders.unshift({
+              id: targetId,
+              created_at: new Date().toISOString(),
+              ...woData,
+            });
+          }
+
+          mockStore.addAuditLog({
+            user_email: activeUser.email,
+            user_name: activeUser.name,
+            action_type: 'WORK_ORDER_IMPORT',
+            entity_type: 'Work Order',
+            entity_id: woNo,
+            details: `Imported work order ${woNo} (${cust || 'Unknown'}) - Size: ${odVal}x${wtVal}mm, Qty: ${baseOrderQty} MTR`,
+          });
           mockStore.saveToStorage();
-          return { data: wo.id, error: null };
+          return { data: targetId, error: null };
         }
         default:
           return { data: null, error: null };

@@ -541,7 +541,7 @@ export default function RollingPlanForm() {
         );
 
       if (!error && data) {
-        planCreatedNo = data;
+        planCreatedNo = String(data);
         success = true;
       }
     } catch {}
@@ -561,7 +561,7 @@ export default function RollingPlanForm() {
         p_multiple: mult,
       });
       if (mockResult?.data) {
-        planCreatedNo = mockResult.data;
+        planCreatedNo = String(mockResult.data);
         success = true;
       }
     }
