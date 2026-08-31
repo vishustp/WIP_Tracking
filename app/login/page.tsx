@@ -85,7 +85,7 @@ export default function LoginPage() {
         throw new Error('This user account has been disabled by the Administrator.');
       }
 
-      const roleMap: Record<string, { role: UserRole; group: UserGroup; roleTitle: string }> = {
+      const roleMap: Record<string, { role: string; group: UserGroup; roleTitle: string }> = {
         Admin: { role: 'admin', group: 'admin', roleTitle: 'PPC Administrator' },
         PPC: { role: 'manager', group: 'super_user', roleTitle: 'Plant Operations Head' },
         Production: { role: 'rolling_incharge', group: 'user', roleTitle: 'Production Operator' },
