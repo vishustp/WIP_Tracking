@@ -220,7 +220,17 @@ export function createMockClient() {
           if (args.p_planned_qty > avail) {
             return { data: null, error: new Error(`Planned MTR ${args.p_planned_qty} exceeds unplanned MTR ${avail}`) };
           }
-          const planNo = `RP-${new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)}`;
+         const iso = new Date().toISOString();
+
+const timestamp = iso
+  .replaceAll("-", "")
+  .replaceAll(":", "")
+  .replaceAll("T", "")
+  .replaceAll("Z", "")
+  .replaceAll(".", "")
+  .slice(0, 14);
+
+const planNo = `RP-${timestamp}`;
           mockStore.rollingPlans.push({
             id: `rp-${Date.now()}`,
             plan_no: planNo,
