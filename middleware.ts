@@ -9,13 +9,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 1. Check for demo session cookie (fallback & demo mode)
-  const demoUser = request.cookies.get('demo_user')?.value;
-  if (demoUser) {
-    return NextResponse.next();
-  }
-
-  // 2. Check for Supabase session if configured
+  // When Supabase is configured, ONLY a real Supabase Auth session may
+  // authorize access to protected routes. Never let the demo_user cookie
+  // bypass authentication, otherwise the browser reaches Supabase as `anon`
+  // and RLS correctly rejects protected table access.
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -30,7 +27,9 @@ export async function middleware(request: NextRequest) {
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
             response = NextResponse.next({ request });
-            cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
+            );
           },
         },
       });
@@ -38,8 +37,13 @@ export async function middleware(request: NextRequest) {
       const { data } = await supabase.auth.getUser();
       if (data?.user) return response;
     } catch {
-      // ignore
+      // Fall through to /login. Do not use demo authentication when Supabase
+      // is configured.
     }
+  } else {
+    // Demo/local mode only.
+    const demoUser = request.cookies.get('demo_user')?.value;
+    if (demoUser) return NextResponse.next();
   }
 
   const loginUrl = new URL('/login', request.url);
