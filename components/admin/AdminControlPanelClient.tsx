@@ -99,6 +99,7 @@ export default function AdminControlPanelClient() {
   const [stages, setStages] = useState<MockStage[]>([]);
   const [auditLogs, setAuditLogs] = useState<MockAuditLog[]>([]);
   const [currentUser, setCurrentUser] = useState<MockUserProfile | null>(null);
+  const [loading, setLoading] = useState(false);
 
   // User search & filters
   const [userSearch, setUserSearch] = useState('');
