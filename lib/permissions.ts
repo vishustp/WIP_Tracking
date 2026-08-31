@@ -118,8 +118,8 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
   }
 
   // User Group (Shop Floor Operator):
-  // ONLY Production Entry, Reports, Dashboard, and their own User Profile are visible.
-  // PPC forms (Work Orders, Excel Import, Rolling Planning, Diversion Planning) and Admin/Settings are strictly HIDDEN.
+  // ONLY Production Entry, Standard Shop Floor Reports (Pending Orders, WIP, Production), Dashboard, and User Profile are visible.
+  // PPC planning forms (Work Orders, Excel Import, Rolling Planning, Diversion Planning), PPC Reports (Rolling Plans, Diversions), and Admin/Settings are strictly RESTRICTED to PPC / Admin group.
   const allowedUserRoutes = [
     '/production',
     '/dashboard',
@@ -128,8 +128,6 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/reports/pending-orders',
     '/reports/wip',
     '/reports/production',
-    '/reports/rolling-plans',
-    '/reports/diversions',
   ];
 
   return allowedUserRoutes.some((allowed) => href === allowed || href.startsWith(allowed + '/'));
