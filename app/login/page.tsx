@@ -78,26 +78,42 @@ export default function LoginPage() {
         return;
       }
 
-      // 1. Set cookie for SSR & middleware compatibility
-      if (typeof document !== 'undefined') {
-        document.cookie = `demo_user=${encodeURIComponent(matchedUser.email)}; path=/; max-age=864000; SameSite=Lax`;
-      }
+      const supabaseConfigured = Boolean(
+        process.env.NEXT_PUBLIC_SUPABASE_URL &&
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
 
-      // 2. Set active user in mockStore and localStorage
-      mockStore.setCurrentUser(matchedUser.email);
-      setActiveUser(matchedUser);
-
-      // 3. Optional Supabase client signIn attempt if backend is connected
-      try {
+      if (supabaseConfigured) {
+        // Production mode: Supabase Auth is the real authentication source.
+        // Do not create a demo cookie or continue after an auth error.
         const s = createClient();
-        await s.auth.signInWithPassword({
+        const { data: authData, error: authError } = await s.auth.signInWithPassword({
           email: matchedUser.email,
           password: 'password123',
         });
-      } catch {
-        // demo fallback
+
+        if (authError || !authData.session) {
+          toast.error(
+            authError?.message ||
+            'Supabase authentication failed. Verify that this email exists in Supabase Auth and uses the configured password.'
+          );
+          setLoading(false);
+          return;
+        }
+
+        // Remove any stale demo cookie left by an older build.
+        if (typeof document !== 'undefined') {
+          document.cookie = 'demo_user=; path=/; max-age=0; SameSite=Lax';
+        }
+      } else {
+        // Local/demo mode: keep the existing mock profile behavior.
+        if (typeof document !== 'undefined') {
+          document.cookie = `demo_user=${encodeURIComponent(matchedUser.email)}; path=/; max-age=864000; SameSite=Lax`;
+        }
+        mockStore.setCurrentUser(matchedUser.email);
       }
 
+      setActiveUser(matchedUser);
       toast.success(`Logged in as ${matchedUser.name} (${matchedUser.role_title || matchedUser.group})`);
       router.push('/dashboard');
     } catch (err: any) {
