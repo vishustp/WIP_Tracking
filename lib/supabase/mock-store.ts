@@ -956,7 +956,7 @@ class MockStore {
         let wcHtcOkMtr = 0;
 
         if (sc === 'ROLLING') {
-          wcAvailMtr = Math.max(0, plannedRollingTotal * 1.1 - rollingInput);
+          wcAvailMtr = Math.max(0, effectiveRollingHtcOk - hhtInput - drawInput - (route.route_code.toUpperCase() === 'HFS' ? finishingInput : 0));
           wcGrossMtr = rollingGross;
           wcRejMtr = rollingRej;
           wcNetMtr = rollingNet;
@@ -1552,7 +1552,10 @@ class MockStore {
         let wcHtcOkMtr = 0;
 
         if (sc === 'ROLLING') {
-          wcAvailMtr = Math.max(0, plannedRollingTotal * 1.1 - rollingInput);
+          // Rolling is the mother stage: it takes ingots/billets and produces mother hollows.
+          // Physical WIP in Rolling stage = Rolled output that has not yet been dispatched to downstream stages.
+          // Before rolling production occurs, current WIP at Rolling stage is 0 (it is only "Balance to Make / Plan").
+          wcAvailMtr = Math.max(0, effectiveRollingHtcOk - hhtInput - drawInput - (route.route_code.toUpperCase() === 'HFS' ? finishingInput : 0));
           wcInputMtr = rollingInput;
           wcGrossMtr = rollingGross;
           wcRejMtr = rollingRej;

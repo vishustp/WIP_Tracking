@@ -1,34 +1,42 @@
 // hooks/useQueue.ts
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { StageCode, Row, emptyRow } from "@/types"; // you'll define these
+import { StageCode, Row, emptyRow } from "@/types";
 
 export function useQueue(stage: StageCode) {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const supabase = createClient();
+  const stageRef = useRef(stage);
+  stageRef.current = stage;
 
-  const loadQueue = useCallback(async () => {
+  const loadQueue = useCallback(async (targetStage?: StageCode) => {
+    const s = targetStage || stageRef.current;
     setLoading(true);
     setError(null);
-    const { data, error: rpcError } = await supabase.rpc(
-      "get_production_entry_queue",
-      { p_stage_code: stage }
-    );
-    if (rpcError) {
-      setRows([]);
-      
-      setError(rpcError.message);
-    } else {
-      setRows((data ?? []).map((r: any) => emptyRow(r)));
+    try {
+      const supabase = createClient();
+      const { data, error: rpcError } = await supabase.rpc(
+        "get_production_entry_queue",
+        { p_stage_code: s }
+      );
+      if (rpcError) {
+        setRows([]);
+        setError(rpcError.message);
+      } else {
+        setRows((data ?? []).map((r: any) => emptyRow(r)));
+      }
+    } catch (err: any) {
+      setError(err?.message || "Failed to load queue");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [stage, supabase]);
+  }, []);
 
   useEffect(() => {
-    loadQueue();
-  }, [loadQueue]);
+    loadQueue(stage);
+  }, [stage, loadQueue]);
 
-  return { rows, setRows, loading, error, reload: loadQueue };
+  return { rows, setRows, loading, error, reload: () => loadQueue(stage) };
 }
+

@@ -109,7 +109,7 @@ export default function ProductionEntryGrid() {
 
   useEffect(() => {
     loadFactoryWip();
-  }, [loadFactoryWip, rows]);
+  }, [loadFactoryWip, stage]);
 
   const routes = useMemo(
     () => Array.from(new Set(entries.map((e) => e.route_code))).sort(),
