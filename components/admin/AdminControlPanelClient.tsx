@@ -13,6 +13,7 @@ import {
   Save, Filter, Lock, HardHat, Factory, UserCheck, ShieldAlert
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
 
 export const GROUP_OPTIONS: { value: UserGroup; label: string; description: string; badge: string; iconColor: string }[] = [
   {
@@ -57,6 +58,35 @@ const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color:
   { value: 'qa_inspector', label: 'Quality & NDT Inspector', department: 'Quality Assurance & Metallurgical Lab', color: 'bg-emerald-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'QA' },
   { value: 'auditor', label: 'Internal Auditor', department: 'Management & Audit Team', color: 'bg-slate-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'AUDIT' },
 ];
+
+function mapAppUserToMockUser(row: any): MockUserProfile {
+  const roleMap: Record<string, { role: UserRole; group: UserGroup; title: string }> = {
+    Admin: { role: 'admin', group: 'admin', title: 'PPC Administrator' },
+    PPC: { role: 'manager', group: 'super_user', title: 'Plant Operations Head' },
+    Production: { role: 'rolling_incharge', group: 'user', title: 'Production Operator' },
+    QA: { role: 'qa_inspector', group: 'user', title: 'Quality & NDT Inspector' },
+    Viewer: { role: 'auditor', group: 'user', title: 'Viewer' },
+  };
+  const mapped = roleMap[row.role] || roleMap.Viewer;
+  const wc = row.work_center || 'ALL';
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.employee_name,
+    employee_id: row.employee_code,
+    group: mapped.group,
+    role: mapped.role,
+    role_title: mapped.title,
+    department: row.department || '',
+    shift: '',
+    work_center: wc,
+    allowed_stages: wc === 'ALL' ? ['ROLLING','HOLLOW_HEAT_TREATMENT','DRAW','HEAT_TREATMENT','FINISHING'] : [wc],
+    default_stage: wc === 'ALL' ? 'ROLLING' : wc,
+    phone: row.phone || '',
+    active: row.active,
+    created_at: row.created_at,
+  };
+}
 
 export default function AdminControlPanelClient() {
   const { user } = usePermissions();
@@ -105,13 +135,25 @@ export default function AdminControlPanelClient() {
   // Reset confirmation modal
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
 
-  const loadData = () => {
+  const loadData = async () => {
     mockStore.loadFromStorage();
-    setUsers([...mockStore.users]);
     setRoutes([...mockStore.routes]);
     setStages([...mockStore.stages]);
     setAuditLogs([...mockStore.auditLogs]);
     setCurrentUser(mockStore.getCurrentUser());
+
+    try {
+      const response = await fetch('/api/admin/users', { cache: 'no-store' });
+      if (response.ok) {
+        const json = await response.json();
+        setUsers((json.users || []).map(mapAppUserToMockUser));
+      } else {
+        const json = await response.json().catch(() => ({}));
+        toast.error(json.error || 'Unable to load WIP users');
+      }
+    } catch {
+      toast.error('Unable to connect to the user management service');
+    }
 
     if (typeof window !== 'undefined') {
       const savedTol = localStorage.getItem('seamless_wip_capping_tol');
@@ -124,7 +166,7 @@ export default function AdminControlPanelClient() {
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   // Filtered users
@@ -169,7 +211,7 @@ export default function AdminControlPanelClient() {
       shift: 'Shift A (06:00 - 14:00)',
       default_stage: 'ROLLING',
       phone: '+91 ',
-      pin: '1234',
+      pin: 'TempPass123!',
     });
     setIsUserModalOpen(true);
   };
@@ -188,13 +230,13 @@ export default function AdminControlPanelClient() {
       shift: user.shift,
       default_stage: user.default_stage || 'ROLLING',
       phone: user.phone || '',
-      pin: user.pin || '1234',
+      pin: '',
     });
     setIsUserModalOpen(true);
   };
 
-  // Handle save user (create or edit)
-  const handleSaveUser = (e: React.FormEvent) => {
+  // Handle save user through the real Supabase-backed Admin API.
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canAdminister) {
       toast.error('Permission denied: Only Admin Group accounts can create or modify users.');
@@ -206,84 +248,102 @@ export default function AdminControlPanelClient() {
     }
 
     const roleConfig = ROLE_OPTIONS.find(r => r.value === formData.role);
-    const roleTitle = roleConfig?.label || 'User';
-    const avatarColor = roleConfig?.color || 'bg-slate-600 text-white';
+    const apiRole =
+      formData.group === 'admin' ? 'Admin' :
+      formData.group === 'super_user' ? 'PPC' :
+      formData.role === 'qa_inspector' ? 'QA' :
+      formData.role === 'auditor' ? 'Viewer' : 'Production';
 
-    // Compute allowed stages based on group and work center
-    let allowedStages: string[] = [];
-    if (formData.group === 'admin' || formData.group === 'super_user' || formData.work_center === 'ALL') {
-      allowedStages = ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'];
+    const payload: any = {
+      employee_name: formData.name.trim(),
+      email: formData.email.trim().toLowerCase(),
+      employee_code: formData.employee_id.trim() || `EMP-${Date.now().toString().slice(-6)}`,
+      role: apiRole,
+      work_center: formData.work_center,
+      department: formData.department,
+      phone: formData.phone.trim(),
+      active: true,
+    };
+
+    if (!editingUser) {
+      if (!formData.pin.trim()) {
+        toast.error('Set an initial password of at least 8 characters.');
+        return;
+      }
+      payload.password = formData.pin.trim();
     } else {
-      const wcOpt = WORK_CENTER_OPTIONS.find(w => w.value === formData.work_center);
-      allowedStages = wcOpt ? wcOpt.stages : [formData.work_center];
+      payload.id = editingUser.id;
+      if (formData.pin.trim()) payload.password = formData.pin.trim();
+      payload.active = editingUser.active;
     }
 
-    if (editingUser) {
-      mockStore.updateUserProfile(editingUser.id, {
-        name: formData.name.trim(),
-        group: formData.group,
-        work_center: formData.work_center,
-        allowed_stages: allowedStages,
-        role: formData.role,
-        role_title: roleTitle,
-        department: formData.department,
-        shift: formData.shift,
-        default_stage: formData.default_stage,
-        phone: formData.phone.trim(),
-        pin: formData.pin.trim() || '1234',
-        avatar_color: avatarColor,
+    setLoading(true);
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: editingUser ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
-      toast.success(`User ${formData.name} updated (${formData.group.toUpperCase()})`);
-    } else {
-      mockStore.createUser({
-        name: formData.name.trim(),
-        email: formData.email.trim().toLowerCase(),
-        employee_id: formData.employee_id.trim() || `EMP-${Date.now().toString().slice(-4)}`,
-        group: formData.group,
-        work_center: formData.work_center,
-        allowed_stages: allowedStages,
-        role: formData.role,
-        role_title: roleTitle,
-        department: formData.department,
-        shift: formData.shift,
-        default_stage: formData.default_stage,
-        phone: formData.phone.trim(),
-        avatar_color: avatarColor,
-        active: true,
-        pin: formData.pin.trim() || '1234',
-      });
-      toast.success(`New ${formData.group.toUpperCase()} account created for ${formData.name}`);
-    }
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json.error || 'Unable to save user');
 
-    setIsUserModalOpen(false);
-    loadData();
+      setIsUserModalOpen(false);
+      await loadData();
+      toast.success(editingUser ? `User ${formData.name} updated` : `User ${formData.name} created`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Unable to save user');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Handle toggle user active status
-  const handleToggleUser = (userId: string) => {
+  // Disable/enable an account without deleting historical WIP data.
+  const handleToggleUser = async (userId: string) => {
     if (!canAdminister) {
       toast.error('Permission denied: Only Admin Group accounts can enable or disable users.');
       return;
     }
-    const active = mockStore.toggleUserStatus(userId);
-    loadData();
-    toast.info(`User status changed to ${active ? 'Active' : 'Disabled'}`);
+    const target = users.find(u => u.id === userId);
+    if (!target) return;
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: userId, active: !target.active }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json.error || 'Unable to change user status');
+      await loadData();
+      toast.success(`${target.name} is now ${!target.active ? 'Active' : 'Disabled'}`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Unable to change user status');
+    }
   };
 
-  // Handle delete user
-  const handleDeleteUser = (user: MockUserProfile) => {
+  // Deactivate instead of deleting the Auth identity. This preserves audit/history.
+  const handleDeleteUser = async (user: MockUserProfile) => {
     if (!canAdminister) {
-      toast.error('Permission denied: Only Admin Group accounts can delete users.');
+      toast.error('Permission denied: Only Admin Group accounts can deactivate users.');
       return;
     }
     if (user.email === 'admin@seamlesswip.com') {
-      toast.error('Primary Administrator account cannot be removed.');
+      toast.error('Primary Administrator account cannot be deactivated.');
       return;
     }
-    if (confirm(`Are you sure you want to delete user ${user.name}?`)) {
-      mockStore.deleteUser(user.id);
-      loadData();
-      toast.success(`User ${user.name} removed from system`);
+    if (!confirm(`Deactivate user ${user.name}? Historical WIP records will be preserved.`)) return;
+
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: user.id, active: false }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json.error || 'Unable to deactivate user');
+      await loadData();
+      toast.success(`User ${user.name} deactivated`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Unable to deactivate user');
     }
   };
 
