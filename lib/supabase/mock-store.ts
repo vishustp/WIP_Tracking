@@ -742,6 +742,40 @@ class MockStore {
     this.saveToStorage();
   }
 
+  clearWorkOrders() {
+    this.workOrders = [];
+    this.rollingPlans = [];
+    this.productionLogs = [];
+    this.diversions = [];
+    this.addAuditLog({
+      user_email: this.activeUserEmail,
+      user_name: this.getCurrentUser().name,
+      action_type: 'SYSTEM_RESET',
+      entity_type: 'Work Orders',
+      details: 'Cleared all work orders and associated production records.',
+    });
+    this.saveToStorage();
+  }
+
+  deleteWorkOrder(woId: string) {
+    const target = this.workOrders.find(w => w.id === woId || w.work_order_no === woId);
+    if (!target) return false;
+    this.workOrders = this.workOrders.filter(w => w.id !== target.id);
+    this.rollingPlans = this.rollingPlans.filter(p => p.work_order_id !== target.id);
+    this.productionLogs = this.productionLogs.filter(p => p.work_order_id !== target.id);
+    this.diversions = this.diversions.filter(d => d.source_wo_id !== target.id && d.target_wo_id !== target.id);
+    this.addAuditLog({
+      user_email: this.activeUserEmail,
+      user_name: this.getCurrentUser().name,
+      action_type: 'SYSTEM_RESET',
+      entity_type: 'Work Order',
+      entity_id: target.work_order_no,
+      details: `Deleted work order ${target.work_order_no}`,
+    });
+    this.saveToStorage();
+    return true;
+  }
+
   resetAllData() {
     this.workOrders = [...DEFAULT_WORK_ORDERS];
     this.rollingPlans = [...DEFAULT_ROLLING_PLANS];

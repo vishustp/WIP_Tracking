@@ -181,8 +181,12 @@ export function createMockClient() {
           return { error: null };
         },
         async delete() {
-          if (table === 'rolling_plans') {
+          if (table === 'work_orders') {
+            mockStore.workOrders = mockStore.workOrders.filter(w => !filters.every(f => f(w)));
+          } else if (table === 'rolling_plans') {
             mockStore.rollingPlans = mockStore.rollingPlans.filter(p => !filters.every(f => f(p)));
+          } else if (table === 'diversion_plans') {
+            mockStore.diversions = mockStore.diversions.filter(d => !filters.every(f => f(d)));
           } else if (table === 'production_logs') {
             mockStore.productionLogs = mockStore.productionLogs.filter(p => !filters.every(f => f(p)));
           }

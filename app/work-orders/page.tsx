@@ -27,6 +27,8 @@ import {
   Search,
   Filter,
   Lock,
+  Trash2,
+  RotateCcw,
 } from 'lucide-react';
 
 type WO = {
@@ -221,6 +223,53 @@ export default function WorkOrders() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Work Orders');
     XLSX.writeFile(wb, 'work-orders.xlsx');
+  };
+
+  const handleDeleteWO = async (wo: WO) => {
+    if (!canCreateWO) {
+      toast.error('Permission denied: Only Admin or Super User can delete work orders');
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete work order ${wo.work_order_no}?`)) return;
+
+    try {
+      const s = createClient();
+      await s.from('work_orders').delete().eq('id', wo.id);
+    } catch {}
+
+    mockStore.deleteWorkOrder(wo.id);
+    toast.success(`Work Order ${wo.work_order_no} deleted`);
+    load();
+  };
+
+  const handleClearAll = async () => {
+    if (!canCreateWO) {
+      toast.error('Permission denied: Only Admin or Super User can clear work orders');
+      return;
+    }
+    if (!confirm('Are you sure you want to remove ALL sample/imported work orders and start fresh with an empty directory?')) return;
+
+    try {
+      const s = createClient();
+      for (const r of rows) {
+        await s.from('work_orders').delete().eq('id', r.id);
+      }
+    } catch {}
+
+    mockStore.clearWorkOrders();
+    toast.success('All work orders cleared. You can now import your real Excel file.');
+    load();
+  };
+
+  const handleResetDemo = () => {
+    if (!canCreateWO) {
+      toast.error('Permission denied: Only Admin or Super User can reset sample data');
+      return;
+    }
+    if (!confirm('Reset directory back to standard demonstration work orders?')) return;
+    mockStore.resetAllData();
+    toast.success('Reset to standard demo work orders.');
+    load();
   };
 
   const getSLA = (targetDate?: string | null) => {
@@ -449,8 +498,26 @@ export default function WorkOrders() {
               <option>Diverted</option>
             </Select>
           </div>
-          <div className="flex items-center gap-2">
-            <Button type="button" onClick={exportExcel} className="border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs h-9">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleClearAll}
+              disabled={!canCreateWO}
+              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50/50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 hover:text-rose-900 transition-colors disabled:opacity-50"
+              title="Clear all sample/mock work orders to start fresh"
+            >
+              <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Clear Directory
+            </button>
+            <button
+              type="button"
+              onClick={handleResetDemo}
+              disabled={!canCreateWO}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              title="Reset to standard demonstration work orders"
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-slate-500" /> Reset Demo
+            </button>
+            <Button type="button" onClick={exportExcel} className="border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs h-8">
               Export Excel
             </Button>
           </div>
@@ -569,6 +636,16 @@ export default function WorkOrders() {
                             >
                               <GitFork className="h-3 w-3 text-purple-600" /> Divert
                             </Link>
+                            {canCreateWO && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteWO(w)}
+                                className="inline-flex items-center rounded border border-slate-200 bg-white p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors"
+                                title={`Delete ${w.work_order_no}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
