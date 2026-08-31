@@ -112,7 +112,7 @@ export default function WorkOrders() {
         s.from('vw_route_stage_wip').select('*'),
       ]);
 
-      if (data && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         setRows(data as WO[]);
       } else {
         const localWos = status ? mockStore.workOrders.filter(w => w.status === status) : mockStore.workOrders;

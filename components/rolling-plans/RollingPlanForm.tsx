@@ -300,18 +300,22 @@ export default function RollingPlanForm() {
         .eq('active', true)
         .order('route_code'),
     ]).then(([a, b]) => {
-      let woList = (a?.data ?? []) as WO[];
-      if (a?.error || !woList.length) {
-        woList = mockStore.workOrders as any;
+      let woList: WO[] = [];
+      if (!a?.error && Array.isArray(a?.data)) {
+        woList = a.data as WO[];
+      } else {
+        woList = (mockStore.workOrders || []) as any;
       }
       setWos(woList);
       if (initialWoId) {
         void lookup(initialWoId);
       }
 
-      let routeList = (b?.data ?? []) as Route[];
-      if (b?.error || !routeList.length) {
-        routeList = mockStore.routes.filter(r => r.active) as any;
+      let routeList: Route[] = [];
+      if (!b?.error && Array.isArray(b?.data) && b.data.length > 0) {
+        routeList = b.data as Route[];
+      } else {
+        routeList = (mockStore.routes.filter(r => r.active) || []) as any;
       }
       setRoutes(routeList);
 
@@ -319,9 +323,9 @@ export default function RollingPlanForm() {
         setRoute(routeList[0].id);
       }
     }).catch(() => {
-      const woList = mockStore.workOrders as any;
+      const woList = (mockStore.workOrders || []) as any;
       setWos(woList);
-      const routeList = mockStore.routes.filter(r => r.active) as any;
+      const routeList = (mockStore.routes.filter(r => r.active) || []) as any;
       setRoutes(routeList);
       if (routeList.length > 0 && !route) {
         setRoute(routeList[0].id);
