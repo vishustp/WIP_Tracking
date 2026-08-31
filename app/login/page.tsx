@@ -39,7 +39,7 @@ export default function LoginPage() {
   const [activeUser, setActiveUser] = useState<MockUserProfile | null>(null);
   const [selectedRoleEmail, setSelectedRoleEmail] = useState<string>('admin@seamlesswip.com');
   const [inputEmail, setInputEmail] = useState('admin@seamlesswip.com');
-  const [inputPin, setInputPin] = useState('1234');
+  const [inputPin, setInputPin] = useState('password123');
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'groups' | 'custom'>('groups');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<'ALL' | UserGroup>('ALL');
@@ -51,73 +51,85 @@ export default function LoginPage() {
     setActiveUser(current);
   }, []);
 
-  const executeLogin = async (targetEmail: string, pinProvided?: string) => {
+  const executeLogin = async (targetEmail: string, passwordProvided?: string) => {
     setLoading(true);
     try {
-      mockStore.loadFromStorage();
-      const matchedUser = mockStore.users.find(
-        (u) => u.email.toLowerCase() === targetEmail.toLowerCase()
-      );
+      const email = targetEmail.trim().toLowerCase();
+      const password = passwordProvided || 'password123';
+      const s = createClient();
 
-      if (!matchedUser) {
-        toast.error(`No user profile found for email: ${targetEmail}`);
-        setLoading(false);
-        return;
+      // Real Supabase authentication is the source of truth.
+      const { data: authData, error: authError } = await s.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError || !authData.user) {
+        throw new Error(authError?.message || 'Invalid email or password');
       }
 
-      if (!matchedUser.active) {
-        toast.error('This user account has been disabled by the Administrator.');
-        setLoading(false);
-        return;
+      // Load the application directory record after authentication.
+      const { data: appUser, error: userError } = await s
+        .from('app_users')
+        .select('*')
+        .eq('auth_user_id', authData.user.id)
+        .single();
+
+      if (userError || !appUser) {
+        await s.auth.signOut();
+        throw new Error('Your account is authenticated but is not registered in the WIP user directory. Ask an Administrator to activate your account.');
       }
 
-      // Check PIN if provided from custom form
-      if (pinProvided && matchedUser.pin && matchedUser.pin !== pinProvided && pinProvided !== '1234') {
-        toast.error(`Invalid Security PIN for ${matchedUser.name}. Default is 1234.`);
-        setLoading(false);
-        return;
+      if (!appUser.active) {
+        await s.auth.signOut();
+        throw new Error('This user account has been disabled by the Administrator.');
       }
 
-      const supabaseConfigured = Boolean(
-        process.env.NEXT_PUBLIC_SUPABASE_URL &&
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      );
+      const roleMap: Record<string, { role: UserRole; group: UserGroup; roleTitle: string }> = {
+        Admin: { role: 'admin', group: 'admin', roleTitle: 'PPC Administrator' },
+        PPC: { role: 'manager', group: 'super_user', roleTitle: 'Plant Operations Head' },
+        Production: { role: 'rolling_incharge', group: 'user', roleTitle: 'Production Operator' },
+        QA: { role: 'qa_inspector', group: 'user', roleTitle: 'Quality & NDT Inspector' },
+        Viewer: { role: 'auditor', group: 'user', roleTitle: 'Viewer' },
+      };
+      const mapped = roleMap[appUser.role] || roleMap.Viewer;
 
-      if (supabaseConfigured) {
-        // Production mode: Supabase Auth is the real authentication source.
-        // Do not create a demo cookie or continue after an auth error.
-        const s = createClient();
-        const { data: authData, error: authError } = await s.auth.signInWithPassword({
-          email: matchedUser.email,
-          password: 'password123',
-        });
+      const wc = String(appUser.work_center || 'ALL');
+      const allStages = ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'];
+      const allowedStages = wc === 'ALL' ? allStages : [wc];
 
-        if (authError || !authData.session) {
-          toast.error(
-            authError?.message ||
-            'Supabase authentication failed. Verify that this email exists in Supabase Auth and uses the configured password.'
-          );
-          setLoading(false);
-          return;
-        }
+      const profile: MockUserProfile = {
+        id: appUser.auth_user_id,
+        email: appUser.email,
+        name: appUser.employee_name,
+        employee_id: appUser.employee_code,
+        group: mapped.group,
+        role: mapped.role,
+        role_title: mapped.roleTitle,
+        department: appUser.department || '',
+        shift: '',
+        work_center: wc,
+        allowed_stages: allowedStages,
+        default_stage: wc === 'ALL' ? 'ROLLING' : wc,
+        phone: appUser.phone || '',
+        active: true,
+        created_at: appUser.created_at,
+      };
 
-        // Remove any stale demo cookie left by an older build.
-        if (typeof document !== 'undefined') {
-          document.cookie = 'demo_user=; path=/; max-age=0; SameSite=Lax';
-        }
-      } else {
-        // Local/demo mode: keep the existing mock profile behavior.
-        if (typeof document !== 'undefined') {
-          document.cookie = `demo_user=${encodeURIComponent(matchedUser.email)}; path=/; max-age=864000; SameSite=Lax`;
-        }
-        mockStore.setCurrentUser(matchedUser.email);
+      // Keep the existing client-side permission hooks compatible while
+      // Supabase Auth remains the real authentication authority.
+      mockStore.setCurrentUser(profile.email);
+      setActiveUser(profile);
+
+      if (typeof document !== 'undefined') {
+        document.cookie = 'demo_user=; path=/; max-age=0; SameSite=Lax';
       }
 
-      setActiveUser(matchedUser);
-      toast.success(`Logged in as ${matchedUser.name} (${matchedUser.role_title || matchedUser.group})`);
+      toast.success(`Logged in as ${profile.name} (${profile.role_title})`);
       router.push('/dashboard');
     } catch (err: any) {
-      toast.error(err?.message || 'Login encountered an issue');
+      toast.error(err?.message || 'Login failed');
+    } finally {
       setLoading(false);
     }
   };
@@ -130,8 +142,8 @@ export default function LoginPage() {
   const handleCardSelect = (userItem: MockUserProfile) => {
     setSelectedRoleEmail(userItem.email);
     setInputEmail(userItem.email);
-    setInputPin(userItem.pin || '1234');
-    executeLogin(userItem.email);
+    setInputPin('password123');
+    executeLogin(userItem.email, 'password123');
   };
 
   const filteredUsers = users.filter(u => {
@@ -396,7 +408,7 @@ export default function LoginPage() {
             <div className="text-center space-y-1">
               <h2 className="text-lg font-bold text-white">Manual Sign In</h2>
               <p className="text-xs text-slate-400">
-                Enter your registered corporate email and 4-digit security PIN
+                Enter your registered corporate email and password
               </p>
             </div>
 
@@ -414,19 +426,19 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label className="font-semibold text-slate-300">Security PIN / Password</label>
+                <label className="font-semibold text-slate-300">Password</label>
                 <Input
                   type="password"
-                  placeholder="1234"
-                  maxLength={10}
+                  placeholder="Password"
+                  autoComplete="current-password"
                   value={inputPin}
                   onChange={(e) => setInputPin(e.target.value)}
                   className="mt-1.5 bg-slate-900 border-slate-800 text-white placeholder:text-slate-600 focus:border-blue-500 font-mono tracking-wider"
                   required
                 />
                 <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
-                  <span>Default PIN: 1234</span>
-                  <span>(Admin: 1234, Manager: 5566)</span>
+                  <span>Use the password assigned by your Administrator.</span>
+                  <span>Minimum 8 characters</span>
                 </div>
               </div>
 
