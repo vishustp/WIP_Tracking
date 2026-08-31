@@ -1,15 +1,18 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createMockClient } from './mock-client';
+import { wrapWithResilience } from './client';
 
 export async function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+  const mockClient = createMockClient();
+
   if (url && key && url.startsWith('http')) {
     try {
       const cookieStore = await cookies();
-      return createServerClient(url, key, {
+      const real = createServerClient(url, key, {
         cookies: {
           getAll() {
             return cookieStore.getAll();
@@ -22,12 +25,12 @@ export async function createClient() {
             } catch {}
           },
         },
-      }) as any;
+      });
+      return wrapWithResilience(real, mockClient) as any;
     } catch {
-      return createMockClient() as any;
+      return mockClient as any;
     }
   }
 
-  return createMockClient() as any;
+  return mockClient as any;
 }
-

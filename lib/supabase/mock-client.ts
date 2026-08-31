@@ -80,6 +80,28 @@ export function createMockClient() {
           filters.push(item => item[field] === val);
           return builder;
         },
+        neq(field: string, val: any) {
+          filters.push(item => item[field] !== val);
+          return builder;
+        },
+        in(field: string, values: any[]) {
+          filters.push(item => Array.isArray(values) && values.includes(item[field]));
+          return builder;
+        },
+        is(field: string, val: any) {
+          filters.push(item => item[field] === val);
+          return builder;
+        },
+        like(field: string, pattern: string) {
+          const clean = pattern.replace(/%/g, '');
+          filters.push(item => String(item[field] || '').includes(clean));
+          return builder;
+        },
+        ilike(field: string, pattern: string) {
+          const clean = pattern.replace(/%/g, '').toLowerCase();
+          filters.push(item => String(item[field] || '').toLowerCase().includes(clean));
+          return builder;
+        },
         gt(field: string, val: any) {
           filters.push(item => (Number(item[field]) || 0) > Number(val));
           return builder;
@@ -107,6 +129,10 @@ export function createMockClient() {
         },
         limit(n: number) {
           limitCount = n;
+          return builder;
+        },
+        range(from: number, to: number) {
+          limitCount = Math.max(0, to - from + 1);
           return builder;
         },
         async maybeSingle() {
