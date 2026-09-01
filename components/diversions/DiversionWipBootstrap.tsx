@@ -19,6 +19,7 @@ type WorkOrderRow = {
   id: string; work_order_no: string; customer_name: string | null; grade: string | null;
   specification?: string | null; size_od: number | null; size_wt: number | null;
   l1: number | null; l2: number | null; ordered_qty: number; uom: 'Pcs' | 'Mtrs';
+  target_date: string | null; status: string; created_at: string; updated_at: string;
 };
 
 /** Loads the real route-stage WIP before DiversionForm is rendered. */
@@ -34,7 +35,7 @@ export default function DiversionWipBootstrap({ children }: { children: ReactNod
           'work_order_id,work_order_no,customer_name,route_id,route_code,route_name,stage_id,stage_code,stage_name,sequence_no,incoming_qty,diversion_in,diversion_out,production_qty,rejection_qty,current_wip,current_wip_pcs,current_wip_mt,net_output_mtr,net_output_pcs,net_output_mt,size_od,size_wt,l1,l2'
         ).order('work_order_no').order('sequence_no'),
         supabase.from('work_orders').select(
-          'id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,uom'
+          'id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,uom,target_date,status,created_at,updated_at'
         ),
       ]);
 
@@ -70,7 +71,7 @@ export default function DiversionWipBootstrap({ children }: { children: ReactNod
         const divertedIn = stageRows.reduce((s, r) => s + Number(r.diversion_in ?? 0), 0);
 
         return {
-          wo: { ...wo, status: 'WIP', target_date: null, balance_qty_pcs: orderedPcs, balance_qty_mtr: orderedMtr, balance_qty_mt: orderedMtr * mtPerMtr },
+          wo: { ...wo, target_date: wo.target_date ?? null, balance_qty_pcs: orderedPcs, balance_qty_mtr: orderedMtr, balance_qty_mt: orderedMtr * mtPerMtr },
           od, wt, l1: Number(wo.l1 ?? first.l1 ?? 0), l2: Number(wo.l2 ?? first.l2 ?? 0), avgLength,
           orderedMtr, orderedPcs, orderedMt: orderedMtr * mtPerMtr,
           rollingGrossMtr: Number(rolling?.production_qty ?? 0), rollingRejMtr: Number(rolling?.rejection_qty ?? 0),
