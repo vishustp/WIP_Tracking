@@ -912,16 +912,33 @@ class MockStore {
       const rollingHtcOk = rollingLogs.reduce((sum, pl) => sum + Number(pl.htc_ok || 0), 0);
       const rollingNet = Math.max(0, rollingGross - rollingRej);
 
-      // Deduct diverted out for source WO, add diverted in for target WO
-      const divertedOut = this.diversions
+      // Stage-scoped diversions
+      const getDivertedOutAt = (sc: string) =>
+        this.diversions
+          .filter(
+            dp =>
+              (dp.source_wo_id === wo.id || (wo.work_order_no && dp.source_wo_id === wo.work_order_no)) &&
+              (dp.work_center === sc || (!dp.work_center && sc === 'ROLLING'))
+          )
+          .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
+
+      const getDivertedInAt = (sc: string) =>
+        this.diversions
+          .filter(
+            dp =>
+              (dp.target_wo_id === wo.id || (wo.work_order_no && dp.target_wo_id === wo.work_order_no)) &&
+              dp.process_route_id === route.id &&
+              (dp.work_center === sc || (!dp.work_center && sc === 'ROLLING'))
+          )
+          .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
+
+      const totalDivertedOut = this.diversions
         .filter(dp => dp.source_wo_id === wo.id || (wo.work_order_no && dp.source_wo_id === wo.work_order_no))
         .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
 
-      const divertedIn = this.diversions
-        .filter(dp => (dp.target_wo_id === wo.id || (wo.work_order_no && dp.target_wo_id === wo.work_order_no)) && dp.process_route_id === route.id)
-        .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
-
-      const effectiveRollingHtcOk = Math.max(0, rollingHtcOk - divertedOut);
+      const rollingDivertedOut = getDivertedOutAt('ROLLING');
+      const rollingDivertedIn = getDivertedInAt('ROLLING');
+      const effectiveRollingHtcOk = Math.max(0, rollingHtcOk - rollingDivertedOut + rollingDivertedIn);
 
       const hhtLogs = getStageLogs('HOLLOW_HEAT_TREATMENT');
       const hhtInput = hhtLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
@@ -950,10 +967,10 @@ class MockStore {
       const plannedRolling = this.rollingPlans
         .filter(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id)
         .reduce((sum, rp) => sum + Number(rp.planned_qty || 0), 0);
-      const plannedRollingTotal = Math.max(0, plannedRolling - divertedOut) + divertedIn;
+      const plannedRollingTotal = Math.max(0, plannedRolling - rollingDivertedOut) + rollingDivertedIn;
 
       const orderTotalMtr = Number(wo.balance_qty_mtr ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0);
-      const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross - divertedOut);
+      const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross - totalDivertedOut);
 
       // Build work center WIP availability across all stages in this route
       const routeStagesList = this.routeStages
@@ -979,31 +996,39 @@ class MockStore {
           wcNetMtr = rollingNet;
           wcHtcOkMtr = effectiveRollingHtcOk;
         } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
-          wcAvailMtr = Math.max(0, effectiveRollingHtcOk - hhtInput);
+          const hhtDivIn = getDivertedInAt('HOLLOW_HEAT_TREATMENT');
+          const hhtDivOut = getDivertedOutAt('HOLLOW_HEAT_TREATMENT');
+          wcAvailMtr = Math.max(0, effectiveRollingHtcOk + hhtDivIn - hhtDivOut - hhtInput);
           wcGrossMtr = hhtGross;
           wcRejMtr = hhtRej;
           wcNetMtr = hhtNet;
         } else if (sc === 'DRAW') {
+          const drawDivIn = getDivertedInAt('DRAW');
+          const drawDivOut = getDivertedOutAt('DRAW');
           wcAvailMtr =
             route.route_code.toUpperCase() === 'ALLOY_CDS'
-              ? Math.max(0, hhtNet + divertedIn - drawInput)
-              : Math.max(0, effectiveRollingHtcOk + divertedIn - drawInput);
+              ? Math.max(0, hhtNet + drawDivIn - drawDivOut - drawInput)
+              : Math.max(0, effectiveRollingHtcOk + drawDivIn - drawDivOut - drawInput);
           wcGrossMtr = drawGross;
           wcRejMtr = drawRej;
           wcNetMtr = drawNet;
         } else if (sc === 'HEAT_TREATMENT') {
-          wcAvailMtr = Math.max(0, drawNet - htInput);
+          const htDivIn = getDivertedInAt('HEAT_TREATMENT');
+          const htDivOut = getDivertedOutAt('HEAT_TREATMENT');
+          wcAvailMtr = Math.max(0, drawNet + htDivIn - htDivOut - htInput);
           wcGrossMtr = htGross;
           wcRejMtr = htRej;
           wcNetMtr = htNet;
         } else if (sc === 'FINISHING') {
+          const finishDivIn = getDivertedInAt('FINISHING');
+          const finishDivOut = getDivertedOutAt('FINISHING');
           let availFromPreceding = 0;
           if (route.route_code.toUpperCase() === 'HFS') {
-            availFromPreceding = Math.max(0, (effectiveRollingHtcOk + divertedIn) * multiple - finishingInput);
+            availFromPreceding = Math.max(0, effectiveRollingHtcOk * multiple - finishingInput + finishDivIn - finishDivOut);
           } else if (route.route_code.toUpperCase() === 'ALLOY_HFS') {
-            availFromPreceding = Math.max(0, (hhtNet + divertedIn) * multiple - finishingInput);
+            availFromPreceding = Math.max(0, hhtNet * multiple - finishingInput + finishDivIn - finishDivOut);
           } else {
-            availFromPreceding = Math.max(0, htNet * multiple - finishingInput);
+            availFromPreceding = Math.max(0, htNet * multiple - finishingInput + finishDivIn - finishDivOut);
           }
           wcAvailMtr = Math.min(availFromPreceding, orderBalanceMtr);
           wcGrossMtr = finishingGross;
@@ -1598,15 +1623,33 @@ class MockStore {
       const rollingHtcOk = rollingLogs.reduce((sum, pl) => sum + Number(pl.htc_ok || 0), 0);
       const rollingNet = Math.max(0, rollingGross - rollingRej);
 
-      const divertedOut = this.diversions
+      // Stage-scoped diversions
+      const getDivertedOutAt = (sc: string) =>
+        this.diversions
+          .filter(
+            dp =>
+              (dp.source_wo_id === wo.id || (wo.work_order_no && dp.source_wo_id === wo.work_order_no)) &&
+              (dp.work_center === sc || (!dp.work_center && sc === 'ROLLING'))
+          )
+          .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
+
+      const getDivertedInAt = (sc: string) =>
+        this.diversions
+          .filter(
+            dp =>
+              (dp.target_wo_id === wo.id || (wo.work_order_no && dp.target_wo_id === wo.work_order_no)) &&
+              dp.process_route_id === route.id &&
+              (dp.work_center === sc || (!dp.work_center && sc === 'ROLLING'))
+          )
+          .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
+
+      const totalDivertedOut = this.diversions
         .filter(dp => dp.source_wo_id === wo.id || (wo.work_order_no && dp.source_wo_id === wo.work_order_no))
         .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
 
-      const divertedIn = this.diversions
-        .filter(dp => (dp.target_wo_id === wo.id || (wo.work_order_no && dp.target_wo_id === wo.work_order_no)) && dp.process_route_id === route.id)
-        .reduce((sum, dp) => sum + Number(dp.diverted_qty || 0), 0);
-
-      const effectiveRollingHtcOk = Math.max(0, rollingHtcOk - divertedOut);
+      const rollingDivertedOut = getDivertedOutAt('ROLLING');
+      const rollingDivertedIn = getDivertedInAt('ROLLING');
+      const effectiveRollingHtcOk = Math.max(0, rollingHtcOk - rollingDivertedOut + rollingDivertedIn);
 
       const hhtLogs = getStageLogs('HOLLOW_HEAT_TREATMENT');
       const hhtInput = hhtLogs.reduce((sum, pl) => sum + Number(pl.input_qty || 0), 0);
@@ -1635,10 +1678,10 @@ class MockStore {
       const plannedRolling = this.rollingPlans
         .filter(rp => rp.work_order_id === wo.id && rp.process_route_id === route.id)
         .reduce((sum, rp) => sum + Number(rp.planned_qty || 0), 0);
-      const plannedRollingTotal = Math.max(0, plannedRolling - divertedOut) + divertedIn;
+      const plannedRollingTotal = Math.max(0, plannedRolling - rollingDivertedOut) + rollingDivertedIn;
 
       const orderTotalMtr = Number(wo.balance_qty_mtr ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0);
-      const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross - divertedOut);
+      const orderBalanceMtr = Math.max(0, orderTotalMtr - finishingGross - totalDivertedOut);
 
       const routeStagesList = this.routeStages
         .filter(rs => rs.route_id === route.id)
@@ -1667,34 +1710,42 @@ class MockStore {
           wcNetMtr = rollingNet;
           wcHtcOkMtr = effectiveRollingHtcOk;
         } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
-          wcAvailMtr = Math.max(0, effectiveRollingHtcOk - hhtInput);
+          const hhtDivIn = getDivertedInAt('HOLLOW_HEAT_TREATMENT');
+          const hhtDivOut = getDivertedOutAt('HOLLOW_HEAT_TREATMENT');
+          wcAvailMtr = Math.max(0, effectiveRollingHtcOk + hhtDivIn - hhtDivOut - hhtInput);
           wcInputMtr = hhtInput;
           wcGrossMtr = hhtGross;
           wcRejMtr = hhtRej;
           wcNetMtr = hhtNet;
         } else if (sc === 'DRAW') {
+          const drawDivIn = getDivertedInAt('DRAW');
+          const drawDivOut = getDivertedOutAt('DRAW');
           wcAvailMtr =
             route.route_code.toUpperCase() === 'ALLOY_CDS'
-              ? Math.max(0, hhtNet + divertedIn - drawInput)
-              : Math.max(0, effectiveRollingHtcOk + divertedIn - drawInput);
+              ? Math.max(0, hhtNet + drawDivIn - drawDivOut - drawInput)
+              : Math.max(0, effectiveRollingHtcOk + drawDivIn - drawDivOut - drawInput);
           wcInputMtr = drawInput;
           wcGrossMtr = drawGross;
           wcRejMtr = drawRej;
           wcNetMtr = drawNet;
         } else if (sc === 'HEAT_TREATMENT') {
-          wcAvailMtr = Math.max(0, drawNet - htInput);
+          const htDivIn = getDivertedInAt('HEAT_TREATMENT');
+          const htDivOut = getDivertedOutAt('HEAT_TREATMENT');
+          wcAvailMtr = Math.max(0, drawNet + htDivIn - htDivOut - htInput);
           wcInputMtr = htInput;
           wcGrossMtr = htGross;
           wcRejMtr = htRej;
           wcNetMtr = htNet;
         } else if (sc === 'FINISHING') {
+          const finishDivIn = getDivertedInAt('FINISHING');
+          const finishDivOut = getDivertedOutAt('FINISHING');
           let availFromPreceding = 0;
           if (route.route_code.toUpperCase() === 'HFS') {
-            availFromPreceding = Math.max(0, (effectiveRollingHtcOk + divertedIn) * multiple - finishingInput);
+            availFromPreceding = Math.max(0, effectiveRollingHtcOk * multiple - finishingInput + finishDivIn - finishDivOut);
           } else if (route.route_code.toUpperCase() === 'ALLOY_HFS') {
-            availFromPreceding = Math.max(0, (hhtNet + divertedIn) * multiple - finishingInput);
+            availFromPreceding = Math.max(0, hhtNet * multiple - finishingInput + finishDivIn - finishDivOut);
           } else {
-            availFromPreceding = Math.max(0, htNet * multiple - finishingInput);
+            availFromPreceding = Math.max(0, htNet * multiple - finishingInput + finishDivIn - finishDivOut);
           }
           wcAvailMtr = Math.min(availFromPreceding, orderBalanceMtr);
           wcInputMtr = finishingInput;
