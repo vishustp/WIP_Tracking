@@ -319,16 +319,16 @@ export default function RollingPlanForm() {
       }
       setRoutes(routeList);
 
-      if (routeList.length > 0 && !route) {
-        setRoute(routeList[0].id);
+      if (routeList.length > 0) {
+        setRoute((prev) => prev || routeList[0].id);
       }
     }).catch(() => {
       const woList = (mockStore.workOrders || []) as any;
       setWos(woList);
       const routeList = (mockStore.routes.filter(r => r.active) || []) as any;
       setRoutes(routeList);
-      if (routeList.length > 0 && !route) {
-        setRoute(routeList[0].id);
+      if (routeList.length > 0) {
+        setRoute((prev) => prev || routeList[0].id);
       }
     });
   }, [initialWoId]);

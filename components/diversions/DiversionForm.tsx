@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { createMockClient } from '@/lib/supabase/mock-client';
 import { mockStore } from '@/lib/supabase/mock-store';
@@ -173,7 +173,7 @@ export default function DiversionForm() {
   const [editReason, setEditReason] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const s = createClient();
       const [woRes, routeRes] = await Promise.all([
@@ -193,18 +193,18 @@ export default function DiversionForm() {
       let routeList = (routeRes?.data ?? []) as Route[];
       if (routeRes?.error || !routeList.length) routeList = mockStore.routes.filter(r => r.active) as any;
       setRoutes(routeList);
-      if (routeList.length && !route) {
-        setRoute(routeList[0].id);
+      if (routeList.length) {
+        setRoute(prev => prev || routeList[0].id);
       }
     } catch {
       setWos(mockStore.workOrders as any);
       const rList = mockStore.routes.filter(r => r.active) as any;
       setRoutes(rList);
-      if (rList.length && !route) setRoute(rList[0].id);
+      if (rList.length) setRoute(prev => prev || rList[0].id);
     }
-  };
+  }, []);
 
-  const loadPlans = async () => {
+  const loadPlans = useCallback(async () => {
     setPlansLoading(true);
     try {
       const { data, error } = await createClient().rpc('get_diversion_plans', {
@@ -241,16 +241,15 @@ export default function DiversionForm() {
     } finally {
       setPlansLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
-    loadPlans();
-  }, []);
-
-  useEffect(() => {
-    loadPlans();
   }, [search, filterRoute, filterWorkCenter, fromDate, toDate]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    void loadPlans();
+  }, [loadPlans]);
 
   // Update Source WIP when source WO changes
   const handleSourceChange = async (id: string) => {

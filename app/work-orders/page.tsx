@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { mockStore } from '@/lib/supabase/mock-store';
 import { Button } from '@/components/ui/button';
@@ -100,7 +100,7 @@ export default function WorkOrders() {
     target_date: '',
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     mockStore.loadFromStorage();
     try {
@@ -148,11 +148,11 @@ export default function WorkOrders() {
       setWipMap(map);
     }
     setLoading(false);
-  };
+  }, [status]);
 
   useEffect(() => {
-    load();
-  }, [status]);
+    void load();
+  }, [load]);
 
   const filtered = useMemo(
     () =>
