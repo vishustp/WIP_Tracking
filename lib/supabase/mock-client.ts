@@ -63,6 +63,7 @@ export function createMockClient() {
           const sWo = mockStore.workOrders.find(w => w.id === d.source_wo_id || w.work_order_no === d.source_wo_id);
           const tWo = mockStore.workOrders.find(w => w.id === d.target_wo_id || w.work_order_no === d.target_wo_id);
           const r = mockStore.routes.find(rt => rt.id === d.process_route_id || rt.route_code === d.process_route_id);
+          const stg = mockStore.stages.find(s => s.stage_code === d.work_center || s.id === d.work_center);
           return {
             ...d,
             source_wo_no: sWo?.work_order_no || d.source_wo_id,
@@ -70,6 +71,8 @@ export function createMockClient() {
             source_customer: sWo?.customer_name || '—',
             target_customer: tWo?.customer_name || '—',
             route_code: r?.route_code || d.process_route_id,
+            work_center: d.work_center || 'ROLLING',
+            work_center_name: stg?.stage_name || (d.work_center ? d.work_center.replace(/_/g, ' ') : 'Rolling Mill'),
           };
         });
       } else if (table === 'production_logs') {
@@ -348,6 +351,18 @@ export function createMockClient() {
           const summary = mockStore.getWorkOrderWipSummary(woId);
           return { data: summary, error: null };
         }
+        case 'get_diversion_plans': {
+          const list = mockStore.getDiversionPlans({
+            search: args.p_search,
+            route_code: args.p_route_code,
+            work_center: args.p_work_center,
+            from_date: args.p_from_date,
+            to_date: args.p_to_date,
+            limit: args.p_limit,
+            offset: args.p_offset,
+          });
+          return { data: list, error: null };
+        }
         case 'create_diversion': {
           const activeUser = mockStore.getCurrentUser();
           const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
@@ -371,12 +386,14 @@ export function createMockClient() {
             source_wo_id: args.p_source,
             target_wo_id: args.p_target,
             diverted_qty: Number(args.p_qty),
+            work_center: args.p_work_center || 'ROLLING',
             process_route_id: args.p_route,
             multiple: Number(args.p_multiple || 1),
             reason: args.p_reason || '',
             approved_by: activeUser.name,
             diversion_date: args.p_date || new Date().toISOString().slice(0, 10),
             created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           });
 
           // Update Target WO status to Scheduled or In Progress if it was Pending Plan
@@ -390,10 +407,67 @@ export function createMockClient() {
             action_type: 'DIVERSION_CREATE',
             entity_type: 'Pipe Diversion',
             entity_id: id,
-            details: `Created diversion: ${args.p_qty} Mtrs diverted from ${sourceWo?.work_order_no || args.p_source} to ${targetWo?.work_order_no || args.p_target} (Approved by: ${activeUser.name})`,
+            details: `Created diversion: ${args.p_qty} Mtrs diverted from ${sourceWo?.work_order_no || args.p_source} to ${targetWo?.work_order_no || args.p_target} (Work Center: ${args.p_work_center || 'ROLLING'}, Approved by: ${activeUser.name})`,
           });
           mockStore.saveToStorage();
           return { data: id, error: null };
+        }
+        case 'update_diversion': {
+          const activeUser = mockStore.getCurrentUser();
+          const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
+          if (userGroup !== 'admin' && userGroup !== 'super_user') {
+            return { error: new Error(`Access Denied: Only Admin Group and Super User Group can modify diversions. Current user: ${activeUser.name}`) };
+          }
+          const divPlan = mockStore.diversions.find(d => d.id === args.p_diversion_id);
+          if (!divPlan) return { error: new Error('Diversion record not found') };
+
+          const sourceWip = mockStore.getWorkOrderWipSummary(divPlan.source_wo_id);
+          const currentAllocated = Number(divPlan.diverted_qty || 0);
+          const maxAvail = (sourceWip?.balanceWipMtr || 0) + currentAllocated;
+
+          if (Number(args.p_qty) > maxAvail && maxAvail > 0) {
+            return { error: new Error(`Updated diversion (${args.p_qty} Mtrs) exceeds available source WIP (${maxAvail} Mtrs)`) };
+          }
+
+          divPlan.diverted_qty = Number(args.p_qty);
+          if (args.p_work_center) divPlan.work_center = args.p_work_center;
+          if (args.p_route) divPlan.process_route_id = args.p_route;
+          if (args.p_multiple) divPlan.multiple = Number(args.p_multiple);
+          if (args.p_date) divPlan.diversion_date = args.p_date;
+          if (args.p_reason) divPlan.reason = args.p_reason;
+          divPlan.updated_at = new Date().toISOString();
+
+          mockStore.addAuditLog({
+            user_email: activeUser.email,
+            user_name: activeUser.name,
+            action_type: 'USER_UPDATE',
+            entity_type: 'Pipe Diversion',
+            entity_id: divPlan.id,
+            details: `Updated diversion ${divPlan.id}: new qty ${args.p_qty} Mtrs, work center ${args.p_work_center || divPlan.work_center}`,
+          });
+          mockStore.saveToStorage();
+          return { error: null };
+        }
+        case 'delete_diversion': {
+          const activeUser = mockStore.getCurrentUser();
+          const userGroup = activeUser.group || (activeUser.role === 'admin' ? 'admin' : activeUser.role === 'manager' ? 'super_user' : 'user');
+          if (userGroup !== 'admin' && userGroup !== 'super_user') {
+            return { error: new Error(`Access Denied: Only Admin Group and Super User Group can delete diversions. Current user: ${activeUser.name}`) };
+          }
+          const divPlan = mockStore.diversions.find(d => d.id === args.p_diversion_id);
+          if (!divPlan) return { error: new Error('Diversion record not found') };
+
+          mockStore.diversions = mockStore.diversions.filter(d => d.id !== args.p_diversion_id);
+          mockStore.addAuditLog({
+            user_email: activeUser.email,
+            user_name: activeUser.name,
+            action_type: 'USER_UPDATE',
+            entity_type: 'Pipe Diversion',
+            entity_id: divPlan.id,
+            details: `Deleted diversion ${divPlan.id} (${divPlan.diverted_qty} Mtrs from WO ${divPlan.source_wo_id} to ${divPlan.target_wo_id})`,
+          });
+          mockStore.saveToStorage();
+          return { error: null };
         }
         case 'record_production': {
           const activeUser = mockStore.getCurrentUser();

@@ -9,6 +9,7 @@ const columns = [
   ['source_customer', 'Source Customer'],
   ['target_wo_no', 'Target WO #'],
   ['target_customer', 'Target Customer'],
+  ['work_center_name', 'Work Center'],
   ['diverted_qty', 'Diverted Qty (Mtrs)'],
   ['multiple', 'Multiple'],
   ['route_code', 'Process Route'],

@@ -76,12 +76,14 @@ export type MockDiversionPlan = {
   source_wo_id: string;
   target_wo_id: string;
   diverted_qty: number;
+  work_center?: string | null;
   process_route_id: string;
   multiple: number;
   reason: string;
   approved_by?: string | null;
   diversion_date: string;
   created_at: string;
+  updated_at?: string;
 };
 
 export type MockProductionLog = {
@@ -542,7 +544,22 @@ const DEFAULT_PRODUCTION_LOGS: MockProductionLog[] = [
   },
 ];
 
-const DEFAULT_DIVERSIONS: MockDiversionPlan[] = [];
+const DEFAULT_DIVERSIONS: MockDiversionPlan[] = [
+  {
+    id: 'div-1',
+    source_wo_id: 'wo-101',
+    target_wo_id: 'wo-102',
+    diverted_qty: 120,
+    work_center: 'ROLLING',
+    process_route_id: 'route-2',
+    multiple: 1,
+    reason: 'Stock diversion for urgent automotive dispatch',
+    approved_by: 'Vishal Mishra',
+    diversion_date: new Date(Date.now() - 86400000 * 2).toISOString().slice(0, 10),
+    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    updated_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+  },
+];
 
 class MockStore {
   routes: MockRoute[] = [...DEFAULT_ROUTES];
@@ -1383,6 +1400,94 @@ class MockStore {
     }
     if (params.to_date) {
       list = list.filter(p => p.planned_rolling_date <= params.to_date!);
+    }
+
+    list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return list.slice(params.offset || 0, (params.offset || 0) + (params.limit || 2000));
+  }
+
+  getDiversionPlans(params: {
+    search?: string | null;
+    route_code?: string | null;
+    work_center?: string | null;
+    from_date?: string | null;
+    to_date?: string | null;
+    limit?: number;
+    offset?: number;
+  }) {
+    let list = this.diversions.map(dp => {
+      const sWo = this.workOrders.find(w => w.id === dp.source_wo_id || w.work_order_no === dp.source_wo_id);
+      const tWo = this.workOrders.find(w => w.id === dp.target_wo_id || w.work_order_no === dp.target_wo_id);
+      const route = this.routes.find(r => r.id === dp.process_route_id || r.route_code === dp.process_route_id);
+      const stage = this.stages.find(s => s.stage_code === dp.work_center || s.id === dp.work_center);
+
+      const sOd = Number(sWo?.size_od ?? sWo?.od ?? 0);
+      const sWt = Number(sWo?.size_wt ?? sWo?.wt ?? sWo?.wl ?? 0);
+      const sL1 = Number(sWo?.l1 || 0);
+      const sL2 = Number(sWo?.l2 || 0);
+      const sAvg = sL1 > 0 && sL2 > 0 ? (sL1 + sL2) / 2 : sL1 > 0 ? sL1 : sL2 > 0 ? sL2 : 6.0;
+
+      const tOd = Number(tWo?.size_od ?? tWo?.od ?? 0);
+      const tWt = Number(tWo?.size_wt ?? tWo?.wt ?? tWo?.wl ?? 0);
+      const tL1 = Number(tWo?.l1 || 0);
+      const tL2 = Number(tWo?.l2 || 0);
+      const tAvg = tL1 > 0 && tL2 > 0 ? (tL1 + tL2) / 2 : tL1 > 0 ? tL1 : tL2 > 0 ? tL2 : 6.0;
+
+      const divertedMtr = Number(dp.diverted_qty || 0);
+      const divertedPcs = tAvg > 0 ? divertedMtr / tAvg : 0;
+      const divertedMt = Math.max(tOd - tWt, 0) * Math.max(tWt, 0) * 0.0246615 * 0.001 * divertedMtr;
+
+      return {
+        id: dp.id,
+        source_wo_id: dp.source_wo_id,
+        source_wo_no: sWo?.work_order_no || dp.source_wo_id,
+        source_customer: sWo?.customer_name || '—',
+        source_grade: sWo?.grade || '—',
+        source_size: sOd > 0 ? `${sOd} x ${sWt} mm` : '—',
+        target_wo_id: dp.target_wo_id,
+        target_wo_no: tWo?.work_order_no || dp.target_wo_id,
+        target_customer: tWo?.customer_name || '—',
+        target_grade: tWo?.grade || '—',
+        target_size: tOd > 0 ? `${tOd} x ${tWt} mm` : '—',
+        diverted_qty: divertedMtr,
+        diverted_pcs: divertedPcs,
+        diverted_mt: divertedMt,
+        work_center: dp.work_center || 'ROLLING',
+        work_center_name: stage?.stage_name || (dp.work_center ? dp.work_center.replace(/_/g, ' ') : 'Rolling Mill'),
+        route_id: route?.id || dp.process_route_id,
+        route_code: route?.route_code || 'HFS',
+        route_name: route?.route_name || 'Standard HFS',
+        multiple: Number(dp.multiple || 1),
+        reason: dp.reason,
+        approved_by: dp.approved_by || 'Admin',
+        diversion_date: dp.diversion_date,
+        created_at: dp.created_at,
+        updated_at: dp.updated_at || dp.created_at,
+        can_modify: true,
+      };
+    });
+
+    if (params.search) {
+      const q = params.search.toLowerCase();
+      list = list.filter(d =>
+        [d.source_wo_no, d.source_customer, d.target_wo_no, d.target_customer, d.route_code, d.work_center, d.reason, d.approved_by]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(q)
+      );
+    }
+    if (params.route_code) {
+      list = list.filter(d => d.route_code === params.route_code);
+    }
+    if (params.work_center) {
+      list = list.filter(d => d.work_center === params.work_center);
+    }
+    if (params.from_date) {
+      list = list.filter(d => d.diversion_date >= params.from_date!);
+    }
+    if (params.to_date) {
+      list = list.filter(d => d.diversion_date <= params.to_date!);
     }
 
     list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
