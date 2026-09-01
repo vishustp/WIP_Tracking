@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { mockStore } from '@/lib/supabase/mock-store';
 
@@ -21,13 +21,10 @@ type WorkOrderRow = {
   l1: number | null; l2: number | null; ordered_qty: number; uom: 'Pcs' | 'Mtrs';
 };
 
-/**
- * Diversion Planning used to read mockStore.getWorkOrderWipSummary(), which can
- * expose planned/pending-order balance instead of physical stage WIP.
- * Load the database WIP view once and make the existing synchronous consumer
- * use the real route-stage values.
- */
-export default function DiversionWipBootstrap() {
+/** Loads the real route-stage WIP before DiversionForm is rendered. */
+export default function DiversionWipBootstrap({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -40,15 +37,20 @@ export default function DiversionWipBootstrap() {
           'id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,uom'
         ),
       ]);
-      if (cancelled || wipRes.error || !Array.isArray(wipRes.data)) return;
+
+      if (cancelled) return;
+      if (wipRes.error || !Array.isArray(wipRes.data)) {
+        setReady(true);
+        return;
+      }
 
       const rows = wipRes.data as WipRow[];
       const workOrders = (woRes.data ?? []) as WorkOrderRow[];
       const woMap = new Map(workOrders.map((wo) => [wo.id, wo]));
       const byWo = new Map<string, WipRow[]>();
       rows.forEach((row) => byWo.set(row.work_order_id, [...(byWo.get(row.work_order_id) ?? []), row]));
-
       const original = mockStore.getWorkOrderWipSummary.bind(mockStore);
+
       mockStore.getWorkOrderWipSummary = (woId: string) => {
         const stageRows = byWo.get(woId);
         const wo = woMap.get(woId);
@@ -86,9 +88,12 @@ export default function DiversionWipBootstrap() {
           })),
         };
       };
+      setReady(true);
     };
     void load();
     return () => { cancelled = true; };
   }, []);
-  return null;
+
+  if (!ready) return <div className="p-4 text-xs text-slate-500">Loading physical WIP...</div>;
+  return <>{children}</>;
 }
