@@ -48,7 +48,8 @@ const groups = [
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
+  const pathname = rawPathname || '';
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
