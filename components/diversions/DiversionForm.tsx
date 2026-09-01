@@ -180,7 +180,7 @@ export default function DiversionForm() {
         s
           .from('work_orders')
           .select(
-            'id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_pcs,balance_qty_mtr,balance_qty_mt,status,target_date'
+            'id,work_order_no,customer_name,grade,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_pcs,balance_qty_mtr,balance_qty_mt,status,target_date'
           )
           .order('work_order_no'),
         s.from('process_routes').select('id,route_code,route_name').eq('active', true).order('route_code'),

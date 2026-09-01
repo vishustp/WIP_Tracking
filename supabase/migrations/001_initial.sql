@@ -7,7 +7,7 @@ create table public.profiles(id uuid primary key references auth.users(id) on de
 create table public.process_stages(id uuid primary key default gen_random_uuid(),stage_code text unique not null,stage_name text not null,active boolean not null default true,created_at timestamptz not null default now());
 create table public.process_routes(id uuid primary key default gen_random_uuid(),route_code text unique not null,route_name text not null,material_category text not null,active boolean not null default true,created_at timestamptz not null default now());
 create table public.route_stages(id uuid primary key default gen_random_uuid(),route_id uuid not null references process_routes(id) on delete cascade,stage_id uuid not null references process_stages(id),sequence_no int not null check(sequence_no>0),is_required boolean not null default true,created_at timestamptz not null default now(),unique(route_id,stage_id),unique(route_id,sequence_no));
-create table public.work_orders(id uuid primary key default gen_random_uuid(),work_order_no text unique not null,customer_name text,size_od numeric check(size_od>0),size_wt numeric check(size_wt>0),grade text,ordered_qty numeric not null check(ordered_qty>0),uom uom_type not null,target_date date,status work_order_status not null default 'Pending Plan',created_at timestamptz not null default now(),updated_at timestamptz not null default now());
+create table public.work_orders(id uuid primary key default gen_random_uuid(),work_order_no text unique not null,customer_name text,size_od numeric check(size_od>0),size_wt numeric check(size_wt>0),grade text,specification text,ordered_qty numeric not null check(ordered_qty>0),uom uom_type not null,target_date date,status work_order_status not null default 'Pending Plan',created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create table public.rolling_plans(id uuid primary key default gen_random_uuid(),plan_no text unique not null default ('RP-'||to_char(clock_timestamp(),'YYYYMMDDHH24MISSMS')),work_order_id uuid not null references work_orders(id),planned_rolling_date date not null,planned_qty numeric not null check(planned_qty>0),process_route_id uuid not null references process_routes(id),target_mother_size text,multiple numeric not null default 1 check(multiple>0),status text not null default 'Scheduled',created_at timestamptz not null default now(),updated_at timestamptz not null default now());
 create table public.diversion_plans(id uuid primary key default gen_random_uuid(),source_wo_id uuid not null references work_orders(id),target_wo_id uuid not null references work_orders(id),diverted_qty numeric not null check(diverted_qty>0),process_route_id uuid not null references process_routes(id),multiple numeric not null default 1 check(multiple>0),reason text not null,approved_by uuid references auth.users(id),diversion_date date not null,created_at timestamptz not null default now(),check(source_wo_id<>target_wo_id));
 create table public.production_logs(id uuid primary key default gen_random_uuid(),work_order_id uuid not null references work_orders(id),rolling_plan_id uuid references rolling_plans(id),stage_id uuid not null references process_stages(id),process_route_id uuid not null references process_routes(id),process_date date not null,input_qty numeric not null default 0 check(input_qty>=0),output_qty numeric not null default 0 check(output_qty>=0),rejection_qty numeric not null default 0 check(rejection_qty>=0),htc_ok numeric not null default 0 check(htc_ok>=0),heat_lot_no text,qa_clearance qa_status,remarks text,created_by uuid references auth.users(id),created_at timestamptz not null default now(),check(rejection_qty<=input_qty));
@@ -277,3 +277,22 @@ grant execute on function record_production(uuid,uuid,text,date,numeric,numeric,
 grant execute on function get_recent_production_entries(integer) to authenticated;
 grant execute on function update_production_entry(uuid,date,numeric,numeric,numeric,text,text) to authenticated;
 grant execute on function delete_production_entry(uuid) to authenticated;
+
+grant usage on schema public to anon, authenticated, service_role;
+grant select on all tables in schema public to anon, authenticated, service_role;
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to authenticated, service_role;
+grant execute on all functions in schema public to anon, authenticated, service_role;
+
+grant select on public.vw_route_stage_wip to anon, authenticated, service_role;
+grant select on public.vw_work_order_summary to anon, authenticated, service_role;
+grant select on public.vw_dashboard_kpis to anon, authenticated, service_role;
+
+create policy stages_anon_read on process_stages for select to anon using(active);
+create policy routes_anon_read on process_routes for select to anon using(active);
+create policy route_stages_anon_read on route_stages for select to anon using(true);
+create policy wo_anon_read on work_orders for select to anon using(true);
+create policy rp_anon_read on rolling_plans for select to anon using(true);
+create policy div_anon_read on diversion_plans for select to anon using(true);
+create policy prod_anon_read on production_logs for select to anon using(true);
+

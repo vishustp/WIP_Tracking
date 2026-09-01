@@ -170,8 +170,9 @@ export default function WorkOrders() {
 
   const createWO = async (e: React.FormEvent) => {
     e.preventDefault();
+    const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-4000-8000-${Date.now().toString().padStart(12, '0').slice(-12)}`;
     const payload = {
-      id: `wo-${Date.now()}`,
+      id,
       work_order_no: form.work_order_no.trim(),
       customer_name: form.customer_name || null,
       size_od: form.size_od ? Number(form.size_od) : null,
@@ -192,7 +193,8 @@ export default function WorkOrders() {
 
     try {
       const s = createClient();
-      await s.from('work_orders').insert(payload);
+      const { id: _ignored, ...dbPayload } = payload;
+      await s.from('work_orders').insert(dbPayload);
     } catch {}
 
     // Guarantee local store persistence
