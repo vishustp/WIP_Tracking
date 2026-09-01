@@ -311,13 +311,13 @@ export default function WorkOrders() {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/excel-import"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Import Excel
           </Link>
           <Button
             onClick={() => setShowCreate(!showCreate)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-slate-800"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white shadow-xs hover:bg-slate-800"
           >
             <PlusCircle className="h-4 w-4" /> {showCreate ? 'Close Form' : canCreateWO ? 'Create Work Order' : 'Create WO Form (View-Only)'}
           </Button>
@@ -334,7 +334,7 @@ export default function WorkOrders() {
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-slate-900">New Work Order</h2>
               {!canCreateWO && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded px-2 py-0.5">
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded px-2.5 py-1">
                   <Lock size={10} /> View-Only Access
                 </span>
               )}
@@ -342,13 +342,13 @@ export default function WorkOrders() {
             <button
               type="button"
               onClick={() => setShowCreate(false)}
-              className="text-xs font-medium text-slate-500 hover:text-slate-900"
+              className="text-sm font-medium text-slate-500 hover:text-slate-900"
             >
               Cancel
             </button>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 text-xs">
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 text-sm">
             <div>
               <label className="font-semibold text-slate-700">Work Order No. *</label>
               <Input
@@ -460,7 +460,7 @@ export default function WorkOrders() {
 
           <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
             {!canCreateWO ? (
-              <span className="text-xs text-amber-700 font-medium flex items-center gap-1.5">
+              <span className="text-sm text-amber-700 font-medium flex items-center gap-1.5">
                 <Lock size={13} />
                 Work order creation is restricted to Admin and Super User groups.
               </span>
@@ -483,13 +483,13 @@ export default function WorkOrders() {
             <div className="relative max-w-sm w-full">
               <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <Input
-                className="pl-8 text-xs h-9"
+                className="pl-8 text-sm h-9"
                 placeholder="Search WO No, Customer, Grade..."
                 value={q}
                 onChange={e => setQ(e.target.value)}
               />
             </div>
-            <Select className="max-w-[180px] text-xs h-9" value={status} onChange={e => setStatus(e.target.value)}>
+            <Select className="max-w-[180px] text-sm h-9" value={status} onChange={e => setStatus(e.target.value)}>
               <option value="">All Statuses</option>
               <option>Pending Plan</option>
               <option>Scheduled</option>
@@ -503,7 +503,7 @@ export default function WorkOrders() {
               type="button"
               onClick={handleClearAll}
               disabled={!canCreateWO}
-              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50/50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 hover:text-rose-900 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50/50 px-2.5 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 hover:text-rose-900 transition-colors disabled:opacity-50"
               title="Clear all sample/mock work orders to start fresh"
             >
               <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Clear Directory
@@ -512,12 +512,12 @@ export default function WorkOrders() {
               type="button"
               onClick={handleResetDemo}
               disabled={!canCreateWO}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
               title="Reset to standard demonstration work orders"
             >
               <RotateCcw className="h-3.5 w-3.5 text-slate-500" /> Reset Demo
             </button>
-            <Button type="button" onClick={exportExcel} className="border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs h-8">
+            <Button type="button" onClick={exportExcel} className="border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm h-8">
               Export Excel
             </Button>
           </div>
@@ -525,11 +525,11 @@ export default function WorkOrders() {
 
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="p-8 text-center text-xs text-slate-500">Loading work orders...</div>
+            <div className="p-8 text-center text-sm text-slate-500">Loading work orders...</div>
           ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500">No work orders match the criteria.</div>
+            <div className="p-8 text-center text-sm text-slate-500">No work orders match the criteria.</div>
           ) : (
-            <table className="min-w-full text-xs">
+            <table className="min-w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                 <tr>
                   <th className="py-2.5 px-3 text-left font-semibold">WO Number</th>
@@ -561,7 +561,7 @@ export default function WorkOrders() {
                               <button
                                 type="button"
                                 onClick={() => setExpandedWip(prev => ({ ...prev, [w.id]: !prev[w.id] }))}
-                                className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                className="inline-flex items-center gap-0.5 rounded px-2 py-1 text-xs font-semibold border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200"
                                 title="Toggle Work Center WIP Pipeline"
                               >
                                 <Layers size={10} />
@@ -588,7 +588,7 @@ export default function WorkOrders() {
                                 return (
                                   <span
                                     key={wp.stage_name}
-                                    className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 font-mono"
+                                    className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-2 py-1 text-xs font-bold text-blue-800 font-mono"
                                     title={`${wp.stage_name}: ${wp.current_wip} MTR (${pcsVal} PCS · ${fmt(wpMt, ' MT')})`}
                                   >
                                     {wp.stage_name.replace(' Stage', '')}: {pcsVal} PCS ({wp.current_wip}m · {fmt(wpMt, ' MT')})
@@ -597,18 +597,18 @@ export default function WorkOrders() {
                               })}
                             </div>
                           ) : wips.length > 0 ? (
-                            <span className="text-[11px] text-slate-400">Route clear / Ready</span>
+                            <span className="text-sm text-slate-400">Route clear / Ready</span>
                           ) : (
-                            <span className="text-[11px] text-slate-400">No active WIP</span>
+                            <span className="text-sm text-slate-400">No active WIP</span>
                           )}
                         </td>
                         <td className="py-2.5 px-3">
-                          <span className={`inline-flex rounded border px-2 py-0.5 text-[11px] font-medium ${sla.cls}`}>
+                          <span className={`inline-flex rounded border px-2.5 py-1 text-sm font-medium ${sla.cls}`}>
                             {sla.label}
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-center">
-                          <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${getStatusBadge(w.status)}`}>
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getStatusBadge(w.status)}`}>
                             {w.status}
                           </span>
                         </td>
@@ -617,21 +617,21 @@ export default function WorkOrders() {
                           <div className="flex items-center justify-end gap-1.5">
                             <Link
                               href={`/rolling-plans?wo=${w.id}`}
-                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
                               title="Issue Rolling Plan"
                             >
                               <Calendar className="h-3 w-3 text-blue-600" /> Plan
                             </Link>
                             <Link
                               href="/production"
-                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
                               title="Record Production"
                             >
                               <TrendingUp className="h-3 w-3 text-emerald-600" /> Prod
                             </Link>
                             <Link
                               href={`/diversions?source=${w.id}`}
-                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
                               title="Divert Stock"
                             >
                               <GitFork className="h-3 w-3 text-purple-600" /> Divert
@@ -656,13 +656,13 @@ export default function WorkOrders() {
                           <td colSpan={9} className="p-3">
                             <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
                               <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-                                <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                                <span className="text-sm font-bold text-slate-800 uppercase tracking-wider">
                                   Work Center WIP Breakdown for {w.work_order_no} (Avg Length: {avg}m)
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => setExpandedWip(prev => ({ ...prev, [w.id]: false }))}
-                                  className="text-[10px] font-semibold text-slate-500 hover:text-slate-900"
+                                  className="text-xs font-semibold text-slate-500 hover:text-slate-900"
                                 >
                                   Close
                                 </button>
@@ -681,25 +681,25 @@ export default function WorkOrders() {
                                   const htcMt = wp.htc_ok_mt ?? mtFromMtr(wp.htc_ok_qty || 0, w.size_od || 0, w.size_wt || 0);
 
                                   return (
-                                    <div key={wp.stage_name} className="rounded-md border border-slate-200 bg-slate-50/50 p-2 text-xs space-y-1">
+                                    <div key={wp.stage_name} className="rounded-md border border-slate-200 bg-slate-50/50 p-2 text-sm space-y-1">
                                       <div className="font-bold text-slate-900 flex justify-between">
                                         <span>{wp.stage_name}</span>
-                                        <span className="text-[10px] text-blue-700 font-mono">Seq {wp.sequence_no}</span>
+                                        <span className="text-xs text-blue-700 font-mono">Seq {wp.sequence_no}</span>
                                       </div>
-                                      <div className="flex justify-between text-[11px]">
+                                      <div className="flex justify-between text-sm">
                                         <span className="text-slate-500 font-medium">Available WIP:</span>
                                         <span className="font-bold font-mono text-blue-800">{wipPcs} PCS ({wp.current_wip}m · {fmt(wipMt, ' MT')})</span>
                                       </div>
-                                      <div className="flex justify-between text-[10px] text-slate-600">
+                                      <div className="flex justify-between text-xs text-slate-600">
                                         <span>Input / Output:</span>
                                         <span className="font-mono">{inPcs} / {outPcs} PCS ({wp.input_qty} / {wp.output_qty}m · {fmt(outMt, ' MT')})</span>
                                       </div>
-                                      <div className="flex justify-between text-[10px] text-rose-600">
+                                      <div className="flex justify-between text-xs text-rose-600">
                                         <span>Rejection:</span>
                                         <span className="font-mono">{rejPcs} PCS ({wp.rejection_qty}m · {fmt(rejMt, ' MT')})</span>
                                       </div>
                                       {wp.htc_ok_qty !== undefined && wp.htc_ok_qty > 0 && (
-                                        <div className="flex justify-between text-[10px] text-emerald-700 font-medium">
+                                        <div className="flex justify-between text-xs text-emerald-700 font-medium">
                                           <span>HTC OK:</span>
                                           <span className="font-mono">{wp.htc_ok_pcs ?? (avg > 0 ? (wp.htc_ok_qty / avg).toFixed(1) : 0)} PCS ({wp.htc_ok_qty}m · {fmt(htcMt, ' MT')})</span>
                                         </div>

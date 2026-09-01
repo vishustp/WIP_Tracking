@@ -230,7 +230,7 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold tracking-tight text-white">
             Seamless WIP
           </h1>
-          <p className="text-xs text-slate-400">
+          <p className="text-sm text-slate-400">
             PPC Planning, Pipe Diversion & Production WIP Tracking
           </p>
         </div>
@@ -239,11 +239,11 @@ export default function LoginPage() {
         <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-7 shadow-2xl backdrop-blur-sm space-y-6">
           <div className="border-b border-slate-800/80 pb-4">
             <h2 className="text-base font-semibold text-white">Sign in to your account</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Enter your username and password below</p>
+            <p className="text-sm text-slate-400 mt-0.5">Enter your username and password below</p>
           </div>
 
           {errorMessage && (
-            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
             </div>
@@ -252,7 +252,7 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             {/* Username */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300 block">
+              <label className="text-sm font-semibold text-slate-300 block">
                 Username
               </label>
               <div className="relative">
@@ -277,10 +277,10 @@ export default function LoginPage() {
             {/* Password */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-300 block">
+                <label className="text-sm font-semibold text-slate-300 block">
                   Password
                 </label>
-                <span className="text-[11px] text-slate-500">Default: password123</span>
+                <span className="text-sm text-slate-500">Default: password123</span>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
@@ -316,7 +316,7 @@ export default function LoginPage() {
                   onChange={(e) => setRememberMe(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
                 />
-                <span className="text-xs text-slate-400">Remember me</span>
+                <span className="text-sm text-slate-400">Remember me</span>
               </label>
             </div>
 
@@ -339,51 +339,51 @@ export default function LoginPage() {
 
           {/* Demo Credentials Quick Fill */}
           <div className="pt-4 border-t border-slate-800/80 space-y-2.5">
-            <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider text-center">
+            <div className="text-sm font-medium text-slate-500 uppercase tracking-wider text-center">
               Quick Fill Demo Accounts
             </div>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => handleQuickFill('admin', 'password123')}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:bg-slate-800 hover:border-slate-700 text-left text-xs transition-colors group cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:bg-slate-800 hover:border-slate-700 text-left text-sm transition-colors group cursor-pointer"
               >
                 <div className="font-medium text-slate-200 group-hover:text-blue-400">Admin</div>
-                <div className="text-[10px] text-slate-500 font-mono">user: admin</div>
+                <div className="text-xs text-slate-500 font-mono">user: admin</div>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleQuickFill('manager', 'password123')}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:bg-slate-800 hover:border-slate-700 text-left text-xs transition-colors group cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:bg-slate-800 hover:border-slate-700 text-left text-sm transition-colors group cursor-pointer"
               >
                 <div className="font-medium text-slate-200 group-hover:text-purple-400">Plant Head</div>
-                <div className="text-[10px] text-slate-500 font-mono">user: manager</div>
+                <div className="text-xs text-slate-500 font-mono">user: manager</div>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleQuickFill('rolling', 'password123')}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:bg-slate-800 hover:border-slate-700 text-left text-xs transition-colors group cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:bg-slate-800 hover:border-slate-700 text-left text-sm transition-colors group cursor-pointer"
               >
                 <div className="font-medium text-slate-200 group-hover:text-amber-400">Rolling Incharge</div>
-                <div className="text-[10px] text-slate-500 font-mono">user: rolling</div>
+                <div className="text-xs text-slate-500 font-mono">user: rolling</div>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleQuickFill('draw', 'password123')}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:bg-slate-800 hover:border-slate-700 text-left text-xs transition-colors group cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:bg-slate-800 hover:border-slate-700 text-left text-sm transition-colors group cursor-pointer"
               >
                 <div className="font-medium text-slate-200 group-hover:text-emerald-400">Draw Operator</div>
-                <div className="text-[10px] text-slate-500 font-mono">user: draw</div>
+                <div className="text-xs text-slate-500 font-mono">user: draw</div>
               </button>
             </div>
           </div>
         </div>
 
         {/* Footer info */}
-        <div className="text-center text-xs text-slate-500 flex items-center justify-center gap-1.5">
+        <div className="text-center text-sm text-slate-500 flex items-center justify-center gap-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
           <span>Role-based access control & shop-floor security enabled</span>
         </div>
