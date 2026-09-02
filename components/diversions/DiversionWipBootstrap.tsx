@@ -70,6 +70,14 @@ export default function DiversionWipBootstrap({ children }: { children: ReactNod
         const divertedOut = stageRows.reduce((s, r) => s + Number(r.diversion_out ?? 0), 0);
         const divertedIn = stageRows.reduce((s, r) => s + Number(r.diversion_in ?? 0), 0);
 
+        // Diversion source availability is TOTAL physical WIP in the WO,
+        // regardless of the work center selected for the diversion.
+        // Each route stage holds a separate physical quantity, so the sum
+        // of positive stage WIP is the material currently available in the WO.
+        const totalWipMtr = stageRows.reduce((s, r) => s + Math.max(Number(r.current_wip ?? 0), 0), 0);
+        const totalWipPcs = stageRows.reduce((s, r) => s + Math.max(Number(r.current_wip_pcs ?? 0), 0), 0);
+        const totalWipMt = stageRows.reduce((s, r) => s + Math.max(Number(r.current_wip_mt ?? 0), 0), 0);
+
         return {
           wo: { ...wo, target_date: wo.target_date ?? null, balance_qty_pcs: orderedPcs, balance_qty_mtr: orderedMtr, balance_qty_mt: orderedMtr * mtPerMtr },
           od, wt, l1: Number(wo.l1 ?? first.l1 ?? 0), l2: Number(wo.l2 ?? first.l2 ?? 0), avgLength,
@@ -79,8 +87,8 @@ export default function DiversionWipBootstrap({ children }: { children: ReactNod
           rollingHtcOkPcs: Number(rolling?.net_output_pcs ?? 0), rollingHtcOkMt: Number(rolling?.net_output_mt ?? 0),
           divertedOutMtr: divertedOut, divertedOutPcs: avgLength > 0 ? divertedOut / avgLength : 0, divertedOutMt: divertedOut * mtPerMtr,
           divertedInMtr: divertedIn, divertedInPcs: avgLength > 0 ? divertedIn / avgLength : 0, divertedInMt: divertedIn * mtPerMtr,
-          physicalAvailableMtr: Number(first.current_wip ?? 0), unplannedOrderMtr: 0,
-          balanceWipMtr: Number(first.current_wip ?? 0), balanceWipPcs: Number(first.current_wip_pcs ?? 0), balanceWipMt: Number(first.current_wip_mt ?? 0),
+          physicalAvailableMtr: totalWipMtr, unplannedOrderMtr: 0,
+          balanceWipMtr: totalWipMtr, balanceWipPcs: totalWipPcs, balanceWipMt: totalWipMt,
           stageBreakdown: stageRows.map((r) => ({
             stage_code: r.stage_code, stage_name: r.stage_name, sequence_no: Number(r.sequence_no),
             available_mtr: Number(r.current_wip ?? 0), available_pcs: Number(r.current_wip_pcs ?? 0), available_mt: Number(r.current_wip_mt ?? 0),
