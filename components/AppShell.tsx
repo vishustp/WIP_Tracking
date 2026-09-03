@@ -3,8 +3,9 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { mockStore, MockUserProfile, UserGroup } from '@/lib/supabase/mock-store';
-import { isRouteVisibleForGroup, canSwitchProfile } from '@/lib/permissions';
+import type { AppUserProfile, UserGroup } from '@/lib/users/types';
+import { getCurrentAppUser } from '@/lib/users/client';
+import { isRouteVisibleForGroup } from '@/lib/permissions';
 import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
@@ -53,18 +54,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<MockUserProfile | null>(null);
-  const [allUsers, setAllUsers] = useState<MockUserProfile[]>([]);
+  const [currentUser, setCurrentUser] = useState<AppUserProfile | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const loadUserData = () => {
-    mockStore.loadFromStorage();
-    setCurrentUser(mockStore.getCurrentUser());
-    setAllUsers([...mockStore.users]);
+  const loadUserData = async () => {
+    try {
+      setCurrentUser(await getCurrentAppUser());
+    } catch {
+      setCurrentUser(null);
+    }
   };
 
   useEffect(() => {
-    loadUserData();
+    void loadUserData();
 
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -77,18 +79,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (pathname === '/login') return <>{children}</>;
 
-  const switchUser = (email: string) => {
-    mockStore.setCurrentUser(email);
-    setCurrentUser(mockStore.getCurrentUser());
-    setUserDropdownOpen(false);
-    toast.success(`Switched active profile to ${email}`);
-    router.refresh();
-  };
 
   const signOut = async () => {
-    if (typeof document !== 'undefined') {
-      document.cookie = 'demo_user=; path=/; max-age=0; SameSite=Lax';
-    }
     try {
       await createClient().auth.signOut();
     } catch {}
@@ -236,43 +228,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         </button>
                       )}
                     </div>
-
-                    {/* Role Switcher - Only accessible to Admin */}
-                    {isAdmin ? (
-                      <div className="pt-1.5 border-t border-slate-100">
-                        <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-                          <span>Switch Active Role</span>
-                          <span className="text-[9px] text-blue-600 font-bold">Admin Authority</span>
-                        </div>
-                        <div className="max-h-40 overflow-y-auto space-y-0.5">
-                          {allUsers.map((u) => (
-                            <button
-                              key={u.id}
-                              type="button"
-                              onClick={() => switchUser(u.email)}
-                              className={`flex w-full items-center justify-between px-2 py-1 rounded-md text-[11px] transition cursor-pointer ${
-                                u.email.toLowerCase() === currentUser.email.toLowerCase()
-                                  ? 'bg-slate-100 font-semibold text-slate-900'
-                                  : 'text-slate-600 hover:bg-slate-50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-1.5 truncate">
-                                <span className={`h-2 w-2 rounded-full ${u.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                                <span className="truncate">{u.name}</span>
-                              </div>
-                              <span className="text-[10px] text-slate-400 shrink-0 font-mono">
-                                {u.role_title.split(' ')[0]}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="pt-1.5 border-t border-slate-100 px-2.5 py-2 bg-slate-50 rounded-lg text-[11px] text-slate-500 flex items-center gap-1.5">
-                        <Lock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span>Profile switching restricted to Administrator accounts.</span>
-                      </div>
-                    )}
 
                     <div className="pt-1.5 mt-1 border-t border-slate-100">
                       <button

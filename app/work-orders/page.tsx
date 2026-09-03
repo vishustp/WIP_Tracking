@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { mockStore } from '@/lib/supabase/mock-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -102,7 +101,6 @@ export default function WorkOrders() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    mockStore.loadFromStorage();
     try {
       const s = createClient();
       let query = s.from('work_orders').select('*').order('target_date', { ascending: true }).limit(200);
@@ -112,14 +110,10 @@ export default function WorkOrders() {
         s.from('vw_route_stage_wip').select('*'),
       ]);
 
-      if (!error && Array.isArray(data)) {
-        setRows(data as WO[]);
-      } else {
-        const localWos = status ? mockStore.workOrders.filter(w => w.status === status) : mockStore.workOrders;
-        setRows([...localWos] as WO[]);
-      }
+      if (error) throw new Error(error.message);
+      setRows((data ?? []) as WO[]);
 
-      const activeWip = wipData && wipData.length > 0 ? wipData : mockStore.getRouteStageWIP();
+      const activeWip = wipData ?? [];
       if (activeWip) {
         const map: Record<string, WipStage[]> = {};
         (activeWip as WipStage[]).forEach((item) => {
@@ -134,18 +128,10 @@ export default function WorkOrders() {
         });
         setWipMap(map);
       }
-    } catch {
-      const localWos = status ? mockStore.workOrders.filter(w => w.status === status) : mockStore.workOrders;
-      setRows([...localWos] as WO[]);
-      const activeWip = mockStore.getRouteStageWIP();
-      const map: Record<string, WipStage[]> = {};
-      (activeWip as WipStage[]).forEach((item) => {
-        if (item.work_order_no) {
-          if (!map[item.work_order_no]) map[item.work_order_no] = [];
-          map[item.work_order_no].push(item);
-        }
-      });
-      setWipMap(map);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load work orders.');
+      setRows([]);
+      setWipMap({});
     }
     setLoading(false);
   }, [status]);
@@ -194,13 +180,11 @@ export default function WorkOrders() {
     try {
       const s = createClient();
       const { id: _ignored, ...dbPayload } = payload;
-      await s.from('work_orders').insert(dbPayload);
-    } catch {}
-
-    // Guarantee local store persistence
-    if (!mockStore.workOrders.some(w => w.work_order_no === payload.work_order_no)) {
-      mockStore.workOrders.unshift(payload as any);
-      mockStore.saveToStorage();
+      const { error } = await s.from('work_orders').insert(dbPayload);
+      if (error) throw new Error(error.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create work order.');
+      return;
     }
 
     toast.success('Work Order created successfully');
@@ -236,10 +220,12 @@ export default function WorkOrders() {
 
     try {
       const s = createClient();
-      await s.from('work_orders').delete().eq('id', wo.id);
-    } catch {}
-
-    mockStore.deleteWorkOrder(wo.id);
+      const { error } = await s.from('work_orders').delete().eq('id', wo.id);
+      if (error) throw new Error(error.message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete work order.');
+      return;
+    }
     toast.success(`Work Order ${wo.work_order_no} deleted`);
     load();
   };
@@ -254,25 +240,17 @@ export default function WorkOrders() {
     try {
       const s = createClient();
       for (const r of rows) {
-        await s.from('work_orders').delete().eq('id', r.id);
+        const { error } = await s.from('work_orders').delete().eq('id', r.id);
+        if (error) throw new Error(error.message);
       }
-    } catch {}
-
-    mockStore.clearWorkOrders();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to clear work orders.');
+      return;
+    }
     toast.success('All work orders cleared. You can now import your real Excel file.');
     load();
   };
 
-  const handleResetDemo = () => {
-    if (!canCreateWO) {
-      toast.error('Permission denied: Only Admin or Super User can reset sample data');
-      return;
-    }
-    if (!confirm('Reset directory back to standard demonstration work orders?')) return;
-    mockStore.resetAllData();
-    toast.success('Reset to standard demo work orders.');
-    load();
-  };
 
   const getSLA = (targetDate?: string | null) => {
     if (!targetDate) return { label: 'No Target', cls: 'bg-slate-100 text-slate-600' };
@@ -509,15 +487,6 @@ export default function WorkOrders() {
               title="Clear all sample/mock work orders to start fresh"
             >
               <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Clear Directory
-            </button>
-            <button
-              type="button"
-              onClick={handleResetDemo}
-              disabled={!canCreateWO}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
-              title="Reset to standard demonstration work orders"
-            >
-              <RotateCcw className="h-3.5 w-3.5 text-slate-500" /> Reset Demo
             </button>
             <Button type="button" onClick={exportExcel} className="border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm h-8">
               Export Excel

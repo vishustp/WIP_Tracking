@@ -88,6 +88,24 @@ export async function POST(request: NextRequest) {
     const employeeCode = String(body.employee_code ?? '').trim();
     const role = String(body.role ?? 'Viewer') as 'Admin' | 'PPC' | 'Production' | 'QA' | 'Viewer';
     const workCenter = String(body.work_center ?? 'ALL');
+    const userGroup = String(body.user_group ?? (
+      role === 'Admin' ? 'admin' : role === 'PPC' ? 'super_user' : 'user'
+    ));
+    const roleTitle = String(body.role_title ?? (
+      role === 'Admin' ? 'PPC Administrator' :
+      role === 'PPC' ? 'Plant Operations Head' :
+      role === 'QA' ? 'Quality & NDT Inspector' :
+      role === 'Viewer' ? 'Viewer' : 'Production Operator'
+    ));
+    const allowedStages = Array.isArray(body.allowed_stages)
+      ? body.allowed_stages
+      : workCenter === 'ALL'
+        ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
+        : workCenter === 'QA'
+          ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
+          : [workCenter];
+    const defaultStage = String(body.default_stage ?? (workCenter === 'ALL' ? 'ROLLING' : workCenter));
+    const shift = String(body.shift ?? '');
     const department = String(body.department ?? '').trim() || null;
     const phone = String(body.phone ?? '').trim() || null;
 
@@ -118,8 +136,13 @@ export async function POST(request: NextRequest) {
       employee_name: name,
       email,
       role,
+      user_group: userGroup,
+      role_title: roleTitle,
       work_center: workCenter,
       department,
+      shift,
+      allowed_stages: allowedStages,
+      default_stage: defaultStage,
       phone,
       active: true,
     }).select().single();
@@ -156,6 +179,13 @@ export async function PUT(request: NextRequest) {
       employee_name: String(body.employee_name ?? '').trim(),
       email,
       role: body.role,
+      user_group: String(body.user_group ?? (
+        body.role === 'Admin' ? 'admin' : body.role === 'PPC' ? 'super_user' : 'user'
+      )),
+      role_title: String(body.role_title ?? ''),
+      shift: String(body.shift ?? ''),
+      allowed_stages: Array.isArray(body.allowed_stages) ? body.allowed_stages : [],
+      default_stage: String(body.default_stage ?? ''),
       work_center: String(body.work_center ?? 'ALL'),
       department: String(body.department ?? '').trim() || null,
       phone: String(body.phone ?? '').trim() || null,

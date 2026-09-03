@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { createMockClient } from '@/lib/supabase/mock-client';
-import { mockStore } from '@/lib/supabase/mock-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -222,25 +220,11 @@ export default function RollingPlanForm() {
         }
       );
 
-      if (error || !data) {
-        const fallbackPlans = mockStore.getRollingPlans({
-          search: search.trim() || undefined,
-          route_code: filterRoute || undefined,
-          from_date: fromDate || undefined,
-          to_date: toDate || undefined,
-        });
-        setPlans(fallbackPlans as unknown as Plan[]);
-      } else {
-        setPlans((data ?? []) as Plan[]);
-      }
-    } catch {
-      const fallbackPlans = mockStore.getRollingPlans({
-        search: search.trim() || undefined,
-        route_code: filterRoute || undefined,
-        from_date: fromDate || undefined,
-        to_date: toDate || undefined,
-      });
-      setPlans(fallbackPlans as unknown as Plan[]);
+      if (error) throw new Error(error.message);
+      setPlans((data ?? []) as Plan[]);
+    } catch (error) {
+      setPlans([]);
+      toast.error(error instanceof Error ? error.message : 'Failed to load rolling plans.');
     }
 
     setPlansLoading(false);
@@ -269,15 +253,11 @@ export default function RollingPlanForm() {
           }
         );
 
-      if (error || data == null) {
-        const fallbackQty = mockStore.getUnplannedQty(id);
-        setAvailableMtr(fallbackQty);
-      } else {
-        setAvailableMtr(Number(data ?? 0));
-      }
-    } catch {
-      const fallbackQty = mockStore.getUnplannedQty(id);
-      setAvailableMtr(fallbackQty);
+      if (error) throw new Error(error.message);
+      setAvailableMtr(Number(data ?? 0));
+    } catch (error) {
+      setAvailableMtr(0);
+      toast.error(error instanceof Error ? error.message : 'Failed to load available quantity.');
     }
   };
 
@@ -300,36 +280,24 @@ export default function RollingPlanForm() {
         .eq('active', true)
         .order('route_code'),
     ]).then(([a, b]) => {
-      let woList: WO[] = [];
-      if (!a?.error && Array.isArray(a?.data)) {
-        woList = a.data as WO[];
-      } else {
-        woList = (mockStore.workOrders || []) as any;
-      }
+      if (a?.error) throw new Error(a.error.message);
+      const woList = (a?.data ?? []) as WO[];
       setWos(woList);
       if (initialWoId) {
         void lookup(initialWoId);
       }
 
-      let routeList: Route[] = [];
-      if (!b?.error && Array.isArray(b?.data) && b.data.length > 0) {
-        routeList = b.data as Route[];
-      } else {
-        routeList = (mockStore.routes.filter(r => r.active) || []) as any;
-      }
+      if (b?.error) throw new Error(b.error.message);
+      const routeList = (b?.data ?? []) as Route[];
       setRoutes(routeList);
 
       if (routeList.length > 0) {
         setRoute((prev) => prev || routeList[0].id);
       }
-    }).catch(() => {
-      const woList = (mockStore.workOrders || []) as any;
-      setWos(woList);
-      const routeList = (mockStore.routes.filter(r => r.active) || []) as any;
-      setRoutes(routeList);
-      if (routeList.length > 0) {
-        setRoute((prev) => prev || routeList[0].id);
-      }
+    }).catch((error) => {
+      setWos([]);
+      setRoutes([]);
+      toast.error(error instanceof Error ? error.message : 'Failed to load rolling plan masters.');
     });
   }, [initialWoId]);
 
@@ -550,25 +518,7 @@ export default function RollingPlanForm() {
       }
     } catch {}
 
-    if (!success) {
-      // Fallback in-memory
-      const mockResult = await createMockClient().rpc('create_rolling_plan', {
-        p_work_order_id: wo,
-        p_planned_qty: d.mtr,
-        p_rolling_date: date,
-        p_route_id: route,
-        p_mh_od: mhOdValue,
-        p_mh_wt: mhWtValue,
-        p_mh_l1: mhL1Value,
-        p_mh_l2: mhL2Value,
-        p_pass_required: pass,
-        p_multiple: mult,
-      });
-      if (mockResult?.data) {
-        planCreatedNo = String(mockResult.data);
-        success = true;
-      }
-    }
+
 
     setLoading(false);
 
@@ -762,23 +712,7 @@ export default function RollingPlanForm() {
       }
     } catch {}
 
-    if (!editSuccess) {
-      const mockResult = await createMockClient().rpc('update_rolling_plan', {
-        p_plan_id: editing.id,
-        p_planned_qty: d.mtr,
-        p_rolling_date: editDate,
-        p_route_id: editRoute,
-        p_mh_od: mhOdValue,
-        p_mh_wt: mhWtValue,
-        p_mh_l1: mhL1Value,
-        p_mh_l2: mhL2Value,
-        p_pass_required: pass,
-        p_multiple: mult,
-      });
-      if (!mockResult.error) {
-        editSuccess = true;
-      }
-    }
+
 
     setEditSaving(false);
 
@@ -817,14 +751,7 @@ export default function RollingPlanForm() {
       }
     } catch {}
 
-    if (!deleteSuccess) {
-      const mockResult = await createMockClient().rpc('delete_rolling_plan', {
-        p_plan_id: p.id,
-      });
-      if (!mockResult.error) {
-        deleteSuccess = true;
-      }
-    }
+
 
     if (deleteSuccess) {
       toast.success('Rolling plan deleted successfully.');

@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { mockStore, MockUserProfile, MockAuditLog, DEFAULT_USERS, UserGroup, WorkCenterCode } from '@/lib/supabase/mock-store';
+import type { AppUserProfile, AppAuditLog, UserGroup, WorkCenterCode } from '@/lib/users/types';
+import { getCurrentAppUser } from '@/lib/users/client';
+import { createClient } from '@/lib/supabase/client';
 import { GROUP_CONFIGS } from '@/lib/permissions';
 import {
   User, ShieldCheck, HardHat, Mail, Phone, Building, Clock,
@@ -70,9 +72,8 @@ const ROLE_PERMISSIONS: Record<string, { label: string; permissions: string[]; b
 };
 
 export default function UserProfileClient() {
-  const [currentUser, setCurrentUser] = useState<MockUserProfile | null>(null);
-  const [allUsers, setAllUsers] = useState<MockUserProfile[]>([]);
-  const [userLogs, setUserLogs] = useState<MockAuditLog[]>([]);
+  const [currentUser, setCurrentUser] = useState<AppUserProfile | null>(null);
+  const [userLogs, setUserLogs] = useState<AppAuditLog[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Form states
@@ -81,42 +82,45 @@ export default function UserProfileClient() {
   const [department, setDepartment] = useState('');
   const [shift, setShift] = useState('');
   const [defaultStage, setDefaultStage] = useState('ROLLING');
-  const [pin, setPin] = useState('');
-  const [newPin, setNewPin] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
   // Preferences
   const [prefBottleneck, setPrefBottleneck] = useState(true);
   const [prefRejection, setPrefRejection] = useState(true);
   const [prefTargetAlerts, setPrefTargetAlerts] = useState(true);
 
-  const loadData = () => {
-    mockStore.loadFromStorage();
-    const cur = mockStore.getCurrentUser();
-    setCurrentUser(cur);
-    setAllUsers([...mockStore.users]);
+  const loadData = async () => {
+    try {
+      const cur = await getCurrentAppUser();
+      setCurrentUser(cur);
+      if (!cur) {
+        setUserLogs([]);
+        return;
+      }
+      setName(cur.name || '');
+      setPhone(cur.phone || '');
+      setDepartment(cur.department || '');
+      setShift(cur.shift || 'General (09:00 - 17:30)');
+      setDefaultStage(cur.default_stage || 'ROLLING');
 
-    setName(cur.name || '');
-    setPhone(cur.phone || '');
-    setDepartment(cur.department || '');
-    setShift(cur.shift || 'General (09:00 - 17:30)');
-    setDefaultStage(cur.default_stage || 'ROLLING');
-    setPin(cur.pin || '1234');
-
-    const logs = mockStore.auditLogs.filter(
-      l => l.user_email?.toLowerCase() === cur.email?.toLowerCase()
-    );
-    setUserLogs(logs);
+      const supabase = createClient();
+      const { data: logs } = await supabase
+        .from('audit_log')
+        .select('*')
+        .eq('user_id', cur.auth_user_id)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      setUserLogs((logs ?? []) as AppAuditLog[]);
+    } catch {
+      setCurrentUser(null);
+      setUserLogs([]);
+      toast.error('Unable to load your Supabase profile.');
+    }
   };
 
   useEffect(() => {
     loadData();
   }, []);
-
-  const switchActiveUser = (email: string) => {
-    mockStore.setCurrentUser(email);
-    loadData();
-    toast.success(`Active user switched to ${email}`);
-  };
 
   if (!currentUser) {
     return (
@@ -140,34 +144,37 @@ export default function UserProfileClient() {
     permissions: ['Standard Access'],
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!currentUser) return;
     if (!isAdmin) {
       toast.error('Access Restricted: Only Administrators can modify user profiles and system settings.');
       return;
     }
     setSaving(true);
-
     try {
-      const updated = mockStore.updateUserProfile(currentUser.id, {
-        name: name.trim() || currentUser.name,
-        phone: phone.trim(),
-        department,
-        shift,
-        default_stage: defaultStage,
-        pin: newPin.trim() ? newPin.trim() : pin,
-      });
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('app_users')
+        .update({
+          employee_name: name.trim() || currentUser.name,
+          phone: phone.trim(),
+          department,
+          shift,
+          default_stage: defaultStage,
+        })
+        .eq('id', currentUser.id);
+      if (error) throw new Error(error.message);
 
-      if (updated) {
-        setCurrentUser(updated);
-        if (newPin.trim()) {
-          setPin(newPin.trim());
-          setNewPin('');
-        }
-        toast.success('Profile details successfully updated and saved');
+      if (newPassword.trim()) {
+        const { error: passwordError } = await supabase.auth.updateUser({ password: newPassword.trim() });
+        if (passwordError) throw new Error(passwordError.message);
+        setNewPassword('');
       }
-    } catch {
-      toast.error('Failed to update profile');
+
+      await loadData();
+      toast.success('Profile details successfully updated and saved');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update profile');
     } finally {
       setSaving(false);
     }
@@ -234,38 +241,7 @@ export default function UserProfileClient() {
           </div>
         </div>
 
-        {/* User Switcher Bar - Only shown for Admin */}
-        {isAdmin ? (
-          <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-sm">
-            <div className="flex items-center gap-2 text-slate-500 font-medium">
-              <UserCheck className="h-4 w-4 text-blue-600" />
-              <span>Switch active user (Admin Authority):</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {allUsers.map(u => {
-                const uGrp = u.group || (u.role === 'admin' ? 'admin' : u.role === 'manager' ? 'super_user' : 'user');
-                return (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => switchActiveUser(u.email)}
-                    className={`px-2.5 py-1.5 rounded-md text-sm font-medium transition cursor-pointer flex items-center gap-1.5 ${
-                      u.email.toLowerCase() === currentUser.email.toLowerCase()
-                        ? 'bg-slate-900 text-white font-semibold shadow-xs'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    <span>{u.name.split(' ')[0]}</span>
-                    <span className="text-xs opacity-80 uppercase font-semibold">[{uGrp}]</span>
-                    {u.email.toLowerCase() === currentUser.email.toLowerCase() && (
-                      <Check className="h-3 w-3 text-white" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
+        {!isAdmin && (
           <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-sm bg-slate-50/80 p-3 rounded-xl border border-slate-200">
             <div className="flex items-center gap-2 text-slate-600 font-medium">
               <Lock className="h-4 w-4 text-slate-500" />
@@ -408,41 +384,29 @@ export default function UserProfileClient() {
             </div>
           </div>
 
-          {/* Quick Terminal Passcode / Security */}
+          {/* Supabase Auth Security */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 text-slate-900 font-semibold text-sm">
-                <KeyRound className="h-4 w-4 text-amber-600" />
-                <span>Shop Floor PIN & Security</span>
+                <Lock className="h-4 w-4 text-blue-600" />
+                <span>Account Security</span>
               </div>
-              <span className="text-sm text-slate-400">4-Digit Terminal Auth</span>
+              <span className="text-sm text-slate-400">Supabase Auth</span>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Current Terminal PIN</label>
-                <input
-                  type="password"
-                  disabled
-                  value={pin}
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 tracking-widest font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Set New PIN (4 digits)</label>
-                <input
-                  type="password"
-                  disabled={!isAdmin}
-                  maxLength={6}
-                  placeholder={isAdmin ? "Enter 4-digit PIN" : "Admin Only"}
-                  value={newPin}
-                  onChange={(e) => setNewPin(e.target.value)}
-                  className={`w-full rounded-lg border px-3 py-2 text-sm tracking-widest font-mono focus:border-blue-500 focus:outline-hidden ${
-                    !isAdmin ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed' : 'border-slate-300'
-                  }`}
-                />
-              </div>
+            <div>
+              <label className="font-semibold text-slate-700 block mb-1">New Password</label>
+              <input
+                type="password"
+                disabled={!isAdmin}
+                minLength={6}
+                placeholder={isAdmin ? 'Enter a new password' : 'Admin Only'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className={`w-full rounded-lg border px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-hidden ${
+                  !isAdmin ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed' : 'border-slate-300'
+                }`}
+              />
+              <p className="text-sm text-slate-400 mt-1">Passwords are managed by Supabase Auth. No password or PIN is stored in the application database.</p>
             </div>
           </div>
 

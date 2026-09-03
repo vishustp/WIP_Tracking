@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { createMockClient } from '@/lib/supabase/mock-client';
-import { mockStore } from '@/lib/supabase/mock-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -122,6 +120,100 @@ type WoWipSummary = {
   }[];
 };
 
+type WipViewRow = {
+  work_order_id: string;
+  stage_code: string;
+  stage_name: string;
+  sequence_no: number;
+  incoming_qty?: number | null;
+  production_qty?: number | null;
+  rejection_qty?: number | null;
+  current_wip?: number | null;
+  current_rejection?: number | null;
+  diversion_out?: number | null;
+  total_wip_mtr?: number | null;
+  total_wip_pcs?: number | null;
+  total_wip_mt?: number | null;
+  net_output_mtr?: number | null;
+};
+
+async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: string, wo: WO): Promise<WoWipSummary> {
+  const { data, error } = await supabase
+    .from('vw_work_order_wip')
+    .select('work_order_id,stage_code,stage_name,sequence_no,incoming_qty,production_qty,rejection_qty,current_wip,current_rejection,diversion_out,total_wip_mtr,total_wip_pcs,total_wip_mt,net_output_mtr')
+    .eq('work_order_id', id);
+
+  if (error) throw new Error(error.message);
+
+  const rows = ((data ?? []) as WipViewRow[]).sort((a, b) => Number(a.sequence_no) - Number(b.sequence_no));
+  const avgLength = Number(wo.l1 ?? 0) > 0 && Number(wo.l2 ?? 0) > 0
+    ? (Number(wo.l1) + Number(wo.l2)) / 2
+    : Number(wo.l1 ?? wo.l2 ?? 0) || 6;
+  const od = Number(wo.size_od ?? 0);
+  const wt = Number(wo.size_wt ?? 0);
+  const mtPerMtr = od > wt ? (od - wt) * wt * 0.0246615 * 0.001 : 0;
+  const first = rows[0];
+  const totalWipMtr = Number(first?.total_wip_mtr ?? 0);
+  const totalWipPcs = Number(first?.total_wip_pcs ?? 0);
+  const totalWipMt = Number(first?.total_wip_mt ?? 0);
+  const divertedOutMtr = rows.reduce((sum, r) => sum + Number(r.diversion_out ?? 0), 0);
+
+  let remainingDiversion = Math.max(0, divertedOutMtr);
+  const stageBreakdown = rows.map((r) => {
+    const normal = Math.max(0, Number(r.current_wip ?? 0));
+    const rejection = Math.max(0, Number(r.current_rejection ?? r.rejection_qty ?? 0));
+    const gross = normal + rejection;
+    const consumed = Math.min(gross, remainingDiversion);
+    remainingDiversion = Math.max(0, remainingDiversion - consumed);
+    const available = Math.max(0, gross - consumed);
+    return {
+      stage_code: r.stage_code,
+      stage_name: r.stage_name,
+      sequence_no: Number(r.sequence_no),
+      available_mtr: available,
+      available_pcs: avgLength > 0 ? available / avgLength : 0,
+      available_mt: available * mtPerMtr,
+      input_qty: Number(r.incoming_qty ?? 0),
+      output_qty: Number(r.production_qty ?? 0),
+      rejection_qty: rejection,
+      net_output_qty: Number(r.net_output_mtr ?? 0),
+    };
+  });
+
+  const divertedOutPcs = avgLength > 0 ? divertedOutMtr / avgLength : 0;
+  const divertedOutMt = divertedOutMtr * mtPerMtr;
+
+  return {
+    wo,
+    od,
+    wt,
+    l1: Number(wo.l1 ?? 0),
+    l2: Number(wo.l2 ?? 0),
+    avgLength,
+    orderedMtr: 0,
+    orderedPcs: 0,
+    orderedMt: 0,
+    rollingGrossMtr: Number(rows[0]?.current_wip ?? 0),
+    rollingRejMtr: Number(rows[0]?.current_rejection ?? 0),
+    rollingNetMtr: Number(rows[0]?.net_output_mtr ?? 0),
+    rollingHtcOkMtr: 0,
+    rollingHtcOkPcs: 0,
+    rollingHtcOkMt: 0,
+    divertedOutMtr,
+    divertedOutPcs,
+    divertedOutMt,
+    divertedInMtr: 0,
+    divertedInPcs: 0,
+    divertedInMt: 0,
+    physicalAvailableMtr: totalWipMtr,
+    unplannedOrderMtr: 0,
+    balanceWipMtr: totalWipMtr,
+    balanceWipPcs: totalWipPcs,
+    balanceWipMt: totalWipMt,
+    stageBreakdown,
+  };
+}
+
 const WORK_CENTERS = [
   { code: 'ROLLING', name: 'Rolling Mill (Mother Hollow)' },
   { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow Heat Treatment' },
@@ -186,21 +278,20 @@ export default function DiversionForm() {
         s.from('process_routes').select('id,route_code,route_name').eq('active', true).order('route_code'),
       ]);
 
-      let woList = (woRes?.data ?? []) as WO[];
-      if (woRes?.error || !woList.length) woList = mockStore.workOrders as any;
+      if (woRes?.error) throw new Error(woRes.error.message);
+      if (routeRes?.error) throw new Error(routeRes.error.message);
+      const woList = (woRes?.data ?? []) as WO[];
       setWos(woList);
 
-      let routeList = (routeRes?.data ?? []) as Route[];
-      if (routeRes?.error || !routeList.length) routeList = mockStore.routes.filter(r => r.active) as any;
+      const routeList = (routeRes?.data ?? []) as Route[];
       setRoutes(routeList);
       if (routeList.length) {
         setRoute(prev => prev || routeList[0].id);
       }
-    } catch {
-      setWos(mockStore.workOrders as any);
-      const rList = mockStore.routes.filter(r => r.active) as any;
-      setRoutes(rList);
-      if (rList.length) setRoute(prev => prev || rList[0].id);
+    } catch (error) {
+      setWos([]);
+      setRoutes([]);
+      toast.error(error instanceof Error ? error.message : 'Failed to load diversion masters.');
     }
   }, []);
 
@@ -215,29 +306,11 @@ export default function DiversionForm() {
         p_to_date: toDate || null,
       });
 
-      if (!error && Array.isArray(data)) {
-        setPlans(data as DiversionPlanItem[]);
-      } else {
-        const mockResult = await createMockClient().rpc('get_diversion_plans', {
-          p_search: search || null,
-          p_route_code: filterRoute || null,
-          p_work_center: filterWorkCenter || null,
-          p_from_date: fromDate || null,
-          p_to_date: toDate || null,
-        });
-        if (!mockResult.error && Array.isArray(mockResult.data)) {
-          setPlans(mockResult.data as DiversionPlanItem[]);
-        }
-      }
-    } catch {
-      const fallbackList = mockStore.getDiversionPlans({
-        search: search || null,
-        route_code: filterRoute || null,
-        work_center: filterWorkCenter || null,
-        from_date: fromDate || null,
-        to_date: toDate || null,
-      });
-      setPlans(fallbackList as DiversionPlanItem[]);
+      if (error) throw new Error(error.message);
+      setPlans((data ?? []) as DiversionPlanItem[]);
+    } catch (error) {
+      setPlans([]);
+      toast.error(error instanceof Error ? error.message : 'Failed to load diversion plans.');
     } finally {
       setPlansLoading(false);
     }
@@ -251,108 +324,43 @@ export default function DiversionForm() {
     void loadPlans();
   }, [loadPlans]);
 
-  // Update Source WIP when source WO changes
+  // WIP is always read from Supabase. Diversion availability is global for the source WO,
+  // independent of the selected target work center.
   const handleSourceChange = async (id: string) => {
     setSource(id);
     if (!id) {
       setSourceWip(null);
       return;
     }
-
-    const summary = mockStore.getWorkOrderWipSummary(id);
-    if (summary) {
-      setSourceWip(summary as any);
-    } else {
-      const sel = wos.find(w => w.id === id);
-      if (sel) {
-        const od = Number(sel.size_od ?? sel.od ?? 0);
-        const wt = Number(sel.size_wt ?? sel.wt ?? 0);
-        const l1 = Number(sel.l1 || 0);
-        const l2 = Number(sel.l2 || 0);
-        const avg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 6.0;
-        const ordMtr = Number(sel.balance_qty_mtr ?? sel.ordered_qty ?? 0);
-        setSourceWip({
-          wo: sel,
-          od,
-          wt,
-          l1,
-          l2,
-          avgLength: avg,
-          orderedMtr: ordMtr,
-          orderedPcs: avg > 0 ? ordMtr / avg : 0,
-          orderedMt: od > wt ? (od - wt) * wt * 0.0246615 * 0.001 * ordMtr : 0,
-          rollingGrossMtr: 0,
-          rollingRejMtr: 0,
-          rollingNetMtr: 0,
-          rollingHtcOkMtr: 0,
-          rollingHtcOkPcs: 0,
-          rollingHtcOkMt: 0,
-          divertedOutMtr: 0,
-          divertedOutPcs: 0,
-          divertedOutMt: 0,
-          divertedInMtr: 0,
-          divertedInPcs: 0,
-          divertedInMt: 0,
-          physicalAvailableMtr: 0,
-          unplannedOrderMtr: ordMtr,
-          balanceWipMtr: ordMtr,
-          balanceWipPcs: avg > 0 ? ordMtr / avg : 0,
-          balanceWipMt: od > wt ? (od - wt) * wt * 0.0246615 * 0.001 * ordMtr : 0,
-          stageBreakdown: [],
-        });
-      }
+    const sel = wos.find(w => w.id === id);
+    if (!sel) {
+      setSourceWip(null);
+      return;
+    }
+    try {
+      setSourceWip(await fetchWipSummary(createClient(), id, sel));
+    } catch (error) {
+      setSourceWip(null);
+      toast.error(error instanceof Error ? error.message : 'Failed to load source WIP.');
     }
   };
 
-  // Update Target WIP when target WO changes
-  const handleTargetChange = (id: string) => {
+  const handleTargetChange = async (id: string) => {
     setTarget(id);
     if (!id) {
       setTargetWip(null);
       return;
     }
-    const summary = mockStore.getWorkOrderWipSummary(id);
-    if (summary) {
-      setTargetWip(summary as any);
-    } else {
-      const sel = wos.find(w => w.id === id);
-      if (sel) {
-        const od = Number(sel.size_od ?? sel.od ?? 0);
-        const wt = Number(sel.size_wt ?? sel.wt ?? 0);
-        const l1 = Number(sel.l1 || 0);
-        const l2 = Number(sel.l2 || 0);
-        const avg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 6.0;
-        const ordMtr = Number(sel.balance_qty_mtr ?? sel.ordered_qty ?? 0);
-        setTargetWip({
-          wo: sel,
-          od,
-          wt,
-          l1,
-          l2,
-          avgLength: avg,
-          orderedMtr: ordMtr,
-          orderedPcs: avg > 0 ? ordMtr / avg : 0,
-          orderedMt: od > wt ? (od - wt) * wt * 0.0246615 * 0.001 * ordMtr : 0,
-          rollingGrossMtr: 0,
-          rollingRejMtr: 0,
-          rollingNetMtr: 0,
-          rollingHtcOkMtr: 0,
-          rollingHtcOkPcs: 0,
-          rollingHtcOkMt: 0,
-          divertedOutMtr: 0,
-          divertedOutPcs: 0,
-          divertedOutMt: 0,
-          divertedInMtr: 0,
-          divertedInPcs: 0,
-          divertedInMt: 0,
-          physicalAvailableMtr: 0,
-          unplannedOrderMtr: ordMtr,
-          balanceWipMtr: 0,
-          balanceWipPcs: 0,
-          balanceWipMt: 0,
-          stageBreakdown: [],
-        });
-      }
+    const sel = wos.find(w => w.id === id);
+    if (!sel) {
+      setTargetWip(null);
+      return;
+    }
+    try {
+      setTargetWip(await fetchWipSummary(createClient(), id, sel));
+    } catch (error) {
+      setTargetWip(null);
+      toast.error(error instanceof Error ? error.message : 'Failed to load target WIP.');
     }
   };
 
@@ -368,14 +376,7 @@ export default function DiversionForm() {
   }, [sourceWip, workCenter]);
 
   // Calculate available WIP at the selected work center
-  const availableAtWorkCenterMtr = useMemo(() => {
-    if (!sourceWip) return 0;
-    if (sourceStageWip && sourceStageWip.available_mtr > 0) {
-      return sourceStageWip.available_mtr;
-    }
-    // If it's rolling or early stage, fall back to balance WIP or total available
-    return sourceWip.balanceWipMtr || sourceWip.rollingHtcOkMtr || 0;
-  }, [sourceWip, sourceStageWip]);
+  const availableAtWorkCenterMtr = useMemo(() => sourceWip?.balanceWipMtr || 0, [sourceWip]);
 
   const availableAtWorkCenterPcs = useMemo(() => {
     if (sourceStageWip && sourceStageWip.available_pcs > 0) return sourceStageWip.available_pcs;
@@ -440,30 +441,13 @@ export default function DiversionForm() {
     let success = false;
     try {
       const { error } = await createClient().rpc('create_diversion', {
-        p_source: source,
-        p_target: target,
-        p_qty: diversionMtr,
-        p_work_center: workCenter,
-        p_route: route,
-        p_multiple: numMultiple,
-        p_reason: reason,
-        p_date: date,
+        p_source: source, p_target: target, p_qty: diversionMtr, p_work_center: workCenter,
+        p_route: route, p_multiple: numMultiple, p_reason: reason, p_date: date,
       });
-      if (!error) success = true;
-    } catch {}
-
-    if (!success) {
-      const mockResult = await createMockClient().rpc('create_diversion', {
-        p_source: source,
-        p_target: target,
-        p_qty: diversionMtr,
-        p_work_center: workCenter,
-        p_route: route,
-        p_multiple: numMultiple,
-        p_reason: reason,
-        p_date: date,
-      });
-      if (!mockResult.error) success = true;
+      if (error) throw new Error(error.message);
+      success = true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create diversion plan');
     }
 
     setBusy(false);
@@ -508,7 +492,6 @@ export default function DiversionForm() {
 
     setEditSaving(true);
     let editSuccess = false;
-
     try {
       const { error } = await createClient().rpc('update_diversion', {
         p_diversion_id: editing.id,
@@ -519,20 +502,10 @@ export default function DiversionForm() {
         p_date: editDate,
         p_reason: editReason,
       });
-      if (!error) editSuccess = true;
-    } catch {}
-
-    if (!editSuccess) {
-      const mockResult = await createMockClient().rpc('update_diversion', {
-        p_diversion_id: editing.id,
-        p_qty: qtyVal,
-        p_work_center: editWorkCenter,
-        p_route: editRoute,
-        p_multiple: multVal,
-        p_date: editDate,
-        p_reason: editReason,
-      });
-      if (!mockResult.error) editSuccess = true;
+      if (error) throw new Error(error.message);
+      editSuccess = true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update diversion plan.');
     }
 
     setEditSaving(false);
@@ -556,17 +529,11 @@ export default function DiversionForm() {
 
     let deleteSuccess = false;
     try {
-      const { error } = await createClient().rpc('delete_diversion', {
-        p_diversion_id: p.id,
-      });
-      if (!error) deleteSuccess = true;
-    } catch {}
-
-    if (!deleteSuccess) {
-      const mockResult = await createMockClient().rpc('delete_diversion', {
-        p_diversion_id: p.id,
-      });
-      if (!mockResult.error) deleteSuccess = true;
+      const { error } = await createClient().rpc('delete_diversion', { p_diversion_id: p.id });
+      if (error) throw new Error(error.message);
+      deleteSuccess = true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete diversion plan.');
     }
 
     if (deleteSuccess) {

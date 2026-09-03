@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { mockStore, MockUserProfile, UserGroup, UserRole, DEFAULT_USERS } from './supabase/mock-store';
+import type { AppUserProfile, UserGroup, UserRole } from './users/types';
+import { getCurrentAppUser } from './users/client';
+import { createClient } from './supabase/client';
 import { StageCode } from '@/types';
 
 export type PermissionAction =
@@ -93,14 +95,14 @@ export function getGroupConfig(group?: UserGroup | string | null): GroupConfig {
 /**
  * Only Admin Group can switch active profiles or modify user roles/accounts
  */
-export function canSwitchProfile(user: MockUserProfile | null | undefined): boolean {
+export function canSwitchProfile(user: AppUserProfile | null | undefined): boolean {
   return user?.group === 'admin';
 }
 
 /**
  * Only Admin Group can edit and save profile identity and security settings
  */
-export function canEditProfile(user: MockUserProfile | null | undefined): boolean {
+export function canEditProfile(user: AppUserProfile | null | undefined): boolean {
   return user?.group === 'admin';
 }
 
@@ -135,7 +137,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
 /**
  * Validates if the user is authorized to delete a production entry for a specific work center stage
  */
-export function checkCanDelete(user: MockUserProfile | null | undefined, stageCode: string): {
+export function checkCanDelete(user: AppUserProfile | null | undefined, stageCode: string): {
   allowed: boolean;
   reason?: string;
 } {
@@ -166,7 +168,7 @@ export function checkCanDelete(user: MockUserProfile | null | undefined, stageCo
 /**
  * Validates if the user is authorized to edit a production entry for a specific work center stage
  */
-export function checkCanEdit(user: MockUserProfile | null | undefined, stageCode: string): {
+export function checkCanEdit(user: AppUserProfile | null | undefined, stageCode: string): {
   allowed: boolean;
   reason?: string;
 } {
@@ -193,7 +195,7 @@ export function checkCanEdit(user: MockUserProfile | null | undefined, stageCode
 /**
  * Validates if the user is authorized to create/record a production entry for a specific work center stage
  */
-export function checkCanCreate(user: MockUserProfile | null | undefined, stageCode: string): {
+export function checkCanCreate(user: AppUserProfile | null | undefined, stageCode: string): {
   allowed: boolean;
   reason?: string;
 } {
@@ -220,7 +222,7 @@ export function checkCanCreate(user: MockUserProfile | null | undefined, stageCo
 /**
  * Only Admin Group can add, edit, remove, or manage users
  */
-export function checkCanManageUsers(user: MockUserProfile | null | undefined): {
+export function checkCanManageUsers(user: AppUserProfile | null | undefined): {
   allowed: boolean;
   reason?: string;
 } {
@@ -236,7 +238,7 @@ export function checkCanManageUsers(user: MockUserProfile | null | undefined): {
 /**
  * Only Admin Group can modify system settings, guardrails, routes, and reset data
  */
-export function checkCanModifySettings(user: MockUserProfile | null | undefined): {
+export function checkCanModifySettings(user: AppUserProfile | null | undefined): {
   allowed: boolean;
   reason?: string;
 } {
@@ -252,7 +254,7 @@ export function checkCanModifySettings(user: MockUserProfile | null | undefined)
 /**
  * Admin and Super User groups can create and manage rolling plans & pipe diversions
  */
-export function checkCanManagePlans(user: MockUserProfile | null | undefined): {
+export function checkCanManagePlans(user: AppUserProfile | null | undefined): {
   allowed: boolean;
   reason?: string;
 } {
@@ -287,7 +289,7 @@ export interface FormAccessResult {
 }
 
 export function getFormAccess(
-  user: MockUserProfile | null | undefined,
+  user: AppUserProfile | null | undefined,
   formKey: 'rolling_plan' | 'production_entry' | 'diversion' | 'work_order' | 'excel_import' | 'admin_panel' | 'settings',
   stageCode?: string
 ): FormAccessResult {
@@ -477,80 +479,53 @@ export function getFormAccess(
 }
 
 export function usePermissions() {
-  const [user, setUser] = useState<MockUserProfile>(() => {
-    if (typeof window !== 'undefined') {
-      mockStore.loadFromStorage();
-    }
-    return mockStore.getCurrentUser();
-  });
+  const [user, setUser] = useState<AppUserProfile | null>(null);
 
-  const refreshUser = useCallback(() => {
-    mockStore.loadFromStorage();
-    setUser(mockStore.getCurrentUser());
+  const refreshUser = useCallback(async () => {
+    try {
+      setUser(await getCurrentAppUser());
+    } catch {
+      setUser(null);
+    }
   }, []);
 
   useEffect(() => {
-    refreshUser();
-
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key?.startsWith('seamless_wip_')) {
-        refreshUser();
-      }
-    };
-
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    void refreshUser();
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      void refreshUser();
+    });
+    return () => subscription.unsubscribe();
   }, [refreshUser]);
 
-  const group = user.group || (user.role === 'admin' ? 'admin' : user.role === 'manager' ? 'super_user' : 'user');
+  const group = (user?.group || (user?.role === 'admin' ? 'admin' : user?.role === 'manager' ? 'super_user' : 'user')) as UserGroup;
   const groupConfig = getGroupConfig(group);
-  const workCenter = user.work_center || (group === 'admin' || group === 'super_user' ? 'ALL' : user.default_stage || 'ROLLING');
+  const workCenter = user?.work_center || (group === 'admin' || group === 'super_user' ? 'ALL' : user?.default_stage || 'ROLLING');
   const workCenterLabel = WORK_CENTER_LABELS[workCenter] || workCenter;
 
-  const canDeleteForStage = useCallback(
-    (stageCode: string) => checkCanDelete(user, stageCode),
-    [user]
-  );
-
-  const canEditForStage = useCallback(
-    (stageCode: string) => checkCanEdit(user, stageCode),
-    [user]
-  );
-
-  const canCreateForStage = useCallback(
-    (stageCode: string) => checkCanCreate(user, stageCode),
-    [user]
-  );
+  const canDeleteForStage = useCallback((stageCode: string) => checkCanDelete(user, stageCode), [user]);
+  const canEditForStage = useCallback((stageCode: string) => checkCanEdit(user, stageCode), [user]);
+  const canCreateForStage = useCallback((stageCode: string) => checkCanCreate(user, stageCode), [user]);
 
   const can = useCallback(
     (action: PermissionAction, stageCode?: string): { allowed: boolean; reason?: string } => {
       switch (action) {
-        case 'delete_production_entry':
-          return checkCanDelete(user, stageCode || user.default_stage || 'ROLLING');
-        case 'edit_production_entry':
-          return checkCanEdit(user, stageCode || user.default_stage || 'ROLLING');
-        case 'create_production_entry':
-          return checkCanCreate(user, stageCode || user.default_stage || 'ROLLING');
-        case 'manage_users':
-          return checkCanManageUsers(user);
+        case 'delete_production_entry': return checkCanDelete(user, stageCode || user?.default_stage || 'ROLLING');
+        case 'edit_production_entry': return checkCanEdit(user, stageCode || user?.default_stage || 'ROLLING');
+        case 'create_production_entry': return checkCanCreate(user, stageCode || user?.default_stage || 'ROLLING');
+        case 'manage_users': return checkCanManageUsers(user);
         case 'modify_settings':
-        case 'system_reset':
-          return checkCanModifySettings(user);
+        case 'system_reset': return checkCanModifySettings(user);
         case 'access_admin_panel':
-          return group === 'admin'
-            ? { allowed: true }
-            : { allowed: false, reason: 'Admin panel is restricted to Admin Group' };
+          return group === 'admin' ? { allowed: true } : { allowed: false, reason: 'Admin panel is restricted to Admin Group' };
         case 'create_rolling_plan':
         case 'edit_rolling_plan':
         case 'delete_rolling_plan':
         case 'create_diversion':
         case 'delete_diversion':
-        case 'import_work_orders':
-          return checkCanManagePlans(user);
-        case 'view_audit_logs':
-          return { allowed: true };
-        default:
-          return { allowed: false, reason: 'Action not allowed' };
+        case 'import_work_orders': return checkCanManagePlans(user);
+        case 'view_audit_logs': return { allowed: true };
+        default: return { allowed: false, reason: 'Action not allowed' };
       }
     },
     [user, group]
@@ -559,18 +534,18 @@ export function usePermissions() {
   const isStageAllowed = useCallback(
     (stageCode: string): boolean => {
       if (group === 'admin' || group === 'super_user') return true;
-      return workCenter === stageCode || user.allowed_stages?.includes(stageCode) || user.default_stage === stageCode;
+      return !!user && (workCenter === stageCode || user.allowed_stages?.includes(stageCode) || user.default_stage === stageCode);
     },
-    [group, workCenter, user.allowed_stages, user.default_stage]
+    [group, workCenter, user]
   );
 
   return {
     user,
     group,
     groupConfig,
-    role: user.role,
-    roleTitle: user.role_title,
-    department: user.department,
+    role: user?.role,
+    roleTitle: user?.role_title,
+    department: user?.department,
     workCenter,
     workCenterLabel,
     isAdmin: group === 'admin',

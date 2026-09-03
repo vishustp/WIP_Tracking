@@ -3,7 +3,6 @@
 import { useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { createClient } from '@/lib/supabase/client';
-import { mockStore } from '@/lib/supabase/mock-store';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import Link from 'next/link';
@@ -399,55 +398,11 @@ export default function ExcelImporter() {
             }
           }
         }
-      } catch {
-        // Direct fallback
-        imported = validRows.length;
+      } catch (error) {
+        throw error;
       }
 
-      // Guarantee local store persistence for mock mode
-      mockStore.loadFromStorage();
-      for (const r of validRows) {
-        const existingIdx = mockStore.workOrders.findIndex(w => w.work_order_no === r.work_order_no);
-        const baseQty = r.ordered_qty_mtr > 0 ? r.ordered_qty_mtr : r.ordered_qty_pcs > 0 ? r.ordered_qty_pcs : 100;
-        const woObj: any = {
-          work_order_no: r.work_order_no,
-          customer_name: r.customer_name || null,
-          grade: r.specification || null,
-          specification: r.specification || null,
-          size_od: r.od,
-          size_wt: r.wl,
-          od: r.od,
-          wt: r.wl,
-          wl: r.wl,
-          l1: r.l1 || 6.0,
-          l2: r.l2 || 6.5,
-          ordered_qty: baseQty,
-          ordered_qty_pcs: r.ordered_qty_pcs,
-          ordered_qty_mtr: r.ordered_qty_mtr,
-          ordered_qty_mt: r.ordered_qty_mt,
-          balance_qty_pcs: r.balance_qty_pcs,
-          balance_qty_mtr: r.balance_qty_mtr > 0 ? r.balance_qty_mtr : baseQty,
-          balance_qty_mt: r.balance_qty_mt,
-          uom: 'Mtrs',
-          target_date: r.target_date || null,
-          status: 'Pending Plan',
-          updated_at: new Date().toISOString(),
-        };
 
-        if (existingIdx >= 0) {
-          mockStore.workOrders[existingIdx] = {
-            ...mockStore.workOrders[existingIdx],
-            ...woObj,
-          };
-        } else {
-          mockStore.workOrders.unshift({
-            id: `wo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            created_at: new Date().toISOString(),
-            ...woObj,
-          });
-        }
-      }
-      mockStore.saveToStorage();
 
       setImportSuccessCount(imported);
       setMessage(

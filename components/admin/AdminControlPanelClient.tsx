@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import {
-  mockStore, MockUserProfile, MockAuditLog, MockRoute, MockStage, UserRole, UserGroup, WorkCenterCode, DEFAULT_USERS
-} from '@/lib/supabase/mock-store';
+import type {
+  AppUserProfile, AppAuditLog, AppRoute, AppStage, UserRole, UserGroup, WorkCenterCode
+} from '@/lib/users/types';
+import { getCurrentAppUser } from '@/lib/users/client';
 import { GROUP_CONFIGS, usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import {
@@ -59,7 +60,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color:
   { value: 'auditor', label: 'Internal Auditor', department: 'Management & Audit Team', color: 'bg-slate-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'AUDIT' },
 ];
 
-function mapAppUserToMockUser(row: any): MockUserProfile {
+function mapAppUserToMockUser(row: any): AppUserProfile {
   if (row.allowed_stages && row.role_title) {
     return row;
   }
@@ -77,7 +78,7 @@ function mapAppUserToMockUser(row: any): MockUserProfile {
     email: row.email,
     name: row.employee_name || row.name,
     employee_id: row.employee_code || row.employee_id,
-    group: row.group || mapped.group,
+    group: row.user_group || row.group || mapped.group,
     role: row.role ? (roleMap[row.role]?.role || row.role) : mapped.role,
     role_title: row.role_title || mapped.title,
     department: row.department || '',
@@ -97,11 +98,11 @@ export default function AdminControlPanelClient() {
   const canAdminister = formAccess.isAllowed;
 
   const [activeTab, setActiveTab] = useState<'users' | 'routes' | 'guardrails' | 'audit' | 'maintenance'>('users');
-  const [users, setUsers] = useState<MockUserProfile[]>([]);
-  const [routes, setRoutes] = useState<MockRoute[]>([]);
-  const [stages, setStages] = useState<MockStage[]>([]);
-  const [auditLogs, setAuditLogs] = useState<MockAuditLog[]>([]);
-  const [currentUser, setCurrentUser] = useState<MockUserProfile | null>(null);
+  const [users, setUsers] = useState<AppUserProfile[]>([]);
+  const [routes, setRoutes] = useState<AppRoute[]>([]);
+  const [stages, setStages] = useState<AppStage[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AppAuditLog[]>([]);
+  const [currentUser, setCurrentUser] = useState<AppUserProfile | null>(null);
   const [loading, setLoading] = useState(false);
 
   // User search & filters
@@ -115,7 +116,7 @@ export default function AdminControlPanelClient() {
 
   // User modal / drawer state
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<MockUserProfile | null>(null);
+  const [editingUser, setEditingUser] = useState<AppUserProfile | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -127,7 +128,7 @@ export default function AdminControlPanelClient() {
     shift: 'Shift A (06:00 - 14:00)',
     default_stage: 'ROLLING',
     phone: '',
-    pin: '1234',
+    pin: '',
   });
 
   // Guardrails state (persisted in localStorage)
@@ -140,23 +141,47 @@ export default function AdminControlPanelClient() {
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
 
   const loadData = async () => {
-    mockStore.loadFromStorage();
-    setRoutes([...mockStore.routes]);
-    setStages([...mockStore.stages]);
-    setAuditLogs([...mockStore.auditLogs]);
-    setCurrentUser(mockStore.getCurrentUser());
-
+    setLoading(true);
     try {
+      const supabase = createClient();
+      const [routesRes, stagesRes, auditRes, current] = await Promise.all([
+        supabase.from('process_routes').select('*').order('route_code'),
+        supabase.from('process_stages').select('*').order('stage_code'),
+        supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(1000),
+        getCurrentAppUser(),
+      ]);
+
+      if (routesRes.error) throw new Error(routesRes.error.message);
+      if (stagesRes.error) throw new Error(stagesRes.error.message);
+      if (auditRes.error) throw new Error(auditRes.error.message);
+
+      setRoutes((routesRes.data ?? []) as AppRoute[]);
+      setStages((stagesRes.data ?? []) as AppStage[]);
+      setAuditLogs((auditRes.data ?? []).map((row: any) => ({
+        id: row.id,
+        user_id: row.user_id,
+        user_email: row.user_id === current?.auth_user_id ? current.email : '',
+        user_name: row.user_id === current?.auth_user_id ? current.name : '',
+        action_type: row.action,
+        entity_type: row.entity,
+        entity_id: row.record_id || undefined,
+        details: row.new_value || row.old_value ? JSON.stringify(row.new_value || row.old_value) : '',
+        created_at: row.created_at,
+      })) as AppAuditLog[]);
+      setCurrentUser(current as AppUserProfile | null);
+
       const response = await fetch('/api/admin/users', { cache: 'no-store' });
-      if (response.ok) {
-        const json = await response.json();
-        const loaded = (json.users || []).map(mapAppUserToMockUser);
-        setUsers(loaded.length ? loaded : [...mockStore.users]);
-      } else {
-        setUsers([...mockStore.users]);
-      }
-    } catch {
-      setUsers([...mockStore.users]);
+      if (!response.ok) throw new Error('Unable to load application users.');
+      const json = await response.json();
+      setUsers((json.users || []).map(mapAppUserToMockUser) as AppUserProfile[]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to load admin data.');
+      setUsers([]);
+      setRoutes([]);
+      setStages([]);
+      setAuditLogs([]);
+    } finally {
+      setLoading(false);
     }
 
     if (typeof window !== 'undefined') {
@@ -221,7 +246,7 @@ export default function AdminControlPanelClient() {
   };
 
   // Handle open Edit User modal
-  const openEditUser = (user: MockUserProfile) => {
+  const openEditUser = (user: AppUserProfile) => {
     setEditingUser(user);
     setFormData({
       name: user.name,
@@ -263,8 +288,13 @@ export default function AdminControlPanelClient() {
       email: formData.email.trim().toLowerCase(),
       employee_code: formData.employee_id.trim() || `EMP-${Date.now().toString().slice(-6)}`,
       role: apiRole,
+      user_group: formData.group,
+      role_title: roleConfig?.label || '',
       work_center: formData.work_center,
       department: formData.department,
+      shift: formData.shift,
+      allowed_stages: WORK_CENTER_OPTIONS.find(w => w.value === formData.work_center)?.stages || [],
+      default_stage: formData.default_stage,
       phone: formData.phone.trim(),
       active: true,
     };
@@ -325,7 +355,7 @@ export default function AdminControlPanelClient() {
   };
 
   // Deactivate instead of deleting the Auth identity. This preserves audit/history.
-  const handleDeleteUser = async (user: MockUserProfile) => {
+  const handleDeleteUser = async (user: AppUserProfile) => {
     if (!canAdminister) {
       toast.error('Permission denied: Only Admin Group accounts can deactivate users.');
       return;
@@ -352,25 +382,29 @@ export default function AdminControlPanelClient() {
   };
 
   // Toggle route active
-  const handleToggleRoute = (routeId: string) => {
+  const handleToggleRoute = async (routeId: string) => {
     if (!canAdminister) {
       toast.error('Permission denied: Only Admin Group accounts can modify routes.');
       return;
     }
-    const route = mockStore.routes.find(r => r.id === routeId);
+    const route = routes.find(r => r.id === routeId);
     if (!route) return;
-    route.active = !route.active;
-    mockStore.addAuditLog({
-      user_email: currentUser?.email || 'admin@seamlesswip.com',
-      user_name: currentUser?.name || 'Admin',
-      action_type: 'ROUTE_CONFIG',
-      entity_type: 'Process Route',
-      entity_id: route.route_code,
-      details: `Route ${route.route_code} toggled to ${route.active ? 'Active' : 'Inactive'}`,
-    });
-    mockStore.saveToStorage();
-    loadData();
-    toast.success(`Route ${route.route_code} updated`);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('process_routes').update({ active: !route.active }).eq('id', routeId);
+      if (error) throw new Error(error.message);
+      await supabase.from('audit_log').insert({
+        user_id: currentUser?.auth_user_id,
+        action: 'ROUTE_CONFIG',
+        entity: 'Process Route',
+        record_id: routeId,
+        new_value: { route_code: route.route_code, active: !route.active },
+      });
+      await loadData();
+      toast.success(`Route ${route.route_code} updated`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to update route.');
+    }
   };
 
   // Save guardrails settings
@@ -384,57 +418,77 @@ export default function AdminControlPanelClient() {
       localStorage.setItem('seamless_wip_density', String(steelDensity));
       localStorage.setItem('seamless_wip_rej_threshold', String(rejectionThreshold));
     }
-    mockStore.addAuditLog({
-      user_email: currentUser?.email || 'admin@seamlesswip.com',
-      user_name: currentUser?.name || 'Admin',
-      action_type: 'ROUTE_CONFIG',
-      entity_type: 'System Settings',
-      details: `Updated plant guardrails: Capping Tol = ${cappingTolerance}%, Density = ${steelDensity} g/cm³, Rej Spike = ${rejectionThreshold}%`,
+    void createClient().from('audit_log').insert({
+      user_id: currentUser?.auth_user_id,
+      action: 'ROUTE_CONFIG',
+      entity: 'System Settings',
+      new_value: { cappingTolerance, steelDensity, rejectionThreshold, allowOverRolling },
     });
     toast.success('Plant guardrails and operational parameters saved');
   };
 
-  // Export full JSON database backup
-  const handleExportBackup = () => {
-    const backupData = {
-      timestamp: new Date().toISOString(),
-      version: '1.0.0',
-      workOrders: mockStore.workOrders,
-      rollingPlans: mockStore.rollingPlans,
-      diversions: mockStore.diversions,
-      productionLogs: mockStore.productionLogs,
-      users: mockStore.users,
-      auditLogs: mockStore.auditLogs,
-      routes: mockStore.routes,
-      stages: mockStore.stages,
-    };
-
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backupData, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `seamless_wip_backup_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-
-    toast.success('Database backup exported successfully');
+  // Export the live Supabase data as a JSON backup
+  const handleExportBackup = async () => {
+    try {
+      const supabase = createClient();
+      const [workOrders, rollingPlans, diversions, productionLogs, usersRes, auditLogs, routesRes, stagesRes] = await Promise.all([
+        supabase.from('work_orders').select('*'),
+        supabase.from('rolling_plans').select('*'),
+        supabase.from('diversion_plans').select('*'),
+        supabase.from('production_logs').select('*'),
+        supabase.from('app_users').select('*'),
+        supabase.from('audit_log').select('*'),
+        supabase.from('process_routes').select('*'),
+        supabase.from('process_stages').select('*'),
+      ]);
+      const results = [workOrders, rollingPlans, diversions, productionLogs, usersRes, auditLogs, routesRes, stagesRes];
+      const failed = results.find(r => r.error);
+      if (failed?.error) throw new Error(failed.error.message);
+      const backupData = {
+        timestamp: new Date().toISOString(),
+        source: 'Supabase',
+        workOrders: workOrders.data ?? [],
+        rollingPlans: rollingPlans.data ?? [],
+        diversions: diversions.data ?? [],
+        productionLogs: productionLogs.data ?? [],
+        users: usersRes.data ?? [],
+        auditLogs: auditLogs.data ?? [],
+        routes: routesRes.data ?? [],
+        stages: stagesRes.data ?? [],
+      };
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backupData, null, 2));
+      const anchor = document.createElement('a');
+      anchor.href = dataStr;
+      anchor.download = `seamless_wip_supabase_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      toast.success('Supabase database backup exported successfully');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Backup export failed.');
+    }
   };
 
-  // Reset database to default seed data
-  const handleResetData = () => {
+  // Reset transactional data in Supabase. Master routes/stages and Auth users remain intact.
+  const handleResetData = async () => {
     if (!canAdminister) {
-      toast.error('Permission denied: Only Admin Group accounts can reset factory data.');
+      toast.error('Permission denied: Only Admin Group can reset factory data.');
       return;
     }
-    mockStore.resetAllData();
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('seamless_wip_capping_tol');
-      localStorage.removeItem('seamless_wip_density');
-      localStorage.removeItem('seamless_wip_rej_threshold');
+    if (!confirm('Delete all work orders, plans, production logs, diversions and WIP ledger data from Supabase?')) return;
+
+    try {
+      const supabase = createClient();
+      for (const table of ['diversion_plans', 'production_logs', 'rolling_plans', 'work_order_wip', 'work_orders']) {
+        const { error } = await supabase.from(table).delete().not('id', 'is', null);
+        if (error) throw new Error(`${table}: ${error.message}`);
+      }
+      await loadData();
+      setIsResetConfirmOpen(false);
+      toast.success('Supabase transactional data cleared');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to reset Supabase data.');
     }
-    loadData();
-    setIsResetConfirmOpen(false);
-    toast.success('System database restored to default factory seed');
   };
 
   // Export audit logs to CSV
@@ -1227,7 +1281,7 @@ export default function AdminControlPanelClient() {
                   <label className="font-semibold text-slate-700 block mb-1">Terminal Passcode / PIN</label>
                   <input
                     type="password"
-                    maxLength={6}
+                    minLength={8}
                     placeholder="4 digits"
                     value={formData.pin}
                     onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
