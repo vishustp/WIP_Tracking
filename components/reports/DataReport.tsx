@@ -143,6 +143,7 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
                 setPage(1);
               }}
               className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+              aria-label="Clear search"
             >
               <X size={14} />
             </button>
