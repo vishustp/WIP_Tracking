@@ -20,7 +20,7 @@ export type UserRole =
 
 export interface AppUserProfile {
   id: string;
-  auth_user_id: string;
+  auth_user_id?: string;
   email: string;
   name: string;
   employee_id: string;
