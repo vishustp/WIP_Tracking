@@ -110,22 +110,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       : pathname.split('/').filter(Boolean).slice(-1)[0]?.replace(/-/g, ' ');
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <aside className={`fixed inset-y-0 left-0 z-40 w-72 border-r border-slate-200 bg-white transition-transform lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex h-16 items-center justify-between border-b border-slate-200 px-4">
-          <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
+    <div className="min-h-screen bg-slate-100/70 text-slate-900">
+      {/* Mobile overlay */}
+      {open && (
+        <div
+          className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-xs lg:hidden"
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200 ease-out lg:translate-x-0 ${open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-500 text-white flex items-center justify-center font-bold text-sm shadow-sm shadow-blue-600/30">
               SW
             </div>
-            <div className="font-bold tracking-tight text-base">Seamless WIP</div>
+            <div className="flex flex-col leading-none">
+              <span className="font-bold tracking-tight text-[15px]">Seamless WIP</span>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Planning Suite</span>
+            </div>
           </div>
-          <button className="lg:hidden rounded-lg p-2 hover:bg-slate-100" onClick={() => setOpen(false)} aria-label="Close menu"><X size={18} /></button>
+          <button className="lg:hidden rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={() => setOpen(false)} aria-label="Close menu"><X size={18} /></button>
         </div>
 
-        <nav className="h-[calc(100vh-9rem)] overflow-y-auto p-3">
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
           {visibleGroups.map((group) => (
-            <div key={group.label} className="mb-4">
-              <div className="mb-1.5 px-3 text-xs font-bold uppercase tracking-widest text-slate-400">{group.label}</div>
+            <div key={group.label} className="mb-5 last:mb-0">
+              <div className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{group.label}</div>
               <div className="space-y-0.5">
                 {group.items.map((item) => {
                   const Icon = item.icon;
@@ -134,11 +146,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <button
                       key={item.href}
                       onClick={() => { router.push(item.href); setOpen(false); }}
-                      className={`flex w-full min-h-[3rem] items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition cursor-pointer ${
-                        active ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-100'
+                      className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors cursor-pointer ${
+                        active
+                          ? 'bg-blue-50 text-blue-700'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                       }`}
                     >
-                      <Icon size={20} />
+                      {active && <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-blue-600" aria-hidden="true" />}
+                      <Icon size={18} className={active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'} />
                       <span>{item.label}</span>
                     </button>
                   );
@@ -150,17 +165,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Sidebar Footer User Card */}
         {currentUser && (
-          <div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 bg-slate-50/70 p-3">
+          <div className="shrink-0 border-t border-slate-200 p-3">
             <div
               onClick={() => { router.push('/profile'); setOpen(false); }}
-              className="flex items-center gap-3 rounded-xl p-2 min-h-[3rem] hover:bg-slate-100 transition cursor-pointer group"
+              className="flex items-center gap-3 rounded-lg p-2 hover:bg-slate-100 transition cursor-pointer group"
             >
-              <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-sm font-bold ${currentUser.avatar_color || 'bg-blue-600 text-white'}`}>
+              <div className={`h-9 w-9 rounded-lg flex items-center justify-center text-xs font-bold ${currentUser.avatar_color || 'bg-blue-600 text-white'}`}>
                 {currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-slate-900 truncate group-hover:text-blue-600">{currentUser.name}</div>
-                <div className="text-xs text-slate-500 truncate flex items-center gap-1">
+                <div className="text-[13px] font-semibold text-slate-900 truncate group-hover:text-blue-600">{currentUser.name}</div>
+                <div className="text-[11px] text-slate-500 truncate flex items-center gap-1">
                   <span>{currentUser.role_title}</span>
                   {isAdmin && <span className="text-[9px] font-bold text-blue-600">[Admin]</span>}
                 </div>
@@ -170,11 +185,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </aside>
 
-      <div className="lg:pl-72">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur lg:px-5">
-          <div className="flex items-center">
-            <button className="mr-2 rounded-md p-1.5 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu size={24} /></button>
-            <div className="text-sm font-semibold capitalize">{pageTitle}</div>
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-20 flex h-16 items-center border-b border-slate-200 bg-white/80 backdrop-blur-md">
+          <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2">
+            <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu size={22} /></button>
+            <div className="text-[15px] font-semibold capitalize tracking-tight text-slate-900">{pageTitle}</div>
           </div>
 
           {/* Header Right User Widget */}
@@ -184,9 +200,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                  className="flex min-h-[3rem] items-center gap-2.5 rounded-full border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 text-sm font-medium text-slate-700 shadow-xs hover:border-slate-300 hover:bg-slate-50 transition cursor-pointer"
+                  className="flex items-center gap-2.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-3 text-sm font-medium text-slate-700 shadow-2xs hover:border-slate-300 hover:bg-slate-50 transition cursor-pointer"
                 >
-                  <div className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold ${currentUser.avatar_color || 'bg-blue-600 text-white'}`}>
+                  <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold ${currentUser.avatar_color || 'bg-blue-600 text-white'}`}>
                     {currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                   <span className="hidden sm:inline-block font-semibold text-slate-800">{currentUser.name.split(' ')[0]}</span>
@@ -244,9 +260,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
           </div>
+          </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1800px] p-4 lg:p-5">{children}</main>
+        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>
   );
