@@ -1160,6 +1160,7 @@ export default function AdminControlPanelClient() {
                 type="button"
                 onClick={() => setIsUserModalOpen(false)}
                 className="p-1 rounded-md text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
+                aria-label="Close user modal"
               >
                 <X className="h-4 w-4" />
               </button>

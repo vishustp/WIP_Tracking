@@ -1284,6 +1284,7 @@ export default function DiversionForm() {
                 type="button"
                 onClick={() => setEditing(null)}
                 className="rounded border border-slate-300 p-1.5 text-slate-500 hover:bg-slate-100 cursor-pointer"
+                aria-label="Close edit dialog"
               >
                 <X className="h-4 w-4" />
               </button>

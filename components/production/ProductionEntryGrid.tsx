@@ -1355,6 +1355,7 @@ export default function ProductionEntryGrid() {
                 type="button"
                 onClick={() => setEditing(null)}
                 className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close edit dialog"
               >
                 <X size={18} />
               </button>
