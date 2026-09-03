@@ -1,0 +1,59 @@
+name: Refactor remove mock store
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/remove-mock-store
+          fetch-depth: 0
+      - name: Remove mock-store imports and fallbacks
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          files = [
+              'app/login/page.tsx',
+              'app/work-orders/page.tsx',
+              'components/AppShell.tsx',
+              'components/excel/ExcelImporter.tsx',
+              'components/diversions/DiversionForm.tsx',
+              'components/rolling-plans/RollingPlanForm.tsx',
+              'components/profile/UserProfileClient.tsx',
+              'components/admin/AdminControlPanelClient.tsx',
+              'components/diversions/DiversionWipBootstrap.tsx',
+              'lib/permissions.ts',
+          ]
+          for name in files:
+              p = Path(name)
+              if not p.exists():
+                  continue
+              s = p.read_text()
+              lines = s.splitlines(True)
+              out=[]
+              for line in lines:
+                  if "from '@/lib/supabase/mock-store'" in line or "from './supabase/mock-store'" in line:
+                      continue
+                  out.append(line)
+              p.write_text(''.join(out))
+          PY
+      - name: Show remaining references
+        run: |
+          if grep -RIn --exclude-dir=.git --exclude-dir=node_modules -E 'mock-store|mockStore|DEFAULT_USERS|createMockClient' app components lib; then
+            echo 'Remaining references require manual migration; refusing to commit.'
+            exit 1
+          fi
+      - name: Commit refactor
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app components lib
+          git commit -m 'Remove mock-store runtime dependencies' || exit 0
+          git push origin HEAD:refactor/remove-mock-store
