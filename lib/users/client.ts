@@ -21,7 +21,7 @@ export function mapAppUser(row: any): AppUserProfile {
     name: String(row?.employee_name || row?.name || row?.email || ''),
     employee_id: String(row?.employee_code || row?.employee_id || ''),
     group: (row?.user_group || row?.group || mapped.group) as UserGroup,
-    role: (['admin','manager','rolling_incharge','draw_operator','qa_inspector','auditor'].includes(String(row?.role))
+    role: (['admin','manager','rolling_incharge','draw_operator','qa_inspector','finishing_operator','auditor'].includes(String(row?.role))
       ? String(row.role)
       : mapped.role) as UserRole,
     role_title: String(row?.role_title || mapped.title),

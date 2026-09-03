@@ -331,15 +331,17 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 });
   }
 
-  const { admin, client } = auth;
-  const updateClient = admin || client;
+  const adminClient = auth.admin || createAdminClient();
+  if (!adminClient) {
+    return bad('Supabase Admin Service Role key is required to update users.', 500);
+  }
 
   try {
     const body = await request.json();
     const id = String(body.id ?? '');
     if (!id) return bad('User id is required');
 
-    const { data: existing } = await updateClient
+    const { data: existing } = await adminClient
       .from('app_users')
       .select('*')
       .eq('id', id)
@@ -386,7 +388,7 @@ export async function PUT(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    const { error: fullUpdateError } = await updateClient
+    const { error: fullUpdateError } = await adminClient
       .from('app_users')
       .update(fullUpdate)
       .eq('id', id);
@@ -404,7 +406,7 @@ export async function PUT(request: NextRequest) {
         active: body.active !== false,
         updated_at: new Date().toISOString(),
       };
-      const { error: baseUpdateError } = await updateClient
+      const { error: baseUpdateError } = await adminClient
         .from('app_users')
         .update(baseUpdate)
         .eq('id', id);
@@ -414,10 +416,26 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    if (admin && existing.auth_user_id) {
+    let authUserId = existing.auth_user_id;
+
+    // If auth_user_id is missing, attempt to find by email
+    if (!authUserId) {
       try {
-        await admin.from('profiles').upsert({
-          id: existing.auth_user_id,
+        const { data: listData } = await adminClient.auth.admin.listUsers();
+        const found = listData?.users?.find(u => u.email?.toLowerCase() === email);
+        if (found) {
+          authUserId = found.id;
+          await adminClient.from('app_users').update({ auth_user_id: found.id }).eq('id', id);
+        }
+      } catch {
+        // Continue
+      }
+    }
+
+    if (authUserId) {
+      try {
+        await adminClient.from('profiles').upsert({
+          id: authUserId,
           full_name: fullUpdate.employee_name as string,
           role,
         });
@@ -425,7 +443,7 @@ export async function PUT(request: NextRequest) {
         // Silently continue
       }
 
-      const newPassword = String(body.password ?? '');
+      const newPassword = String(body.password ?? '').trim();
       const updateAuthPayload: any = {
         email,
         user_metadata: {
@@ -438,10 +456,34 @@ export async function PUT(request: NextRequest) {
       if (newPassword && newPassword.length >= 8) {
         updateAuthPayload.password = newPassword;
       }
-      await admin.auth.admin.updateUserById(existing.auth_user_id, updateAuthPayload).catch(() => {});
+      const { error: authErr } = await adminClient.auth.admin.updateUserById(authUserId, updateAuthPayload);
+      if (authErr && newPassword) {
+        return bad(`User saved, but password reset failed: ${authErr.message}`, 400);
+      }
+    } else {
+      const newPassword = String(body.password ?? '').trim();
+      if (newPassword && newPassword.length >= 8) {
+        // Create user in auth if none existed yet
+        const { data: newAuth, error: createAuthErr } = await adminClient.auth.admin.createUser({
+          email,
+          password: newPassword,
+          email_confirm: true,
+          user_metadata: {
+            full_name: fullUpdate.employee_name,
+            role,
+            user_group: userGroup,
+            work_center: workCenter,
+          },
+        });
+        if (!createAuthErr && newAuth?.user) {
+          await adminClient.from('app_users').update({ auth_user_id: newAuth.user.id }).eq('id', id);
+        } else if (createAuthErr) {
+          return bad(`User record updated, but setting credential failed: ${createAuthErr.message}`, 400);
+        }
+      }
     }
 
-    const { data } = await updateClient.from('app_users').select('*').eq('id', id).single();
+    const { data } = await adminClient.from('app_users').select('*').eq('id', id).single();
     if (data) return NextResponse.json({ user: data });
     return bad('Failed to update user', 500);
   } catch (e) {
@@ -455,8 +497,10 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 });
   }
 
-  const { admin, client } = auth;
-  const updateClient = admin || client;
+  const adminClient = auth.admin || createAdminClient();
+  if (!adminClient) {
+    return bad('Supabase Admin Service Role key is required to update status', 500);
+  }
 
   try {
     const body = await request.json();
@@ -465,12 +509,12 @@ export async function PATCH(request: NextRequest) {
 
     if (!id) return bad('User id is required');
 
-    const { data: existing } = await updateClient.from('app_users').select('auth_user_id').eq('id', id).single();
+    const { data: existing } = await adminClient.from('app_users').select('auth_user_id').eq('id', id).single();
     if (!existing) {
       return bad('User not found', 404);
     }
 
-    await updateClient.from('app_users').update({ active, updated_at: new Date().toISOString() }).eq('id', id);
+    await adminClient.from('app_users').update({ active, updated_at: new Date().toISOString() }).eq('id', id);
     return NextResponse.json({ active });
   } catch (e) {
     return bad(e, 500);
@@ -483,21 +527,23 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 });
   }
 
-  const { admin, client } = auth;
-  const updateClient = admin || client;
+  const adminClient = auth.admin || createAdminClient();
+  if (!adminClient) {
+    return bad('Supabase Admin Service Role key is required to deactivate user', 500);
+  }
 
   try {
     const body = await request.json();
     const id = String(body.id ?? '');
     if (!id) return bad('User id is required');
 
-    const { data: existing } = await updateClient.from('app_users').select('auth_user_id').eq('id', id).single();
+    const { data: existing } = await adminClient.from('app_users').select('auth_user_id').eq('id', id).single();
     if (!existing) {
       return bad('User not found', 404);
     }
 
     // Deactivate user in app_users
-    await updateClient.from('app_users').update({ active: false, updated_at: new Date().toISOString() }).eq('id', id);
+    await adminClient.from('app_users').update({ active: false, updated_at: new Date().toISOString() }).eq('id', id);
 
     return NextResponse.json({ success: true, deactivated: true });
   } catch (e) {

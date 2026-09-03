@@ -153,21 +153,39 @@ export default function UserProfileClient() {
     setSaving(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from('app_users')
-        .update({
+      const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      try {
+        let { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          const { data: refreshData } = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } }));
+          session = refreshData?.session || null;
+        }
+        if (session?.access_token) {
+          authHeaders['Authorization'] = `Bearer ${session.access_token}`;
+        }
+      } catch {}
+
+      const res = await fetch('/api/admin/users', {
+        method: 'PUT',
+        headers: authHeaders,
+        credentials: 'include',
+        body: JSON.stringify({
+          id: currentUser.id,
           employee_name: name.trim() || currentUser.name,
           phone: phone.trim(),
           department,
           shift,
           default_stage: defaultStage,
-        })
-        .eq('id', currentUser.id);
-      if (error) throw new Error(error.message);
+          ...(newPassword.trim() ? { password: newPassword.trim() } : {}),
+        }),
+      });
+
+      const resJson = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(resJson.error || 'Failed to update profile');
+      }
 
       if (newPassword.trim()) {
-        const { error: passwordError } = await supabase.auth.updateUser({ password: newPassword.trim() });
-        if (passwordError) throw new Error(passwordError.message);
         setNewPassword('');
       }
 
