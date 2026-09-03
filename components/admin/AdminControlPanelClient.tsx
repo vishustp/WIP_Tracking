@@ -218,9 +218,9 @@ export default function AdminControlPanelClient() {
     return auditLogs.filter(log => {
       const matchType = auditTypeFilter === 'ALL' || log.action_type === auditTypeFilter;
       const matchSearch =
-        log.user_name.toLowerCase().includes(auditSearch.toLowerCase()) ||
-        log.user_email.toLowerCase().includes(auditSearch.toLowerCase()) ||
-        log.details.toLowerCase().includes(auditSearch.toLowerCase()) ||
+        (log.user_name ?? '').toLowerCase().includes(auditSearch.toLowerCase()) ||
+        (log.user_email ?? '').toLowerCase().includes(auditSearch.toLowerCase()) ||
+        (log.details ?? '').toLowerCase().includes(auditSearch.toLowerCase()) ||
         (log.entity_id && log.entity_id.toLowerCase().includes(auditSearch.toLowerCase()));
       return matchType && matchSearch;
     });
