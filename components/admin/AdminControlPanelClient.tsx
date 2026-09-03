@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import type {
   AppUserProfile, AppAuditLog, AppRoute, AppStage, UserRole, UserGroup, WorkCenterCode
 } from '@/lib/users/types';
-import { getCurrentAppUser } from '@/lib/users/client';
+import { getCurrentAppUser, getAppUsers } from '@/lib/users/client';
 import { GROUP_CONFIGS, usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import {
@@ -140,10 +140,30 @@ export default function AdminControlPanelClient() {
   // Reset confirmation modal
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
 
+  // Helper to obtain authorization headers with the Supabase access token
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const supabase = createClient();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        const { data: refreshData } = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } }));
+        session = refreshData?.session || null;
+      }
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch {
+      // Ignore session retrieval error and fallback to cookies
+    }
+    return headers;
+  };
+
   const loadData = async () => {
     setLoading(true);
+    const supabase = createClient();
+
     try {
-      const supabase = createClient();
       const [routesRes, stagesRes, auditRes, current] = await Promise.all([
         supabase.from('process_routes').select('*').order('route_code'),
         supabase.from('process_stages').select('*').order('stage_code'),
@@ -151,35 +171,59 @@ export default function AdminControlPanelClient() {
         getCurrentAppUser(),
       ]);
 
-      if (routesRes.error) throw new Error(routesRes.error.message);
-      if (stagesRes.error) throw new Error(stagesRes.error.message);
-      if (auditRes.error) throw new Error(auditRes.error.message);
-
-      setRoutes((routesRes.data ?? []) as AppRoute[]);
-      setStages((stagesRes.data ?? []) as AppStage[]);
-      setAuditLogs((auditRes.data ?? []).map((row: any) => ({
-        id: row.id,
-        user_id: row.user_id,
-        user_email: row.user_id === current?.auth_user_id ? (current?.email ?? '') : '',
-        user_name: row.user_id === current?.auth_user_id ? (current?.name ?? '') : '',
-        action_type: row.action,
-        entity_type: row.entity,
-        entity_id: row.record_id || undefined,
-        details: row.new_value || row.old_value ? JSON.stringify(row.new_value || row.old_value) : '',
-        created_at: row.created_at,
-      })) as AppAuditLog[]);
-      setCurrentUser(current as AppUserProfile | null);
-
-      const response = await fetch('/api/admin/users', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Unable to load application users.');
-      const json = await response.json();
-      setUsers((json.users || []).map(mapAppUserToMockUser) as AppUserProfile[]);
+      if (routesRes.data) setRoutes(routesRes.data as AppRoute[]);
+      if (stagesRes.data) setStages(stagesRes.data as AppStage[]);
+      if (auditRes.data) {
+        setAuditLogs((auditRes.data).map((row: any) => ({
+          id: row.id,
+          user_id: row.user_id,
+          user_email: row.user_id === current?.auth_user_id ? (current?.email ?? '') : '',
+          user_name: row.user_id === current?.auth_user_id ? (current?.name ?? '') : '',
+          action_type: row.action,
+          entity_type: row.entity,
+          entity_id: row.record_id || undefined,
+          details: row.new_value || row.old_value ? JSON.stringify(row.new_value || row.old_value) : '',
+          created_at: row.created_at,
+        })) as AppAuditLog[]);
+      }
+      if (current) setCurrentUser(current as AppUserProfile | null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load admin data.');
-      setUsers([]);
-      setRoutes([]);
-      setStages([]);
-      setAuditLogs([]);
+      console.warn('Failed to load routes/stages/audit:', error);
+    }
+
+    try {
+      let loadedUsers: AppUserProfile[] = [];
+      try {
+        const authHeaders = await getAuthHeaders();
+        const response = await fetch('/api/admin/users', {
+          headers: authHeaders,
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          const json = await response.json();
+          if (Array.isArray(json.users) && json.users.length > 0) {
+            loadedUsers = json.users.map(mapAppUserToMockUser) as AppUserProfile[];
+          }
+        }
+      } catch (e) {
+        console.warn('API users fetch failed, trying direct Supabase query:', e);
+      }
+
+      if (loadedUsers.length === 0) {
+        try {
+          const directUsers = await getAppUsers();
+          if (directUsers && directUsers.length > 0) {
+            loadedUsers = directUsers;
+          }
+        } catch (e) {
+          console.warn('Direct users query failed:', e);
+        }
+      }
+
+      setUsers(loadedUsers);
+    } catch (error) {
+      console.error('Error in user directory loading:', error);
     } finally {
       setLoading(false);
     }
@@ -196,6 +240,7 @@ export default function AdminControlPanelClient() {
 
   useEffect(() => {
     void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Filtered users
@@ -313,9 +358,11 @@ export default function AdminControlPanelClient() {
 
     setLoading(true);
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch('/api/admin/users', {
         method: editingUser ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
       const json = await response.json().catch(() => ({}));
@@ -340,9 +387,11 @@ export default function AdminControlPanelClient() {
     const target = users.find(u => u.id === userId);
     if (!target) return;
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch('/api/admin/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify({ id: userId, active: !target.active }),
       });
       const json = await response.json().catch(() => ({}));
@@ -367,9 +416,11 @@ export default function AdminControlPanelClient() {
     if (!confirm(`Deactivate user ${user.name}? Historical WIP records will be preserved.`)) return;
 
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch('/api/admin/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify({ id: user.id, active: false }),
       });
       const json = await response.json().catch(() => ({}));
