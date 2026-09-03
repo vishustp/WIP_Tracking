@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Eye, ShieldCheck, Lock, UserCheck, ShieldAlert, Info, Sparkles } from 'lucide-react';
+import { Eye, Lock, UserCheck, ShieldAlert, Info, Sparkles } from 'lucide-react';
 import { FormAccessResult } from '@/lib/permissions';
 
 interface FormAccessBannerProps {
@@ -14,33 +14,9 @@ interface FormAccessBannerProps {
 export default function FormAccessBanner({ access, className = '', showSwitchLink = true }: FormAccessBannerProps) {
   const isViewOnly = access.mode === 'view_only';
 
+  // Full-access users see no informational helper banner.
   if (!isViewOnly) {
-    return (
-      <div
-        className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/60 p-3 sm:px-4 sm:py-2.5 text-sm text-emerald-950 shadow-xs ${className}`}
-      >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="h-6 w-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
-            <ShieldCheck size={14} />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-emerald-900">{access.bannerTitle}</span>
-            <span className="inline-flex items-center rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800 border border-emerald-200">
-              Full Access
-            </span>
-            <span className="text-emerald-800/80 hidden sm:inline text-sm truncate">
-              {access.bannerMessage}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 text-sm text-emerald-800 shrink-0">
-          <span className="font-semibold">{access.groupName}</span>
-          <span className="text-emerald-400">·</span>
-          <span>{access.userWorkCenterLabel}</span>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
