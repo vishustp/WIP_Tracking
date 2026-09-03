@@ -16,6 +16,7 @@ export type UserRole =
   | 'rolling_incharge'
   | 'draw_operator'
   | 'qa_inspector'
+  | 'finishing_operator'
   | 'auditor';
 
 export interface AppUserProfile {
