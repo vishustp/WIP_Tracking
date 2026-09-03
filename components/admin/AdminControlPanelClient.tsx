@@ -58,6 +58,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color:
   { value: 'rolling_incharge', label: 'Rolling Mill In-charge', department: 'Hot Rolling & Piercing Mill', color: 'bg-amber-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'ROLLING' },
   { value: 'draw_operator', label: 'Cold Draw Operator', department: 'Cold Draw Bench & Pilgering', color: 'bg-indigo-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'DRAW' },
   { value: 'qa_inspector', label: 'Quality & NDT Inspector', department: 'Quality Assurance & Metallurgical Lab', color: 'bg-emerald-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'QA' },
+  { value: 'finishing_operator', label: 'Finishing & NDT Operator', department: 'Finishing & NDT Inspection', color: 'bg-teal-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'FINISHING' },
   { value: 'auditor', label: 'Internal Auditor', department: 'Management & Audit Team', color: 'bg-slate-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'AUDIT' },
 ];
 
