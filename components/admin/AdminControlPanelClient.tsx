@@ -4,14 +4,15 @@ import { useState, useEffect, useMemo } from 'react';
 import type {
   AppUserProfile, AppAuditLog, AppRoute, AppStage, UserRole, UserGroup, WorkCenterCode
 } from '@/lib/users/types';
-import { getCurrentAppUser } from '@/lib/users/client';
+import { getCurrentAppUser, getAppUsers } from '@/lib/users/client';
 import { GROUP_CONFIGS, usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import {
   ShieldCheck, Users, Sliders, Activity, Database, Plus, Search,
   Edit2, Trash2, CheckCircle2, XCircle, RotateCcw, Download, Upload,
   KeyRound, Shield, AlertTriangle, RefreshCw, Layers, Check, X,
-  Save, Filter, Lock, HardHat, Factory, UserCheck, ShieldAlert
+  Save, Filter, Lock, HardHat, Factory, UserCheck, ShieldAlert,
+  Eye, EyeOff, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
@@ -117,6 +118,8 @@ export default function AdminControlPanelClient() {
   // User modal / drawer state
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUserProfile | null>(null);
+  const [showPin, setShowPin] = useState(false);
+  const [isSavingUser, setIsSavingUser] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -140,10 +143,30 @@ export default function AdminControlPanelClient() {
   // Reset confirmation modal
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
 
+  // Helper to obtain authorization headers with the Supabase access token
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const supabase = createClient();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        const { data: refreshData } = await supabase.auth.refreshSession().catch(() => ({ data: { session: null } }));
+        session = refreshData?.session || null;
+      }
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch {
+      // Ignore session retrieval error and fallback to cookies
+    }
+    return headers;
+  };
+
   const loadData = async () => {
     setLoading(true);
+    const supabase = createClient();
+
     try {
-      const supabase = createClient();
       const [routesRes, stagesRes, auditRes, current] = await Promise.all([
         supabase.from('process_routes').select('*').order('route_code'),
         supabase.from('process_stages').select('*').order('stage_code'),
@@ -151,35 +174,59 @@ export default function AdminControlPanelClient() {
         getCurrentAppUser(),
       ]);
 
-      if (routesRes.error) throw new Error(routesRes.error.message);
-      if (stagesRes.error) throw new Error(stagesRes.error.message);
-      if (auditRes.error) throw new Error(auditRes.error.message);
-
-      setRoutes((routesRes.data ?? []) as AppRoute[]);
-      setStages((stagesRes.data ?? []) as AppStage[]);
-      setAuditLogs((auditRes.data ?? []).map((row: any) => ({
-        id: row.id,
-        user_id: row.user_id,
-        user_email: row.user_id === current?.auth_user_id ? (current?.email ?? '') : '',
-        user_name: row.user_id === current?.auth_user_id ? (current?.name ?? '') : '',
-        action_type: row.action,
-        entity_type: row.entity,
-        entity_id: row.record_id || undefined,
-        details: row.new_value || row.old_value ? JSON.stringify(row.new_value || row.old_value) : '',
-        created_at: row.created_at,
-      })) as AppAuditLog[]);
-      setCurrentUser(current as AppUserProfile | null);
-
-      const response = await fetch('/api/admin/users', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Unable to load application users.');
-      const json = await response.json();
-      setUsers((json.users || []).map(mapAppUserToMockUser) as AppUserProfile[]);
+      if (routesRes.data) setRoutes(routesRes.data as AppRoute[]);
+      if (stagesRes.data) setStages(stagesRes.data as AppStage[]);
+      if (auditRes.data) {
+        setAuditLogs((auditRes.data).map((row: any) => ({
+          id: row.id,
+          user_id: row.user_id,
+          user_email: row.user_id === current?.auth_user_id ? (current?.email ?? '') : '',
+          user_name: row.user_id === current?.auth_user_id ? (current?.name ?? '') : '',
+          action_type: row.action,
+          entity_type: row.entity,
+          entity_id: row.record_id || undefined,
+          details: row.new_value || row.old_value ? JSON.stringify(row.new_value || row.old_value) : '',
+          created_at: row.created_at,
+        })) as AppAuditLog[]);
+      }
+      if (current) setCurrentUser(current as AppUserProfile | null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load admin data.');
-      setUsers([]);
-      setRoutes([]);
-      setStages([]);
-      setAuditLogs([]);
+      console.warn('Failed to load routes/stages/audit:', error);
+    }
+
+    try {
+      let loadedUsers: AppUserProfile[] = [];
+      try {
+        const authHeaders = await getAuthHeaders();
+        const response = await fetch('/api/admin/users', {
+          headers: authHeaders,
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          const json = await response.json();
+          if (Array.isArray(json.users) && json.users.length > 0) {
+            loadedUsers = json.users.map(mapAppUserToMockUser) as AppUserProfile[];
+          }
+        }
+      } catch (e) {
+        console.warn('API users fetch failed, trying direct Supabase query:', e);
+      }
+
+      if (loadedUsers.length === 0) {
+        try {
+          const directUsers = await getAppUsers();
+          if (directUsers && directUsers.length > 0) {
+            loadedUsers = directUsers;
+          }
+        } catch (e) {
+          console.warn('Direct users query failed:', e);
+        }
+      }
+
+      setUsers(loadedUsers);
+    } catch (error) {
+      console.error('Error in user directory loading:', error);
     } finally {
       setLoading(false);
     }
@@ -196,6 +243,7 @@ export default function AdminControlPanelClient() {
 
   useEffect(() => {
     void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Filtered users
@@ -229,6 +277,7 @@ export default function AdminControlPanelClient() {
   // Handle open Add User modal
   const openAddUser = () => {
     setEditingUser(null);
+    setShowPin(false);
     setFormData({
       name: '',
       email: '',
@@ -248,6 +297,7 @@ export default function AdminControlPanelClient() {
   // Handle open Edit User modal
   const openEditUser = (user: AppUserProfile) => {
     setEditingUser(user);
+    setShowPin(false);
     setFormData({
       name: user.name,
       email: user.email,
@@ -272,7 +322,7 @@ export default function AdminControlPanelClient() {
       return;
     }
     if (!formData.name.trim() || !formData.email.trim()) {
-      toast.error('Name and Email are required.');
+      toast.error('Full Name and Email Address are required.');
       return;
     }
 
@@ -304,30 +354,42 @@ export default function AdminControlPanelClient() {
         toast.error('Set an initial password of at least 8 characters.');
         return;
       }
+      if (formData.pin.trim().length < 8) {
+        toast.error('Password must be at least 8 characters long.');
+        return;
+      }
       payload.password = formData.pin.trim();
     } else {
       payload.id = editingUser.id;
-      if (formData.pin.trim()) payload.password = formData.pin.trim();
+      if (formData.pin.trim()) {
+        if (formData.pin.trim().length < 8) {
+          toast.error('Password must be at least 8 characters long.');
+          return;
+        }
+        payload.password = formData.pin.trim();
+      }
       payload.active = editingUser.active;
     }
 
-    setLoading(true);
+    setIsSavingUser(true);
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch('/api/admin/users', {
         method: editingUser ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
       const json = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(json.error || 'Unable to save user');
+      if (!response.ok) throw new Error(json.error || `Unable to save user (Status ${response.status})`);
 
       setIsUserModalOpen(false);
       await loadData();
-      toast.success(editingUser ? `User ${formData.name} updated` : `User ${formData.name} created`);
+      toast.success(editingUser ? `User ${formData.name} updated successfully` : `User ${formData.name} created successfully`);
     } catch (err: any) {
       toast.error(err?.message || 'Unable to save user');
     } finally {
-      setLoading(false);
+      setIsSavingUser(false);
     }
   };
 
@@ -340,9 +402,11 @@ export default function AdminControlPanelClient() {
     const target = users.find(u => u.id === userId);
     if (!target) return;
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch('/api/admin/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify({ id: userId, active: !target.active }),
       });
       const json = await response.json().catch(() => ({}));
@@ -367,9 +431,11 @@ export default function AdminControlPanelClient() {
     if (!confirm(`Deactivate user ${user.name}? Historical WIP records will be preserved.`)) return;
 
     try {
+      const authHeaders = await getAuthHeaders();
       const response = await fetch('/api/admin/users', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
+        credentials: 'include',
         body: JSON.stringify({ id: user.id, active: false }),
       });
       const json = await response.json().catch(() => ({}));
@@ -1077,27 +1143,29 @@ export default function AdminControlPanelClient() {
 
       {/* User Modal (Add / Edit) */}
       {isUserModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-hidden">
+          <div className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl bg-white shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-50/70 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
                   {editingUser ? 'Edit User Credentials & Permissions' : 'Add New Plant Operator / Staff'}
                 </h3>
                 <p className="text-sm text-slate-500 mt-0.5">
-                  Configure group authorization, work center boundaries, and employee profile.
+                  Configure group authorization, work center boundaries, and employee credentials.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsUserModalOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="p-1 rounded-md text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveUser} className="space-y-4 mt-4 text-sm">
+            {/* Modal Form Body (Scrollable) */}
+            <form id="user-mgmt-form" onSubmit={handleSaveUser} className="flex-1 overflow-y-auto px-6 py-5 space-y-4 text-sm">
               {/* Group Selection */}
               <div className="space-y-2">
                 <label className="font-bold text-slate-800 block">Select User Group & Authority Level *</label>
@@ -1278,34 +1346,62 @@ export default function AdminControlPanelClient() {
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Terminal Passcode / PIN</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-700">
+                      {editingUser ? 'Reset Password (optional)' : 'Initial Password (min. 8 chars) *'}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowPin(!showPin)}
+                      className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                    >
+                      {showPin ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                      <span>{showPin ? 'Hide' : 'Show'}</span>
+                    </button>
+                  </div>
                   <input
-                    type="password"
+                    type={showPin ? 'text' : 'password'}
                     minLength={8}
-                    placeholder="4 digits"
+                    autoComplete="new-password"
+                    name="admin_user_initial_pass"
+                    placeholder={editingUser ? 'Leave blank to keep current' : 'Min 8 characters (e.g. TempPass123!)'}
                     value={formData.pin}
                     onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-hidden"
                   />
+                  <p className="text-xs text-slate-400 mt-1">
+                    {editingUser
+                      ? 'Leave blank to keep existing user password unchanged.'
+                      : 'Temporary credential for staff login. Must be at least 8 characters.'}
+                  </p>
                 </div>
               </div>
+            </form>
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
+            {/* Modal Sticky Footer */}
+            <div className="border-t border-slate-200 px-6 py-3.5 bg-slate-50/90 flex items-center justify-between shrink-0">
+              <div className="text-xs text-slate-500 hidden sm:block">
+                <span>Directly syncs Supabase Auth credentials & factory role profile.</span>
+              </div>
+              <div className="flex items-center gap-2.5 ml-auto">
                 <button
                   type="button"
                   onClick={() => setIsUserModalOpen(false)}
-                  className="px-3.5 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                  className="px-3.5 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-sm font-semibold text-white hover:bg-blue-500 shadow-xs transition"
+                  form="user-mgmt-form"
+                  disabled={isSavingUser}
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 text-sm font-semibold text-white hover:bg-blue-500 shadow-sm transition cursor-pointer disabled:opacity-60"
                 >
-                  {editingUser ? 'Save User Changes' : 'Create User Account'}
+                  {isSavingUser && <Loader2 className="h-4 w-4 animate-spin" />}
+                  <span>{editingUser ? 'Save User Changes' : 'Create User Account'}</span>
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
