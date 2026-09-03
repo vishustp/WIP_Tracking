@@ -160,8 +160,8 @@ export default function AdminControlPanelClient() {
       setAuditLogs((auditRes.data ?? []).map((row: any) => ({
         id: row.id,
         user_id: row.user_id,
-        user_email: row.user_id === current?.auth_user_id ? current.email : '',
-        user_name: row.user_id === current?.auth_user_id ? current.name : '',
+        user_email: row.user_id === current?.auth_user_id ? (current?.email ?? '') : '',
+        user_name: row.user_id === current?.auth_user_id ? (current?.name ?? '') : '',
         action_type: row.action,
         entity_type: row.entity,
         entity_id: row.record_id || undefined,
