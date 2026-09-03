@@ -11,7 +11,8 @@ import {
   ShieldCheck, Users, Sliders, Activity, Database, Plus, Search,
   Edit2, Trash2, CheckCircle2, XCircle, RotateCcw, Download, Upload,
   KeyRound, Shield, AlertTriangle, RefreshCw, Layers, Check, X,
-  Save, Filter, Lock, HardHat, Factory, UserCheck, ShieldAlert
+  Save, Filter, Lock, HardHat, Factory, UserCheck, ShieldAlert,
+  Eye, EyeOff, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
@@ -117,6 +118,8 @@ export default function AdminControlPanelClient() {
   // User modal / drawer state
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUserProfile | null>(null);
+  const [showPin, setShowPin] = useState(false);
+  const [isSavingUser, setIsSavingUser] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -274,6 +277,7 @@ export default function AdminControlPanelClient() {
   // Handle open Add User modal
   const openAddUser = () => {
     setEditingUser(null);
+    setShowPin(false);
     setFormData({
       name: '',
       email: '',
@@ -293,6 +297,7 @@ export default function AdminControlPanelClient() {
   // Handle open Edit User modal
   const openEditUser = (user: AppUserProfile) => {
     setEditingUser(user);
+    setShowPin(false);
     setFormData({
       name: user.name,
       email: user.email,
@@ -317,7 +322,7 @@ export default function AdminControlPanelClient() {
       return;
     }
     if (!formData.name.trim() || !formData.email.trim()) {
-      toast.error('Name and Email are required.');
+      toast.error('Full Name and Email Address are required.');
       return;
     }
 
@@ -349,14 +354,24 @@ export default function AdminControlPanelClient() {
         toast.error('Set an initial password of at least 8 characters.');
         return;
       }
+      if (formData.pin.trim().length < 8) {
+        toast.error('Password must be at least 8 characters long.');
+        return;
+      }
       payload.password = formData.pin.trim();
     } else {
       payload.id = editingUser.id;
-      if (formData.pin.trim()) payload.password = formData.pin.trim();
+      if (formData.pin.trim()) {
+        if (formData.pin.trim().length < 8) {
+          toast.error('Password must be at least 8 characters long.');
+          return;
+        }
+        payload.password = formData.pin.trim();
+      }
       payload.active = editingUser.active;
     }
 
-    setLoading(true);
+    setIsSavingUser(true);
     try {
       const authHeaders = await getAuthHeaders();
       const response = await fetch('/api/admin/users', {
@@ -366,15 +381,15 @@ export default function AdminControlPanelClient() {
         body: JSON.stringify(payload),
       });
       const json = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(json.error || 'Unable to save user');
+      if (!response.ok) throw new Error(json.error || `Unable to save user (Status ${response.status})`);
 
       setIsUserModalOpen(false);
       await loadData();
-      toast.success(editingUser ? `User ${formData.name} updated` : `User ${formData.name} created`);
+      toast.success(editingUser ? `User ${formData.name} updated successfully` : `User ${formData.name} created successfully`);
     } catch (err: any) {
       toast.error(err?.message || 'Unable to save user');
     } finally {
-      setLoading(false);
+      setIsSavingUser(false);
     }
   };
 
@@ -1128,27 +1143,29 @@ export default function AdminControlPanelClient() {
 
       {/* User Modal (Add / Edit) */}
       {isUserModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-hidden">
+          <div className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl bg-white shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-50/70 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
                   {editingUser ? 'Edit User Credentials & Permissions' : 'Add New Plant Operator / Staff'}
                 </h3>
                 <p className="text-sm text-slate-500 mt-0.5">
-                  Configure group authorization, work center boundaries, and employee profile.
+                  Configure group authorization, work center boundaries, and employee credentials.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsUserModalOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="p-1 rounded-md text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 transition"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveUser} className="space-y-4 mt-4 text-sm">
+            {/* Modal Form Body (Scrollable) */}
+            <form id="user-mgmt-form" onSubmit={handleSaveUser} className="flex-1 overflow-y-auto px-6 py-5 space-y-4 text-sm">
               {/* Group Selection */}
               <div className="space-y-2">
                 <label className="font-bold text-slate-800 block">Select User Group & Authority Level *</label>
@@ -1329,34 +1346,62 @@ export default function AdminControlPanelClient() {
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Terminal Passcode / PIN</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-700">
+                      {editingUser ? 'Reset Password (optional)' : 'Initial Password (min. 8 chars) *'}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowPin(!showPin)}
+                      className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                    >
+                      {showPin ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                      <span>{showPin ? 'Hide' : 'Show'}</span>
+                    </button>
+                  </div>
                   <input
-                    type="password"
+                    type={showPin ? 'text' : 'password'}
                     minLength={8}
-                    placeholder="4 digits"
+                    autoComplete="new-password"
+                    name="admin_user_initial_pass"
+                    placeholder={editingUser ? 'Leave blank to keep current' : 'Min 8 characters (e.g. TempPass123!)'}
                     value={formData.pin}
                     onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-hidden"
                   />
+                  <p className="text-xs text-slate-400 mt-1">
+                    {editingUser
+                      ? 'Leave blank to keep existing user password unchanged.'
+                      : 'Temporary credential for staff login. Must be at least 8 characters.'}
+                  </p>
                 </div>
               </div>
+            </form>
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
+            {/* Modal Sticky Footer */}
+            <div className="border-t border-slate-200 px-6 py-3.5 bg-slate-50/90 flex items-center justify-between shrink-0">
+              <div className="text-xs text-slate-500 hidden sm:block">
+                <span>Directly syncs Supabase Auth credentials & factory role profile.</span>
+              </div>
+              <div className="flex items-center gap-2.5 ml-auto">
                 <button
                   type="button"
                   onClick={() => setIsUserModalOpen(false)}
-                  className="px-3.5 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                  className="px-3.5 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-sm font-semibold text-white hover:bg-blue-500 shadow-xs transition"
+                  form="user-mgmt-form"
+                  disabled={isSavingUser}
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 text-sm font-semibold text-white hover:bg-blue-500 shadow-sm transition cursor-pointer disabled:opacity-60"
                 >
-                  {editingUser ? 'Save User Changes' : 'Create User Account'}
+                  {isSavingUser && <Loader2 className="h-4 w-4 animate-spin" />}
+                  <span>{editingUser ? 'Save User Changes' : 'Create User Account'}</span>
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
