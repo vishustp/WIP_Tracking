@@ -544,7 +544,7 @@ export default function UserProfileClient() {
                 {userLogs.slice(0, 6).map((log) => (
                   <div key={log.id} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 text-sm">
                     <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-                      <span className="font-semibold text-slate-600">{log.action_type.replace(/_/g, ' ')}</span>
+                      <span className="font-semibold text-slate-600">{(log.action_type || 'Activity').replace(/_/g, ' ')}</span>
                       <span>{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                     <p className="text-sm text-slate-700 leading-snug">{log.details}</p>

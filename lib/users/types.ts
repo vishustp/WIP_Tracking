@@ -34,6 +34,7 @@ export interface AppUserProfile {
   default_stage?: string;
   phone?: string;
   avatar_color?: string;
+  pin?: string;
   active: boolean;
   created_at: string;
   last_login?: string;
@@ -48,6 +49,7 @@ export interface AppAuditLog {
   entity_type: string;
   entity_id?: string;
   details?: string;
+  ip_address?: string;
   created_at: string;
 }
 

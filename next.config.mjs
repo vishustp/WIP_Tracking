@@ -7,12 +7,11 @@ const __dirname = path.dirname(__filename);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  output: 'standalone',
   webpack: (config) => {
     config.resolve.alias['@'] = path.resolve(__dirname);
     return config;
   },
-  // Support standalone output for container builds if requested
-  ...(process.env.BUILD_STANDALONE === 'true' ? { output: 'standalone' } : {}),
 };
 
 export default nextConfig;
