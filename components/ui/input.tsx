@@ -1,7 +1,12 @@
 import { InputHTMLAttributes } from 'react';
 import { twMerge } from 'tailwind-merge';
 
-export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
+export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  className?: string;
+  [key: string]: any;
+}
+
+export function Input({ className = '', ...props }: InputProps) {
   return (
     <input
       className={twMerge(

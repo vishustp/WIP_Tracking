@@ -7,7 +7,7 @@ import { ShieldAlert, Factory, BarChart3, Lock, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface RouteAccessGuardProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   allowedGroups?: ('admin' | 'super_user' | 'user')[];
   formTitle?: string;
 }

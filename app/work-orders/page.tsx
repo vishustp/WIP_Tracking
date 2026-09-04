@@ -143,7 +143,7 @@ export default function WorkOrders() {
   const filtered = useMemo(
     () =>
       rows.filter(
-        r =>
+        (r: WO) =>
           !q ||
           [r.work_order_no, r.customer_name, r.grade, r.specification]
             .filter(Boolean)
@@ -291,16 +291,17 @@ export default function WorkOrders() {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/excel-import"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Import Excel
           </Link>
-          <Button
+          <button
+            type="button"
             onClick={() => setShowCreate(!showCreate)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white shadow-xs hover:bg-slate-800"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:from-blue-700 hover:to-indigo-700 transition cursor-pointer"
           >
             <PlusCircle className="h-4 w-4" /> {showCreate ? 'Close Form' : canCreateWO ? 'Create Work Order' : 'Create WO Form (View-Only)'}
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -336,7 +337,7 @@ export default function WorkOrders() {
                 placeholder="e.g. WO-2025-101"
                 disabled={!canCreateWO}
                 value={form.work_order_no}
-                onChange={e => setForm({ ...form, work_order_no: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, work_order_no: e.target.value })}
                 required
               />
             </div>
@@ -347,7 +348,7 @@ export default function WorkOrders() {
                 placeholder="e.g. Apex Precision Tubes"
                 disabled={!canCreateWO}
                 value={form.customer_name}
-                onChange={e => setForm({ ...form, customer_name: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, customer_name: e.target.value })}
               />
             </div>
             <div>
@@ -359,7 +360,7 @@ export default function WorkOrders() {
                 placeholder="e.g. 88.9"
                 disabled={!canCreateWO}
                 value={form.size_od}
-                onChange={e => setForm({ ...form, size_od: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, size_od: e.target.value })}
               />
             </div>
             <div>
@@ -371,7 +372,7 @@ export default function WorkOrders() {
                 placeholder="e.g. 7.62"
                 disabled={!canCreateWO}
                 value={form.size_wt}
-                onChange={e => setForm({ ...form, size_wt: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, size_wt: e.target.value })}
               />
             </div>
             <div>
@@ -383,7 +384,7 @@ export default function WorkOrders() {
                   placeholder="L1 (6.0)"
                   disabled={!canCreateWO}
                   value={form.l1}
-                  onChange={e => setForm({ ...form, l1: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, l1: e.target.value })}
                 />
                 <Input
                   type="number"
@@ -391,7 +392,7 @@ export default function WorkOrders() {
                   placeholder="L2 (6.5)"
                   disabled={!canCreateWO}
                   value={form.l2}
-                  onChange={e => setForm({ ...form, l2: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, l2: e.target.value })}
                 />
               </div>
             </div>
@@ -402,7 +403,7 @@ export default function WorkOrders() {
                 placeholder="e.g. ASTM A106 Gr.B"
                 disabled={!canCreateWO}
                 value={form.grade}
-                onChange={e => setForm({ ...form, grade: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, grade: e.target.value })}
               />
             </div>
             <div>
@@ -415,13 +416,13 @@ export default function WorkOrders() {
                 placeholder="Qty"
                 disabled={!canCreateWO}
                 value={form.ordered_qty}
-                onChange={e => setForm({ ...form, ordered_qty: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, ordered_qty: e.target.value })}
                 required
               />
             </div>
             <div>
               <label className="font-semibold text-slate-700">UOM</label>
-              <Select className="mt-1" disabled={!canCreateWO} value={form.uom} onChange={e => setForm({ ...form, uom: e.target.value })}>
+              <Select className="mt-1" disabled={!canCreateWO} value={form.uom} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setForm({ ...form, uom: e.target.value })}>
                 <option>Mtrs</option>
                 <option>Pcs</option>
               </Select>
@@ -433,7 +434,7 @@ export default function WorkOrders() {
                 className="mt-1"
                 disabled={!canCreateWO}
                 value={form.target_date}
-                onChange={e => setForm({ ...form, target_date: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, target_date: e.target.value })}
               />
             </div>
           </div>
@@ -466,10 +467,10 @@ export default function WorkOrders() {
                 className="pl-8 text-sm h-9"
                 placeholder="Search WO No, Customer, Grade..."
                 value={q}
-                onChange={e => setQ(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQ(e.target.value)}
               />
             </div>
-            <Select className="max-w-[180px] text-sm h-9" value={status} onChange={e => setStatus(e.target.value)}>
+            <Select className="max-w-[180px] text-sm h-9" value={status} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value)}>
               <option value="">All Statuses</option>
               <option>Pending Plan</option>
               <option>Scheduled</option>
@@ -515,12 +516,12 @@ export default function WorkOrders() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map(w => {
+                {filtered.map((w: WO) => {
                   const sla = getSLA(w.target_date);
                   const wips = wipMap[w.work_order_no] || (w.id ? wipMap[w.id] : []) || [];
                   const isWipExpanded = !!expandedWip[w.id];
                   const avg = w.l1 && w.l2 ? (w.l1 + w.l2) / 2 : w.l1 || w.l2 || 6.0;
-                  const activeWips = wips.filter(wp => Number(wp.current_wip) > 0);
+                  const activeWips = wips.filter((wp: WipStage) => Number(wp.current_wip) > 0);
 
                   return (
                     <React.Fragment key={w.id}>
@@ -531,7 +532,7 @@ export default function WorkOrders() {
                             {wips.length > 0 && (
                               <button
                                 type="button"
-                                onClick={() => setExpandedWip(prev => ({ ...prev, [w.id]: !prev[w.id] }))}
+                                onClick={() => setExpandedWip((prev: Record<string, boolean>) => ({ ...prev, [w.id]: !prev[w.id] }))}
                                 className="inline-flex items-center gap-0.5 rounded px-2 py-1 text-xs font-semibold border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200"
                                 title="Toggle Work Center WIP Pipeline"
                               >
@@ -553,7 +554,7 @@ export default function WorkOrders() {
                         <td className="py-2.5 px-3">
                           {activeWips.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
-                              {activeWips.map(wp => {
+                              {activeWips.map((wp: WipStage) => {
                                 const pcsVal = wp.current_wip_pcs ?? (avg > 0 ? Number((wp.current_wip / avg).toFixed(1)) : 0);
                                 const wpMt = wp.available_mt ?? mtFromMtr(wp.current_wip, w.size_od || 0, w.size_wt || 0);
                                 return (
@@ -632,14 +633,14 @@ export default function WorkOrders() {
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => setExpandedWip(prev => ({ ...prev, [w.id]: false }))}
+                                  onClick={() => setExpandedWip((prev: Record<string, boolean>) => ({ ...prev, [w.id]: false }))}
                                   className="text-xs font-semibold text-slate-500 hover:text-slate-900"
                                 >
                                   Close
                                 </button>
                               </div>
                               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                                {wips.map(wp => {
+                                {wips.map((wp: WipStage) => {
                                   const wipPcs = wp.current_wip_pcs ?? (avg > 0 ? (wp.current_wip / avg).toFixed(2) : '0');
                                   const inPcs = wp.input_pcs ?? (avg > 0 ? (wp.input_qty / avg).toFixed(2) : '0');
                                   const outPcs = wp.output_pcs ?? (avg > 0 ? (wp.output_qty / avg).toFixed(2) : '0');

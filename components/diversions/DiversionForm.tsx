@@ -250,10 +250,18 @@ export default function DiversionForm() {
   const [plans, setPlans] = useState<DiversionPlanItem[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterRoute, setFilterRoute] = useState('');
   const [filterWorkCenter, setFilterWorkCenter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
 
   // Editing modal states
   const [editing, setEditing] = useState<DiversionPlanItem | null>(null);
@@ -299,7 +307,7 @@ export default function DiversionForm() {
     setPlansLoading(true);
     try {
       const { data, error } = await createClient().rpc('get_diversion_plans', {
-        p_search: search || null,
+        p_search: debouncedSearch.trim() || null,
         p_route_code: filterRoute || null,
         p_work_center: filterWorkCenter || null,
         p_from_date: fromDate || null,
@@ -314,7 +322,7 @@ export default function DiversionForm() {
     } finally {
       setPlansLoading(false);
     }
-  }, [search, filterRoute, filterWorkCenter, fromDate, toDate]);
+  }, [debouncedSearch, filterRoute, filterWorkCenter, fromDate, toDate]);
 
   useEffect(() => {
     void loadData();
@@ -556,22 +564,15 @@ export default function DiversionForm() {
       {/* Form Accessibility Banner */}
       <FormAccessBanner access={formAccess} />
 
-      {/* ========================================================================= */}
-      {/* ISSUE DIVERSION PLAN FORM (OFFICE / FLUENT STYLED) */}
-      {/* ========================================================================= */}
-      <form onSubmit={submit} className="rounded-lg border border-slate-300 bg-white p-5 shadow-2xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200">
-          <div>
-            <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <Shuffle className="h-5 w-5 text-[#0078d4]" />
-              Issue Diversion Plan
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Divert mother hollow or in-process pipe WIP from source work order to meet target order demand.
-            </p>
+      {/* ISSUE DIVERSION PLAN FORM */}
+      <form onSubmit={submit} className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <Shuffle className="h-5 w-5 text-blue-600" />
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Issue Diversion Plan</h1>
           </div>
           {!canManagePlans && (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-300 rounded px-2.5 py-1">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
               <Lock size={12} /> View-Only Access
             </span>
           )}

@@ -57,9 +57,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AppUserProfile | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const loadUserData = async () => {
+  const loadUserData = async (force = false) => {
     try {
-      setCurrentUser(await getCurrentAppUser());
+      const u = await getCurrentAppUser(force);
+      setCurrentUser(u);
     } catch {
       setCurrentUser(null);
     }
@@ -75,10 +76,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [pathname]);
+  }, []);
 
   if (pathname === '/login') return <>{children}</>;
-
 
   const signOut = async () => {
     try {

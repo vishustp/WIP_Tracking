@@ -373,29 +373,35 @@ export default function ExcelImporter() {
         if (!error && data !== undefined) {
           imported = Number(data) || validRows.length;
         } else {
-          // Fallback to row-by-row import
-          for (const row of validRows) {
-            const { error: rpcErr } = await supabase.rpc('import_work_order', {
-              p_work_order_no: row.work_order_no,
-              p_customer_name: row.customer_name,
-              p_specification: row.specification,
-              p_od: row.od,
-              p_wl: row.wl,
-              p_l1: row.l1,
-              p_l2: row.l2,
-              p_ordered_qty_pcs: row.ordered_qty_pcs,
-              p_ordered_qty_mtr: row.ordered_qty_mtr,
-              p_ordered_qty_mt: row.ordered_qty_mt,
-              p_balance_qty_pcs: row.balance_qty_pcs,
-              p_balance_qty_mtr: row.balance_qty_mtr,
-              p_balance_qty_mt: row.balance_qty_mt,
-            });
-            if (rpcErr) {
-              failed++;
-              if (errors.length < 5) errors.push(`${row.work_order_no}: ${rpcErr.message}`);
-            } else {
-              imported++;
-            }
+          // Fallback to chunked concurrent import
+          const chunkSize = 10;
+          for (let i = 0; i < validRows.length; i += chunkSize) {
+            const chunk = validRows.slice(i, i + chunkSize);
+            await Promise.all(
+              chunk.map(async (row) => {
+                const { error: rpcErr } = await supabase.rpc('import_work_order', {
+                  p_work_order_no: row.work_order_no,
+                  p_customer_name: row.customer_name,
+                  p_specification: row.specification,
+                  p_od: row.od,
+                  p_wl: row.wl,
+                  p_l1: row.l1,
+                  p_l2: row.l2,
+                  p_ordered_qty_pcs: row.ordered_qty_pcs,
+                  p_ordered_qty_mtr: row.ordered_qty_mtr,
+                  p_ordered_qty_mt: row.ordered_qty_mt,
+                  p_balance_qty_pcs: row.balance_qty_pcs,
+                  p_balance_qty_mtr: row.balance_qty_mtr,
+                  p_balance_qty_mt: row.balance_qty_mt,
+                });
+                if (rpcErr) {
+                  failed++;
+                  if (errors.length < 5) errors.push(`${row.work_order_no}: ${rpcErr.message}`);
+                } else {
+                  imported++;
+                }
+              })
+            );
           }
         }
       } catch (error) {

@@ -2,6 +2,13 @@ import { ButtonHTMLAttributes } from 'react';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'default' | 'outline' | 'ghost' | 'secondary' | 'danger';
+  type?: 'button' | 'submit' | 'reset';
+  className?: string;
+  disabled?: boolean;
+  onClick?: any;
+  children?: any;
+  title?: string;
+  [key: string]: any;
 }
 
 export function Button({ className = '', variant = 'default', ...props }: ButtonProps) {

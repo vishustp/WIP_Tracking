@@ -17,17 +17,15 @@ export function useQueue(stage: StageCode) {
     try {
       const supabase = createClient();
 
-      // 1. Fetch standard queue from database RPC
-      const [queueRes, plansRes, finishingLogsRes] = await Promise.all([
+      // 1. Fetch standard queue from database RPC and active plans
+      const [queueRes, plansRes] = await Promise.all([
         supabase.rpc("get_production_entry_queue", { p_stage_code: s }),
         supabase
           .from("rolling_plans")
-          .select("id, plan_no, work_order_id, status, process_route_id, planned_qty"),
-        s === "FINISHING"
-          ? supabase
-              .from("production_logs")
-              .select("work_order_id, output_qty")
-          : Promise.resolve({ data: [] }),
+          .select("id, plan_no, work_order_id, status, process_route_id, planned_qty")
+          .not("status", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(250),
       ]);
 
       if (queueRes.error) {
@@ -39,7 +37,6 @@ export function useQueue(stage: StageCode) {
 
       const rawRows: Row[] = (queueRes.data ?? []).map((r: any) => emptyRow(r));
       const plans = plansRes.data ?? [];
-      const finishingLogs = (finishingLogsRes as any).data ?? [];
 
       // Parse multi-WO campaigns from rolling plans
       const masterCampaignMap = new Map<string, any>(); // key: master_wo_id
@@ -119,6 +116,16 @@ export function useQueue(stage: StageCode) {
         setRows(enriched);
       } else if (s === "FINISHING") {
         // Finishing stage: display ALL master and child work orders
+        const allChildIds = Array.from(childWoMap.keys());
+        let finishingLogs: any[] = [];
+        if (allChildIds.length > 0) {
+          const { data: logsData } = await supabase
+            .from("production_logs")
+            .select("work_order_id, output_qty")
+            .in("work_order_id", allChildIds);
+          finishingLogs = logsData || [];
+        }
+
         const processedRows: Row[] = [];
         const addedWoIds = new Set<string>();
 

@@ -13,6 +13,14 @@ export function useHistory(
   const [entries, setEntries] = useState<ProductionEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
 
   const loadEntries = useCallback(async () => {
     setLoading(true);
@@ -22,7 +30,7 @@ export function useHistory(
       const { data, error: rpcError } = await supabase.rpc(
         "get_production_entries",
         {
-          p_search: search.trim() || null,
+          p_search: debouncedSearch.trim() || null,
           p_stage_code: entryStage || null,
           p_route_code: entryRoute || null,
           p_from_date: fromDate || null,
@@ -35,14 +43,14 @@ export function useHistory(
         setEntries([]);
         setError(rpcError.message);
       } else {
-        setEntries(data as ProductionEntry[]);
+        setEntries((data as ProductionEntry[]) || []);
       }
     } catch (err: any) {
       setError(err?.message || "Failed to load history entries");
     } finally {
       setLoading(false);
     }
-  }, [search, entryStage, entryRoute, fromDate, toDate]);
+  }, [debouncedSearch, entryStage, entryRoute, fromDate, toDate]);
 
   useEffect(() => {
     loadEntries();
@@ -50,3 +58,4 @@ export function useHistory(
 
   return { entries, loading, error, reload: loadEntries };
 }
+

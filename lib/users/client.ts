@@ -42,10 +42,26 @@ export function mapAppUser(row: any): AppUserProfile {
   };
 }
 
-export async function getCurrentAppUser(): Promise<AppUserProfile | null> {
+let cachedUser: AppUserProfile | null = null;
+let cachedUserTimestamp = 0;
+const USER_CACHE_TTL_MS = 60000;
+
+export function invalidateCurrentUserCache() {
+  cachedUser = null;
+  cachedUserTimestamp = 0;
+}
+
+export async function getCurrentAppUser(forceRefresh = false): Promise<AppUserProfile | null> {
+  if (!forceRefresh && cachedUser && Date.now() - cachedUserTimestamp < USER_CACHE_TTL_MS) {
+    return cachedUser;
+  }
+
   const supabase = createClient();
   const { data: auth, error: authError } = await supabase.auth.getUser();
-  if (authError || !auth.user) return null;
+  if (authError || !auth.user) {
+    cachedUser = null;
+    return null;
+  }
 
   let { data, error } = await supabase
     .from('app_users')
@@ -77,7 +93,7 @@ export async function getCurrentAppUser(): Promise<AppUserProfile | null> {
   if (!data) {
     const meta = auth.user.user_metadata || {};
     const isAdmin = auth.user.email?.toLowerCase().includes('admin') || meta.role === 'Admin' || meta.user_group === 'admin';
-    return mapAppUser({
+    const profile = mapAppUser({
       id: auth.user.id,
       auth_user_id: auth.user.id,
       email: auth.user.email,
@@ -87,10 +103,19 @@ export async function getCurrentAppUser(): Promise<AppUserProfile | null> {
       work_center: meta.work_center || 'ALL',
       active: true,
     });
+    cachedUser = profile;
+    cachedUserTimestamp = Date.now();
+    return profile;
   }
 
-  if (error || data.active === false) return null;
-  return mapAppUser(data);
+  if (error || data.active === false) {
+    cachedUser = null;
+    return null;
+  }
+  const profile = mapAppUser(data);
+  cachedUser = profile;
+  cachedUserTimestamp = Date.now();
+  return profile;
 }
 
 export async function getAppUsers(): Promise<AppUserProfile[]> {

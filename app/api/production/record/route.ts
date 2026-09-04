@@ -40,63 +40,64 @@ export async function POST(req: NextRequest) {
 
     console.warn('record_production_batch returned error, attempting safe fallback insertion:', rpcError.message);
 
-    // Fallback: Process entries individually via admin client (essential for Child WO bundling at Finishing)
+    // Fallback: Process entries concurrently via admin client (essential for Child WO bundling at Finishing)
     let savedCount = 0;
     const errors: string[] = [];
 
-    for (const item of entries) {
-      const stageId = stageMap.get(item.stage_code);
-      if (!stageId) {
-        errors.push(`Unknown stage code: ${item.stage_code}`);
-        continue;
-      }
+    await Promise.all(
+      entries.map(async (item: any) => {
+        const stageId = stageMap.get(item.stage_code);
+        if (!stageId) {
+          errors.push(`Unknown stage code: ${item.stage_code}`);
+          return;
+        }
 
-      const inputMtr = Number(item.input_qty || 0);
-      const outputMtr = Number(item.output_qty || inputMtr);
-      const rejMtr = Number(item.rejection_qty || 0);
-      const htcOkMtr = Number(item.htc_ok || 0);
+        const inputMtr = Number(item.input_qty || 0);
+        const outputMtr = Number(item.output_qty || inputMtr);
+        const rejMtr = Number(item.rejection_qty || 0);
+        const htcOkMtr = Number(item.htc_ok || 0);
 
-      const { data: inserted, error: insertErr } = await admin
-        .from('production_logs')
-        .insert({
-          work_order_id: item.work_order_id,
-          stage_id: stageId,
-          process_route_id: item.route_id,
-          process_date: processDate,
-          input_qty: inputMtr,
-          output_qty: outputMtr,
-          rejection_qty: rejMtr,
-          htc_ok: htcOkMtr,
-          heat_lot_no: item.heat_lot_no || null,
-          remarks: item.remarks || null,
-        })
-        .select()
-        .single();
+        const { error: insertErr } = await admin
+          .from('production_logs')
+          .insert({
+            work_order_id: item.work_order_id,
+            stage_id: stageId,
+            process_route_id: item.route_id,
+            process_date: processDate,
+            input_qty: inputMtr,
+            output_qty: outputMtr,
+            rejection_qty: rejMtr,
+            htc_ok: htcOkMtr,
+            heat_lot_no: item.heat_lot_no || null,
+            remarks: item.remarks || null,
+          });
 
-      if (insertErr) {
-        errors.push(`Error for WO ${item.work_order_id}: ${insertErr.message}`);
-      } else {
+        if (insertErr) {
+          errors.push(`Error for WO ${item.work_order_id}: ${insertErr.message}`);
+          return;
+        }
+
         savedCount++;
 
         // Update work order status
         if (item.stage_code === 'FINISHING') {
-          // Check total finishing output vs order balance
-          const { data: finishingLogs } = await admin
-            .from('production_logs')
-            .select('output_qty')
-            .eq('work_order_id', item.work_order_id)
-            .eq('stage_id', stageId);
+          const [{ data: finishingLogs }, { data: woData }] = await Promise.all([
+            admin
+              .from('production_logs')
+              .select('output_qty')
+              .eq('work_order_id', item.work_order_id)
+              .eq('stage_id', stageId),
+            admin
+              .from('work_orders')
+              .select('balance_qty_mtr')
+              .eq('id', item.work_order_id)
+              .single(),
+          ]);
 
           const totalFinished = (finishingLogs ?? []).reduce(
             (sum, l) => sum + Number(l.output_qty || 0),
             0
           );
-
-          const { data: woData } = await admin
-            .from('work_orders')
-            .select('balance_qty_mtr')
-            .eq('id', item.work_order_id)
-            .single();
 
           const targetMtr = Number(woData?.balance_qty_mtr || 0);
           const newStatus = targetMtr > 0 && totalFinished >= targetMtr ? 'Completed' : 'In Progress';
@@ -112,8 +113,8 @@ export async function POST(req: NextRequest) {
             .eq('id', item.work_order_id)
             .in('status', ['Pending Plan', 'Scheduled']);
         }
-      }
-    }
+      })
+    );
 
     if (savedCount === 0 && errors.length > 0) {
       return NextResponse.json({ error: errors.join('; ') }, { status: 400 });

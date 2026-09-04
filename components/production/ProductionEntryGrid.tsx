@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect } from "react";
-import Link from "next/link";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -14,25 +13,18 @@ import {
   ChevronDown,
   ChevronRight,
   Factory,
-  ArrowRight,
-  Info,
-  SlidersHorizontal,
-  ShieldCheck,
   Lock,
-  UserCheck,
-  AlertCircle,
   ShieldAlert,
   Crown,
   Link2,
   Package,
-  Sparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueue } from "@/hooks/useQueue";
 import { useHistory } from "@/hooks/useHistory";
 import { validateProductionEntry } from "@/lib/productionValidation";
 import { calc, fmt, n, mtrFromPcs, pcsFromMtr, mtFromMtr } from "@/lib/productionUtils";
-import { StageCode, STAGES, Row, ProductionEntry, WorkCenterWipInfo } from "@/types";
+import { StageCode, STAGES, Row, ProductionEntry } from "@/types";
 import { usePermissions, getGroupConfig, getFormAccess } from "@/lib/permissions";
 import FormAccessBanner from "@/components/common/FormAccessBanner";
 
@@ -676,110 +668,21 @@ export default function ProductionEntryGrid() {
     }
   }
 
-  // --- Helper to get formula text ---
-  function getMaximumFormula(row: Row) {
-    const route = row.route_code || "HFS";
-    if (stage === "ROLLING") {
-      return "Plan × 110% (Nos / MTR)";
-    }
-    if (stage === "HOLLOW_HEAT_TREATMENT") {
-      return "Rolling HTC OK Nos";
-    }
-    if (stage === "DRAW") {
-      if (route === "ALLOY_CDS") {
-        return "Hollow Heat Treatment Nos";
-      }
-      return "Rolling HTC OK Nos";
-    }
-    if (stage === "HEAT_TREATMENT") {
-      return "Draw Bench Nos";
-    }
-    if (stage === "FINISHING") {
-      if (route === "HFS") {
-        return "min(HTC OK Nos × Mult, Balance to make)";
-      }
-      if (route === "ALLOY_HFS") {
-        return "min(Hollow HT Nos × Mult, Balance to make)";
-      }
-      return "min(Heat Treatment Nos × Mult, Balance to make)";
-    }
-    return "Previous Stage Output";
-  }
-
   return (
     <div className="space-y-5">
-      {/* Active Role & Permissions Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className={`flex h-10 w-10 items-center justify-center rounded-xl font-bold text-white text-sm shadow-md ${
-            isAdmin ? "bg-blue-600" : isSuperUser ? "bg-purple-600" : "bg-amber-600"
-          }`}>
-            {user?.name?.charAt(0) || "U"}
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-bold text-slate-900">{user?.name || "Active Operator"}</span>
-              <span className={`rounded-full border px-2.5 py-1 text-sm font-semibold ${groupConfig.badgeClass}`}>
-                {groupConfig.name}
-              </span>
-              <span className="text-sm text-slate-500 font-medium">({user?.role_title} · {user?.department})</span>
-            </div>
-            <div className="mt-1 flex items-center gap-3 text-sm text-slate-600 flex-wrap">
-              <span className="flex items-center gap-1 font-medium">
-                <span className="text-slate-400">Assigned Work Center:</span>
-                <span className="text-slate-800 font-semibold">{workCenterLabel}</span>
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="flex items-center gap-1">
-                <span className="text-slate-400">Deletion Scope:</span>
-                {isAdmin || isSuperUser ? (
-                  <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
-                    <CheckCircle2 size={12} /> Global Authority (All Work Centers)
-                  </span>
-                ) : (
-                  <span className="text-amber-700 font-semibold flex items-center gap-0.5">
-                    <CheckCircle2 size={12} /> Work Center Only ({workCenter})
-                  </span>
-                )}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Link
-            href="/profile"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
-          >
-            <UserCheck size={14} className="text-slate-500" />
-            Switch User / Role
-          </Link>
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
-            >
-              <ShieldCheck size={14} className="text-blue-600" />
-              Admin Panel
-            </Link>
-          )}
-        </div>
-      </div>
-
       {/* Top Header & Stage Selector */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Production Entry & WIP Tracking</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Stage queue processing, rolling plan allocation, and verified WIP ledger
-          </p>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+            Production Entry & WIP Tracking
+          </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center rounded-xl border-2 border-slate-300 bg-white p-0.5 shadow-sm">
+          <div className="flex items-center rounded-xl border border-slate-200/90 bg-white p-1 shadow-2xs">
             <select
               value={stage}
               onChange={(e) => setStage(e.target.value as StageCode)}
-              className="min-h-[3rem] rounded-lg border-0 bg-transparent px-4 text-base font-bold text-slate-900 focus:ring-0 cursor-pointer"
+              className="h-9 rounded-lg border-0 bg-transparent px-3 text-sm font-semibold text-slate-800 focus:ring-0 cursor-pointer"
             >
               {STAGES.map((s) => (
                 <option key={s.code} value={s.code}>
@@ -791,76 +694,76 @@ export default function ProductionEntryGrid() {
 
           <button
             type="button"
-            onClick={() => Promise.all([reloadQueue(), reloadHistory()])}
-            className="inline-flex min-h-[3rem] items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 text-base font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            onClick={() => Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()])}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 text-sm font-medium text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
           >
-            <RefreshCw size={16} className={queueLoading || historyLoading ? "animate-spin text-blue-600" : ""} />
-            Refresh
+            <RefreshCw size={14} className={queueLoading || historyLoading ? "animate-spin text-blue-600" : "text-slate-500"} />
+            <span>Refresh</span>
           </button>
         </div>
       </div>
 
       {/* Messages */}
       {message && (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-sm">
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm font-medium text-emerald-800 shadow-xs">
           <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
           {message}
         </div>
       )}
       {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 shadow-sm">
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm font-medium text-red-800 shadow-xs">
           <AlertTriangle size={16} className="mt-0.5 text-red-600 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      {/* Work Centers WIP Overview Banner */}
-      <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+      {/* Work Centers WIP Overview */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-3">
           <div className="flex items-center gap-2">
             <Factory className="h-4 w-4 text-blue-600" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-800">
-              Work Center WIP Availability Summary
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              Work Center WIP Summary
             </h2>
           </div>
           <button
             type="button"
             onClick={() => setShowWipSummary(!showWipSummary)}
-            className="text-sm font-medium text-slate-600 hover:text-slate-900"
+            className="text-xs font-medium text-slate-500 hover:text-slate-800 transition cursor-pointer"
           >
-            {showWipSummary ? "Hide Overview" : "Show Overview"}
+            {showWipSummary ? "Hide Summary" : "Show Summary"}
           </button>
         </div>
 
         {showWipSummary && (
-          <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-5 bg-slate-50/30">
+          <div className="grid grid-cols-2 gap-3 p-3.5 sm:grid-cols-3 lg:grid-cols-5 bg-slate-50/20">
             {workCenterSummary.map((wc) => {
               const isSelected = wc.stage_code === stage;
               return (
                 <div
                   key={wc.stage_code}
                   onClick={() => setStage(wc.stage_code)}
-                  className={`cursor-pointer rounded-lg border p-3 transition-all ${
+                  className={`cursor-pointer rounded-xl border p-3 transition-all ${
                     isSelected
-                      ? "border-blue-500 bg-blue-50/50 shadow-sm ring-1 ring-blue-500"
-                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                      ? "border-blue-500/80 bg-gradient-to-br from-blue-50/80 to-indigo-50/50 shadow-xs ring-1 ring-blue-500/30"
+                      : "border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/80"
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-700 truncate">{wc.label}</span>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs font-semibold text-slate-700 truncate">{wc.label}</span>
                     {isSelected && (
-                      <span className="rounded-full bg-blue-600 px-2 py-0.2 text-[11px] font-bold text-white">
+                      <span className="rounded-full bg-blue-600 px-1.5 py-0.2 text-[10px] font-bold text-white shrink-0">
                         Active
                       </span>
                     )}
                   </div>
-                  <div className="mt-2 flex items-baseline gap-1.5">
-                    <span className="text-base font-bold font-mono text-slate-900">
+                  <div className="mt-2 flex items-baseline gap-1">
+                    <span className="text-base font-bold font-mono text-slate-900 tracking-tight">
                       {fmt(wc.availPcs)}
                     </span>
-                    <span className="text-xs font-bold text-slate-500">PCS</span>
+                    <span className="text-[11px] font-semibold text-slate-400">PCS</span>
                   </div>
-                  <div className="text-sm text-slate-500 font-mono mt-0.5">
+                  <div className="text-xs text-slate-500 font-mono mt-0.5">
                     {fmt(wc.availMtr, " MTR")} · <span className="text-blue-700 font-semibold">{fmt(wc.availMt, " MT")}</span>
                   </div>
                 </div>
@@ -874,10 +777,10 @@ export default function ProductionEntryGrid() {
       <FormAccessBanner access={stageFormAccess} className="mb-2" />
 
       {/* Production Date & Entry Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
         <div className="flex flex-wrap items-center gap-3">
           <div>
-            <label className="block text-sm font-semibold uppercase tracking-wider text-slate-600">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
               Shift Process Date
             </label>
             <input
@@ -885,15 +788,15 @@ export default function ProductionEntryGrid() {
               value={date}
               disabled={!isAllowed}
               onChange={(e) => setDate(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-2xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
             />
           </div>
           <div className="border-l border-slate-200 pl-3">
-            <span className="block text-sm font-semibold uppercase tracking-wider text-slate-600">
-              Queue Work Orders
+            <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Queue Status
             </span>
-            <span className="mt-1 inline-flex items-center rounded-md bg-slate-100 px-2.5 py-1.5 text-sm font-bold text-slate-800">
-              {rows.length} Orders with WIP
+            <span className="mt-1 inline-flex items-center rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-800">
+              {rows.length} {rows.length === 1 ? 'Order' : 'Orders'} in Queue
             </span>
           </div>
         </div>
@@ -902,7 +805,7 @@ export default function ProductionEntryGrid() {
           <button
             type="button"
             onClick={toggleAllRows}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
           >
             <Layers size={13} className="text-slate-500" />
             {rows.every((r) => expandedRows[`${r.work_order_id}|${r.route_id}`])
@@ -913,32 +816,30 @@ export default function ProductionEntryGrid() {
       </div>
 
       {/* Queue Entry Grid Table */}
-      <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-3">
-          <h2 className="text-sm font-bold text-slate-900">
-            {STAGES.find((x) => x.code === stage)?.label || stage} Queue
-          </h2>
-        </div>
-
-        {/* Stage Rule 2 Context Notice */}
-        {(stage === "DRAW" || stage === "HOLLOW_HEAT_TREATMENT" || stage === "HEAT_TREATMENT") && (
-          <div className="flex items-center gap-2 bg-indigo-50/80 border-b border-indigo-100 px-4 py-2.5 text-xs text-indigo-950 font-medium">
-            <Crown size={14} className="text-indigo-600 shrink-0" />
-            <span>
-              <b>Rule 2 Active (Master-Only Stage):</b> In Draw, Hollow Heat Treatment, and Heat Treatment, only Master Work Orders are displayed. Campaigns flow consolidated under the Master Work Order.
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-900">
+              {STAGES.find((x) => x.code === stage)?.label || stage} Queue
+            </h2>
+            <span className="rounded-full bg-slate-200/70 px-2 py-0.2 text-[11px] font-semibold text-slate-700">
+              {rows.length}
             </span>
           </div>
-        )}
-        {stage === "FINISHING" && (
-          <div className="flex items-center justify-between gap-2 bg-teal-50/80 border-b border-teal-100 px-4 py-2.5 text-xs text-teal-950 font-medium">
-            <div className="flex items-center gap-2">
-              <Package size={14} className="text-teal-600 shrink-0" />
-              <span>
-                <b>Rule 2 Active (Finishing & Bundling Station):</b> All Master and Child Work Orders are displayed here. You can record bundling directly per row or use the <b>Campaign Bundler</b> on Master orders to bundle across multiple work orders.
+
+          <div className="flex items-center gap-2">
+            {(stage === "DRAW" || stage === "HOLLOW_HEAT_TREATMENT" || stage === "HEAT_TREATMENT") && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
+                <Crown size={12} /> Master Orders Consolidated
               </span>
-            </div>
+            )}
+            {stage === "FINISHING" && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-200/80 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
+                <Package size={12} /> Finishing & Bundling Station
+              </span>
+            )}
           </div>
-        )}
+        </div>
 
         {queueLoading ? (
           <div className="p-8 text-center text-sm text-slate-500">Loading work order production queue...</div>
@@ -1329,16 +1230,12 @@ export default function ProductionEntryGrid() {
         )}
 
         {/* Batch Save Action Footer */}
-        <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/80 p-3 sm:p-4">
+        <div className="flex items-center justify-between border-t border-slate-200/80 bg-slate-50/70 p-3 sm:p-4">
           <div className="text-sm text-slate-600">
-            {!isStageAllowed(stage) || user?.role === 'auditor' ? (
-              <span className="inline-flex items-center gap-1.5 text-amber-700 font-medium bg-amber-50 border border-amber-200/80 rounded-lg px-2.5 py-1.5">
-                <Lock size={13} />
-                Entry is disabled: Active role ({roleTitle}) does not have write permissions for {STAGES.find(s => s.code === stage)?.label}.
-              </span>
-            ) : (
-              <span className="text-slate-500">
-                Ready to commit verified production logs for shift date {date}
+            {(!isStageAllowed(stage) || user?.role === 'auditor') && (
+              <span className="inline-flex items-center gap-1.5 text-amber-800 font-medium bg-amber-50 border border-amber-200/80 rounded-lg px-2.5 py-1.5 text-xs">
+                <Lock size={12} />
+                Entry disabled: Active role ({roleTitle}) does not have write permissions for {STAGES.find(s => s.code === stage)?.label}.
               </span>
             )}
           </div>
@@ -1347,9 +1244,16 @@ export default function ProductionEntryGrid() {
             type="button"
             disabled={saving || queueLoading || user?.role === 'auditor' || !isStageAllowed(stage)}
             onClick={save}
-            className="min-h-[3.25rem] rounded-xl bg-slate-900 px-8 text-lg font-bold text-white shadow-sm hover:bg-slate-800 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-xs hover:from-blue-700 hover:to-indigo-700 active:scale-[0.98] transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {saving ? "Saving..." : "Save Production Entries"}
+            {saving ? (
+              <>
+                <RefreshCw size={15} className="animate-spin" />
+                <span>Saving Entries...</span>
+              </>
+            ) : (
+              <span>Save Production Entries</span>
+            )}
           </button>
         </div>
       </div>

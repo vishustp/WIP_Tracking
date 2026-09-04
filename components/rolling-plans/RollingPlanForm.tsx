@@ -139,12 +139,20 @@ export default function RollingPlanForm() {
   // Plans table & filtering
   const [plans, setPlans] = useState<Plan[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterRoute, setFilterRoute] = useState('');
   const [planTypeFilter, setPlanTypeFilter] = useState<'all' | 'master' | 'child'>('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [plansLoading, setPlansLoading] = useState(false);
   const [expandedMasterPlans, setExpandedMasterPlans] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
 
   // Editing single plan modal
   const [editing, setEditing] = useState<Plan | null>(null);
@@ -190,7 +198,7 @@ export default function RollingPlanForm() {
     try {
       const s = createClient();
       const { data, error } = await s.rpc('get_rolling_plans', {
-        p_search: search.trim() || null,
+        p_search: debouncedSearch.trim() || null,
         p_route_code: filterRoute || null,
         p_from_date: fromDate || null,
         p_to_date: toDate || null,
@@ -206,7 +214,7 @@ export default function RollingPlanForm() {
     } finally {
       setPlansLoading(false);
     }
-  }, [filterRoute, fromDate, search, toDate]);
+  }, [filterRoute, fromDate, debouncedSearch, toDate]);
 
   // Helper to suggest standard Mother Hollow dimensions based on finished pipe size
   const suggestMhDimensions = useCallback((wo: WO) => {
@@ -734,20 +742,15 @@ export default function RollingPlanForm() {
     <div className="space-y-6">
       <FormAccessBanner access={formAccess} />
 
-      {/* Campaign Rolling Plan Creation Card (Rule 1) */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      {/* Campaign Rolling Plan Creation Card */}
+      <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs">
         <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Layers className="h-5 w-5 text-indigo-600" />
-              <h1 className="text-xl font-bold text-slate-900">Issue Rolling Plan</h1>
-              <span className="rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
-                Multi-Work Order Campaign (Rule 1)
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              Select multiple work orders. Assign 1 work order to <b>Master</b> and balance to <b>Child</b> work orders.
-            </p>
+          <div className="flex items-center gap-2">
+            <Layers className="h-5 w-5 text-indigo-600" />
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">Issue Rolling Plan</h1>
+            <span className="rounded-full bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
+              Campaign Planning
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -758,18 +761,13 @@ export default function RollingPlanForm() {
         </div>
 
         <form onSubmit={submitMultiWoPlan} className="space-y-5">
-          {/* Section 1: Work Order Selection & Role Assignment (Rule 1) */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+          {/* Section 1: Work Order Selection & Role Assignment */}
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>1. Work Orders & Master/Child Assignment</span>
-                  <span className="text-rose-500">*</span>
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Assign 1 Master Order (processes through Draw & Heat Treatment) and balance Child Orders (bundled at Finishing).
-                </p>
-              </div>
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                <span>Work Orders & Campaign Roles</span>
+                <span className="text-rose-500">*</span>
+              </h3>
 
               {/* Work Order Picker Dropdown */}
               <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -794,20 +792,18 @@ export default function RollingPlanForm() {
 
             {/* Selected Work Orders Table / Cards */}
             {selectedOrders.length === 0 ? (
-              <div className="rounded-lg border-2 border-dashed border-slate-300 bg-white p-6 text-center">
+              <div className="rounded-xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
                 <Layers className="mx-auto h-8 w-8 text-slate-400" />
-                <p className="mt-2 text-sm font-semibold text-slate-700">No Work Orders Selected Yet</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Use the dropdown above to select work orders for this rolling plan.
-                </p>
+                <p className="mt-2 text-sm font-semibold text-slate-700">No Work Orders Selected</p>
+                <p className="text-xs text-slate-400 mt-0.5">Select orders above to start this campaign</p>
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-xs">
+                <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-2xs">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                    <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
                       <tr>
-                        <th className="px-3 py-2.5 font-bold">Role (Rule 1)</th>
+                        <th className="px-3 py-2.5 font-bold">Role</th>
                         <th className="px-3 py-2.5 font-bold">Work Order</th>
                         <th className="px-3 py-2.5 font-bold">Customer & Grade</th>
                         <th className="px-3 py-2.5 font-bold">Size (OD × WT)</th>
