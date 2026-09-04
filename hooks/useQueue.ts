@@ -31,7 +31,7 @@ export function useQueue(stage: StageCode) {
           .select("id, stage_code"),
         supabase
           .from("production_logs")
-          .select("work_order_id, stage_id, output_qty, rejection_qty"),
+          .select("work_order_id, stage_id, output_qty, rejection_qty, output_pcs, rejection_pcs"),
       ]);
 
       if (queueRes.error) {
@@ -149,6 +149,15 @@ export function useQueue(stage: StageCode) {
             0
           );
           const totalLoggedMtr = loggedOutput + loggedRej;
+          const loggedOutputPcs = masterLogs.reduce(
+            (sum: number, l: any) => sum + Number(l.output_pcs || 0),
+            0
+          );
+          const loggedRejPcs = masterLogs.reduce(
+            (sum: number, l: any) => sum + Number(l.rejection_pcs || 0),
+            0
+          );
+          const totalLoggedPcs = loggedOutputPcs + loggedRejPcs;
 
           if (campaign) {
             const totalCampaignMtr = Number(campaign.total_campaign_mtr || 0);
@@ -163,7 +172,9 @@ export function useQueue(stage: StageCode) {
             const mhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || 6;
             const effAvg = mhAvg > 0 ? mhAvg : Number(r.avg_length) || 6;
 
-            const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : 0;
+            const availPcs = totalCampaignPcs > 0
+              ? Math.max(0, totalCampaignPcs - totalLoggedPcs)
+              : (effAvg > 0 ? Math.round(availMtr / effAvg) : 0);
             const mhOd = Number(campaign.mh_od || r.mh_od || r.od || 0);
             const mhWt = Number(campaign.mh_wt || r.mh_wt || r.wl || 0);
             const availMt =
@@ -171,10 +182,9 @@ export function useQueue(stage: StageCode) {
 
             // Capping at rolling = 110% of total Plan issued against master + child work order
             const cappingMtr = Number((totalCampaignMtr * 1.1).toFixed(3));
-            const cappingPcs =
-              effAvg > 0
-                ? Math.round(cappingMtr / effAvg)
-                : Math.round(totalCampaignPcs * 1.1);
+            const cappingPcs = totalCampaignPcs > 0
+              ? Math.round(totalCampaignPcs * 1.1)
+              : (effAvg > 0 ? Math.round(cappingMtr / effAvg) : 0);
 
             return {
               ...r,
@@ -232,8 +242,13 @@ export function useQueue(stage: StageCode) {
               (sum: number, l: any) => sum + Number(l.output_qty || 0) + Number(l.rejection_qty || 0),
               0
             );
+            const totalLoggedPcs = masterLogs.reduce(
+              (sum: number, l: any) => sum + Number(l.output_pcs || 0) + Number(l.rejection_pcs || 0),
+              0
+            );
             const availMtr = Math.max(0, campaign.total_campaign_mtr - totalLogged);
-            if (availMtr > 0) {
+            const totalCampaignPcs = Number(campaign.total_campaign_pcs || 0);
+            if (availMtr > 0 || (totalCampaignPcs > 0 && totalCampaignPcs > totalLoggedPcs)) {
               const { data: wo } = await supabase
                 .from("work_orders")
                 .select("*")
@@ -253,16 +268,17 @@ export function useQueue(stage: StageCode) {
                 const mhL2 = Number(campaign.mh_l2 || 0);
                 const mhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || avg;
                 const effAvg = mhAvg > 0 ? mhAvg : avg;
-                const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : 0;
+                const availPcs = totalCampaignPcs > 0
+                  ? Math.max(0, totalCampaignPcs - totalLoggedPcs)
+                  : (effAvg > 0 ? Math.round(availMtr / effAvg) : 0);
                 const mhOd = Number(campaign.mh_od || wo.size_od || 0);
                 const mhWt = Number(campaign.mh_wt || wo.size_wt || 0);
                 const availMt =
                   Math.max(mhOd - mhWt, 0) * Math.max(mhWt, 0) * 0.0246615 * 0.001 * availMtr;
                 const cappingMtr = Number((campaign.total_campaign_mtr * 1.1).toFixed(3));
-                const cappingPcs =
-                  effAvg > 0
-                    ? Math.round(cappingMtr / effAvg)
-                    : Math.round(campaign.total_campaign_pcs * 1.1);
+                const cappingPcs = totalCampaignPcs > 0
+                  ? Math.round(totalCampaignPcs * 1.1)
+                  : (effAvg > 0 ? Math.round(cappingMtr / effAvg) : 0);
 
                 enriched.push(
                   emptyRow({
