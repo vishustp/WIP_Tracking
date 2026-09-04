@@ -17,6 +17,7 @@ export function useQueue(stage: StageCode) {
     try {
       const supabase = createClient();
 
+<<<<<<< HEAD
       // 1. Fetch standard queue from database RPC and active plans
       const [queueRes, plansRes] = await Promise.all([
         supabase.rpc("get_production_entry_queue", { p_stage_code: s }),
@@ -26,6 +27,20 @@ export function useQueue(stage: StageCode) {
           .not("status", "is", null)
           .order("created_at", { ascending: false })
           .limit(250),
+=======
+      // 1. Fetch standard queue, plans, process stages, and production logs
+      const [queueRes, plansRes, stagesRes, logsRes] = await Promise.all([
+        supabase.rpc("get_production_entry_queue", { p_stage_code: s }),
+        supabase
+          .from("rolling_plans")
+          .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2"),
+        supabase
+          .from("process_stages")
+          .select("id, stage_code"),
+        supabase
+          .from("production_logs")
+          .select("work_order_id, stage_id, output_qty, rejection_qty"),
+>>>>>>> 4837049f89ccbf17c732bedf2f92c9aadd9c00dd
       ]);
 
       if (queueRes.error) {
@@ -37,6 +52,14 @@ export function useQueue(stage: StageCode) {
 
       const rawRows: Row[] = (queueRes.data ?? []).map((r: any) => emptyRow(r));
       const plans = plansRes.data ?? [];
+<<<<<<< HEAD
+=======
+      const stages = stagesRes.data ?? [];
+      const logs = logsRes.data ?? [];
+
+      const rollingStageId = stages.find((st: any) => st.stage_code === "ROLLING")?.id;
+      const finishingStageId = stages.find((st: any) => st.stage_code === "FINISHING")?.id;
+>>>>>>> 4837049f89ccbf17c732bedf2f92c9aadd9c00dd
 
       // Parse multi-WO campaigns from rolling plans
       const masterCampaignMap = new Map<string, any>(); // key: master_wo_id
@@ -47,17 +70,41 @@ export function useQueue(stage: StageCode) {
         try {
           const parsed = typeof p.status === "string" ? JSON.parse(p.status) : p.status;
           if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
+            const masterPlannedMtr = Number(parsed.master_planned_mtr || p.planned_qty || 0);
+            const childPlannedMtr = (parsed.child_work_orders || []).reduce(
+              (sum: number, c: any) => sum + Number(c.planned_mtr || 0),
+              0
+            );
+            const totalCampaignMtr =
+              Number(parsed.total_campaign_mtr) > 0
+                ? Number(parsed.total_campaign_mtr)
+                : masterPlannedMtr + childPlannedMtr;
+
+            const masterPlannedPcs = Number(parsed.master_planned_pcs || 0);
+            const childPlannedPcs = (parsed.child_work_orders || []).reduce(
+              (sum: number, c: any) => sum + Number(c.planned_pcs || 0),
+              0
+            );
+            const totalCampaignPcs =
+              Number(parsed.total_campaign_pcs) > 0
+                ? Number(parsed.total_campaign_pcs)
+                : masterPlannedPcs + childPlannedPcs;
+
             masterCampaignMap.set(p.work_order_id, {
               plan_id: p.id,
               plan_no: p.plan_no,
               master_wo_id: p.work_order_id,
               master_wo_no: parsed.master_wo_no,
-              master_planned_mtr: parsed.master_planned_mtr,
-              master_planned_pcs: parsed.master_planned_pcs,
-              total_campaign_mtr: parsed.total_campaign_mtr,
-              total_campaign_pcs: parsed.total_campaign_pcs,
+              master_planned_mtr: masterPlannedMtr,
+              master_planned_pcs: masterPlannedPcs,
+              total_campaign_mtr: totalCampaignMtr,
+              total_campaign_pcs: totalCampaignPcs,
               child_work_orders: parsed.child_work_orders,
               route_id: p.process_route_id,
+              mh_od: p.mh_od,
+              mh_wt: p.mh_wt,
+              mh_l1: p.mh_l1,
+              mh_l2: p.mh_l2,
             });
 
             for (const child of parsed.child_work_orders) {
@@ -93,7 +140,183 @@ export function useQueue(stage: StageCode) {
         s === "HEAT_TREATMENT" ||
         s === "ROLLING";
 
-      if (isMasterOnlyStage) {
+      if (s === "ROLLING") {
+        // Filter out any child work orders
+        const filtered = rawRows.filter((r) => !childWoMap.has(r.work_order_id));
+
+        // Enrich master rows with aggregated campaign WIP and Capping
+        const enriched: Row[] = filtered.map((r) => {
+          const campaign = masterCampaignMap.get(r.work_order_id);
+          const masterLogs = logs.filter(
+            (l: any) =>
+              l.work_order_id === r.work_order_id &&
+              (!rollingStageId || l.stage_id === rollingStageId)
+          );
+          const loggedOutput = masterLogs.reduce(
+            (sum: number, l: any) => sum + Number(l.output_qty || 0),
+            0
+          );
+          const loggedRej = masterLogs.reduce(
+            (sum: number, l: any) => sum + Number(l.rejection_qty || 0),
+            0
+          );
+          const totalLoggedMtr = loggedOutput + loggedRej;
+
+          if (campaign) {
+            const totalCampaignMtr = Number(campaign.total_campaign_mtr || 0);
+            const totalCampaignPcs = Number(campaign.total_campaign_pcs || 0);
+
+            // Available WIP = Total Plan issued against Master + Child Work Orders - Logged Rolling Production
+            const availMtr = Math.max(0, totalCampaignMtr - totalLoggedMtr);
+
+            // Effective average length for Mother Hollow PCS
+            const mhL1 = Number(campaign.mh_l1 || r.mh_l1 || r.l1 || 6);
+            const mhL2 = Number(campaign.mh_l2 || r.mh_l2 || r.l2 || 6);
+            const mhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || 6;
+            const effAvg = mhAvg > 0 ? mhAvg : Number(r.avg_length) || 6;
+
+            const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : 0;
+            const mhOd = Number(campaign.mh_od || r.mh_od || r.od || 0);
+            const mhWt = Number(campaign.mh_wt || r.mh_wt || r.wl || 0);
+            const availMt =
+              Math.max(mhOd - mhWt, 0) * Math.max(mhWt, 0) * 0.0246615 * 0.001 * availMtr;
+
+            // Capping at rolling = 110% of total Plan issued against master + child work order
+            const cappingMtr = Number((totalCampaignMtr * 1.1).toFixed(3));
+            const cappingPcs =
+              effAvg > 0
+                ? Math.round(cappingMtr / effAvg)
+                : Math.round(totalCampaignPcs * 1.1);
+
+            return {
+              ...r,
+              mh_od: campaign.mh_od ?? r.mh_od,
+              mh_wt: campaign.mh_wt ?? r.mh_wt,
+              mh_l1: campaign.mh_l1 ?? r.mh_l1,
+              mh_l2: campaign.mh_l2 ?? r.mh_l2,
+              mh_avg_length: mhAvg,
+              is_master: true,
+              master_plan_no: campaign.plan_no,
+              campaign_total_mtr: totalCampaignMtr,
+              campaign_total_pcs: totalCampaignPcs,
+              child_work_orders: campaign.child_work_orders,
+              balance_to_make_mtr: availMtr,
+              balance_to_make_pcs: availPcs,
+              balance_to_make_mt: Number(availMt.toFixed(3)),
+              max_allowed_mtr: cappingMtr,
+              max_allowed_pcs: cappingPcs,
+            };
+          } else {
+            // Standard single work order plan
+            const plan = plans.find((p: any) => p.work_order_id === r.work_order_id);
+            const planMtr = plan ? Number(plan.planned_qty || 0) : Number(r.balance_to_make_mtr || 0);
+            const availMtr = Math.max(0, (planMtr || Number(r.balance_to_make_mtr || 0)) - totalLoggedMtr);
+            const effAvg = Number(r.avg_length) || 6;
+            const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : (r.balance_to_make_pcs || 0);
+            const od = Number(r.od || 0);
+            const wt = Number(r.wl || 0);
+            const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
+
+            const cappingMtr = Number(((planMtr || availMtr) * 1.1).toFixed(3));
+            const cappingPcs = effAvg > 0 ? Math.round(cappingMtr / effAvg) : Math.round(availPcs * 1.1);
+
+            return {
+              ...r,
+              balance_to_make_mtr: availMtr,
+              balance_to_make_pcs: availPcs,
+              balance_to_make_mt: Number(availMt.toFixed(3)),
+              max_allowed_mtr: cappingMtr,
+              max_allowed_pcs: cappingPcs,
+            };
+          }
+        });
+
+        // Ensure any Master Campaign with remaining available WIP is included
+        const existingWoIds = new Set(filtered.map((r) => r.work_order_id));
+        for (const [masterWoId, campaign] of masterCampaignMap.entries()) {
+          if (!existingWoIds.has(masterWoId)) {
+            const masterLogs = logs.filter(
+              (l: any) =>
+                l.work_order_id === masterWoId &&
+                (!rollingStageId || l.stage_id === rollingStageId)
+            );
+            const totalLogged = masterLogs.reduce(
+              (sum: number, l: any) => sum + Number(l.output_qty || 0) + Number(l.rejection_qty || 0),
+              0
+            );
+            const availMtr = Math.max(0, campaign.total_campaign_mtr - totalLogged);
+            if (availMtr > 0) {
+              const { data: wo } = await supabase
+                .from("work_orders")
+                .select("*")
+                .eq("id", masterWoId)
+                .single();
+              const { data: route } = await supabase
+                .from("process_routes")
+                .select("*")
+                .eq("id", campaign.route_id)
+                .single();
+
+              if (wo) {
+                const l1 = Number(wo.l1 || 6);
+                const l2 = Number(wo.l2 || 6);
+                const avg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6;
+                const mhL1 = Number(campaign.mh_l1 || 0);
+                const mhL2 = Number(campaign.mh_l2 || 0);
+                const mhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || avg;
+                const effAvg = mhAvg > 0 ? mhAvg : avg;
+                const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : 0;
+                const mhOd = Number(campaign.mh_od || wo.size_od || 0);
+                const mhWt = Number(campaign.mh_wt || wo.size_wt || 0);
+                const availMt =
+                  Math.max(mhOd - mhWt, 0) * Math.max(mhWt, 0) * 0.0246615 * 0.001 * availMtr;
+                const cappingMtr = Number((campaign.total_campaign_mtr * 1.1).toFixed(3));
+                const cappingPcs =
+                  effAvg > 0
+                    ? Math.round(cappingMtr / effAvg)
+                    : Math.round(campaign.total_campaign_pcs * 1.1);
+
+                enriched.push(
+                  emptyRow({
+                    work_order_id: wo.id,
+                    work_order_no: wo.work_order_no,
+                    customer_name: wo.customer_name,
+                    specification: wo.grade,
+                    od: Number(wo.size_od || 0),
+                    wl: Number(wo.size_wt || 0),
+                    l1,
+                    l2,
+                    avg_length: avg,
+                    mh_od: campaign.mh_od,
+                    mh_wt: campaign.mh_wt,
+                    mh_l1: campaign.mh_l1,
+                    mh_l2: campaign.mh_l2,
+                    mh_avg_length: mhAvg,
+                    route_id: campaign.route_id,
+                    route_code: route?.route_code || "CDS",
+                    route_name: route?.route_name || "Cold Drawn Seamless",
+                    stage_code: "ROLLING",
+                    balance_to_make_mtr: availMtr,
+                    balance_to_make_pcs: availPcs,
+                    balance_to_make_mt: Number(availMt.toFixed(3)),
+                    max_allowed_mtr: cappingMtr,
+                    max_allowed_pcs: cappingPcs,
+                    multiple: 1,
+                    ht_nos: null,
+                    is_master: true,
+                    master_plan_no: campaign.plan_no,
+                    campaign_total_mtr: campaign.total_campaign_mtr,
+                    campaign_total_pcs: campaign.total_campaign_pcs,
+                    child_work_orders: campaign.child_work_orders,
+                  })
+                );
+              }
+            }
+          }
+        }
+
+        setRows(enriched);
+      } else if (isMasterOnlyStage) {
         // Filter out any child work orders
         const filtered = rawRows.filter((r) => !childWoMap.has(r.work_order_id));
 
@@ -152,8 +375,12 @@ export function useQueue(stage: StageCode) {
               addedWoIds.add(childId);
 
               // Calculate finished output so far for this child order
-              const childFinishedMtr = finishingLogs
-                .filter((l: any) => l.work_order_id === childId)
+              const childFinishedMtr = logs
+                .filter(
+                  (l: any) =>
+                    l.work_order_id === childId &&
+                    (!finishingStageId || l.stage_id === finishingStageId)
+                )
                 .reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
 
               const childPlannedMtr = Number(child.planned_mtr || 0);
