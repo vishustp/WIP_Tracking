@@ -263,13 +263,21 @@ export async function POST(request: NextRequest) {
       role === 'QA' ? 'Quality & NDT Inspector' :
       role === 'Viewer' ? 'Viewer' : 'Production Operator'
     ));
-    const allowedStages = Array.isArray(body.allowed_stages)
+    const rawAllowed = Array.isArray(body.allowed_stages)
       ? body.allowed_stages
       : workCenter === 'ALL'
         ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
         : workCenter === 'QA'
           ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
-          : [workCenter];
+          : workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT'
+            ? ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT']
+            : [workCenter];
+    const allowedStages = [...rawAllowed];
+    if (allowedStages.includes('HOLLOW_HEAT_TREATMENT') && !allowedStages.includes('HEAT_TREATMENT')) {
+      allowedStages.push('HEAT_TREATMENT');
+    } else if (allowedStages.includes('HEAT_TREATMENT') && !allowedStages.includes('HOLLOW_HEAT_TREATMENT')) {
+      allowedStages.push('HOLLOW_HEAT_TREATMENT');
+    }
     const defaultStage = String(body.default_stage ?? (workCenter === 'ALL' ? 'ROLLING' : workCenter));
     const shift = String(body.shift ?? '');
     const department = String(body.department ?? '').trim() || null;
@@ -449,9 +457,21 @@ export async function PUT(request: NextRequest) {
     const workCenter = String(body.work_center ?? existing.work_center ?? 'ALL');
     const department = String(body.department ?? existing.department ?? '').trim() || null;
     const phone = String(body.phone ?? existing.phone ?? '').trim() || null;
-    const shift = String(body.shift ?? '');
-    const allowedStages = Array.isArray(body.allowed_stages) ? body.allowed_stages : [];
-    const defaultStage = String(body.default_stage ?? '');
+    const rawAllowed = Array.isArray(body.allowed_stages) && body.allowed_stages.length > 0
+      ? body.allowed_stages
+      : workCenter === 'ALL'
+        ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
+        : workCenter === 'QA'
+          ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
+          : workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT'
+            ? ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT']
+            : [workCenter];
+    const allowedStages = [...rawAllowed];
+    if (allowedStages.includes('HOLLOW_HEAT_TREATMENT') && !allowedStages.includes('HEAT_TREATMENT')) {
+      allowedStages.push('HEAT_TREATMENT');
+    } else if (allowedStages.includes('HEAT_TREATMENT') && !allowedStages.includes('HOLLOW_HEAT_TREATMENT')) {
+      allowedStages.push('HOLLOW_HEAT_TREATMENT');
+    }
 
     const baseUpdate: Record<string, unknown> = {
       employee_code: String(body.employee_code ?? existing.employee_code ?? '').trim(),

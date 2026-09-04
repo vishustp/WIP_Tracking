@@ -30,9 +30,25 @@ export function mapAppUser(row: any): AppUserProfile {
     department: String(row?.department || ''),
     shift: String(row?.shift || ''),
     work_center: wc,
-    allowed_stages: Array.isArray(row?.allowed_stages)
-      ? row.allowed_stages
-      : wc === 'ALL' ? ALL_STAGES : [wc],
+    allowed_stages: (() => {
+      let stages: string[];
+      if (Array.isArray(row?.allowed_stages) && row.allowed_stages.length > 0) {
+        stages = [...row.allowed_stages];
+      } else if (wc === 'ALL') {
+        stages = [...ALL_STAGES];
+      } else if (wc === 'HOLLOW_HEAT_TREATMENT' || wc === 'HEAT_TREATMENT') {
+        stages = ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'];
+      } else {
+        stages = [wc];
+      }
+      // Business rule: hollow heat treatment and final heat treatment users can work on both work centers
+      if (stages.includes('HOLLOW_HEAT_TREATMENT') && !stages.includes('HEAT_TREATMENT')) {
+        stages.push('HEAT_TREATMENT');
+      } else if (stages.includes('HEAT_TREATMENT') && !stages.includes('HOLLOW_HEAT_TREATMENT')) {
+        stages.push('HOLLOW_HEAT_TREATMENT');
+      }
+      return stages;
+    })(),
     default_stage: row?.default_stage || (wc === 'ALL' ? 'ROLLING' : wc),
     phone: String(row?.phone || ''),
     avatar_color: String(row?.avatar_color || ''),

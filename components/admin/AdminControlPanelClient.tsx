@@ -44,9 +44,9 @@ export const GROUP_OPTIONS: { value: UserGroup; label: string; description: stri
 export const WORK_CENTER_OPTIONS: { value: WorkCenterCode; label: string; stages: string[] }[] = [
   { value: 'ALL', label: 'All Work Centers (Global Access)', stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'] },
   { value: 'ROLLING', label: 'Hot Rolling & Piercing Mill', stages: ['ROLLING'] },
-  { value: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment', stages: ['HOLLOW_HEAT_TREATMENT'] },
+  { value: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment (Furnace)', stages: ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'] },
   { value: 'DRAW', label: 'Cold Draw Bench & Pilgering', stages: ['DRAW'] },
-  { value: 'HEAT_TREATMENT', label: 'Heat Treatment & Furnace', stages: ['HEAT_TREATMENT'] },
+  { value: 'HEAT_TREATMENT', label: 'Final Heat Treatment (Furnace)', stages: ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'] },
   { value: 'FINISHING', label: 'Finishing & NDT Inspection', stages: ['FINISHING'] },
   { value: 'QA', label: 'Quality Assurance & Metallurgical Lab', stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'] },
   { value: 'AUDIT', label: 'Audit & Compliance (Read-only)', stages: [] },
@@ -1268,6 +1268,14 @@ export default function AdminControlPanelClient() {
                     ? '⚠️ User group accounts can ONLY edit and delete production data within their assigned work center.'
                     : '✓ Admin and Super User accounts have global deletion authority across all work centers.'}
                 </p>
+                {(formData.work_center === 'HOLLOW_HEAT_TREATMENT' || formData.work_center === 'HEAT_TREATMENT') && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/90 p-2.5 text-xs text-amber-900 flex items-start gap-2">
+                    <span className="shrink-0 font-bold">ℹ️ Note:</span>
+                    <span>
+                      <strong>Joint Furnace Work Centers:</strong> Operators assigned to Hollow Heat Treatment or Heat Treatment have mutual authorization to work on, record, edit, and delete entries on <strong>BOTH</strong> furnace work centers.
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
