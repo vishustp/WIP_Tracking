@@ -103,6 +103,7 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
           <div className="flex sm:hidden rounded-lg border border-slate-200 p-0.5 bg-slate-100">
             <button
               type="button"
+              aria-label="Toggle Layout"
               onClick={() => setViewMode(viewMode === 'cards' ? 'table' : 'cards')}
               className="flex min-h-[2.75rem] items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold bg-white text-slate-900 shadow-sm"
             >
@@ -139,6 +140,7 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
           {q && (
             <button
               type="button"
+              aria-label="Clear Search"
               onClick={() => {
                 setQ('');
                 setPage(1);
@@ -261,6 +263,7 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
+                    aria-label="Previous Page"
                     disabled={page === 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     className="min-h-[2.75rem] min-w-[2.75rem] flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 disabled:opacity-30"
@@ -272,6 +275,7 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
                   </span>
                   <button
                     type="button"
+                    aria-label="Next Page"
                     disabled={page === totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     className="min-h-[2.75rem] min-w-[2.75rem] flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 disabled:opacity-30"
