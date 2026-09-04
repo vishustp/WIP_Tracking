@@ -498,57 +498,92 @@ export default function WorkCenterProductionReportClient() {
           </div>
         </div>
 
-        {/* Tailored Station KPI Summary Cards */}
+        {/* Tailored Station KPI Summary Cards - Main focus on PCS and MT */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5 border-t border-slate-100 pt-4 print:border-black print:pt-2">
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-              Total Input
+          {/* Card 1: Total Input */}
+          <div className="rounded-xl bg-slate-50 p-3 border-2 border-slate-200 print:bg-white print:border-black shadow-2xs">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-slate-500 print:text-black">
+              Total Input (Pcs & MT)
             </span>
-            <span className="text-lg font-black text-slate-900 font-mono print:text-black">{fmt(metrics.inputMtr)} MTR</span>
-            <span className="text-[10px] text-slate-500 block font-mono">
-              {fmt(metrics.inputPcs, 0)} Pcs · {fmt(metrics.inputMt)} MT
-            </span>
-          </div>
-
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-              Gross Output
-            </span>
-            <span className="text-lg font-black text-blue-700 font-mono print:text-black">{fmt(metrics.outputMtr)} MTR</span>
-            <span className="text-[10px] text-slate-500 block font-mono">
-              {fmt(metrics.outputPcs, 0)} Pcs · {fmt(metrics.outputMt)} MT
+            <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-indigo-100 text-indigo-950 border border-indigo-300 print:border-black print:bg-white print:text-black">
+                {fmt(metrics.inputPcs, 0)} PCS
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
+                {fmt(metrics.inputMt)} MT
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500 block font-mono mt-1 font-semibold print:text-black">
+              Length: {fmt(metrics.inputMtr)} MTR
             </span>
           </div>
 
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-              Scrap & Rejection
+          {/* Card 2: Gross Output */}
+          <div className="rounded-xl bg-blue-50/40 p-3 border-2 border-blue-200 print:bg-white print:border-black shadow-2xs">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-blue-900 print:text-black">
+              Gross Output (Pcs & MT)
             </span>
-            <span className="text-lg font-black text-rose-600 font-mono print:text-black">{fmt(metrics.rejMtr)} MTR</span>
-            <span className="text-[10px] text-rose-600 font-bold block">
-              Rejection: {fmt(metrics.rejRatePct, 1)}% ({fmt(metrics.rejPcs, 0)} Pcs)
-            </span>
-          </div>
-
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-              {selectedWc === 'ROLLING' ? 'HTC OK (Furnace Passed)' : 'Prime / Net Accepted'}
-            </span>
-            <span className="text-lg font-black text-emerald-700 font-mono print:text-black">
-              {fmt(selectedWc === 'ROLLING' ? metrics.htcOkMtr : metrics.netMtr)} MTR
-            </span>
-            <span className="text-[10px] text-emerald-700 font-bold block">
-              Net Weight: {fmt(metrics.netMt)} MT
+            <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-blue-100 text-blue-950 border border-blue-300 print:border-black print:bg-white print:text-black">
+                {fmt(metrics.outputPcs, 0)} PCS
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
+                {fmt(metrics.outputMt)} MT
+              </span>
+            </div>
+            <span className="text-[11px] text-blue-800 block font-mono mt-1 font-semibold print:text-black">
+              Length: {fmt(metrics.outputMtr)} MTR
             </span>
           </div>
 
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
+          {/* Card 3: Scrap & Rejection */}
+          <div className="rounded-xl bg-rose-50/40 p-3 border-2 border-rose-200 print:bg-white print:border-black shadow-2xs">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-rose-900 print:text-black">
+              Scrap & Rejection (Pcs & MT)
+            </span>
+            <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-rose-100 text-rose-950 border border-rose-300 print:border-black print:bg-white print:text-black">
+                {fmt(metrics.rejPcs, 0)} PCS
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-rose-100 text-rose-950 border border-rose-300 print:border-black print:bg-white print:text-black">
+                {fmt(metrics.rejMt)} MT
+              </span>
+            </div>
+            <span className="text-[11px] text-rose-700 block font-semibold mt-1 print:text-black">
+              Rate: {fmt(metrics.rejRatePct, 1)}% ({fmt(metrics.rejMtr)} MTR)
+            </span>
+          </div>
+
+          {/* Card 4: Prime / Net Accepted / HTC OK */}
+          <div className="rounded-xl bg-emerald-50/40 p-3 border-2 border-emerald-200 print:bg-white print:border-black shadow-2xs">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 print:text-black">
+              {selectedWc === 'ROLLING' ? 'HTC OK / Prime Output' : 'Prime / Net Accepted'}
+            </span>
+            <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
+                {fmt(Math.max(metrics.outputPcs - metrics.rejPcs, 0), 0)} PCS
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
+                {fmt(metrics.netMt)} MT
+              </span>
+            </div>
+            <span className="text-[11px] text-emerald-800 block font-bold mt-1 font-mono print:text-black">
+              {selectedWc === 'ROLLING' ? `HTC OK: ${fmt(metrics.htcOkMtr)} MTR` : `Net MTR: ${fmt(metrics.netMtr)} MTR`}
+            </span>
+          </div>
+
+          {/* Card 5: Station Yield Efficiency */}
+          <div className="rounded-xl bg-indigo-50/40 p-3 border-2 border-indigo-200 print:bg-white print:border-black shadow-2xs">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-900 print:text-black">
               Station Yield Efficiency
             </span>
-            <span className="text-lg font-black text-indigo-700 font-mono print:text-black">{fmt(metrics.yieldPct, 1)}%</span>
-            <span className="text-[10px] text-slate-500 block">
-              {metrics.count} batches recorded
+            <div className="mt-1.5">
+              <span className="text-xl font-black text-indigo-950 font-mono print:text-black">
+                {fmt(metrics.yieldPct, 1)}%
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500 block mt-1 font-medium print:text-black">
+              {metrics.count} shift batches logged
             </span>
           </div>
         </div>
@@ -562,13 +597,20 @@ export default function WorkCenterProductionReportClient() {
               <tr className="border-b border-slate-200 bg-slate-100/90 font-bold uppercase tracking-wider text-slate-700 print:bg-slate-200 print:border-black print:text-black">
                 <th className="px-3 py-2.5 whitespace-nowrap">Date & Time</th>
                 <th className="px-3 py-2.5 whitespace-nowrap">Work Order #</th>
-                <th className="px-3 py-2.5">Customer</th>
+                <th className="px-3 py-2.5">Customer & Grade</th>
                 <th className="px-3 py-2.5 whitespace-nowrap">Heat / Lot No</th>
                 <th className="px-3 py-2.5 whitespace-nowrap">Pipe Size (OD × WT)</th>
+
+                {/* Primary Focus Columns: PCS and MT prominently highlighted */}
+                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-indigo-950 bg-indigo-100/90 border-l border-indigo-300 print:border-black print:bg-white print:text-black">
+                  OUTPUT (PCS) ★
+                </th>
+                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-emerald-950 bg-emerald-100/90 border-r border-emerald-300 print:border-black print:bg-white print:text-black">
+                  WEIGHT (MT) ★
+                </th>
+
                 <th className="px-3 py-2.5 text-right whitespace-nowrap">Input MTR</th>
                 <th className="px-3 py-2.5 text-right whitespace-nowrap">Output MTR</th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap">Pcs</th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap">Weight (MT)</th>
                 <th className="px-3 py-2.5 text-right whitespace-nowrap">Rej MTR</th>
                 {selectedWc === 'ROLLING' && (
                   <th className="px-3 py-2.5 text-right whitespace-nowrap">HTC OK</th>
@@ -621,7 +663,7 @@ export default function WorkCenterProductionReportClient() {
 
                       <td className="px-3 py-2 font-mono font-bold text-slate-800 whitespace-nowrap print:text-black">
                         {e.heat_lot_no ? (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-800 print:border print:border-black">
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-800 print:border print:border-black font-black">
                             {e.heat_lot_no}
                           </span>
                         ) : (
@@ -633,20 +675,26 @@ export default function WorkCenterProductionReportClient() {
                         {e.od && e.wl ? `${fmt(e.od)} × ${fmt(e.wl)} mm` : '—'}
                       </td>
 
+                      {/* Primary Focus Cells: Output PCS (Highlighted, Bold) */}
+                      <td className="px-3 py-2 text-right font-mono bg-indigo-50/60 border-l border-indigo-200 print:bg-white print:border-black">
+                        <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-indigo-950 bg-indigo-100/90 border border-indigo-300 print:bg-white print:border-black print:text-black">
+                          {fmt(e.output_pcs, 0)}
+                        </span>
+                      </td>
+
+                      {/* Primary Focus Cells: Output MT (Highlighted, Bold) */}
+                      <td className="px-3 py-2 text-right font-mono bg-emerald-50/60 border-r border-emerald-200 print:bg-white print:border-black">
+                        <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-emerald-950 bg-emerald-100/90 border border-emerald-300 print:bg-white print:border-black print:text-black">
+                          {fmt(e.output_mt)}
+                        </span>
+                      </td>
+
                       <td className="px-3 py-2 text-right font-mono text-slate-700 print:text-black">
                         {fmt(e.input_mtr)}
                       </td>
 
                       <td className="px-3 py-2 text-right font-mono font-bold text-blue-700 print:text-black">
                         {fmt(e.output_mtr)}
-                      </td>
-
-                      <td className="px-3 py-2 text-right font-mono text-slate-800 print:text-black">
-                        {fmt(e.output_pcs, 0)}
-                      </td>
-
-                      <td className="px-3 py-2 text-right font-mono text-slate-800 print:text-black">
-                        {fmt(e.output_mt)}
                       </td>
 
                       <td className="px-3 py-2 text-right font-mono font-semibold text-rose-600 print:text-black">
@@ -684,17 +732,22 @@ export default function WorkCenterProductionReportClient() {
           </table>
         </div>
 
-        {/* Table Summary Footer */}
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 print:bg-slate-100 print:border-black">
+        {/* Table Summary Footer with highlighted PCS and MT */}
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 print:bg-slate-100 print:border-black gap-2">
           <div>
-            Total Shift Logs: {filteredEntries.length} entries
+            Total Shift Logs: <span className="font-mono">{filteredEntries.length}</span> entries
           </div>
-          <div className="flex items-center gap-6 font-mono">
-            <span>Input: {fmt(metrics.inputMtr)} MTR</span>
-            <span className="text-blue-700">Gross Output: {fmt(metrics.outputMtr)} MTR</span>
-            <span className="text-rose-600">Rejections: {fmt(metrics.rejMtr)} MTR</span>
-            <span className="text-emerald-700">Prime Net: {fmt(metrics.netMtr)} MTR</span>
-            <span>Yield: {fmt(metrics.yieldPct, 1)}%</span>
+          <div className="flex flex-wrap items-center gap-3 font-mono">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-100 text-indigo-950 font-black text-xs sm:text-sm border border-indigo-300 print:border-black print:bg-white print:text-black">
+              TOTAL: {fmt(metrics.outputPcs, 0)} PCS
+            </span>
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 font-black text-xs sm:text-sm border border-emerald-300 print:border-black print:bg-white print:text-black">
+              TOTAL: {fmt(metrics.outputMt)} MT
+            </span>
+            <span className="text-blue-700 font-semibold">Length: {fmt(metrics.outputMtr)} MTR</span>
+            <span className="text-rose-600 font-semibold">Rej: {fmt(metrics.rejMtr)} MTR</span>
+            <span className="text-emerald-700 font-semibold">Prime: {fmt(metrics.netMtr)} MTR</span>
+            <span className="text-indigo-700 font-semibold">Yield: {fmt(metrics.yieldPct, 1)}%</span>
           </div>
         </div>
       </div>

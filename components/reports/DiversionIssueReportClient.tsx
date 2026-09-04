@@ -339,34 +339,52 @@ export default function DiversionIssueReportClient() {
           </div>
         </div>
 
-        {/* Summary Metric KPI Badges */}
+        {/* Summary Metric KPI Badges - Focus on PCS and MT */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 border-t border-slate-100 pt-4 print:border-black print:pt-2">
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
+          <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 print:bg-white print:border-black">
             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
               Total Diversion Orders
             </span>
             <span className="text-lg font-black text-slate-900 font-mono print:text-black">{summary.count}</span>
+            <span className="text-[10px] text-purple-600 block print:hidden">PPC Authorized Transfers</span>
           </div>
 
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
+          {/* Primary Focus Card 1: Total Diverted Pieces (PCS) */}
+          <div className="rounded-xl bg-indigo-50/50 p-3 border-2 border-indigo-200 shadow-2xs print:bg-white print:border-black">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-900 print:text-black">
+              Total Diverted Pieces (PCS) ★
+            </span>
+            <div className="mt-1">
+              <span className="inline-block px-2.5 py-0.5 rounded-md text-base sm:text-lg font-black font-mono bg-indigo-100 text-indigo-950 border border-indigo-300 print:border-black print:bg-white print:text-black">
+                {fmt(summary.totalPcs, 0)} PCS
+              </span>
+            </div>
+            <span className="text-[10px] text-indigo-700 block font-semibold mt-1 print:text-black">
+              Total Mother Hollows / Tubes
+            </span>
+          </div>
+
+          {/* Primary Focus Card 2: Total Diverted Tonnage (MT) */}
+          <div className="rounded-xl bg-emerald-50/50 p-3 border-2 border-emerald-200 shadow-2xs print:bg-white print:border-black">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 print:text-black">
+              Total Diverted Tonnage (MT) ★
+            </span>
+            <div className="mt-1">
+              <span className="inline-block px-2.5 py-0.5 rounded-md text-base sm:text-lg font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
+                {fmt(summary.totalMt)} MT
+              </span>
+            </div>
+            <span className="text-[10px] text-emerald-700 block font-semibold mt-1 print:text-black">
+              Total Weight Diverted
+            </span>
+          </div>
+
+          <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 print:bg-white print:border-black">
             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
               Total Diverted Meters
             </span>
             <span className="text-lg font-black text-purple-700 font-mono print:text-black">{fmt(summary.totalMtr)} MTR</span>
-          </div>
-
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-              Total Diverted Pieces
-            </span>
-            <span className="text-lg font-black text-slate-900 font-mono print:text-black">{fmt(summary.totalPcs, 0)} PCS</span>
-          </div>
-
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-              Total Diverted Tonnage
-            </span>
-            <span className="text-lg font-black text-slate-900 font-mono print:text-black">{fmt(summary.totalMt)} MT</span>
+            <span className="text-[10px] text-slate-500 block mt-1">Linear transfer schedule</span>
           </div>
         </div>
       </div>
@@ -381,9 +399,16 @@ export default function DiversionIssueReportClient() {
                 <th className="px-3 py-2.5 whitespace-nowrap">Transfer Work Center</th>
                 <th className="px-3 py-2.5">Source Work Order (From)</th>
                 <th className="px-3 py-2.5">Target Work Order (To)</th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap">Diverted Pcs</th>
+
+                {/* Primary Focus Columns: PCS and MT */}
+                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-indigo-950 bg-indigo-100/90 border-l border-indigo-300 print:border-black print:bg-white print:text-black">
+                  DIVERTED PCS ★
+                </th>
+                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-emerald-950 bg-emerald-100/90 border-r border-emerald-300 print:border-black print:bg-white print:text-black">
+                  WEIGHT (MT) ★
+                </th>
+
                 <th className="px-3 py-2.5 text-right whitespace-nowrap">Diverted MTR</th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap">Weight (MT)</th>
                 <th className="px-3 py-2.5 text-center whitespace-nowrap">Mult</th>
                 <th className="px-3 py-2.5">Technical Reason</th>
                 <th className="px-3 py-2.5 whitespace-nowrap">Approved By</th>
@@ -439,16 +464,22 @@ export default function DiversionIssueReportClient() {
                         </div>
                       </td>
 
-                      <td className="px-3 py-2 text-right font-mono font-medium print:text-black">
-                        {fmt(p.diverted_pcs, 0)}
+                      {/* Primary Focus Cells: Diverted Pcs (Highlighted, Bold) */}
+                      <td className="px-3 py-2 text-right font-mono bg-indigo-50/60 border-l border-indigo-200 print:bg-white print:border-black">
+                        <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-indigo-950 bg-indigo-100/90 border border-indigo-300 print:bg-white print:border-black print:text-black">
+                          {fmt(p.diverted_pcs, 0)}
+                        </span>
+                      </td>
+
+                      {/* Primary Focus Cells: Weight MT (Highlighted, Bold) */}
+                      <td className="px-3 py-2 text-right font-mono bg-emerald-50/60 border-r border-emerald-200 print:bg-white print:border-black">
+                        <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-emerald-950 bg-emerald-100/90 border border-emerald-300 print:bg-white print:border-black print:text-black">
+                          {fmt(p.diverted_mt)}
+                        </span>
                       </td>
 
                       <td className="px-3 py-2 text-right font-mono font-bold text-purple-700 print:text-black">
                         {fmt(p.diverted_qty)}
-                      </td>
-
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-slate-800 print:text-black">
-                        {fmt(p.diverted_mt)}
                       </td>
 
                       <td className="px-3 py-2 text-center font-mono text-slate-600 print:text-black">
@@ -485,15 +516,19 @@ export default function DiversionIssueReportClient() {
           </table>
         </div>
 
-        {/* Table Footer */}
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 print:bg-slate-100 print:border-black">
+        {/* Table Footer with highlighted PCS and MT */}
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 print:bg-slate-100 print:border-black gap-2">
           <div>
-            Total Material Diversions: {plans.length} orders
+            Total Material Diversions: <span className="font-mono">{plans.length}</span> orders
           </div>
-          <div className="flex items-center gap-6 font-mono">
-            <span>Total Pcs: {fmt(summary.totalPcs, 0)}</span>
-            <span className="text-purple-700">Total Transferred: {fmt(summary.totalMtr)} MTR</span>
-            <span>Total Weight: {fmt(summary.totalMt)} MT</span>
+          <div className="flex flex-wrap items-center gap-3 font-mono">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-100 text-indigo-950 font-black text-xs sm:text-sm border border-indigo-300 print:border-black print:bg-white print:text-black">
+              TOTAL: {fmt(summary.totalPcs, 0)} PCS
+            </span>
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 font-black text-xs sm:text-sm border border-emerald-300 print:border-black print:bg-white print:text-black">
+              TOTAL: {fmt(summary.totalMt)} MT
+            </span>
+            <span className="text-purple-700 font-semibold">Total Length: {fmt(summary.totalMtr)} MTR</span>
           </div>
         </div>
       </div>
@@ -619,22 +654,22 @@ export default function DiversionIssueReportClient() {
                 </div>
               </div>
 
-              {/* Transferred Quantities */}
+              {/* Transferred Quantities - Focus on PCS and MT */}
               <div className="grid grid-cols-4 gap-3 rounded-lg border border-slate-200 p-3 bg-slate-50 print:bg-white print:border-black font-mono text-center">
-                <div>
-                  <span className="text-slate-500 text-[10px] block uppercase">Transferred Pcs</span>
-                  <span className="text-base font-black text-slate-900">{fmt(selectedPlanForSlip.diverted_pcs, 0)}</span>
+                <div className="rounded-md bg-indigo-50 border border-indigo-200 p-2 print:bg-white print:border-black">
+                  <span className="text-indigo-900 text-[10px] block uppercase font-bold print:text-black">Transferred Pcs ★</span>
+                  <span className="text-lg font-black text-indigo-950 print:text-black">{fmt(selectedPlanForSlip.diverted_pcs, 0)} PCS</span>
                 </div>
-                <div>
-                  <span className="text-slate-500 text-[10px] block uppercase">Transferred MTR</span>
-                  <span className="text-base font-black text-purple-700">{fmt(selectedPlanForSlip.diverted_qty)}</span>
+                <div className="rounded-md bg-emerald-50 border border-emerald-200 p-2 print:bg-white print:border-black">
+                  <span className="text-emerald-900 text-[10px] block uppercase font-bold print:text-black">Transferred MT ★</span>
+                  <span className="text-lg font-black text-emerald-950 print:text-black">{fmt(selectedPlanForSlip.diverted_mt)} MT</span>
                 </div>
-                <div>
-                  <span className="text-slate-500 text-[10px] block uppercase">Transferred MT</span>
-                  <span className="text-base font-black text-slate-900">{fmt(selectedPlanForSlip.diverted_mt)} MT</span>
+                <div className="rounded-md bg-white border border-slate-200 p-2 print:bg-white print:border-black">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Transferred MTR</span>
+                  <span className="text-base font-black text-purple-700">{fmt(selectedPlanForSlip.diverted_qty)} M</span>
                 </div>
-                <div>
-                  <span className="text-slate-500 text-[10px] block uppercase">Multiple Ratio</span>
+                <div className="rounded-md bg-white border border-slate-200 p-2 print:bg-white print:border-black">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Multiple Ratio</span>
                   <span className="text-base font-black text-slate-900">{selectedPlanForSlip.multiple || 1}</span>
                 </div>
               </div>

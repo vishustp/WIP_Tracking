@@ -354,9 +354,9 @@ export default function RollingPlanIssueReportClient() {
           </div>
         </div>
 
-        {/* Summary Metric KPI Badges */}
+        {/* Summary Metric KPI Badges - Focus on PCS and MT */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 border-t border-slate-100 pt-4 print:border-black print:pt-2">
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
+          <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 print:bg-white print:border-black">
             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
               Total Plans Issued
             </span>
@@ -364,25 +364,42 @@ export default function RollingPlanIssueReportClient() {
             <span className="text-[10px] text-indigo-600 block print:hidden">({summary.masterCount} Master Campaigns)</span>
           </div>
 
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
+          {/* Primary Focus Card 1: Total Planned Pieces (PCS) */}
+          <div className="rounded-xl bg-indigo-50/50 p-3 border-2 border-indigo-200 shadow-2xs print:bg-white print:border-black">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-900 print:text-black">
+              Total Planned Pieces (PCS) ★
+            </span>
+            <div className="mt-1">
+              <span className="inline-block px-2.5 py-0.5 rounded-md text-base sm:text-lg font-black font-mono bg-indigo-100 text-indigo-950 border border-indigo-300 print:border-black print:bg-white print:text-black">
+                {fmt(summary.totalPcs, 0)} PCS
+              </span>
+            </div>
+            <span className="text-[10px] text-indigo-700 block font-semibold mt-1 print:text-black">
+              Billets / Tubes Allocated
+            </span>
+          </div>
+
+          {/* Primary Focus Card 2: Total Billet Tonnage (MT) */}
+          <div className="rounded-xl bg-emerald-50/50 p-3 border-2 border-emerald-200 shadow-2xs print:bg-white print:border-black">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 print:text-black">
+              Total Billet Tonnage (MT) ★
+            </span>
+            <div className="mt-1">
+              <span className="inline-block px-2.5 py-0.5 rounded-md text-base sm:text-lg font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
+                {fmt(summary.totalMt)} MT
+              </span>
+            </div>
+            <span className="text-[10px] text-emerald-700 block font-semibold mt-1 print:text-black">
+              Gross Rolling Campaign Mass
+            </span>
+          </div>
+
+          <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 print:bg-white print:border-black">
             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
               Total Planned Meters
             </span>
             <span className="text-lg font-black text-blue-700 font-mono print:text-black">{fmt(summary.totalMtr)} MTR</span>
-          </div>
-
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-              Total Planned Pieces
-            </span>
-            <span className="text-lg font-black text-slate-900 font-mono print:text-black">{fmt(summary.totalPcs, 0)} PCS</span>
-          </div>
-
-          <div className="rounded-lg bg-slate-50 p-2.5 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-              Total Billet Tonnage
-            </span>
-            <span className="text-lg font-black text-slate-900 font-mono print:text-black">{fmt(summary.totalMt)} MT</span>
+            <span className="text-[10px] text-slate-500 block mt-1">Linear rolling schedule</span>
           </div>
         </div>
       </div>
@@ -400,9 +417,16 @@ export default function RollingPlanIssueReportClient() {
                 <th className="px-3 py-2.5 whitespace-nowrap">Mother Hollow Size (OD × WT × Len)</th>
                 <th className="px-3 py-2.5 whitespace-nowrap">Finished Size (OD × WT)</th>
                 <th className="px-3 py-2.5 whitespace-nowrap">Route</th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap">Pcs</th>
+
+                {/* Primary Focus Columns: PCS and MT */}
+                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-indigo-950 bg-indigo-100/90 border-l border-indigo-300 print:border-black print:bg-white print:text-black">
+                  PLANNED PCS ★
+                </th>
+                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-emerald-950 bg-emerald-100/90 border-r border-emerald-300 print:border-black print:bg-white print:text-black">
+                  TONNAGE (MT) ★
+                </th>
+
                 <th className="px-3 py-2.5 text-right whitespace-nowrap">Meters</th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap">Tonnage (MT)</th>
                 <th className="px-3 py-2.5 text-center whitespace-nowrap print:hidden">Action</th>
               </tr>
             </thead>
@@ -493,16 +517,22 @@ export default function RollingPlanIssueReportClient() {
                           </span>
                         </td>
 
-                        <td className="px-3 py-2 text-right font-mono font-medium print:text-black">
-                          {fmt(p.planned_pcs, 0)}
+                        {/* Primary Focus Cells: Planned Pcs (Highlighted, Bold) */}
+                        <td className="px-3 py-2 text-right font-mono bg-indigo-50/60 border-l border-indigo-200 print:bg-white print:border-black">
+                          <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-indigo-950 bg-indigo-100/90 border border-indigo-300 print:bg-white print:border-black print:text-black">
+                            {fmt(p.planned_pcs, 0)}
+                          </span>
+                        </td>
+
+                        {/* Primary Focus Cells: Tonnage MT (Highlighted, Bold) */}
+                        <td className="px-3 py-2 text-right font-mono bg-emerald-50/60 border-r border-emerald-200 print:bg-white print:border-black">
+                          <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-emerald-950 bg-emerald-100/90 border border-emerald-300 print:bg-white print:border-black print:text-black">
+                            {fmt(p.planned_mt)}
+                          </span>
                         </td>
 
                         <td className="px-3 py-2 text-right font-mono font-bold text-blue-700 print:text-black">
                           {fmt(p.planned_mtr)}
-                        </td>
-
-                        <td className="px-3 py-2 text-right font-mono font-semibold text-slate-800 print:text-black">
-                          {fmt(p.planned_mt)}
                         </td>
 
                         <td className="px-3 py-2 text-center whitespace-nowrap print:hidden">
@@ -546,9 +576,9 @@ export default function RollingPlanIssueReportClient() {
                                     <th className="py-1 text-left">Customer</th>
                                     <th className="py-1 text-left">Grade</th>
                                     <th className="py-1 text-left">Finished Size</th>
-                                    <th className="py-1 text-right">Planned Pcs</th>
+                                    <th className="py-1 text-right font-black text-indigo-900">Planned Pcs ★</th>
+                                    <th className="py-1 text-right font-black text-emerald-900">Planned MT ★</th>
                                     <th className="py-1 text-right">Planned Mtr</th>
-                                    <th className="py-1 text-right">Planned MT</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-indigo-50 font-mono">
@@ -560,11 +590,19 @@ export default function RollingPlanIssueReportClient() {
                                       <td className="py-1 text-slate-700">
                                         {fmt(c.size_od ?? p.od)} × {fmt(c.size_wt ?? p.wt)} mm
                                       </td>
-                                      <td className="py-1 text-right">{fmt(c.planned_pcs ?? 0, 0)}</td>
-                                      <td className="py-1 text-right font-bold text-indigo-700">
+                                      <td className="py-1 text-right font-black text-indigo-950">
+                                        <span className="px-1.5 py-0.5 rounded bg-indigo-100/90 border border-indigo-200">
+                                          {fmt(c.planned_pcs ?? 0, 0)}
+                                        </span>
+                                      </td>
+                                      <td className="py-1 text-right font-black text-emerald-950">
+                                        <span className="px-1.5 py-0.5 rounded bg-emerald-100/90 border border-emerald-200">
+                                          {fmt(c.planned_mt ?? 0)}
+                                        </span>
+                                      </td>
+                                      <td className="py-1 text-right font-bold text-slate-700">
                                         {fmt(c.planned_mtr ?? 0)}
                                       </td>
-                                      <td className="py-1 text-right">{fmt(c.planned_mt ?? 0)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -581,15 +619,19 @@ export default function RollingPlanIssueReportClient() {
           </table>
         </div>
 
-        {/* Total Summary Footer */}
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 print:bg-slate-100 print:border-black">
+        {/* Total Summary Footer with highlighted PCS and MT */}
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 print:bg-slate-100 print:border-black gap-2">
           <div>
-            Showing {filteredPlans.length} Rolling Plan{filteredPlans.length === 1 ? '' : 's'}
+            Showing <span className="font-mono">{filteredPlans.length}</span> Rolling Plan{filteredPlans.length === 1 ? '' : 's'}
           </div>
-          <div className="flex items-center gap-6 font-mono">
-            <span>Total Pcs: {fmt(summary.totalPcs, 0)}</span>
-            <span className="text-blue-700">Total Meters: {fmt(summary.totalMtr)} MTR</span>
-            <span>Total Weight: {fmt(summary.totalMt)} MT</span>
+          <div className="flex flex-wrap items-center gap-3 font-mono">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-100 text-indigo-950 font-black text-xs sm:text-sm border border-indigo-300 print:border-black print:bg-white print:text-black">
+              TOTAL: {fmt(summary.totalPcs, 0)} PCS
+            </span>
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 font-black text-xs sm:text-sm border border-emerald-300 print:border-black print:bg-white print:text-black">
+              TOTAL: {fmt(summary.totalMt)} MT
+            </span>
+            <span className="text-blue-700 font-semibold">Total Length: {fmt(summary.totalMtr)} MTR</span>
           </div>
         </div>
       </div>
@@ -715,17 +757,17 @@ export default function RollingPlanIssueReportClient() {
               </div>
 
               <div className="grid grid-cols-3 gap-3 rounded-lg border border-slate-200 p-3 bg-slate-50 print:bg-white print:border-black font-mono text-center">
-                <div>
-                  <span className="text-slate-500 text-[10px] block uppercase">Planned Pcs / Billets</span>
-                  <span className="text-base font-black text-slate-900">{fmt(selectedPlanForSlip.planned_pcs, 0)}</span>
+                <div className="rounded-md bg-indigo-50 border border-indigo-200 p-2 print:bg-white print:border-black">
+                  <span className="text-indigo-900 text-[10px] block uppercase font-bold print:text-black">Planned Pcs / Billets ★</span>
+                  <span className="text-lg font-black text-indigo-950 print:text-black">{fmt(selectedPlanForSlip.planned_pcs, 0)} PCS</span>
                 </div>
-                <div>
-                  <span className="text-slate-500 text-[10px] block uppercase">Planned Meters</span>
-                  <span className="text-base font-black text-blue-700">{fmt(selectedPlanForSlip.planned_mtr)}</span>
+                <div className="rounded-md bg-emerald-50 border border-emerald-200 p-2 print:bg-white print:border-black">
+                  <span className="text-emerald-900 text-[10px] block uppercase font-bold print:text-black">Planned Weight (MT) ★</span>
+                  <span className="text-lg font-black text-emerald-950 print:text-black">{fmt(selectedPlanForSlip.planned_mt)} MT</span>
                 </div>
-                <div>
-                  <span className="text-slate-500 text-[10px] block uppercase">Planned Weight</span>
-                  <span className="text-base font-black text-slate-900">{fmt(selectedPlanForSlip.planned_mt)} MT</span>
+                <div className="rounded-md bg-white border border-slate-200 p-2 print:bg-white print:border-black">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Planned Length</span>
+                  <span className="text-base font-black text-blue-700">{fmt(selectedPlanForSlip.planned_mtr)} M</span>
                 </div>
               </div>
 
