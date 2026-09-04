@@ -156,7 +156,7 @@ export default function WorkOrderTrackingClient() {
           output_pcs: Number(l.output_pcs || 0),
           rejection_qty: Number(l.rejection_qty || 0),
           rejection_pcs: Number(l.rejection_pcs || 0),
-          htc_ok_qty: Number(l.htc_ok_qty || 0),
+          htc_ok_qty: Number(l.htc_ok ?? l.htc_ok_qty ?? 0),
           htc_ok_pcs: Number(l.htc_ok_pcs || 0),
           operator_name: l.operator_name || null,
           remarks: l.remarks || null,
@@ -177,7 +177,7 @@ export default function WorkOrderTrackingClient() {
   // Campaign Mapping
   const campaignMeta = useMemo(() => {
     const masterMap = new Map<string, any>(); // key: master_wo_id -> plan
-    const childMap = new Map<string, { master_wo_id: string; master_wo_no: string; master_plan_no: string }>();
+    const childMap = new Map<string, { master_wo_id: string; master_wo_no: string; master_plan_no: string; planned_mtr?: number; planned_pcs?: number }>();
 
     for (const p of rollingPlans) {
       try {
@@ -195,6 +195,8 @@ export default function WorkOrderTrackingClient() {
                 master_wo_id: p.work_order_id,
                 master_wo_no: parsed.master_wo_no,
                 master_plan_no: p.plan_no,
+                planned_mtr: Number(c.planned_mtr || 0),
+                planned_pcs: Number(c.planned_pcs || 0),
               });
             }
           }
@@ -203,6 +205,8 @@ export default function WorkOrderTrackingClient() {
             master_wo_id: parsed.master_wo_id,
             master_wo_no: parsed.master_wo_no,
             master_plan_no: parsed.master_plan_no,
+            planned_mtr: Number(parsed.planned_mtr || p.planned_qty || 0),
+            planned_pcs: Number(parsed.planned_pcs || 0),
           });
         }
       } catch {}
@@ -248,6 +252,8 @@ export default function WorkOrderTrackingClient() {
   }, [workOrders, filterWo, filterCustomer, fromOd, toOd, fromDate, toDate, filterStatus]);
 
   // Helper to get aggregated stage metrics for a work order
+  // RULE 1: WIP is strictly calculated AFTER rolling production is done, and ONLY from HTC OK quantity.
+  // RULE 2: In multi-WO campaigns, child work orders are bundled under the master campaign for pre-finishing stages.
   const getWoTrackingData = useCallback(
     (wo: WorkOrder) => {
       const avgLen = wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : wo.l1 || wo.l2 || 6.0;
@@ -258,49 +264,214 @@ export default function WorkOrderTrackingClient() {
       // Associated rolling plan
       const plan = rollingPlans.find((p) => p.work_order_id === wo.id);
 
-      // Logs for this WO
+      // Determine master work order ID if this is a child order
+      const effectiveMasterWoId = childInfo ? childInfo.master_wo_id : wo.id;
+      const masterLogs = productionLogs.filter((l) => l.work_order_id === effectiveMasterWoId);
       const woLogs = productionLogs.filter((l) => l.work_order_id === wo.id);
+
+      // Rolling production stats (tracked under master campaign or single order)
+      const masterRollLogs = masterLogs.filter((l) => l.stage_code === 'ROLLING');
+      const rollingOutMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const rollingOutPcs = masterRollLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const rollingRejMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const rollingRejPcs = masterRollLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      // Strictly HTC OK quantity from rolling!
+      const rollingHtcOkMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty || 0), 0);
+      const rollingHtcOkPcs = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_pcs || 0), 0);
+
+      // Hollow Heat Treatment (HTC) stats
+      const masterHtcLogs = masterLogs.filter((l) => l.stage_code === 'HOLLOW_HEAT_TREATMENT');
+      const htcOutMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const htcRejMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const htcOkMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty || 0), 0);
+
+      // Draw Bench stats
+      const masterDrawLogs = masterLogs.filter((l) => l.stage_code === 'DRAW');
+      const drawOutMtr = masterDrawLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const drawRejMtr = masterDrawLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+
+      // Heat Treatment stats
+      const masterHtLogs = masterLogs.filter((l) => l.stage_code === 'HEAT_TREATMENT');
+      const htOutMtr = masterHtLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const htRejMtr = masterHtLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+
+      // Finishing stats (tracked PER WORK ORDER)
+      const finLogs = woLogs.filter((l) => l.stage_code === 'FINISHING');
+      const finOutMtr = finLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const finOutPcs = finLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const finRejMtr = finLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const finRejPcs = finLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+
+      // Planned rolling target
+      let rollPlanMtr = Number(plan?.planned_qty || 0);
+      let rollPlanPcs = rollPlanMtr > 0 && avgLen > 0 ? Math.round(rollPlanMtr / avgLen) : 0;
+      if (isMaster && masterInfo) {
+        rollPlanMtr = Number(masterInfo.parsed?.total_campaign_mtr || rollPlanMtr);
+        rollPlanPcs = Number(masterInfo.parsed?.total_campaign_pcs || rollPlanPcs);
+      }
 
       // Stage-by-stage stats
       const stagesData = STAGES_ORDER.map((stageDef) => {
         const stageCode = stageDef.code;
-        const sLogs = woLogs.filter((l) => l.stage_code === stageCode);
 
-        const outMtr = sLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-        const outPcs = sLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
-        const rejMtr = sLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-        const rejPcs = sLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
-        const htcOkMtr = sLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty || 0), 0);
-        const htcOkPcs = sLogs.reduce((sum, l) => sum + Number(l.htc_ok_pcs || 0), 0);
-
-        // Find WIP row from view
-        const wipRow = stageWip.find((w) => w.work_order_id === wo.id && w.stage_code === stageCode);
-        const wipMtr = Number(wipRow?.current_wip || 0);
-        const wipPcs = Number(wipRow?.current_wip_pcs || (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0));
-        const wipMt = Number(wipRow?.current_wip_mt || mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0));
-
-        // For Rolling stage: plan issued
-        let planMtr = Number(plan?.planned_qty || 0);
-        let planPcs = planMtr > 0 && avgLen > 0 ? Math.round(planMtr / avgLen) : 0;
-        if (isMaster && masterInfo) {
-          planMtr = Number(masterInfo.parsed?.total_campaign_mtr || planMtr);
-          planPcs = Number(masterInfo.parsed?.total_campaign_pcs || planPcs);
+        // RULE 2: Child work orders in campaigns are bundled under master for pre-finishing stages
+        if (childInfo && stageCode !== 'FINISHING') {
+          return {
+            ...stageDef,
+            isBundled: true,
+            planMtr: Number(childInfo.planned_mtr || wo.ordered_qty),
+            planPcs: 0,
+            outMtr: 0,
+            outPcs: 0,
+            rejMtr: 0,
+            rejPcs: 0,
+            htcOkMtr: 0,
+            htcOkPcs: 0,
+            wipMtr: 0,
+            wipPcs: 0,
+            wipMt: 0,
+            logsCount: 0,
+          };
         }
+
+        if (stageCode === 'ROLLING') {
+          // RULE 1: WIP is strictly calculated AFTER rolling production is done, and ONLY from HTC OK qty!
+          // Prior to rolling: Rolled WIP is strictly 0! (Target is shown in Plan Mtr, physical stock is 0).
+          let wipMtr = 0;
+          if (rollingOutMtr > 0) {
+            const downstreamConsumed = htcOutMtr + htcRejMtr > 0 ? htcOutMtr + htcRejMtr : drawOutMtr + drawRejMtr;
+            wipMtr = Math.max(0, rollingHtcOkMtr - downstreamConsumed);
+          }
+          const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
+          const mhOd = plan?.mh_od || wo.size_od || 0;
+          const mhWt = plan?.mh_wt || wo.size_wt || 0;
+          const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
+
+          return {
+            ...stageDef,
+            isBundled: false,
+            planMtr: rollPlanMtr,
+            planPcs: rollPlanPcs,
+            outMtr: rollingOutMtr,
+            outPcs: rollingOutPcs,
+            rejMtr: rollingRejMtr,
+            rejPcs: rollingRejPcs,
+            htcOkMtr: rollingHtcOkMtr,
+            htcOkPcs: rollingHtcOkPcs,
+            wipMtr,
+            wipPcs,
+            wipMt,
+            logsCount: masterRollLogs.length,
+          };
+        }
+
+        if (stageCode === 'HOLLOW_HEAT_TREATMENT') {
+          // Downstream WIP only exists after rolling production is done, and strictly from HTC OK!
+          let wipMtr = 0;
+          if (rollingHtcOkMtr > 0) {
+            wipMtr = Math.max(0, rollingHtcOkMtr - htcOutMtr - htcRejMtr);
+          }
+          const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
+          const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
+
+          return {
+            ...stageDef,
+            isBundled: false,
+            planMtr: 0,
+            planPcs: 0,
+            outMtr: htcOutMtr,
+            outPcs: 0,
+            rejMtr: htcRejMtr,
+            rejPcs: 0,
+            htcOkMtr,
+            htcOkPcs: 0,
+            wipMtr,
+            wipPcs,
+            wipMt,
+            logsCount: masterHtcLogs.length,
+          };
+        }
+
+        if (stageCode === 'DRAW') {
+          // Incoming is either HTC output (if alloy route) or Rolling HTC OK (if CDS route)
+          const incoming = htcOutMtr > 0 ? htcOutMtr : rollingHtcOkMtr;
+          let wipMtr = 0;
+          if (incoming > 0) {
+            wipMtr = Math.max(0, incoming - drawOutMtr - drawRejMtr);
+          }
+          const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
+          const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
+
+          return {
+            ...stageDef,
+            isBundled: false,
+            planMtr: 0,
+            planPcs: 0,
+            outMtr: drawOutMtr,
+            outPcs: 0,
+            rejMtr: drawRejMtr,
+            rejPcs: 0,
+            htcOkMtr: 0,
+            htcOkPcs: 0,
+            wipMtr,
+            wipPcs,
+            wipMt,
+            logsCount: masterDrawLogs.length,
+          };
+        }
+
+        if (stageCode === 'HEAT_TREATMENT') {
+          let wipMtr = 0;
+          if (drawOutMtr > 0) {
+            wipMtr = Math.max(0, drawOutMtr - htOutMtr - htRejMtr);
+          }
+          const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
+          const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
+
+          return {
+            ...stageDef,
+            isBundled: false,
+            planMtr: 0,
+            planPcs: 0,
+            outMtr: htOutMtr,
+            outPcs: 0,
+            rejMtr: htRejMtr,
+            rejPcs: 0,
+            htcOkMtr: 0,
+            htcOkPcs: 0,
+            wipMtr,
+            wipPcs,
+            wipMt,
+            logsCount: masterHtLogs.length,
+          };
+        }
+
+        // FINISHING stage:
+        const targetMtr = childInfo ? Number(childInfo.planned_mtr || wo.ordered_qty) : (plan?.planned_qty || wo.ordered_qty);
+        const precedingOutMtr = htOutMtr > 0 ? htOutMtr : drawOutMtr;
+        let wipMtr = 0;
+        if (precedingOutMtr > 0) {
+          wipMtr = Math.max(0, Math.min(targetMtr, precedingOutMtr) - finOutMtr - finRejMtr);
+        }
+        const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
+        const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
 
         return {
           ...stageDef,
-          planMtr,
-          planPcs,
-          outMtr,
-          outPcs,
-          rejMtr,
-          rejPcs,
-          htcOkMtr,
-          htcOkPcs,
+          isBundled: false,
+          targetMtr,
+          planMtr: targetMtr,
+          planPcs: avgLen > 0 ? Math.round(targetMtr / avgLen) : 0,
+          outMtr: finOutMtr,
+          outPcs: finOutPcs,
+          rejMtr: finRejMtr,
+          rejPcs: finRejPcs,
+          htcOkMtr: 0,
+          htcOkPcs: 0,
           wipMtr,
           wipPcs,
           wipMt,
-          logsCount: sLogs.length,
+          logsCount: finLogs.length,
         };
       });
 
@@ -308,9 +479,9 @@ export default function WorkOrderTrackingClient() {
       const totalOutMtr = stagesData.reduce((sum, s) => sum + s.outMtr, 0);
       const totalRejMtr = stagesData.reduce((sum, s) => sum + s.rejMtr, 0);
       const finishingOutMtr = stagesData.find((s) => s.code === 'FINISHING')?.outMtr || 0;
-      const rollingPlanMtr = stagesData.find((s) => s.code === 'ROLLING')?.planMtr || wo.ordered_qty;
+      const targetVolumeMtr = stagesData.find((s) => s.code === 'FINISHING')?.targetMtr || wo.ordered_qty;
 
-      const completionPct = rollingPlanMtr > 0 ? Math.min(100, Math.round((finishingOutMtr / rollingPlanMtr) * 100)) : 0;
+      const completionPct = targetVolumeMtr > 0 ? Math.min(100, Math.round((finishingOutMtr / targetVolumeMtr) * 100)) : 0;
       const processYieldPct =
         finishingOutMtr + totalRejMtr > 0
           ? Math.round((finishingOutMtr / (finishingOutMtr + totalRejMtr)) * 100)
@@ -331,7 +502,7 @@ export default function WorkOrderTrackingClient() {
         logs: woLogs,
       };
     },
-    [campaignMeta, rollingPlans, productionLogs, stageWip]
+    [campaignMeta, rollingPlans, productionLogs]
   );
 
   // Toggle single work order details
@@ -363,7 +534,8 @@ export default function WorkOrderTrackingClient() {
   // KPI calculations across filtered work orders
   const kpis = useMemo(() => {
     let totalOrderedMtr = 0;
-    let totalRollingWipMtr = 0;
+    let totalPendingRollingMtr = 0;
+    let totalRolledStockWipMtr = 0;
     let totalFinishingOutMtr = 0;
     let totalRejMtr = 0;
 
@@ -372,7 +544,12 @@ export default function WorkOrderTrackingClient() {
       const row = getWoTrackingData(wo);
       const rollStage = row.stagesData.find((s) => s.code === 'ROLLING');
       const finStage = row.stagesData.find((s) => s.code === 'FINISHING');
-      totalRollingWipMtr += rollStage?.wipMtr || 0;
+
+      // Do NOT double-count child plans in total pending rolling
+      if (!row.childInfo) {
+        totalPendingRollingMtr += Number(rollStage?.planMtr || 0);
+      }
+      totalRolledStockWipMtr += rollStage?.wipMtr || 0;
       totalFinishingOutMtr += finStage?.outMtr || 0;
       totalRejMtr += row.totalRejMtr;
     });
@@ -385,7 +562,8 @@ export default function WorkOrderTrackingClient() {
     return {
       totalOrders: filteredWorkOrders.length,
       totalOrderedMtr,
-      totalRollingWipMtr,
+      totalPendingRollingMtr,
+      totalRolledStockWipMtr,
       totalFinishingOutMtr,
       factoryYield,
     };
@@ -498,17 +676,25 @@ export default function WorkOrderTrackingClient() {
 
         <Card className="border-slate-200 bg-white">
           <CardContent className="p-4">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Ordered</div>
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Target Volume</div>
             <div className="mt-1 text-2xl font-bold text-slate-900 font-mono">{fmt(kpis.totalOrderedMtr, 'm')}</div>
-            <div className="text-[11px] text-slate-400 mt-0.5">Target delivery volume</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">Customer ordered quantity</div>
           </CardContent>
         </Card>
 
         <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="p-4">
-            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Active Rolling WIP</div>
-            <div className="mt-1 text-2xl font-bold text-blue-900 font-mono">{fmt(kpis.totalRollingWipMtr, 'm')}</div>
-            <div className="text-[11px] text-blue-600 mt-0.5">In piercing & rolling</div>
+            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Pending Rolling</div>
+            <div className="mt-1 text-2xl font-bold text-blue-900 font-mono">{fmt(kpis.totalPendingRollingMtr, 'm')}</div>
+            <div className="text-[11px] text-blue-600 mt-0.5">Unrolled target plan</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-indigo-200 bg-indigo-50/50">
+          <CardContent className="p-4">
+            <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Rolled Stock WIP</div>
+            <div className="mt-1 text-2xl font-bold text-indigo-900 font-mono">{fmt(kpis.totalRolledStockWipMtr, 'm')}</div>
+            <div className="text-[11px] text-indigo-600 mt-0.5">Only HTC OK qty rolled</div>
           </CardContent>
         </Card>
 
@@ -517,14 +703,6 @@ export default function WorkOrderTrackingClient() {
             <div className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Finished Output</div>
             <div className="mt-1 text-2xl font-bold text-emerald-900 font-mono">{fmt(kpis.totalFinishingOutMtr, 'm')}</div>
             <div className="text-[11px] text-emerald-600 mt-0.5">Final inspected & cut</div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-indigo-200 bg-indigo-50/50">
-          <CardContent className="p-4">
-            <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Process Yield</div>
-            <div className="mt-1 text-2xl font-bold text-indigo-900 font-mono">{kpis.factoryYield}%</div>
-            <div className="text-[11px] text-indigo-600 mt-0.5">Overall yield efficiency</div>
           </CardContent>
         </Card>
       </div>
@@ -767,113 +945,202 @@ export default function WorkOrderTrackingClient() {
 
                         {/* 1. Rolling Mill */}
                         <td className="py-3 px-3 align-top bg-blue-50/30 border-x border-blue-100">
-                          <div className="space-y-1">
-                            {data.plan?.mh_od ? (
-                              <div className="text-[10px] font-mono text-blue-900 bg-blue-100/60 rounded px-1 py-0.5">
-                                MH: {data.plan.mh_od} × {data.plan.mh_wt}mm
+                          {data.childInfo ? (
+                            <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2 text-center">
+                              <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
+                                Bundled in Master
+                              </span>
+                              <span className="font-mono text-xs text-indigo-950 font-bold block mt-0.5">
+                                {data.childInfo.master_wo_no}
+                              </span>
+                              <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
+                                WIP: 0m
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              {data.plan?.mh_od ? (
+                                <div className="text-[10px] font-mono text-blue-900 bg-blue-100/60 rounded px-1 py-0.5">
+                                  MH: {data.plan.mh_od} × {data.plan.mh_wt}mm
+                                </div>
+                              ) : null}
+
+                              <div className="flex justify-between text-slate-600">
+                                <span>Plan:</span>
+                                <span className="font-mono font-bold text-slate-800">{fmt(rRoll?.planMtr || 0)}m</span>
                               </div>
-                            ) : null}
 
-                            <div className="flex justify-between text-slate-600">
-                              <span>Plan:</span>
-                              <span className="font-mono font-bold text-slate-800">{fmt(rRoll?.planMtr || 0)}m</span>
-                            </div>
-
-                            <div className="flex justify-between text-slate-600">
-                              <span>Output:</span>
-                              <span className="font-mono font-bold text-emerald-700">{fmt(rRoll?.outMtr || 0)}m</span>
-                            </div>
-
-                            {Number(rRoll?.rejMtr || 0) > 0 && (
-                              <div className="flex justify-between text-rose-600">
-                                <span>Rej:</span>
-                                <span className="font-mono">{fmt(rRoll?.rejMtr || 0)}m</span>
+                              <div className="flex justify-between text-slate-600">
+                                <span>Rolled:</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rRoll?.outMtr || 0)}m</span>
                               </div>
-                            )}
 
-                            <div className="flex justify-between pt-1 border-t border-blue-200/60 text-blue-900 font-bold">
-                              <span>WIP:</span>
-                              <span className="font-mono">{fmt(rRoll?.wipMtr || 0)}m</span>
+                              <div className="flex justify-between text-indigo-700 font-medium">
+                                <span>HTC OK:</span>
+                                <span className="font-mono font-bold text-indigo-700">{fmt(rRoll?.htcOkMtr || 0)}m</span>
+                              </div>
+
+                              {Number(rRoll?.rejMtr || 0) > 0 && (
+                                <div className="flex justify-between text-rose-600">
+                                  <span>Rej:</span>
+                                  <span className="font-mono">{fmt(rRoll?.rejMtr || 0)}m</span>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between pt-1 border-t border-blue-200/60 text-blue-900 font-bold">
+                                <span>Rolled WIP:</span>
+                                <span className="font-mono">{fmt(rRoll?.wipMtr || 0)}m</span>
+                              </div>
+
+                              {Number(rRoll?.outMtr || 0) === 0 && (
+                                <div className="text-[10px] text-amber-700 bg-amber-50 rounded px-1 py-0.5 border border-amber-200/70 text-center font-semibold">
+                                  Pending Rolling
+                                </div>
+                              )}
                             </div>
-                          </div>
+                          )}
                         </td>
 
                         {/* 2. Hollow Heat Treatment (HTC) */}
                         <td className="py-3 px-3 align-top bg-amber-50/30 border-r border-amber-100">
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-slate-600">
-                              <span>Output:</span>
-                              <span className="font-mono font-bold text-emerald-700">{fmt(rHtc?.outMtr || 0)}m</span>
+                          {data.childInfo ? (
+                            <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2 text-center">
+                              <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
+                                Bundled in Master
+                              </span>
+                              <span className="font-mono text-xs text-indigo-950 font-bold block mt-0.5">
+                                {data.childInfo.master_wo_no}
+                              </span>
+                              <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
+                                WIP: 0m
+                              </span>
                             </div>
-
-                            {Number(rHtc?.htcOkMtr || 0) > 0 && (
-                              <div className="flex justify-between text-indigo-700 font-medium">
-                                <span>HTC OK:</span>
-                                <span className="font-mono">{fmt(rHtc?.htcOkMtr || 0)}m</span>
-                              </div>
-                            )}
-
-                            {Number(rHtc?.rejMtr || 0) > 0 && (
-                              <div className="flex justify-between text-rose-600">
-                                <span>Rej:</span>
-                                <span className="font-mono">{fmt(rHtc?.rejMtr || 0)}m</span>
-                              </div>
-                            )}
-
-                            <div className="flex justify-between pt-1 border-t border-amber-200/60 text-amber-900 font-bold">
-                              <span>WIP:</span>
-                              <span className="font-mono">{fmt(rHtc?.wipMtr || 0)}m</span>
+                          ) : Number(rRoll?.outMtr || 0) === 0 ? (
+                            <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
+                              Waiting Rolling HTC OK
+                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0m</div>
                             </div>
-                          </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-slate-600">
+                                <span>Output:</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rHtc?.outMtr || 0)}m</span>
+                              </div>
+
+                              {Number(rHtc?.htcOkMtr || 0) > 0 && (
+                                <div className="flex justify-between text-indigo-700 font-medium">
+                                  <span>HTC OK:</span>
+                                  <span className="font-mono">{fmt(rHtc?.htcOkMtr || 0)}m</span>
+                                </div>
+                              )}
+
+                              {Number(rHtc?.rejMtr || 0) > 0 && (
+                                <div className="flex justify-between text-rose-600">
+                                  <span>Rej:</span>
+                                  <span className="font-mono">{fmt(rHtc?.rejMtr || 0)}m</span>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between pt-1 border-t border-amber-200/60 text-amber-900 font-bold">
+                                <span>WIP:</span>
+                                <span className="font-mono">{fmt(rHtc?.wipMtr || 0)}m</span>
+                              </div>
+                            </div>
+                          )}
                         </td>
 
                         {/* 3. Draw Bench */}
                         <td className="py-3 px-3 align-top bg-indigo-50/30 border-r border-indigo-100">
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-slate-600">
-                              <span>Output:</span>
-                              <span className="font-mono font-bold text-emerald-700">{fmt(rDraw?.outMtr || 0)}m</span>
+                          {data.childInfo ? (
+                            <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2 text-center">
+                              <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
+                                Bundled in Master
+                              </span>
+                              <span className="font-mono text-xs text-indigo-950 font-bold block mt-0.5">
+                                {data.childInfo.master_wo_no}
+                              </span>
+                              <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
+                                WIP: 0m
+                              </span>
                             </div>
-
-                            {Number(rDraw?.rejMtr || 0) > 0 && (
-                              <div className="flex justify-between text-rose-600">
-                                <span>Rej:</span>
-                                <span className="font-mono">{fmt(rDraw?.rejMtr || 0)}m</span>
+                          ) : Number(rRoll?.outMtr || 0) === 0 ? (
+                            <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
+                              Waiting Upstream
+                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0m</div>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-slate-600">
+                                <span>Output:</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rDraw?.outMtr || 0)}m</span>
                               </div>
-                            )}
 
-                            <div className="flex justify-between pt-1 border-t border-indigo-200/60 text-indigo-900 font-bold">
-                              <span>WIP:</span>
-                              <span className="font-mono">{fmt(rDraw?.wipMtr || 0)}m</span>
+                              {Number(rDraw?.rejMtr || 0) > 0 && (
+                                <div className="flex justify-between text-rose-600">
+                                  <span>Rej:</span>
+                                  <span className="font-mono">{fmt(rDraw?.rejMtr || 0)}m</span>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between pt-1 border-t border-indigo-200/60 text-indigo-900 font-bold">
+                                <span>WIP:</span>
+                                <span className="font-mono">{fmt(rDraw?.wipMtr || 0)}m</span>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </td>
 
                         {/* 4. Heat Treatment */}
                         <td className="py-3 px-3 align-top bg-orange-50/30 border-r border-orange-100">
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-slate-600">
-                              <span>Output:</span>
-                              <span className="font-mono font-bold text-emerald-700">{fmt(rHt?.outMtr || 0)}m</span>
+                          {data.childInfo ? (
+                            <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2 text-center">
+                              <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
+                                Bundled in Master
+                              </span>
+                              <span className="font-mono text-xs text-indigo-950 font-bold block mt-0.5">
+                                {data.childInfo.master_wo_no}
+                              </span>
+                              <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
+                                WIP: 0m
+                              </span>
                             </div>
-
-                            {Number(rHt?.rejMtr || 0) > 0 && (
-                              <div className="flex justify-between text-rose-600">
-                                <span>Rej:</span>
-                                <span className="font-mono">{fmt(rHt?.rejMtr || 0)}m</span>
+                          ) : Number(rRoll?.outMtr || 0) === 0 ? (
+                            <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
+                              Waiting Upstream
+                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0m</div>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-slate-600">
+                                <span>Output:</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rHt?.outMtr || 0)}m</span>
                               </div>
-                            )}
 
-                            <div className="flex justify-between pt-1 border-t border-orange-200/60 text-orange-900 font-bold">
-                              <span>WIP:</span>
-                              <span className="font-mono">{fmt(rHt?.wipMtr || 0)}m</span>
+                              {Number(rHt?.rejMtr || 0) > 0 && (
+                                <div className="flex justify-between text-rose-600">
+                                  <span>Rej:</span>
+                                  <span className="font-mono">{fmt(rHt?.rejMtr || 0)}m</span>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between pt-1 border-t border-orange-200/60 text-orange-900 font-bold">
+                                <span>WIP:</span>
+                                <span className="font-mono">{fmt(rHt?.wipMtr || 0)}m</span>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </td>
 
                         {/* 5. Finishing Line */}
                         <td className="py-3 px-3 align-top bg-emerald-50/30 border-r border-emerald-100">
                           <div className="space-y-1">
+                            <div className="flex justify-between text-slate-500 text-[11px]">
+                              <span>Target:</span>
+                              <span className="font-mono font-bold text-slate-700">
+                                {fmt(rFin?.targetMtr || (data.childInfo ? Number(data.childInfo.planned_mtr || wo.ordered_qty) : wo.ordered_qty))}m
+                              </span>
+                            </div>
+
                             <div className="flex justify-between text-slate-600">
                               <span>Finished:</span>
                               <span className="font-mono font-bold text-emerald-800 text-[13px]">{fmt(rFin?.outMtr || 0)}m</span>
