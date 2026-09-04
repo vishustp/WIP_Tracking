@@ -22,6 +22,10 @@ import {
   UserCheck,
   AlertCircle,
   ShieldAlert,
+  Crown,
+  Link2,
+  Package,
+  Sparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueue } from "@/hooks/useQueue";
@@ -85,6 +89,13 @@ export default function ProductionEntryGrid() {
   // Delete modal state
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // Campaign multi-work order bundling modal state (Rule 2)
+  const [bundlingCampaign, setBundlingCampaign] = useState<Row | null>(null);
+  const [bundleEntries, setBundleEntries] = useState<
+    Record<string, { pcs: string; mtr: string; bundleNo: string; remarks: string }>
+  >({});
+  const [bundlingSaving, setBundlingSaving] = useState(false);
 
   // --- Data fetching ---
   const { rows, setRows, loading: queueLoading, reload: reloadQueue } = useQueue(stage);
@@ -339,12 +350,20 @@ export default function ProductionEntryGrid() {
         };
       });
 
-      const { error: rpcError } = await supabase.rpc("record_production_batch", {
-        entries: payload,
-        p_process_date: date,
+      // Use the unified production record API (supports standard & multi-WO bundling seamlessly)
+      const res = await fetch("/api/production/record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entries: payload,
+          p_process_date: date,
+        }),
       });
 
-      if (rpcError) throw rpcError;
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        throw new Error(resData.error || "Failed to save production.");
+      }
 
       setMessage("All production entries saved successfully.");
       await Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()]);
@@ -355,6 +374,132 @@ export default function ProductionEntryGrid() {
       setSaving(false);
     }
   }
+
+  // --- Multi-Work Order Campaign Bundling Handlers (Rule 2) ---
+  const openCampaignBundling = (r: Row) => {
+    setBundlingCampaign(r);
+    const initial: Record<string, { pcs: string; mtr: string; bundleNo: string; remarks: string }> = {};
+
+    // Initialize Master entry
+    initial[r.work_order_id] = {
+      pcs: "",
+      mtr: "",
+      bundleNo: r.heat_lot_no || "",
+      remarks: "",
+    };
+
+    // Initialize Child entries if linked
+    if (r.child_work_orders && r.child_work_orders.length > 0) {
+      r.child_work_orders.forEach((c) => {
+        initial[c.id] = {
+          pcs: "",
+          mtr: "",
+          bundleNo: r.heat_lot_no || "",
+          remarks: "",
+        };
+      });
+    }
+
+    setBundleEntries(initial);
+  };
+
+  const updateBundleEntry = (
+    woId: string,
+    field: "pcs" | "mtr" | "bundleNo" | "remarks",
+    val: string,
+    avgLen: number
+  ) => {
+    setBundleEntries((prev) => {
+      const current = prev[woId] || { pcs: "", mtr: "", bundleNo: "", remarks: "" };
+      let pcs = current.pcs;
+      let mtr = current.mtr;
+
+      if (field === "pcs") {
+        pcs = val;
+        mtr = val === "" ? "" : String(mtrFromPcs(n(val), avgLen).toFixed(3).replace(/\.?0+$/, ""));
+      } else if (field === "mtr") {
+        mtr = val;
+        pcs = val === "" ? "" : String(pcsFromMtr(n(val), avgLen).toFixed(3).replace(/\.?0+$/, ""));
+      } else {
+        return { ...prev, [woId]: { ...current, [field]: val } };
+      }
+
+      return {
+        ...prev,
+        [woId]: {
+          ...current,
+          pcs,
+          mtr,
+        },
+      };
+    });
+  };
+
+  const saveCampaignBundling = async () => {
+    if (!bundlingCampaign) return;
+
+    const entered = Object.entries(bundleEntries).filter(
+      ([_, v]) => n(v.mtr) > 0 || n(v.pcs) > 0
+    );
+
+    if (!entered.length) {
+      setError("Please enter bundling PCS or MTR for at least one work order.");
+      return;
+    }
+
+    const totalBundledMtr = entered.reduce((sum, [_, v]) => sum + n(v.mtr), 0);
+    const maxAvailMtr =
+      n(bundlingCampaign.max_allowed_mtr) > 0
+        ? n(bundlingCampaign.max_allowed_mtr)
+        : n(bundlingCampaign.balance_to_make_mtr);
+
+    if (totalBundledMtr > maxAvailMtr + 0.05) {
+      setError(
+        `Total bundled quantity (${fmt(totalBundledMtr)} MTR) exceeds available finishing WIP (${fmt(
+          maxAvailMtr
+        )} MTR).`
+      );
+      return;
+    }
+
+    setBundlingSaving(true);
+    try {
+      const payload = entered.map(([woId, v]) => ({
+        work_order_id: woId,
+        route_id: bundlingCampaign.route_id,
+        stage_code: "FINISHING",
+        input_qty: n(v.mtr),
+        output_qty: n(v.mtr),
+        rejection_qty: 0,
+        htc_ok: 0,
+        heat_lot_no: v.bundleNo || null,
+        remarks: v.remarks ? `Bundle: ${v.remarks}` : "Campaign Bundling",
+      }));
+
+      const res = await fetch("/api/production/record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entries: payload,
+          p_process_date: date,
+        }),
+      });
+
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        throw new Error(resData.error || "Failed to record campaign bundling.");
+      }
+
+      setMessage(`Campaign bundling recorded successfully across ${entered.length} work orders!`);
+      setBundlingCampaign(null);
+      await Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()]);
+    } catch (e: unknown) {
+      console.error("Bundling error:", e);
+      setError(e instanceof Error ? e.message : "Failed to record campaign bundling.");
+    } finally {
+      setBundlingSaving(false);
+    }
+  };
 
   // --- Edit handlers with bidirectional PCS <-> MTR ---
   function openEdit(entry: ProductionEntry) {
@@ -775,6 +920,26 @@ export default function ProductionEntryGrid() {
           </h2>
         </div>
 
+        {/* Stage Rule 2 Context Notice */}
+        {(stage === "DRAW" || stage === "HOLLOW_HEAT_TREATMENT" || stage === "HEAT_TREATMENT") && (
+          <div className="flex items-center gap-2 bg-indigo-50/80 border-b border-indigo-100 px-4 py-2.5 text-xs text-indigo-950 font-medium">
+            <Crown size={14} className="text-indigo-600 shrink-0" />
+            <span>
+              <b>Rule 2 Active (Master-Only Stage):</b> In Draw, Hollow Heat Treatment, and Heat Treatment, only Master Work Orders are displayed. Campaigns flow consolidated under the Master Work Order.
+            </span>
+          </div>
+        )}
+        {stage === "FINISHING" && (
+          <div className="flex items-center justify-between gap-2 bg-teal-50/80 border-b border-teal-100 px-4 py-2.5 text-xs text-teal-950 font-medium">
+            <div className="flex items-center gap-2">
+              <Package size={14} className="text-teal-600 shrink-0" />
+              <span>
+                <b>Rule 2 Active (Finishing & Bundling Station):</b> All Master and Child Work Orders are displayed here. You can record bundling directly per row or use the <b>Campaign Bundler</b> on Master orders to bundle across multiple work orders.
+              </span>
+            </div>
+          </div>
+        )}
+
         {queueLoading ? (
           <div className="p-8 text-center text-sm text-slate-500">Loading work order production queue...</div>
         ) : rows.length === 0 ? (
@@ -818,7 +983,7 @@ export default function ProductionEntryGrid() {
                     <tr key={key} className="hover:bg-slate-50/50 transition-colors group">
                       {/* Work Order Info */}
                       <td className="py-3 px-3 align-top">
-                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
                           <span>{r.work_order_no}</span>
                           <button
                             type="button"
@@ -835,7 +1000,36 @@ export default function ProductionEntryGrid() {
                             {isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                           </button>
                         </div>
-                        <div className="text-sm text-slate-600 mt-0.5 truncate max-w-[170px]">
+
+                        {/* Master / Child Badges & Quick Action (Rule 1 & Rule 2) */}
+                        {r.is_master && (
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 text-indigo-800 px-2 py-0.5 text-[11px] font-bold">
+                              <Crown size={11} /> Master Order
+                            </span>
+                            {stage === "FINISHING" && (
+                              <button
+                                type="button"
+                                onClick={() => openCampaignBundling(r)}
+                                className="inline-flex items-center gap-1 rounded-md bg-teal-600 hover:bg-teal-700 text-white px-2 py-0.5 text-[11px] font-bold shadow-xs cursor-pointer transition-colors"
+                                title="Bundle finished tubes across master and child orders"
+                              >
+                                <Package size={11} />
+                                Multi-WO Bundler {r.child_work_orders?.length ? `(${r.child_work_orders.length} Children)` : ''}
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {r.is_child && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-teal-100 text-teal-800 px-2 py-0.5 text-[11px] font-semibold">
+                              <Link2 size={11} /> Child Order (Master: {r.master_wo_no || 'Linked'})
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="text-sm text-slate-600 mt-1 truncate max-w-[170px]">
                           {r.customer_name || "—"}
                         </div>
                         <div className="text-[12px] text-slate-500 font-mono mt-0.5">
@@ -1557,6 +1751,266 @@ export default function ProductionEntryGrid() {
                     {deleteBusy ? "Deleting..." : "Confirm Delete"}
                   </button>
                 )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Campaign Multi-Work Order Bundling Modal (Rule 2) */}
+      {bundlingCampaign && (() => {
+        const totalEnteredMtr = Object.values(bundleEntries).reduce(
+          (sum, v) => sum + n(v.mtr),
+          0
+        );
+        const totalEnteredPcs = Object.values(bundleEntries).reduce(
+          (sum, v) => sum + n(v.pcs),
+          0
+        );
+        const maxAvailMtr =
+          n(bundlingCampaign.max_allowed_mtr) > 0
+            ? n(bundlingCampaign.max_allowed_mtr)
+            : n(bundlingCampaign.balance_to_make_mtr);
+        const maxAvailPcs =
+          n(bundlingCampaign.max_allowed_pcs) > 0
+            ? n(bundlingCampaign.max_allowed_pcs)
+            : calc(bundlingCampaign).avg > 0
+            ? maxAvailMtr / calc(bundlingCampaign).avg
+            : 0;
+        const exceeds = totalEnteredMtr > maxAvailMtr + 0.05;
+
+        // Combine master order and child orders for the dialog
+        const masterCalc = calc(bundlingCampaign);
+        const ordersList = [
+          {
+            id: bundlingCampaign.work_order_id,
+            work_order_no: bundlingCampaign.work_order_no,
+            customer_name: bundlingCampaign.customer_name,
+            grade: null,
+            size_od: bundlingCampaign.od,
+            size_wt: bundlingCampaign.wl,
+            avg: masterCalc.avg || 6.0,
+            isMaster: true,
+          },
+          ...(bundlingCampaign.child_work_orders || []).map((c) => ({
+            id: c.id,
+            work_order_no: c.work_order_no,
+            customer_name: c.customer_name,
+            grade: c.grade,
+            size_od: c.size_od,
+            size_wt: c.size_wt,
+            avg: (c.l1 && c.l2 ? (c.l1 + c.l2) / 2 : c.l1) || masterCalc.avg || 6.0,
+            isMaster: false,
+          })),
+        ];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-teal-100 p-2.5 text-teal-700">
+                    <Package size={22} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-slate-900">
+                        Finishing Campaign Bundler (Rule 2)
+                      </h3>
+                      <span className="rounded-full bg-indigo-100 text-indigo-800 px-2 py-0.5 text-xs font-bold">
+                        Master: {bundlingCampaign.work_order_no}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Allocate and bundle finished tubes across Master and Child work orders from the same rolling campaign.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setBundlingCampaign(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Campaign WIP Summary Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-teal-50/50 border-b border-teal-100 px-6 py-3 text-xs">
+                <div className="flex items-center gap-4">
+                  <span className="text-slate-600">
+                    Available WIP from Heat Treatment:{" "}
+                    <b className="font-mono text-slate-900 text-sm">{fmt(maxAvailMtr)} MTR</b> (
+                    <span className="font-mono">{fmt(maxAvailPcs)} PCS</span>)
+                  </span>
+                  <span className="text-slate-400">|</span>
+                  <span className="text-slate-600">
+                    Linked Child Orders: <b>{bundlingCampaign.child_work_orders?.length || 0}</b>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3 font-mono font-bold">
+                  <span className={exceeds ? "text-rose-600" : "text-teal-900"}>
+                    Total Bundled: {fmt(totalEnteredMtr)} MTR ({fmt(totalEnteredPcs)} PCS)
+                  </span>
+                  <span className="text-slate-500">
+                    Remaining: {fmt(Math.max(0, maxAvailMtr - totalEnteredMtr))} MTR
+                  </span>
+                </div>
+              </div>
+
+              {/* Work Orders Bundling Table */}
+              <div className="overflow-y-auto p-6 flex-1">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                    <tr>
+                      <th className="px-3 py-2 font-bold">Role</th>
+                      <th className="px-3 py-2 font-bold">Work Order</th>
+                      <th className="px-3 py-2 font-bold">Customer</th>
+                      <th className="px-3 py-2 font-bold">Size & Length</th>
+                      <th className="px-3 py-2 font-bold text-center w-28">Bundle PCS</th>
+                      <th className="px-3 py-2 font-bold text-center w-28">Bundle MTR</th>
+                      <th className="px-3 py-2 font-bold">Bundle / Lot No.</th>
+                      <th className="px-3 py-2 font-bold">Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {ordersList.map((wo) => {
+                      const entry = bundleEntries[wo.id] || {
+                        pcs: "",
+                        mtr: "",
+                        bundleNo: "",
+                        remarks: "",
+                      };
+
+                      return (
+                        <tr
+                          key={wo.id}
+                          className={
+                            wo.isMaster ? "bg-indigo-50/30 font-medium" : "hover:bg-slate-50"
+                          }
+                        >
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            {wo.isMaster ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 text-indigo-800 px-2 py-0.5 text-[11px] font-bold">
+                                <Crown size={11} /> Master
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-teal-100 text-teal-800 px-2 py-0.5 text-[11px] font-semibold">
+                                <Link2 size={11} /> Child
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-2.5 font-bold text-slate-900 whitespace-nowrap">
+                            {wo.work_order_no}
+                          </td>
+
+                          <td className="px-3 py-2.5 max-w-[140px] truncate text-slate-600">
+                            {wo.customer_name || "—"}
+                          </td>
+
+                          <td className="px-3 py-2.5 font-mono text-slate-600 whitespace-nowrap">
+                            {wo.size_od} × {wo.size_wt} mm ({fmt(wo.avg, "m")})
+                          </td>
+
+                          <td className="px-3 py-2.5 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              placeholder="0"
+                              value={entry.pcs}
+                              onChange={(e) =>
+                                updateBundleEntry(wo.id, "pcs", e.target.value, wo.avg)
+                              }
+                              className="w-24 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-center font-mono font-bold text-slate-900 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                            />
+                          </td>
+
+                          <td className="px-3 py-2.5 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              placeholder="0.00"
+                              value={entry.mtr}
+                              onChange={(e) =>
+                                updateBundleEntry(wo.id, "mtr", e.target.value, wo.avg)
+                              }
+                              className="w-24 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-center font-mono font-bold text-teal-900 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                            />
+                          </td>
+
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="text"
+                              placeholder="e.g. BDL-101"
+                              value={entry.bundleNo}
+                              onChange={(e) =>
+                                updateBundleEntry(wo.id, "bundleNo", e.target.value, wo.avg)
+                              }
+                              className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-teal-500"
+                            />
+                          </td>
+
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="text"
+                              placeholder="Notes..."
+                              value={entry.remarks}
+                              onChange={(e) =>
+                                updateBundleEntry(wo.id, "remarks", e.target.value, wo.avg)
+                              }
+                              className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-teal-500"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {exceeds && (
+                  <div className="mt-4 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
+                    <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+                    <span>
+                      Total bundled quantity ({fmt(totalEnteredMtr)} MTR) exceeds the available WIP balance ({fmt(maxAvailMtr)} MTR) for this campaign. Please adjust quantities.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => setBundlingCampaign(null)}
+                  disabled={bundlingSaving}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveCampaignBundling}
+                  disabled={bundlingSaving || totalEnteredMtr <= 0 || exceeds}
+                  className="rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-2 text-sm shadow cursor-pointer disabled:opacity-50 inline-flex items-center gap-2"
+                >
+                  {bundlingSaving ? (
+                    <>
+                      <RefreshCw size={15} className="animate-spin" />
+                      Saving Bundles...
+                    </>
+                  ) : (
+                    <>
+                      <Package size={15} />
+                      Record All Bundles ({fmt(totalEnteredMtr)} MTR)
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

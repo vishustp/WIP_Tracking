@@ -59,8 +59,8 @@ export interface Row {
   prev_net_output?: number;
   prev_htc_ok?: number;
   planned_rolling_total?: number;
-  max_allowed_mtr?: number;
-  max_allowed_pcs?: number;
+  max_allowed_mtr?: number | null;
+  max_allowed_pcs?: number | null;
   balance_to_make_mtr: number | null;
   balance_to_make_pcs: number | null;
   balance_to_make_mt: number | null;
@@ -80,6 +80,30 @@ export interface Row {
 
   // Work Center WIP Breakdown across the entire route
   work_centers_wip?: WorkCenterWipInfo[];
+
+  // Master / Child Work Order & Rolling Campaign fields
+  is_master?: boolean;
+  is_child?: boolean;
+  master_wo_id?: string;
+  master_wo_no?: string;
+  master_plan_no?: string;
+  campaign_total_mtr?: number;
+  campaign_total_pcs?: number;
+  child_work_orders?: Array<{
+    id: string;
+    work_order_no: string;
+    customer_name?: string | null;
+    grade?: string | null;
+    size_od?: number | null;
+    size_wt?: number | null;
+    l1?: number | null;
+    l2?: number | null;
+    planned_pcs?: number;
+    planned_mtr?: number;
+    planned_mt?: number;
+    balance_to_bundle_mtr?: number;
+    balance_to_bundle_pcs?: number;
+  }>;
 }
 
 export interface ProductionEntry {
