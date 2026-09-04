@@ -969,7 +969,7 @@ export default function WorkOrderTrackingClient() {
                           {data.childInfo ? (
                             <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2 text-center">
                               <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
-                                Bundled in Master
+                                Rolled in Master
                               </span>
                               <span className="font-mono text-xs text-indigo-950 font-bold block mt-0.5">
                                 {data.childInfo.master_wo_no}
