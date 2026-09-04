@@ -457,6 +457,8 @@ export async function PUT(request: NextRequest) {
     const workCenter = String(body.work_center ?? existing.work_center ?? 'ALL');
     const department = String(body.department ?? existing.department ?? '').trim() || null;
     const phone = String(body.phone ?? existing.phone ?? '').trim() || null;
+    const shift = String(body.shift ?? existing.shift ?? '');
+    const defaultStage = String(body.default_stage ?? existing.default_stage ?? (workCenter === 'ALL' ? 'ROLLING' : workCenter));
     const rawAllowed = Array.isArray(body.allowed_stages) && body.allowed_stages.length > 0
       ? body.allowed_stages
       : workCenter === 'ALL'
