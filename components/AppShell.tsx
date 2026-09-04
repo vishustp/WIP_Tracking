@@ -9,7 +9,7 @@ import { isRouteVisibleForGroup } from '@/lib/permissions';
 import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
-  User, ShieldCheck, ChevronDown, Check, Sparkles, Lock
+  User, ShieldCheck, ChevronDown, Check, Sparkles, Lock, Activity
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -31,6 +31,7 @@ const groups = [
   {
     label: 'Reports',
     items: [
+      { href: '/reports/tracking', label: 'WO Tracking Sheet', icon: Activity },
       { href: '/reports/pending-orders', label: 'Pending Orders', icon: BarChart3 },
       { href: '/reports/wip', label: 'WIP', icon: Gauge },
       { href: '/reports/production', label: 'Production', icon: Factory },
