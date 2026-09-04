@@ -277,6 +277,8 @@ export async function DELETE(req: NextRequest) {
     }
     const { searchParams } = new URL(req.url);
     const planId = searchParams.get('id');
+    const force = searchParams.get('force') === 'true';
+    const clearLogs = searchParams.get('clear_logs') === 'true';
 
     if (!planId) {
       return NextResponse.json({ error: 'Plan ID is required.' }, { status: 400 });
@@ -293,71 +295,162 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Rolling plan not found.' }, { status: 404 });
     }
 
-    // Check if production has already been recorded
-    const { data: logs, error: logsErr } = await admin
-      .from('production_logs')
-      .select('id')
-      .eq('work_order_id', targetPlan.work_order_id)
-      .limit(1);
+    let parsedStatus: any = {};
+    try {
+      parsedStatus = typeof targetPlan.status === 'string' ? JSON.parse(targetPlan.status) : targetPlan.status;
+    } catch {}
 
-    if (logs && logs.length > 0) {
+    const isMaster = Boolean(parsedStatus?.is_master);
+    const isChild = Boolean(parsedStatus?.is_child);
+
+    // Collect all work order IDs and child plan IDs in the campaign (or single)
+    const affectedWoIds = new Set<string>();
+    const childPlanIds = new Set<string>();
+    affectedWoIds.add(targetPlan.work_order_id);
+
+    if (isMaster) {
+      if (Array.isArray(parsedStatus.child_work_orders)) {
+        for (const child of parsedStatus.child_work_orders) {
+          if (child.work_order_id) affectedWoIds.add(child.work_order_id);
+          if (child.plan_id) childPlanIds.add(child.plan_id);
+        }
+      }
+      // Also query all rolling_plans with prefix matching targetPlan.plan_no-C%
+      const { data: prefixPlans } = await admin
+        .from('rolling_plans')
+        .select('id, work_order_id')
+        .ilike('plan_no', `${targetPlan.plan_no}-C%`);
+      for (const p of prefixPlans || []) {
+        childPlanIds.add(p.id);
+        if (p.work_order_id) affectedWoIds.add(p.work_order_id);
+      }
+    }
+
+    // Check if production has already been recorded
+    const { data: logs } = await admin
+      .from('production_logs')
+      .select('id, work_order_id')
+      .in('work_order_id', Array.from(affectedWoIds));
+
+    const hasLogs = Boolean(logs && logs.length > 0);
+
+    if (hasLogs && !force) {
       return NextResponse.json(
-        { error: 'Cannot delete plan: Production has already been logged for this work order.' },
+        {
+          error:
+            'Cannot delete plan: Production has already been logged for this work order. Use force delete with Admin override to proceed.',
+          requiresForce: true,
+          logsCount: logs?.length || 0,
+        },
         { status: 400 }
       );
     }
 
-    let parsedStatus: any = {};
-    try {
-      parsedStatus = JSON.parse(targetPlan.status);
-    } catch {}
-
-    // If it's a Master plan, find and delete all linked child plans as well
-    if (parsedStatus.is_master && Array.isArray(parsedStatus.child_work_orders)) {
-      for (const child of parsedStatus.child_work_orders) {
-        if (child.plan_id) {
-          await admin.from('rolling_plans').delete().eq('id', child.plan_id);
-        } else {
-          // Delete by work order ID and matching plan_no prefix
-          await admin
-            .from('rolling_plans')
-            .delete()
-            .eq('work_order_id', child.work_order_id)
-            .ilike('plan_no', `${targetPlan.plan_no}-C%`);
-        }
-
-        // Check if child has other plans
-        const { data: remainingPlans } = await admin
-          .from('rolling_plans')
-          .select('id')
-          .eq('work_order_id', child.work_order_id);
-
-        if (!remainingPlans || remainingPlans.length === 0) {
-          await admin
-            .from('work_orders')
-            .update({ status: 'Pending Plan' })
-            .eq('id', child.work_order_id);
-        }
+    // Handle production logs if force or clearLogs
+    if (hasLogs) {
+      if (clearLogs) {
+        // Delete logs for affected work orders
+        await admin.from('production_logs').delete().in('work_order_id', Array.from(affectedWoIds));
+      } else {
+        // Unlink rolling_plan_id to prevent foreign key issues
+        await admin
+          .from('production_logs')
+          .update({ rolling_plan_id: null })
+          .in('work_order_id', Array.from(affectedWoIds));
       }
     }
 
-    // Delete the target plan
-    await admin.from('rolling_plans').delete().eq('id', planId);
+    // If it's a Child Plan being deleted independently:
+    if (isChild && parsedStatus.master_plan_id) {
+      // 1. Delete this child plan
+      await admin.from('rolling_plans').delete().eq('id', planId);
 
-    // If no plans remain for target work order, reset to Pending Plan
-    const { data: targetRemaining } = await admin
-      .from('rolling_plans')
-      .select('id')
-      .eq('work_order_id', targetPlan.work_order_id);
-
-    if (!targetRemaining || targetRemaining.length === 0) {
+      // 2. Reset this child work order to 'Pending Plan'
       await admin
         .from('work_orders')
         .update({ status: 'Pending Plan' })
         .eq('id', targetPlan.work_order_id);
+
+      // 3. Update master plan to remove this child and recalculate totals
+      const { data: masterPlan } = await admin
+        .from('rolling_plans')
+        .select('*')
+        .eq('id', parsedStatus.master_plan_id)
+        .single();
+
+      if (masterPlan) {
+        let masterStatus: any = {};
+        try {
+          masterStatus = typeof masterPlan.status === 'string' ? JSON.parse(masterPlan.status) : masterPlan.status;
+        } catch {}
+
+        if (Array.isArray(masterStatus.child_work_orders)) {
+          masterStatus.child_work_orders = masterStatus.child_work_orders.filter(
+            (c: any) => c.work_order_id !== targetPlan.work_order_id && c.plan_id !== planId
+          );
+
+          // Recalculate campaign totals
+          const masterPcs = Number(masterStatus.master_planned_pcs || 0);
+          const masterMtr = Number(masterStatus.master_planned_mtr || 0);
+          const masterMt = Number(masterStatus.master_planned_mt || 0);
+
+          let childPcsSum = 0;
+          let childMtrSum = 0;
+          let childMtSum = 0;
+          for (const c of masterStatus.child_work_orders) {
+            childPcsSum += Number(c.planned_pcs || 0);
+            childMtrSum += Number(c.planned_mtr || 0);
+            childMtSum += Number(c.planned_mt || 0);
+          }
+
+          masterStatus.total_campaign_pcs = masterPcs + childPcsSum;
+          masterStatus.total_campaign_mtr = Number((masterMtr + childMtrSum).toFixed(2));
+          masterStatus.total_campaign_mt = Number((masterMt + childMtSum).toFixed(3));
+
+          await admin
+            .from('rolling_plans')
+            .update({ status: JSON.stringify(masterStatus), updated_at: new Date().toISOString() })
+            .eq('id', masterPlan.id);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Child plan ${targetPlan.plan_no} deleted and campaign totals updated. Work order returned to Pending Plan.`,
+      });
     }
 
-    return NextResponse.json({ success: true, message: 'Plan deleted successfully.' });
+    // If it's a Master Plan: delete all linked child plans and reset all child work orders
+    if (isMaster) {
+      if (childPlanIds.size > 0) {
+        await admin.from('rolling_plans').delete().in('id', Array.from(childPlanIds));
+      }
+
+      // Reset all child work orders to 'Pending Plan'
+      for (const woId of Array.from(affectedWoIds)) {
+        if (woId !== targetPlan.work_order_id) {
+          await admin
+            .from('work_orders')
+            .update({ status: 'Pending Plan' })
+            .eq('id', woId);
+        }
+      }
+    }
+
+    // Delete the target plan (Master or Standalone)
+    await admin.from('rolling_plans').delete().eq('id', planId);
+
+    // Reset target work order to 'Pending Plan'
+    await admin
+      .from('work_orders')
+      .update({ status: 'Pending Plan' })
+      .eq('id', targetPlan.work_order_id);
+
+    const message = isMaster
+      ? `Master plan ${targetPlan.plan_no} and all ${childPlanIds.size} linked child plans deleted successfully. All ${affectedWoIds.size} work orders returned to 'Pending Plan'.`
+      : `Rolling plan ${targetPlan.plan_no} deleted successfully. Work order returned to 'Pending Plan'.`;
+
+    return NextResponse.json({ success: true, message });
   } catch (error: any) {
     console.error('Delete plan error:', error);
     return NextResponse.json(
@@ -378,6 +471,7 @@ export interface UpdateRollingPlanPayload {
   mh_l1?: number;
   mh_l2?: number;
   pass_required?: number;
+  force?: boolean;
   child_adjustments?: Array<{
     plan_id?: string;
     work_order_id: string;
@@ -407,6 +501,7 @@ export async function PUT(req: NextRequest) {
       mh_l1,
       mh_l2,
       pass_required = 1,
+      force = false,
       child_adjustments = [],
     } = body;
 
@@ -447,11 +542,12 @@ export async function PUT(req: NextRequest) {
       .eq('process_route_id', targetPlan.process_route_id)
       .limit(1);
 
-    if (logs && logs.length > 0) {
+    if (logs && logs.length > 0 && !force) {
       return NextResponse.json(
         {
           error:
-            'Rolling Plan cannot be modified because production has already been recorded for this Work Order and route.',
+            'Rolling Plan cannot be modified because production has already been recorded for this Work Order and route. Please confirm override to update specifications.',
+          requiresForce: true,
         },
         { status: 400 }
       );

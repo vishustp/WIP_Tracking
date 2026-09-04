@@ -175,6 +175,11 @@ export default function RollingPlanForm() {
   >([]);
   const [editSaving, setEditSaving] = useState(false);
 
+  // Deleting plan modal state
+  const [deletingPlan, setDeletingPlan] = useState<Plan | null>(null);
+  const [deleteClearLogs, setDeleteClearLogs] = useState<boolean>(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const { user } = usePermissions();
   const formAccess = useMemo(() => getFormAccess(user, 'rolling_plan'), [user]);
   const canManagePlans = formAccess.isAllowed;
@@ -226,6 +231,21 @@ export default function RollingPlanForm() {
       return Number(data ?? 0);
     } catch {
       return 0;
+    }
+  }, []);
+
+  // Reload work orders list
+  const loadWorkOrders = useCallback(async () => {
+    try {
+      const s = createClient();
+      const { data, error } = await s
+        .from('work_orders')
+        .select('id,work_order_no,customer_name,grade,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_mtr')
+        .order('work_order_no');
+      if (error) throw error;
+      setWos((data ?? []) as WO[]);
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -514,7 +534,7 @@ export default function RollingPlanForm() {
       setPassRequired('1');
       setMultiple('1');
 
-      await loadPlans();
+      await Promise.all([loadPlans(), loadWorkOrders()]);
     } catch (err: any) {
       console.error('Submit error:', err);
       toast.error(err.message || 'Failed to create rolling plan.');
@@ -523,36 +543,33 @@ export default function RollingPlanForm() {
     }
   }
 
-  // Delete plan handler (cascades linked child plans if master)
-  async function removePlan(p: Plan) {
-    let isMaster = false;
-    let childCount = 0;
+  // Delete plan modal trigger & executor
+  function openDeleteModal(p: Plan) {
+    setDeletingPlan(p);
+    setDeleteClearLogs(true);
+  }
+
+  async function executeDeletePlan() {
+    if (!deletingPlan) return;
+    setIsDeleting(true);
     try {
-      const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
-      if (parsed?.is_master) {
-        isMaster = true;
-        childCount = parsed.child_work_orders?.length || 0;
-      }
-    } catch {}
-
-    const confirmMsg = isMaster
-      ? `Delete Master Plan ${p.plan_no}?\n\nThis will also delete ${childCount} linked Child Work Order plans and return all work orders to 'Pending Plan'. Proceed?`
-      : `Delete Rolling Plan ${p.plan_no} for Work Order ${p.work_order_no}?`;
-
-    if (!window.confirm(confirmMsg)) return;
-
-    try {
-      const res = await fetch(`/api/rolling-plans?id=${p.id}`, { method: 'DELETE' });
+      const res = await fetch(
+        `/api/rolling-plans?id=${deletingPlan.id}&force=true&clear_logs=${deleteClearLogs}`,
+        { method: 'DELETE' }
+      );
       const data = await res.json();
 
       if (res.ok && data.success) {
         toast.success(data.message || 'Rolling plan deleted successfully.');
-        await loadPlans();
+        setDeletingPlan(null);
+        await Promise.all([loadPlans(), loadWorkOrders()]);
       } else {
         toast.error(data.error || 'Failed to delete rolling plan.');
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete rolling plan.');
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -642,6 +659,7 @@ export default function RollingPlanForm() {
         route_id: editRoute,
         multiple: Number(editMultiple) || 1,
         pass_required: Number(editPassRequired) || 1,
+        force: true,
       };
 
       if (Number.isFinite(mhOdVal) && mhOdVal > 0) payload.mh_od = mhOdVal;
@@ -670,7 +688,7 @@ export default function RollingPlanForm() {
 
       toast.success(data.message || 'Rolling plan updated successfully.');
       setEditing(null);
-      await loadPlans();
+      await Promise.all([loadPlans(), loadWorkOrders()]);
     } catch (err: any) {
       toast.error(err.message || 'Failed to update rolling plan.');
     } finally {
@@ -1318,20 +1336,31 @@ export default function RollingPlanForm() {
                         </td>
 
                         <td className="px-2.5 py-1.5 whitespace-nowrap text-center">
-                          {p.can_modify && canManagePlans ? (
+                          {canManagePlans ? (
                             <div className="flex items-center justify-center gap-1.5">
+                              {!p.can_modify && (
+                                <span
+                                  className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-200"
+                                  title="Production entries have already been recorded for this Work Order"
+                                >
+                                  <Lock className="h-2.5 w-2.5 text-amber-600" />
+                                  In Prod
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => startEdit(p)}
-                                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold hover:bg-slate-50 cursor-pointer"
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-2xs"
+                                title={!p.can_modify ? 'Edit plan specifications (Admin override)' : 'Edit plan'}
                               >
-                                <Edit2 className="h-3 w-3" />
+                                <Edit2 className="h-3 w-3 text-slate-500" />
                                 Edit
                               </button>
                               <button
                                 type="button"
-                                onClick={() => void removePlan(p)}
-                                className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 cursor-pointer"
+                                onClick={() => openDeleteModal(p)}
+                                className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 cursor-pointer shadow-2xs"
+                                title={isMaster ? 'Delete Master Campaign & All Child Plans' : 'Delete rolling plan'}
                               >
                                 <Trash2 className="h-3 w-3" />
                                 Delete
@@ -1370,32 +1399,66 @@ export default function RollingPlanForm() {
                                     <th className="px-2 py-1.5 font-semibold text-right">Planned PCS</th>
                                     <th className="px-2 py-1.5 font-semibold text-right">Planned MTR</th>
                                     <th className="px-2 py-1.5 font-semibold text-right">Planned MT</th>
+                                    {canManagePlans && (
+                                      <th className="px-2 py-1.5 font-semibold text-center w-20">Actions</th>
+                                    )}
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                  {childOrders.map((c: any, idx: number) => (
-                                    <tr key={idx} className="hover:bg-slate-50">
-                                      <td className="px-2 py-1.5 font-bold text-slate-800">
-                                        {c.work_order_no}
-                                      </td>
-                                      <td className="px-2 py-1.5 text-slate-600">
-                                        {c.customer_name || '—'}
-                                      </td>
-                                      <td className="px-2 py-1.5 text-slate-600">{c.grade || '—'}</td>
-                                      <td className="px-2 py-1.5 font-mono">
-                                        {c.size_od} × {c.size_wt} mm
-                                      </td>
-                                      <td className="px-2 py-1.5 text-right font-mono">
-                                        {fmt(c.planned_pcs)}
-                                      </td>
-                                      <td className="px-2 py-1.5 text-right font-mono font-bold text-indigo-900">
-                                        {fmt(c.planned_mtr)} m
-                                      </td>
-                                      <td className="px-2 py-1.5 text-right font-mono">
-                                        {fmt(c.planned_mt)} MT
-                                      </td>
-                                    </tr>
-                                  ))}
+                                  {childOrders.map((c: any, idx: number) => {
+                                    const childPlan = plans.find(
+                                      (pl) => pl.id === c.plan_id || pl.work_order_id === c.work_order_id
+                                    );
+                                    return (
+                                      <tr key={idx} className="hover:bg-slate-50">
+                                        <td className="px-2 py-1.5 font-bold text-slate-800">
+                                          {c.work_order_no}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-slate-600">
+                                          {c.customer_name || '—'}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-slate-600">{c.grade || '—'}</td>
+                                        <td className="px-2 py-1.5 font-mono">
+                                          {c.size_od} × {c.size_wt} mm
+                                        </td>
+                                        <td className="px-2 py-1.5 text-right font-mono">
+                                          {fmt(c.planned_pcs)}
+                                        </td>
+                                        <td className="px-2 py-1.5 text-right font-mono font-bold text-indigo-900">
+                                          {fmt(c.planned_mtr)} m
+                                        </td>
+                                        <td className="px-2 py-1.5 text-right font-mono">
+                                          {fmt(c.planned_mt)} MT
+                                        </td>
+                                        {canManagePlans && (
+                                          <td className="px-2 py-1.5 text-center whitespace-nowrap">
+                                            {childPlan ? (
+                                              <div className="flex items-center justify-center gap-1">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => startEdit(childPlan)}
+                                                  className="p-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 cursor-pointer"
+                                                  title="Edit child plan"
+                                                >
+                                                  <Edit2 className="h-3 w-3" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => openDeleteModal(childPlan)}
+                                                  className="p-1 rounded text-rose-500 hover:text-rose-700 hover:bg-rose-100/60 cursor-pointer"
+                                                  title="Delete & unlink child plan"
+                                                >
+                                                  <Trash2 className="h-3 w-3" />
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <span className="text-[10px] text-slate-400">Linked</span>
+                                            )}
+                                          </td>
+                                        )}
+                                      </tr>
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             </div>
@@ -1501,6 +1564,17 @@ export default function RollingPlanForm() {
                   <X className="h-5 w-5" />
                 </button>
               </div>
+
+              {/* Notice if production logs have already been recorded */}
+              {!editing.can_modify && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-semibold text-amber-950">Active Production Detected:</strong> Production entries have already been recorded for this Work Order.
+                    Saving will update the rolling schedule, route, mother hollow specs, and planned quantities under Admin override.
+                  </div>
+                </div>
+              )}
 
               {/* Notice for Master Campaign Plan */}
               {editingIsMaster && (
@@ -1749,6 +1823,189 @@ export default function RollingPlanForm() {
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
                 >
                   {editSaving ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Delete Confirmation Modal */}
+      {deletingPlan && (() => {
+        let isMaster = false;
+        let isChild = false;
+        let childOrders: any[] = [];
+        let masterPlanNo = '';
+        let masterWoNo = '';
+        try {
+          const parsed = typeof deletingPlan.status === 'string' ? JSON.parse(deletingPlan.status) : deletingPlan.status;
+          if (parsed?.is_master) {
+            isMaster = true;
+            childOrders = parsed.child_work_orders || [];
+          }
+          if (parsed?.is_child) {
+            isChild = true;
+            masterPlanNo = parsed.master_plan_no || '';
+            masterWoNo = parsed.master_wo_no || '';
+          }
+        } catch {}
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
+                    <Trash2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      {isMaster
+                        ? 'Delete Master Campaign Plan'
+                        : isChild
+                        ? 'Delete Linked Child Plan'
+                        : 'Delete Rolling Plan'}
+                    </h3>
+                    <div className="text-xs text-slate-500">
+                      Plan No: <span className="font-mono font-bold text-slate-800">{deletingPlan.plan_no}</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDeletingPlan(null)}
+                  disabled={isDeleting}
+                  className="rounded-lg p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Target Plan Summary */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Work Order:</span>
+                  <span className="font-bold text-slate-800 font-mono">{deletingPlan.work_order_no}</span>
+                </div>
+                {deletingPlan.customer_name && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Customer:</span>
+                    <span className="font-medium text-slate-800">{deletingPlan.customer_name}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Target Size & Grade:</span>
+                  <span className="font-mono text-slate-800">
+                    {deletingPlan.od} × {deletingPlan.wt} mm ({deletingPlan.grade || '—'})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Planned Quantity:</span>
+                  <span className="font-bold text-indigo-900 font-mono">
+                    {fmt(deletingPlan.planned_pcs)} PCS • {fmt(deletingPlan.planned_mtr)} m
+                  </span>
+                </div>
+              </div>
+
+              {/* Master Plan Cascade Warning */}
+              {isMaster && (
+                <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3 text-xs text-purple-900 space-y-2">
+                  <div className="flex items-center gap-1.5 font-bold text-purple-950">
+                    <AlertTriangle className="h-4 w-4 text-purple-700 shrink-0" />
+                    <span>Multi-WO Campaign Cascade Notice</span>
+                  </div>
+                  <p className="text-purple-900 leading-relaxed">
+                    This Master Plan coordinates a rolling campaign. Deleting this Master Plan will{' '}
+                    <strong className="font-semibold text-purple-950 underline">
+                      also delete all {childOrders.length} linked Child Work Order plans
+                    </strong>{' '}
+                    in this campaign.
+                  </p>
+                  {childOrders.length > 0 && (
+                    <div className="max-h-32 overflow-y-auto rounded-lg border border-purple-200/80 bg-white p-2 space-y-1">
+                      {childOrders.map((c: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between text-[11px] text-slate-700 py-0.5 border-b border-slate-100 last:border-0"
+                        >
+                          <span className="font-mono font-bold text-purple-950">{c.work_order_no}</span>
+                          <span className="text-slate-500">{c.size_od} × {c.size_wt} mm</span>
+                          <span className="font-mono font-semibold text-slate-800">{fmt(c.planned_pcs)} PCS</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-purple-800 font-medium">
+                    All {childOrders.length + 1} Work Orders will be automatically returned to &apos;Pending Plan&apos; status so they can be re-scheduled.
+                  </p>
+                </div>
+              )}
+
+              {/* Child Plan Notice */}
+              {isChild && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-950">
+                    <Info className="h-4 w-4 text-blue-700 shrink-0" />
+                    <span>Individual Child Plan Unlink & Delete</span>
+                  </div>
+                  <p className="text-blue-800 leading-relaxed">
+                    Deleting this Child Plan will return Work Order <strong className="font-semibold">{deletingPlan.work_order_no}</strong> to &apos;Pending Plan&apos;.
+                    The Master Campaign ({masterPlanNo || masterWoNo}) will automatically recalculate and rebalance its total PCS, MTR, and MT.
+                  </p>
+                </div>
+              )}
+
+              {/* Active Production Logs Checkbox */}
+              {!deletingPlan.can_modify && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 space-y-2">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                    <Lock className="h-4 w-4 text-amber-700 shrink-0" />
+                    <span>Production Logs Detected (Admin Override)</span>
+                  </div>
+                  <p className="text-amber-900 leading-relaxed">
+                    Production entries have already been logged for this Work Order. An Admin override is applied to permit this deletion.
+                  </p>
+                  <label className="flex items-start gap-2 rounded-lg border border-amber-300/80 bg-white p-2.5 cursor-pointer hover:bg-amber-50/50">
+                    <input
+                      type="checkbox"
+                      checked={deleteClearLogs}
+                      onChange={(e) => setDeleteClearLogs(e.target.checked)}
+                      className="mt-0.5 rounded border-amber-400 text-rose-600 focus:ring-rose-500"
+                    />
+                    <div>
+                      <strong className="block font-semibold text-amber-950">
+                        Also delete recorded production logs for these work orders
+                      </strong>
+                      <span className="block text-[11px] text-amber-800 font-normal mt-0.5">
+                        Clean reset: removes all recorded shift logs so work orders return to 0% progress. If unchecked, logs remain in history but unlinked.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {/* Modal Buttons */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isDeleting}
+                  onClick={() => setDeletingPlan(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={executeDeletePlan}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {isDeleting
+                    ? 'Deleting...'
+                    : isMaster
+                    ? 'Delete Master & All Child Plans'
+                    : 'Delete Rolling Plan'}
                 </Button>
               </div>
             </div>
