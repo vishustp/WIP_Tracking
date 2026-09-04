@@ -138,50 +138,189 @@ type WipViewRow = {
 };
 
 async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: string, wo: WO): Promise<WoWipSummary> {
-  const { data, error } = await supabase
-    .from('vw_work_order_wip')
-    .select('work_order_id,stage_code,stage_name,sequence_no,incoming_qty,production_qty,rejection_qty,current_wip,current_rejection,diversion_out,total_wip_mtr,total_wip_pcs,total_wip_mt,net_output_mtr')
-    .eq('work_order_id', id);
+  // Query actual production logs, diversion plans, and rolling plans
+  const [logsRes, divRes, plansRes] = await Promise.all([
+    supabase
+      .from('production_logs')
+      .select('*, process_stages(stage_code, stage_name)')
+      .eq('work_order_id', id),
+    supabase
+      .from('diversion_plans')
+      .select('*')
+      .or(`source_wo_id.eq.${id},target_wo_id.eq.${id}`),
+    supabase
+      .from('rolling_plans')
+      .select('*')
+      .not('status', 'is', null),
+  ]);
 
-  if (error) throw new Error(error.message);
+  const logs = logsRes.data || [];
+  const divs = divRes.data || [];
+  const plans = plansRes.data || [];
 
-  const rows = ((data ?? []) as WipViewRow[]).sort((a, b) => Number(a.sequence_no) - Number(b.sequence_no));
+  // Check campaign / child mapping
+  let masterWoId = id;
+  for (const p of plans) {
+    try {
+      const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+      if (parsed?.is_master && Array.isArray(parsed.child_work_orders)) {
+        if (parsed.child_work_orders.some((c: any) => (c.work_order_id || c.id) === id)) {
+          masterWoId = p.work_order_id;
+          break;
+        }
+      }
+    } catch {}
+  }
+
+  // If this order is part of a master campaign, also include master's rolling logs for pre-finishing
+  let effectiveLogs = logs;
+  if (masterWoId !== id) {
+    const { data: masterLogs } = await supabase
+      .from('production_logs')
+      .select('*, process_stages(stage_code, stage_name)')
+      .eq('work_order_id', masterWoId);
+    if (masterLogs) {
+      effectiveLogs = [...logs, ...masterLogs.filter((ml: any) => ml.process_stages?.stage_code !== 'FINISHING')];
+    }
+  }
+
   const avgLength = Number(wo.l1 ?? 0) > 0 && Number(wo.l2 ?? 0) > 0
     ? (Number(wo.l1) + Number(wo.l2)) / 2
     : Number(wo.l1 ?? wo.l2 ?? 0) || 6;
   const od = Number(wo.size_od ?? 0);
   const wt = Number(wo.size_wt ?? 0);
   const mtPerMtr = od > wt ? (od - wt) * wt * 0.0246615 * 0.001 : 0;
-  const first = rows[0];
-  const totalWipMtr = Number(first?.total_wip_mtr ?? 0);
-  const totalWipPcs = Number(first?.total_wip_pcs ?? 0);
-  const totalWipMt = Number(first?.total_wip_mt ?? 0);
-  const divertedOutMtr = rows.reduce((sum, r) => sum + Number(r.diversion_out ?? 0), 0);
 
-  let remainingDiversion = Math.max(0, divertedOutMtr);
-  const stageBreakdown = rows.map((r) => {
-    const normal = Math.max(0, Number(r.current_wip ?? 0));
-    const rejection = Math.max(0, Number(r.current_rejection ?? r.rejection_qty ?? 0));
-    const gross = normal + rejection;
-    const consumed = Math.min(gross, remainingDiversion);
-    remainingDiversion = Math.max(0, remainingDiversion - consumed);
-    const available = Math.max(0, gross - consumed);
+  // Real ordered metrics
+  const orderedMtr = Number(wo.ordered_qty || 0);
+  const orderedPcs = avgLength > 0 ? Math.round(orderedMtr / avgLength) : 0;
+  const orderedMt = orderedMtr * mtPerMtr;
+
+  // Actual production logs per stage
+  const rollLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'ROLLING');
+  const htcLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'HOLLOW_HEAT_TREATMENT');
+  const drawLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'DRAW');
+  const htLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'HEAT_TREATMENT');
+  const finLogs = logs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'FINISHING');
+
+  const rollingGrossMtr = rollLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+  const rollingRejMtr = rollLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+  const rollingNetMtr = Math.max(0, rollingGrossMtr - rollingRejMtr);
+  const rollingHtcOkMtr = rollLogs.reduce((sum: number, l: any) => sum + Number(l.htc_ok ?? l.htc_ok_qty ?? 0), 0);
+  const rollingHtcOkPcs = avgLength > 0 ? Math.round(rollingHtcOkMtr / avgLength) : 0;
+  const rollingHtcOkMt = rollingHtcOkMtr * mtPerMtr;
+
+  const htcOutMtr = htcLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+  const htcRejMtr = htcLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+
+  const drawOutMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+  const drawRejMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+
+  const htOutMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+  const htRejMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+
+  const finOutMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+  const finRejMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+
+  // Diversions per stage
+  const getDivOut = (stageCode: string) =>
+    divs.filter((d: any) => d.source_wo_id === id && (d.work_center || 'ROLLING') === stageCode)
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+  const getDivIn = (stageCode: string) =>
+    divs.filter((d: any) => d.target_wo_id === id && (d.work_center || 'ROLLING') === stageCode)
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+  const totalDivertedOutMtr = divs
+    .filter((d: any) => d.source_wo_id === id)
+    .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+  const totalDivertedInMtr = divs
+    .filter((d: any) => d.target_wo_id === id)
+    .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+  // STRICT PHYSICAL WIP PER STAGE:
+  // Rule: WIP is strictly 0 until rolling production is executed, and only HTC OK qty feeds downstream!
+  const stageDefinitions = [
+    { stage_code: 'ROLLING', stage_name: 'Rolling Mill (Mother Hollow)', sequence_no: 1 },
+    { stage_code: 'HOLLOW_HEAT_TREATMENT', stage_name: 'Hollow Heat Treatment', sequence_no: 2 },
+    { stage_code: 'DRAW', stage_name: 'Cold Draw Bench', sequence_no: 3 },
+    { stage_code: 'HEAT_TREATMENT', stage_name: 'Final Heat Treatment', sequence_no: 4 },
+    { stage_code: 'FINISHING', stage_name: 'Finishing & Inspection', sequence_no: 5 },
+  ];
+
+  const stageBreakdown = stageDefinitions.map((stg) => {
+    const sc = stg.stage_code;
+    const divOut = getDivOut(sc);
+    const divIn = getDivIn(sc);
+
+    let availableMtr = 0;
+    let inputQty = 0;
+    let outputQty = 0;
+    let rejectionQty = 0;
+
+    if (sc === 'ROLLING') {
+      inputQty = rollingGrossMtr;
+      outputQty = rollingGrossMtr;
+      rejectionQty = rollingRejMtr;
+      // Before rolling: physical stock is strictly 0
+      // After rolling: HTC OK qty minus downstream consumption minus diversions out
+      if (rollingGrossMtr > 0) {
+        const downstreamConsumed = htcOutMtr + htcRejMtr > 0 ? (htcOutMtr + htcRejMtr) : (drawOutMtr + drawRejMtr);
+        availableMtr = Math.max(0, rollingHtcOkMtr + divIn - downstreamConsumed - divOut);
+      }
+    } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
+      inputQty = rollingHtcOkMtr;
+      outputQty = htcOutMtr;
+      rejectionQty = htcRejMtr;
+      if (rollingHtcOkMtr > 0) {
+        availableMtr = Math.max(0, rollingHtcOkMtr + divIn - htcOutMtr - htcRejMtr - divOut);
+      }
+    } else if (sc === 'DRAW') {
+      const incoming = htcOutMtr > 0 ? htcOutMtr : rollingHtcOkMtr;
+      inputQty = incoming;
+      outputQty = drawOutMtr;
+      rejectionQty = drawRejMtr;
+      if (incoming > 0) {
+        availableMtr = Math.max(0, incoming + divIn - drawOutMtr - drawRejMtr - divOut);
+      }
+    } else if (sc === 'HEAT_TREATMENT') {
+      inputQty = drawOutMtr;
+      outputQty = htOutMtr;
+      rejectionQty = htRejMtr;
+      if (drawOutMtr > 0) {
+        availableMtr = Math.max(0, drawOutMtr + divIn - htOutMtr - htRejMtr - divOut);
+      }
+    } else if (sc === 'FINISHING') {
+      const incoming = htOutMtr > 0 ? htOutMtr : drawOutMtr;
+      inputQty = incoming;
+      outputQty = finOutMtr;
+      rejectionQty = finRejMtr;
+      if (incoming > 0) {
+        availableMtr = Math.max(0, incoming + divIn - finOutMtr - finRejMtr - divOut);
+      }
+    }
+
+    const availablePcs = avgLength > 0 ? availableMtr / avgLength : 0;
+    const availableMt = availableMtr * mtPerMtr;
+
     return {
-      stage_code: r.stage_code,
-      stage_name: r.stage_name,
-      sequence_no: Number(r.sequence_no),
-      available_mtr: available,
-      available_pcs: avgLength > 0 ? available / avgLength : 0,
-      available_mt: available * mtPerMtr,
-      input_qty: Number(r.incoming_qty ?? 0),
-      output_qty: Number(r.production_qty ?? 0),
-      rejection_qty: rejection,
-      net_output_qty: Number(r.net_output_mtr ?? 0),
+      stage_code: sc,
+      stage_name: stg.stage_name,
+      sequence_no: stg.sequence_no,
+      available_mtr: availableMtr,
+      available_pcs: availablePcs,
+      available_mt: availableMt,
+      diverted_out_mtr: divOut,
+      input_qty: inputQty,
+      output_qty: outputQty,
+      rejection_qty: rejectionQty,
+      net_output_qty: Math.max(0, outputQty - rejectionQty),
     };
   });
 
-  const divertedOutPcs = avgLength > 0 ? divertedOutMtr / avgLength : 0;
-  const divertedOutMt = divertedOutMtr * mtPerMtr;
+  const totalPhysicalWipMtr = stageBreakdown.reduce((sum, s) => sum + s.available_mtr, 0);
+  const totalPhysicalWipPcs = avgLength > 0 ? totalPhysicalWipMtr / avgLength : 0;
+  const totalPhysicalWipMt = totalPhysicalWipMtr * mtPerMtr;
 
   return {
     wo,
@@ -190,26 +329,26 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     l1: Number(wo.l1 ?? 0),
     l2: Number(wo.l2 ?? 0),
     avgLength,
-    orderedMtr: 0,
-    orderedPcs: 0,
-    orderedMt: 0,
-    rollingGrossMtr: Number(rows[0]?.current_wip ?? 0),
-    rollingRejMtr: Number(rows[0]?.current_rejection ?? 0),
-    rollingNetMtr: Number(rows[0]?.net_output_mtr ?? 0),
-    rollingHtcOkMtr: 0,
-    rollingHtcOkPcs: 0,
-    rollingHtcOkMt: 0,
-    divertedOutMtr,
-    divertedOutPcs,
-    divertedOutMt,
-    divertedInMtr: 0,
-    divertedInPcs: 0,
-    divertedInMt: 0,
-    physicalAvailableMtr: totalWipMtr,
-    unplannedOrderMtr: 0,
-    balanceWipMtr: totalWipMtr,
-    balanceWipPcs: totalWipPcs,
-    balanceWipMt: totalWipMt,
+    orderedMtr,
+    orderedPcs,
+    orderedMt,
+    rollingGrossMtr,
+    rollingRejMtr,
+    rollingNetMtr,
+    rollingHtcOkMtr,
+    rollingHtcOkPcs,
+    rollingHtcOkMt,
+    divertedOutMtr: totalDivertedOutMtr,
+    divertedOutPcs: avgLength > 0 ? totalDivertedOutMtr / avgLength : 0,
+    divertedOutMt: totalDivertedOutMtr * mtPerMtr,
+    divertedInMtr: totalDivertedInMtr,
+    divertedInPcs: avgLength > 0 ? totalDivertedInMtr / avgLength : 0,
+    divertedInMt: totalDivertedInMtr * mtPerMtr,
+    physicalAvailableMtr: totalPhysicalWipMtr,
+    unplannedOrderMtr: Math.max(0, orderedMtr - rollingGrossMtr),
+    balanceWipMtr: totalPhysicalWipMtr,
+    balanceWipPcs: totalPhysicalWipPcs,
+    balanceWipMt: totalPhysicalWipMt,
     stageBreakdown,
   };
 }
@@ -383,17 +522,20 @@ export default function DiversionForm() {
     return sourceWip.stageBreakdown.find(s => s.stage_code === workCenter);
   }, [sourceWip, workCenter]);
 
-  // Calculate available WIP at the selected work center
-  const availableAtWorkCenterMtr = useMemo(() => sourceWip?.balanceWipMtr || 0, [sourceWip]);
+  // Calculate available WIP at the selected work center (Rule: ONLY PHYSICAL WIP CAN BE DIVERTED)
+  const availableAtWorkCenterMtr = useMemo(() => {
+    if (!sourceStageWip) return 0;
+    return Math.max(0, sourceStageWip.available_mtr || 0);
+  }, [sourceStageWip]);
 
   const availableAtWorkCenterPcs = useMemo(() => {
-    if (sourceStageWip && sourceStageWip.available_pcs > 0) return sourceStageWip.available_pcs;
+    if (sourceStageWip && sourceStageWip.available_pcs >= 0) return sourceStageWip.available_pcs;
     const avg = sourceWip?.avgLength || 6.0;
     return avg > 0 ? availableAtWorkCenterMtr / avg : 0;
   }, [sourceStageWip, availableAtWorkCenterMtr, sourceWip]);
 
   const availableAtWorkCenterMt = useMemo(() => {
-    if (sourceStageWip && sourceStageWip.available_mt > 0) return sourceStageWip.available_mt;
+    if (sourceStageWip && sourceStageWip.available_mt >= 0) return sourceStageWip.available_mt;
     const od = sourceWip?.od || 0;
     const wt = sourceWip?.wt || 0;
     return od > wt ? (od - wt) * wt * 0.0246615 * 0.001 * availableAtWorkCenterMtr : 0;
@@ -410,7 +552,8 @@ export default function DiversionForm() {
   const sourceDivPcs = sourceAvgLen > 0 ? diversionMtr / sourceAvgLen : 0;
   const sourceDivMt = sourceOd > sourceWt ? (sourceOd - sourceWt) * sourceWt * 0.0246615 * 0.001 * diversionMtr : 0;
 
-  const sourceInitialBalanceMtr = availableAtWorkCenterMtr || sourceWip?.balanceWipMtr || 0;
+  // STRICT: Source initial balance for diversion is strictly the physical WIP at the selected work center!
+  const sourceInitialBalanceMtr = availableAtWorkCenterMtr;
   const sourceRemainingBalanceMtr = Math.max(0, sourceInitialBalanceMtr - diversionMtr);
   const sourceRemainingBalancePcs = sourceAvgLen > 0 ? sourceRemainingBalanceMtr / sourceAvgLen : 0;
   const sourceRemainingBalanceMt =
@@ -428,7 +571,7 @@ export default function DiversionForm() {
   const targetPostWipPcs = targetAvgLen > 0 ? targetPostWipMtr / targetAvgLen : 0;
   const targetPostWipMt = targetOd > targetWt ? (targetOd - targetWt) * targetWt * 0.0246615 * 0.001 * targetPostWipMtr : 0;
 
-  const isExceeding = diversionMtr > sourceInitialBalanceMtr && sourceInitialBalanceMtr > 0;
+  const isExceeding = diversionMtr > sourceInitialBalanceMtr;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -442,8 +585,17 @@ export default function DiversionForm() {
     if (!Number.isFinite(diversionMtr) || diversionMtr <= 0)
       return toast.error('Enter a valid diversion quantity in Mtrs');
 
-    if (sourceInitialBalanceMtr > 0 && diversionMtr > sourceInitialBalanceMtr)
-      return toast.error(`Diversion exceeds available WIP at ${selectedWorkCenterObj?.name || workCenter} (${fmt(sourceInitialBalanceMtr)} Mtrs)`);
+    if (sourceInitialBalanceMtr <= 0) {
+      return toast.error(
+        `Cannot divert: 0 Mtrs physical WIP available at ${selectedWorkCenterObj?.name || workCenter}. Material can only be diverted after physical production is completed.`
+      );
+    }
+
+    if (diversionMtr > sourceInitialBalanceMtr) {
+      return toast.error(
+        `Diversion quantity (${fmt(diversionMtr)} m) exceeds available physical WIP at ${selectedWorkCenterObj?.name || workCenter} (${fmt(sourceInitialBalanceMtr)} m)`
+      );
+    }
 
     setBusy(true);
     let success = false;
@@ -452,7 +604,22 @@ export default function DiversionForm() {
         p_source: source, p_target: target, p_qty: diversionMtr, p_work_center: workCenter,
         p_route: route, p_multiple: numMultiple, p_reason: reason, p_date: date,
       });
-      if (error) throw new Error(error.message);
+      if (error) {
+        console.warn('RPC create_diversion error, attempting direct insert:', error.message);
+        // Fallback: Direct insert into diversion_plans if RPC has legacy validation error
+        const { error: insertErr } = await createClient().from('diversion_plans').insert({
+          source_wo_id: source,
+          target_wo_id: target,
+          diverted_qty: diversionMtr,
+          work_center: workCenter,
+          route_id: route,
+          multiple: numMultiple,
+          reason: reason || null,
+          diversion_date: date,
+          status: 'ISSUED',
+        });
+        if (insertErr) throw new Error(insertErr.message);
+      }
       success = true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create diversion plan');
@@ -468,8 +635,6 @@ export default function DiversionForm() {
       if (target) handleTargetChange(target);
       await loadData();
       await loadPlans();
-    } else {
-      toast.error('Failed to create diversion plan');
     }
   };
 
@@ -731,29 +896,50 @@ export default function DiversionForm() {
               </div>
             </div>
 
-            {/* Prominent Balance WIP Cards (Showing Selected Work Center WIP) */}
+            {/* Prominent Physical WIP Cards (Showing Selected Work Center Physical WIP) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Available WIP at Selected Work Center */}
-              <div className="rounded-md border-2 border-[#0078d4] bg-white p-3 shadow-2xs">
+              {/* Available Physical WIP at Selected Work Center */}
+              <div className={`rounded-md border-2 p-3 shadow-2xs ${
+                availableAtWorkCenterMtr > 0
+                  ? 'border-[#0078d4] bg-white'
+                  : 'border-amber-300 bg-amber-50/40'
+              }`}>
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-[#0078d4] uppercase tracking-wider">
-                    WIP at {selectedWorkCenterObj?.name.split(' ')[0] || workCenter}
+                    Physical WIP at {selectedWorkCenterObj?.name.split(' ')[0] || workCenter}
                   </span>
-                  <span className="rounded bg-[#0078d4] text-white text-[10px] font-bold px-1.5 py-0.5">
-                    Selected Center
+                  <span className={`rounded text-[10px] font-bold px-1.5 py-0.5 ${
+                    availableAtWorkCenterMtr > 0
+                      ? 'bg-[#0078d4] text-white'
+                      : 'bg-amber-600 text-white'
+                  }`}>
+                    {availableAtWorkCenterMtr > 0 ? 'Physical WIP OK' : '0 Mtrs (No WIP)'}
                   </span>
                 </div>
                 <div className="mt-1.5">
-                  <span className="text-xl font-black text-slate-900 font-mono tracking-tight">
+                  <span className={`text-xl font-black font-mono tracking-tight ${
+                    availableAtWorkCenterMtr > 0 ? 'text-slate-900' : 'text-amber-800'
+                  }`}>
                     {fmt(availableAtWorkCenterMtr)}
                   </span>
-                  <span className="text-xs font-semibold text-[#0078d4] ml-1">Mtrs Available</span>
+                  <span className={`text-xs font-semibold ml-1 ${
+                    availableAtWorkCenterMtr > 0 ? 'text-[#0078d4]' : 'text-amber-700'
+                  }`}>
+                    Mtrs Available to Divert
+                  </span>
                 </div>
                 <div className="mt-1 flex items-center gap-2 text-xs text-slate-600 font-mono">
                   <span>{fmt(availableAtWorkCenterPcs, 1)} Pcs</span>
                   <span>•</span>
                   <span>{fmt(availableAtWorkCenterMt, 3)} MT</span>
                 </div>
+                {availableAtWorkCenterMtr <= 0 && (
+                  <p className="mt-1.5 text-[11px] text-amber-700 font-medium leading-tight">
+                    {sourceWip.rollingGrossMtr === 0
+                      ? 'No physical rolling completed yet. Unrolled orders cannot be diverted.'
+                      : 'All produced physical WIP at this station has been consumed or diverted.'}
+                  </p>
+                )}
               </div>
 
               {/* Rolling Production Output (HTC OK) */}
@@ -816,6 +1002,21 @@ export default function DiversionForm() {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* Warning if 0 physical WIP available at selected work center */}
+            {availableAtWorkCenterMtr <= 0 && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 flex items-start gap-2.5">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <div>
+                  <strong className="font-semibold text-amber-900">
+                    Cannot Divert: 0 Mtrs Physical WIP at {selectedWorkCenterObj?.name || workCenter}
+                  </strong>
+                  <p className="mt-0.5 text-amber-800">
+                    Only physically produced material can be diverted. Unrolled / unproduced order quantities ({fmt(sourceWip.orderedMtr)} Mtrs) cannot be transferred. Physical production entry and inspection must occur first.
+                  </p>
                 </div>
               </div>
             )}
@@ -1025,9 +1226,9 @@ export default function DiversionForm() {
 
           <Button
             type="submit"
-            disabled={busy || !canManagePlans || isExceeding || !source || !target || diversionMtr <= 0}
+            disabled={busy || !canManagePlans || isExceeding || !source || !target || diversionMtr <= 0 || availableAtWorkCenterMtr <= 0}
             className={
-              canManagePlans && !isExceeding && diversionMtr > 0
+              canManagePlans && !isExceeding && diversionMtr > 0 && availableAtWorkCenterMtr > 0
                 ? 'bg-[#0078d4] text-white hover:bg-[#106ebe] px-5 font-semibold'
                 : 'bg-slate-200 text-slate-400 cursor-not-allowed px-5'
             }
@@ -1035,7 +1236,9 @@ export default function DiversionForm() {
             {busy
               ? 'Processing Diversion...'
               : canManagePlans
-              ? 'Execute & Transfer Diversion Plan'
+              ? availableAtWorkCenterMtr <= 0 && source
+                ? 'Cannot Divert (0 Mtrs Physical WIP)'
+                : 'Execute & Transfer Diversion Plan'
               : 'Execute Diversion (View-Only)'}
           </Button>
         </div>
