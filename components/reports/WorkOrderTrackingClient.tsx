@@ -57,6 +57,7 @@ interface RollingPlan {
   mh_l1: number | null;
   mh_l2: number | null;
   created_at: string;
+  rolling_date?: string | null;
 }
 
 interface StageWipRow {
@@ -339,7 +340,7 @@ export default function WorkOrderTrackingClient() {
         if (wip <= 0) return { dwellDays: 0, agingSeverity: 'NORMAL' as const };
         const logDate = logs[0]?.shift_date || logs[0]?.created_at?.slice(0, 10);
         const upDate = upstreamLogs[0]?.shift_date || upstreamLogs[0]?.created_at?.slice(0, 10);
-        const planDate = plan?.rolling_date || wo.created_at?.slice(0, 10);
+        const planDate = plan?.rolling_date || plan?.created_at?.slice(0, 10) || wo.created_at?.slice(0, 10);
         const actDateStr = logDate || upDate || planDate;
         if (!actDateStr) return { dwellDays: 0, agingSeverity: 'NORMAL' as const };
         const days = Math.max(0, Math.floor((todayTime - new Date(actDateStr).getTime()) / (1000 * 60 * 60 * 24)));
