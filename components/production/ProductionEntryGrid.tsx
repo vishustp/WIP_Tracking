@@ -100,11 +100,34 @@ export default function ProductionEntryGrid() {
   );
 
   const [factoryWip, setFactoryWip] = useState<any[]>([]);
+  const [childWoIds, setChildWoIds] = useState<Set<string>>(new Set());
 
   const loadFactoryWip = useCallback(async () => {
     try {
-      const { data } = await supabase.from("vw_route_stage_wip").select("*");
-      if (data) setFactoryWip(data);
+      const [wipRes, plansRes] = await Promise.all([
+        supabase.from("vw_route_stage_wip").select("*"),
+        supabase.from("rolling_plans").select("status, work_order_id").not("status", "is", null),
+      ]);
+      if (wipRes.data) setFactoryWip(wipRes.data);
+      if (plansRes.data) {
+        const cIds = new Set<string>();
+        for (const p of plansRes.data) {
+          try {
+            const parsed = typeof p.status === "string" ? JSON.parse(p.status) : p.status;
+            if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
+              for (const c of parsed.child_work_orders) {
+                if (c.work_order_id) cIds.add(c.work_order_id);
+                if (c.id) cIds.add(c.id);
+              }
+            } else if (parsed?.is_child && p.work_order_id) {
+              cIds.add(p.work_order_id);
+            }
+          } catch {
+            // ignore JSON parse error
+          }
+        }
+        setChildWoIds(cIds);
+      }
     } catch {
       // ignore
     }
@@ -217,6 +240,12 @@ export default function ProductionEntryGrid() {
       factoryWip.forEach((w) => {
         const sc = resolveStageCode(w);
         if (sc && summary[sc]) {
+          // Rule 2: In pre-finishing stages (ROLLING, HOLLOW_HEAT_TREATMENT, DRAW, HEAT_TREATMENT),
+          // child work orders are bundled under the master campaign. Do not double count them!
+          if (sc !== "FINISHING" && childWoIds.has(w.work_order_id)) {
+            return;
+          }
+
           const mtr = Number(w.current_wip ?? w.available_mtr ?? 0);
           let pcs = Number(w.current_wip_pcs ?? w.available_pcs ?? 0);
           const avgLen = Number(w.avg_length || 6.0);
@@ -246,6 +275,9 @@ export default function ProductionEntryGrid() {
           r.work_centers_wip.forEach((w) => {
             const sc = resolveStageCode(w);
             if (sc && summary[sc]) {
+              if (sc !== "FINISHING" && childWoIds.has(r.work_order_id)) {
+                return;
+              }
               const mtr = Number(w.available_mtr || 0);
               const pcs = Number(w.available_pcs || 0);
               const isRoll = sc === "ROLLING";
@@ -263,6 +295,9 @@ export default function ProductionEntryGrid() {
         } else {
           const sc = resolveStageCode({ stage_code: r.stage_code || stage });
           if (sc && summary[sc] && !hasFactoryData) {
+            if (sc !== "FINISHING" && childWoIds.has(r.work_order_id)) {
+              return;
+            }
             const mtr = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
             const pcs = Number(r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0);
             const isRoll = sc === "ROLLING";
@@ -277,7 +312,7 @@ export default function ProductionEntryGrid() {
         }
       });
 
-      // Guarantee the active selected stage card at least shows what is displayed in the active queue table
+      // Guarantee the active selected stage card matches the active queue table exactly
       const activeSc = resolveStageCode({ stage_code: stage });
       if (activeSc && summary[activeSc]) {
         const queueTotalMtr = rows.reduce((sum, r) => sum + Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0), 0);
@@ -290,17 +325,15 @@ export default function ProductionEntryGrid() {
           return sum + mtFromMtr(mtrVal, od, wt);
         }, 0);
 
-        if (queueTotalMtr > summary[activeSc].availMtr || queueTotalPcs > summary[activeSc].availPcs) {
-          summary[activeSc].availMtr = Math.max(summary[activeSc].availMtr, queueTotalMtr);
-          summary[activeSc].availPcs = Math.max(summary[activeSc].availPcs, queueTotalPcs);
-          summary[activeSc].availMt = Math.max(summary[activeSc].availMt, queueTotalMt);
-          summary[activeSc].count = Math.max(summary[activeSc].count, rows.length);
-        }
+        summary[activeSc].availMtr = queueTotalMtr;
+        summary[activeSc].availPcs = queueTotalPcs;
+        summary[activeSc].availMt = queueTotalMt;
+        summary[activeSc].count = rows.length;
       }
     }
 
     return Object.values(summary);
-  }, [factoryWip, rows, stage]);
+  }, [factoryWip, rows, stage, childWoIds]);
 
   // --- Batch save (atomic) ---
   async function save() {
