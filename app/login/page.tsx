@@ -117,28 +117,7 @@ export default function LoginPage() {
             <p className="text-sm text-slate-400 mt-0.5">Use the email and password assigned in Supabase Auth.</p>
           </div>
 
-          <div className="rounded-xl bg-slate-900/70 border border-slate-800/90 p-3.5 flex items-center justify-between gap-3 text-xs">
-            <div>
-              <div className="text-slate-300 font-semibold flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-                <span>Default Admin Login</span>
-              </div>
-              <div className="text-slate-400 font-mono mt-0.5 text-[11px]">vshlmshr@gmail.com</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setEmail('vshlmshr@gmail.com');
-                setPassword('AdminPassword123!');
-                if (errorMessage) setErrorMessage(null);
-              }}
-              className="px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 border border-blue-500/30 font-medium transition-colors cursor-pointer text-xs shrink-0"
-            >
-              Fill Credentials
-            </button>
-          </div>
-
-          {errorMessage && (
+                   {errorMessage && (
             <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
