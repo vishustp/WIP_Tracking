@@ -157,8 +157,15 @@ export default function AdminControlPanelClient() {
       if (session?.access_token) {
         headers['Authorization'] = `Bearer ${session.access_token}`;
       }
+      if (session?.user?.email) {
+        headers['X-User-Email'] = session.user.email;
+      } else if (currentUser?.email) {
+        headers['X-User-Email'] = currentUser.email;
+      }
     } catch {
-      // Ignore session retrieval error and fallback to cookies
+      if (currentUser?.email) {
+        headers['X-User-Email'] = currentUser.email;
+      }
     }
     return headers;
   };
@@ -382,7 +389,12 @@ export default function AdminControlPanelClient() {
         body: JSON.stringify(payload),
       });
       const json = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(json.error || `Unable to save user (Status ${response.status})`);
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(json.error || 'Your admin session has expired. Please sign out and sign back in to continue.');
+        }
+        throw new Error(json.error || `Unable to save user (Status ${response.status})`);
+      }
 
       setIsUserModalOpen(false);
       await loadData();

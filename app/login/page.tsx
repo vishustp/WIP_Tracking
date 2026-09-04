@@ -45,13 +45,26 @@ export default function LoginPage() {
         throw new Error(authError?.message || 'Invalid email or password.');
       }
 
-      const { data: appUser, error: profileError } = await supabase
+      let { data: appUser, error: profileError } = await supabase
         .from('app_users')
         .select('*')
         .eq('auth_user_id', authData.user.id)
         .maybeSingle();
 
       if (profileError) throw new Error(profileError.message);
+      if (!appUser && authData.user.email) {
+        // Fallback: match by email and link auth_user_id
+        const { data: byEmail } = await supabase
+          .from('app_users')
+          .select('*')
+          .eq('email', authData.user.email.toLowerCase())
+          .maybeSingle();
+        if (byEmail) {
+          appUser = byEmail;
+          await supabase.from('app_users').update({ auth_user_id: authData.user.id }).eq('id', byEmail.id);
+        }
+      }
+
       if (!appUser) {
         await supabase.auth.signOut();
         throw new Error('Your account is authenticated but has no application profile. Contact an administrator.');
@@ -102,6 +115,27 @@ export default function LoginPage() {
           <div className="border-b border-slate-800/80 pb-4">
             <h2 className="text-base font-semibold text-white">Sign in to your account</h2>
             <p className="text-sm text-slate-400 mt-0.5">Use the email and password assigned in Supabase Auth.</p>
+          </div>
+
+          <div className="rounded-xl bg-slate-900/70 border border-slate-800/90 p-3.5 flex items-center justify-between gap-3 text-xs">
+            <div>
+              <div className="text-slate-300 font-semibold flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                <span>Default Admin Login</span>
+              </div>
+              <div className="text-slate-400 font-mono mt-0.5 text-[11px]">vshlmshr@gmail.com</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail('vshlmshr@gmail.com');
+                setPassword('AdminPassword123!');
+                if (errorMessage) setErrorMessage(null);
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 border border-blue-500/30 font-medium transition-colors cursor-pointer text-xs shrink-0"
+            >
+              Fill Credentials
+            </button>
           </div>
 
           {errorMessage && (

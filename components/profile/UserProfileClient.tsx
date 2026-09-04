@@ -163,7 +163,16 @@ export default function UserProfileClient() {
         if (session?.access_token) {
           authHeaders['Authorization'] = `Bearer ${session.access_token}`;
         }
-      } catch {}
+        if (session?.user?.email) {
+          authHeaders['X-User-Email'] = session.user.email;
+        } else if (currentUser?.email) {
+          authHeaders['X-User-Email'] = currentUser.email;
+        }
+      } catch {
+        if (currentUser?.email) {
+          authHeaders['X-User-Email'] = currentUser.email;
+        }
+      }
 
       const res = await fetch('/api/admin/users', {
         method: 'PUT',
