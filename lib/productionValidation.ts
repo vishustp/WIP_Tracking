@@ -98,9 +98,13 @@ export function validateProductionEntry(
     });
   } else if (allowed > 0 && d.mtr > allowed + 0.0001) {
     if (stage === "ROLLING") {
+      const planDesc =
+        row.is_master && (row.campaign_total_mtr || 0) > 0
+          ? `Total Campaign Plan for Master + Child Orders (${fmt(row.campaign_total_mtr, " MTR")})`
+          : `Plan (${fmt(row.balance_to_make_mtr || 0, " MTR")})`;
       errors.push({
         workOrder: row.work_order_no,
-        message: `Rolling Production (${fmt(d.mtr, " MTR")}) exceeds maximum allowed 110% of Plan (${fmt(allowed, " MTR")}).`,
+        message: `Rolling Production (${fmt(d.mtr, " MTR")}) exceeds maximum allowed 110% capping of ${planDesc}, max capping is ${fmt(allowed, " MTR")}.`,
       });
     } else if (stage === "HOLLOW_HEAT_TREATMENT") {
       errors.push({

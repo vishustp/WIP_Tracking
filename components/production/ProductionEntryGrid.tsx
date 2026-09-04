@@ -271,8 +271,8 @@ export default function ProductionEntryGrid() {
         } else {
           const sc = resolveStageCode({ stage_code: r.stage_code || stage });
           if (sc && summary[sc] && !hasFactoryData) {
-            const mtr = Number(r.max_allowed_mtr || r.balance_to_make_mtr || 0);
-            const pcs = Number(r.max_allowed_pcs || r.balance_to_make_pcs || 0);
+            const mtr = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
+            const pcs = Number(r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0);
             const isRoll = sc === "ROLLING";
             const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
             const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
@@ -288,13 +288,13 @@ export default function ProductionEntryGrid() {
       // Guarantee the active selected stage card at least shows what is displayed in the active queue table
       const activeSc = resolveStageCode({ stage_code: stage });
       if (activeSc && summary[activeSc]) {
-        const queueTotalMtr = rows.reduce((sum, r) => sum + Number(r.max_allowed_mtr || r.balance_to_make_mtr || 0), 0);
-        const queueTotalPcs = rows.reduce((sum, r) => sum + Number(r.max_allowed_pcs || r.balance_to_make_pcs || 0), 0);
+        const queueTotalMtr = rows.reduce((sum, r) => sum + Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0), 0);
+        const queueTotalPcs = rows.reduce((sum, r) => sum + Number(r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0), 0);
         const queueTotalMt = rows.reduce((sum, r) => {
           const isRoll = activeSc === "ROLLING";
           const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
           const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
-          const mtrVal = Number(r.max_allowed_mtr || r.balance_to_make_mtr || 0);
+          const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
           return sum + mtFromMtr(mtrVal, od, wt);
         }, 0);
 
@@ -970,13 +970,22 @@ export default function ProductionEntryGrid() {
                   const key = `${r.work_order_id}|${r.route_id}`;
                   const isExpanded = !!expandedRows[key];
                   const d = calc(r);
+                  const isRollingStage = stage === "ROLLING";
+                  const stageOd = isRollingStage && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
+                  const stageWt = isRollingStage && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+
+                  const availMtr = n(r.balance_to_make_mtr);
+                  const effAvg = d.avg > 0 ? d.avg : (n(r.avg_length) || 6);
+                  const availPcs = n(r.balance_to_make_pcs) > 0 ? n(r.balance_to_make_pcs) : (effAvg > 0 ? Math.round(availMtr / effAvg) : 0);
+                  const availMt = n(r.balance_to_make_mt) > 0 ? n(r.balance_to_make_mt) : mtFromMtr(availMtr, stageOd, stageWt);
+
                   const maxAllowed =
-                    n(r.max_allowed_mtr) > 0 ? n(r.max_allowed_mtr) : n(r.balance_to_make_mtr);
+                    n(r.max_allowed_mtr) > 0 ? n(r.max_allowed_mtr) : (isRollingStage ? availMtr * 1.1 : availMtr);
                   const maxAllowedPcs =
                     n(r.max_allowed_pcs) > 0
                       ? n(r.max_allowed_pcs)
-                      : d.avg > 0
-                      ? maxAllowed / d.avg
+                      : effAvg > 0
+                      ? Math.round(maxAllowed / effAvg)
                       : 0;
 
                   return (
@@ -1054,27 +1063,75 @@ export default function ProductionEntryGrid() {
 
                       {/* Available WIP & Capping */}
                       <td className="py-3 px-3 align-top">
-                        <div className="flex items-baseline gap-1 flex-wrap">
-                          <span className="font-bold text-slate-900 font-mono text-sm">
-                            {fmt(maxAllowedPcs)}
-                          </span>
-                          <span className="text-xs font-bold text-slate-500">PCS</span>
-                          <span className="text-slate-400">/</span>
-                          <span className="font-semibold text-slate-700 font-mono text-sm">
-                            {fmt(maxAllowed, " MTR")}
-                          </span>
-                          <span className="text-slate-400">/</span>
-                          <span className="font-semibold text-blue-700 font-mono text-sm">
-                            {fmt(
-                              mtFromMtr(
-                                maxAllowed,
-                                stage === "ROLLING" && r.mh_od ? r.mh_od : (r.od || 0),
-                                stage === "ROLLING" && r.mh_wt ? r.mh_wt : (r.wl || 0)
-                              ),
-                              " MT"
+                        {isRollingStage ? (
+                          <div className="space-y-1.5 min-w-[200px]">
+                            {/* Available WIP */}
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Available WIP
+                              </div>
+                              <div className="flex items-baseline gap-1 flex-wrap mt-0.5">
+                                <span className="font-bold text-slate-900 font-mono text-sm">
+                                  {fmt(availPcs)}
+                                </span>
+                                <span className="text-xs font-bold text-slate-500">PCS</span>
+                                <span className="text-slate-400">/</span>
+                                <span className="font-bold text-slate-800 font-mono text-sm">
+                                  {fmt(availMtr, " MTR")}
+                                </span>
+                                <span className="text-slate-400">/</span>
+                                <span className="font-semibold text-blue-700 font-mono text-xs">
+                                  {fmt(availMt, " MT")}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Capping (110% of Plan) */}
+                            <div className="pt-1 border-t border-slate-100 flex items-baseline gap-1 text-[11px] font-mono">
+                              <span
+                                className="font-semibold text-amber-800 bg-amber-50 rounded px-1 text-[10px]"
+                                title="Rolling max allowed production (110% of campaign plan)"
+                              >
+                                Capping (110%):
+                              </span>
+                              <span className="font-semibold text-slate-700">{fmt(maxAllowedPcs)} PCS</span>
+                              <span className="text-slate-400">/</span>
+                              <span className="font-semibold text-slate-700">{fmt(maxAllowed, " MTR")}</span>
+                            </div>
+
+                            {/* Total Campaign Plan (Master + Child Work Orders) */}
+                            {r.is_master && (r.campaign_total_mtr || 0) > 0 && (
+                              <div className="text-[10px] text-indigo-900 bg-indigo-50/90 border border-indigo-200/70 rounded px-1.5 py-0.5 font-medium flex items-center gap-1">
+                                <Crown size={11} className="text-indigo-600 shrink-0" />
+                                <span>
+                                  Master + {r.child_work_orders?.length || 0} Child Plan: <b>{fmt(r.campaign_total_pcs || 0)} PCS</b> · <b>{fmt(r.campaign_total_mtr, " MTR")}</b>
+                                </span>
+                              </div>
                             )}
-                          </span>
-                        </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-baseline gap-1 flex-wrap">
+                            <span className="font-bold text-slate-900 font-mono text-sm">
+                              {fmt(maxAllowedPcs)}
+                            </span>
+                            <span className="text-xs font-bold text-slate-500">PCS</span>
+                            <span className="text-slate-400">/</span>
+                            <span className="font-semibold text-slate-700 font-mono text-sm">
+                              {fmt(maxAllowed, " MTR")}
+                            </span>
+                            <span className="text-slate-400">/</span>
+                            <span className="font-semibold text-blue-700 font-mono text-sm">
+                              {fmt(
+                                mtFromMtr(
+                                  maxAllowed,
+                                  r.od || 0,
+                                  r.wl || 0
+                                ),
+                                " MT"
+                              )}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Production Inputs (PCS & MTR) */}
