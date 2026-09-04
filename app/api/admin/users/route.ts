@@ -202,9 +202,17 @@ export async function GET(request: NextRequest) {
 
     const enrichedUsers = usersData.map((u: any) => {
       const meta = authUsersMap.get(u.auth_user_id) || authUsersMap.get(u.email?.toLowerCase()) || {};
+      const name = u.employee_name || u.name || meta.full_name || '';
+      const empCode = u.employee_code || u.employee_id || meta.employee_code || '';
+      const uGroup = u.user_group || meta.user_group || (u.role === 'Admin' ? 'admin' : u.role === 'PPC' ? 'super_user' : 'user');
       return {
         ...u,
-        user_group: u.user_group || meta.user_group || (u.role === 'Admin' ? 'admin' : u.role === 'PPC' ? 'super_user' : 'user'),
+        name,
+        employee_name: name,
+        employee_id: empCode,
+        employee_code: empCode,
+        group: uGroup,
+        user_group: uGroup,
         role_title: u.role_title || meta.role_title || '',
         shift: u.shift || meta.shift || '',
         allowed_stages: u.allowed_stages || meta.allowed_stages || (u.work_center === 'ALL' ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'] : [u.work_center]),
@@ -380,6 +388,11 @@ export async function POST(request: NextRequest) {
     // Return merged user
     const finalUser = {
       ...appUser,
+      name: appUser?.employee_name || name,
+      employee_name: appUser?.employee_name || name,
+      employee_id: appUser?.employee_code || employeeCode,
+      employee_code: appUser?.employee_code || employeeCode,
+      group: userGroup,
       user_group: userGroup,
       role_title: roleTitle,
       shift,
@@ -538,8 +551,15 @@ export async function PUT(request: NextRequest) {
     }
 
     const { data } = await adminClient.from('app_users').select('*').eq('id', id).single();
+    const finalName = data?.employee_name || baseUpdate.employee_name || '';
+    const finalCode = data?.employee_code || baseUpdate.employee_code || '';
     const finalUser = {
       ...(data || {}),
+      name: finalName,
+      employee_name: finalName,
+      employee_id: finalCode,
+      employee_code: finalCode,
+      group: userGroup,
       user_group: userGroup,
       role_title: roleTitle,
       shift,

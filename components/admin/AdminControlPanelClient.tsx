@@ -63,9 +63,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color:
 ];
 
 function mapAppUserToMockUser(row: any): AppUserProfile {
-  if (row.allowed_stages && row.role_title) {
-    return row;
-  }
+  if (!row) return {} as AppUserProfile;
   const roleMap: Record<string, { role: UserRole; group: UserGroup; title: string }> = {
     Admin: { role: 'admin', group: 'admin', title: 'PPC Administrator' },
     PPC: { role: 'manager', group: 'super_user', title: 'Plant Operations Head' },
@@ -74,23 +72,28 @@ function mapAppUserToMockUser(row: any): AppUserProfile {
     Viewer: { role: 'auditor', group: 'user', title: 'Viewer' },
   };
   const mapped = roleMap[row.role] || roleMap.Viewer;
-  const wc = row.work_center || 'ALL';
+  const wc = String(row.work_center || 'ALL');
+  const name = String(row.name || row.employee_name || row.email || 'User');
+  const employeeId = String(row.employee_id || row.employee_code || '');
+
   return {
-    id: row.id,
-    email: row.email,
-    name: row.employee_name || row.name,
-    employee_id: row.employee_code || row.employee_id,
-    group: row.user_group || row.group || mapped.group,
-    role: row.role ? (roleMap[row.role]?.role || row.role) : mapped.role,
-    role_title: row.role_title || mapped.title,
-    department: row.department || '',
-    shift: row.shift || '',
+    id: String(row.id || ''),
+    email: String(row.email || ''),
+    name,
+    employee_id: employeeId,
+    group: (row.group || row.user_group || mapped.group) as UserGroup,
+    role: (row.role && roleMap[row.role] ? roleMap[row.role].role : row.role || mapped.role) as UserRole,
+    role_title: String(row.role_title || mapped.title),
+    department: String(row.department || ''),
+    shift: String(row.shift || ''),
     work_center: wc,
-    allowed_stages: row.allowed_stages || (wc === 'ALL' ? ['ROLLING','HOLLOW_HEAT_TREATMENT','DRAW','HEAT_TREATMENT','FINISHING'] : [wc]),
-    default_stage: row.default_stage || (wc === 'ALL' ? 'ROLLING' : wc),
-    phone: row.phone || '',
+    allowed_stages: Array.isArray(row.allowed_stages)
+      ? row.allowed_stages
+      : (wc === 'ALL' ? ['ROLLING','HOLLOW_HEAT_TREATMENT','DRAW','HEAT_TREATMENT','FINISHING'] : [wc]),
+    default_stage: String(row.default_stage || (wc === 'ALL' ? 'ROLLING' : wc)),
+    phone: String(row.phone || ''),
     active: row.active !== false,
-    created_at: row.created_at || new Date().toISOString(),
+    created_at: String(row.created_at || new Date().toISOString()),
   };
 }
 
@@ -256,15 +259,25 @@ export default function AdminControlPanelClient() {
 
   // Filtered users
   const filteredUsers = useMemo(() => {
+    const q = (userSearch ?? '').toLowerCase().trim();
     return users.filter(u => {
+      if (!u) return false;
       const matchRole = roleFilter === 'ALL' || u.role === roleFilter;
       const matchGroup = groupFilter === 'ALL' || (u.group || 'user') === groupFilter;
+      if (!q) return matchRole && matchGroup;
+
+      const name = String(u.name || (u as any).employee_name || '').toLowerCase();
+      const email = String(u.email || '').toLowerCase();
+      const empId = String(u.employee_id || (u as any).employee_code || '').toLowerCase();
+      const dept = String(u.department || '').toLowerCase();
+      const wc = String(u.work_center || '').toLowerCase();
+
       const matchSearch =
-        u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.employee_id.toLowerCase().includes(userSearch.toLowerCase()) ||
-        u.department.toLowerCase().includes(userSearch.toLowerCase()) ||
-        (u.work_center && u.work_center.toLowerCase().includes(userSearch.toLowerCase()));
+        name.includes(q) ||
+        email.includes(q) ||
+        empId.includes(q) ||
+        dept.includes(q) ||
+        wc.includes(q);
       return matchRole && matchGroup && matchSearch;
     });
   }, [users, roleFilter, groupFilter, userSearch]);
@@ -306,15 +319,17 @@ export default function AdminControlPanelClient() {
   const openEditUser = (user: AppUserProfile) => {
     setEditingUser(user);
     setShowPin(false);
+    const uName = user.name || (user as any).employee_name || '';
+    const uEmpId = user.employee_id || (user as any).employee_code || '';
     setFormData({
-      name: user.name,
-      email: user.email,
-      employee_id: user.employee_id,
+      name: uName,
+      email: user.email || '',
+      employee_id: uEmpId,
       group: user.group || (user.role === 'admin' ? 'admin' : user.role === 'manager' ? 'super_user' : 'user'),
       work_center: (user.work_center as WorkCenterCode) || (user.role === 'admin' || user.role === 'manager' ? 'ALL' : 'ROLLING'),
       role: user.role,
-      department: user.department,
-      shift: user.shift,
+      department: user.department || '',
+      shift: user.shift || '',
       default_stage: user.default_stage || 'ROLLING',
       phone: user.phone || '',
       pin: '',
@@ -425,7 +440,8 @@ export default function AdminControlPanelClient() {
       const json = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(json.error || 'Unable to change user status');
       await loadData();
-      toast.success(`${target.name} is now ${!target.active ? 'Active' : 'Disabled'}`);
+      const displayName = target.name || (target as any).employee_name || target.email || 'User';
+      toast.success(`${displayName} is now ${!target.active ? 'Active' : 'Disabled'}`);
     } catch (err: any) {
       toast.error(err?.message || 'Unable to change user status');
     }
@@ -441,7 +457,8 @@ export default function AdminControlPanelClient() {
       toast.error('Primary Administrator account cannot be deactivated.');
       return;
     }
-    if (!confirm(`Deactivate user ${user.name}? Historical WIP records will be preserved.`)) return;
+    const displayName = user.name || (user as any).employee_name || user.email || 'User';
+    if (!confirm(`Deactivate user ${displayName}? Historical WIP records will be preserved.`)) return;
 
     try {
       const authHeaders = await getAuthHeaders();
@@ -454,7 +471,7 @@ export default function AdminControlPanelClient() {
       const json = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(json.error || 'Unable to deactivate user');
       await loadData();
-      toast.success(`User ${user.name} deactivated`);
+      toast.success(`User ${displayName} deactivated`);
     } catch (err: any) {
       toast.error(err?.message || 'Unable to deactivate user');
     }
@@ -788,12 +805,12 @@ export default function AdminControlPanelClient() {
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
                               <div className={`h-8 w-8 rounded-lg flex items-center justify-center font-bold text-sm ${user.avatar_color || 'bg-slate-600 text-white'}`}>
-                                {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                {String(user.name || (user as any).employee_name || user.email || 'U').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                               </div>
                               <div>
-                                <div className="font-semibold text-slate-900">{user.name}</div>
+                                <div className="font-semibold text-slate-900">{user.name || (user as any).employee_name || user.email || 'Unnamed User'}</div>
                                 <div className="text-sm text-slate-500 flex items-center gap-2">
-                                  <span className="font-mono">{user.employee_id}</span>
+                                  <span className="font-mono">{user.employee_id || (user as any).employee_code || '—'}</span>
                                   <span>•</span>
                                   <span>{user.email}</span>
                                 </div>
