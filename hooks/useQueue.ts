@@ -17,30 +17,21 @@ export function useQueue(stage: StageCode) {
     try {
       const supabase = createClient();
 
-<<<<<<< HEAD
-      // 1. Fetch standard queue from database RPC and active plans
-      const [queueRes, plansRes] = await Promise.all([
-        supabase.rpc("get_production_entry_queue", { p_stage_code: s }),
-        supabase
-          .from("rolling_plans")
-          .select("id, plan_no, work_order_id, status, process_route_id, planned_qty")
-          .not("status", "is", null)
-          .order("created_at", { ascending: false })
-          .limit(250),
-=======
       // 1. Fetch standard queue, plans, process stages, and production logs
       const [queueRes, plansRes, stagesRes, logsRes] = await Promise.all([
         supabase.rpc("get_production_entry_queue", { p_stage_code: s }),
         supabase
           .from("rolling_plans")
-          .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2"),
+          .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2")
+          .not("status", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(250),
         supabase
           .from("process_stages")
           .select("id, stage_code"),
         supabase
           .from("production_logs")
           .select("work_order_id, stage_id, output_qty, rejection_qty"),
->>>>>>> 4837049f89ccbf17c732bedf2f92c9aadd9c00dd
       ]);
 
       if (queueRes.error) {
@@ -52,14 +43,11 @@ export function useQueue(stage: StageCode) {
 
       const rawRows: Row[] = (queueRes.data ?? []).map((r: any) => emptyRow(r));
       const plans = plansRes.data ?? [];
-<<<<<<< HEAD
-=======
       const stages = stagesRes.data ?? [];
       const logs = logsRes.data ?? [];
 
       const rollingStageId = stages.find((st: any) => st.stage_code === "ROLLING")?.id;
       const finishingStageId = stages.find((st: any) => st.stage_code === "FINISHING")?.id;
->>>>>>> 4837049f89ccbf17c732bedf2f92c9aadd9c00dd
 
       // Parse multi-WO campaigns from rolling plans
       const masterCampaignMap = new Map<string, any>(); // key: master_wo_id
