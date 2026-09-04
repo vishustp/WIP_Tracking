@@ -72,7 +72,7 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       const invalidRow: Row = { ...row, mtr: "560" };
       const errors = validateProductionEntry(invalidRow, "ROLLING");
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors[0].message).toContain("exceeds maximum allowed 110% of Plan");
+      expect(errors[0].message).toContain("exceeds maximum allowed 110% capping of Plan");
     });
 
     it("Rule 2: Draw production is capped at Rolling HTC OK", () => {
