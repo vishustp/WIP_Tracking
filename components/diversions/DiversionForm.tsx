@@ -1272,58 +1272,77 @@ export default function DiversionForm() {
           </div>
 
           {/* Search & Filter Toolbar */}
-          <div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-5">
-            <div className="relative lg:col-span-2">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.0 text-slate-400" />
+          <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-12">
+            <div className="relative lg:col-span-4">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <Input
-                className="h-8.5 pl-8 text-xs"
-                placeholder="Search ID / WO / Customer / Reason / Approver"
+                className="h-8.5 pl-8 text-xs w-full"
+                placeholder="Search ID / WO / Customer / Reason / Approver..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
 
-            <Select
-              className="h-8.5 text-xs"
-              value={filterWorkCenter}
-              onChange={(e) => setFilterWorkCenter(e.target.value)}
-            >
-              <option value="">All Work Centers</option>
-              {WORK_CENTERS.map((wc) => (
-                <option key={wc.code} value={wc.code}>
-                  {wc.name}
-                </option>
-              ))}
-            </Select>
+            <div className="lg:col-span-3">
+              <Select
+                className="h-8.5 text-xs w-full"
+                value={filterWorkCenter}
+                onChange={(e) => setFilterWorkCenter(e.target.value)}
+              >
+                <option value="">All Work Centers</option>
+                {WORK_CENTERS.map((wc) => (
+                  <option key={wc.code} value={wc.code}>
+                    {wc.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
-            <Select
-              className="h-8.5 text-xs"
-              value={filterRoute}
-              onChange={(e) => setFilterRoute(e.target.value)}
-            >
-              <option value="">All Routes</option>
-              {routesInPlans.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </Select>
+            <div className="lg:col-span-2">
+              <Select
+                className="h-8.5 text-xs w-full"
+                value={filterRoute}
+                onChange={(e) => setFilterRoute(e.target.value)}
+              >
+                <option value="">All Routes</option>
+                {routesInPlans.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
-            <div className="flex gap-1.5">
-              <Input
-                className="h-8.5 text-xs"
-                type="date"
-                title="From Date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-              />
-              <Input
-                className="h-8.5 text-xs"
-                type="date"
-                title="To Date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-              />
+            <div className="lg:col-span-3 flex items-center gap-1.5">
+              <div className="flex-1 min-w-0">
+                <Input
+                  className="h-8.5 text-xs w-full"
+                  type="date"
+                  title="From Date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </div>
+              <span className="text-slate-400 text-xs shrink-0">to</span>
+              <div className="flex-1 min-w-0">
+                <Input
+                  className="h-8.5 text-xs w-full"
+                  type="date"
+                  title="To Date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
+              </div>
+              {(fromDate || toDate) && (
+                <button
+                  type="button"
+                  onClick={() => { setFromDate(''); setToDate(''); }}
+                  className="rounded p-1 text-slate-400 hover:text-red-600 hover:bg-slate-100 transition shrink-0"
+                  title="Clear date filter"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
