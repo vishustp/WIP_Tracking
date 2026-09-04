@@ -24,6 +24,7 @@ import {
   Sparkles,
   CheckCircle2,
   AlertTriangle,
+  Info,
 } from 'lucide-react';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
@@ -152,10 +153,26 @@ export default function RollingPlanForm() {
   const [editRoute, setEditRoute] = useState('');
   const [editMhOd, setEditMhOd] = useState('');
   const [editMhWt, setEditMhWt] = useState('');
-  const [editMhL1, setEditMhL1] = useState('');
-  const [editMhL2, setEditMhL2] = useState('');
+  const [editMhL1, setEditMhL1] = useState('6.0');
+  const [editMhL2, setEditMhL2] = useState('6.5');
   const [editPassRequired, setEditPassRequired] = useState('1');
   const [editMultiple, setEditMultiple] = useState('1');
+  const [editChildOrders, setEditChildOrders] = useState<
+    Array<{
+      work_order_id: string;
+      work_order_no: string;
+      customer_name: string | null;
+      grade: string | null;
+      size_od: number | null;
+      size_wt: number | null;
+      l1: number | null;
+      l2: number | null;
+      planned_pcs: string;
+      planned_mtr: number;
+      planned_mt: number;
+      plan_id?: string;
+    }>
+  >([]);
   const [editSaving, setEditSaving] = useState(false);
 
   const { user } = usePermissions();
@@ -542,21 +559,48 @@ export default function RollingPlanForm() {
   // Start Edit
   function startEdit(p: Plan) {
     setEditing(p);
-    setEditQtyPcs(
-      String(
-        p.planned_pcs ||
-          ((p.avg_length || 0) > 0 ? Math.round(p.planned_mtr / (p.avg_length || 1)) : 0)
-      )
-    );
+    
+    let isMaster = false;
+    let childList: any[] = [];
+    try {
+      const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+      if (parsed?.is_master) {
+        isMaster = true;
+        childList = parsed.child_work_orders || [];
+      }
+    } catch {}
+
+    const pcsVal =
+      p.planned_pcs ||
+      ((p.avg_length || 0) > 0 ? Math.round(p.planned_mtr / (p.avg_length || 1)) : 0);
+    setEditQtyPcs(String(pcsVal));
     setEditDate(p.planned_rolling_date);
     setEditRoute(p.route_id);
     setEditMhOd(p.mh_od != null ? String(p.mh_od) : '');
     setEditMhWt(p.mh_wt != null ? String(p.mh_wt) : '');
-    setEditMhL1(p.mh_l1 != null ? String(p.mh_l1) : '');
-    setEditMhL2(p.mh_l2 != null ? String(p.mh_l2) : '');
+    setEditMhL1(p.mh_l1 != null ? String(p.mh_l1) : '6.0');
+    setEditMhL2(p.mh_l2 != null ? String(p.mh_l2) : '6.5');
     setEditPassRequired(String(p.pass_required ?? 1));
     setEditMultiple(String(p.multiple ?? 1));
+
+    if (isMaster && childList.length > 0) {
+      setEditChildOrders(
+        childList.map((c: any) => ({
+          ...c,
+          planned_pcs: String(c.planned_pcs || ''),
+        }))
+      );
+    } else {
+      setEditChildOrders([]);
+    }
   }
+
+  // Update child order planned PCS in master edit modal
+  const handleUpdateEditChildPcs = (woId: string, val: string) => {
+    setEditChildOrders((prev) =>
+      prev.map((c) => (c.work_order_id === woId ? { ...c, planned_pcs: val } : c))
+    );
+  };
 
   // Save Edit
   async function saveEdit() {
@@ -566,43 +610,65 @@ export default function RollingPlanForm() {
       toast.error('Enter a valid Planned PCS.');
       return;
     }
+    if (!editDate) {
+      toast.error('Please select a Planned Rolling Date.');
+      return;
+    }
+    if (!editRoute) {
+      toast.error('Please select a Target Route.');
+      return;
+    }
+
     const mhOdVal = Number(editMhOd);
     const mhWtVal = Number(editMhWt);
-    const mhL1Val = Number(editMhL1);
-    const mhL2Val = Number(editMhL2);
-    if (!Number.isFinite(mhOdVal) || mhOdVal <= 0) {
+    const mhL1Val = Number(editMhL1) || 6.0;
+    const mhL2Val = Number(editMhL2) || 6.5;
+
+    if (editMhOd && (!Number.isFinite(mhOdVal) || mhOdVal <= 0)) {
       toast.error('Enter valid MH OD.');
       return;
     }
-    if (!Number.isFinite(mhWtVal) || mhWtVal <= 0) {
+    if (editMhWt && (!Number.isFinite(mhWtVal) || mhWtVal <= 0)) {
       toast.error('Enter valid MH WT.');
-      return;
-    }
-    if (!Number.isFinite(mhL1Val) || mhL1Val <= 0) {
-      toast.error('Enter valid MH L1.');
-      return;
-    }
-    if (!Number.isFinite(mhL2Val) || mhL2Val <= 0) {
-      toast.error('Enter valid MH L2.');
       return;
     }
 
     setEditSaving(true);
     try {
-      const avg = editing.avg_length || 6;
-      const plannedMtr = pcs * avg;
+      const payload: any = {
+        plan_id: editing.id,
+        planned_pcs: pcs,
+        planned_rolling_date: editDate,
+        route_id: editRoute,
+        multiple: Number(editMultiple) || 1,
+        pass_required: Number(editPassRequired) || 1,
+      };
 
-      const { error } = await createClient().rpc('update_rolling_plan', {
-        p_plan_id: editing.id,
-        p_planned_qty: plannedMtr,
-        p_rolling_date: editDate,
-        p_route_id: editRoute,
-        p_target_mother_size: `${mhOdVal}x${mhWtVal}`,
-        p_multiple: Number(editMultiple) || 1,
+      if (Number.isFinite(mhOdVal) && mhOdVal > 0) payload.mh_od = mhOdVal;
+      if (Number.isFinite(mhWtVal) && mhWtVal > 0) payload.mh_wt = mhWtVal;
+      if (Number.isFinite(mhL1Val) && mhL1Val > 0) payload.mh_l1 = mhL1Val;
+      if (Number.isFinite(mhL2Val) && mhL2Val > 0) payload.mh_l2 = mhL2Val;
+
+      if (editChildOrders.length > 0) {
+        payload.child_adjustments = editChildOrders.map((c) => ({
+          plan_id: c.plan_id,
+          work_order_id: c.work_order_id,
+          planned_pcs: Number(c.planned_pcs) || 0,
+        }));
+      }
+
+      const res = await fetch('/api/rolling-plans', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
 
-      if (error) throw error;
-      toast.success('Rolling plan updated successfully.');
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update rolling plan.');
+      }
+
+      toast.success(data.message || 'Rolling plan updated successfully.');
       setEditing(null);
       await loadPlans();
     } catch (err: any) {
@@ -1346,110 +1412,350 @@ export default function RollingPlanForm() {
       </section>
 
       {/* Single Plan Edit Modal */}
-      {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Edit Rolling Plan {editing.plan_no}
-                </h3>
-                <p className="text-xs text-slate-500">Work Order: {editing.work_order_no}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditing(null)}
-                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      {editing && (() => {
+        let editingIsMaster = false;
+        let editingIsChild = false;
+        let editingMasterPlanNo = '';
+        let editingMasterWoNo = '';
+        try {
+          const st = typeof editing.status === 'string' ? JSON.parse(editing.status) : editing.status;
+          if (st?.is_master) editingIsMaster = true;
+          if (st?.is_child) {
+            editingIsChild = true;
+            editingMasterPlanNo = st.master_plan_no || '';
+            editingMasterWoNo = st.master_wo_no || '';
+          }
+        } catch {}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Planned Quantity (PCS) *
-                </label>
-                <Input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={editQtyPcs}
-                  onChange={(e) => setEditQtyPcs(e.target.value)}
-                />
+        const masterAvg =
+          editing.avg_length ||
+          (editing.l1 && editing.l2 ? (editing.l1 + editing.l2) / 2 : editing.l1 || editing.l2) ||
+          6.0;
+        const masterPcsNum = Number(editQtyPcs) || 0;
+        const masterMtrVal = masterPcsNum * masterAvg;
+        const masterOd = Number(editing.od || 0);
+        const masterWt = Number(editing.wt || 0);
+        const masterMtVal =
+          Math.max(masterOd - masterWt, 0) * Math.max(masterWt, 0) * 0.0246615 * 0.001 * masterMtrVal;
+
+        // Child orders live calculation
+        let totalChildPcs = 0;
+        let totalChildMtr = 0;
+        let totalChildMt = 0;
+
+        const computedChildren = editChildOrders.map((c) => {
+          const cAvg =
+            (c.l1 && c.l2 ? (c.l1 + c.l2) / 2 : c.l1 || c.l2) || 6.0;
+          const cPcs = Number(c.planned_pcs) || 0;
+          const cMtr = cPcs * cAvg;
+          const cOd = Number(c.size_od || 0);
+          const cWt = Number(c.size_wt || 0);
+          const cMt =
+            Math.max(cOd - cWt, 0) * Math.max(cWt, 0) * 0.0246615 * 0.001 * cMtr;
+
+          totalChildPcs += cPcs;
+          totalChildMtr += cMtr;
+          totalChildMt += cMt;
+
+          return { ...c, avg: cAvg, mtr: cMtr, mt: cMt, pcsNum: cPcs };
+        });
+
+        const totalCampaignPcs = masterPcsNum + totalChildPcs;
+        const totalCampaignMtr = masterMtrVal + totalChildMtr;
+        const totalCampaignMt = masterMtVal + totalChildMt;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900">
+                      Edit Rolling Plan {editing.plan_no}
+                    </h3>
+                    {editingIsMaster ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
+                        👑 Master Campaign Plan
+                      </span>
+                    ) : editingIsChild ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                        🔗 Child Linked Plan
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                        Single Plan
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Work Order: <span className="font-semibold text-slate-700">{editing.work_order_no}</span>
+                    {editing.customer_name ? ` • ${editing.customer_name}` : ''}
+                    {editing.od && editing.wt ? ` • ${editing.od} × ${editing.wt} mm` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Planned Rolling Date *
-                </label>
-                <Input
-                  type="date"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                />
+              {/* Notice for Master Campaign Plan */}
+              {editingIsMaster && (
+                <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3 text-xs text-purple-900 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-purple-950">
+                    <CheckCircle2 className="h-4 w-4 text-purple-700" />
+                    <span>Master Campaign Synchronization Active</span>
+                  </div>
+                  <p className="text-purple-800">
+                    Modifying the <strong className="font-semibold">Planned Rolling Date</strong>,{' '}
+                    <strong className="font-semibold">Target Route</strong>, and{' '}
+                    <strong className="font-semibold">Mother Hollow specifications</strong> will
+                    automatically propagate and update all{' '}
+                    <strong className="font-semibold">{editChildOrders.length} linked Child Work Orders</strong>{' '}
+                    in this rolling campaign.
+                  </p>
+                </div>
+              )}
+
+              {/* Notice for Child Plan */}
+              {editingIsChild && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-950">
+                    <Info className="h-4 w-4 text-blue-700" />
+                    <span>Linked to Master Campaign {editingMasterPlanNo || editingMasterWoNo}</span>
+                  </div>
+                  <p className="text-blue-800 mt-1">
+                    Rolling Date, Route, and Mother Hollow specifications are synchronized from the Master Plan.
+                    You can adjust this Child Work Order&apos;s Planned Quantity below, and the Campaign totals will automatically rebalance.
+                  </p>
+                </div>
+              )}
+
+              {/* Master / Main Order Parameters */}
+              <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200 space-y-3">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                  {editingIsMaster ? 'Master Work Order Planning' : 'Plan Parameters'}
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Planned Quantity (PCS) *
+                    </label>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={editQtyPcs}
+                      onChange={(e) => setEditQtyPcs(e.target.value)}
+                    />
+                    <div className="text-[11px] text-slate-500 font-mono mt-1">
+                      {fmt(masterMtrVal)} m • {fmt(masterMtVal)} MT
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Planned Rolling Date * {editingIsMaster && <span className="text-purple-600 font-normal">(Sync)</span>}
+                    </label>
+                    <Input
+                      type="date"
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Target Route * {editingIsMaster && <span className="text-purple-600 font-normal">(Sync)</span>}
+                    </label>
+                    <Select value={editRoute} onChange={(e) => setEditRoute(e.target.value)}>
+                      {routes.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.route_code} — {r.route_name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Multiple {editingIsMaster && <span className="text-purple-600 font-normal">(Sync)</span>}
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={editMultiple}
+                      onChange={(e) => setEditMultiple(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      MH OD (mm) {editingIsMaster && <span className="text-purple-600 font-normal">(Sync)</span>}
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={editMhOd}
+                      onChange={(e) => setEditMhOd(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      MH WT (mm) {editingIsMaster && <span className="text-purple-600 font-normal">(Sync)</span>}
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={editMhWt}
+                      onChange={(e) => setEditMhWt(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      MH L1 (m) {editingIsMaster && <span className="text-purple-600 font-normal">(Sync)</span>}
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editMhL1}
+                      onChange={(e) => setEditMhL1(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      MH L2 (m) {editingIsMaster && <span className="text-purple-600 font-normal">(Sync)</span>}
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editMhL2}
+                      onChange={(e) => setEditMhL2(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Pass Required {editingIsMaster && <span className="text-purple-600 font-normal">(Sync)</span>}
+                    </label>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={editPassRequired}
+                      onChange={(e) => setEditPassRequired(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Target Route *
-                </label>
-                <Select value={editRoute} onChange={(e) => setEditRoute(e.target.value)}>
-                  {routes.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.route_code} — {r.route_name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+              {/* Linked Child Orders Section (When editing Master Plan) */}
+              {editingIsMaster && computedChildren.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <Layers className="h-4 w-4 text-purple-600" />
+                      <span>Linked Child Work Orders in Campaign ({computedChildren.length})</span>
+                    </h4>
+                    <span className="text-xs text-slate-500 font-medium">
+                      You can adjust individual child quantities here
+                    </span>
+                  </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Multiple</label>
-                <Input
-                  type="number"
-                  step="0.001"
-                  value={editMultiple}
-                  onChange={(e) => setEditMultiple(e.target.value)}
-                />
-              </div>
+                  <div className="rounded-xl border border-slate-200 overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200">
+                        <tr>
+                          <th className="px-3 py-2">Work Order & Customer</th>
+                          <th className="px-3 py-2">Pipe Size</th>
+                          <th className="px-3 py-2 w-32">Planned PCS</th>
+                          <th className="px-3 py-2 text-right">Planned MTR</th>
+                          <th className="px-3 py-2 text-right">Planned MT</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {computedChildren.map((c) => (
+                          <tr key={c.work_order_id} className="hover:bg-slate-50/50">
+                            <td className="px-3 py-2">
+                              <span className="font-mono font-bold text-slate-900">{c.work_order_no}</span>
+                              <div className="text-[11px] text-slate-500 truncate max-w-[200px]">
+                                {c.customer_name || c.grade || '—'}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 font-mono text-slate-700">
+                              {c.size_od} × {c.size_wt} mm
+                            </td>
+                            <td className="px-3 py-2">
+                              <Input
+                                type="number"
+                                min="1"
+                                step="1"
+                                className="h-8 text-xs py-1"
+                                value={c.planned_pcs}
+                                onChange={(e) =>
+                                  handleUpdateEditChildPcs(c.work_order_id, e.target.value)
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono font-bold text-indigo-700">
+                              {fmt(c.mtr)} m
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono text-slate-700">
+                              {fmt(c.mt)} MT
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">MH OD (mm)</label>
-                <Input
-                  type="number"
-                  step="0.001"
-                  value={editMhOd}
-                  onChange={(e) => setEditMhOd(e.target.value)}
-                />
-              </div>
+                  {/* Campaign Summary Footer Box */}
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-indigo-950">Updated Campaign Total:</span>
+                      <span className="text-slate-600 font-mono">
+                        Master ({fmt(masterMtrVal)} m) + Children ({fmt(totalChildMtr)} m)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 font-mono font-bold">
+                      <span className="text-indigo-900">
+                        {fmt(totalCampaignPcs)} <span className="font-normal text-xs text-indigo-700">PCS</span>
+                      </span>
+                      <span className="text-indigo-900">
+                        {fmt(totalCampaignMtr)} <span className="font-normal text-xs text-indigo-700">MTR</span>
+                      </span>
+                      <span className="text-indigo-900">
+                        {fmt(totalCampaignMt)} <span className="font-normal text-xs text-indigo-700">MT</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">MH WT (mm)</label>
-                <Input
-                  type="number"
-                  step="0.001"
-                  value={editMhWt}
-                  onChange={(e) => setEditMhWt(e.target.value)}
-                />
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <Button type="button" variant="outline" onClick={() => setEditing(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={saveEdit}
+                  disabled={editSaving}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                >
+                  {editSaving ? 'Saving...' : 'Save Changes'}
+                </Button>
               </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <Button type="button" variant="outline" onClick={() => setEditing(null)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={saveEdit}
-                disabled={editSaving}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
-              >
-                {editSaving ? 'Saving...' : 'Save Changes'}
-              </Button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
     </div>
   );
 }
