@@ -9,9 +9,10 @@ import { isRouteVisibleForGroup } from '@/lib/permissions';
 import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
-  User, ShieldCheck, ChevronDown, Check, Sparkles, Lock, Activity
+  User, ShieldCheck, ChevronDown, Check, Sparkles, Lock, Activity, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
+import AgingNotificationBell from '@/components/common/AgingNotificationBell';
 
 const groups = [
   {
@@ -32,6 +33,7 @@ const groups = [
     label: 'Reports',
     items: [
       { href: '/reports/tracking', label: 'WO Tracking Sheet', icon: Activity },
+      { href: '/reports/aging', label: 'WIP Aging & Bottlenecks', icon: Clock },
       { href: '/reports/pending-orders', label: 'Pending Orders', icon: BarChart3 },
       { href: '/reports/wip', label: 'WIP', icon: Gauge },
       { href: '/reports/production', label: 'Production', icon: Factory },
@@ -194,8 +196,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="text-[15px] font-semibold capitalize tracking-tight text-slate-900">{pageTitle}</div>
           </div>
 
-          {/* Header Right User Widget */}
-          <div className="flex items-center gap-3">
+          {/* Header Right User & Notification Widget */}
+          <div className="flex items-center gap-2.5">
+            <AgingNotificationBell currentUser={currentUser} />
             {currentUser && (
               <div className="relative" ref={dropdownRef}>
                 <button
