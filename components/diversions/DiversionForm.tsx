@@ -1274,7 +1274,7 @@ export default function DiversionForm() {
           {/* Search & Filter Toolbar */}
           <div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-5">
             <div className="relative lg:col-span-2">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.0 text-slate-400" />
               <Input
                 className="h-8.5 pl-8 text-xs"
                 placeholder="Search ID / WO / Customer / Reason / Approver"
