@@ -93,6 +93,27 @@ interface ProductionLog {
   created_at: string;
 }
 
+interface StageTrackingMetric {
+  code: string;
+  label: string;
+  short: string;
+  bg: string;
+  isBundled: boolean;
+  planMtr: number;
+  planPcs: number;
+  outMtr: number;
+  outPcs: number;
+  rejMtr: number;
+  rejPcs: number;
+  htcOkMtr: number;
+  htcOkPcs: number;
+  wipMtr: number;
+  wipPcs: number;
+  wipMt: number;
+  logsCount: number;
+  targetMtr?: number;
+}
+
 const STAGES_ORDER = [
   { code: 'ROLLING', label: 'Rolling Mill', short: 'ROLL', bg: 'bg-blue-50 text-blue-900 border-blue-200' },
   { code: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment', short: 'HTC', bg: 'bg-amber-50 text-amber-900 border-amber-200' },
@@ -311,7 +332,7 @@ export default function WorkOrderTrackingClient() {
       }
 
       // Stage-by-stage stats
-      const stagesData = STAGES_ORDER.map((stageDef) => {
+      const stagesData: StageTrackingMetric[] = STAGES_ORDER.map((stageDef): StageTrackingMetric => {
         const stageCode = stageDef.code;
 
         // RULE 2: Child work orders in campaigns are bundled under master for pre-finishing stages
