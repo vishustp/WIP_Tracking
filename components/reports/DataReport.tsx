@@ -73,7 +73,8 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
     const ws = XLSX.utils.json_to_sheet(out);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Report');
-    XLSX.writeFile(wb, `${title.toLowerCase().replace(/\s+/g, '-')}.xlsx`);
+    const safeTitle = String(title || 'Report').trim();
+    XLSX.writeFile(wb, `${safeTitle.toLowerCase().replace(/\s+/g, '-')}.xlsx`);
   };
 
   const formatValue = (val: any) => {
@@ -166,7 +167,7 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
             {paginatedRows.map((r, i) => {
               const primaryKey = columns[0]?.key;
               const secondaryKey = columns[1]?.key;
-              const statusKey = columns.find(c => c.key.toLowerCase().includes('status'))?.key;
+              const statusKey = columns.find(c => c?.key && String(c.key).toLowerCase().includes('status'))?.key;
 
               return (
                 <div

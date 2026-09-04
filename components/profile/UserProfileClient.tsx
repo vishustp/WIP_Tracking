@@ -214,11 +214,11 @@ export default function UserProfileClient() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className={`h-16 w-16 rounded-2xl flex items-center justify-center text-xl font-bold ${currentUser.avatar_color || 'bg-blue-600 text-white'} shadow-sm`}>
-              {currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+              {String(currentUser.name || currentUser.email || 'U').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-slate-900">{currentUser.name}</h1>
+                <h1 className="text-xl font-bold tracking-tight text-slate-900">{currentUser.name || currentUser.email || 'User'}</h1>
                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-semibold border ${grpConfig.badgeClass}`}>
                   {grpConfig.name}
                 </span>

@@ -284,13 +284,16 @@ export default function AdminControlPanelClient() {
 
   // Filtered audit logs
   const filteredAuditLogs = useMemo(() => {
+    const qAudit = String(auditSearch ?? '').toLowerCase().trim();
     return auditLogs.filter(log => {
+      if (!log) return false;
       const matchType = auditTypeFilter === 'ALL' || log.action_type === auditTypeFilter;
+      if (!qAudit) return matchType;
       const matchSearch =
-        (log.user_name ?? '').toLowerCase().includes(auditSearch.toLowerCase()) ||
-        (log.user_email ?? '').toLowerCase().includes(auditSearch.toLowerCase()) ||
-        (log.details ?? '').toLowerCase().includes(auditSearch.toLowerCase()) ||
-        (log.entity_id && log.entity_id.toLowerCase().includes(auditSearch.toLowerCase()));
+        String(log.user_name ?? '').toLowerCase().includes(qAudit) ||
+        String(log.user_email ?? '').toLowerCase().includes(qAudit) ||
+        String(log.details ?? '').toLowerCase().includes(qAudit) ||
+        (Boolean(log.entity_id) && String(log.entity_id).toLowerCase().includes(qAudit));
       return matchType && matchSearch;
     });
   }, [auditLogs, auditTypeFilter, auditSearch]);

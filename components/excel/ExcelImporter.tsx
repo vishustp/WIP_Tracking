@@ -272,7 +272,7 @@ export default function ExcelImporter() {
       if (row.ordered_qty_pcs <= 0 && row.ordered_qty_mtr <= 0 && row.ordered_qty_mt <= 0 && row.balance_to_make_mtr <= 0) {
         errors.push('Order Qty missing');
       }
-      if (currentStatus && !['pending', 'in progress', 'open', 'scheduled', 'planned', ''].includes(currentStatus.toLowerCase())) {
+      if (currentStatus && !['pending', 'in progress', 'open', 'scheduled', 'planned', ''].includes(String(currentStatus).toLowerCase().trim())) {
         errors.push(`Status "${currentStatus}" is not eligible`);
       }
       if (balanceToMakeMtr <= 5 && row.ordered_qty_mtr <= 5) {
