@@ -404,12 +404,17 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
                   <span>MT ★</span>
                 </span>
               </div>
+
+              <div className="mt-2.5 text-[11px] font-medium text-slate-500 flex items-center gap-1.5">
+                <span className={`inline-block w-2 h-2 rounded-full ${totalPlantWipMtr > 0 ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
+                <span>Rule: WIP calculated after Rolling done · Only HTC OK qty</span>
+              </div>
             </div>
 
             <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
               <span>Plant Stock Bottleneck:</span>
               <span className="font-bold text-slate-900 font-mono">
-                {maxWipStage ? `${maxWipStage.stage} (${formatNum(maxWipStage.wipMtr, 0)} m)` : 'None'}
+                {maxWipStage && maxWipStage.value > 0 ? `${maxWipStage.stage} (${formatNum(maxWipStage.wipMtr, 0)} m)` : 'None (No active WIP)'}
               </span>
             </div>
           </CardContent>
@@ -529,8 +534,13 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
 
         <CardContent className="p-4 sm:p-5">
           {stageDistribution.length === 0 ? (
-            <div className="py-12 text-center text-sm text-slate-400">
-              No positive physical WIP records found in the plant.
+            <div className="py-12 text-center space-y-2">
+              <div className="text-sm font-semibold text-slate-700">
+                No Active Physical WIP on Shop Floor
+              </div>
+              <div className="text-xs text-slate-500 max-w-md mx-auto">
+                Physical pipe WIP is strictly calculated <strong>after Rolling production is completed</strong> and only from <strong>HTC OK quantity</strong>. Once rolling output is logged in the system, active WIP will appear across stages.
+              </div>
             </div>
           ) : (
             <div className="space-y-5">
@@ -698,7 +708,18 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
 
           <CardContent className="p-0">
             {filteredWipTable.length === 0 ? (
-              <p className="p-8 text-sm text-slate-400 text-center">No matching WIP records found.</p>
+              <div className="p-8 text-center space-y-1.5">
+                <p className="text-sm font-semibold text-slate-700">
+                  {wip.length === 0
+                    ? 'No physical WIP on shop floor'
+                    : 'No matching WIP records found.'}
+                </p>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  {wip.length === 0
+                    ? 'Physical WIP is strictly generated after Rolling production is completed and only from HTC OK quantity.'
+                    : 'Try changing your search keywords or stage filter.'}
+                </p>
+              </div>
             ) : (
               <div className="overflow-x-auto max-h-[420px]">
                 <table className="min-w-full text-xs">
