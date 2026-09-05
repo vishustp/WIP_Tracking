@@ -323,7 +323,52 @@ export default function RollingPlanIssueReportClient() {
   };
 
   return (
-    <div className="space-y-6 print:space-y-4 print:p-0">
+    <div className="space-y-6 print:space-y-3 print:p-0 print:m-0 print:w-full">
+      {/* Print Stylesheet for A4 Landscape with Narrow Margins */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          @page {
+            size: A4 landscape;
+            margin: 5mm 6mm 5mm 6mm;
+          }
+          html, body {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          main {
+            max-width: 100% !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .overflow-x-auto {
+            overflow: visible !important;
+          }
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+          }
+          th, td {
+            padding-top: 3.5px !important;
+            padding-bottom: 3.5px !important;
+            padding-left: 5px !important;
+            padding-right: 5px !important;
+          }
+          tr {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+          .break-inside-avoid {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+        }
+      `}} />
+
       {/* Screen Toolbar / Header Actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
         <div>
@@ -391,8 +436,8 @@ export default function RollingPlanIssueReportClient() {
           </div>
 
           <div className="text-right text-xs space-y-0.5 print:text-black">
-            <div className="font-mono font-bold text-slate-900">DOC: STP/PPC/RP-01</div>
-            <div className="text-slate-500">Rev: 04 · Approved</div>
+            <div className="font-mono font-bold text-slate-900">DOC: F-PROD-01a,EFF.Date:01.04.2023, Rev.02,Rev.Dt.01.04.2024</div>
+            <div className="text-slate-500">Rev: 02 · Approved</div>
             <div className="text-slate-500 font-mono">Date: {new Date().toLocaleDateString('en-GB')}</div>
             <div className="text-slate-500">Target Mill: Hot Assel / Mandrel Mill</div>
           </div>
@@ -793,22 +838,6 @@ export default function RollingPlanIssueReportClient() {
           <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50 print:bg-white print:border-black">
             <div className="font-bold text-slate-800 print:text-black">Verified & Accepted By</div>
             <div className="text-[11px] text-slate-500 mb-8 print:text-black">Hot Rolling Shift In-Charge</div>
-            <div className="border-t border-dashed border-slate-300 pt-1 text-[11px] text-slate-400 print:text-black print:border-black">
-              Signature & Date
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50 print:bg-white print:border-black">
-            <div className="font-bold text-slate-800 print:text-black">Metallurgical Clearance</div>
-            <div className="text-[11px] text-slate-500 mb-8 print:text-black">Quality Assurance & Lab</div>
-            <div className="border-t border-dashed border-slate-300 pt-1 text-[11px] text-slate-400 print:text-black print:border-black">
-              Signature & Date
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50 print:bg-white print:border-black">
-            <div className="font-bold text-slate-800 print:text-black">Approved for Rolling</div>
-            <div className="text-[11px] text-slate-500 mb-8 print:text-black">Plant Operations Head</div>
             <div className="border-t border-dashed border-slate-300 pt-1 text-[11px] text-slate-400 print:text-black print:border-black">
               Signature & Date
             </div>
