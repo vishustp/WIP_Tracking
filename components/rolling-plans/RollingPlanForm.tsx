@@ -102,6 +102,20 @@ const fmt = (n: number | null | undefined) =>
         maximumFractionDigits: 3,
       });
 
+const formatFinalSizeLength = (p: { l1?: number | null; l2?: number | null; avg_length?: number | null }) => {
+  const hl1 = Number(p.l1 || 0);
+  const hl2 = Number(p.l2 || 0);
+  if (hl1 > 0 && hl2 > 0) {
+    if (hl1 === hl2) return `L: ${fmt(hl1)} m`;
+    return `L: ${fmt(hl1)} - ${fmt(hl2)} m`;
+  }
+  if (hl1 > 0) return `L: ${fmt(hl1)} m`;
+  if (hl2 > 0) return `L: ${fmt(hl2)} m`;
+  const avg = Number(p.avg_length || 0);
+  if (avg > 0) return `L: ~${fmt(avg)} m (avg)`;
+  return null;
+};
+
 export interface HollowDimensions {
   od?: number | string | null;
   wt?: number | string | null;
@@ -240,28 +254,50 @@ export default function RollingPlanForm() {
 
       // Fetch actual Mother Hollow specs & status directly from rolling_plans table
       const planIds = rawPlans.map((x) => x.id);
+      const woIds = Array.from(new Set(rawPlans.map((x) => x.work_order_id).filter(Boolean)));
       let mhMap: Record<string, any> = {};
-      if (planIds.length > 0) {
-        const { data: rpDetails } = await s
-          .from('rolling_plans')
-          .select('id, mh_od, mh_wt, mh_l1, mh_l2, pass_required, multiple, status, planned_qty')
-          .in('id', planIds);
+      let woMap: Record<string, any> = {};
 
-        if (rpDetails) {
-          for (const d of rpDetails) {
-            mhMap[d.id] = d;
-          }
-        }
+      const [rpDetailsRes, woDetailsRes] = await Promise.all([
+        planIds.length > 0
+          ? s.from('rolling_plans').select('id, mh_od, mh_wt, mh_l1, mh_l2, pass_required, multiple, status, planned_qty').in('id', planIds)
+          : Promise.resolve({ data: [] }),
+        woIds.length > 0
+          ? s.from('work_orders').select('id, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mtr').in('id', woIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      if (rpDetailsRes.data) {
+        for (const d of rpDetailsRes.data) mhMap[d.id] = d;
+      }
+      if (woDetailsRes.data) {
+        for (const w of woDetailsRes.data) woMap[w.id] = w;
       }
 
       const enrichedPlans: Plan[] = rawPlans.map((p) => {
         const detail = mhMap[p.id];
+        const wo = woMap[p.work_order_id];
         let parsedSt: any = {};
         try {
           parsedSt = typeof detail?.status === 'string'
             ? JSON.parse(detail.status)
             : detail?.status || (typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {});
         } catch {}
+
+        // Final Size Specifications
+        const finalOd = wo?.size_od ?? p.od ?? parsedSt?.master_od ?? null;
+        const finalWt = wo?.size_wt ?? p.wt ?? parsedSt?.master_wt ?? null;
+        const finalL1 = wo?.l1 ?? p.l1 ?? null;
+        const finalL2 = wo?.l2 ?? p.l2 ?? null;
+
+        let computedAvgLen: number | null = p.avg_length ?? null;
+        if (!computedAvgLen && finalL1 && finalL2) {
+          computedAvgLen = (Number(finalL1) + Number(finalL2)) / 2;
+        } else if (!computedAvgLen && (finalL1 || finalL2)) {
+          computedAvgLen = Number(finalL1 || finalL2);
+        } else if (!computedAvgLen && wo && Number(wo.ordered_qty_pcs) > 0 && Number(wo.ordered_qty_mtr) > 0) {
+          computedAvgLen = Number((Number(wo.ordered_qty_mtr) / Number(wo.ordered_qty_pcs)).toFixed(2));
+        }
 
         const mhOd = detail?.mh_od ?? p.mh_od ?? null;
         const mhWt = detail?.mh_wt ?? p.mh_wt ?? null;
@@ -285,7 +321,7 @@ export default function RollingPlanForm() {
         const hl2 = Number(mhL2 || 0);
         const mhAvgLen = (hl1 > 0 && hl2 > 0)
           ? (hl1 + hl2) / 2
-          : (hl1 > 0 ? hl1 : (hl2 > 0 ? hl2 : Number(p.avg_length || 6.0)));
+          : (hl1 > 0 ? hl1 : (hl2 > 0 ? hl2 : Number(computedAvgLen || 6.0)));
 
         const rawMtr = Number(detail?.planned_qty ?? p.planned_qty ?? p.planned_mtr ?? 0);
         if (pcs === 0 && rawMtr > 0 && mhAvgLen > 0) {
@@ -299,14 +335,19 @@ export default function RollingPlanForm() {
 
         // Planned MT = Planned PCS * (MH OD - MH WT) * MH WT * 0.0246615 * 0.001 * Average Hollow Length
         //            = (MH OD - MH WT) * MH WT * 0.0246615 * 0.001 * Planned MTR
-        const hod = Number(mhOd || 0) > 0 ? Number(mhOd) : Number(p.od || 0);
-        const hwt = Number(mhWt || 0) > 0 ? Number(mhWt) : Number(p.wt || 0);
+        const hod = Number(mhOd || 0) > 0 ? Number(mhOd) : Number(finalOd || 0);
+        const hwt = Number(mhWt || 0) > 0 ? Number(mhWt) : Number(finalWt || 0);
         const mt = (hod > 0 && hwt > 0 && hod > hwt)
           ? Number(((hod - hwt) * hwt * 0.0246615 * 0.001 * mtr).toFixed(3))
           : (Number(parsedSt?.master_planned_mt || parsedSt?.planned_mt || p.planned_mt) || 0);
 
         return {
           ...p,
+          od: finalOd,
+          wt: finalWt,
+          l1: finalL1,
+          l2: finalL2,
+          avg_length: computedAvgLen,
           mh_od: mhOd,
           mh_wt: mhWt,
           mh_l1: mhL1,
@@ -1355,7 +1396,7 @@ export default function RollingPlanForm() {
                 <th className="px-3 py-2.5 font-bold">Date</th>
                 <th className="px-3 py-2.5 font-bold">Work Order</th>
                 <th className="px-3 py-2.5 font-bold">Customer & Grade</th>
-                <th className="px-3 py-2.5 font-bold">Pipe Size</th>
+                <th className="px-3 py-2.5 font-bold">Final Size (OD × WT × Len)</th>
                 <th className="px-3 py-2.5 font-bold">Route</th>
                 <th className="px-3 py-2.5 font-bold text-right">Planned PCS</th>
                 <th className="px-3 py-2.5 font-bold text-right">Planned MTR</th>
@@ -1460,7 +1501,11 @@ export default function RollingPlanForm() {
                         </td>
 
                         <td className="px-3 py-2 font-mono whitespace-nowrap">
-                          {fmt(p.od)} × {fmt(p.wt)} mm
+                          <div className="font-semibold">{fmt(p.od)} × {fmt(p.wt)} mm</div>
+                          {(() => {
+                            const lenStr = formatFinalSizeLength(p);
+                            return lenStr ? <div className="text-[10px] text-slate-500">{lenStr}</div> : null;
+                          })()}
                         </td>
 
                         <td className="px-3 py-2">
@@ -1605,7 +1650,15 @@ export default function RollingPlanForm() {
                                         </td>
                                         <td className="px-2 py-1.5 text-slate-600">{c.grade || '—'}</td>
                                         <td className="px-2 py-1.5 font-mono">
-                                          {c.size_od} × {c.size_wt} mm
+                                          <div className="font-semibold">{c.size_od} × {c.size_wt} mm</div>
+                                          {(() => {
+                                            const childLenStr = formatFinalSizeLength({
+                                              l1: c.l1,
+                                              l2: c.l2,
+                                              avg_length: (c.l1 && c.l2) ? (Number(c.l1) + Number(c.l2)) / 2 : (c.l1 || c.l2 || p.avg_length),
+                                            });
+                                            return childLenStr ? <div className="text-[10px] text-slate-500">{childLenStr}</div> : null;
+                                          })()}
                                         </td>
                                         {(() => {
                                           const cPcs = Number(c.planned_pcs || 0);

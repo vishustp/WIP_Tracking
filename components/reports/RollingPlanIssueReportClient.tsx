@@ -51,6 +51,20 @@ export type Plan = {
 const fmt = (n: number | null | undefined, digits = 2) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: digits });
 
+const formatFinalSizeLength = (p: { l1?: number | null; l2?: number | null; avg_length?: number | null }) => {
+  const hl1 = Number(p.l1 || 0);
+  const hl2 = Number(p.l2 || 0);
+  if (hl1 > 0 && hl2 > 0) {
+    if (hl1 === hl2) return `L: ${fmt(hl1)} m`;
+    return `L: ${fmt(hl1)} - ${fmt(hl2)} m`;
+  }
+  if (hl1 > 0) return `L: ${fmt(hl1)} m`;
+  if (hl2 > 0) return `L: ${fmt(hl2)} m`;
+  const avg = Number(p.avg_length || 0);
+  if (avg > 0) return `L: ~${fmt(avg)} m (avg)`;
+  return null;
+};
+
 export default function RollingPlanIssueReportClient() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,28 +99,50 @@ export default function RollingPlanIssueReportClient() {
 
       // Fetch actual Mother Hollow specs & status directly from rolling_plans table
       const planIds = rawPlans.map((x) => x.id);
+      const woIds = Array.from(new Set(rawPlans.map((x) => x.work_order_id).filter(Boolean)));
       let mhMap: Record<string, any> = {};
-      if (planIds.length > 0) {
-        const { data: rpDetails } = await s
-          .from('rolling_plans')
-          .select('id, mh_od, mh_wt, mh_l1, mh_l2, pass_required, multiple, status, planned_qty')
-          .in('id', planIds);
+      let woMap: Record<string, any> = {};
 
-        if (rpDetails) {
-          for (const d of rpDetails) {
-            mhMap[d.id] = d;
-          }
-        }
+      const [rpDetailsRes, woDetailsRes] = await Promise.all([
+        planIds.length > 0
+          ? s.from('rolling_plans').select('id, mh_od, mh_wt, mh_l1, mh_l2, pass_required, multiple, status, planned_qty').in('id', planIds)
+          : Promise.resolve({ data: [] }),
+        woIds.length > 0
+          ? s.from('work_orders').select('id, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mtr').in('id', woIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      if (rpDetailsRes.data) {
+        for (const d of rpDetailsRes.data) mhMap[d.id] = d;
+      }
+      if (woDetailsRes.data) {
+        for (const w of woDetailsRes.data) woMap[w.id] = w;
       }
 
       const enrichedPlans: Plan[] = rawPlans.map((p) => {
         const detail = mhMap[p.id];
+        const wo = woMap[p.work_order_id];
         let parsedSt: any = {};
         try {
           parsedSt = typeof detail?.status === 'string'
             ? JSON.parse(detail.status)
             : detail?.status || (typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {});
-        } catch {}
+        } catch { }
+
+        // Final Size Specifications
+        const finalOd = wo?.size_od ?? p.od ?? parsedSt?.master_od ?? null;
+        const finalWt = wo?.size_wt ?? p.wt ?? parsedSt?.master_wt ?? null;
+        const finalL1 = wo?.l1 ?? p.l1 ?? null;
+        const finalL2 = wo?.l2 ?? p.l2 ?? null;
+
+        let computedAvgLen: number | null = p.avg_length ?? null;
+        if (!computedAvgLen && finalL1 && finalL2) {
+          computedAvgLen = (Number(finalL1) + Number(finalL2)) / 2;
+        } else if (!computedAvgLen && (finalL1 || finalL2)) {
+          computedAvgLen = Number(finalL1 || finalL2);
+        } else if (!computedAvgLen && wo && Number(wo.ordered_qty_pcs) > 0 && Number(wo.ordered_qty_mtr) > 0) {
+          computedAvgLen = Number((Number(wo.ordered_qty_mtr) / Number(wo.ordered_qty_pcs)).toFixed(2));
+        }
 
         const mhOd = detail?.mh_od ?? p.mh_od ?? null;
         const mhWt = detail?.mh_wt ?? p.mh_wt ?? null;
@@ -128,7 +164,7 @@ export default function RollingPlanIssueReportClient() {
         const hl2 = Number(mhL2 || 0);
         const mhAvgLen = (hl1 > 0 && hl2 > 0)
           ? (hl1 + hl2) / 2
-          : (hl1 > 0 ? hl1 : (hl2 > 0 ? hl2 : Number(p.avg_length || 6.0)));
+          : (hl1 > 0 ? hl1 : (hl2 > 0 ? hl2 : Number(computedAvgLen || 6.0)));
 
         const rawMtr = Number(detail?.planned_qty ?? p.planned_qty ?? p.planned_mtr ?? 0);
         if (pcs === 0 && rawMtr > 0 && mhAvgLen > 0) {
@@ -139,14 +175,19 @@ export default function RollingPlanIssueReportClient() {
           ? Number((pcs * mhAvgLen).toFixed(2))
           : (Number(parsedSt?.master_planned_mtr || parsedSt?.planned_mtr || rawMtr) || 0);
 
-        const hod = Number(mhOd || 0) > 0 ? Number(mhOd) : Number(p.od || 0);
-        const hwt = Number(mhWt || 0) > 0 ? Number(mhWt) : Number(p.wt || 0);
+        const hod = Number(mhOd || 0) > 0 ? Number(mhOd) : Number(finalOd || 0);
+        const hwt = Number(mhWt || 0) > 0 ? Number(mhWt) : Number(finalWt || 0);
         const mt = (hod > 0 && hwt > 0 && hod > hwt)
           ? Number(((hod - hwt) * hwt * 0.0246615 * 0.001 * mtr).toFixed(3))
           : (Number(parsedSt?.master_planned_mt || parsedSt?.planned_mt || p.planned_mt) || 0);
 
         return {
           ...p,
+          od: finalOd,
+          wt: finalWt,
+          l1: finalL1,
+          l2: finalL2,
+          avg_length: computedAvgLen,
           mh_od: mhOd,
           mh_wt: mhWt,
           mh_l1: mhL1,
@@ -183,7 +224,7 @@ export default function RollingPlanIssueReportClient() {
       let parsedStatus: any = {};
       try {
         parsedStatus = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
-      } catch {}
+      } catch { }
 
       const isMaster = !!parsedStatus?.is_master;
       const isChild = !!parsedStatus?.is_child;
@@ -207,7 +248,7 @@ export default function RollingPlanIssueReportClient() {
       let parsedStatus: any = {};
       try {
         parsedStatus = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
-      } catch {}
+      } catch { }
       if (parsedStatus?.is_master) masterCount++;
 
       totalMtr += Number(p.planned_mtr || 0);
@@ -338,10 +379,10 @@ export default function RollingPlanIssueReportClient() {
             </div>
             <div>
               <h2 className="text-base font-black uppercase tracking-wide text-slate-900 print:text-black">
-                SEAMLESS TUBULAR PRODUCTS LTD.
+                Rashmi Green Hydrogen Limited.
               </h2>
               <div className="text-xs font-bold text-slate-600 print:text-black">
-                Hot Rolling & Piercing Mill Division · Production Planning & Control (PPC)
+                Production Planning & Control (PPC)
               </div>
               <div className="text-[11px] text-slate-400 print:text-black">
                 Rolling Mill Issue Schedule & Campaign Allocation Sheet
@@ -494,8 +535,8 @@ export default function RollingPlanIssueReportClient() {
                 <th className="px-3 py-2.5 whitespace-nowrap">Rolling Date</th>
                 <th className="px-3 py-2.5 whitespace-nowrap">Work Order #</th>
                 <th className="px-3 py-2.5">Customer & Grade</th>
-                <th className="px-3 py-2.5 whitespace-nowrap">Mother Hollow Size (OD × WT × Len)</th>
-                <th className="px-3 py-2.5 whitespace-nowrap">Finished Size (OD × WT)</th>
+                <th className="px-3 py-2.5 whitespace-nowrap font-bold">Mother Hollow Size (OD × WT × Len)</th>
+                <th className="px-3 py-2.5 whitespace-nowrap font-bold">Final Size (OD × WT × Len)</th>
                 <th className="px-3 py-2.5 whitespace-nowrap">Route</th>
 
                 {/* Primary Focus Columns: PCS and MT */}
@@ -529,7 +570,7 @@ export default function RollingPlanIssueReportClient() {
                   let parsedStatus: any = {};
                   try {
                     parsedStatus = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
-                  } catch {}
+                  } catch { }
 
                   const isMaster = !!parsedStatus?.is_master;
                   const isChild = !!parsedStatus?.is_child;
@@ -539,9 +580,8 @@ export default function RollingPlanIssueReportClient() {
                   return (
                     <React.Fragment key={p.id}>
                       <tr
-                        className={`transition-colors ${
-                          isMaster ? 'bg-indigo-50/30' : isChild ? 'bg-slate-50/40' : 'hover:bg-slate-50/50'
-                        } print:text-black`}
+                        className={`transition-colors ${isMaster ? 'bg-indigo-50/30' : isChild ? 'bg-slate-50/40' : 'hover:bg-slate-50/50'
+                          } print:text-black`}
                       >
                         <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap print:text-black">
                           {p.plan_no}
@@ -585,10 +625,17 @@ export default function RollingPlanIssueReportClient() {
                         </td>
 
                         <td className="px-3 py-2 font-mono text-slate-700 whitespace-nowrap print:text-black">
-                          {fmt(p.od)} × {fmt(p.wt)} mm
-                          <span className="text-[10px] text-slate-500 block">
-                            L: {fmt(p.l1)} - {fmt(p.l2)} m
-                          </span>
+                          <div className="font-bold text-slate-800 print:text-black">
+                            {p.od && p.wt ? `${fmt(p.od)} × ${fmt(p.wt)} mm` : <span className="text-slate-400 font-normal">—</span>}
+                          </div>
+                          {(() => {
+                            const lenStr = formatFinalSizeLength(p);
+                            return lenStr ? (
+                              <span className="text-[10px] text-slate-500 block print:text-black">
+                                {lenStr}
+                              </span>
+                            ) : null;
+                          })()}
                         </td>
 
                         <td className="px-3 py-2 whitespace-nowrap">
@@ -655,7 +702,7 @@ export default function RollingPlanIssueReportClient() {
                                     <th className="py-1 text-left">Child WO #</th>
                                     <th className="py-1 text-left">Customer</th>
                                     <th className="py-1 text-left">Grade</th>
-                                    <th className="py-1 text-left">Finished Size</th>
+                                    <th className="py-1 text-left">Final Size (OD × WT × Len)</th>
                                     <th className="py-1 text-right font-black text-indigo-900">Planned Pcs ★</th>
                                     <th className="py-1 text-right font-black text-emerald-900">Planned MT ★</th>
                                     <th className="py-1 text-right">Planned Mtr</th>
@@ -668,7 +715,19 @@ export default function RollingPlanIssueReportClient() {
                                       <td className="py-1 text-slate-600 font-sans">{c.customer_name || '—'}</td>
                                       <td className="py-1 text-slate-600">{c.grade || p.grade}</td>
                                       <td className="py-1 text-slate-700">
-                                        {fmt(c.size_od ?? p.od)} × {fmt(c.size_wt ?? p.wt)} mm
+                                        <div className="font-semibold">{fmt(c.size_od ?? p.od)} × {fmt(c.size_wt ?? p.wt)} mm</div>
+                                        {(() => {
+                                          const childLenStr = formatFinalSizeLength({
+                                            l1: c.l1,
+                                            l2: c.l2,
+                                            avg_length: (c.l1 && c.l2) ? (Number(c.l1) + Number(c.l2)) / 2 : (c.l1 || c.l2 || p.avg_length),
+                                          });
+                                          return childLenStr ? (
+                                            <span className="text-[10px] text-slate-500 block">
+                                              {childLenStr}
+                                            </span>
+                                          ) : null;
+                                        })()}
                                       </td>
                                       <td className="py-1 text-right font-black text-indigo-950">
                                         <span className="px-1.5 py-0.5 rounded bg-indigo-100/90 border border-indigo-200">
@@ -831,6 +890,36 @@ export default function RollingPlanIssueReportClient() {
                     <span className="text-slate-500 text-[10px] block">Pass & Multiple:</span>
                     <span className="font-bold text-slate-900">
                       Pass: {selectedPlanForSlip.pass_required || 1} · Mult: {selectedPlanForSlip.multiple || 1}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Final / Finished Tube Size (Target Dimensions) */}
+              <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 print:bg-white print:border-black">
+                <div className="font-bold text-blue-950 mb-1.5 flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-blue-600"></span>
+                  Final / Finished Tube Size (Target Delivery Dimensions):
+                </div>
+                <div className="grid grid-cols-3 gap-2 font-mono">
+                  <div>
+                    <span className="text-slate-500 text-[10px] block">Final OD × WT:</span>
+                    <span className="font-bold text-slate-900">
+                      {selectedPlanForSlip.od && selectedPlanForSlip.wt
+                        ? `${fmt(selectedPlanForSlip.od)} × ${fmt(selectedPlanForSlip.wt)} mm`
+                        : '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-[10px] block">Finished Length:</span>
+                    <span className="font-bold text-slate-900">
+                      {formatFinalSizeLength(selectedPlanForSlip) || 'Standard Length'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-[10px] block">Process Route:</span>
+                    <span className="font-bold text-slate-900">
+                      {selectedPlanForSlip.route_code}
                     </span>
                   </div>
                 </div>
