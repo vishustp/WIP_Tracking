@@ -104,7 +104,7 @@ export function validateProductionEntry(
           : `Plan (${fmt(row.balance_to_make_mtr || 0, " MTR")})`;
       errors.push({
         workOrder: row.work_order_no,
-        message: `Rolling Production (${fmt(d.mtr, " MTR")}) exceeds maximum allowed 110% capping of ${planDesc}, max capping is ${fmt(allowed, " MTR")}.`,
+        message: `Rolling Production (${fmt(d.mtr, " MTR")}) exceeds maximum allowed 110% of Plan (${planDesc}), max capping is ${fmt(allowed, " MTR")}.`,
       });
     } else if (stage === "HOLLOW_HEAT_TREATMENT") {
       errors.push({

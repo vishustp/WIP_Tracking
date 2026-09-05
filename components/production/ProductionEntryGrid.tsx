@@ -100,10 +100,23 @@ export default function ProductionEntryGrid() {
   );
 
   const [factoryWip, setFactoryWip] = useState<any[]>([]);
+  const [serverSummary, setServerSummary] = useState<any[] | null>(null);
   const [childWoIds, setChildWoIds] = useState<Set<string>>(new Set());
 
   const loadFactoryWip = useCallback(async () => {
     try {
+      try {
+        const qRes = await fetch(`/api/production/queue?stage=${stage}`);
+        if (qRes.ok) {
+          const json = await qRes.json();
+          if (Array.isArray(json?.summary)) {
+            setServerSummary(json.summary);
+          }
+        }
+      } catch {
+        // ignore
+      }
+
       const [wipRes, plansRes] = await Promise.all([
         supabase.from("vw_route_stage_wip").select("*"),
         supabase.from("rolling_plans").select("status, work_order_id").not("status", "is", null),
@@ -131,7 +144,7 @@ export default function ProductionEntryGrid() {
     } catch {
       // ignore
     }
-  }, [supabase]);
+  }, [supabase, stage]);
 
   useEffect(() => {
     loadFactoryWip();
@@ -215,6 +228,24 @@ export default function ProductionEntryGrid() {
 
   // --- Aggregate WIP across all work orders in current queue & factory-wide ---
   const workCenterSummary = useMemo(() => {
+    if (serverSummary && serverSummary.length > 0) {
+      const baseList = serverSummary.map((s) => ({ ...s }));
+      const activeItem = baseList.find((x) => x.stage_code === stage);
+      if (activeItem) {
+        activeItem.availMtr = rows.reduce((sum, r) => sum + Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0), 0);
+        activeItem.availPcs = rows.reduce((sum, r) => sum + Number(r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0), 0);
+        activeItem.availMt = rows.reduce((sum, r) => {
+          const isRoll = stage === "ROLLING";
+          const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
+          const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+          const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
+          return sum + mtFromMtr(mtrVal, od, wt);
+        }, 0);
+        activeItem.count = rows.length;
+      }
+      return baseList;
+    }
+
     const summary: Record<string, { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }> = {
       ROLLING: { label: "Rolling Mill", stage_code: "ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
@@ -333,7 +364,7 @@ export default function ProductionEntryGrid() {
     }
 
     return Object.values(summary);
-  }, [factoryWip, rows, stage, childWoIds]);
+  }, [factoryWip, rows, stage, childWoIds, serverSummary]);
 
   // --- Batch save (atomic) ---
   async function save() {

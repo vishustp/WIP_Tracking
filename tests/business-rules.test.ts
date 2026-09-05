@@ -124,6 +124,20 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       expect(errors.length).toBeGreaterThan(0);
       expect(errors[0].message).toContain("Heat Treatment × Multiple or Balance to make");
     });
+
+    it("Rule 5: Downstream Draw is blocked if Rolling has 0 or no HTC OK logged", () => {
+      const zeroHtcDraw: Row = {
+        ...baseRow,
+        stage_code: "DRAW",
+        route_code: "CDS",
+        balance_to_make_mtr: 0,
+        max_allowed_mtr: 0,
+        mtr: "100",
+      };
+      const errors = validateProductionEntry(zeroHtcDraw, "DRAW");
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0].message).toContain("No available WIP for DRAW. Please record Rolling HTC OK first.");
+    });
   });
 
   describe("ALLOY_CDS Route Rules", () => {

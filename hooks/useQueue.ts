@@ -15,6 +15,21 @@ export function useQueue(stage: StageCode) {
     setLoading(true);
     setError(null);
     try {
+      // 1. Try to fetch from server-side queue API (calculates strict WIP from Rolling HTC OK)
+      try {
+        const apiRes = await fetch(`/api/production/queue?stage=${s}`);
+        if (apiRes.ok) {
+          const json = await apiRes.json();
+          if (Array.isArray(json?.data)) {
+            setRows(json.data.map((r: any) => emptyRow(r)));
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {
+        // Fall back to direct query below
+      }
+
       const supabase = createClient();
 
       // 1. Fetch standard queue, plans, process stages, and production logs
@@ -31,7 +46,7 @@ export function useQueue(stage: StageCode) {
           .select("id, stage_code"),
         supabase
           .from("production_logs")
-          .select("work_order_id, stage_id, output_qty, rejection_qty, output_pcs, rejection_pcs"),
+          .select("work_order_id, stage_id, output_qty, rejection_qty, htc_ok"),
       ]);
 
       if (queueRes.error) {
@@ -321,24 +336,75 @@ export function useQueue(stage: StageCode) {
 
         setRows(enriched);
       } else if (isMasterOnlyStage) {
+        const hollowHtStageId = stages.find((st: any) => st.stage_code === "HOLLOW_HEAT_TREATMENT")?.id;
+        const drawStageId = stages.find((st: any) => st.stage_code === "DRAW")?.id;
+        const htStageId = stages.find((st: any) => st.stage_code === "HEAT_TREATMENT")?.id;
+
         // Filter out any child work orders
         const filtered = rawRows.filter((r) => !childWoMap.has(r.work_order_id));
 
-        // Enrich master rows with campaign details
-        const enriched = filtered.map((r) => {
-          const campaign = masterCampaignMap.get(r.work_order_id);
-          if (campaign) {
-            return {
+        // Enrich master rows with campaign details and strict downstream Rolling HTC OK propagation
+        const enriched = filtered
+          .map((r) => {
+            const campaign = masterCampaignMap.get(r.work_order_id);
+            const masterLogs = logs.filter((l: any) => l.work_order_id === r.work_order_id);
+
+            const rollLogs = masterLogs.filter((l: any) => !rollingStageId || l.stage_id === rollingStageId);
+            const rollingHtcOk = rollLogs.reduce((sum: number, l: any) => sum + Number(l.htc_ok || 0), 0);
+
+            const hollowHtLogs = masterLogs.filter((l: any) => l.stage_id === hollowHtStageId);
+            const hollowHtOut = hollowHtLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+            const hollowHtRej = hollowHtLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+            const hollowHtNet = Math.max(0, hollowHtOut - hollowHtRej);
+
+            const drawLogs = masterLogs.filter((l: any) => l.stage_id === drawStageId);
+            const drawOut = drawLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+            const drawRej = drawLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+            const drawNet = Math.max(0, drawOut - drawRej);
+
+            const htLogs = masterLogs.filter((l: any) => l.stage_id === htStageId);
+            const htOut = htLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+            const htRej = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+
+            let availMtr = 0;
+            if (s === "HOLLOW_HEAT_TREATMENT") {
+              availMtr = Math.max(0, rollingHtcOk - hollowHtOut - hollowHtRej);
+            } else if (s === "DRAW") {
+              const incoming = r.route_code === "ALLOY_CDS" ? hollowHtNet : rollingHtcOk;
+              availMtr = Math.max(0, incoming - drawOut - drawRej);
+            } else if (s === "HEAT_TREATMENT") {
+              availMtr = Math.max(0, drawNet - htOut - htRej);
+            }
+
+            const effAvg = Number(r.avg_length) || 6.25;
+            const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : 0;
+            const od = Number(r.od || 0);
+            const wt = Number(r.wl || 0);
+            const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
+
+            const base: Row = {
               ...r,
-              is_master: true,
-              master_plan_no: campaign.plan_no,
-              campaign_total_mtr: campaign.total_campaign_mtr,
-              campaign_total_pcs: campaign.total_campaign_pcs,
-              child_work_orders: campaign.child_work_orders,
+              balance_to_make_mtr: availMtr,
+              balance_to_make_pcs: availPcs,
+              balance_to_make_mt: Number(availMt.toFixed(3)),
+              max_allowed_mtr: availMtr,
+              max_allowed_pcs: availPcs,
+              prev_htc_ok: rollingHtcOk,
             };
-          }
-          return r;
-        });
+
+            if (campaign) {
+              return {
+                ...base,
+                is_master: true,
+                master_plan_no: campaign.plan_no,
+                campaign_total_mtr: campaign.total_campaign_mtr,
+                campaign_total_pcs: campaign.total_campaign_pcs,
+                child_work_orders: campaign.child_work_orders,
+              };
+            }
+            return base;
+          })
+          .filter((r) => Number(r.balance_to_make_mtr || 0) > 0);
 
         setRows(enriched);
       } else if (s === "FINISHING") {
