@@ -28,14 +28,37 @@ export async function POST(req: NextRequest) {
     const stageMap = new Map<string, string>();
     stages.forEach((s) => stageMap.set(s.stage_code, s.id));
 
+    // Load default process routes in case any entry has missing route_id
+    const { data: routes } = await admin.from('process_routes').select('id, route_code');
+    const defaultRouteId = routes?.find((r) => r.route_code === 'CDS')?.id || routes?.[0]?.id;
+
+    // Sanitize entries to ensure valid UUIDs and required route_ids
+    const sanitizedEntries = await Promise.all(
+      entries.map(async (item: any) => {
+        let routeId = item.route_id;
+        if (!routeId) {
+          const { data: rp } = await admin
+            .from('rolling_plans')
+            .select('process_route_id')
+            .eq('work_order_id', item.work_order_id)
+            .maybeSingle();
+          routeId = rp?.process_route_id || defaultRouteId;
+        }
+        return {
+          ...item,
+          route_id: routeId,
+        };
+      })
+    );
+
     // Try using record_production_batch first for standard execution
     const { error: rpcError } = await admin.rpc('record_production_batch', {
-      entries,
+      entries: sanitizedEntries,
       p_process_date: processDate,
     });
 
     if (!rpcError) {
-      return NextResponse.json({ success: true, count: entries.length, method: 'rpc' });
+      return NextResponse.json({ success: true, count: sanitizedEntries.length, method: 'rpc' });
     }
 
     console.warn('record_production_batch returned error, attempting safe fallback insertion:', rpcError.message);
@@ -45,7 +68,7 @@ export async function POST(req: NextRequest) {
     const errors: string[] = [];
 
     await Promise.all(
-      entries.map(async (item: any) => {
+      sanitizedEntries.map(async (item: any) => {
         const stageId = stageMap.get(item.stage_code);
         if (!stageId) {
           errors.push(`Unknown stage code: ${item.stage_code}`);

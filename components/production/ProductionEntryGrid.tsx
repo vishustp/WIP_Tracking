@@ -346,9 +346,16 @@ export default function ProductionEntryGrid() {
       // Guarantee the active selected stage card matches the active queue table exactly
       const activeSc = resolveStageCode({ stage_code: stage });
       if (activeSc && summary[activeSc]) {
-        const queueTotalMtr = rows.reduce((sum, r) => sum + Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0), 0);
-        const queueTotalPcs = rows.reduce((sum, r) => sum + Number(r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0), 0);
+        const queueTotalMtr = rows.reduce((sum, r) => {
+          if (r.is_child && r.master_wo_id) return sum;
+          return sum + Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
+        }, 0);
+        const queueTotalPcs = rows.reduce((sum, r) => {
+          if (r.is_child && r.master_wo_id) return sum;
+          return sum + Number(r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0);
+        }, 0);
         const queueTotalMt = rows.reduce((sum, r) => {
+          if (r.is_child && r.master_wo_id) return sum;
           const isRoll = activeSc === "ROLLING";
           const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
           const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
@@ -359,7 +366,7 @@ export default function ProductionEntryGrid() {
         summary[activeSc].availMtr = queueTotalMtr;
         summary[activeSc].availPcs = queueTotalPcs;
         summary[activeSc].availMt = queueTotalMt;
-        summary[activeSc].count = rows.length;
+        summary[activeSc].count = rows.filter((r) => !(r.is_child && r.master_wo_id)).length;
       }
     }
 
@@ -446,13 +453,16 @@ export default function ProductionEntryGrid() {
 
     // Initialize Child entries if linked
     if (r.child_work_orders && r.child_work_orders.length > 0) {
-      r.child_work_orders.forEach((c) => {
-        initial[c.id] = {
-          pcs: "",
-          mtr: "",
-          bundleNo: r.heat_lot_no || "",
-          remarks: "",
-        };
+      r.child_work_orders.forEach((c: any) => {
+        const cId = c.work_order_id || c.id;
+        if (cId) {
+          initial[cId] = {
+            pcs: "",
+            mtr: "",
+            bundleNo: r.heat_lot_no || "",
+            remarks: "",
+          };
+        }
       });
     }
 
@@ -1817,8 +1827,8 @@ export default function ProductionEntryGrid() {
             avg: masterCalc.avg || 6.0,
             isMaster: true,
           },
-          ...(bundlingCampaign.child_work_orders || []).map((c) => ({
-            id: c.id,
+          ...(bundlingCampaign.child_work_orders || []).map((c: any) => ({
+            id: c.work_order_id || c.id,
             work_order_no: c.work_order_no,
             customer_name: c.customer_name,
             grade: c.grade,

@@ -90,7 +90,8 @@ export interface Row {
   campaign_total_mtr?: number;
   campaign_total_pcs?: number;
   child_work_orders?: Array<{
-    id: string;
+    id?: string;
+    work_order_id?: string;
     work_order_no: string;
     customer_name?: string | null;
     grade?: string | null;

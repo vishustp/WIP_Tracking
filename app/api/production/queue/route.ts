@@ -91,34 +91,40 @@ export async function GET(req: NextRequest) {
               ? Number(parsed.total_campaign_pcs)
               : masterPlannedPcs + childPlannedPcs;
 
-          masterCampaignMap.set(p.work_order_id, {
-            plan_id: p.id,
-            plan_no: p.plan_no,
-            master_wo_id: p.work_order_id,
-            master_wo_no: parsed.master_wo_no,
-            master_planned_mtr: masterPlannedMtr,
-            master_planned_pcs: masterPlannedPcs,
-            total_campaign_mtr: totalCampaignMtr,
-            total_campaign_pcs: totalCampaignPcs,
-            child_work_orders: parsed.child_work_orders,
-            route_id: p.process_route_id,
-            mh_od: p.mh_od,
-            mh_wt: p.mh_wt,
-            mh_l1: p.mh_l1,
-            mh_l2: p.mh_l2,
-            multiple: p.multiple || 1,
-          });
-
-          for (const child of parsed.child_work_orders) {
-            const cId = child.work_order_id || child.id;
-            childWoMap.set(cId, {
-              ...child,
-              work_order_id: cId,
+          // Retain campaign with children if already recorded
+          const existing = masterCampaignMap.get(p.work_order_id);
+          const hasChildren = Array.isArray(parsed.child_work_orders) && parsed.child_work_orders.length > 0;
+          if (!existing || (hasChildren && (!existing.child_work_orders || existing.child_work_orders.length === 0))) {
+            masterCampaignMap.set(p.work_order_id, {
+              plan_id: p.id,
+              plan_no: p.plan_no,
               master_wo_id: p.work_order_id,
               master_wo_no: parsed.master_wo_no,
-              master_plan_no: p.plan_no,
-              master_plan_id: p.id,
+              master_planned_mtr: masterPlannedMtr,
+              master_planned_pcs: masterPlannedPcs,
+              total_campaign_mtr: totalCampaignMtr,
+              total_campaign_pcs: totalCampaignPcs,
+              child_work_orders: parsed.child_work_orders,
+              route_id: p.process_route_id,
+              mh_od: p.mh_od,
+              mh_wt: p.mh_wt,
+              mh_l1: p.mh_l1,
+              mh_l2: p.mh_l2,
+              multiple: p.multiple || 1,
             });
+
+            for (const child of parsed.child_work_orders) {
+              const cId = child.work_order_id || child.id;
+              childWoMap.set(cId, {
+                ...child,
+                work_order_id: cId,
+                master_wo_id: p.work_order_id,
+                master_wo_no: parsed.master_wo_no,
+                master_plan_no: p.plan_no,
+                master_plan_id: p.id,
+                route_id: p.process_route_id,
+              });
+            }
           }
         } else if (parsed?.is_child) {
           childWoMap.set(p.work_order_id, {
@@ -261,10 +267,20 @@ export async function GET(req: NextRequest) {
       const htAvailPcs = avgLength > 0 ? Math.round(htAvailMtr / avgLength) : 0;
       const htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
-      // 5. Finishing Stage Metrics (for Master WO)
+      // 5. Finishing Stage Metrics (for Master WO & Campaign)
       const finLogs = getStageLogs(woId, finStageId);
-      const finOutMtr = sumQty(finLogs, "output_qty");
-      const finRejMtr = sumQty(finLogs, "rejection_qty");
+      let finOutMtr = sumQty(finLogs, "output_qty");
+      let finRejMtr = sumQty(finLogs, "rejection_qty");
+
+      // If this is a master campaign with child orders, also include child finishing production in consumed stock
+      if (campaign && Array.isArray(campaign.child_work_orders)) {
+        for (const child of campaign.child_work_orders) {
+          const cId = child.work_order_id || child.id;
+          const childFinLogs = getStageLogs(cId, finStageId);
+          finOutMtr += sumQty(childFinLogs, "output_qty");
+          finRejMtr += sumQty(childFinLogs, "rejection_qty");
+        }
+      }
       const finNetMtr = Math.max(0, finOutMtr - finRejMtr);
 
       // Finishing incoming for master order:
@@ -560,6 +576,13 @@ export async function GET(req: NextRequest) {
         const wt = Number(child.size_wt || childWo?.size_wt || 0);
         const childAvailMt = mtFromMtr(childAvailMtr, od, wt);
 
+        const childRouteId =
+          child.route_id ||
+          masterCalc?.queueRows.FINISHING?.route_id ||
+          masterCampaignMap.get(child.master_wo_id)?.route_id ||
+          routes[0]?.id ||
+          "";
+
         childFinishingRows.push({
           work_order_id: childId,
           work_order_no: child.work_order_no || childWo?.work_order_no || "Child Order",
@@ -575,7 +598,7 @@ export async function GET(req: NextRequest) {
           mh_l1: null,
           mh_l2: null,
           mh_avg_length: null,
-          route_id: childWo?.process_route_id || "",
+          route_id: childRouteId,
           route_code: masterCalc?.queueRows.FINISHING?.route_code || "CDS",
           route_name: masterCalc?.queueRows.FINISHING?.route_name || "Standard CDS",
           stage_code: "FINISHING",
@@ -602,10 +625,14 @@ export async function GET(req: NextRequest) {
           ht_input_nos: "",
         });
 
-        workCenterSummary.FINISHING.availMtr += childAvailMtr;
-        workCenterSummary.FINISHING.availPcs += childAvailPcs;
-        workCenterSummary.FINISHING.availMt += childAvailMt;
-        workCenterSummary.FINISHING.count += 1;
+        // If this child belongs to a master campaign whose available stock is already in workCenterSummary,
+        // do not double-count it in the workCenterSummary WIP total
+        if (!child.master_wo_id) {
+          workCenterSummary.FINISHING.availMtr += childAvailMtr;
+          workCenterSummary.FINISHING.availPcs += childAvailPcs;
+          workCenterSummary.FINISHING.availMt += childAvailMt;
+          workCenterSummary.FINISHING.count += 1;
+        }
       }
     }
 
