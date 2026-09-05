@@ -81,7 +81,6 @@ export default function DiversionIssueReportClient() {
           p_from_date: fromDate || null,
           p_to_date: toDate || null,
           p_limit: 2000,
-          p_offset: 0,
         }),
         s.from('process_routes').select('id,route_code,route_name').eq('active', true).order('route_code'),
       ]);
