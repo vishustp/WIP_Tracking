@@ -101,16 +101,44 @@ const fmt = (n: number | null | undefined) =>
         maximumFractionDigits: 3,
       });
 
-const calcWoMetrics = (wo: WO | null, pcs: number) => {
-  if (!wo) return { avg: 0, mtr: 0, mt: 0 };
-  const l1 = Number(wo.l1 || 0);
-  const l2 = Number(wo.l2 || 0);
-  const avg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2 > 0 ? l2 : 6;
-  const mtr = pcs * avg;
-  const od = Number(wo.size_od ?? 0);
-  const wt = Number(wo.size_wt ?? 0);
-  const mt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * mtr;
-  return { avg, mtr, mt };
+export interface HollowDimensions {
+  od?: number | string | null;
+  wt?: number | string | null;
+  l1?: number | string | null;
+  l2?: number | string | null;
+}
+
+// Calculate Planned MTR and MT based on Mother Hollow OD, WT, and Average Length
+const calcHollowMetrics = (
+  wo: WO | null,
+  pcs: number,
+  hollow?: HollowDimensions
+) => {
+  if (!wo && pcs <= 0) return { avg: 0, mtr: 0, mt: 0, hod: 0, hwt: 0 };
+
+  const hl1 = Number(hollow?.l1 || 0);
+  const hl2 = Number(hollow?.l2 || 0);
+  const wol1 = Number(wo?.l1 || 0);
+  const wol2 = Number(wo?.l2 || 0);
+
+  // 1. Hollow average length takes priority; falls back to WO length or 6.0m
+  const avg = (hl1 > 0 && hl2 > 0)
+    ? (hl1 + hl2) / 2
+    : (hl1 > 0 ? hl1 : (hl2 > 0 ? hl2 : ((wol1 > 0 && wol2 > 0) ? (wol1 + wol2) / 2 : wol1 || wol2 || 6.0)));
+
+  // 2. Planned MTR = Planned PCS * Hollow Average Length
+  const mtr = Number((pcs * avg).toFixed(2));
+
+  // 3. Hollow OD & WT take priority; falls back to WO OD & WT if hollow not yet specified
+  const hod = Number(hollow?.od || 0) > 0 ? Number(hollow?.od) : Number(wo?.size_od || 0);
+  const hwt = Number(hollow?.wt || 0) > 0 ? Number(hollow?.wt) : Number(wo?.size_wt || 0);
+
+  // 4. Planned MT = (Hollow OD - Hollow WT) * Hollow WT * 0.0246615 * 0.001 * Planned MTR
+  const mt = Number(
+    (Math.max(hod - hwt, 0) * Math.max(hwt, 0) * 0.0246615 * 0.001 * mtr).toFixed(3)
+  );
+
+  return { avg, mtr, mt, hod, hwt };
 };
 
 export default function RollingPlanForm() {
@@ -388,15 +416,17 @@ export default function RollingPlanForm() {
   const masterEntry = useMemo(() => selectedOrders.find((s) => s.isMaster), [selectedOrders]);
   const childEntries = useMemo(() => selectedOrders.filter((s) => !s.isMaster), [selectedOrders]);
 
-  // Campaign Calculations (Rule 1)
+  // Campaign Calculations based on Mother Hollow OD, WT, and Average Length
   const campaignSummary = useMemo(() => {
     let totalPcs = 0;
     let totalMtr = 0;
     let totalMt = 0;
 
+    const hollowSpecs: HollowDimensions = { od: mhOd, wt: mhWt, l1: mhL1, l2: mhL2 };
+
     const orderCalculations = selectedOrders.map((entry) => {
       const pcs = Number(entry.plannedPcs || 0);
-      const metrics = calcWoMetrics(entry.wo, pcs);
+      const metrics = calcHollowMetrics(entry.wo, pcs, hollowSpecs);
       totalPcs += pcs;
       totalMtr += metrics.mtr;
       totalMt += metrics.mt;
@@ -425,7 +455,7 @@ export default function RollingPlanForm() {
       orderCalculations,
       hasErrors: orderCalculations.some((o) => o.exceeds || o.pcs <= 0),
     };
-  }, [selectedOrders]);
+  }, [selectedOrders, mhOd, mhWt, mhL1, mhL2]);
 
   // Submit Multi-WO Rolling Plan (Rule 1)
   async function submitMultiWoPlan(e: React.FormEvent) {
@@ -818,7 +848,12 @@ export default function RollingPlanForm() {
                     <tbody className="divide-y divide-slate-100">
                       {selectedOrders.map((entry) => {
                         const pcsNum = Number(entry.plannedPcs || 0);
-                        const metrics = calcWoMetrics(entry.wo, pcsNum);
+                        const metrics = calcHollowMetrics(entry.wo, pcsNum, {
+                          od: mhOd,
+                          wt: mhWt,
+                          l1: mhL1,
+                          l2: mhL2,
+                        });
                         const exceeds = metrics.mtr > entry.availableMtr + 0.001;
 
                         return (
@@ -866,7 +901,10 @@ export default function RollingPlanForm() {
                             </td>
 
                             <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-500">
-                              {entry.wo.l1}–{entry.wo.l2} m ({fmt(metrics.avg)} avg)
+                              <div>{entry.wo.l1}–{entry.wo.l2} m (WO)</div>
+                              <div className="text-[10px] text-indigo-600 font-semibold">
+                                Hollow: {fmt(metrics.avg)} m avg
+                              </div>
                             </td>
 
                             <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
@@ -1077,6 +1115,39 @@ export default function RollingPlanForm() {
               />
             </div>
           </div>
+
+          {/* Mother Hollow Live Calculation Summary */}
+          {(() => {
+            const hl1Num = Number(mhL1 || 0);
+            const hl2Num = Number(mhL2 || 0);
+            const mhAvgLen = hl1Num > 0 && hl2Num > 0 ? (hl1Num + hl2Num) / 2 : hl1Num || hl2Num || 0;
+            const mhOdNum = Number(mhOd || 0);
+            const mhWtNum = Number(mhWt || 0);
+            const mhKgPerMtr = (mhOdNum > 0 && mhWtNum > 0 && mhOdNum > mhWtNum)
+              ? Number(((mhOdNum - mhWtNum) * mhWtNum * 0.0246615).toFixed(3))
+              : 0;
+
+            return (
+              <div className="rounded-lg border border-teal-200 bg-teal-50/70 p-3 text-xs text-teal-900 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-medium">
+                  <span className="font-bold flex items-center gap-1 text-teal-950">
+                    <span className="inline-block h-2 w-2 rounded-full bg-teal-500 animate-pulse" />
+                    Hollow Dimensions Calculation:
+                  </span>
+                  <span>
+                    Avg Length: <b className="font-mono">{fmt(mhAvgLen)} m</b>
+                  </span>
+                  <span className="text-teal-400">|</span>
+                  <span>
+                    Unit Weight: <b className="font-mono">{fmt(mhKgPerMtr)} kg/m</b> ({((mhKgPerMtr * 0.001) || 0).toFixed(5)} MT/m)
+                  </span>
+                </div>
+                <div className="text-[11px] text-teal-700 italic">
+                  Planned MTR = Planned Pcs × Hollow Avg Length ({fmt(mhAvgLen)}m) • Planned MT = Hollow Unit Wt × Planned MTR
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Submit Button */}
           <div className="flex items-center justify-end gap-3 pt-2">
@@ -1313,11 +1384,32 @@ export default function RollingPlanForm() {
                           </span>
                         </td>
 
-                        <td className="px-3 py-2 text-right font-mono">{fmt(p.planned_pcs)}</td>
-                        <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
-                          {fmt(p.planned_mtr)}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono">{fmt(p.planned_mt)}</td>
+                        {(() => {
+                          const hl1Num = Number(p.mh_l1 || 0);
+                          const hl2Num = Number(p.mh_l2 || 0);
+                          const hlAvg = (hl1Num > 0 && hl2Num > 0)
+                            ? (hl1Num + hl2Num) / 2
+                            : (hl1Num > 0 ? hl1Num : (hl2Num > 0 ? hl2Num : p.avg_length || 6));
+                          const hod = Number(p.mh_od || 0) > 0 ? Number(p.mh_od) : Number(p.od || 0);
+                          const hwt = Number(p.mh_wt || 0) > 0 ? Number(p.mh_wt) : Number(p.wt || 0);
+                          const pcs = Number(p.planned_pcs || 0);
+                          const calcMtr = (hl1Num > 0 || hl2Num > 0) && pcs > 0
+                            ? Number((pcs * hlAvg).toFixed(2))
+                            : (p.planned_mtr || 0);
+                          const calcMt = (hod > 0 && hwt > 0)
+                            ? Number((Math.max(hod - hwt, 0) * Math.max(hwt, 0) * 0.0246615 * 0.001 * (p.planned_mtr || calcMtr)).toFixed(3))
+                            : (p.planned_mt || 0);
+
+                          return (
+                            <>
+                              <td className="px-3 py-2 text-right font-mono">{fmt(p.planned_pcs)}</td>
+                              <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
+                                {fmt(p.planned_mtr || calcMtr)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono">{fmt(p.planned_mt || calcMt)}</td>
+                            </>
+                          );
+                        })()}
 
                         <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-600">
                           {fmt(p.mh_od)} × {fmt(p.mh_wt)} mm
@@ -1486,37 +1578,55 @@ export default function RollingPlanForm() {
           }
         } catch {}
 
-        const masterAvg =
-          editing.avg_length ||
-          (editing.l1 && editing.l2 ? (editing.l1 + editing.l2) / 2 : editing.l1 || editing.l2) ||
-          6.0;
-        const masterPcsNum = Number(editQtyPcs) || 0;
-        const masterMtrVal = masterPcsNum * masterAvg;
-        const masterOd = Number(editing.od || 0);
-        const masterWt = Number(editing.wt || 0);
-        const masterMtVal =
-          Math.max(masterOd - masterWt, 0) * Math.max(masterWt, 0) * 0.0246615 * 0.001 * masterMtrVal;
+        const editHollowSpecs: HollowDimensions = {
+          od: editMhOd || editing.mh_od,
+          wt: editMhWt || editing.mh_wt,
+          l1: editMhL1 || editing.mh_l1,
+          l2: editMhL2 || editing.mh_l2,
+        };
 
-        // Child orders live calculation
+        const masterPcsNum = Number(editQtyPcs) || 0;
+        const masterMetrics = calcHollowMetrics(
+          {
+            id: editing.work_order_id,
+            work_order_no: editing.work_order_no,
+            size_od: editing.od,
+            size_wt: editing.wt,
+            l1: editing.l1,
+            l2: editing.l2,
+          } as WO,
+          masterPcsNum,
+          editHollowSpecs
+        );
+        const masterAvg = masterMetrics.avg;
+        const masterMtrVal = masterMetrics.mtr;
+        const masterMtVal = masterMetrics.mt;
+
+        // Child orders live calculation based on Mother Hollow dimensions
         let totalChildPcs = 0;
         let totalChildMtr = 0;
         let totalChildMt = 0;
 
         const computedChildren = editChildOrders.map((c) => {
-          const cAvg =
-            (c.l1 && c.l2 ? (c.l1 + c.l2) / 2 : c.l1 || c.l2) || 6.0;
           const cPcs = Number(c.planned_pcs) || 0;
-          const cMtr = cPcs * cAvg;
-          const cOd = Number(c.size_od || 0);
-          const cWt = Number(c.size_wt || 0);
-          const cMt =
-            Math.max(cOd - cWt, 0) * Math.max(cWt, 0) * 0.0246615 * 0.001 * cMtr;
+          const cMetrics = calcHollowMetrics(
+            {
+              id: c.work_order_id,
+              work_order_no: c.work_order_no,
+              size_od: c.size_od,
+              size_wt: c.size_wt,
+              l1: c.l1,
+              l2: c.l2,
+            } as WO,
+            cPcs,
+            editHollowSpecs
+          );
 
           totalChildPcs += cPcs;
-          totalChildMtr += cMtr;
-          totalChildMt += cMt;
+          totalChildMtr += cMetrics.mtr;
+          totalChildMt += cMetrics.mt;
 
-          return { ...c, avg: cAvg, mtr: cMtr, mt: cMt, pcsNum: cPcs };
+          return { ...c, avg: cMetrics.avg, mtr: cMetrics.mtr, mt: cMetrics.mt, pcsNum: cPcs };
         });
 
         const totalCampaignPcs = masterPcsNum + totalChildPcs;

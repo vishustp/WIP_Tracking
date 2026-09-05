@@ -86,27 +86,60 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Calculate Total Campaign Quantities
-    const totalChildMtr = child_work_orders.reduce((sum, c) => sum + Number(c.planned_mtr || 0), 0);
-    const totalChildPcs = child_work_orders.reduce((sum, c) => sum + Number(c.planned_pcs || 0), 0);
-    const totalChildMt = child_work_orders.reduce((sum, c) => sum + Number(c.planned_mt || 0), 0);
+    // 2. Calculate Planned Quantities based on Mother Hollow OD, WT, and Average Length
+    const effMhOd = (mh_od != null && !isNaN(Number(mh_od)) && Number(mh_od) > 0)
+      ? Number(mh_od)
+      : Number(masterWo.size_od || 0);
+    const effMhWt = (mh_wt != null && !isNaN(Number(mh_wt)) && Number(mh_wt) > 0)
+      ? Number(mh_wt)
+      : Number(masterWo.size_wt || 0);
+    const effMhL1 = (mh_l1 != null && !isNaN(Number(mh_l1)) && Number(mh_l1) > 0)
+      ? Number(mh_l1)
+      : Number(masterWo.l1 || 0);
+    const effMhL2 = (mh_l2 != null && !isNaN(Number(mh_l2)) && Number(mh_l2) > 0)
+      ? Number(mh_l2)
+      : Number(masterWo.l2 || 0);
 
-    const totalCampaignMtr = master_planned_mtr + totalChildMtr;
+    const hollowAvg = (effMhL1 > 0 && effMhL2 > 0)
+      ? (effMhL1 + effMhL2) / 2
+      : (effMhL1 > 0 ? effMhL1 : (effMhL2 > 0 ? effMhL2 : 6.0));
+
+    const calcHollowMtr = (pcs: number) => Number((pcs * hollowAvg).toFixed(2));
+    const calcHollowMt = (mtr: number) => Number(
+      (Math.max(effMhOd - effMhWt, 0) * Math.max(effMhWt, 0) * 0.0246615 * 0.001 * mtr).toFixed(3)
+    );
+
+    const calcMasterMtr = master_planned_pcs > 0 ? calcHollowMtr(master_planned_pcs) : Number(master_planned_mtr || 0);
+    const calcMasterMt = calcHollowMt(calcMasterMtr);
+
+    // Process child work orders with hollow dimensions
+    const processedChildren = child_work_orders.map((c: any) => {
+      const cPcs = Number(c.planned_pcs || 0);
+      const cMtr = cPcs > 0 ? calcHollowMtr(cPcs) : Number(c.planned_mtr || 0);
+      const cMt = calcHollowMt(cMtr);
+      return { ...c, planned_pcs: cPcs, planned_mtr: cMtr, planned_mt: cMt };
+    });
+
+    const totalChildMtr = processedChildren.reduce((sum: number, c: any) => sum + Number(c.planned_mtr || 0), 0);
+    const totalChildPcs = processedChildren.reduce((sum: number, c: any) => sum + Number(c.planned_pcs || 0), 0);
+    const totalChildMt = processedChildren.reduce((sum: number, c: any) => sum + Number(c.planned_mt || 0), 0);
+
+    const totalCampaignMtr = calcMasterMtr + totalChildMtr;
     const totalCampaignPcs = master_planned_pcs + totalChildPcs;
-    const totalCampaignMt = master_planned_mt + totalChildMt;
+    const totalCampaignMt = calcMasterMt + totalChildMt;
 
     // 3. Create the Master Rolling Plan using RPC to ensure proper sequence & trigger handling
     const { data: planNoData, error: planRpcErr } = await admin.rpc(
       'create_rolling_plan',
       {
         p_work_order_id: master_work_order_id,
-        p_planned_qty: master_planned_mtr,
+        p_planned_qty: calcMasterMtr,
         p_rolling_date: rolling_date,
         p_route_id: route_id,
-        p_mh_od: mh_od,
-        p_mh_wt: mh_wt,
-        p_mh_l1: mh_l1,
-        p_mh_l2: mh_l2,
+        p_mh_od: effMhOd,
+        p_mh_wt: effMhWt,
+        p_mh_l1: effMhL1,
+        p_mh_l2: effMhL2,
         p_pass_required: pass_required,
         p_multiple: multiple,
       }
@@ -152,7 +185,7 @@ export async function POST(req: NextRequest) {
       plan_id?: string;
     }> = [];
 
-    for (const child of child_work_orders) {
+    for (const child of processedChildren) {
       const childPcs = Number(child.planned_pcs || 0);
       const childMtr = Number(child.planned_mtr || 0);
       const childMt = Number(child.planned_mt || 0);
@@ -184,10 +217,10 @@ export async function POST(req: NextRequest) {
           process_route_id: route_id,
           multiple: multiple,
           status: childStatusMetadata,
-          mh_od: mh_od,
-          mh_wt: mh_wt,
-          mh_l1: mh_l1,
-          mh_l2: mh_l2,
+          mh_od: effMhOd,
+          mh_wt: effMhWt,
+          mh_l1: effMhL1,
+          mh_l2: effMhL2,
           pass_required: pass_required,
         })
         .select()
@@ -234,8 +267,8 @@ export async function POST(req: NextRequest) {
       master_od: masterWo.size_od,
       master_wt: masterWo.size_wt,
       master_planned_pcs,
-      master_planned_mtr,
-      master_planned_mt,
+      master_planned_mtr: calcMasterMtr,
+      master_planned_mt: calcMasterMt,
       total_campaign_pcs: totalCampaignPcs,
       total_campaign_mtr: totalCampaignMtr,
       total_campaign_mt: totalCampaignMt,
@@ -560,14 +593,26 @@ export async function PUT(req: NextRequest) {
       .eq('id', targetPlan.work_order_id)
       .single();
 
-    const tl1 = Number(targetWo?.l1 || 0);
-    const tl2 = Number(targetWo?.l2 || 0);
-    const targetAvg = tl1 > 0 && tl2 > 0 ? (tl1 + tl2) / 2 : tl1 > 0 ? tl1 : tl2 > 0 ? tl2 : 6.0;
+    // Mother Hollow dimensions take priority for calculating planned MTR and MT
+    const effMhOd = (mh_od != null && !isNaN(Number(mh_od)) && Number(mh_od) > 0)
+      ? Number(mh_od)
+      : Number(targetPlan.mh_od || targetWo?.size_od || 0);
+    const effMhWt = (mh_wt != null && !isNaN(Number(mh_wt)) && Number(mh_wt) > 0)
+      ? Number(mh_wt)
+      : Number(targetPlan.mh_wt || targetWo?.size_wt || 0);
+    const effMhL1 = (mh_l1 != null && !isNaN(Number(mh_l1)) && Number(mh_l1) > 0)
+      ? Number(mh_l1)
+      : Number(targetPlan.mh_l1 || targetWo?.l1 || 0);
+    const effMhL2 = (mh_l2 != null && !isNaN(Number(mh_l2)) && Number(mh_l2) > 0)
+      ? Number(mh_l2)
+      : Number(targetPlan.mh_l2 || targetWo?.l2 || 0);
+
+    const targetAvg = (effMhL1 > 0 && effMhL2 > 0)
+      ? (effMhL1 + effMhL2) / 2
+      : (effMhL1 > 0 ? effMhL1 : (effMhL2 > 0 ? effMhL2 : (Number(targetWo?.l1 || 0) && Number(targetWo?.l2 || 0) ? (Number(targetWo.l1) + Number(targetWo.l2)) / 2 : 6.0)));
     const targetMtr = Number((planned_pcs * targetAvg).toFixed(2));
-    const targetOd = Number(targetWo?.size_od || 0);
-    const targetWt = Number(targetWo?.size_wt || 0);
     const targetMt = Number(
-      (Math.max(targetOd - targetWt, 0) * Math.max(targetWt, 0) * 0.0246615 * 0.001 * targetMtr).toFixed(3)
+      (Math.max(effMhOd - effMhWt, 0) * Math.max(effMhWt, 0) * 0.0246615 * 0.001 * targetMtr).toFixed(3)
     );
 
     // 4. Parse status to determine if Master, Child, or Standalone
@@ -622,8 +667,9 @@ export async function PUT(req: NextRequest) {
           .single();
 
         const cl1 = Number(childWo?.l1 || 0);
-        const cl2 = Number(childWo?.l2 || 0);
-        const childAvg = cl1 > 0 && cl2 > 0 ? (cl1 + cl2) / 2 : cl1 > 0 ? cl1 : cl2 > 0 ? cl2 : 6.0;
+        const childAvg = (effMhL1 > 0 && effMhL2 > 0)
+          ? (effMhL1 + effMhL2) / 2
+          : (effMhL1 > 0 ? effMhL1 : (effMhL2 > 0 ? effMhL2 : (cl1 > 0 && cl2 > 0 ? (cl1 + cl2) / 2 : 6.0)));
 
         let childPcs: number;
         if (childAdj && Number(childAdj.planned_pcs) > 0) {
@@ -637,10 +683,8 @@ export async function PUT(req: NextRequest) {
         }
 
         const childMtr = Number((childPcs * childAvg).toFixed(2));
-        const cOd = Number(childWo?.size_od || 0);
-        const cWt = Number(childWo?.size_wt || 0);
         const childMt = Number(
-          (Math.max(cOd - cWt, 0) * Math.max(cWt, 0) * 0.0246615 * 0.001 * childMtr).toFixed(3)
+          (Math.max(effMhOd - effMhWt, 0) * Math.max(effMhWt, 0) * 0.0246615 * 0.001 * childMtr).toFixed(3)
         );
 
         // Update child plan: synchronize rolling date, route, mother hollow specs, multiple, pass_required
@@ -651,10 +695,10 @@ export async function PUT(req: NextRequest) {
           multiple: Number(multiple) || 1, // synchronized with master
           updated_at: new Date().toISOString(),
         };
-        if (mh_od != null && !isNaN(Number(mh_od))) childUpdateObj.mh_od = Number(mh_od);
-        if (mh_wt != null && !isNaN(Number(mh_wt))) childUpdateObj.mh_wt = Number(mh_wt);
-        if (mh_l1 != null && !isNaN(Number(mh_l1))) childUpdateObj.mh_l1 = Number(mh_l1);
-        if (mh_l2 != null && !isNaN(Number(mh_l2))) childUpdateObj.mh_l2 = Number(mh_l2);
+        if (effMhOd > 0) childUpdateObj.mh_od = effMhOd;
+        if (effMhWt > 0) childUpdateObj.mh_wt = effMhWt;
+        if (effMhL1 > 0) childUpdateObj.mh_l1 = effMhL1;
+        if (effMhL2 > 0) childUpdateObj.mh_l2 = effMhL2;
         if (pass_required != null && !isNaN(Number(pass_required))) childUpdateObj.pass_required = Number(pass_required);
 
         let cpStatus: any = {};
@@ -733,10 +777,10 @@ export async function PUT(req: NextRequest) {
         multiple: Number(multiple) || 1,
         updated_at: new Date().toISOString(),
       };
-      if (mh_od != null && !isNaN(Number(mh_od))) childUpdateObj.mh_od = Number(mh_od);
-      if (mh_wt != null && !isNaN(Number(mh_wt))) childUpdateObj.mh_wt = Number(mh_wt);
-      if (mh_l1 != null && !isNaN(Number(mh_l1))) childUpdateObj.mh_l1 = Number(mh_l1);
-      if (mh_l2 != null && !isNaN(Number(mh_l2))) childUpdateObj.mh_l2 = Number(mh_l2);
+      if (effMhOd > 0) childUpdateObj.mh_od = effMhOd;
+      if (effMhWt > 0) childUpdateObj.mh_wt = effMhWt;
+      if (effMhL1 > 0) childUpdateObj.mh_l1 = effMhL1;
+      if (effMhL2 > 0) childUpdateObj.mh_l2 = effMhL2;
       if (pass_required != null && !isNaN(Number(pass_required))) childUpdateObj.pass_required = Number(pass_required);
 
       parsedStatus.planned_pcs = planned_pcs;
@@ -807,10 +851,10 @@ export async function PUT(req: NextRequest) {
       multiple: Number(multiple) || 1,
       updated_at: new Date().toISOString(),
     };
-    if (mh_od != null && !isNaN(Number(mh_od))) standaloneUpdateObj.mh_od = Number(mh_od);
-    if (mh_wt != null && !isNaN(Number(mh_wt))) standaloneUpdateObj.mh_wt = Number(mh_wt);
-    if (mh_l1 != null && !isNaN(Number(mh_l1))) standaloneUpdateObj.mh_l1 = Number(mh_l1);
-    if (mh_l2 != null && !isNaN(Number(mh_l2))) standaloneUpdateObj.mh_l2 = Number(mh_l2);
+    if (effMhOd > 0) standaloneUpdateObj.mh_od = effMhOd;
+    if (effMhWt > 0) standaloneUpdateObj.mh_wt = effMhWt;
+    if (effMhL1 > 0) standaloneUpdateObj.mh_l1 = effMhL1;
+    if (effMhL2 > 0) standaloneUpdateObj.mh_l2 = effMhL2;
     if (pass_required != null && !isNaN(Number(pass_required))) standaloneUpdateObj.pass_required = Number(pass_required);
 
     parsedStatus.planned_pcs = planned_pcs;
