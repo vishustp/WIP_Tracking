@@ -113,6 +113,7 @@ interface StageTrackingMetric {
   wipMt: number;
   logsCount: number;
   targetMtr?: number;
+  targetPcs?: number;
   dwellDays?: number;
   agingSeverity?: 'NORMAL' | 'WARNING' | 'CRITICAL';
 }
@@ -294,41 +295,68 @@ export default function WorkOrderTrackingClient() {
       const woLogs = productionLogs.filter((l) => l.work_order_id === wo.id);
 
       // Rolling production stats (tracked under master campaign or single order)
+      const mhAvgLen = (plan?.mh_l1 && plan?.mh_l2 ? (plan.mh_l1 + plan.mh_l2) / 2 : plan?.mh_l1 || plan?.mh_l2) || avgLen;
       const masterRollLogs = masterLogs.filter((l) => l.stage_code === 'ROLLING');
       const rollingOutMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const rollingOutPcs = masterRollLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const rollingOutPcsLogged = masterRollLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const rollingOutPcs = rollingOutPcsLogged > 0 ? rollingOutPcsLogged : (mhAvgLen > 0 ? Math.round(rollingOutMtr / mhAvgLen) : 0);
+
       const rollingRejMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const rollingRejPcs = masterRollLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const rollingRejPcsLogged = masterRollLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const rollingRejPcs = rollingRejPcsLogged > 0 ? rollingRejPcsLogged : (mhAvgLen > 0 ? Math.round(rollingRejMtr / mhAvgLen) : 0);
+
       // Strictly HTC OK quantity from rolling!
       const rollingHtcOkMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty || 0), 0);
-      const rollingHtcOkPcs = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_pcs || 0), 0);
+      const rollingHtcOkPcsLogged = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_pcs || 0), 0);
+      const rollingHtcOkPcs = rollingHtcOkPcsLogged > 0 ? rollingHtcOkPcsLogged : (mhAvgLen > 0 ? Math.round(rollingHtcOkMtr / mhAvgLen) : 0);
 
       // Hollow Heat Treatment (HTC) stats
       const masterHtcLogs = masterLogs.filter((l) => l.stage_code === 'HOLLOW_HEAT_TREATMENT');
       const htcOutMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const htcOutPcsLogged = masterHtcLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const htcOutPcs = htcOutPcsLogged > 0 ? htcOutPcsLogged : (mhAvgLen > 0 ? Math.round(htcOutMtr / mhAvgLen) : 0);
+
       const htcRejMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const htcRejPcsLogged = masterHtcLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const htcRejPcs = htcRejPcsLogged > 0 ? htcRejPcsLogged : (mhAvgLen > 0 ? Math.round(htcRejMtr / mhAvgLen) : 0);
+
       const htcOkMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty || 0), 0);
+      const htcOkPcsLogged = masterHtcLogs.reduce((sum, l) => sum + Number(l.htc_ok_pcs || 0), 0);
+      const htcOkPcs = htcOkPcsLogged > 0 ? htcOkPcsLogged : (mhAvgLen > 0 ? Math.round(htcOkMtr / mhAvgLen) : 0);
 
       // Draw Bench stats
       const masterDrawLogs = masterLogs.filter((l) => l.stage_code === 'DRAW');
       const drawOutMtr = masterDrawLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const drawOutPcsLogged = masterDrawLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const drawOutPcs = drawOutPcsLogged > 0 ? drawOutPcsLogged : (avgLen > 0 ? Math.round(drawOutMtr / avgLen) : 0);
+
       const drawRejMtr = masterDrawLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const drawRejPcsLogged = masterDrawLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const drawRejPcs = drawRejPcsLogged > 0 ? drawRejPcsLogged : (avgLen > 0 ? Math.round(drawRejMtr / avgLen) : 0);
 
       // Heat Treatment stats
       const masterHtLogs = masterLogs.filter((l) => l.stage_code === 'HEAT_TREATMENT');
       const htOutMtr = masterHtLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const htOutPcsLogged = masterHtLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const htOutPcs = htOutPcsLogged > 0 ? htOutPcsLogged : (avgLen > 0 ? Math.round(htOutMtr / avgLen) : 0);
+
       const htRejMtr = masterHtLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const htRejPcsLogged = masterHtLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const htRejPcs = htRejPcsLogged > 0 ? htRejPcsLogged : (avgLen > 0 ? Math.round(htRejMtr / avgLen) : 0);
 
       // Finishing stats (tracked PER WORK ORDER)
       const finLogs = woLogs.filter((l) => l.stage_code === 'FINISHING');
       const finOutMtr = finLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const finOutPcs = finLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const finOutPcsLogged = finLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const finOutPcs = finOutPcsLogged > 0 ? finOutPcsLogged : (avgLen > 0 ? Math.round(finOutMtr / avgLen) : 0);
+
       const finRejMtr = finLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const finRejPcs = finLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const finRejPcsLogged = finLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const finRejPcs = finRejPcsLogged > 0 ? finRejPcsLogged : (avgLen > 0 ? Math.round(finRejMtr / avgLen) : 0);
 
       // Planned rolling target
       let rollPlanMtr = Number(plan?.planned_qty || 0);
-      let rollPlanPcs = rollPlanMtr > 0 && avgLen > 0 ? Math.round(rollPlanMtr / avgLen) : 0;
+      let rollPlanPcs = rollPlanMtr > 0 && mhAvgLen > 0 ? Math.round(rollPlanMtr / mhAvgLen) : 0;
       if (isMaster && masterInfo) {
         rollPlanMtr = Number(masterInfo.parsed?.total_campaign_mtr || rollPlanMtr);
         rollPlanPcs = Number(masterInfo.parsed?.total_campaign_pcs || rollPlanPcs);
@@ -390,6 +418,8 @@ export default function WorkOrderTrackingClient() {
           return {
             ...stageDef,
             isBundled: false,
+            targetMtr: rollPlanMtr,
+            targetPcs: rollPlanPcs,
             planMtr: rollPlanMtr,
             planPcs: rollPlanPcs,
             outMtr: rollingOutMtr,
@@ -423,11 +453,11 @@ export default function WorkOrderTrackingClient() {
             planMtr: 0,
             planPcs: 0,
             outMtr: htcOutMtr,
-            outPcs: 0,
+            outPcs: htcOutPcs,
             rejMtr: htcRejMtr,
-            rejPcs: 0,
+            rejPcs: htcRejPcs,
             htcOkMtr,
-            htcOkPcs: 0,
+            htcOkPcs,
             wipMtr,
             wipPcs,
             wipMt,
@@ -454,9 +484,9 @@ export default function WorkOrderTrackingClient() {
             planMtr: 0,
             planPcs: 0,
             outMtr: drawOutMtr,
-            outPcs: 0,
+            outPcs: drawOutPcs,
             rejMtr: drawRejMtr,
-            rejPcs: 0,
+            rejPcs: drawRejPcs,
             htcOkMtr: 0,
             htcOkPcs: 0,
             wipMtr,
@@ -483,9 +513,9 @@ export default function WorkOrderTrackingClient() {
             planMtr: 0,
             planPcs: 0,
             outMtr: htOutMtr,
-            outPcs: 0,
+            outPcs: htOutPcs,
             rejMtr: htRejMtr,
-            rejPcs: 0,
+            rejPcs: htRejPcs,
             htcOkMtr: 0,
             htcOkPcs: 0,
             wipMtr,
@@ -499,6 +529,7 @@ export default function WorkOrderTrackingClient() {
 
         // FINISHING stage:
         const targetMtr = childInfo ? Number(childInfo.planned_mtr || wo.ordered_qty) : (plan?.planned_qty || wo.ordered_qty);
+        const targetPcs = avgLen > 0 ? Math.round(targetMtr / avgLen) : 0;
         const precedingOutMtr = htOutMtr > 0 ? htOutMtr : drawOutMtr;
         let wipMtr = 0;
         if (precedingOutMtr > 0) {
@@ -512,8 +543,9 @@ export default function WorkOrderTrackingClient() {
           ...stageDef,
           isBundled: false,
           targetMtr,
+          targetPcs,
           planMtr: targetMtr,
-          planPcs: avgLen > 0 ? Math.round(targetMtr / avgLen) : 0,
+          planPcs: targetPcs,
           outMtr: finOutMtr,
           outPcs: finOutPcs,
           rejMtr: finRejMtr,
@@ -531,9 +563,13 @@ export default function WorkOrderTrackingClient() {
 
       // Overall Progress & Yield
       const totalOutMtr = stagesData.reduce((sum, s) => sum + s.outMtr, 0);
+      const totalOutPcs = stagesData.reduce((sum, s) => sum + s.outPcs, 0);
       const totalRejMtr = stagesData.reduce((sum, s) => sum + s.rejMtr, 0);
+      const totalRejPcs = stagesData.reduce((sum, s) => sum + s.rejPcs, 0);
       const finishingOutMtr = stagesData.find((s) => s.code === 'FINISHING')?.outMtr || 0;
+      const finishingOutPcs = stagesData.find((s) => s.code === 'FINISHING')?.outPcs || 0;
       const targetVolumeMtr = stagesData.find((s) => s.code === 'FINISHING')?.targetMtr || wo.ordered_qty;
+      const targetVolumePcs = stagesData.find((s) => s.code === 'FINISHING')?.targetPcs || (avgLen > 0 ? Math.round(wo.ordered_qty / avgLen) : 0);
 
       const completionPct = targetVolumeMtr > 0 ? Math.min(100, Math.round((finishingOutMtr / targetVolumeMtr) * 100)) : 0;
       const processYieldPct =
@@ -550,7 +586,11 @@ export default function WorkOrderTrackingClient() {
         plan,
         stagesData,
         finishingOutMtr,
+        finishingOutPcs,
         totalRejMtr,
+        totalRejPcs,
+        targetVolumeMtr,
+        targetVolumePcs,
         completionPct,
         processYieldPct,
         logs: woLogs,
@@ -588,13 +628,21 @@ export default function WorkOrderTrackingClient() {
   // KPI calculations across filtered work orders
   const kpis = useMemo(() => {
     let totalOrderedMtr = 0;
+    let totalTargetPcs = 0;
     let totalPendingRollingMtr = 0;
+    let totalPendingRollingPcs = 0;
     let totalRolledStockWipMtr = 0;
+    let totalRolledStockWipPcs = 0;
+    let totalRolledStockWipMt = 0;
     let totalFinishingOutMtr = 0;
+    let totalFinishingOutPcs = 0;
     let totalRejMtr = 0;
+    let totalRejPcs = 0;
 
     filteredWorkOrders.forEach((wo) => {
+      const avgLen = wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : wo.l1 || wo.l2 || 6.0;
       totalOrderedMtr += Number(wo.ordered_qty || 0);
+      totalTargetPcs += avgLen > 0 ? Math.round(Number(wo.ordered_qty || 0) / avgLen) : 0;
       const row = getWoTrackingData(wo);
       const rollStage = row.stagesData.find((s) => s.code === 'ROLLING');
       const finStage = row.stagesData.find((s) => s.code === 'FINISHING');
@@ -602,10 +650,15 @@ export default function WorkOrderTrackingClient() {
       // Do NOT double-count child plans in total pending rolling
       if (!row.childInfo) {
         totalPendingRollingMtr += Number(rollStage?.planMtr || 0);
+        totalPendingRollingPcs += Number(rollStage?.planPcs || 0);
       }
       totalRolledStockWipMtr += rollStage?.wipMtr || 0;
+      totalRolledStockWipPcs += rollStage?.wipPcs || 0;
+      totalRolledStockWipMt += rollStage?.wipMt || 0;
       totalFinishingOutMtr += finStage?.outMtr || 0;
+      totalFinishingOutPcs += finStage?.outPcs || 0;
       totalRejMtr += row.totalRejMtr;
+      totalRejPcs += row.totalRejPcs;
     });
 
     const factoryYield =
@@ -616,9 +669,14 @@ export default function WorkOrderTrackingClient() {
     return {
       totalOrders: filteredWorkOrders.length,
       totalOrderedMtr,
+      totalTargetPcs,
       totalPendingRollingMtr,
+      totalPendingRollingPcs,
       totalRolledStockWipMtr,
+      totalRolledStockWipPcs,
+      totalRolledStockWipMt,
       totalFinishingOutMtr,
+      totalFinishingOutPcs,
       factoryYield,
     };
   }, [filteredWorkOrders, getWoTrackingData]);
@@ -646,27 +704,39 @@ export default function WorkOrderTrackingClient() {
         'Mother Hollow OD (mm)': row.plan?.mh_od || '—',
         'Mother Hollow WT (mm)': row.plan?.mh_wt || '—',
         // Rolling Mill
+        'Rolling Target (Pcs)': rRoll?.planPcs || 0,
         'Rolling Plan (Mtr)': rRoll?.planMtr || 0,
+        'Rolling Output (Nos)': rRoll?.outPcs || 0,
         'Rolling Output (Mtr)': rRoll?.outMtr || 0,
-        'Rolling Output (Pcs)': rRoll?.outPcs || 0,
+        'Rolling Rejection (Nos)': rRoll?.rejPcs || 0,
         'Rolling Rejection (Mtr)': rRoll?.rejMtr || 0,
         'Rolling WIP (Mtr)': rRoll?.wipMtr || 0,
+        'Rolling WIP (MT)': Number(rRoll?.wipMt || 0).toFixed(2),
         // HTC
+        'HTC Output (Nos)': rHtc?.outPcs || 0,
         'HTC Output (Mtr)': rHtc?.outMtr || 0,
+        'HTC Rejection (Nos)': rHtc?.rejPcs || 0,
         'HTC Rejection (Mtr)': rHtc?.rejMtr || 0,
+        'HTC OK (Nos)': rHtc?.htcOkPcs || 0,
         'HTC OK (Mtr)': rHtc?.htcOkMtr || 0,
         'HTC WIP (Mtr)': rHtc?.wipMtr || 0,
         // Draw Bench
+        'Draw Output (Nos)': rDraw?.outPcs || 0,
         'Draw Output (Mtr)': rDraw?.outMtr || 0,
+        'Draw Rejection (Nos)': rDraw?.rejPcs || 0,
         'Draw Rejection (Mtr)': rDraw?.rejMtr || 0,
         'Draw WIP (Mtr)': rDraw?.wipMtr || 0,
         // Heat Treatment
+        'HT Output (Nos)': rHt?.outPcs || 0,
         'HT Output (Mtr)': rHt?.outMtr || 0,
+        'HT Rejection (Nos)': rHt?.rejPcs || 0,
         'HT Rejection (Mtr)': rHt?.rejMtr || 0,
         'HT WIP (Mtr)': rHt?.wipMtr || 0,
         // Finishing
+        'Finishing Target (Pcs)': rFin?.targetPcs || 0,
+        'Finishing Output (Nos)': rFin?.outPcs || 0,
         'Finishing Output (Mtr)': rFin?.outMtr || 0,
-        'Finishing Output (Pcs)': rFin?.outPcs || 0,
+        'Finishing Rejection (Nos)': rFin?.rejPcs || 0,
         'Finishing Rejection (Mtr)': rFin?.rejMtr || 0,
         'Final Goods WIP (Mtr)': rFin?.wipMtr || 0,
         // Summary
@@ -740,32 +810,32 @@ export default function WorkOrderTrackingClient() {
         <Card className="border-slate-200 bg-white">
           <CardContent className="p-4">
             <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Target Volume</div>
-            <div className="mt-1 text-2xl font-bold text-slate-900 font-mono">{fmt(kpis.totalOrderedMtr, 'm')}</div>
-            <div className="text-[11px] text-slate-400 mt-0.5">Customer ordered quantity</div>
+            <div className="mt-1 text-2xl font-bold text-slate-900 font-mono">{fmt(kpis.totalTargetPcs)} Pcs</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">{fmt(kpis.totalOrderedMtr, 'm')} customer ordered</div>
           </CardContent>
         </Card>
 
         <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="p-4">
             <div className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Pending Rolling</div>
-            <div className="mt-1 text-2xl font-bold text-blue-900 font-mono">{fmt(kpis.totalPendingRollingMtr, 'm')}</div>
-            <div className="text-[11px] text-blue-600 mt-0.5">Unrolled target plan</div>
+            <div className="mt-1 text-2xl font-bold text-blue-900 font-mono">{fmt(kpis.totalPendingRollingPcs)} Pcs</div>
+            <div className="text-[11px] text-blue-600 mt-0.5">{fmt(kpis.totalPendingRollingMtr, 'm')} unrolled target plan</div>
           </CardContent>
         </Card>
 
         <Card className="border-indigo-200 bg-indigo-50/50">
           <CardContent className="p-4">
             <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Rolled Stock WIP</div>
-            <div className="mt-1 text-2xl font-bold text-indigo-900 font-mono">{fmt(kpis.totalRolledStockWipMtr, 'm')}</div>
-            <div className="text-[11px] text-indigo-600 mt-0.5">Only HTC OK qty rolled</div>
+            <div className="mt-1 text-2xl font-bold text-indigo-900 font-mono">{fmt(kpis.totalRolledStockWipMt.toFixed(2), ' MT')}</div>
+            <div className="text-[11px] text-indigo-600 mt-0.5">{fmt(kpis.totalRolledStockWipMtr, 'm')} stock inventory</div>
           </CardContent>
         </Card>
 
         <Card className="border-emerald-200 bg-emerald-50/50">
           <CardContent className="p-4">
             <div className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Finished Output</div>
-            <div className="mt-1 text-2xl font-bold text-emerald-900 font-mono">{fmt(kpis.totalFinishingOutMtr, 'm')}</div>
-            <div className="text-[11px] text-emerald-600 mt-0.5">Final inspected & cut</div>
+            <div className="mt-1 text-2xl font-bold text-emerald-900 font-mono">{fmt(kpis.totalFinishingOutPcs)} Nos</div>
+            <div className="text-[11px] text-emerald-600 mt-0.5">{fmt(kpis.totalFinishingOutMtr, 'm')} final inspected</div>
           </CardContent>
         </Card>
       </div>
@@ -1029,24 +1099,24 @@ export default function WorkOrderTrackingClient() {
                               ) : null}
 
                               <div className="flex justify-between text-slate-600">
-                                <span>Plan:</span>
-                                <span className="font-mono font-bold text-slate-800">{fmt(rRoll?.planMtr || 0)}m</span>
+                                <span>Target:</span>
+                                <span className="font-mono font-bold text-slate-800">{fmt(rRoll?.planPcs || 0)} Pcs</span>
                               </div>
 
                               <div className="flex justify-between text-slate-600">
                                 <span>Rolled:</span>
-                                <span className="font-mono font-bold text-emerald-700">{fmt(rRoll?.outMtr || 0)}m</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rRoll?.outPcs || 0)} Nos</span>
                               </div>
 
                               <div className="flex justify-between text-indigo-700 font-medium">
                                 <span>HTC OK:</span>
-                                <span className="font-mono font-bold text-indigo-700">{fmt(rRoll?.htcOkMtr || 0)}m</span>
+                                <span className="font-mono font-bold text-indigo-700">{fmt(rRoll?.htcOkPcs || 0)} Nos</span>
                               </div>
 
-                              {Number(rRoll?.rejMtr || 0) > 0 && (
+                              {Number(rRoll?.rejPcs || 0) > 0 && (
                                 <div className="flex justify-between text-rose-600">
                                   <span>Rej:</span>
-                                  <span className="font-mono">{fmt(rRoll?.rejMtr || 0)}m</span>
+                                  <span className="font-mono">{fmt(rRoll?.rejPcs || 0)} Nos</span>
                                 </div>
                               )}
 
@@ -1102,20 +1172,20 @@ export default function WorkOrderTrackingClient() {
                             <div className="space-y-1">
                               <div className="flex justify-between text-slate-600">
                                 <span>Output:</span>
-                                <span className="font-mono font-bold text-emerald-700">{fmt(rHtc?.outMtr || 0)}m</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rHtc?.outPcs || 0)} Nos</span>
                               </div>
 
-                              {Number(rHtc?.htcOkMtr || 0) > 0 && (
+                              {Number(rHtc?.htcOkPcs || 0) > 0 && (
                                 <div className="flex justify-between text-indigo-700 font-medium">
                                   <span>HTC OK:</span>
-                                  <span className="font-mono">{fmt(rHtc?.htcOkMtr || 0)}m</span>
+                                  <span className="font-mono">{fmt(rHtc?.htcOkPcs || 0)} Nos</span>
                                 </div>
                               )}
 
-                              {Number(rHtc?.rejMtr || 0) > 0 && (
+                              {Number(rHtc?.rejPcs || 0) > 0 && (
                                 <div className="flex justify-between text-rose-600">
                                   <span>Rej:</span>
-                                  <span className="font-mono">{fmt(rHtc?.rejMtr || 0)}m</span>
+                                  <span className="font-mono">{fmt(rHtc?.rejPcs || 0)} Nos</span>
                                 </div>
                               )}
 
@@ -1165,13 +1235,13 @@ export default function WorkOrderTrackingClient() {
                             <div className="space-y-1">
                               <div className="flex justify-between text-slate-600">
                                 <span>Output:</span>
-                                <span className="font-mono font-bold text-emerald-700">{fmt(rDraw?.outMtr || 0)}m</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rDraw?.outPcs || 0)} Nos</span>
                               </div>
 
-                              {Number(rDraw?.rejMtr || 0) > 0 && (
+                              {Number(rDraw?.rejPcs || 0) > 0 && (
                                 <div className="flex justify-between text-rose-600">
                                   <span>Rej:</span>
-                                  <span className="font-mono">{fmt(rDraw?.rejMtr || 0)}m</span>
+                                  <span className="font-mono">{fmt(rDraw?.rejPcs || 0)} Nos</span>
                                 </div>
                               )}
 
@@ -1221,13 +1291,13 @@ export default function WorkOrderTrackingClient() {
                             <div className="space-y-1">
                               <div className="flex justify-between text-slate-600">
                                 <span>Output:</span>
-                                <span className="font-mono font-bold text-emerald-700">{fmt(rHt?.outMtr || 0)}m</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rHt?.outPcs || 0)} Nos</span>
                               </div>
 
-                              {Number(rHt?.rejMtr || 0) > 0 && (
+                              {Number(rHt?.rejPcs || 0) > 0 && (
                                 <div className="flex justify-between text-rose-600">
                                   <span>Rej:</span>
-                                  <span className="font-mono">{fmt(rHt?.rejMtr || 0)}m</span>
+                                  <span className="font-mono">{fmt(rHt?.rejPcs || 0)} Nos</span>
                                 </div>
                               )}
 
@@ -1260,24 +1330,19 @@ export default function WorkOrderTrackingClient() {
                             <div className="flex justify-between text-slate-500 text-[11px]">
                               <span>Target:</span>
                               <span className="font-mono font-bold text-slate-700">
-                                {fmt(rFin?.targetMtr || (data.childInfo ? Number(data.childInfo.planned_mtr || wo.ordered_qty) : wo.ordered_qty))}m
+                                {fmt(rFin?.targetPcs || (data.avgLen > 0 ? Math.round((rFin?.targetMtr || wo.ordered_qty) / data.avgLen) : 0))} Pcs
                               </span>
                             </div>
 
                             <div className="flex justify-between text-slate-600">
                               <span>Finished:</span>
-                              <span className="font-mono font-bold text-emerald-800 text-[13px]">{fmt(rFin?.outMtr || 0)}m</span>
+                              <span className="font-mono font-bold text-emerald-800 text-[13px]">{fmt(rFin?.outPcs || 0)} Nos</span>
                             </div>
 
-                            <div className="flex justify-between text-slate-500">
-                              <span>Cut Pcs:</span>
-                              <span className="font-mono font-bold text-slate-700">{fmt(rFin?.outPcs || 0)}</span>
-                            </div>
-
-                            {Number(rFin?.rejMtr || 0) > 0 && (
+                            {Number(rFin?.rejPcs || 0) > 0 && (
                               <div className="flex justify-between text-rose-600">
                                 <span>Rej:</span>
-                                <span className="font-mono">{fmt(rFin?.rejMtr || 0)}m</span>
+                                <span className="font-mono">{fmt(rFin?.rejPcs || 0)} Nos</span>
                               </div>
                             )}
 
@@ -1324,9 +1389,9 @@ export default function WorkOrderTrackingClient() {
                               <span className="font-bold font-mono text-indigo-700">{data.processYieldPct}%</span>
                             </div>
 
-                            {data.totalRejMtr > 0 && (
+                            {data.totalRejPcs > 0 && (
                               <div className="text-[10px] text-rose-600 font-mono">
-                                Total Scrap: {fmt(data.totalRejMtr)}m
+                                Total Scrap: {fmt(data.totalRejPcs)} Nos
                               </div>
                             )}
                           </div>
@@ -1379,13 +1444,22 @@ export default function WorkOrderTrackingClient() {
                                           {log.heat_no || '—'} / {log.lot_no || '—'}
                                         </td>
                                         <td className="py-1.5 px-2 text-right font-bold text-emerald-700">
-                                          {fmt(log.output_qty)}m {log.output_pcs ? `(${log.output_pcs} pcs)` : ''}
+                                          {fmt(log.output_pcs || (data.avgLen > 0 ? Math.round(log.output_qty / data.avgLen) : 0))} Nos
+                                          {log.output_qty > 0 && (
+                                            <span className="text-[10px] text-slate-400 font-normal ml-1 font-sans">
+                                              ({fmt(log.output_qty)}m)
+                                            </span>
+                                          )}
                                         </td>
                                         <td className="py-1.5 px-2 text-right text-rose-600">
-                                          {log.rejection_qty > 0 ? `${fmt(log.rejection_qty)}m` : '0'}
+                                          {log.rejection_qty > 0 || log.rejection_pcs > 0
+                                            ? `${fmt(log.rejection_pcs || (data.avgLen > 0 ? Math.round(log.rejection_qty / data.avgLen) : 0))} Nos`
+                                            : '0'}
                                         </td>
                                         <td className="py-1.5 px-2 text-right text-indigo-700 font-semibold">
-                                          {Number(log.htc_ok_qty || 0) > 0 ? `${fmt(log.htc_ok_qty)}m` : '—'}
+                                          {Number(log.htc_ok_qty || 0) > 0 || Number(log.htc_ok_pcs || 0) > 0
+                                            ? `${fmt(log.htc_ok_pcs || (data.avgLen > 0 ? Math.round(Number(log.htc_ok_qty || 0) / data.avgLen) : 0))} Nos`
+                                            : '—'}
                                         </td>
                                         <td className="py-1.5 px-2 text-slate-600 font-sans">
                                           {log.operator_name || '—'}
