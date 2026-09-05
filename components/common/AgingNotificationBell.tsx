@@ -228,6 +228,7 @@ export default function AgingNotificationBell({
         type="button"
         onClick={() => setOpen(!open)}
         title={totalCount > 0 ? `${totalCount} material stagnation alert(s)` : 'No stagnant WIP alerts'}
+        aria-label={totalCount > 0 ? `View ${totalCount} material stagnation alert(s)` : 'View stagnant WIP alerts (none currently)'}
         className={`relative flex h-9 w-9 items-center justify-center rounded-full border transition cursor-pointer ${
           totalCount > 0
             ? criticalCount > 0
@@ -284,6 +285,7 @@ export default function AgingNotificationBell({
               onClick={loadAlerts}
               disabled={loading}
               title="Refresh alerts"
+              aria-label="Refresh alerts"
               className="rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
