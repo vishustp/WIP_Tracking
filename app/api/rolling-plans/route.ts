@@ -667,6 +667,7 @@ export async function PUT(req: NextRequest) {
           .single();
 
         const cl1 = Number(childWo?.l1 || 0);
+        const cl2 = Number(childWo?.l2 || 0);
         const childAvg = (effMhL1 > 0 && effMhL2 > 0)
           ? (effMhL1 + effMhL2) / 2
           : (effMhL1 > 0 ? effMhL1 : (effMhL2 > 0 ? effMhL2 : (cl1 > 0 && cl2 > 0 ? (cl1 + cl2) / 2 : 6.0)));
