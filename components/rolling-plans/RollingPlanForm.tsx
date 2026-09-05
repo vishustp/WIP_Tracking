@@ -220,7 +220,7 @@ export default function RollingPlanForm() {
   const formAccess = useMemo(() => getFormAccess(user, 'rolling_plan'), [user]);
   const canManagePlans = formAccess.isAllowed;
 
-  // Load plans list
+  // Load plans list with full Mother Hollow specifications and user-planned quantities
   const loadPlans = useCallback(async () => {
     setPlansLoading(true);
     try {
@@ -235,7 +235,91 @@ export default function RollingPlanForm() {
       });
 
       if (error) throw new Error(error.message);
-      setPlans((data ?? []) as Plan[]);
+      const rawPlans = (data ?? []) as Plan[];
+
+      // Fetch actual Mother Hollow specs & status directly from rolling_plans table
+      const planIds = rawPlans.map((x) => x.id);
+      let mhMap: Record<string, any> = {};
+      if (planIds.length > 0) {
+        const { data: rpDetails } = await s
+          .from('rolling_plans')
+          .select('id, mh_od, mh_wt, mh_l1, mh_l2, pass_required, multiple, status, planned_qty')
+          .in('id', planIds);
+
+        if (rpDetails) {
+          for (const d of rpDetails) {
+            mhMap[d.id] = d;
+          }
+        }
+      }
+
+      const enrichedPlans: Plan[] = rawPlans.map((p) => {
+        const detail = mhMap[p.id];
+        let parsedSt: any = {};
+        try {
+          parsedSt = typeof detail?.status === 'string'
+            ? JSON.parse(detail.status)
+            : detail?.status || (typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {});
+        } catch {}
+
+        const mhOd = detail?.mh_od ?? p.mh_od ?? null;
+        const mhWt = detail?.mh_wt ?? p.mh_wt ?? null;
+        const mhL1 = detail?.mh_l1 ?? p.mh_l1 ?? null;
+        const mhL2 = detail?.mh_l2 ?? p.mh_l2 ?? null;
+        const passReq = detail?.pass_required ?? p.pass_required ?? 1;
+        const mult = detail?.multiple ?? p.multiple ?? 1;
+
+        // User-entered Planned PCS
+        let pcs = 0;
+        if (parsedSt?.is_master && Number(parsedSt?.master_planned_pcs) > 0) {
+          pcs = Number(parsedSt.master_planned_pcs);
+        } else if (Number(parsedSt?.planned_pcs) > 0) {
+          pcs = Number(parsedSt.planned_pcs);
+        } else if (Number(p.planned_pcs) > 0) {
+          pcs = Number(p.planned_pcs);
+        }
+
+        // Hollow Average Length: (mh_l1 + mh_l2) / 2
+        const hl1 = Number(mhL1 || 0);
+        const hl2 = Number(mhL2 || 0);
+        const mhAvgLen = (hl1 > 0 && hl2 > 0)
+          ? (hl1 + hl2) / 2
+          : (hl1 > 0 ? hl1 : (hl2 > 0 ? hl2 : Number(p.avg_length || 6.0)));
+
+        const rawMtr = Number(detail?.planned_qty ?? p.planned_qty ?? p.planned_mtr ?? 0);
+        if (pcs === 0 && rawMtr > 0 && mhAvgLen > 0) {
+          pcs = Math.round(rawMtr / mhAvgLen);
+        }
+
+        // Planned MTR = Planned PCS * Average Hollow Length
+        const mtr = pcs > 0
+          ? Number((pcs * mhAvgLen).toFixed(2))
+          : (Number(parsedSt?.master_planned_mtr || parsedSt?.planned_mtr || rawMtr) || 0);
+
+        // Planned MT = Planned PCS * (MH OD - MH WT) * MH WT * 0.0246615 * 0.001 * Average Hollow Length
+        //            = (MH OD - MH WT) * MH WT * 0.0246615 * 0.001 * Planned MTR
+        const hod = Number(mhOd || 0) > 0 ? Number(mhOd) : Number(p.od || 0);
+        const hwt = Number(mhWt || 0) > 0 ? Number(mhWt) : Number(p.wt || 0);
+        const mt = (hod > 0 && hwt > 0 && hod > hwt)
+          ? Number(((hod - hwt) * hwt * 0.0246615 * 0.001 * mtr).toFixed(3))
+          : (Number(parsedSt?.master_planned_mt || parsedSt?.planned_mt || p.planned_mt) || 0);
+
+        return {
+          ...p,
+          mh_od: mhOd,
+          mh_wt: mhWt,
+          mh_l1: mhL1,
+          mh_l2: mhL2,
+          pass_required: passReq,
+          multiple: mult,
+          planned_pcs: pcs,
+          planned_mtr: mtr,
+          planned_mt: mt,
+          status: detail?.status ?? p.status,
+        };
+      });
+
+      setPlans(enrichedPlans);
     } catch (error) {
       setPlans([]);
       toast.error(error instanceof Error ? error.message : 'Failed to load rolling plans.');
@@ -1389,30 +1473,43 @@ export default function RollingPlanForm() {
                           const hl2Num = Number(p.mh_l2 || 0);
                           const hlAvg = (hl1Num > 0 && hl2Num > 0)
                             ? (hl1Num + hl2Num) / 2
-                            : (hl1Num > 0 ? hl1Num : (hl2Num > 0 ? hl2Num : p.avg_length || 6));
+                            : (hl1Num > 0 ? hl1Num : (hl2Num > 0 ? hl2Num : p.avg_length || 6.0));
                           const hod = Number(p.mh_od || 0) > 0 ? Number(p.mh_od) : Number(p.od || 0);
                           const hwt = Number(p.mh_wt || 0) > 0 ? Number(p.mh_wt) : Number(p.wt || 0);
                           const pcs = Number(p.planned_pcs || 0);
-                          const calcMtr = (hl1Num > 0 || hl2Num > 0) && pcs > 0
-                            ? Number((pcs * hlAvg).toFixed(2))
-                            : (p.planned_mtr || 0);
-                          const calcMt = (hod > 0 && hwt > 0)
-                            ? Number((Math.max(hod - hwt, 0) * Math.max(hwt, 0) * 0.0246615 * 0.001 * (p.planned_mtr || calcMtr)).toFixed(3))
-                            : (p.planned_mt || 0);
+                          const mtr = p.planned_mtr || (pcs > 0 ? Number((pcs * hlAvg).toFixed(2)) : 0);
+                          const mt = p.planned_mt || ((hod > 0 && hwt > 0 && hod > hwt)
+                            ? Number(((hod - hwt) * hwt * 0.0246615 * 0.001 * mtr).toFixed(3))
+                            : 0);
 
                           return (
                             <>
-                              <td className="px-3 py-2 text-right font-mono">{fmt(p.planned_pcs)}</td>
                               <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
-                                {fmt(p.planned_mtr || calcMtr)}
+                                {pcs > 0 ? fmt(pcs) : '—'}
                               </td>
-                              <td className="px-3 py-2 text-right font-mono">{fmt(p.planned_mt || calcMt)}</td>
+                              <td className="px-3 py-2 text-right font-mono font-bold text-indigo-900">
+                                {mtr > 0 ? `${fmt(mtr)} m` : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono font-bold text-emerald-900">
+                                {mt > 0 ? `${fmt(mt)} MT` : '—'}
+                              </td>
                             </>
                           );
                         })()}
 
-                        <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-600">
-                          {fmt(p.mh_od)} × {fmt(p.mh_wt)} mm
+                        <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-700">
+                          {p.mh_od && p.mh_wt ? (
+                            <div>
+                              <span className="font-semibold">{fmt(p.mh_od)} × {fmt(p.mh_wt)} mm</span>
+                              {(p.mh_l1 || p.mh_l2) && (
+                                <div className="text-[10px] text-slate-400">
+                                  L: {fmt(p.mh_l1)}–{fmt(p.mh_l2)}m
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
                         </td>
 
                         <td className="px-3 py-2 text-center font-bold">{p.pass_required}</td>
@@ -1509,15 +1606,32 @@ export default function RollingPlanForm() {
                                         <td className="px-2 py-1.5 font-mono">
                                           {c.size_od} × {c.size_wt} mm
                                         </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
-                                          {fmt(c.planned_pcs)}
-                                        </td>
-                                        <td className="px-2 py-1.5 text-right font-mono font-bold text-indigo-900">
-                                          {fmt(c.planned_mtr)} m
-                                        </td>
-                                        <td className="px-2 py-1.5 text-right font-mono">
-                                          {fmt(c.planned_mt)} MT
-                                        </td>
+                                        {(() => {
+                                          const cPcs = Number(c.planned_pcs || 0);
+                                          const hl1Num = Number(p.mh_l1 || 0);
+                                          const hl2Num = Number(p.mh_l2 || 0);
+                                          const hlAvg = (hl1Num > 0 && hl2Num > 0)
+                                            ? (hl1Num + hl2Num) / 2
+                                            : (hl1Num > 0 ? hl1Num : (hl2Num > 0 ? hl2Num : p.avg_length || 6.0));
+                                          const hod = Number(p.mh_od || 0) > 0 ? Number(p.mh_od) : Number(c.size_od || 0);
+                                          const hwt = Number(p.mh_wt || 0) > 0 ? Number(p.mh_wt) : Number(c.size_wt || 0);
+                                          const cMtr = Number(c.planned_mtr || (cPcs > 0 ? Number((cPcs * hlAvg).toFixed(2)) : 0));
+                                          const cMt = Number(c.planned_mt || ((hod > 0 && hwt > 0 && hod > hwt) ? Number(((hod - hwt) * hwt * 0.0246615 * 0.001 * cMtr).toFixed(3)) : 0));
+
+                                          return (
+                                            <>
+                                              <td className="px-2 py-1.5 text-right font-mono font-bold text-slate-800">
+                                                {cPcs > 0 ? fmt(cPcs) : '—'}
+                                              </td>
+                                              <td className="px-2 py-1.5 text-right font-mono font-bold text-indigo-900">
+                                                {cMtr > 0 ? `${fmt(cMtr)} m` : '—'}
+                                              </td>
+                                              <td className="px-2 py-1.5 text-right font-mono font-bold text-emerald-900">
+                                                {cMt > 0 ? `${fmt(cMt)} MT` : '—'}
+                                              </td>
+                                            </>
+                                          );
+                                        })()}
                                         {canManagePlans && (
                                           <td className="px-2 py-1.5 text-center whitespace-nowrap">
                                             {childPlan ? (

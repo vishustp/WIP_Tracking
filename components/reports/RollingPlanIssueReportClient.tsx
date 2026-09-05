@@ -80,7 +80,86 @@ export default function RollingPlanIssueReportClient() {
       ]);
 
       if (plansRes.error) throw plansRes.error;
-      setPlans((plansRes.data ?? []) as Plan[]);
+      const rawPlans = (plansRes.data ?? []) as Plan[];
+
+      // Fetch actual Mother Hollow specs & status directly from rolling_plans table
+      const planIds = rawPlans.map((x) => x.id);
+      let mhMap: Record<string, any> = {};
+      if (planIds.length > 0) {
+        const { data: rpDetails } = await s
+          .from('rolling_plans')
+          .select('id, mh_od, mh_wt, mh_l1, mh_l2, pass_required, multiple, status, planned_qty')
+          .in('id', planIds);
+
+        if (rpDetails) {
+          for (const d of rpDetails) {
+            mhMap[d.id] = d;
+          }
+        }
+      }
+
+      const enrichedPlans: Plan[] = rawPlans.map((p) => {
+        const detail = mhMap[p.id];
+        let parsedSt: any = {};
+        try {
+          parsedSt = typeof detail?.status === 'string'
+            ? JSON.parse(detail.status)
+            : detail?.status || (typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {});
+        } catch {}
+
+        const mhOd = detail?.mh_od ?? p.mh_od ?? null;
+        const mhWt = detail?.mh_wt ?? p.mh_wt ?? null;
+        const mhL1 = detail?.mh_l1 ?? p.mh_l1 ?? null;
+        const mhL2 = detail?.mh_l2 ?? p.mh_l2 ?? null;
+        const passReq = detail?.pass_required ?? p.pass_required ?? 1;
+        const mult = detail?.multiple ?? p.multiple ?? 1;
+
+        let pcs = 0;
+        if (parsedSt?.is_master && Number(parsedSt?.master_planned_pcs) > 0) {
+          pcs = Number(parsedSt.master_planned_pcs);
+        } else if (Number(parsedSt?.planned_pcs) > 0) {
+          pcs = Number(parsedSt.planned_pcs);
+        } else if (Number(p.planned_pcs) > 0) {
+          pcs = Number(p.planned_pcs);
+        }
+
+        const hl1 = Number(mhL1 || 0);
+        const hl2 = Number(mhL2 || 0);
+        const mhAvgLen = (hl1 > 0 && hl2 > 0)
+          ? (hl1 + hl2) / 2
+          : (hl1 > 0 ? hl1 : (hl2 > 0 ? hl2 : Number(p.avg_length || 6.0)));
+
+        const rawMtr = Number(detail?.planned_qty ?? p.planned_qty ?? p.planned_mtr ?? 0);
+        if (pcs === 0 && rawMtr > 0 && mhAvgLen > 0) {
+          pcs = Math.round(rawMtr / mhAvgLen);
+        }
+
+        const mtr = pcs > 0
+          ? Number((pcs * mhAvgLen).toFixed(2))
+          : (Number(parsedSt?.master_planned_mtr || parsedSt?.planned_mtr || rawMtr) || 0);
+
+        const hod = Number(mhOd || 0) > 0 ? Number(mhOd) : Number(p.od || 0);
+        const hwt = Number(mhWt || 0) > 0 ? Number(mhWt) : Number(p.wt || 0);
+        const mt = (hod > 0 && hwt > 0 && hod > hwt)
+          ? Number(((hod - hwt) * hwt * 0.0246615 * 0.001 * mtr).toFixed(3))
+          : (Number(parsedSt?.master_planned_mt || parsedSt?.planned_mt || p.planned_mt) || 0);
+
+        return {
+          ...p,
+          mh_od: mhOd,
+          mh_wt: mhWt,
+          mh_l1: mhL1,
+          mh_l2: mhL2,
+          pass_required: passReq,
+          multiple: mult,
+          planned_pcs: pcs,
+          planned_mtr: mtr,
+          planned_mt: mt,
+          status: detail?.status ?? p.status,
+        };
+      });
+
+      setPlans(enrichedPlans);
 
       if (routesRes.data) {
         setRoutes(routesRes.data);
