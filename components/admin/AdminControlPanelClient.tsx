@@ -578,17 +578,54 @@ export default function AdminControlPanelClient() {
       toast.error('Permission denied: Only Admin Group can reset factory data.');
       return;
     }
-    if (!confirm('Delete all work orders, plans, production logs, diversions and WIP ledger data from Supabase?')) return;
 
     try {
+      // 1. First attempt: Server API with elevated service credentials
+      try {
+        const res = await fetch('/api/admin/reset-factory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) {
+            await loadData();
+            setIsResetConfirmOpen(false);
+            toast.success('Factory database transactional data cleared');
+            return;
+          }
+        }
+      } catch {
+        // Fall through to client RPC or direct deletion
+      }
+
+      // 2. Second attempt: Database RPC if migration 035 is applied
       const supabase = createClient();
-      for (const table of ['diversion_plans', 'production_logs', 'rolling_plans', 'work_order_wip', 'work_orders']) {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('reset_factory_data');
+      if (!rpcErr && (rpcRes as any)?.success) {
+        await loadData();
+        setIsResetConfirmOpen(false);
+        toast.success('Factory database transactional data cleared');
+        return;
+      }
+
+      // 3. Third attempt: Direct client deletion in safe foreign key cascade order
+      // Deleting work_orders automatically cascade-deletes work_order_wip in Postgres
+      for (const table of ['diversion_plans', 'production_logs', 'rolling_plans', 'work_orders']) {
         const { error } = await supabase.from(table).delete().not('id', 'is', null);
         if (error) throw new Error(`${table}: ${error.message}`);
       }
+
+      // Optional cleanup of work_order_wip if any standalone rows exist
+      try {
+        await supabase.from('work_order_wip').delete().not('id', 'is', null);
+      } catch {
+        // Ignored safely as work_orders cascade delete already wiped related WIP records
+      }
+
       await loadData();
       setIsResetConfirmOpen(false);
-      toast.success('Supabase transactional data cleared');
+      toast.success('Factory database transactional data cleared');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to reset Supabase data.');
     }
