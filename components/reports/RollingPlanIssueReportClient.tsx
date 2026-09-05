@@ -35,6 +35,7 @@ export type Plan = {
   planned_mtr: number;
   planned_pcs: number;
   planned_mt: number;
+  planned_qty?: number;
   mh_od: number | null;
   mh_wt: number | null;
   mh_l1: number | null;
