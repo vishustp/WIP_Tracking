@@ -125,6 +125,24 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       expect(errors[0].message).toContain("Heat Treatment × Multiple or Balance to make");
     });
 
+    it("Rule 4b: Finishing / Bundling cannot exceed 110% of total order quantity", () => {
+      const finishRow: Row = {
+        ...baseRow,
+        stage_code: "FINISHING",
+        route_code: "CDS",
+        total_order_mtr: 1000,
+        order_capping_mtr: 1100,
+        max_allowed_mtr: 1500,
+        mtr: "1100",
+      };
+      expect(validateProductionEntry(finishRow, "FINISHING")).toHaveLength(0);
+
+      const excessFinish: Row = { ...finishRow, mtr: "1105" };
+      const errors = validateProductionEntry(excessFinish, "FINISHING");
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0].message).toContain("exceeds maximum allowed 110% of Total Order Quantity");
+    });
+
     it("Rule 5: Downstream Draw is blocked if Rolling has 0 or no HTC OK logged", () => {
       const zeroHtcDraw: Row = {
         ...baseRow,

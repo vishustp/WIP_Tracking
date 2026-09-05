@@ -528,6 +528,38 @@ export default function ProductionEntryGrid() {
       return;
     }
 
+    // Validate that bundling for each work order does not exceed 110% of its total order quantity
+    const masterTotalMtr = Number(bundlingCampaign.total_order_mtr || 0);
+    const masterCapMtr = Number(bundlingCampaign.order_capping_mtr || (masterTotalMtr * 1.10).toFixed(3));
+    const masterFinished = Number(bundlingCampaign.finished_output_mtr || 0);
+
+    for (const [woId, v] of entered) {
+      const enteredMtr = n(v.mtr);
+      if (woId === bundlingCampaign.work_order_id) {
+        if (masterTotalMtr > 0 && enteredMtr + masterFinished > masterCapMtr + 0.05) {
+          setError(
+            `Work Order ${bundlingCampaign.work_order_no}: Bundled quantity (${fmt(enteredMtr)} MTR${masterFinished > 0 ? ` + already finished ${fmt(masterFinished)} MTR` : ""}) exceeds maximum allowed 110% of Total Order Quantity (${fmt(masterTotalMtr)} MTR, max capping: ${fmt(masterCapMtr)} MTR).`
+          );
+          return;
+        }
+      } else {
+        const child = (bundlingCampaign.child_work_orders || []).find(
+          (c: any) => (c.work_order_id || c.id) === woId
+        );
+        if (child) {
+          const cTotalMtr = Number(child.total_order_mtr || child.planned_mtr || 0);
+          const cCapMtr = Number(child.order_capping_mtr || (cTotalMtr * 1.10).toFixed(3));
+          const cFinished = Number(child.finished_output_mtr || 0);
+          if (cTotalMtr > 0 && enteredMtr + cFinished > cCapMtr + 0.05) {
+            setError(
+              `Work Order ${child.work_order_no}: Bundled quantity (${fmt(enteredMtr)} MTR${cFinished > 0 ? ` + already finished ${fmt(cFinished)} MTR` : ""}) exceeds maximum allowed 110% of Total Order Quantity (${fmt(cTotalMtr)} MTR, max capping: ${fmt(cCapMtr)} MTR).`
+            );
+            return;
+          }
+        }
+      }
+    }
+
     setBundlingSaving(true);
     try {
       const payload = entered.map(([woId, v]) => ({
@@ -1083,6 +1115,75 @@ export default function ProductionEntryGrid() {
                                 </span>
                               </div>
                             )}
+                          </div>
+                        ) : stage === "FINISHING" ? (
+                          <div className="space-y-1.5 min-w-[220px]">
+                            {/* 1. Total Order */}
+                            <div className="bg-slate-50 border border-slate-200/90 rounded px-2 py-1 text-xs">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                                <span>Total Order</span>
+                                <span className="text-[10px] font-medium text-slate-400">Target</span>
+                              </div>
+                              <div className="flex items-baseline gap-1 flex-wrap mt-0.5 font-mono">
+                                <span className="font-bold text-slate-800">{fmt(r.total_order_pcs || 0)}</span>
+                                <span className="text-[10px] font-semibold text-slate-500">PCS</span>
+                                <span className="text-slate-300">/</span>
+                                <span className="font-bold text-slate-800">{fmt(r.total_order_mtr || 0, " MTR")}</span>
+                                <span className="text-slate-300">/</span>
+                                <span className="font-semibold text-blue-700 text-[11px]">
+                                  {fmt(r.total_order_mt || 0, " MT")}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 2. Balance to Make */}
+                            <div className="bg-indigo-50/60 border border-indigo-100 rounded px-2 py-1 text-xs">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 flex items-center justify-between">
+                                <span>Balance to Make</span>
+                                <span className="text-[10px] font-medium text-indigo-500">Order Bal</span>
+                              </div>
+                              <div className="flex items-baseline gap-1 flex-wrap mt-0.5 font-mono">
+                                <span className="font-bold text-indigo-900">
+                                  {fmt(r.balance_to_make_order_pcs ?? r.balance_to_make_pcs ?? 0)}
+                                </span>
+                                <span className="text-[10px] font-semibold text-indigo-500">PCS</span>
+                                <span className="text-indigo-200">/</span>
+                                <span className="font-bold text-indigo-900">
+                                  {fmt(r.balance_to_make_order_mtr ?? r.balance_to_make_mtr ?? 0, " MTR")}
+                                </span>
+                                <span className="text-indigo-200">/</span>
+                                <span className="font-semibold text-indigo-700 text-[11px]">
+                                  {fmt(r.balance_to_make_order_mt ?? r.balance_to_make_mt ?? 0, " MT")}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 3. Available WIP from Preceding Stage */}
+                            <div className="bg-emerald-50/50 border border-emerald-100 rounded px-2 py-1 text-xs">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center justify-between">
+                                <span>Available WIP (HT)</span>
+                                <span className="text-[10px] font-medium text-emerald-600">Stock</span>
+                              </div>
+                              <div className="flex items-baseline gap-1 flex-wrap mt-0.5 font-mono">
+                                <span className="font-bold text-emerald-950">{fmt(availPcs)}</span>
+                                <span className="text-[10px] font-semibold text-emerald-600">PCS</span>
+                                <span className="text-emerald-300">/</span>
+                                <span className="font-bold text-emerald-950">{fmt(availMtr, " MTR")}</span>
+                                <span className="text-emerald-300">/</span>
+                                <span className="font-semibold text-emerald-700 text-[11px]">
+                                  {fmt(availMt, " MT")}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 4. Capping (110% of Total Order Qty) */}
+                            <div className="flex items-center justify-between gap-1 text-[10px] font-mono text-amber-900 bg-amber-50/90 border border-amber-200/80 rounded px-2 py-0.5">
+                              <span className="font-bold uppercase tracking-wider">Capping (110%):</span>
+                              <span className="font-bold">
+                                {fmt(r.order_capping_pcs || Math.round(((r.total_order_mtr || 0) * 1.1) / (effAvg || 6)))} PCS /{" "}
+                                {fmt(r.order_capping_mtr || ((r.total_order_mtr || 0) * 1.1), " MTR")}
+                              </span>
+                            </div>
                           </div>
                         ) : (
                           <div className="flex items-baseline gap-1 flex-wrap">
@@ -1821,27 +1922,57 @@ export default function ProductionEntryGrid() {
             id: bundlingCampaign.work_order_id,
             work_order_no: bundlingCampaign.work_order_no,
             customer_name: bundlingCampaign.customer_name,
-            grade: null,
+            grade: bundlingCampaign.specification || null,
             size_od: bundlingCampaign.od,
             size_wt: bundlingCampaign.wl,
             avg: masterCalc.avg || 6.0,
             isMaster: true,
+            total_order_pcs: bundlingCampaign.total_order_pcs || 0,
+            total_order_mtr: bundlingCampaign.total_order_mtr || 0,
+            total_order_mt: bundlingCampaign.total_order_mt || 0,
+            balance_to_make_pcs: bundlingCampaign.balance_to_make_order_pcs ?? bundlingCampaign.balance_to_make_pcs ?? 0,
+            balance_to_make_mtr: bundlingCampaign.balance_to_make_order_mtr ?? bundlingCampaign.balance_to_make_mtr ?? 0,
+            balance_to_make_mt: bundlingCampaign.balance_to_make_order_mt ?? bundlingCampaign.balance_to_make_mt ?? 0,
+            finished_mtr: bundlingCampaign.finished_output_mtr || 0,
+            capping_mtr: bundlingCampaign.order_capping_mtr || Number(((bundlingCampaign.total_order_mtr || 0) * 1.1).toFixed(3)),
           },
-          ...(bundlingCampaign.child_work_orders || []).map((c: any) => ({
-            id: c.work_order_id || c.id,
-            work_order_no: c.work_order_no,
-            customer_name: c.customer_name,
-            grade: c.grade,
-            size_od: c.size_od,
-            size_wt: c.size_wt,
-            avg: (c.l1 && c.l2 ? (c.l1 + c.l2) / 2 : c.l1) || masterCalc.avg || 6.0,
-            isMaster: false,
-          })),
+          ...(bundlingCampaign.child_work_orders || []).map((c: any) => {
+            const childTotalMtr = Number(c.total_order_mtr || c.planned_mtr || 0);
+            const childAvg = (c.l1 && c.l2 ? (c.l1 + c.l2) / 2 : c.l1) || masterCalc.avg || 6.0;
+            const childTotalPcs = Number(c.total_order_pcs || c.planned_pcs || 0) || (childAvg > 0 ? Math.round(childTotalMtr / childAvg) : 0);
+            const childOd = Number(c.size_od || bundlingCampaign.od || 0);
+            const childWt = Number(c.size_wt || bundlingCampaign.wl || 0);
+            const childTotalMt = Number(c.total_order_mt || c.planned_mt || 0) || mtFromMtr(childTotalMtr, childOd, childWt);
+            const childFinishedMtr = Number(c.finished_output_mtr || 0);
+            const childBalMtr = Number(c.balance_to_make_mtr ?? Math.max(0, childTotalMtr - childFinishedMtr));
+            const childBalPcs = childAvg > 0 ? Math.round(childBalMtr / childAvg) : 0;
+            const childBalMt = mtFromMtr(childBalMtr, childOd, childWt);
+            const childCapMtr = Number(c.order_capping_mtr || (childTotalMtr * 1.1).toFixed(3));
+
+            return {
+              id: c.work_order_id || c.id,
+              work_order_no: c.work_order_no,
+              customer_name: c.customer_name,
+              grade: c.grade,
+              size_od: c.size_od,
+              size_wt: c.size_wt,
+              avg: childAvg,
+              isMaster: false,
+              total_order_pcs: childTotalPcs,
+              total_order_mtr: childTotalMtr,
+              total_order_mt: childTotalMt,
+              balance_to_make_pcs: childBalPcs,
+              balance_to_make_mtr: childBalMtr,
+              balance_to_make_mt: childBalMt,
+              finished_mtr: childFinishedMtr,
+              capping_mtr: childCapMtr,
+            };
+          }),
         ];
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="w-full max-w-6xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
               {/* Modal Header */}
               <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
                 <div className="flex items-center gap-3">
@@ -1903,10 +2034,12 @@ export default function ProductionEntryGrid() {
                     <tr>
                       <th className="px-3 py-2 font-bold">Role</th>
                       <th className="px-3 py-2 font-bold">Work Order</th>
-                      <th className="px-3 py-2 font-bold">Customer</th>
-                      <th className="px-3 py-2 font-bold">Size & Length</th>
-                      <th className="px-3 py-2 font-bold text-center w-28">Bundle PCS</th>
-                      <th className="px-3 py-2 font-bold text-center w-28">Bundle MTR</th>
+                      <th className="px-3 py-2 font-bold">Customer & Specs</th>
+                      <th className="px-3 py-2 font-bold bg-slate-200/60 text-slate-800">Total Order</th>
+                      <th className="px-3 py-2 font-bold bg-indigo-100/60 text-indigo-900">Balance to Make</th>
+                      <th className="px-3 py-2 font-bold bg-amber-100/60 text-amber-900">110% Cap</th>
+                      <th className="px-3 py-2 font-bold text-center w-24 bg-blue-50">Bundle PCS</th>
+                      <th className="px-3 py-2 font-bold text-center w-24 bg-blue-50">Bundle MTR</th>
                       <th className="px-3 py-2 font-bold">Bundle / Lot No.</th>
                       <th className="px-3 py-2 font-bold">Remarks</th>
                     </tr>
@@ -1919,6 +2052,9 @@ export default function ProductionEntryGrid() {
                         bundleNo: "",
                         remarks: "",
                       };
+                      const rowMtr = n(entry.mtr);
+                      const maxCap = wo.capping_mtr || (wo.total_order_mtr > 0 ? wo.total_order_mtr * 1.1 : 0);
+                      const rowExceeds110 = maxCap > 0 && rowMtr + (wo.finished_mtr || 0) > maxCap + 0.05;
 
                       return (
                         <tr
@@ -1943,12 +2079,33 @@ export default function ProductionEntryGrid() {
                             {wo.work_order_no}
                           </td>
 
-                          <td className="px-3 py-2.5 max-w-[140px] truncate text-slate-600">
-                            {wo.customer_name || "—"}
+                          <td className="px-3 py-2.5 max-w-[130px] truncate text-slate-600">
+                            <div>{wo.customer_name || "—"}</div>
+                            <div className="font-mono text-[11px] text-slate-400">
+                              {wo.size_od} × {wo.size_wt} mm ({fmt(wo.avg, "m")})
+                            </div>
                           </td>
 
-                          <td className="px-3 py-2.5 font-mono text-slate-600 whitespace-nowrap">
-                            {wo.size_od} × {wo.size_wt} mm ({fmt(wo.avg, "m")})
+                          {/* Total Order */}
+                          <td className="px-3 py-2.5 whitespace-nowrap bg-slate-50/60 font-mono text-[11px]">
+                            <div className="font-bold text-slate-800">{fmt(wo.total_order_pcs)} PCS</div>
+                            <div className="text-slate-600">
+                              {fmt(wo.total_order_mtr, " MTR")} · <span className="text-blue-700 font-semibold">{fmt(wo.total_order_mt, " MT")}</span>
+                            </div>
+                          </td>
+
+                          {/* Balance to Make */}
+                          <td className="px-3 py-2.5 whitespace-nowrap bg-indigo-50/30 font-mono text-[11px]">
+                            <div className="font-bold text-indigo-900">{fmt(wo.balance_to_make_pcs)} PCS</div>
+                            <div className="text-indigo-700">
+                              {fmt(wo.balance_to_make_mtr, " MTR")} · <span className="font-semibold">{fmt(wo.balance_to_make_mt, " MT")}</span>
+                            </div>
+                          </td>
+
+                          {/* 110% Capping */}
+                          <td className="px-3 py-2.5 whitespace-nowrap bg-amber-50/30 font-mono text-[11px]">
+                            <div className="font-bold text-amber-900">{fmt(wo.capping_mtr, " MTR")}</div>
+                            <div className="text-[10px] text-amber-700 font-sans">110% Max Limit</div>
                           </td>
 
                           <td className="px-3 py-2.5 text-center">
@@ -1961,7 +2118,11 @@ export default function ProductionEntryGrid() {
                               onChange={(e) =>
                                 updateBundleEntry(wo.id, "pcs", e.target.value, wo.avg)
                               }
-                              className="w-24 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-center font-mono font-bold text-slate-900 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                              className={`w-20 rounded-lg border px-2 py-1 text-center font-mono font-bold ${
+                                rowExceeds110
+                                  ? "border-rose-500 bg-rose-50/60 text-rose-700 ring-1 ring-rose-500"
+                                  : "border-slate-300 bg-white text-slate-900 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                              }`}
                             />
                           </td>
 
@@ -1975,8 +2136,17 @@ export default function ProductionEntryGrid() {
                               onChange={(e) =>
                                 updateBundleEntry(wo.id, "mtr", e.target.value, wo.avg)
                               }
-                              className="w-24 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-center font-mono font-bold text-teal-900 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                              className={`w-20 rounded-lg border px-2 py-1 text-center font-mono font-bold ${
+                                rowExceeds110
+                                  ? "border-rose-500 bg-rose-50/60 text-rose-700 ring-1 ring-rose-500"
+                                  : "border-slate-300 bg-white text-teal-900 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                              }`}
                             />
+                            {rowExceeds110 && (
+                              <div className="text-[10px] text-rose-600 font-semibold mt-0.5 whitespace-nowrap">
+                                Exceeds 110%!
+                              </div>
+                            )}
                           </td>
 
                           <td className="px-3 py-2.5">
@@ -1987,7 +2157,7 @@ export default function ProductionEntryGrid() {
                               onChange={(e) =>
                                 updateBundleEntry(wo.id, "bundleNo", e.target.value, wo.avg)
                               }
-                              className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-teal-500"
+                              className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-teal-500"
                             />
                           </td>
 
@@ -1999,7 +2169,7 @@ export default function ProductionEntryGrid() {
                               onChange={(e) =>
                                 updateBundleEntry(wo.id, "remarks", e.target.value, wo.avg)
                               }
-                              className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-teal-500"
+                              className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-teal-500"
                             />
                           </td>
                         </tr>

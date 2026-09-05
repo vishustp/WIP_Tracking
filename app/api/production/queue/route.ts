@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
         .order("created_at", { ascending: true }),
       admin
         .from("work_orders")
-        .select("id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, balance_qty_mtr"),
+        .select("id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, ordered_qty, ordered_qty_mtr, ordered_qty_pcs, ordered_qty_mt, balance_qty_mtr, balance_qty_pcs, balance_qty_mt"),
       admin.from("process_routes").select("id, route_code, route_name"),
     ]);
 
@@ -95,6 +95,57 @@ export async function GET(req: NextRequest) {
           const existing = masterCampaignMap.get(p.work_order_id);
           const hasChildren = Array.isArray(parsed.child_work_orders) && parsed.child_work_orders.length > 0;
           if (!existing || (hasChildren && (!existing.child_work_orders || existing.child_work_orders.length === 0))) {
+            const enrichedChildOrders = (parsed.child_work_orders || []).map((child: any) => {
+              const cId = child.work_order_id || child.id;
+              const cWo = woMap.get(cId);
+              const cL1 = Number(child.l1 || cWo?.l1 || 6);
+              const cL2 = Number(child.l2 || cWo?.l2 || 6.5);
+              const cAvg = cL1 > 0 && cL2 > 0 ? (cL1 + cL2) / 2 : cL1 || 6.25;
+              const cOd = Number(child.size_od || cWo?.size_od || 0);
+              const cWt = Number(child.size_wt || cWo?.size_wt || 0);
+
+              const cTotalOrderMtr = Number(child.planned_mtr || cWo?.ordered_qty_mtr || cWo?.ordered_qty || 0);
+              const cTotalOrderPcs =
+                Number(child.planned_pcs || cWo?.ordered_qty_pcs || 0) ||
+                (cAvg > 0 ? Math.round(cTotalOrderMtr / cAvg) : 0);
+              const cTotalOrderMt =
+                Number(child.planned_mt || cWo?.ordered_qty_mt || 0) || mtFromMtr(cTotalOrderMtr, cOd, cWt);
+
+              const cFinLogs = logs.filter((l) => l.work_order_id === cId && l.stage_id === finStageId);
+              const cFinishedMtr = sumQty(cFinLogs, "output_qty");
+              const cFinishedPcs = cAvg > 0 ? Math.round(cFinishedMtr / cAvg) : 0;
+
+              const cBalOrderMtr = Math.max(0, cTotalOrderMtr - cFinishedMtr);
+              const cBalOrderPcs = cAvg > 0 ? Math.round(cBalOrderMtr / cAvg) : 0;
+              const cBalOrderMt = mtFromMtr(cBalOrderMtr, cOd, cWt);
+
+              const cCappingMtr = Number((cTotalOrderMtr * 1.10).toFixed(3));
+              const cCappingPcs = cAvg > 0 ? Math.round(cCappingMtr / cAvg) : 0;
+
+              return {
+                ...child,
+                work_order_id: cId,
+                id: cId,
+                work_order_no: child.work_order_no || cWo?.work_order_no || "Child Order",
+                customer_name: child.customer_name || cWo?.customer_name || null,
+                grade: child.grade || cWo?.grade || null,
+                size_od: cOd,
+                size_wt: cWt,
+                l1: cL1,
+                l2: cL2,
+                total_order_pcs: cTotalOrderPcs,
+                total_order_mtr: cTotalOrderMtr,
+                total_order_mt: cTotalOrderMt,
+                balance_to_make_pcs: cBalOrderPcs,
+                balance_to_make_mtr: cBalOrderMtr,
+                balance_to_make_mt: cBalOrderMt,
+                finished_output_mtr: cFinishedMtr,
+                finished_output_pcs: cFinishedPcs,
+                order_capping_mtr: cCappingMtr,
+                order_capping_pcs: cCappingPcs,
+              };
+            });
+
             masterCampaignMap.set(p.work_order_id, {
               plan_id: p.id,
               plan_no: p.plan_no,
@@ -104,7 +155,7 @@ export async function GET(req: NextRequest) {
               master_planned_pcs: masterPlannedPcs,
               total_campaign_mtr: totalCampaignMtr,
               total_campaign_pcs: totalCampaignPcs,
-              child_work_orders: parsed.child_work_orders,
+              child_work_orders: enrichedChildOrders,
               route_id: p.process_route_id,
               mh_od: p.mh_od,
               mh_wt: p.mh_wt,
@@ -113,11 +164,9 @@ export async function GET(req: NextRequest) {
               multiple: p.multiple || 1,
             });
 
-            for (const child of parsed.child_work_orders) {
-              const cId = child.work_order_id || child.id;
-              childWoMap.set(cId, {
+            for (const child of enrichedChildOrders) {
+              childWoMap.set(child.work_order_id, {
                 ...child,
-                work_order_id: cId,
                 master_wo_id: p.work_order_id,
                 master_wo_no: parsed.master_wo_no,
                 master_plan_no: p.plan_no,
@@ -429,17 +478,49 @@ export async function GET(req: NextRequest) {
         workCenterSummary.FINISHING.count += 1;
       }
 
+      // Total Order and Order Balance metrics
+      const woOd = Number(wo.size_od || 0);
+      const woWt = Number(wo.size_wt || 0);
+      const totalOrderMtr = Number(wo.ordered_qty_mtr || wo.ordered_qty || 0);
+      const totalOrderPcs = Number(wo.ordered_qty_pcs) > 0
+        ? Number(wo.ordered_qty_pcs)
+        : (avgLength > 0 ? Math.round(totalOrderMtr / avgLength) : 0);
+      const totalOrderMt = Number(wo.ordered_qty_mt) > 0
+        ? Number(wo.ordered_qty_mt)
+        : mtFromMtr(totalOrderMtr, woOd, woWt);
+
+      const woFinLogs = getStageLogs(wo.id, finStageId);
+      const woFinishedMtr = sumQty(woFinLogs, "output_qty");
+      const woFinishedPcs = avgLength > 0 ? Math.round(woFinishedMtr / avgLength) : 0;
+
+      const balanceToMakeOrderMtr = Math.max(0, totalOrderMtr - woFinishedMtr);
+      const balanceToMakeOrderPcs = avgLength > 0 ? Math.round(balanceToMakeOrderMtr / avgLength) : 0;
+      const balanceToMakeOrderMt = mtFromMtr(balanceToMakeOrderMtr, woOd, woWt);
+
+      const orderCappingMtr = Number((totalOrderMtr * 1.10).toFixed(3));
+      const orderCappingPcs = avgLength > 0 ? Math.round(orderCappingMtr / avgLength) : 0;
+
       // Pre-build Row objects for this work order for all 5 stages
       const baseRowData = {
         work_order_id: wo.id,
         work_order_no: wo.work_order_no,
         customer_name: wo.customer_name || null,
         specification: wo.grade || null,
-        od: Number(wo.size_od || 0),
-        wl: Number(wo.size_wt || 0),
+        od: woOd,
+        wl: woWt,
         l1,
         l2,
         avg_length: avgLength,
+        total_order_pcs: totalOrderPcs,
+        total_order_mtr: totalOrderMtr,
+        total_order_mt: totalOrderMt,
+        balance_to_make_order_pcs: balanceToMakeOrderPcs,
+        balance_to_make_order_mtr: balanceToMakeOrderMtr,
+        balance_to_make_order_mt: balanceToMakeOrderMt,
+        finished_output_mtr: woFinishedMtr,
+        finished_output_pcs: woFinishedPcs,
+        order_capping_mtr: orderCappingMtr,
+        order_capping_pcs: orderCappingPcs,
         mh_od: mhOd,
         mh_wt: mhWt,
         mh_l1: mhL1,
@@ -530,8 +611,8 @@ export async function GET(req: NextRequest) {
                 balance_to_make_mtr: finAvailMtr,
                 balance_to_make_pcs: finAvailPcs,
                 balance_to_make_mt: finAvailMt,
-                max_allowed_mtr: finAvailMtr,
-                max_allowed_pcs: finAvailPcs,
+                max_allowed_mtr: Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)),
+                max_allowed_pcs: avgLength > 0 ? Math.round(Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)) / avgLength) : 0,
                 prev_stage_code: isCds
                   ? "HEAT_TREATMENT"
                   : isAlloy
@@ -583,6 +664,20 @@ export async function GET(req: NextRequest) {
           routes[0]?.id ||
           "";
 
+        const childTotalOrderMtr = Number(child.total_order_mtr || child.planned_mtr || childWo?.ordered_qty_mtr || childWo?.ordered_qty || 0);
+        const childTotalOrderPcs = Number(child.total_order_pcs || child.planned_pcs || childWo?.ordered_qty_pcs || 0) || (avgLength > 0 ? Math.round(childTotalOrderMtr / avgLength) : 0);
+        const childTotalOrderMt = Number(child.total_order_mt || child.planned_mt || childWo?.ordered_qty_mt || 0) || mtFromMtr(childTotalOrderMtr, od, wt);
+
+        const childBalOrderMtr = Math.max(0, childTotalOrderMtr - childFinOutMtr);
+        const childBalOrderPcs = avgLength > 0 ? Math.round(childBalOrderMtr / avgLength) : 0;
+        const childBalOrderMt = mtFromMtr(childBalOrderMtr, od, wt);
+
+        const childCappingMtr = Number((childTotalOrderMtr * 1.10).toFixed(3));
+        const childCappingPcs = avgLength > 0 ? Math.round(childCappingMtr / avgLength) : 0;
+
+        const childMaxAllowedMtr = Math.min(childAvailMtr, Math.max(0, childCappingMtr - childFinOutMtr));
+        const childMaxAllowedPcs = avgLength > 0 ? Math.round(childMaxAllowedMtr / avgLength) : 0;
+
         childFinishingRows.push({
           work_order_id: childId,
           work_order_no: child.work_order_no || childWo?.work_order_no || "Child Order",
@@ -593,6 +688,16 @@ export async function GET(req: NextRequest) {
           l1,
           l2,
           avg_length: avgLength,
+          total_order_pcs: childTotalOrderPcs,
+          total_order_mtr: childTotalOrderMtr,
+          total_order_mt: childTotalOrderMt,
+          balance_to_make_order_pcs: childBalOrderPcs,
+          balance_to_make_order_mtr: childBalOrderMtr,
+          balance_to_make_order_mt: childBalOrderMt,
+          finished_output_mtr: childFinOutMtr,
+          finished_output_pcs: avgLength > 0 ? Math.round(childFinOutMtr / avgLength) : 0,
+          order_capping_mtr: childCappingMtr,
+          order_capping_pcs: childCappingPcs,
           mh_od: null,
           mh_wt: null,
           mh_l1: null,
@@ -605,8 +710,8 @@ export async function GET(req: NextRequest) {
           balance_to_make_mtr: childAvailMtr,
           balance_to_make_pcs: childAvailPcs,
           balance_to_make_mt: childAvailMt,
-          max_allowed_mtr: childAvailMtr,
-          max_allowed_pcs: childAvailPcs,
+          max_allowed_mtr: childMaxAllowedMtr,
+          max_allowed_pcs: childMaxAllowedPcs,
           multiple: 1,
           ht_nos: null,
           is_child: true,

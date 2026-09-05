@@ -153,6 +153,18 @@ export function validateProductionEntry(
     }
   }
 
+  // 7. Finishing specific: Bundling cannot exceed 110% of total order quantity
+  if (stage === "FINISHING" && row.total_order_mtr && row.total_order_mtr > 0) {
+    const max110 = row.order_capping_mtr || Number((row.total_order_mtr * 1.10).toFixed(3));
+    const alreadyFinished = Number(row.finished_output_mtr || 0);
+    if (d.mtr + alreadyFinished > max110 + 0.0001) {
+      errors.push({
+        workOrder: row.work_order_no,
+        message: `Finishing production (${fmt(d.mtr, " MTR")}${alreadyFinished > 0 ? ` + already finished ${fmt(alreadyFinished, " MTR")}` : ""}) exceeds maximum allowed 110% of Total Order Quantity (${fmt(row.total_order_mtr, " MTR")}, max capping is ${fmt(max110, " MTR")}).`,
+      });
+    }
+  }
+
   return errors;
 }
 

@@ -81,6 +81,18 @@ export interface Row {
   // Work Center WIP Breakdown across the entire route
   work_centers_wip?: WorkCenterWipInfo[];
 
+  // Total Order & Balance to Make Metrics (for Finishing & Planning)
+  total_order_pcs?: number | null;
+  total_order_mtr?: number | null;
+  total_order_mt?: number | null;
+  balance_to_make_order_pcs?: number | null;
+  balance_to_make_order_mtr?: number | null;
+  balance_to_make_order_mt?: number | null;
+  finished_output_mtr?: number | null;
+  finished_output_pcs?: number | null;
+  order_capping_mtr?: number | null;
+  order_capping_pcs?: number | null;
+
   // Master / Child Work Order & Rolling Campaign fields
   is_master?: boolean;
   is_child?: boolean;
@@ -102,6 +114,16 @@ export interface Row {
     planned_pcs?: number;
     planned_mtr?: number;
     planned_mt?: number;
+    total_order_pcs?: number;
+    total_order_mtr?: number;
+    total_order_mt?: number;
+    balance_to_make_pcs?: number;
+    balance_to_make_mtr?: number;
+    balance_to_make_mt?: number;
+    finished_output_mtr?: number;
+    finished_output_pcs?: number;
+    order_capping_mtr?: number;
+    order_capping_pcs?: number;
     balance_to_bundle_mtr?: number;
     balance_to_bundle_pcs?: number;
   }>;
