@@ -108,3 +108,28 @@ export const calc = (row: {
   };
 };
 
+export const getScrapYieldAllowance = (): number => {
+  if (typeof window !== "undefined") {
+    const val = localStorage.getItem("seamless_wip_scrap_yield_pct");
+    if (val) {
+      const num = Number(val);
+      if (Number.isFinite(num) && num >= 0) return num;
+    }
+  }
+  return 5.0; // Default 5% standard scrap allowance
+};
+
+export const calculateYieldWithScrap = (
+  goodOutputMtr: number,
+  scrapMtr: number,
+  inputMtr: number,
+  scrapFactorPct?: number
+): number => {
+  const factor = scrapFactorPct ?? getScrapYieldAllowance();
+  const base = inputMtr > 0 ? inputMtr : goodOutputMtr + scrapMtr;
+  if (base <= 0) return 100;
+  const scrapCredit = scrapMtr * (factor / 100);
+  const yieldVal = ((goodOutputMtr + scrapCredit) / base) * 100;
+  return Math.min(100, Math.max(0, Math.round(yieldVal * 10) / 10));
+};
+

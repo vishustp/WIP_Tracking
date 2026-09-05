@@ -142,6 +142,7 @@ export default function AdminControlPanelClient() {
   const [cappingTolerance, setCappingTolerance] = useState(100);
   const [steelDensity, setSteelDensity] = useState(7.85);
   const [rejectionThreshold, setRejectionThreshold] = useState(5.0);
+  const [scrapYieldPercent, setScrapYieldPercent] = useState(5.0);
   const [allowOverRolling, setAllowOverRolling] = useState(true);
 
   // Reset confirmation modal
@@ -249,6 +250,8 @@ export default function AdminControlPanelClient() {
       if (savedDensity) setSteelDensity(Number(savedDensity));
       const savedRej = localStorage.getItem('seamless_wip_rej_threshold');
       if (savedRej) setRejectionThreshold(Number(savedRej));
+      const savedScrapYield = localStorage.getItem('seamless_wip_scrap_yield_pct');
+      if (savedScrapYield) setScrapYieldPercent(Number(savedScrapYield));
     }
   };
 
@@ -516,12 +519,13 @@ export default function AdminControlPanelClient() {
       localStorage.setItem('seamless_wip_capping_tol', String(cappingTolerance));
       localStorage.setItem('seamless_wip_density', String(steelDensity));
       localStorage.setItem('seamless_wip_rej_threshold', String(rejectionThreshold));
+      localStorage.setItem('seamless_wip_scrap_yield_pct', String(scrapYieldPercent));
     }
     void createClient().from('audit_log').insert({
       user_id: currentUser?.auth_user_id,
       action: 'ROUTE_CONFIG',
       entity: 'System Settings',
-      new_value: { cappingTolerance, steelDensity, rejectionThreshold, allowOverRolling },
+      new_value: { cappingTolerance, steelDensity, rejectionThreshold, scrapYieldPercent, allowOverRolling },
     });
     toast.success('Plant guardrails and operational parameters saved');
   };
@@ -1049,6 +1053,24 @@ export default function AdminControlPanelClient() {
 
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">
+                    Scrap Factored in Yield Calculation (%)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={30}
+                    step={0.5}
+                    value={scrapYieldPercent}
+                    onChange={(e) => setScrapYieldPercent(Number(e.target.value))}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-hidden"
+                  />
+                  <p className="text-sm text-slate-400 mt-1">
+                    Standard percentage of process scrap (crop ends, scale loss) credited or accounted for in plant yield calculation.
+                  </p>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="font-semibold text-slate-700 block mb-1">
                     Allow Over-Rolling Output
                   </label>
                   <div className="pt-2">
@@ -1063,6 +1085,20 @@ export default function AdminControlPanelClient() {
                     </label>
                   </div>
                 </div>
+              </div>
+
+              {/* Yield & Scrap Formula Explanatory Box */}
+              <div className="rounded-lg bg-blue-50/70 border border-blue-200/80 p-3.5 text-xs text-blue-950 space-y-1.5">
+                <div className="font-bold flex items-center gap-1.5 text-blue-900">
+                  <Sliders className="h-4 w-4 text-blue-700" />
+                  <span>Yield Calculation Formula & Scrap Inclusion:</span>
+                </div>
+                <div className="font-mono text-xs bg-white/90 rounded border border-blue-200 px-2.5 py-1.5 text-blue-900 font-semibold overflow-x-auto">
+                  Recovery Yield (%) = [ Good Net Output + (Recorded Scrap × {scrapYieldPercent}%) ] ÷ Total Input × 100
+                </div>
+                <p className="text-[11px] text-blue-800">
+                  Current configuration factors <strong>{scrapYieldPercent}%</strong> of recorded crop ends / rejected hollows into overall mill material recovery yield.
+                </p>
               </div>
 
               <div className="pt-4 border-t border-slate-100 flex justify-end">
