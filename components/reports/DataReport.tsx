@@ -139,6 +139,8 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
           {q && (
             <button
               type="button"
+              aria-label="Clear search"
+              title="Clear search"
               onClick={() => {
                 setQ('');
                 setPage(1);
@@ -261,6 +263,8 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
+                    aria-label="Previous page"
+                    title="Previous page"
                     disabled={page === 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     className="min-h-[2.75rem] min-w-[2.75rem] flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 disabled:opacity-30"
@@ -272,6 +276,8 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
                   </span>
                   <button
                     type="button"
+                    aria-label="Next page"
+                    title="Next page"
                     disabled={page === totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     className="min-h-[2.75rem] min-w-[2.75rem] flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 disabled:opacity-30"
