@@ -138,8 +138,8 @@ type WipViewRow = {
 };
 
 async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: string, wo: WO): Promise<WoWipSummary> {
-  // Query actual production logs, diversion plans, and rolling plans
-  const [logsRes, divRes, plansRes] = await Promise.all([
+  // Query actual production logs, diversion plans, rolling plans, routes, and QC inspections
+  const [logsRes, divRes, plansRes, routesRes, qcRes] = await Promise.all([
     supabase
       .from('production_logs')
       .select('*, process_stages(stage_code, stage_name)')
@@ -152,11 +152,31 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
       .from('rolling_plans')
       .select('*')
       .not('status', 'is', null),
+    supabase
+      .from('process_routes')
+      .select('id, route_code, route_name'),
+    supabase
+      .from('qc_inspections')
+      .select('work_order_id, inspected_mtr, vdi_ok_mtr, vdi_salvage_mtr, vdi_rejection_mtr')
+      .eq('work_order_id', id),
   ]);
 
   const logs = logsRes.data || [];
   const divs = divRes.data || [];
   const plans = plansRes.data || [];
+  const routes = routesRes.data || [];
+  const qcList = qcRes.data || [];
+
+  // Determine active route for this work order
+  const plan = plans.find((p: any) => p.work_order_id === id);
+  const routeId = plan?.process_route_id || wo.process_route_id;
+  const route = routes.find((r: any) => r.id === routeId);
+  const routeCode = (route?.route_code || 'CDS').toUpperCase();
+
+  const isHfs = routeCode === 'HFS' || routeCode === 'ALLOY_HFS';
+  const hasHtcInRoute = routeCode === 'ALLOY_HFS' || routeCode === 'ALLOY_CDS';
+  const hasDrawInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS';
+  const hasHtInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS';
 
   // Check campaign / child mapping
   let masterWoId = id;
@@ -212,15 +232,21 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
 
   const htcOutMtr = htcLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
   const htcRejMtr = htcLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+  const htcNetMtr = Math.max(0, htcOutMtr - htcRejMtr);
 
   const drawOutMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
   const drawRejMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+  const drawNetMtr = Math.max(0, drawOutMtr - drawRejMtr);
 
   const htOutMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
   const htRejMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+  const htNetMtr = Math.max(0, htOutMtr - htRejMtr);
 
   const finOutMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
   const finRejMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+
+  const qcInspectedMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.inspected_mtr || 0), 0);
+  const qcOkMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
 
   // Diversions per stage
   const getDivOut = (stageCode: string) =>
@@ -238,14 +264,14 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     .filter((d: any) => d.target_wo_id === id)
     .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
-  // STRICT PHYSICAL WIP PER STAGE:
-  // Rule: WIP is strictly 0 until rolling production is executed, and only HTC OK qty feeds downstream!
+  // STRICT ROUTE-AWARE PHYSICAL WIP PER STAGE:
+  // Each physical meter exists at exactly one stage buffer.
   const stageDefinitions = [
-    { stage_code: 'ROLLING', stage_name: 'Rolling Mill (Mother Hollow)', sequence_no: 1 },
-    { stage_code: 'HOLLOW_HEAT_TREATMENT', stage_name: 'Hollow Heat Treatment', sequence_no: 2 },
-    { stage_code: 'DRAW', stage_name: 'Cold Draw Bench', sequence_no: 3 },
-    { stage_code: 'HEAT_TREATMENT', stage_name: 'Final Heat Treatment', sequence_no: 4 },
-    { stage_code: 'FINISHING', stage_name: 'Finishing & Inspection', sequence_no: 5 },
+    { stage_code: 'ROLLING', stage_name: 'Rolling Mill (Mother Hollow)', sequence_no: 1, is_in_route: true },
+    { stage_code: 'HOLLOW_HEAT_TREATMENT', stage_name: 'Hollow Heat Treatment', sequence_no: 2, is_in_route: hasHtcInRoute },
+    { stage_code: 'DRAW', stage_name: 'Cold Draw Bench', sequence_no: 3, is_in_route: hasDrawInRoute },
+    { stage_code: 'HEAT_TREATMENT', stage_name: 'Final Heat Treatment', sequence_no: 4, is_in_route: hasHtInRoute },
+    { stage_code: 'FINISHING', stage_name: 'Finishing & Inspection', sequence_no: 5, is_in_route: true },
   ];
 
   const stageBreakdown = stageDefinitions.map((stg) => {
@@ -258,40 +284,75 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     let outputQty = 0;
     let rejectionQty = 0;
 
+    if (!stg.is_in_route) {
+      // Stage is not part of this work order's route -> strictly 0
+      return {
+        stage_code: sc,
+        stage_name: stg.stage_name,
+        sequence_no: stg.sequence_no,
+        is_in_route: false,
+        available_mtr: 0,
+        available_pcs: 0,
+        available_mt: 0,
+        diverted_out_mtr: divOut,
+        diverted_in_mtr: divIn,
+        input_qty: 0,
+        output_qty: 0,
+        rejection_qty: 0,
+        net_output_qty: 0,
+      };
+    }
+
     if (sc === 'ROLLING') {
       inputQty = rollingGrossMtr;
       outputQty = rollingGrossMtr;
       rejectionQty = rollingRejMtr;
-      // Before rolling: physical stock is strictly 0
-      // After rolling: HTC OK qty minus downstream consumption minus diversions out
+      // Mother hollow waiting for next required stage
       if (rollingGrossMtr > 0) {
-        const downstreamConsumed = htcOutMtr + htcRejMtr > 0 ? (htcOutMtr + htcRejMtr) : (drawOutMtr + drawRejMtr);
+        let downstreamConsumed = 0;
+        if (hasHtcInRoute) {
+          downstreamConsumed = htcOutMtr + htcRejMtr;
+        } else if (hasDrawInRoute) {
+          downstreamConsumed = drawOutMtr + drawRejMtr;
+        } else {
+          downstreamConsumed = finOutMtr + finRejMtr;
+        }
         availableMtr = Math.max(0, rollingHtcOkMtr + divIn - downstreamConsumed - divOut);
       }
     } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
       inputQty = rollingHtcOkMtr;
       outputQty = htcOutMtr;
       rejectionQty = htcRejMtr;
-      if (rollingHtcOkMtr > 0) {
-        availableMtr = Math.max(0, rollingHtcOkMtr + divIn - htcOutMtr - htcRejMtr - divOut);
+      if (htcOutMtr > 0) {
+        const downstreamConsumed = hasDrawInRoute
+          ? (drawOutMtr + drawRejMtr)
+          : (finOutMtr + finRejMtr);
+        availableMtr = Math.max(0, htcNetMtr + divIn - downstreamConsumed - divOut);
       }
     } else if (sc === 'DRAW') {
-      const incoming = htcOutMtr > 0 ? htcOutMtr : rollingHtcOkMtr;
+      const incoming = hasHtcInRoute ? htcNetMtr : rollingHtcOkMtr;
       inputQty = incoming;
       outputQty = drawOutMtr;
       rejectionQty = drawRejMtr;
-      if (incoming > 0) {
-        availableMtr = Math.max(0, incoming + divIn - drawOutMtr - drawRejMtr - divOut);
+      if (drawOutMtr > 0) {
+        const downstreamConsumed = htOutMtr + htRejMtr;
+        availableMtr = Math.max(0, drawNetMtr + divIn - downstreamConsumed - divOut);
       }
     } else if (sc === 'HEAT_TREATMENT') {
-      inputQty = drawOutMtr;
+      inputQty = drawNetMtr;
       outputQty = htOutMtr;
       rejectionQty = htRejMtr;
-      if (drawOutMtr > 0) {
-        availableMtr = Math.max(0, drawOutMtr + divIn - htOutMtr - htRejMtr - divOut);
+      if (htOutMtr > 0) {
+        const downstreamConsumed = qcList.length > 0 ? qcInspectedMtr : (finOutMtr + finRejMtr);
+        availableMtr = Math.max(0, htNetMtr + divIn - downstreamConsumed - divOut);
       }
     } else if (sc === 'FINISHING') {
-      const incoming = htOutMtr > 0 ? htOutMtr : drawOutMtr;
+      let incoming = 0;
+      if (qcList.length > 0) {
+        incoming = qcOkMtr;
+      } else {
+        incoming = hasHtInRoute ? htNetMtr : hasHtcInRoute ? htcNetMtr : rollingHtcOkMtr;
+      }
       inputQty = incoming;
       outputQty = finOutMtr;
       rejectionQty = finRejMtr;
@@ -300,17 +361,19 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
       }
     }
 
-    const availablePcs = avgLength > 0 ? availableMtr / avgLength : 0;
+    const availablePcs = avgLength > 0 ? Math.round(availableMtr / avgLength) : 0;
     const availableMt = availableMtr * mtPerMtr;
 
     return {
       stage_code: sc,
       stage_name: stg.stage_name,
       sequence_no: stg.sequence_no,
+      is_in_route: true,
       available_mtr: availableMtr,
       available_pcs: availablePcs,
       available_mt: availableMt,
       diverted_out_mtr: divOut,
+      diverted_in_mtr: divIn,
       input_qty: inputQty,
       output_qty: outputQty,
       rejection_qty: rejectionQty,
@@ -319,7 +382,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   });
 
   const totalPhysicalWipMtr = stageBreakdown.reduce((sum, s) => sum + s.available_mtr, 0);
-  const totalPhysicalWipPcs = avgLength > 0 ? totalPhysicalWipMtr / avgLength : 0;
+  const totalPhysicalWipPcs = avgLength > 0 ? Math.round(totalPhysicalWipMtr / avgLength) : 0;
   const totalPhysicalWipMt = totalPhysicalWipMtr * mtPerMtr;
 
   return {
@@ -515,6 +578,22 @@ export default function DiversionForm() {
   const selectedTarget = useMemo(() => wos.find((x) => x.id === target), [wos, target]);
   const selectedRouteObj = useMemo(() => routes.find(r => r.id === route), [routes, route]);
   const selectedWorkCenterObj = useMemo(() => WORK_CENTERS.find(w => w.code === workCenter), [workCenter]);
+
+  // Work centers available for the selected Source Work Order (only active stages in its route)
+  const availableWorkCenters = useMemo(() => {
+    if (!sourceWip?.stageBreakdown?.length) return WORK_CENTERS;
+    return WORK_CENTERS.filter((wc) => {
+      const stg = sourceWip.stageBreakdown.find((s) => s.stage_code === wc.code);
+      return stg ? (stg as any).is_in_route !== false : true;
+    });
+  }, [sourceWip]);
+
+  // If current workCenter is not valid for this route, default to first valid stage
+  useEffect(() => {
+    if (availableWorkCenters.length > 0 && !availableWorkCenters.some((wc) => wc.code === workCenter)) {
+      setWorkCenter(availableWorkCenters[0].code);
+    }
+  }, [availableWorkCenters, workCenter]);
 
   // Selected Work Center WIP for Source
   const sourceStageWip = useMemo(() => {
@@ -801,11 +880,15 @@ export default function DiversionForm() {
               disabled={!canManagePlans}
               className="font-semibold text-slate-900 border-[#0078d4]/50 bg-blue-50/20"
             >
-              {WORK_CENTERS.map((wc) => (
-                <option key={wc.code} value={wc.code}>
-                  {wc.name}
-                </option>
-              ))}
+              {availableWorkCenters.map((wc) => {
+                const stg = sourceWip?.stageBreakdown?.find((s) => s.stage_code === wc.code);
+                const avail = stg ? stg.available_mtr : null;
+                return (
+                  <option key={wc.code} value={wc.code}>
+                    {wc.name} {avail != null ? `(${fmt(avail)} Mtr available)` : ''}
+                  </option>
+                );
+              })}
             </Select>
             <span className="text-[11px] text-slate-500 mt-1 block">
               Stage at which material will be transferred

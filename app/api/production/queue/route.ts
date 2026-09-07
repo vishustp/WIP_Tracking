@@ -16,8 +16,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const targetStage = (searchParams.get("stage")?.toUpperCase() || "ROLLING") as StageCode;
 
-    // Fetch plans, stages, logs, work orders, routes, qc
-    const [plansRes, stagesRes, logsRes, woRes, routesRes, qcRes] = await Promise.all([
+    // Fetch plans, stages, logs, work orders, routes, qc, diversions
+    const [plansRes, stagesRes, logsRes, woRes, routesRes, qcRes, divsRes] = await Promise.all([
       admin
         .from("rolling_plans")
         .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2, multiple")
@@ -36,6 +36,9 @@ export async function GET(req: NextRequest) {
       admin
         .from("qc_inspections")
         .select("id, work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr"),
+      admin
+        .from("diversion_plans")
+        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, status"),
     ]);
 
     if (stagesRes.error) throw stagesRes.error;
@@ -47,6 +50,17 @@ export async function GET(req: NextRequest) {
     const routes = routesRes.data || [];
     const qcInspections = qcRes?.data || [];
     const hasQcTable = !qcRes?.error;
+    const diversions = divsRes?.data || [];
+
+    const getStageDivIn = (wId: string, stageCode: string) =>
+      diversions
+        .filter((d: any) => d.target_wo_id === wId && (d.work_center || "ROLLING") === stageCode)
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+    const getStageDivOut = (wId: string, stageCode: string) =>
+      diversions
+        .filter((d: any) => d.source_wo_id === wId && (d.work_center || "ROLLING") === stageCode)
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
     const stageCodeToId = new Map<string, string>();
     const stageIdToCode = new Map<string, string>();
@@ -271,58 +285,65 @@ export async function GET(req: NextRequest) {
         ? Number(campaign.total_campaign_pcs || 0)
         : (mhAvgLength > 0 ? Math.round(totalCampaignMtr / mhAvgLength) : 0);
 
-      // Rolling Available WIP & 110% Capping
-      const rollAvailMtr = Math.max(0, totalCampaignMtr - rollTotalLogged);
+      // 1. Rolling Available WIP & 110% Capping (adjusted for Rolling Diversions)
+      const rollDivIn = getStageDivIn(woId, "ROLLING");
+      const rollDivOut = getStageDivOut(woId, "ROLLING");
+      const rollAvailMtr = Math.max(0, totalCampaignMtr + rollDivIn - rollTotalLogged - rollDivOut);
       const rollAvailPcs = mhAvgLength > 0 ? Math.round(rollAvailMtr / mhAvgLength) : 0;
       const rollAvailMt = mtFromMtr(rollAvailMtr, mhOd, mhWt);
 
       const rollCappingMtr = Number((totalCampaignMtr * 1.1).toFixed(3));
       const rollCappingPcs = mhAvgLength > 0 ? Math.round(rollCappingMtr / mhAvgLength) : 0;
 
-      // 2. Hollow Heat Treatment Stage Metrics
+      // 2. Hollow Heat Treatment Stage Metrics (adjusted for HHT Diversions)
       const hollowHtLogs = getStageLogs(woId, hollowHtStageId);
       const hollowHtOutMtr = sumQty(hollowHtLogs, "output_qty");
       const hollowHtRejMtr = sumQty(hollowHtLogs, "rejection_qty");
       const hollowHtNetMtr = Math.max(0, hollowHtOutMtr - hollowHtRejMtr);
+      const hhtDivIn = getStageDivIn(woId, "HOLLOW_HEAT_TREATMENT");
+      const hhtDivOut = getStageDivOut(woId, "HOLLOW_HEAT_TREATMENT");
 
       // Hollow HT incoming: strictly from Rolling HTC OK!
       const hollowHtAvailMtr = isAlloy
-        ? Math.max(0, rollHtcOkMtr - hollowHtOutMtr - hollowHtRejMtr)
+        ? Math.max(0, rollHtcOkMtr + hhtDivIn - hollowHtOutMtr - hollowHtRejMtr - hhtDivOut)
         : 0;
       const hollowHtAvailPcs = mhAvgLength > 0 ? Math.round(hollowHtAvailMtr / mhAvgLength) : 0;
       const hollowHtAvailMt = mtFromMtr(hollowHtAvailMtr, mhOd, mhWt);
 
-      // 3. Draw Stage Metrics
+      // 3. Draw Stage Metrics (adjusted for Draw Diversions)
       const drawLogs = getStageLogs(woId, drawStageId);
       const drawOutMtr = sumQty(drawLogs, "output_qty");
       const drawRejMtr = sumQty(drawLogs, "rejection_qty");
       const drawNetMtr = Math.max(0, drawOutMtr - drawRejMtr);
+      const drawDivIn = getStageDivIn(woId, "DRAW");
+      const drawDivOut = getStageDivOut(woId, "DRAW");
 
       // Draw incoming:
       // - CDS route: strictly from Rolling HTC OK!
       // - ALLOY_CDS: from Hollow HT Net Output (which was generated from Rolling HTC OK)
       let drawAvailMtr = 0;
       if (routeCode === "CDS") {
-        drawAvailMtr = Math.max(0, rollHtcOkMtr - drawOutMtr - drawRejMtr);
+        drawAvailMtr = Math.max(0, rollHtcOkMtr + drawDivIn - drawOutMtr - drawRejMtr - drawDivOut);
       } else if (routeCode === "ALLOY_CDS") {
-        drawAvailMtr = Math.max(0, hollowHtNetMtr - drawOutMtr - drawRejMtr);
+        drawAvailMtr = Math.max(0, hollowHtNetMtr + drawDivIn - drawOutMtr - drawRejMtr - drawDivOut);
       }
       const drawAvailPcs = mhAvgLength > 0 ? Math.round(drawAvailMtr / mhAvgLength) : (avgLength > 0 ? Math.round(drawAvailMtr / avgLength) : 0);
       const drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
-      // 4. Heat Treatment Stage Metrics
+      // 4. Heat Treatment Stage Metrics (adjusted for HT Diversions)
       const htLogs = getStageLogs(woId, htStageId);
       const htOutMtr = sumQty(htLogs, "output_qty");
       const htRejMtr = sumQty(htLogs, "rejection_qty");
       const htNetMtr = Math.max(0, htOutMtr - htRejMtr);
+      const htDivIn = getStageDivIn(woId, "HEAT_TREATMENT");
+      const htDivOut = getStageDivOut(woId, "HEAT_TREATMENT");
 
       // Heat treatment incoming: strictly from Draw net output
-      const htAvailMtr = isCds ? Math.max(0, drawNetMtr - htOutMtr - htRejMtr) : 0;
+      const htAvailMtr = isCds ? Math.max(0, drawNetMtr + htDivIn - htOutMtr - htRejMtr - htDivOut) : 0;
       const htAvailPcs = avgLength > 0 ? Math.round(htAvailMtr / avgLength) : 0;
       const htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
-      // 5. Finishing Stage Metrics (for Master WO & Campaign)
-      // Per Requirement 4: WIP for Finishing is from VDI OK Nos + Salvage Nos
+      // 5. Finishing Stage Metrics (adjusted for Finishing Diversions)
       const finLogs = getStageLogs(woId, finStageId);
       let finOutMtr = sumQty(finLogs, "output_qty");
       let finRejMtr = sumQty(finLogs, "rejection_qty");
@@ -354,6 +375,9 @@ export async function GET(req: NextRequest) {
       const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
       const qcOkMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
 
+      const finDivIn = getStageDivIn(woId, "FINISHING");
+      const finDivOut = getStageDivOut(woId, "FINISHING");
+
       let finIncomingMtr = 0;
       let finIncomingPcs = 0;
 
@@ -378,10 +402,13 @@ export async function GET(req: NextRequest) {
         finIncomingPcs = avgLength > 0 ? Math.round(finIncomingMtr / avgLength) : 0;
       }
 
-      const finAvailPcs = Math.max(0, finIncomingPcs - finOutPcs - finRejPcs);
+      const finDivInPcs = avgLength > 0 ? Math.round(finDivIn / avgLength) : 0;
+      const finDivOutPcs = avgLength > 0 ? Math.round(finDivOut / avgLength) : 0;
+
+      const finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finOutPcs - finRejPcs - finDivOutPcs);
       const finAvailMtr = avgLength > 0 && finAvailPcs > 0
         ? Number((finAvailPcs * avgLength).toFixed(3))
-        : Math.max(0, finIncomingMtr - finOutMtr - finRejMtr);
+        : Math.max(0, finIncomingMtr + finDivIn - finOutMtr - finRejMtr - finDivOut);
       const finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Build WorkCenterWipInfo pipeline for this order

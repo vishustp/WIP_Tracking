@@ -32,8 +32,8 @@ export function useQueue(stage: StageCode) {
 
       const supabase = createClient();
 
-      // 1. Fetch standard queue, plans, process stages, and production logs
-      const [queueRes, plansRes, stagesRes, logsRes, qcRes] = await Promise.all([
+      // 1. Fetch standard queue, plans, process stages, production logs, qc, and diversions
+      const [queueRes, plansRes, stagesRes, logsRes, qcRes, divsRes] = await Promise.all([
         supabase.rpc("get_production_entry_queue", { p_stage_code: s }),
         supabase
           .from("rolling_plans")
@@ -50,6 +50,9 @@ export function useQueue(stage: StageCode) {
         supabase
           .from("qc_inspections")
           .select("work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr"),
+        supabase
+          .from("diversion_plans")
+          .select("source_wo_id, target_wo_id, diverted_qty, work_center, status"),
       ]);
 
       if (queueRes.error) {
@@ -64,6 +67,17 @@ export function useQueue(stage: StageCode) {
       const stages = stagesRes.data ?? [];
       const logs = logsRes.data ?? [];
       const qcInspections: any[] = qcRes?.data || [];
+      const diversions: any[] = divsRes?.data || [];
+
+      const getStageDivIn = (wId: string, stageCode: string) =>
+        diversions
+          .filter((d: any) => d.target_wo_id === wId && (d.work_center || "ROLLING") === stageCode)
+          .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+      const getStageDivOut = (wId: string, stageCode: string) =>
+        diversions
+          .filter((d: any) => d.source_wo_id === wId && (d.work_center || "ROLLING") === stageCode)
+          .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
       const rollingStageId = stages.find((st: any) => st.stage_code === "ROLLING")?.id;
       const finishingStageId = stages.find((st: any) => st.stage_code === "FINISHING")?.id;
@@ -178,12 +192,15 @@ export function useQueue(stage: StageCode) {
           );
           const totalLoggedPcs = loggedOutputPcs + loggedRejPcs;
 
+          const rollDivIn = getStageDivIn(r.work_order_id, "ROLLING");
+          const rollDivOut = getStageDivOut(r.work_order_id, "ROLLING");
+
           if (campaign) {
             const totalCampaignMtr = Number(campaign.total_campaign_mtr || 0);
             const totalCampaignPcs = Number(campaign.total_campaign_pcs || 0);
 
-            // Available WIP = Total Plan issued against Master + Child Work Orders - Logged Rolling Production
-            const availMtr = Math.max(0, totalCampaignMtr - totalLoggedMtr);
+            // Available WIP = Total Plan issued against Master + Child Work Orders + Diversion In - Logged Rolling Production - Diversion Out
+            const availMtr = Math.max(0, totalCampaignMtr + rollDivIn - totalLoggedMtr - rollDivOut);
 
             // Effective average length for Mother Hollow PCS
             const mhL1 = Number(campaign.mh_l1 || r.mh_l1 || r.l1 || 6);
@@ -227,7 +244,7 @@ export function useQueue(stage: StageCode) {
             // Standard single work order plan
             const plan = plans.find((p: any) => p.work_order_id === r.work_order_id);
             const planMtr = plan ? Number(plan.planned_qty || 0) : Number(r.balance_to_make_mtr || 0);
-            const availMtr = Math.max(0, (planMtr || Number(r.balance_to_make_mtr || 0)) - totalLoggedMtr);
+            const availMtr = Math.max(0, (planMtr || Number(r.balance_to_make_mtr || 0)) + rollDivIn - totalLoggedMtr - rollDivOut);
             const effAvg = Number(r.avg_length) || 6;
             const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : (r.balance_to_make_pcs || 0);
             const od = Number(r.od || 0);
@@ -265,7 +282,9 @@ export function useQueue(stage: StageCode) {
               (sum: number, l: any) => sum + Number(l.output_pcs || 0) + Number(l.rejection_pcs || 0),
               0
             );
-            const availMtr = Math.max(0, campaign.total_campaign_mtr - totalLogged);
+            const masterRollDivIn = getStageDivIn(masterWoId, "ROLLING");
+            const masterRollDivOut = getStageDivOut(masterWoId, "ROLLING");
+            const availMtr = Math.max(0, campaign.total_campaign_mtr + masterRollDivIn - totalLogged - masterRollDivOut);
             const totalCampaignPcs = Number(campaign.total_campaign_pcs || 0);
             if (availMtr > 0 || (totalCampaignPcs > 0 && totalCampaignPcs > totalLoggedPcs)) {
               const { data: wo } = await supabase
@@ -370,14 +389,21 @@ export function useQueue(stage: StageCode) {
             const htOut = htLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
             const htRej = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
 
+            const hhtDivIn = getStageDivIn(r.work_order_id, "HOLLOW_HEAT_TREATMENT");
+            const hhtDivOut = getStageDivOut(r.work_order_id, "HOLLOW_HEAT_TREATMENT");
+            const drawDivIn = getStageDivIn(r.work_order_id, "DRAW");
+            const drawDivOut = getStageDivOut(r.work_order_id, "DRAW");
+            const htDivIn = getStageDivIn(r.work_order_id, "HEAT_TREATMENT");
+            const htDivOut = getStageDivOut(r.work_order_id, "HEAT_TREATMENT");
+
             let availMtr = 0;
             if (s === "HOLLOW_HEAT_TREATMENT") {
-              availMtr = Math.max(0, rollingHtcOk - hollowHtOut - hollowHtRej);
+              availMtr = Math.max(0, rollingHtcOk + hhtDivIn - hollowHtOut - hollowHtRej - hhtDivOut);
             } else if (s === "DRAW") {
               const incoming = r.route_code === "ALLOY_CDS" ? hollowHtNet : rollingHtcOk;
-              availMtr = Math.max(0, incoming - drawOut - drawRej);
+              availMtr = Math.max(0, incoming + drawDivIn - drawOut - drawRej - drawDivOut);
             } else if (s === "HEAT_TREATMENT") {
-              availMtr = Math.max(0, drawNet - htOut - htRej);
+              availMtr = Math.max(0, drawNet + htDivIn - htOut - htRej - htDivOut);
             }
 
             const effAvg = Number(r.avg_length) || 6.25;
@@ -432,6 +458,12 @@ export function useQueue(stage: StageCode) {
           const campaign = masterCampaignMap.get(r.work_order_id);
           const childInfo = childWoMap.get(r.work_order_id);
 
+          const finDivIn = getStageDivIn(r.work_order_id, "FINISHING");
+          const finDivOut = getStageDivOut(r.work_order_id, "FINISHING");
+          const effAvg = Number(r.avg_length) || 6;
+          const finDivInPcs = effAvg > 0 ? Math.round(finDivIn / effAvg) : 0;
+          const finDivOutPcs = effAvg > 0 ? Math.round(finDivOut / effAvg) : 0;
+
           // Check QC inspections for this WO
           const woQc = qcInspections.filter((q: any) => q.work_order_id === r.work_order_id);
           let rowToUse = { ...r };
@@ -443,9 +475,8 @@ export function useQueue(stage: StageCode) {
                 (!finishingStageId || l.stage_id === finishingStageId)
             );
             const finishedPcs = finishedLogs.reduce((sum: number, l: any) => sum + Number(l.output_pcs || 0) + Number(l.rejection_pcs || 0), 0);
-            const availPcs = Math.max(0, qcOk - finishedPcs);
-            const effAvg = Number(r.avg_length) || 6;
-            const availMtr: number = effAvg > 0 ? Number((availPcs * effAvg).toFixed(3)) : (Number(r.balance_to_make_mtr) || 0);
+            const availPcs = Math.max(0, qcOk + finDivInPcs - finishedPcs - finDivOutPcs);
+            const availMtr: number = effAvg > 0 ? Number((availPcs * effAvg).toFixed(3)) : Math.max(0, (Number(r.balance_to_make_mtr) || 0) + finDivIn - finDivOut);
             const od = Number(r.od || 0);
             const wt = Number(r.wl || 0);
             const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
@@ -484,8 +515,10 @@ export function useQueue(stage: StageCode) {
                 )
                 .reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
 
+              const childDivIn = getStageDivIn(childId, "FINISHING");
+              const childDivOut = getStageDivOut(childId, "FINISHING");
               const childPlannedMtr = Number(child.planned_mtr || 0);
-              const remainingMtr = Math.max(0, childPlannedMtr - childFinishedMtr);
+              const remainingMtr = Math.max(0, childPlannedMtr + childDivIn - childFinishedMtr - childDivOut);
 
               const l1 = Number(child.l1 || r.l1 || 6);
               const l2 = Number(child.l2 || r.l2 || 6);

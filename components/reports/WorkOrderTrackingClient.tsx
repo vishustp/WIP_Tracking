@@ -134,6 +134,8 @@ interface StageTrackingMetric {
   isNotInRoute?: boolean;
   dwellDays?: number;
   agingSeverity?: 'NORMAL' | 'WARNING' | 'CRITICAL';
+  divertedInMtr?: number;
+  divertedOutMtr?: number;
 }
 
 const STAGES_ORDER = [
@@ -154,6 +156,7 @@ export default function WorkOrderTrackingClient() {
   const [productionLogs, setProductionLogs] = useState<ProductionLog[]>([]);
   const [processRoutes, setProcessRoutes] = useState<{ id: string; route_code: string; route_name: string }[]>([]);
   const [qcInspections, setQcInspections] = useState<any[]>([]);
+  const [diversionPlans, setDiversionPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Filters
@@ -180,7 +183,7 @@ export default function WorkOrderTrackingClient() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [woRes, plansRes, wipRes, logsRes, routesRes, qcRes] = await Promise.all([
+      const [woRes, plansRes, wipRes, logsRes, routesRes, qcRes, divsRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('rolling_plans').select('*').not('status', 'is', null).order('created_at', { ascending: false }),
         supabase.from('vw_route_stage_wip').select('*'),
@@ -191,6 +194,7 @@ export default function WorkOrderTrackingClient() {
           .limit(10000),
         supabase.from('process_routes').select('id, route_code, route_name'),
         supabase.from('qc_inspections').select('*').order('inspection_date', { ascending: false }),
+        supabase.from('diversion_plans').select('source_wo_id, target_wo_id, diverted_qty, work_center, status'),
       ]);
 
       if (woRes.data) setWorkOrders(woRes.data);
@@ -198,6 +202,7 @@ export default function WorkOrderTrackingClient() {
       if (wipRes.data) setStageWip(wipRes.data);
       if (routesRes?.data) setProcessRoutes(routesRes.data);
       if (qcRes?.data) setQcInspections(qcRes.data);
+      if (divsRes?.data) setDiversionPlans(divsRes.data);
 
       if (logsRes.data) {
         const mappedLogs: ProductionLog[] = logsRes.data.map((l: any) => ({
@@ -391,6 +396,17 @@ export default function WorkOrderTrackingClient() {
       const masterLogs = productionLogs.filter((l) => l.work_order_id === effectiveMasterWoId);
       const woLogs = productionLogs.filter((l) => l.work_order_id === wo.id);
 
+      // Diversions helper for this work order / master
+      const getStageDivIn = (wId: string, stageCode: string) =>
+        diversionPlans
+          .filter((d: any) => d.target_wo_id === wId && (d.work_center || 'ROLLING') === stageCode)
+          .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+      const getStageDivOut = (wId: string, stageCode: string) =>
+        diversionPlans
+          .filter((d: any) => d.source_wo_id === wId && (d.work_center || 'ROLLING') === stageCode)
+          .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
       // Route determination: check stageWip (from vw_route_stage_wip) or rolling plan route
       const planRoute = processRoutes.find((r) => r.id === plan?.process_route_id);
       const woWipRows = stageWip.filter((s) => s.work_order_id === wo.id || s.work_order_id === effectiveMasterWoId);
@@ -506,14 +522,18 @@ export default function WorkOrderTrackingClient() {
 
         if (stageCode === 'ROLLING') {
           // RULE 1: WIP is strictly calculated AFTER rolling production is done, and ONLY from HTC OK qty!
+          const divIn = getStageDivIn(effectiveMasterWoId, 'ROLLING');
+          const divOut = getStageDivOut(effectiveMasterWoId, 'ROLLING');
           let wipMtr = 0;
           let wipPcs = 0;
-          if (rollingOutMtr > 0) {
+          if (rollingOutMtr > 0 || divIn > 0) {
             const downstreamConsumed = hasHtcInRoute ? (htcOutMtr + htcRejMtr) : (drawOutMtr + drawRejMtr);
-            wipMtr = Math.max(0, rollingHtcOkMtr - downstreamConsumed);
+            wipMtr = Math.max(0, rollingHtcOkMtr + divIn - downstreamConsumed - divOut);
+            const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
+            const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
             const downstreamConsumedPcs = hasHtcInRoute ? (htcOutPcs + htcRejPcs) : (drawOutPcs + drawRejPcs);
             wipPcs = rollingHtcOkPcs > 0
-              ? Math.max(0, rollingHtcOkPcs - downstreamConsumedPcs)
+              ? Math.max(0, rollingHtcOkPcs + divInPcs - downstreamConsumedPcs - divOutPcs)
               : (mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0));
           }
           const mhOd = plan?.mh_od || wo.size_od || 0;
@@ -540,10 +560,14 @@ export default function WorkOrderTrackingClient() {
             logsCount: masterRollLogs.length,
             dwellDays,
             agingSeverity,
+            divertedInMtr: divIn,
+            divertedOutMtr: divOut,
           };
         }
 
         if (stageCode === 'HOLLOW_HEAT_TREATMENT') {
+          const divIn = getStageDivIn(effectiveMasterWoId, 'HOLLOW_HEAT_TREATMENT');
+          const divOut = getStageDivOut(effectiveMasterWoId, 'HOLLOW_HEAT_TREATMENT');
           if (!hasHtcInRoute) {
             return {
               ...stageDef,
@@ -563,17 +587,21 @@ export default function WorkOrderTrackingClient() {
               logsCount: 0,
               dwellDays: 0,
               agingSeverity: 'NORMAL',
+              divertedInMtr: divIn,
+              divertedOutMtr: divOut,
             };
           }
 
           // Downstream WIP only exists after rolling production is done, and strictly from HTC OK!
           let wipMtr = 0;
           let wipPcs = 0;
-          if (rollingHtcOkMtr > 0) {
-            wipMtr = Math.max(0, rollingHtcOkMtr - htcOutMtr - htcRejMtr);
+          if (rollingHtcOkMtr > 0 || divIn > 0) {
+            wipMtr = Math.max(0, rollingHtcOkMtr + divIn - htcOutMtr - htcRejMtr - divOut);
+            const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
+            const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
             const consumedPcs = htcOutPcs + htcRejPcs;
             wipPcs = rollingHtcOkPcs > 0
-              ? Math.max(0, rollingHtcOkPcs - consumedPcs)
+              ? Math.max(0, rollingHtcOkPcs + divInPcs - consumedPcs - divOutPcs)
               : (mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0));
           }
           const mhOd = plan?.mh_od || wo.size_od || 0;
@@ -599,21 +627,27 @@ export default function WorkOrderTrackingClient() {
             logsCount: masterHtcLogs.length,
             dwellDays,
             agingSeverity,
+            divertedInMtr: divIn,
+            divertedOutMtr: divOut,
           };
         }
 
         if (stageCode === 'DRAW') {
+          const divIn = getStageDivIn(effectiveMasterWoId, 'DRAW');
+          const divOut = getStageDivOut(effectiveMasterWoId, 'DRAW');
           // If Hollow HT is in route, incoming stock to Draw Bench is strictly Hollow HT net output.
           // If Hollow HT is not in route (e.g. CDS), incoming stock is directly Rolling HTC OK.
           const incomingMtr = hasHtcInRoute ? Math.max(0, htcOutMtr - htcRejMtr) : rollingHtcOkMtr;
           const incomingPcs = hasHtcInRoute ? Math.max(0, htcOutPcs - htcRejPcs) : rollingHtcOkPcs;
           let wipMtr = 0;
           let wipPcs = 0;
-          if (incomingMtr > 0) {
-            wipMtr = Math.max(0, incomingMtr - drawOutMtr - drawRejMtr);
+          if (incomingMtr > 0 || divIn > 0) {
+            wipMtr = Math.max(0, incomingMtr + divIn - drawOutMtr - drawRejMtr - divOut);
+            const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
+            const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
             const consumedPcs = drawOutPcs + drawRejPcs;
             wipPcs = incomingPcs > 0
-              ? Math.max(0, incomingPcs - consumedPcs)
+              ? Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs)
               : (mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0));
           }
           const mhOd = plan?.mh_od || wo.size_od || 0;
@@ -642,19 +676,25 @@ export default function WorkOrderTrackingClient() {
             logsCount: masterDrawLogs.length,
             dwellDays,
             agingSeverity,
+            divertedInMtr: divIn,
+            divertedOutMtr: divOut,
           };
         }
 
         if (stageCode === 'HEAT_TREATMENT') {
+          const divIn = getStageDivIn(effectiveMasterWoId, 'HEAT_TREATMENT');
+          const divOut = getStageDivOut(effectiveMasterWoId, 'HEAT_TREATMENT');
           let wipMtr = 0;
           let wipPcs = 0;
           const drawNetMtr = Math.max(0, drawOutMtr - drawRejMtr);
           const drawNetPcs = Math.max(0, drawOutPcs - drawRejPcs);
-          if (drawNetMtr > 0) {
-            wipMtr = Math.max(0, drawNetMtr - htOutMtr - htRejMtr);
+          if (drawNetMtr > 0 || divIn > 0) {
+            wipMtr = Math.max(0, drawNetMtr + divIn - htOutMtr - htRejMtr - divOut);
+            const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
+            const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
             const consumedPcs = htOutPcs + htRejPcs;
             wipPcs = drawNetPcs > 0
-              ? Math.max(0, drawNetPcs - consumedPcs)
+              ? Math.max(0, drawNetPcs + divInPcs - consumedPcs - divOutPcs)
               : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
           }
           const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
@@ -677,6 +717,8 @@ export default function WorkOrderTrackingClient() {
             logsCount: masterHtLogs.length,
             dwellDays,
             agingSeverity,
+            divertedInMtr: divIn,
+            divertedOutMtr: divOut,
           };
         }
 
@@ -712,18 +754,23 @@ export default function WorkOrderTrackingClient() {
           0
         );
 
+        const divIn = getStageDivIn(wo.id, 'FINISHING');
+        const divOut = getStageDivOut(wo.id, 'FINISHING');
+        const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
+        const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
+
         let wipMtr = 0;
         let wipPcs = 0;
         if (woQcList.length > 0) {
           // Strictly from VDI OK Nos!
           const consumedPcs = finOutPcs + finRejPcs;
-          wipPcs = Math.max(0, Math.min(targetPcs, qcPassedPcs) - consumedPcs);
-          wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : Math.max(0, qcPassedMtr - finOutMtr - finRejMtr);
-        } else if (precedingOutMtr > 0) {
-          wipMtr = Math.max(0, Math.min(targetMtr, precedingOutMtr) - finOutMtr - finRejMtr);
+          wipPcs = Math.max(0, Math.min(targetPcs, qcPassedPcs) + divInPcs - consumedPcs - divOutPcs);
+          wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : Math.max(0, qcPassedMtr + divIn - finOutMtr - finRejMtr - divOut);
+        } else if (precedingOutMtr > 0 || divIn > 0) {
+          wipMtr = Math.max(0, Math.min(targetMtr, precedingOutMtr) + divIn - finOutMtr - finRejMtr - divOut);
           const consumedPcs = finOutPcs + finRejPcs;
           wipPcs = precedingOutPcs > 0
-            ? Math.max(0, Math.min(targetPcs, precedingOutPcs) - consumedPcs)
+            ? Math.max(0, Math.min(targetPcs, precedingOutPcs) + divInPcs - consumedPcs - divOutPcs)
             : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
         }
         const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
@@ -748,6 +795,8 @@ export default function WorkOrderTrackingClient() {
           logsCount: finLogs.length,
           dwellDays,
           agingSeverity,
+          divertedInMtr: divIn,
+          divertedOutMtr: divOut,
         };
       });
 
@@ -1357,6 +1406,19 @@ export default function WorkOrderTrackingClient() {
                                 <span className="font-mono">{fmt(rRoll?.wipPcs || 0)} Nos</span>
                               </div>
 
+                              {Number(rRoll?.divertedInMtr || 0) > 0 && (
+                                <div className="flex justify-between text-emerald-700 text-[10px]">
+                                  <span>Div In:</span>
+                                  <span className="font-mono font-bold">+{fmt(rRoll.divertedInMtr, 'm')}</span>
+                                </div>
+                              )}
+                              {Number(rRoll?.divertedOutMtr || 0) > 0 && (
+                                <div className="flex justify-between text-amber-700 text-[10px]">
+                                  <span>Div Out:</span>
+                                  <span className="font-mono font-bold">-{fmt(rRoll.divertedOutMtr, 'm')}</span>
+                                </div>
+                              )}
+
                               {Number(rRoll?.wipPcs || 0) > 0 && rRoll?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
                                   <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
@@ -1431,6 +1493,19 @@ export default function WorkOrderTrackingClient() {
                                 <span className="font-mono">{fmt(rHtc?.wipPcs || 0)} Nos</span>
                               </div>
 
+                              {Number(rHtc?.divertedInMtr || 0) > 0 && (
+                                <div className="flex justify-between text-emerald-700 text-[10px]">
+                                  <span>Div In:</span>
+                                  <span className="font-mono font-bold">+{fmt(rHtc.divertedInMtr, 'm')}</span>
+                                </div>
+                              )}
+                              {Number(rHtc?.divertedOutMtr || 0) > 0 && (
+                                <div className="flex justify-between text-amber-700 text-[10px]">
+                                  <span>Div Out:</span>
+                                  <span className="font-mono font-bold">-{fmt(rHtc.divertedOutMtr, 'm')}</span>
+                                </div>
+                              )}
+
                               {Number(rHtc?.wipPcs || 0) > 0 && rHtc?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
                                   <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
@@ -1487,6 +1562,19 @@ export default function WorkOrderTrackingClient() {
                                 <span className="font-mono">{fmt(rDraw?.wipPcs || 0)} Nos</span>
                               </div>
 
+                              {Number(rDraw?.divertedInMtr || 0) > 0 && (
+                                <div className="flex justify-between text-emerald-700 text-[10px]">
+                                  <span>Div In:</span>
+                                  <span className="font-mono font-bold">+{fmt(rDraw.divertedInMtr, 'm')}</span>
+                                </div>
+                              )}
+                              {Number(rDraw?.divertedOutMtr || 0) > 0 && (
+                                <div className="flex justify-between text-amber-700 text-[10px]">
+                                  <span>Div Out:</span>
+                                  <span className="font-mono font-bold">-{fmt(rDraw.divertedOutMtr, 'm')}</span>
+                                </div>
+                              )}
+
                               {Number(rDraw?.wipPcs || 0) > 0 && rDraw?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
                                   <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
@@ -1542,6 +1630,19 @@ export default function WorkOrderTrackingClient() {
                                 <span>WIP:</span>
                                 <span className="font-mono">{fmt(rHt?.wipPcs || 0)} Nos</span>
                               </div>
+
+                              {Number(rHt?.divertedInMtr || 0) > 0 && (
+                                <div className="flex justify-between text-emerald-700 text-[10px]">
+                                  <span>Div In:</span>
+                                  <span className="font-mono font-bold">+{fmt(rHt.divertedInMtr, 'm')}</span>
+                                </div>
+                              )}
+                              {Number(rHt?.divertedOutMtr || 0) > 0 && (
+                                <div className="flex justify-between text-amber-700 text-[10px]">
+                                  <span>Div Out:</span>
+                                  <span className="font-mono font-bold">-{fmt(rHt.divertedOutMtr, 'm')}</span>
+                                </div>
+                              )}
 
                               {Number(rHt?.wipPcs || 0) > 0 && rHt?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
@@ -1605,6 +1706,19 @@ export default function WorkOrderTrackingClient() {
                               <span>Stock WIP:</span>
                               <span className="font-mono">{fmt(rFin?.wipPcs || 0)} Nos</span>
                             </div>
+
+                            {Number(rFin?.divertedInMtr || 0) > 0 && (
+                              <div className="flex justify-between text-emerald-700 text-[10px]">
+                                <span>Div In:</span>
+                                <span className="font-mono font-bold">+{fmt(rFin.divertedInMtr, 'm')}</span>
+                              </div>
+                            )}
+                            {Number(rFin?.divertedOutMtr || 0) > 0 && (
+                              <div className="flex justify-between text-amber-700 text-[10px]">
+                                <span>Div Out:</span>
+                                <span className="font-mono font-bold">-{fmt(rFin.divertedOutMtr, 'm')}</span>
+                              </div>
+                            )}
 
                             {Number(rFin?.wipPcs || 0) > 0 && rFin?.dwellDays !== undefined && (
                               <div className="mt-1 flex items-center justify-end">
@@ -1805,8 +1919,15 @@ function FinishingQcModal({ data, onClose }: FinishingQcModalProps) {
   const totalPassedPcs = totalVdiOkPcs;
   const totalPassedMt = totalVdiOkMt;
 
+  // Finishing diversions if any
+  const rFin = data.stagesData.find((s) => s.code === 'FINISHING');
+  const divInMtr = Number(rFin?.divertedInMtr || 0);
+  const divOutMtr = Number(rFin?.divertedOutMtr || 0);
+  const divInPcs = avgLen > 0 ? Math.round(divInMtr / avgLen) : 0;
+  const divOutPcs = avgLen > 0 ? Math.round(divOutMtr / avgLen) : 0;
+
   // Current WIP Available in Finishing
-  const finishingWipPcs = Math.max(0, totalPassedPcs - finishingDonePcs - finishingRejPcs);
+  const finishingWipPcs = Math.max(0, totalPassedPcs + divInPcs - finishingDonePcs - finishingRejPcs - divOutPcs);
   const finishingWipMtr = avgLen > 0 ? Number((finishingWipPcs * avgLen).toFixed(3)) : 0;
   const finishingWipMt = mtFromMtr(finishingWipMtr, od, wt);
 
