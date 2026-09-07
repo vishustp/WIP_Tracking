@@ -40,6 +40,12 @@ interface WorkOrder {
   grade: string | null;
   specification: string | null;
   ordered_qty: number;
+  ordered_qty_pcs?: number | null;
+  ordered_qty_mtr?: number | null;
+  ordered_qty_mt?: number | null;
+  balance_qty_pcs?: number | null;
+  balance_qty_mtr?: number | null;
+  balance_qty_mt?: number | null;
   uom: string;
   target_date: string | null;
   status: string;
