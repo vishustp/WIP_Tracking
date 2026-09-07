@@ -193,3 +193,62 @@ export const emptyRow = (r: Omit<
   heat_lot_no: "",
   remarks: "",
 });
+
+export interface SalvageReasonItem {
+  id: string;
+  reason: string;
+  pcs: number;
+  mtr?: number;
+  mt?: number;
+  remarks?: string;
+}
+
+export interface QcInspection {
+  id: string;
+  work_order_id: string;
+  work_order_no?: string;
+  customer_name?: string | null;
+  specification?: string | null;
+  size_od?: number | null;
+  size_wt?: number | null;
+  process_route_id?: string | null;
+  inspection_date: string;
+  inspected_pcs: number;
+  inspected_mtr: number;
+  inspected_mt: number;
+  vdi_ok_pcs: number;
+  vdi_ok_mtr: number;
+  vdi_ok_mt: number;
+  vdi_salvage_pcs: number;
+  vdi_salvage_mtr: number;
+  vdi_salvage_mt: number;
+  vdi_rejection_pcs: number;
+  vdi_rejection_mtr: number;
+  vdi_rejection_mt: number;
+  salvage_reasons: SalvageReasonItem[];
+  remarks?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface QcQueueItem {
+  work_order_id: string;
+  work_order_no: string;
+  customer_name: string | null;
+  specification: string | null;
+  size_od: number;
+  size_wt: number;
+  l1?: number | null;
+  l2?: number | null;
+  avg_length: number;
+  process_route_id?: string | null;
+  route_code?: string;
+  ht_ok_pcs: number;
+  ht_ok_mtr: number;
+  ht_ok_mt: number;
+  already_inspected_pcs: number;
+  available_ht_ok_pcs: number;
+  available_ht_ok_mtr: number;
+  available_ht_ok_mt: number;
+}

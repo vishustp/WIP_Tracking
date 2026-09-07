@@ -33,7 +33,7 @@ export function useQueue(stage: StageCode) {
       const supabase = createClient();
 
       // 1. Fetch standard queue, plans, process stages, and production logs
-      const [queueRes, plansRes, stagesRes, logsRes] = await Promise.all([
+      const [queueRes, plansRes, stagesRes, logsRes, qcRes] = await Promise.all([
         supabase.rpc("get_production_entry_queue", { p_stage_code: s }),
         supabase
           .from("rolling_plans")
@@ -46,7 +46,10 @@ export function useQueue(stage: StageCode) {
           .select("id, stage_code"),
         supabase
           .from("production_logs")
-          .select("work_order_id, stage_id, output_qty, rejection_qty, htc_ok"),
+          .select("work_order_id, stage_id, output_qty, rejection_qty, htc_ok, output_pcs, rejection_pcs"),
+        supabase
+          .from("qc_inspections")
+          .select("work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr"),
       ]);
 
       if (queueRes.error) {
@@ -60,6 +63,7 @@ export function useQueue(stage: StageCode) {
       const plans = plansRes.data ?? [];
       const stages = stagesRes.data ?? [];
       const logs = logsRes.data ?? [];
+      const qcInspections: any[] = qcRes?.data || [];
 
       const rollingStageId = stages.find((st: any) => st.stage_code === "ROLLING")?.id;
       const finishingStageId = stages.find((st: any) => st.stage_code === "FINISHING")?.id;
@@ -428,9 +432,38 @@ export function useQueue(stage: StageCode) {
           const campaign = masterCampaignMap.get(r.work_order_id);
           const childInfo = childWoMap.get(r.work_order_id);
 
+          // Check QC inspections for this WO
+          const woQc = qcInspections.filter((q: any) => q.work_order_id === r.work_order_id);
+          let rowToUse = { ...r };
+          if (woQc.length > 0) {
+            const qcOk = woQc.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+            const qcSalvage = woQc.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+            const qcPassed = qcOk + qcSalvage;
+            const finishedLogs = logs.filter(
+              (l: any) =>
+                l.work_order_id === r.work_order_id &&
+                (!finishingStageId || l.stage_id === finishingStageId)
+            );
+            const finishedPcs = finishedLogs.reduce((sum: number, l: any) => sum + Number(l.output_pcs || 0) + Number(l.rejection_pcs || 0), 0);
+            const availPcs = Math.max(0, qcPassed - finishedPcs);
+            const effAvg = Number(r.avg_length) || 6;
+            const availMtr = effAvg > 0 ? Number((availPcs * effAvg).toFixed(3)) : r.balance_to_make_mtr;
+            const od = Number(r.od || 0);
+            const wt = Number(r.wl || 0);
+            const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
+            rowToUse = {
+              ...rowToUse,
+              balance_to_make_pcs: availPcs,
+              balance_to_make_mtr: availMtr,
+              balance_to_make_mt: Number(availMt.toFixed(3)),
+              max_allowed_pcs: availPcs,
+              max_allowed_mtr: availMtr,
+            };
+          }
+
           if (campaign) {
             processedRows.push({
-              ...r,
+              ...rowToUse,
               is_master: true,
               master_plan_no: campaign.plan_no,
               campaign_total_mtr: campaign.total_campaign_mtr,
@@ -500,14 +533,14 @@ export function useQueue(stage: StageCode) {
             }
           } else if (childInfo) {
             processedRows.push({
-              ...r,
+              ...rowToUse,
               is_child: true,
               master_wo_id: childInfo.master_wo_id,
               master_wo_no: childInfo.master_wo_no,
               master_plan_no: childInfo.master_plan_no,
             });
           } else {
-            processedRows.push(r);
+            processedRows.push(rowToUse);
           }
         }
 

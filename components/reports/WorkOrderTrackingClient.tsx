@@ -27,7 +27,14 @@ import {
   TrendingUp,
   SlidersHorizontal,
   FileSpreadsheet,
+  X,
+  ClipboardCheck,
+  XCircle,
+  PackageCheck,
+  AlertCircle,
+  ExternalLink,
 } from 'lucide-react';
+import Link from 'next/link';
 
 interface WorkOrder {
   id: string;
@@ -146,6 +153,7 @@ export default function WorkOrderTrackingClient() {
   const [stageWip, setStageWip] = useState<StageWipRow[]>([]);
   const [productionLogs, setProductionLogs] = useState<ProductionLog[]>([]);
   const [processRoutes, setProcessRoutes] = useState<{ id: string; route_code: string; route_name: string }[]>([]);
+  const [qcInspections, setQcInspections] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Filters
@@ -159,12 +167,20 @@ export default function WorkOrderTrackingClient() {
 
   // UI state
   const [expandedWos, setExpandedWos] = useState<Record<string, boolean>>({});
+  const [selectedFinishingWo, setSelectedFinishingWo] = useState<{
+    wo: WorkOrder;
+    stagesData: StageTrackingMetric[];
+    isMaster: boolean;
+    childInfo?: any;
+    qcItems: any[];
+    finishingLogs: ProductionLog[];
+  } | null>(null);
 
   // Fetch initial data
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [woRes, plansRes, wipRes, logsRes, routesRes] = await Promise.all([
+      const [woRes, plansRes, wipRes, logsRes, routesRes, qcRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('rolling_plans').select('*').not('status', 'is', null).order('created_at', { ascending: false }),
         supabase.from('vw_route_stage_wip').select('*'),
@@ -174,12 +190,14 @@ export default function WorkOrderTrackingClient() {
           .order('created_at', { ascending: false })
           .limit(10000),
         supabase.from('process_routes').select('id, route_code, route_name'),
+        supabase.from('qc_inspections').select('*').order('inspection_date', { ascending: false }),
       ]);
 
       if (woRes.data) setWorkOrders(woRes.data);
       if (plansRes.data) setRollingPlans(plansRes.data);
       if (wipRes.data) setStageWip(wipRes.data);
       if (routesRes?.data) setProcessRoutes(routesRes.data);
+      if (qcRes?.data) setQcInspections(qcRes.data);
 
       if (logsRes.data) {
         const mappedLogs: ProductionLog[] = logsRes.data.map((l: any) => ({
@@ -682,9 +700,26 @@ export default function WorkOrderTrackingClient() {
 
         const precedingOutMtr = htOutMtr > 0 ? Math.max(0, htOutMtr - htRejMtr) : Math.max(0, drawOutMtr - drawRejMtr);
         const precedingOutPcs = htOutMtr > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs);
+
+        const woQcList = qcInspections.filter(
+          (q: any) => q.work_order_id === wo.id || (childInfo && q.work_order_id === childInfo.master_wo_id)
+        );
+        const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+        const qcSalvagePcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+        const qcPassedPcs = qcOkPcs + qcSalvagePcs;
+        const qcPassedMtr = woQcList.reduce(
+          (sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0) + Number(q.vdi_salvage_mtr || 0),
+          0
+        );
+
         let wipMtr = 0;
         let wipPcs = 0;
-        if (precedingOutMtr > 0) {
+        if (woQcList.length > 0) {
+          // Strictly from VDI OK + Salvage Nos!
+          const consumedPcs = finOutPcs + finRejPcs;
+          wipPcs = Math.max(0, Math.min(targetPcs, qcPassedPcs) - consumedPcs);
+          wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : Math.max(0, qcPassedMtr - finOutMtr - finRejMtr);
+        } else if (precedingOutMtr > 0) {
           wipMtr = Math.max(0, Math.min(targetMtr, precedingOutMtr) - finOutMtr - finRejMtr);
           const consumedPcs = finOutPcs + finRejPcs;
           wipPcs = precedingOutPcs > 0
@@ -732,6 +767,10 @@ export default function WorkOrderTrackingClient() {
           ? Math.round((finishingOutMtr / (finishingOutMtr + totalRejMtr)) * 100)
           : 100;
 
+      const woQcList = qcInspections.filter(
+        (q: any) => q.work_order_id === wo.id || (childInfo && q.work_order_id === childInfo.master_wo_id)
+      );
+
       return {
         wo,
         avgLen,
@@ -749,9 +788,10 @@ export default function WorkOrderTrackingClient() {
         completionPct,
         processYieldPct,
         logs: woLogs,
+        qcList: woQcList,
       };
     },
-    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip]
+    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip, qcInspections]
   );
 
   // Toggle single work order details
@@ -902,6 +942,11 @@ export default function WorkOrderTrackingClient() {
         'HT Rejection (Mtr)': rHt?.rejMtr || 0,
         'HT WIP (Pcs)': rHt?.wipPcs || 0,
         'HT WIP (Mtr)': rHt?.wipMtr || 0,
+        // QC / VDI Inspection
+        'VDI Inspected (Nos)': (row.qcList || []).reduce((sum: number, q: any) => sum + Number(q.inspected_pcs || 0), 0),
+        'VDI OK (Nos)': (row.qcList || []).reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0),
+        'VDI Salvage (Nos)': (row.qcList || []).reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0),
+        'VDI Rejection (Nos)': (row.qcList || []).reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0), 0),
         // Finishing
         'Finishing Target (Pcs)': rFin?.targetPcs || 0,
         'Finishing Output (Nos)': rFin?.outPcs || 0,
@@ -1517,13 +1562,31 @@ export default function WorkOrderTrackingClient() {
                         </td>
 
                         {/* 5. Finishing Line */}
-                        <td className="py-3 px-3 align-top bg-emerald-50/30 border-r border-emerald-100">
+                        <td
+                          onClick={() => {
+                            setSelectedFinishingWo({
+                              wo,
+                              stagesData: data.stagesData,
+                              isMaster: data.isMaster,
+                              childInfo: data.childInfo,
+                              qcItems: data.qcList || [],
+                              finishingLogs: data.logs.filter((l) => l.stage_code === 'FINISHING'),
+                            });
+                          }}
+                          className="py-3 px-3 align-top bg-emerald-50/30 border-r border-emerald-100 cursor-pointer hover:bg-emerald-100/60 hover:shadow-inner transition-colors group relative select-none"
+                          title="Click to view VDI Inspected, VDI OK, VDI Salvage, VDI Rejection & Finishing Done breakdown"
+                        >
                           <div className="space-y-1">
-                            <div className="flex justify-between text-slate-500 text-[11px]">
+                            <div className="flex justify-between items-center text-slate-500 text-[11px]">
                               <span>Target:</span>
-                              <span className="font-mono font-bold text-slate-700">
-                                {fmt(rFin?.targetPcs || 0)} Pcs
-                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="font-mono font-bold text-slate-700">
+                                  {fmt(rFin?.targetPcs || 0)} Pcs
+                                </span>
+                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                                  QC <ArrowRight size={8} />
+                                </span>
+                              </div>
                             </div>
 
                             <div className="flex justify-between text-slate-600">
@@ -1679,8 +1742,386 @@ export default function WorkOrderTrackingClient() {
               </tbody>
             </table>
           )}
-        </div>
-      </div>
+      {/* QC & Finishing Breakdown Modal (Requirement 5) */}
+      {selectedFinishingWo && (() => {
+        const { wo, childInfo, isMaster, qcItems, finishingLogs } = selectedFinishingWo;
+        const od = Number(wo.size_od || 0);
+        const wt = Number(wo.size_wt || 0);
+        const l1 = Number(wo.l1 || 6);
+        const l2 = Number(wo.l2 || 6.5);
+        const avgLen = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6.25;
+
+        // VDI QC Totals
+        const totalInspectedPcs = qcItems.reduce((sum: number, q: any) => sum + Number(q.inspected_pcs || 0), 0);
+        const totalInspectedMtr = qcItems.reduce((sum: number, q: any) => sum + Number(q.inspected_mtr || 0), 0);
+        const totalInspectedMt = qcItems.reduce((sum: number, q: any) => sum + Number(q.inspected_mt || 0), 0) || mtFromMtr(totalInspectedMtr, od, wt);
+
+        const totalVdiOkPcs = qcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+        const totalVdiOkMtr = qcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+        const totalVdiOkMt = qcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mt || 0), 0) || mtFromMtr(totalVdiOkMtr, od, wt);
+
+        const totalVdiSalvagePcs = qcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+        const totalVdiSalvageMtr = qcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+        const totalVdiSalvageMt = qcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mt || 0), 0) || mtFromMtr(totalVdiSalvageMtr, od, wt);
+
+        const totalVdiRejPcs = qcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0), 0);
+        const totalVdiRejMtr = qcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
+        const totalVdiRejMt = qcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mt || 0), 0) || mtFromMtr(totalVdiRejMtr, od, wt);
+
+        // Finishing Production Totals
+        const finishingDonePcs = finishingLogs.reduce((sum: number, l: any) => sum + Number(l.output_pcs || 0), 0);
+        const finishingDoneMtr = finishingLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+        const finishingDoneMt = mtFromMtr(finishingDoneMtr, od, wt);
+
+        const finishingRejPcs = finishingLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_pcs || 0), 0);
+        const finishingRejMtr = finishingLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+
+        // Approved for Finishing (VDI OK + Salvage)
+        const totalPassedPcs = totalVdiOkPcs + totalVdiSalvagePcs;
+        const totalPassedMt = totalVdiOkMt + totalVdiSalvageMt;
+
+        // Current WIP Available in Finishing
+        const finishingWipPcs = Math.max(0, totalPassedPcs - finishingDonePcs - finishingRejPcs);
+        const finishingWipMtr = avgLen > 0 ? Number((finishingWipPcs * avgLen).toFixed(3)) : 0;
+        const finishingWipMt = mtFromMtr(finishingWipMtr, od, wt);
+
+        // Flatten all salvage reasons across QC inspection entries
+        const allSalvageReasons: { reason: string; pcs: number; mt: number; description?: string }[] = [];
+        qcItems.forEach((q: any) => {
+          if (Array.isArray(q.salvage_reasons)) {
+            q.salvage_reasons.forEach((sr: any) => {
+              allSalvageReasons.push({
+                reason: sr.reason || 'General Defect',
+                pcs: Number(sr.pcs || 0),
+                mt: Number(sr.mt || 0),
+                description: sr.description || '',
+              });
+            });
+          }
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden my-8">
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-5 flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                      QC / VDI Breakdown
+                    </span>
+                    <h2 className="text-xl font-bold font-mono tracking-tight text-white">
+                      {wo.work_order_no}
+                    </h2>
+                    {isMaster && (
+                      <span className="bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 text-xs px-2 py-0.5 rounded-full font-semibold">
+                        Master Campaign
+                      </span>
+                    )}
+                    {childInfo && (
+                      <span className="bg-amber-500/30 text-amber-200 border border-amber-400/40 text-xs px-2 py-0.5 rounded-full font-semibold">
+                        Child of {childInfo.master_wo_no}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-slate-300 text-sm mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span>Customer: <strong className="text-white">{wo.customer_name || '—'}</strong></span>
+                    <span>·</span>
+                    <span>Grade: <strong className="text-white">{wo.grade || '—'}</strong></span>
+                    <span>·</span>
+                    <span>Size: <strong className="text-white font-mono">{od} × {wt} mm</strong></span>
+                    <span>·</span>
+                    <span>Length: <strong className="text-white font-mono">{l1} - {l2} m</strong></span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedFinishingWo(null)}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6 max-h-[calc(85vh-120px)] overflow-y-auto">
+                {/* 5 Primary Highlighted Metric Cards (Requirement 5) */}
+                <div>
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                    Quality Inspection & Finishing Metrics
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                    {/* 1. VDI Inspected */}
+                    <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-blue-900 mb-1">
+                        <span className="text-xs font-bold uppercase tracking-wider">VDI Inspected</span>
+                        <ClipboardCheck size={16} className="text-blue-600" />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-extrabold font-mono text-blue-950">
+                          {fmt(totalInspectedPcs)} <span className="text-sm font-semibold font-sans text-blue-700">Nos</span>
+                        </div>
+                        <div className="text-xs font-medium text-blue-800 mt-0.5">
+                          {fmt(totalInspectedMt)} MT
+                        </div>
+                        <div className="text-[11px] text-blue-600/80 font-mono">
+                          {fmt(totalInspectedMtr)} Mtr
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. VDI OK */}
+                    <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3.5 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-emerald-900 mb-1">
+                        <span className="text-xs font-bold uppercase tracking-wider">VDI OK</span>
+                        <CheckCircle2 size={16} className="text-emerald-600" />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-extrabold font-mono text-emerald-950">
+                          {fmt(totalVdiOkPcs)} <span className="text-sm font-semibold font-sans text-emerald-700">Nos</span>
+                        </div>
+                        <div className="text-xs font-medium text-emerald-800 mt-0.5">
+                          {fmt(totalVdiOkMt)} MT
+                        </div>
+                        <div className="text-[11px] text-emerald-600/80 font-mono">
+                          {fmt(totalVdiOkMtr)} Mtr
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3. VDI Salvage */}
+                    <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3.5 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-amber-900 mb-1">
+                        <span className="text-xs font-bold uppercase tracking-wider">VDI Salvage</span>
+                        <AlertTriangle size={16} className="text-amber-600" />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-extrabold font-mono text-amber-950">
+                          {fmt(totalVdiSalvagePcs)} <span className="text-sm font-semibold font-sans text-amber-700">Nos</span>
+                        </div>
+                        <div className="text-xs font-medium text-amber-800 mt-0.5">
+                          {fmt(totalVdiSalvageMt)} MT
+                        </div>
+                        <div className="text-[11px] text-amber-600/80 font-mono">
+                          {fmt(totalVdiSalvageMtr)} Mtr
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4. VDI Rejection */}
+                    <div className="bg-rose-50/80 border border-rose-200 rounded-xl p-3.5 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-rose-900 mb-1">
+                        <span className="text-xs font-bold uppercase tracking-wider">VDI Rejection</span>
+                        <XCircle size={16} className="text-rose-600" />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-extrabold font-mono text-rose-950">
+                          {fmt(totalVdiRejPcs)} <span className="text-sm font-semibold font-sans text-rose-700">Nos</span>
+                        </div>
+                        <div className="text-xs font-medium text-rose-800 mt-0.5">
+                          {fmt(totalVdiRejMt)} MT
+                        </div>
+                        <div className="text-[11px] text-rose-600/80 font-mono">
+                          {fmt(totalVdiRejMtr)} Mtr
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 5. Finishing Done */}
+                    <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-3.5 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-indigo-900 mb-1">
+                        <span className="text-xs font-bold uppercase tracking-wider">Finishing Done</span>
+                        <PackageCheck size={16} className="text-indigo-600" />
+                      </div>
+                      <div>
+                        <div className="text-2xl font-extrabold font-mono text-indigo-950">
+                          {fmt(finishingDonePcs)} <span className="text-sm font-semibold font-sans text-indigo-700">Nos</span>
+                        </div>
+                        <div className="text-xs font-medium text-indigo-800 mt-0.5">
+                          {fmt(finishingDoneMt)} MT
+                        </div>
+                        <div className="text-[11px] text-indigo-600/80 font-mono">
+                          {fmt(finishingDoneMtr)} Mtr
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Flow Balance Summary (VDI OK + Salvage -> Finishing Done -> Stock WIP) */}
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                  <div className="flex flex-wrap items-center justify-between gap-4 text-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="font-semibold text-slate-700">Finishing Input Allowed:</div>
+                      <div className="font-mono font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                        {fmt(totalPassedPcs)} Nos ({fmt(totalPassedMt)} MT)
+                        <span className="text-[10px] text-slate-500 font-normal ml-1">(VDI OK + Salvage)</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="font-semibold text-slate-700">Remaining Finishing WIP:</div>
+                      <div className={`font-mono font-bold px-2.5 py-1 rounded-lg border ${
+                        finishingWipPcs > 0
+                          ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}>
+                        {fmt(finishingWipPcs)} Nos ({fmt(finishingWipMt)} MT)
+                      </div>
+                    </div>
+                    {finishingRejPcs > 0 && (
+                      <div className="flex items-center gap-3">
+                        <div className="font-semibold text-rose-700">Finishing Line Rejection:</div>
+                        <div className="font-mono font-bold text-rose-900 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                          {fmt(finishingRejPcs)} Nos
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Salvage Reasons Breakdown */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <AlertTriangle size={14} className="text-amber-500" />
+                      Itemized Salvage Reasons Breakdown
+                    </div>
+                    <span className="text-xs text-slate-500 font-mono">
+                      Total Salvage: <strong>{fmt(totalVdiSalvagePcs)} Nos</strong> ({fmt(totalVdiSalvageMt)} MT)
+                    </span>
+                  </div>
+
+                  {allSalvageReasons.length === 0 ? (
+                    <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center text-slate-500 text-xs">
+                      No salvage defects recorded for this work order.
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-100/90 text-slate-700 font-semibold border-b border-slate-200">
+                          <tr>
+                            <th className="py-2 px-3">Defect Reason</th>
+                            <th className="py-2 px-3 text-right">Quantity (Nos)</th>
+                            <th className="py-2 px-3 text-right">Weight (MT)</th>
+                            <th className="py-2 px-3">Notes / Description</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {allSalvageReasons.map((sr, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/70">
+                              <td className="py-2 px-3 font-medium text-slate-800">
+                                <span className="inline-block w-2 h-2 rounded-full bg-amber-500 mr-2" />
+                                {sr.reason}
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-amber-900">
+                                {fmt(sr.pcs)} Nos
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono text-slate-600">
+                                {fmt(sr.mt)} MT
+                              </td>
+                              <td className="py-2 px-3 text-slate-500 italic">
+                                {sr.description || '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Logged QC Inspection Entries */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <ClipboardCheck size={14} className="text-blue-600" />
+                      QC / VDI Inspection History ({qcItems.length} Logged Entries)
+                    </div>
+                    <Link
+                      href="/qc"
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 hover:underline"
+                    >
+                      Open QC Form <ExternalLink size={12} />
+                    </Link>
+                  </div>
+
+                  {qcItems.length === 0 ? (
+                    <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle size={16} className="text-amber-600 flex-shrink-0" />
+                        <span>No QC / VDI inspections logged yet for this work order. Heat Treatment OK stock must be inspected in the QC form before it becomes available in Finishing.</span>
+                      </div>
+                      <Link
+                        href="/qc"
+                        className="ml-3 bg-amber-600 hover:bg-amber-700 text-white font-semibold px-3 py-1.5 rounded-lg transition text-xs whitespace-nowrap"
+                      >
+                        Enter QC Inspection
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-100/90 text-slate-700 font-semibold border-b border-slate-200">
+                          <tr>
+                            <th className="py-2 px-3">Date</th>
+                            <th className="py-2 px-3 text-right">Inspected Nos</th>
+                            <th className="py-2 px-3 text-right text-emerald-700">VDI OK Nos</th>
+                            <th className="py-2 px-3 text-right text-amber-700">Salvage Nos</th>
+                            <th className="py-2 px-3 text-right text-rose-700">Rejection Nos</th>
+                            <th className="py-2 px-3">Inspector</th>
+                            <th className="py-2 px-3">Remarks</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {qcItems.map((q: any) => (
+                            <tr key={q.id} className="hover:bg-slate-50/70">
+                              <td className="py-2 px-3 font-mono text-slate-700">
+                                {q.inspection_date || '—'}
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-blue-900">
+                                {fmt(q.inspected_pcs || 0)} Nos
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700">
+                                {fmt(q.vdi_ok_pcs || 0)} Nos
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-amber-700">
+                                {fmt(q.vdi_salvage_pcs || 0)} Nos
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono font-bold text-rose-700">
+                                {fmt(q.vdi_rejection_pcs || 0)} Nos
+                              </td>
+                              <td className="py-2 px-3 text-slate-600">
+                                {q.inspected_by || q.created_by || '—'}
+                              </td>
+                              <td className="py-2 px-3 text-slate-500 truncate max-w-[180px]">
+                                {q.remarks || '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-slate-50 border-t border-slate-200 p-4 flex items-center justify-between">
+                <span className="text-xs text-slate-500">
+                  Clicking the Finishing Line field opens this detailed VDI & Finishing view.
+                </span>
+                <Button
+                  variant="outline"
+                  onClick={() => setSelectedFinishingWo(null)}
+                  className="px-5 cursor-pointer"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

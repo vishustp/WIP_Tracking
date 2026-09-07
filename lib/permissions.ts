@@ -124,6 +124,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
   // PPC planning forms (Work Orders, Excel Import, Rolling Planning, Diversion Planning), PPC Reports (Rolling Plans, Diversions), and Admin/Settings are strictly RESTRICTED to PPC / Admin group.
   const allowedUserRoutes = [
     '/production',
+    '/qc',
     '/dashboard',
     '/profile',
     '/reports/pending-orders',
@@ -136,6 +137,26 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
   ];
 
   return allowedUserRoutes.some((allowed) => href === allowed || href.startsWith(allowed + '/'));
+}
+
+/**
+ * Checks whether user has full access (create/edit/delete) to the QC / VDI inspection form.
+ * PPC, QC, Admin, and Super User have full access. Other users have read-only access.
+ */
+export function isUserAuthorizedForQc(user: AppUserProfile | null | undefined): boolean {
+  if (!user) return false;
+  if (user.group === 'admin' || user.group === 'super_user') return true;
+
+  const dept = (user.department || '').toUpperCase();
+  if (dept.includes('PPC') || dept.includes('QC') || dept.includes('QA') || dept.includes('QUALITY')) return true;
+
+  const role = (user.role || '').toLowerCase();
+  if (role === 'admin' || role === 'manager' || role === 'qa_inspector') return true;
+
+  const wc = (user.work_center || '').toUpperCase();
+  if (wc === 'QC' || wc === 'QA' || wc === 'ALL') return true;
+
+  return false;
 }
 
 /**

@@ -27,12 +27,15 @@ export async function GET(req: NextRequest) {
       admin.from("process_stages").select("id, stage_code, stage_name"),
       admin
         .from("production_logs")
-        .select("id, work_order_id, stage_id, process_route_id, process_date, input_qty, output_qty, rejection_qty, htc_ok, heat_lot_no, remarks")
+        .select("id, work_order_id, stage_id, process_route_id, process_date, input_qty, output_qty, rejection_qty, htc_ok, heat_lot_no, remarks, output_pcs, rejection_pcs")
         .order("created_at", { ascending: true }),
       admin
         .from("work_orders")
         .select("id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, ordered_qty, ordered_qty_mtr, ordered_qty_pcs, ordered_qty_mt, balance_qty_mtr, balance_qty_pcs, balance_qty_mt"),
       admin.from("process_routes").select("id, route_code, route_name"),
+      admin
+        .from("qc_inspections")
+        .select("id, work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr"),
     ]);
 
     if (stagesRes.error) throw stagesRes.error;
@@ -42,6 +45,8 @@ export async function GET(req: NextRequest) {
     const logs = logsRes.data || [];
     const workOrders = woRes.data || [];
     const routes = routesRes.data || [];
+    const qcInspections = qcRes?.data || [];
+    const hasQcTable = !qcRes?.error;
 
     const stageCodeToId = new Map<string, string>();
     const stageIdToCode = new Map<string, string>();
@@ -317,9 +322,12 @@ export async function GET(req: NextRequest) {
       const htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // 5. Finishing Stage Metrics (for Master WO & Campaign)
+      // Per Requirement 4: WIP for Finishing is from VDI OK Nos + Salvage Nos
       const finLogs = getStageLogs(woId, finStageId);
       let finOutMtr = sumQty(finLogs, "output_qty");
       let finRejMtr = sumQty(finLogs, "rejection_qty");
+      let finOutPcs = sumQty(finLogs, "output_pcs");
+      let finRejPcs = sumQty(finLogs, "rejection_pcs");
 
       // If this is a master campaign with child orders, also include child finishing production in consumed stock
       if (campaign && Array.isArray(campaign.child_work_orders)) {
@@ -328,21 +336,50 @@ export async function GET(req: NextRequest) {
           const childFinLogs = getStageLogs(cId, finStageId);
           finOutMtr += sumQty(childFinLogs, "output_qty");
           finRejMtr += sumQty(childFinLogs, "rejection_qty");
+          finOutPcs += sumQty(childFinLogs, "output_pcs");
+          finRejPcs += sumQty(childFinLogs, "rejection_pcs");
         }
       }
       const finNetMtr = Math.max(0, finOutMtr - finRejMtr);
 
-      // Finishing incoming for master order:
+      // Check QC Inspections for this WO (or related campaign)
+      const woQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
+      const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+      const qcSalvagePcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+      const qcPassedPcs = qcOkPcs + qcSalvagePcs;
+
+      const qcOkMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+      const qcSalvageMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+      const qcPassedMtr = qcOkMtr + qcSalvageMtr;
+
       let finIncomingMtr = 0;
-      if (routeCode === "HFS") {
-        finIncomingMtr = rollHtcOkMtr * multiple;
-      } else if (routeCode === "ALLOY_HFS") {
-        finIncomingMtr = hollowHtNetMtr * multiple;
+      let finIncomingPcs = 0;
+
+      if (woQcList.length > 0) {
+        // Strictly from VDI OK Nos + Salvage Nos!
+        finIncomingPcs = qcPassedPcs;
+        finIncomingMtr = qcPassedMtr > 0 ? qcPassedMtr : (avgLength > 0 ? qcPassedPcs * avgLength : 0);
+      } else if (hasQcTable) {
+        // QC table exists, but no QC inspection has been done yet for this order.
+        // It must be inspected in QC first!
+        finIncomingMtr = 0;
+        finIncomingPcs = 0;
       } else {
-        finIncomingMtr = htNetMtr * multiple;
+        // Fallback for when migration 040 is not yet applied
+        if (routeCode === "HFS") {
+          finIncomingMtr = rollHtcOkMtr * multiple;
+        } else if (routeCode === "ALLOY_HFS") {
+          finIncomingMtr = hollowHtNetMtr * multiple;
+        } else {
+          finIncomingMtr = htNetMtr * multiple;
+        }
+        finIncomingPcs = avgLength > 0 ? Math.round(finIncomingMtr / avgLength) : 0;
       }
-      const finAvailMtr = Math.max(0, finIncomingMtr - finOutMtr - finRejMtr);
-      const finAvailPcs = avgLength > 0 ? Math.round(finAvailMtr / avgLength) : 0;
+
+      const finAvailPcs = Math.max(0, finIncomingPcs - finOutPcs - finRejPcs);
+      const finAvailMtr = avgLength > 0 && finAvailPcs > 0
+        ? Number((finAvailPcs * avgLength).toFixed(3))
+        : Math.max(0, finIncomingMtr - finOutMtr - finRejMtr);
       const finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Build WorkCenterWipInfo pipeline for this order
@@ -471,7 +508,7 @@ export async function GET(req: NextRequest) {
         workCenterSummary.HEAT_TREATMENT.availMt += htAvailMt;
         workCenterSummary.HEAT_TREATMENT.count += 1;
       }
-      if (finAvailMtr > 0) {
+      if (finAvailMtr > 0 || finAvailPcs > 0) {
         workCenterSummary.FINISHING.availMtr += finAvailMtr;
         workCenterSummary.FINISHING.availPcs += finAvailPcs;
         workCenterSummary.FINISHING.availMt += finAvailMt;
@@ -604,7 +641,7 @@ export async function GET(req: NextRequest) {
               }
             : null,
         FINISHING:
-          finAvailMtr > 0
+          finAvailMtr > 0 || finAvailPcs > 0
             ? {
                 ...baseRowData,
                 stage_code: "FINISHING",
@@ -612,7 +649,7 @@ export async function GET(req: NextRequest) {
                 balance_to_make_pcs: finAvailPcs,
                 balance_to_make_mt: finAvailMt,
                 max_allowed_mtr: Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)),
-                max_allowed_pcs: avgLength > 0 ? Math.round(Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)) / avgLength) : 0,
+                max_allowed_pcs: avgLength > 0 ? Math.round(Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)) / avgLength) : finAvailPcs,
                 prev_stage_code: isCds
                   ? "HEAT_TREATMENT"
                   : isAlloy

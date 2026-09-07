@@ -9,7 +9,8 @@ import { isRouteVisibleForGroup } from '@/lib/permissions';
 import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
-  User, ShieldCheck, ChevronDown, Check, Sparkles, Lock, Activity, Clock
+  User, ShieldCheck, ChevronDown, Check, Sparkles, Lock, Activity, Clock,
+  ClipboardCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
@@ -23,6 +24,12 @@ const groups = [
       { href: '/excel-import', label: 'Excel Import', icon: FileSpreadsheet },
       { href: '/rolling-plans', label: 'Rolling Planning', icon: CalendarClock },
       { href: '/diversions', label: 'Diversion Planning', icon: Shuffle },
+    ],
+  },
+  {
+    label: 'Quality & QC',
+    items: [
+      { href: '/qc', label: 'QC / VDI Inspection', icon: ClipboardCheck },
     ],
   },
   {
