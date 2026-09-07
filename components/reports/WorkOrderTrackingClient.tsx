@@ -1409,13 +1409,13 @@ export default function WorkOrderTrackingClient() {
                               {Number(rRoll?.divertedInMtr || 0) > 0 && (
                                 <div className="flex justify-between text-emerald-700 text-[10px]">
                                   <span>Div In:</span>
-                                  <span className="font-mono font-bold">+{fmt(rRoll.divertedInMtr, 'm')}</span>
+                                  <span className="font-mono font-bold">+{fmt(rRoll?.divertedInMtr, 'm')}</span>
                                 </div>
                               )}
                               {Number(rRoll?.divertedOutMtr || 0) > 0 && (
                                 <div className="flex justify-between text-amber-700 text-[10px]">
                                   <span>Div Out:</span>
-                                  <span className="font-mono font-bold">-{fmt(rRoll.divertedOutMtr, 'm')}</span>
+                                  <span className="font-mono font-bold">-{fmt(rRoll?.divertedOutMtr, 'm')}</span>
                                 </div>
                               )}
 
@@ -1496,13 +1496,13 @@ export default function WorkOrderTrackingClient() {
                               {Number(rHtc?.divertedInMtr || 0) > 0 && (
                                 <div className="flex justify-between text-emerald-700 text-[10px]">
                                   <span>Div In:</span>
-                                  <span className="font-mono font-bold">+{fmt(rHtc.divertedInMtr, 'm')}</span>
+                                  <span className="font-mono font-bold">+{fmt(rHtc?.divertedInMtr, 'm')}</span>
                                 </div>
                               )}
                               {Number(rHtc?.divertedOutMtr || 0) > 0 && (
                                 <div className="flex justify-between text-amber-700 text-[10px]">
                                   <span>Div Out:</span>
-                                  <span className="font-mono font-bold">-{fmt(rHtc.divertedOutMtr, 'm')}</span>
+                                  <span className="font-mono font-bold">-{fmt(rHtc?.divertedOutMtr, 'm')}</span>
                                 </div>
                               )}
 
@@ -1565,13 +1565,13 @@ export default function WorkOrderTrackingClient() {
                               {Number(rDraw?.divertedInMtr || 0) > 0 && (
                                 <div className="flex justify-between text-emerald-700 text-[10px]">
                                   <span>Div In:</span>
-                                  <span className="font-mono font-bold">+{fmt(rDraw.divertedInMtr, 'm')}</span>
+                                  <span className="font-mono font-bold">+{fmt(rDraw?.divertedInMtr, 'm')}</span>
                                 </div>
                               )}
                               {Number(rDraw?.divertedOutMtr || 0) > 0 && (
                                 <div className="flex justify-between text-amber-700 text-[10px]">
                                   <span>Div Out:</span>
-                                  <span className="font-mono font-bold">-{fmt(rDraw.divertedOutMtr, 'm')}</span>
+                                  <span className="font-mono font-bold">-{fmt(rDraw?.divertedOutMtr, 'm')}</span>
                                 </div>
                               )}
 
@@ -1634,13 +1634,13 @@ export default function WorkOrderTrackingClient() {
                               {Number(rHt?.divertedInMtr || 0) > 0 && (
                                 <div className="flex justify-between text-emerald-700 text-[10px]">
                                   <span>Div In:</span>
-                                  <span className="font-mono font-bold">+{fmt(rHt.divertedInMtr, 'm')}</span>
+                                  <span className="font-mono font-bold">+{fmt(rHt?.divertedInMtr, 'm')}</span>
                                 </div>
                               )}
                               {Number(rHt?.divertedOutMtr || 0) > 0 && (
                                 <div className="flex justify-between text-amber-700 text-[10px]">
                                   <span>Div Out:</span>
-                                  <span className="font-mono font-bold">-{fmt(rHt.divertedOutMtr, 'm')}</span>
+                                  <span className="font-mono font-bold">-{fmt(rHt?.divertedOutMtr, 'm')}</span>
                                 </div>
                               )}
 
@@ -1710,13 +1710,13 @@ export default function WorkOrderTrackingClient() {
                             {Number(rFin?.divertedInMtr || 0) > 0 && (
                               <div className="flex justify-between text-emerald-700 text-[10px]">
                                 <span>Div In:</span>
-                                <span className="font-mono font-bold">+{fmt(rFin.divertedInMtr, 'm')}</span>
+                                <span className="font-mono font-bold">+{fmt(rFin?.divertedInMtr, 'm')}</span>
                               </div>
                             )}
                             {Number(rFin?.divertedOutMtr || 0) > 0 && (
                               <div className="flex justify-between text-amber-700 text-[10px]">
                                 <span>Div Out:</span>
-                                <span className="font-mono font-bold">-{fmt(rFin.divertedOutMtr, 'm')}</span>
+                                <span className="font-mono font-bold">-{fmt(rFin?.divertedOutMtr, 'm')}</span>
                               </div>
                             )}
 
