@@ -370,51 +370,69 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
       {/* KPI Section: Hero Plant WIP Card + Status Cards */}
       <div className="grid gap-4 lg:grid-cols-12">
         {/* HERO CARD: Total Plant Physical WIP */}
-        <Card className="lg:col-span-5 border-blue-200 bg-gradient-to-br from-blue-50/70 via-white to-indigo-50/40 shadow-xs">
-          <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full">
+        <Card className="lg:col-span-5 border-blue-200 bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 text-white shadow-md relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
+          <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full relative z-10">
             <div>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
-                  <Gauge className="h-4 w-4 text-blue-600" />
+                <span className="text-xs font-black uppercase tracking-wider text-blue-300 flex items-center gap-1.5">
+                  <Gauge className="h-4 w-4 text-cyan-400" />
                   Total Plant Physical WIP
                 </span>
-                <span className="text-[11px] font-semibold text-slate-500">
-                  {wip.length} active stage lots
+                <span className="text-[11px] font-semibold text-slate-300 bg-white/10 px-2 py-0.5 rounded">
+                  {wip.length} active lots
                 </span>
               </div>
 
-              {/* Primary Units Display: PCS & MT highlighted */}
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-blue-950">
-                  {formatNum(totalPlantWipMtr, 0)}
-                </span>
-                <span className="text-sm font-bold text-blue-800 font-mono">MTRS</span>
+              {/* Prominent MT and PCS Display Side-by-Side */}
+              <div className="mt-3.5 grid grid-cols-2 gap-2.5 sm:gap-3">
+                {/* Metric Tons Card */}
+                <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-lg p-2.5 sm:p-3 flex flex-col justify-between">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wide text-emerald-300 flex items-center justify-between">
+                    <span>WEIGHT</span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono font-bold">MT</span>
+                  </span>
+                  <div className="mt-1 flex items-baseline gap-1">
+                    <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-emerald-400">
+                      {formatNum(totalPlantWipMt, 2)}
+                    </span>
+                    <span className="text-xs font-bold text-emerald-300 font-mono">MT</span>
+                  </div>
+                </div>
+
+                {/* Pieces Card */}
+                <div className="bg-blue-950/60 border border-cyan-500/40 rounded-lg p-2.5 sm:p-3 flex flex-col justify-between">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wide text-cyan-300 flex items-center justify-between">
+                    <span>QUANTITY</span>
+                    <span className="text-[10px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded font-mono font-bold">PCS</span>
+                  </span>
+                  <div className="mt-1 flex items-baseline gap-1">
+                    <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-cyan-300">
+                      {formatNum(totalPlantWipPcs, 0)}
+                    </span>
+                    <span className="text-xs font-bold text-cyan-200 font-mono">PCS</span>
+                  </div>
+                </div>
               </div>
 
-              {/* Prominent Shop Floor Highlights: PCS and MT */}
-              <div className="mt-3 flex flex-wrap items-center gap-2 pt-2 border-t border-blue-100">
-                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-indigo-100/90 text-indigo-950 font-black text-xs sm:text-sm border border-indigo-300">
-                  <span>TOTAL:</span>
-                  <span className="font-mono">{formatNum(totalPlantWipPcs, 0)}</span>
-                  <span>PCS ★</span>
-                </span>
-                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-emerald-100/90 text-emerald-950 font-black text-xs sm:text-sm border border-emerald-300">
-                  <span>TOTAL:</span>
-                  <span className="font-mono">{formatNum(totalPlantWipMt, 2)}</span>
-                  <span>MT ★</span>
+              {/* Meters Secondary Row */}
+              <div className="mt-2.5 flex items-center justify-between px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs">
+                <span className="text-slate-400 font-medium">Total Linear Length:</span>
+                <span className="font-mono font-bold text-slate-200">
+                  {formatNum(totalPlantWipMtr, 0)} <span className="text-slate-400 font-normal">MTRS</span>
                 </span>
               </div>
 
-              <div className="mt-2.5 text-[11px] font-medium text-slate-500 flex items-center gap-1.5">
-                <span className={`inline-block w-2 h-2 rounded-full ${totalPlantWipMtr > 0 ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
-                <span>Rule: WIP calculated after Rolling done · Only HTC OK qty</span>
+              <div className="mt-2.5 text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+                <span className={`inline-block w-2 h-2 rounded-full ${totalPlantWipMtr > 0 ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-amber-400'}`}></span>
+                <span>Rule: Physical WIP from Rolling HTC OK · Strict conservation</span>
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-              <span>Plant Stock Bottleneck:</span>
-              <span className="font-bold text-slate-900 font-mono">
-                {maxWipStage && maxWipStage.value > 0 ? `${maxWipStage.stage} (${formatNum(maxWipStage.wipMtr, 0)} m)` : 'None (No active WIP)'}
+            <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs text-slate-300">
+              <span className="text-slate-400">Bottleneck Workstation:</span>
+              <span className="font-bold text-cyan-300 font-mono">
+                {maxWipStage && maxWipStage.value > 0 ? `${maxWipStage.stage} (${formatNum(maxWipStage.wipPcs, 0)} pcs · ${formatNum(maxWipStage.wipMt, 2)} MT)` : 'None (No active WIP)'}
               </span>
             </div>
           </CardContent>

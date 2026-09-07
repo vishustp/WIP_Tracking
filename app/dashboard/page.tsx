@@ -26,10 +26,10 @@ export default async function Dashboard() {
         .limit(20),
       supabase
         .from('production_logs')
-        .select('work_order_id,stage_id,output_qty,output_pcs,rejection_qty,rejection_pcs,htc_ok,process_stages(stage_code)'),
+        .select('work_order_id,stage_id,output_qty,rejection_qty,htc_ok,process_stages(stage_code)'),
       supabase
         .from('rolling_plans')
-        .select('work_order_id,status,planned_qty,mh_od,mh_wt,plan_no'),
+        .select('work_order_id,status,planned_qty,mh_od,mh_wt,mh_l1,mh_l2,plan_no'),
     ]);
 
     const rawWip = wipRes.data ?? [];
@@ -37,10 +37,12 @@ export default async function Dashboard() {
     const rollingPlans = (plansRes.data ?? []) as any[];
 
     // Parse multi-work-order rolling campaign metadata
+    const planMap = new Map<string, any>();
     const masterMap = new Map<string, any>();
     const childMap = new Map<string, { master_wo_id: string; master_wo_no: string; planned_mtr?: number }>();
 
     for (const p of rollingPlans) {
+      planMap.set(p.work_order_id, p);
       try {
         const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
         if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
@@ -79,7 +81,7 @@ export default async function Dashboard() {
     // STRICT STEEL PLANT WIP CALCULATION:
     // 1. Physical WIP is strictly calculated AFTER Rolling Production is done.
     // 2. Physical WIP is strictly generated ONLY from Rolling HTC OK quantity.
-    // 3. Prior to Rolling production, physical mother hollow pipe stock is 0.
+    // 3. Piece conservation is preserved across Mother Hollow -> Drawn Tube -> Finished Tube.
     // 4. In multi-order campaigns, child orders have no independent pre-finishing WIP (bundled in Master).
     const calculatedWip = rawWip
       .map((r: any) => {
@@ -91,6 +93,12 @@ export default async function Dashboard() {
           return null;
         }
 
+        const effectiveWoId = childInfo ? childInfo.master_wo_id : r.work_order_id;
+        const plan = planMap.get(effectiveWoId);
+        const mh_l1 = Number(plan?.mh_l1) || 0;
+        const mh_l2 = Number(plan?.mh_l2) || 0;
+        const mhAvg = mh_l1 > 0 && mh_l2 > 0 ? (mh_l1 + mh_l2) / 2 : (mh_l1 || mh_l2 || 0);
+
         const masterLogs = getLogsForWo(r.work_order_id);
         const rollLogs = masterLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'ROLLING');
         const rollingOutMtr = rollLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
@@ -101,58 +109,78 @@ export default async function Dashboard() {
           return null;
         }
 
+        const avgLen = r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : Number(r.l1) || Number(r.l2) || 6.0;
+
+        // Rolling HTC OK pieces (Mother Hollow count)
+        const rollHtcOkPcs = mhAvg > 0 ? Math.round(rollingHtcOkMtr / mhAvg) : (avgLen > 0 ? Math.round(rollingHtcOkMtr / avgLen) : 0);
+
         // Hollow Heat Treatment (HTC)
         const htcLogs = masterLogs.filter(
           (l: any) => (l.process_stages?.stage_code || l.stage_code) === 'HOLLOW_HEAT_TREATMENT'
         );
         const htcOutMtr = htcLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
         const htcRejMtr = htcLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+        const htcOutPcs = mhAvg > 0 ? Math.round(htcOutMtr / mhAvg) : (avgLen > 0 ? Math.round(htcOutMtr / avgLen) : 0);
+        const htcRejPcs = mhAvg > 0 ? Math.round(htcRejMtr / mhAvg) : (avgLen > 0 ? Math.round(htcRejMtr / avgLen) : 0);
 
         // Draw Bench
         const drawLogs = masterLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'DRAW');
         const drawOutMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
         const drawRejMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+        const drawOutPcs = avgLen > 0 ? Math.round(drawOutMtr / avgLen) : 0;
+        const drawRejPcs = avgLen > 0 ? Math.round(drawRejMtr / avgLen) : 0;
+        const drawTotalPcs = drawOutPcs + drawRejPcs;
 
         // Heat Treatment
         const htLogs = masterLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'HEAT_TREATMENT');
         const htOutMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
         const htRejMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+        const htOutPcs = avgLen > 0 ? Math.round(htOutMtr / avgLen) : 0;
+        const htRejPcs = avgLen > 0 ? Math.round(htRejMtr / avgLen) : 0;
+        const htTotalPcs = htOutPcs + htRejPcs;
 
         // Finishing (tracked per work order)
         const woLogs = prodLogs.filter((l: any) => l.work_order_id === r.work_order_id);
         const finLogs = woLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'FINISHING');
         const finOutMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
         const finRejMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+        const finOutPcs = avgLen > 0 ? Math.round(finOutMtr / avgLen) : 0;
+        const finRejPcs = avgLen > 0 ? Math.round(finRejMtr / avgLen) : 0;
+        const finTotalPcs = finOutPcs + finRejPcs;
 
+        let wipPcs = 0;
         let wipMtr = 0;
 
         if (stageCode === 'ROLLING') {
-          // Rolling WIP: HTC OK minus material consumed downstream
-          const downstreamConsumed = htcOutMtr + htcRejMtr > 0 ? htcOutMtr + htcRejMtr : drawOutMtr + drawRejMtr;
-          wipMtr = Math.max(0, rollingHtcOkMtr - downstreamConsumed);
+          // Rolling outputs pass directly into Hollow HT or Cold Draw Bench queues
+          wipPcs = 0;
+          wipMtr = 0;
         } else if (stageCode === 'HOLLOW_HEAT_TREATMENT') {
-          wipMtr = Math.max(0, rollingHtcOkMtr - htcOutMtr - htcRejMtr);
+          wipPcs = Math.max(0, rollHtcOkPcs - htcOutPcs - htcRejPcs);
+          wipMtr = mhAvg > 0 ? Number((wipPcs * mhAvg).toFixed(3)) : Number((wipPcs * avgLen).toFixed(3));
         } else if (stageCode === 'DRAW') {
-          const incoming = htcOutMtr > 0 ? htcOutMtr : rollingHtcOkMtr;
-          wipMtr = Math.max(0, incoming - drawOutMtr - drawRejMtr);
+          const incomingPcs = htcOutPcs > 0 ? htcOutPcs : rollHtcOkPcs;
+          wipPcs = Math.max(0, incomingPcs - drawTotalPcs);
+          wipMtr = Number((wipPcs * avgLen).toFixed(3));
         } else if (stageCode === 'HEAT_TREATMENT') {
-          wipMtr = drawOutMtr > 0 ? Math.max(0, drawOutMtr - htOutMtr - htRejMtr) : 0;
+          wipPcs = drawOutPcs > 0 ? Math.max(0, drawOutPcs - htTotalPcs) : 0;
+          wipMtr = Number((wipPcs * avgLen).toFixed(3));
         } else if (stageCode === 'FINISHING') {
-          const precedingOutMtr = htOutMtr > 0 ? htOutMtr : drawOutMtr;
+          const precedingOutPcs = htOutPcs > 0 ? htOutPcs : drawOutPcs;
           const targetMtr = childInfo
             ? Number(childInfo.planned_mtr || r.incoming_qty || 0)
             : Number(r.incoming_qty || 0);
-          wipMtr =
-            precedingOutMtr > 0 ? Math.max(0, Math.min(targetMtr, precedingOutMtr) - finOutMtr - finRejMtr) : 0;
+          const targetPcs = avgLen > 0 ? Math.round(targetMtr / avgLen) : 0;
+          wipPcs = precedingOutPcs > 0 ? Math.max(0, Math.min(targetPcs, precedingOutPcs) - finTotalPcs) : 0;
+          wipMtr = Number((wipPcs * avgLen).toFixed(3));
         } else {
           // General fallback for other stages if present
           wipMtr = Math.max(0, Number(r.current_wip || 0));
+          wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
         }
 
-        if (wipMtr <= 0) return null;
+        if (wipPcs <= 0 && wipMtr <= 0) return null;
 
-        const avgLen = r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : Number(r.l1) || Number(r.l2) || 6.0;
-        const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
         const od = Number(r.size_od) || 0;
         const wt = Number(r.size_wt) || 0;
         const wipMt = od > 0 && wt > 0 ? mtFromMtr(wipMtr, od, wt) : 0;
