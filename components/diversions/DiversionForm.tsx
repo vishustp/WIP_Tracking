@@ -119,6 +119,10 @@ type WoWipSummary = {
     rejection_qty: number;
     net_output_qty: number;
   }[];
+  planMultiple?: number;
+  effectiveHtcOkFinishedMtr?: number;
+  finishingDoneMtr?: number;
+  qcVdiRejMtr?: number;
 };
 
 type WipViewRow = {
@@ -249,6 +253,10 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const qcInspectedMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.inspected_mtr || 0), 0);
   const qcOkMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
   const qcSalvageMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+  const qcVdiRejMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
+
+  // Elongation multiple for this work order
+  const planMultiple = Number(plan?.multiple || 1) > 0 ? Number(plan?.multiple || 1) : 1;
 
   // Diversions per stage
   const getDivOut = (stageCode: string) =>
@@ -266,8 +274,18 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     .filter((d: any) => d.target_wo_id === id)
     .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
-  // STRICT ROUTE-AWARE PHYSICAL WIP PER STAGE:
-  // Each physical meter exists at exactly one stage buffer.
+  // FORMULA: (HTC OK * Multiple) + Diverted In - Finishing done - VDI Rejection - Diverted Out
+  const rollingHtcOkBaseMtr = rollingHtcOkMtr > 0 ? rollingHtcOkMtr : rollingNetMtr;
+  const effectiveHtcOkFinishedMtr = rollingHtcOkBaseMtr * planMultiple;
+  const finishingDoneMtr = finOutMtr + finRejMtr;
+
+  const totalWipAcrossStagesMtr = Math.max(
+    0,
+    effectiveHtcOkFinishedMtr + totalDivertedInMtr - finishingDoneMtr - qcVdiRejMtr - totalDivertedOutMtr
+  );
+  const totalWipAcrossStagesPcs = avgLength > 0 ? Math.round(totalWipAcrossStagesMtr / avgLength) : 0;
+  const totalWipAcrossStagesMt = totalWipAcrossStagesMtr * mtPerMtr;
+
   const stageDefinitions = [
     { stage_code: 'ROLLING', stage_name: 'Rolling Mill (Mother Hollow)', sequence_no: 1, is_in_route: true },
     { stage_code: 'HOLLOW_HEAT_TREATMENT', stage_name: 'Hollow Heat Treatment', sequence_no: 2, is_in_route: hasHtcInRoute },
@@ -281,13 +299,11 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     const divOut = getDivOut(sc);
     const divIn = getDivIn(sc);
 
-    let availableMtr = 0;
     let inputQty = 0;
     let outputQty = 0;
     let rejectionQty = 0;
 
     if (!stg.is_in_route) {
-      // Stage is not part of this work order's route -> strictly 0
       return {
         stage_code: sc,
         stage_name: stg.stage_name,
@@ -309,71 +325,32 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
       inputQty = rollingGrossMtr;
       outputQty = rollingGrossMtr;
       rejectionQty = rollingRejMtr;
-      // Mother hollow waiting for next required stage
-      if (rollingGrossMtr > 0) {
-        let downstreamConsumed = 0;
-        if (hasHtcInRoute) {
-          downstreamConsumed = htcOutMtr + htcRejMtr;
-        } else if (hasDrawInRoute) {
-          downstreamConsumed = drawOutMtr + drawRejMtr;
-        } else {
-          downstreamConsumed = finOutMtr + finRejMtr;
-        }
-        availableMtr = Math.max(0, rollingHtcOkMtr + divIn - downstreamConsumed - divOut);
-      }
     } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
       inputQty = rollingHtcOkMtr;
       outputQty = htcOutMtr;
       rejectionQty = htcRejMtr;
-      if (htcOutMtr > 0) {
-        const downstreamConsumed = hasDrawInRoute
-          ? (drawOutMtr + drawRejMtr)
-          : (finOutMtr + finRejMtr);
-        availableMtr = Math.max(0, htcNetMtr + divIn - downstreamConsumed - divOut);
-      }
     } else if (sc === 'DRAW') {
-      const incoming = hasHtcInRoute ? htcNetMtr : rollingHtcOkMtr;
-      inputQty = incoming;
+      inputQty = hasHtcInRoute ? htcNetMtr : rollingHtcOkMtr;
       outputQty = drawOutMtr;
       rejectionQty = drawRejMtr;
-      if (drawOutMtr > 0) {
-        const downstreamConsumed = htOutMtr + htRejMtr;
-        availableMtr = Math.max(0, drawNetMtr + divIn - downstreamConsumed - divOut);
-      }
     } else if (sc === 'HEAT_TREATMENT') {
       inputQty = drawNetMtr;
       outputQty = htOutMtr;
       rejectionQty = htRejMtr;
-      if (htOutMtr > 0) {
-        const downstreamConsumed = qcList.length > 0 ? qcInspectedMtr : (finOutMtr + finRejMtr);
-        availableMtr = Math.max(0, htNetMtr + divIn - downstreamConsumed - divOut);
-      }
     } else if (sc === 'FINISHING') {
-      let incoming = 0;
-      if (qcList.length > 0) {
-        incoming = qcOkMtr + qcSalvageMtr;
-      } else {
-        incoming = hasHtInRoute ? htNetMtr : hasHtcInRoute ? htcNetMtr : rollingHtcOkMtr;
-      }
-      inputQty = incoming;
+      inputQty = qcList.length > 0 ? (qcOkMtr + qcSalvageMtr) : (hasHtInRoute ? htNetMtr : hasHtcInRoute ? htcNetMtr : rollingHtcOkMtr);
       outputQty = finOutMtr;
       rejectionQty = finRejMtr;
-      if (incoming > 0) {
-        availableMtr = Math.max(0, incoming + divIn - finOutMtr - finRejMtr - divOut);
-      }
     }
-
-    const availablePcs = avgLength > 0 ? Math.round(availableMtr / avgLength) : 0;
-    const availableMt = availableMtr * mtPerMtr;
 
     return {
       stage_code: sc,
       stage_name: stg.stage_name,
       sequence_no: stg.sequence_no,
       is_in_route: true,
-      available_mtr: availableMtr,
-      available_pcs: availablePcs,
-      available_mt: availableMt,
+      available_mtr: totalWipAcrossStagesMtr,
+      available_pcs: totalWipAcrossStagesPcs,
+      available_mt: totalWipAcrossStagesMt,
       diverted_out_mtr: divOut,
       diverted_in_mtr: divIn,
       input_qty: inputQty,
@@ -382,10 +359,6 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
       net_output_qty: Math.max(0, outputQty - rejectionQty),
     };
   });
-
-  const totalPhysicalWipMtr = stageBreakdown.reduce((sum, s) => sum + s.available_mtr, 0);
-  const totalPhysicalWipPcs = avgLength > 0 ? Math.round(totalPhysicalWipMtr / avgLength) : 0;
-  const totalPhysicalWipMt = totalPhysicalWipMtr * mtPerMtr;
 
   return {
     wo,
@@ -403,17 +376,21 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     rollingHtcOkMtr,
     rollingHtcOkPcs,
     rollingHtcOkMt,
+    planMultiple,
+    effectiveHtcOkFinishedMtr,
+    finishingDoneMtr,
+    qcVdiRejMtr,
     divertedOutMtr: totalDivertedOutMtr,
     divertedOutPcs: avgLength > 0 ? totalDivertedOutMtr / avgLength : 0,
     divertedOutMt: totalDivertedOutMtr * mtPerMtr,
     divertedInMtr: totalDivertedInMtr,
     divertedInPcs: avgLength > 0 ? totalDivertedInMtr / avgLength : 0,
     divertedInMt: totalDivertedInMtr * mtPerMtr,
-    physicalAvailableMtr: totalPhysicalWipMtr,
+    physicalAvailableMtr: totalWipAcrossStagesMtr,
     unplannedOrderMtr: Math.max(0, orderedMtr - rollingGrossMtr),
-    balanceWipMtr: totalPhysicalWipMtr,
-    balanceWipPcs: totalPhysicalWipPcs,
-    balanceWipMt: totalPhysicalWipMt,
+    balanceWipMtr: totalWipAcrossStagesMtr,
+    balanceWipPcs: totalWipAcrossStagesPcs,
+    balanceWipMt: totalWipAcrossStagesMt,
     stageBreakdown,
   };
 }
@@ -603,24 +580,24 @@ export default function DiversionForm() {
     return sourceWip.stageBreakdown.find(s => s.stage_code === workCenter);
   }, [sourceWip, workCenter]);
 
-  // Calculate available WIP at the selected work center (Rule: ONLY PHYSICAL WIP CAN BE DIVERTED)
+  // Available WIP across stages for diversion: (HTC OK * Multiple) - Finishing done - VDI Rejection
   const availableAtWorkCenterMtr = useMemo(() => {
-    if (!sourceStageWip) return 0;
-    return Math.max(0, sourceStageWip.available_mtr || 0);
-  }, [sourceStageWip]);
+    if (!sourceWip) return 0;
+    return Math.max(0, sourceWip.balanceWipMtr || 0);
+  }, [sourceWip]);
 
   const availableAtWorkCenterPcs = useMemo(() => {
-    if (sourceStageWip && sourceStageWip.available_pcs >= 0) return sourceStageWip.available_pcs;
+    if (sourceWip && sourceWip.balanceWipPcs >= 0) return sourceWip.balanceWipPcs;
     const avg = sourceWip?.avgLength || 6.0;
     return avg > 0 ? availableAtWorkCenterMtr / avg : 0;
-  }, [sourceStageWip, availableAtWorkCenterMtr, sourceWip]);
+  }, [sourceWip, availableAtWorkCenterMtr]);
 
   const availableAtWorkCenterMt = useMemo(() => {
-    if (sourceStageWip && sourceStageWip.available_mt >= 0) return sourceStageWip.available_mt;
+    if (sourceWip && sourceWip.balanceWipMt >= 0) return sourceWip.balanceWipMt;
     const od = sourceWip?.od || 0;
     const wt = sourceWip?.wt || 0;
     return od > wt ? (od - wt) * wt * 0.0246615 * 0.001 * availableAtWorkCenterMtr : 0;
-  }, [sourceStageWip, availableAtWorkCenterMtr, sourceWip]);
+  }, [sourceWip, availableAtWorkCenterMtr]);
 
   // Calculations for Transfer Impact (Rule 2)
   const diversionMtr = Number(qty) || 0;
@@ -668,13 +645,13 @@ export default function DiversionForm() {
 
     if (sourceInitialBalanceMtr <= 0) {
       return toast.error(
-        `Cannot divert: 0 Mtrs physical WIP available at ${selectedWorkCenterObj?.name || workCenter}. Material can only be diverted after physical production is completed.`
+        `Cannot divert: 0 Mtrs WIP available for this work order. Material can only be diverted after production is completed.`
       );
     }
 
     if (diversionMtr > sourceInitialBalanceMtr) {
       return toast.error(
-        `Diversion quantity (${fmt(diversionMtr)} m) exceeds available physical WIP at ${selectedWorkCenterObj?.name || workCenter} (${fmt(sourceInitialBalanceMtr)} m)`
+        `Diversion quantity (${fmt(diversionMtr)} m) exceeds available WIP (${fmt(sourceInitialBalanceMtr)} m)`
       );
     }
 
@@ -995,9 +972,9 @@ export default function DiversionForm() {
               </div>
             </div>
 
-            {/* Prominent Physical WIP Cards (Showing Selected Work Center Physical WIP in Pcs) */}
+            {/* Prominent WIP Available for Diversion (Pcs primary) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Available Physical WIP at Selected Work Center */}
+              {/* Available WIP for Diversion across Stages */}
               <div className={`rounded-md border-2 p-3 shadow-2xs ${
                 availableAtWorkCenterMtr > 0
                   ? 'border-[#0078d4] bg-white'
@@ -1005,7 +982,7 @@ export default function DiversionForm() {
               }`}>
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-[#0078d4] uppercase tracking-wider">
-                    Physical WIP at {selectedWorkCenterObj?.name.split(' ')[0] || workCenter}
+                    Available WIP for Diversion
                   </span>
                   <span className={`rounded text-[10px] font-bold px-1.5 py-0.5 ${
                     availableAtWorkCenterMtr > 0
@@ -1032,20 +1009,28 @@ export default function DiversionForm() {
                   <span>•</span>
                   <span>{fmt(availableAtWorkCenterMt, 3)} MT</span>
                 </div>
+                <div className="mt-1.5 text-[10px] text-slate-500 font-mono">
+                  Formula: (HTC OK × {sourceWip.planMultiple || 1}) − Finishing Done − VDI Rej
+                </div>
                 {availableAtWorkCenterMtr <= 0 && (
                   <p className="mt-1.5 text-[11px] text-amber-700 font-medium leading-tight">
                     {sourceWip.rollingGrossMtr === 0
                       ? 'No physical rolling completed yet. Unrolled orders cannot be diverted.'
-                      : 'All produced physical WIP at this station has been consumed or diverted.'}
+                      : 'All produced WIP for this work order has been finished, rejected, or diverted.'}
                   </p>
                 )}
               </div>
 
               {/* Rolling Production Output (HTC OK) */}
               <div className="rounded-md border border-slate-300 bg-white p-3 shadow-2xs">
-                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
-                  Mother Hollow Produced (HTC OK)
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    Rolling Output (HTC OK)
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    Multiple: {sourceWip.planMultiple || 1}x
+                  </span>
+                </div>
                 <div className="mt-1.5">
                   <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">
                     {fmt(sourceWip.rollingHtcOkPcs || (sourceAvgLen > 0 ? Math.round((sourceWip.rollingHtcOkMtr || sourceWip.rollingNetMtr) / sourceAvgLen) : 0), 0)}
@@ -1057,19 +1042,24 @@ export default function DiversionForm() {
                 </div>
               </div>
 
-              {/* Already Diverted Out */}
+              {/* Deductions: Finishing Done, VDI Rejection, Diversions */}
               <div className="rounded-md border border-slate-300 bg-white p-3 shadow-2xs">
                 <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
-                  Already Diverted Out
+                  Deductions & Finishing Done
                 </span>
-                <div className="mt-1.5">
-                  <span className="text-2xl font-black text-amber-900 font-mono tracking-tight">
-                    {fmt(sourceWip.divertedOutPcs, 0)}
-                  </span>
-                  <span className="text-xs font-bold text-amber-700 ml-1 uppercase">Pcs</span>
-                </div>
-                <div className="mt-1 text-xs text-slate-500 font-mono">
-                  {sourceWip.divertedOutMtr > 0 ? `${fmt(sourceWip.divertedOutMtr)} Mtrs · ${fmt(sourceWip.divertedOutMt, 3)} MT` : '0 Pcs deducted'}
+                <div className="mt-1.5 space-y-0.5 text-xs font-mono">
+                  <div className="flex justify-between text-slate-700">
+                    <span>Finishing Done:</span>
+                    <strong className="text-slate-900">{fmt(sourceWip.finishingDoneMtr || 0)} m</strong>
+                  </div>
+                  <div className="flex justify-between text-rose-700">
+                    <span>VDI Rejection:</span>
+                    <strong>{fmt(sourceWip.qcVdiRejMtr || 0)} m</strong>
+                  </div>
+                  <div className="flex justify-between text-amber-700">
+                    <span>Diverted Out:</span>
+                    <strong>{fmt(sourceWip.divertedOutMtr || 0)} m</strong>
+                  </div>
                 </div>
               </div>
             </div>
