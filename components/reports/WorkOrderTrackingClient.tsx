@@ -51,6 +51,7 @@ interface RollingPlan {
   plan_no: string;
   work_order_id: string;
   status: any;
+  process_route_id?: string | null;
   planned_qty: number;
   mh_od: number | null;
   mh_wt: number | null;
@@ -63,6 +64,9 @@ interface RollingPlan {
 interface StageWipRow {
   work_order_id: string;
   work_order_no: string;
+  route_id?: string;
+  route_code?: string;
+  route_name?: string;
   stage_code: string;
   stage_name: string;
   sequence_no: number;
@@ -741,7 +745,7 @@ export default function WorkOrderTrackingClient() {
         logs: woLogs,
       };
     },
-    [campaignMeta, rollingPlans, productionLogs]
+    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip]
   );
 
   // Toggle single work order details
