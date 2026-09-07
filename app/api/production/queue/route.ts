@@ -28,7 +28,8 @@ export async function GET(req: NextRequest) {
       admin
         .from("production_logs")
         .select("id, work_order_id, stage_id, process_route_id, process_date, input_qty, output_qty, rejection_qty, htc_ok, heat_lot_no, remarks, output_pcs, rejection_pcs")
-        .order("created_at", { ascending: true }),
+        .order("created_at", { ascending: true })
+        .limit(50000),
       admin
         .from("work_orders")
         .select("id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, ordered_qty, ordered_qty_mtr, ordered_qty_pcs, ordered_qty_mt, balance_qty_mtr, balance_qty_pcs, balance_qty_mt"),
@@ -292,7 +293,8 @@ export async function GET(req: NextRequest) {
       const rollAvailPcs = mhAvgLength > 0 ? Math.round(rollAvailMtr / mhAvgLength) : 0;
       const rollAvailMt = mtFromMtr(rollAvailMtr, mhOd, mhWt);
 
-      const rollCappingMtr = Number((totalCampaignMtr * 1.1).toFixed(3));
+      const rollMaxCappingMtr = Number((totalCampaignMtr * 1.1).toFixed(3));
+      const rollCappingMtr = Math.max(0, rollMaxCappingMtr - rollTotalLogged);
       const rollCappingPcs = mhAvgLength > 0 ? Math.round(rollCappingMtr / mhAvgLength) : 0;
 
       // 2. Hollow Heat Treatment Stage Metrics (adjusted for HHT Diversions)
@@ -618,7 +620,7 @@ export async function GET(req: NextRequest) {
 
       const queueRows: Record<StageCode, Row | null> = {
         ROLLING:
-          rollAvailMtr > 0 || totalCampaignMtr > 0
+          rollAvailMtr > 0
             ? {
                 ...baseRowData,
                 stage_code: "ROLLING",

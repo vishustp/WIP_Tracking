@@ -79,6 +79,9 @@ export async function POST(req: NextRequest) {
         const outputMtr = Number(item.output_qty || inputMtr);
         const rejMtr = Number(item.rejection_qty || 0);
         const htcOkMtr = Number(item.htc_ok || 0);
+        const outputPcs = Number(item.output_pcs || 0) || null;
+        const rejPcs = Number(item.rejection_pcs || 0) || null;
+        const htcOkPcs = Number(item.htc_ok_pcs || 0) || null;
 
         const { error: insertErr } = await admin
           .from('production_logs')
@@ -91,6 +94,9 @@ export async function POST(req: NextRequest) {
             output_qty: outputMtr,
             rejection_qty: rejMtr,
             htc_ok: htcOkMtr,
+            output_pcs: outputPcs,
+            rejection_pcs: rejPcs,
+            htc_ok_pcs: htcOkPcs,
             heat_lot_no: item.heat_lot_no || null,
             remarks: item.remarks || null,
           });

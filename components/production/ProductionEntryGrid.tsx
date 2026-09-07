@@ -428,6 +428,9 @@ export default function ProductionEntryGrid() {
           output_qty: d.mtr,
           rejection_qty: d.rejectionMtr,
           htc_ok: stage === "ROLLING" ? d.htcMtr : 0,
+          output_pcs: d.pcs || null,
+          rejection_pcs: d.rejectionPcs || null,
+          htc_ok_pcs: stage === "ROLLING" ? (d.htcPcs || null) : null,
           heat_lot_no: r.heat_lot_no || null,
           remarks: r.remarks || null,
         };
