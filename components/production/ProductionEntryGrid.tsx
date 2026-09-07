@@ -1731,7 +1731,8 @@ export default function ProductionEntryGrid() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
