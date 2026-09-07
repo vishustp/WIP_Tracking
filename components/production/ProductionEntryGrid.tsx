@@ -1200,51 +1200,49 @@ export default function ProductionEntryGrid() {
                       {/* Available WIP & Capping */}
                       <td className="py-3 px-3 align-top">
                         {isRollingStage ? (
-                          <div className="space-y-1.5 min-w-[200px]">
-                            {/* Rolling Plan Balance (Plan - Production) */}
-                            <div>
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
-                                <span>Rolling Plan Balance</span>
-                                <span className="text-[9px] font-medium text-slate-400 font-sans normal-case">(Plan − Production)</span>
+                          <div className="space-y-2 min-w-[210px]">
+                            {/* Remaining to Roll (Plan - Production) */}
+                            <div className="bg-emerald-50/80 border border-emerald-200/80 rounded px-2.5 py-1.5 shadow-xs">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center justify-between">
+                                <span>Remaining to Roll</span>
+                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 rounded px-1 normal-case">(Plan − Prod)</span>
                               </div>
                               <div className="flex items-baseline gap-1 flex-wrap mt-0.5">
-                                <span className="font-bold text-slate-900 font-mono text-sm">
+                                <span className="font-extrabold text-emerald-950 font-mono text-base">
                                   {fmt(availPcs)}
                                 </span>
-                                <span className="text-xs font-bold text-slate-500">PCS</span>
-                                <span className="text-slate-400">/</span>
-                                <span className="font-bold text-slate-800 font-mono text-sm">
+                                <span className="text-xs font-bold text-emerald-700">PCS</span>
+                                <span className="text-emerald-400">/</span>
+                                <span className="font-bold text-emerald-900 font-mono text-sm">
                                   {fmt(availMtr, " MTR")}
                                 </span>
-                                <span className="text-slate-400">/</span>
-                                <span className="font-semibold text-blue-700 font-mono text-xs">
+                                <span className="text-emerald-400">/</span>
+                                <span className="font-semibold text-emerald-700 font-mono text-xs">
                                   {fmt(availMt, " MT")}
                                 </span>
                               </div>
                             </div>
 
-                            {/* Capping (110% of Plan) */}
-                            <div className="pt-1 border-t border-slate-100 flex items-baseline gap-1 text-[11px] font-mono">
-                              <span
-                                className="font-semibold text-amber-800 bg-amber-50 rounded px-1 text-[10px]"
-                                title="Rolling max allowed production (110% of campaign plan)"
-                              >
-                                Capping (110%):
-                              </span>
-                              <span className="font-semibold text-slate-700">{fmt(maxAllowedPcs)} PCS</span>
-                              <span className="text-slate-400">/</span>
-                              <span className="font-semibold text-slate-700">{fmt(maxAllowed, " MTR")}</span>
-                            </div>
-
-                            {/* Total Campaign Plan (Master + Child Work Orders) */}
+                            {/* Plan Issued Reference */}
                             {r.is_master && (r.campaign_total_mtr || 0) > 0 && (
-                              <div className="text-[10px] text-indigo-900 bg-indigo-50/90 border border-indigo-200/70 rounded px-1.5 py-0.5 font-medium flex items-center gap-1">
-                                <Crown size={11} className="text-indigo-600 shrink-0" />
-                                <span>
-                                  Master + {r.child_work_orders?.length || 0} Child Plan: <b>{fmt(r.campaign_total_pcs || 0)} PCS</b> · <b>{fmt(r.campaign_total_mtr, " MTR")}</b>
-                                </span>
+                              <div className="text-[11px] text-indigo-950 bg-indigo-50/90 border border-indigo-200 rounded px-2 py-1 font-medium">
+                                <div className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1">
+                                  <Crown size={11} className="text-indigo-600" />
+                                  <span>Plan Issued ({r.child_work_orders?.length ? `Master + ${r.child_work_orders.length} Child` : "Master Plan"})</span>
+                                </div>
+                                <div className="font-mono font-bold text-indigo-900 mt-0.5">
+                                  {fmt(r.campaign_total_pcs || 0)} PCS · {fmt(r.campaign_total_mtr, " MTR")}
+                                </div>
                               </div>
                             )}
+
+                            {/* Capping (110% Remaining Ceiling) */}
+                            <div className="flex items-baseline justify-between text-[11px] font-mono text-amber-900 bg-amber-50/70 border border-amber-200/70 rounded px-2 py-0.5">
+                              <span className="font-bold text-[10px] uppercase">
+                                Capping (110%):
+                              </span>
+                              <span className="font-bold text-slate-800">{fmt(maxAllowedPcs)} PCS / {fmt(maxAllowed, " MTR")}</span>
+                            </div>
                           </div>
                         ) : stage === "FINISHING" ? (
                           <div className="space-y-1.5 min-w-[220px]">
