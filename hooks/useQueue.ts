@@ -468,7 +468,7 @@ export function useQueue(stage: StageCode) {
           const woQc = qcInspections.filter((q: any) => q.work_order_id === r.work_order_id);
           let rowToUse = { ...r };
           if (woQc.length > 0) {
-            const qcOk = woQc.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0), 0);
+            const qcOk = woQc.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
             const finishedLogs = logs.filter(
               (l: any) =>
                 l.work_order_id === r.work_order_id &&

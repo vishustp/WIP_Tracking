@@ -384,10 +384,9 @@ export async function GET(req: NextRequest) {
       let finIncomingPcs = 0;
 
       if (woQcList.length > 0) {
-        // VDI OK + Salvage Nos (accepted and reworkable material released to Finishing Line)
-        finIncomingPcs = qcOkPcs + qcSalvagePcs;
-        const totalQcMtr = qcOkMtr + qcSalvageMtr;
-        finIncomingMtr = totalQcMtr > 0 ? totalQcMtr : (avgLength > 0 ? finIncomingPcs * avgLength : 0);
+        // Strictly from VDI OK Nos (accepted good material released to Finishing Line; salvage handled in diversion)
+        finIncomingPcs = qcOkPcs;
+        finIncomingMtr = qcOkMtr > 0 ? qcOkMtr : (avgLength > 0 ? qcOkPcs * avgLength : 0);
       } else if (hasQcTable) {
         // QC table exists, but no QC inspection has been done yet for this order.
         // It must be inspected in QC first!
