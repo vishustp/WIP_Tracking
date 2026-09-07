@@ -764,6 +764,29 @@ export default function ProductionEntryGrid() {
       });
       if (rpcError) throw rpcError;
 
+      // Reconcile work order status if no remaining production logs exist for this order
+      if (targetEntry?.work_order_id) {
+        const { data: remainingLogs } = await supabase
+          .from("production_logs")
+          .select("id")
+          .eq("work_order_id", targetEntry.work_order_id)
+          .limit(1);
+
+        if (!remainingLogs || remainingLogs.length === 0) {
+          const { data: plans } = await supabase
+            .from("rolling_plans")
+            .select("id")
+            .eq("work_order_id", targetEntry.work_order_id)
+            .limit(1);
+
+          const newStatus = plans && plans.length > 0 ? "Scheduled" : "Pending Plan";
+          await supabase
+            .from("work_orders")
+            .update({ status: newStatus })
+            .eq("id", targetEntry.work_order_id);
+        }
+      }
+
       setDeleteId(null);
       setMessage("Production entry deleted successfully.");
       await Promise.all([reloadQueue(), reloadHistory()]);

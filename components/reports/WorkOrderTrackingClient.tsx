@@ -160,7 +160,7 @@ export default function WorkOrderTrackingClient() {
           .from('production_logs')
           .select('*, process_stages(stage_code, stage_name)')
           .order('created_at', { ascending: false })
-          .limit(1500),
+          .limit(10000),
       ]);
 
       if (woRes.data) setWorkOrders(woRes.data);
@@ -198,6 +198,15 @@ export default function WorkOrderTrackingClient() {
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  // Read URL search query param if opened from Aging or Dashboard
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get('wo') || params.get('search');
+      if (q) setFilterWo(q);
+    }
+  }, []);
 
   // Campaign Mapping
   const campaignMeta = useMemo(() => {
@@ -240,9 +249,65 @@ export default function WorkOrderTrackingClient() {
     return { masterMap, childMap };
   }, [rollingPlans]);
 
-  // Filtered Work Orders
+  // Set of work order IDs for which rolling has been done
+  // RULE: Work Order Tracking Sheet strictly displays ONLY work orders for which rolling has been performed.
+  const rolledWoIdSet = useMemo(() => {
+    const rolledSet = new Set<string>();
+    const masterWithRolling = new Set<string>();
+
+    // 1. Production logs: any ROLLING log with output/HTC OK/rejection/pcs, or any downstream stage output
+    for (const log of productionLogs) {
+      const isRolling = log.stage_code === 'ROLLING';
+      const hasRollingOutput =
+        Number(log.output_qty || 0) > 0 ||
+        Number(log.htc_ok_qty || 0) > 0 ||
+        Number(log.output_pcs || 0) > 0 ||
+        Number(log.rejection_qty || 0) > 0;
+
+      const isDownstream = ['HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'].includes(log.stage_code);
+      const hasDownstreamOutput = Number(log.output_qty || 0) > 0 || Number(log.output_pcs || 0) > 0;
+
+      if ((isRolling && hasRollingOutput) || (isDownstream && hasDownstreamOutput)) {
+        rolledSet.add(log.work_order_id);
+        if (isRolling && hasRollingOutput) {
+          masterWithRolling.add(log.work_order_id);
+        }
+      }
+    }
+
+    // 2. Multi-WO campaigns: In a campaign, rolling is performed under the master work order.
+    // If the master campaign has had rolling done, all linked child work orders are also considered rolled.
+    campaignMeta.childMap.forEach((childMeta, childWoId) => {
+      if (masterWithRolling.has(childMeta.master_wo_id) || rolledSet.has(childMeta.master_wo_id)) {
+        rolledSet.add(childWoId);
+      }
+    });
+
+    campaignMeta.masterMap.forEach((masterPlan, masterWoId) => {
+      if (rolledSet.has(masterWoId) && Array.isArray(masterPlan.child_work_orders)) {
+        for (const child of masterPlan.child_work_orders) {
+          const cId = child.work_order_id || child.id;
+          if (cId) rolledSet.add(cId);
+        }
+      }
+    });
+
+    return rolledSet;
+  }, [productionLogs, campaignMeta]);
+
+  // Total rolled orders count in database
+  const totalRolledCount = useMemo(() => {
+    return workOrders.filter((wo) => rolledWoIdSet.has(wo.id)).length;
+  }, [workOrders, rolledWoIdSet]);
+
+  // Filtered Work Orders: ONLY work for which rolling has been done will be shown
   const filteredWorkOrders = useMemo(() => {
     return workOrders.filter((wo) => {
+      // MANDATORY RULE: ONLY work for which rolling has been done will be shown
+      if (!rolledWoIdSet.has(wo.id)) {
+        return false;
+      }
+
       // 1. Work Order No Filter
       if (filterWo.trim()) {
         const match = wo.work_order_no.toLowerCase().includes(filterWo.trim().toLowerCase());
@@ -274,7 +339,7 @@ export default function WorkOrderTrackingClient() {
 
       return true;
     });
-  }, [workOrders, filterWo, filterCustomer, fromOd, toOd, fromDate, toDate, filterStatus]);
+  }, [workOrders, rolledWoIdSet, filterWo, filterCustomer, fromOd, toOd, fromDate, toDate, filterStatus]);
 
   // Helper to get aggregated stage metrics for a work order
   // RULE 1: WIP is strictly calculated AFTER rolling production is done, and ONLY from HTC OK quantity.
@@ -625,10 +690,12 @@ export default function WorkOrderTrackingClient() {
     setFilterStatus('');
   };
 
-  // KPI calculations across filtered work orders
+  // KPI calculations across filtered rolled work orders
   const kpis = useMemo(() => {
     let totalOrderedMtr = 0;
     let totalTargetPcs = 0;
+    let totalRollingOutMtr = 0;
+    let totalRollingOutPcs = 0;
     let totalPendingRollingMtr = 0;
     let totalPendingRollingPcs = 0;
     let totalRolledStockWipMtr = 0;
@@ -647,10 +714,14 @@ export default function WorkOrderTrackingClient() {
       const rollStage = row.stagesData.find((s) => s.code === 'ROLLING');
       const finStage = row.stagesData.find((s) => s.code === 'FINISHING');
 
-      // Do NOT double-count child plans in total pending rolling
+      // Do NOT double-count child plans in rolling totals
       if (!row.childInfo) {
-        totalPendingRollingMtr += Number(rollStage?.planMtr || 0);
-        totalPendingRollingPcs += Number(rollStage?.planPcs || 0);
+        totalRollingOutMtr += Number(rollStage?.outMtr || 0);
+        totalRollingOutPcs += Number(rollStage?.outPcs || 0);
+        const pendingMtr = Math.max(0, Number(rollStage?.planMtr || 0) - Number(rollStage?.outMtr || 0));
+        const pendingPcs = Math.max(0, Number(rollStage?.planPcs || 0) - Number(rollStage?.outPcs || 0));
+        totalPendingRollingMtr += pendingMtr;
+        totalPendingRollingPcs += pendingPcs;
       }
       totalRolledStockWipMtr += rollStage?.wipMtr || 0;
       totalRolledStockWipPcs += rollStage?.wipPcs || 0;
@@ -670,6 +741,8 @@ export default function WorkOrderTrackingClient() {
       totalOrders: filteredWorkOrders.length,
       totalOrderedMtr,
       totalTargetPcs,
+      totalRollingOutMtr,
+      totalRollingOutPcs,
       totalPendingRollingMtr,
       totalPendingRollingPcs,
       totalRolledStockWipMtr,
@@ -757,14 +830,18 @@ export default function WorkOrderTrackingClient() {
       {/* Top Header */}
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2 flex-wrap">
             <span>Work Order Tracking Sheet</span>
             <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-0.5">
               Live Stage Flow
             </span>
+            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5 flex items-center gap-1">
+              <CheckCircle2 size={11} className="text-emerald-600" />
+              Rolled Work Orders Only
+            </span>
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            End-to-end station tracking: Rolling Mill &rarr; HTC &rarr; Draw Bench &rarr; Heat Treatment &rarr; Finishing Line
+            End-to-end station tracking for work orders with rolling completed or in progress: Rolling Mill &rarr; HTC &rarr; Draw Bench &rarr; Heat Treatment &rarr; Finishing Line
           </p>
         </div>
 
@@ -817,9 +894,9 @@ export default function WorkOrderTrackingClient() {
 
         <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="p-4">
-            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Pending Rolling</div>
-            <div className="mt-1 text-2xl font-bold text-blue-900 font-mono">{fmt(kpis.totalPendingRollingPcs)} Pcs</div>
-            <div className="text-[11px] text-blue-600 mt-0.5">{fmt(kpis.totalPendingRollingMtr, 'm')} unrolled target plan</div>
+            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Rolled Mill Output</div>
+            <div className="mt-1 text-2xl font-bold text-blue-900 font-mono">{fmt(kpis.totalRollingOutPcs)} Nos</div>
+            <div className="text-[11px] text-blue-600 mt-0.5">{fmt(kpis.totalRollingOutMtr, 'm')} mother hollows rolled</div>
           </CardContent>
         </Card>
 
@@ -951,7 +1028,8 @@ export default function WorkOrderTrackingClient() {
 
             <div className="text-xs text-slate-500 font-medium">
               Showing <span className="font-bold text-slate-800">{filteredWorkOrders.length}</span> of{' '}
-              <span className="font-bold text-slate-800">{workOrders.length}</span> work orders
+              <span className="font-bold text-slate-800">{totalRolledCount}</span> rolled work orders{' '}
+              <span className="text-slate-400">({workOrders.length} total in system)</span>
             </div>
           </div>
         </CardContent>
@@ -981,7 +1059,11 @@ export default function WorkOrderTrackingClient() {
             <div className="p-12 text-center text-sm text-slate-500">Loading work order tracking data...</div>
           ) : filteredWorkOrders.length === 0 ? (
             <div className="p-12 text-center text-sm text-slate-500">
-              No work orders match the selected filters.
+              <Layers size={32} className="mx-auto mb-2 text-slate-300" />
+              <p className="font-medium text-slate-700">No work orders with completed rolling found.</p>
+              <p className="text-xs text-slate-400 mt-1">
+                The Work Order Tracking Sheet strictly displays work orders for which rolling production has been recorded.
+              </p>
             </div>
           ) : (
             <table className="min-w-full text-xs">
