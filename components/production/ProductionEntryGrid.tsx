@@ -227,24 +227,21 @@ export default function ProductionEntryGrid() {
           return { ...r, pcs: value, mtr };
         }
         if (field === "mtr") {
-          const pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
-          return { ...r, mtr: value, pcs };
+          return { ...r, mtr: value };
         }
         if (field === "rejection_pcs") {
           const rejection_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
           return { ...r, rejection_pcs: value, rejection_mtr };
         }
         if (field === "rejection_mtr") {
-          const rejection_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
-          return { ...r, rejection_mtr: value, rejection_pcs };
+          return { ...r, rejection_mtr: value };
         }
         if (field === "htc_ok_pcs") {
           const htc_ok_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
           return { ...r, htc_ok_pcs: value, htc_ok_mtr };
         }
         if (field === "htc_ok_mtr") {
-          const htc_ok_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
-          return { ...r, htc_ok_mtr: value, htc_ok_pcs };
+          return { ...r, htc_ok_mtr: value };
         }
         return { ...r, [field]: value };
       })
@@ -515,7 +512,6 @@ export default function ProductionEntryGrid() {
         mtr = val === "" ? "" : String(mtrFromPcs(n(val), avgLen).toFixed(3).replace(/\.?0+$/, ""));
       } else if (field === "mtr") {
         mtr = val;
-        pcs = val === "" ? "" : String(pcsFromMtr(n(val), avgLen));
       } else {
         return { ...prev, [woId]: { ...current, [field]: val } };
       }
@@ -685,12 +681,6 @@ export default function ProductionEntryGrid() {
 
   function changeEditMtr(value: string) {
     setEditMtr(value);
-    const avg = getEntryAvgLength(editing);
-    if (value === "") {
-      setEditPcs("");
-    } else {
-      setEditPcs(String(pcsFromMtr(n(value), avg)));
-    }
   }
 
   function changeEditRejectionPcs(value: string) {
@@ -705,12 +695,6 @@ export default function ProductionEntryGrid() {
 
   function changeEditRejectionMtr(value: string) {
     setEditRejectionMtr(value);
-    const avg = getEntryAvgLength(editing);
-    if (value === "") {
-      setEditRejectionPcs("");
-    } else {
-      setEditRejectionPcs(String(pcsFromMtr(n(value), avg)));
-    }
   }
 
   function changeEditHtcPcs(value: string) {
@@ -725,12 +709,6 @@ export default function ProductionEntryGrid() {
 
   function changeEditHtcMtr(value: string) {
     setEditHtcMtr(value);
-    const avg = getEntryAvgLength(editing);
-    if (value === "") {
-      setEditHtcPcs("");
-    } else {
-      setEditHtcPcs(String(pcsFromMtr(n(value), avg)));
-    }
   }
 
   async function updateEntry() {
