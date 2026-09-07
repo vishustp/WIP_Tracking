@@ -374,6 +374,8 @@ export async function GET(req: NextRequest) {
       }
       const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
       const qcOkMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+      const qcSalvagePcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+      const qcSalvageMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
 
       const finDivIn = getStageDivIn(woId, "FINISHING");
       const finDivOut = getStageDivOut(woId, "FINISHING");
@@ -382,9 +384,10 @@ export async function GET(req: NextRequest) {
       let finIncomingPcs = 0;
 
       if (woQcList.length > 0) {
-        // Strictly from VDI OK Nos (accepted good material released to Finishing Line)
-        finIncomingPcs = qcOkPcs;
-        finIncomingMtr = qcOkMtr > 0 ? qcOkMtr : (avgLength > 0 ? qcOkPcs * avgLength : 0);
+        // VDI OK + Salvage Nos (accepted and reworkable material released to Finishing Line)
+        finIncomingPcs = qcOkPcs + qcSalvagePcs;
+        const totalQcMtr = qcOkMtr + qcSalvageMtr;
+        finIncomingMtr = totalQcMtr > 0 ? totalQcMtr : (avgLength > 0 ? finIncomingPcs * avgLength : 0);
       } else if (hasQcTable) {
         // QC table exists, but no QC inspection has been done yet for this order.
         // It must be inspected in QC first!

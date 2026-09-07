@@ -248,6 +248,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
 
   const qcInspectedMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.inspected_mtr || 0), 0);
   const qcOkMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+  const qcSalvageMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
 
   // Diversions per stage
   const getDivOut = (stageCode: string) =>
@@ -350,7 +351,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     } else if (sc === 'FINISHING') {
       let incoming = 0;
       if (qcList.length > 0) {
-        incoming = qcOkMtr;
+        incoming = qcOkMtr + qcSalvageMtr;
       } else {
         incoming = hasHtInRoute ? htNetMtr : hasHtcInRoute ? htcNetMtr : rollingHtcOkMtr;
       }
