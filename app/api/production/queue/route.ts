@@ -343,24 +343,22 @@ export async function GET(req: NextRequest) {
       const finNetMtr = Math.max(0, finOutMtr - finRejMtr);
 
       // Check QC Inspections for this WO (or related campaign)
-      let woQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
-      if (campaign && Array.isArray(campaign.child_work_orders)) {
-        const childWoIds = new Set(campaign.child_work_orders.map((c: any) => c.work_order_id || c.id));
-        const campaignQcList = qcInspections.filter((q: any) => q.work_order_id === woId || childWoIds.has(q.work_order_id));
-        if (campaignQcList.length > 0) {
-          woQcList = campaignQcList;
-        }
-      }
+      const woQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
       const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+      const qcSalvagePcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+      const qcPassedPcs = qcOkPcs + qcSalvagePcs;
+
       const qcOkMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+      const qcSalvageMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+      const qcPassedMtr = qcOkMtr + qcSalvageMtr;
 
       let finIncomingMtr = 0;
       let finIncomingPcs = 0;
 
       if (woQcList.length > 0) {
-        // Strictly from VDI OK Nos (accepted good material released to Finishing Line)
-        finIncomingPcs = qcOkPcs;
-        finIncomingMtr = qcOkMtr > 0 ? qcOkMtr : (avgLength > 0 ? qcOkPcs * avgLength : 0);
+        // Strictly from VDI OK Nos + Salvage Nos!
+        finIncomingPcs = qcPassedPcs;
+        finIncomingMtr = qcPassedMtr > 0 ? qcPassedMtr : (avgLength > 0 ? qcPassedPcs * avgLength : 0);
       } else if (hasQcTable) {
         // QC table exists, but no QC inspection has been done yet for this order.
         // It must be inspected in QC first!

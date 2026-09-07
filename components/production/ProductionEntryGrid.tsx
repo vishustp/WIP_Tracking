@@ -1222,7 +1222,7 @@ export default function ProductionEntryGrid() {
                             {/* 3. Available WIP from Preceding Stage */}
                             <div className="bg-emerald-50/50 border border-emerald-100 rounded px-2 py-1 text-xs">
                               <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center justify-between">
-                                <span>{stage === "FINISHING" ? "Available WIP (VDI OK)" : "Available WIP (HT)"}</span>
+                                <span>Available WIP (HT)</span>
                                 <span className="text-[10px] font-medium text-emerald-600">Stock</span>
                               </div>
                               <div className="flex items-baseline gap-1 flex-wrap mt-0.5 font-mono">
@@ -2106,7 +2106,7 @@ export default function ProductionEntryGrid() {
               <div className="flex flex-wrap items-center justify-between gap-3 bg-teal-50/50 border-b border-teal-100 px-6 py-3 text-xs">
                 <div className="flex items-center gap-4">
                   <span className="text-slate-600">
-                    Available WIP from VDI QC (OK):{" "}
+                    Available WIP from Heat Treatment:{" "}
                     <b className="font-mono text-slate-900 text-sm">{fmt(maxAvailMtr)} MTR</b> (
                     <span className="font-mono">{fmt(maxAvailPcs)} PCS</span>)
                   </span>

@@ -706,16 +706,16 @@ export default function WorkOrderTrackingClient() {
         );
         const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
         const qcSalvagePcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
-        const qcPassedPcs = qcOkPcs;
+        const qcPassedPcs = qcOkPcs + qcSalvagePcs;
         const qcPassedMtr = woQcList.reduce(
-          (sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0),
+          (sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0) + Number(q.vdi_salvage_mtr || 0),
           0
         );
 
         let wipMtr = 0;
         let wipPcs = 0;
         if (woQcList.length > 0) {
-          // Strictly from VDI OK Nos!
+          // Strictly from VDI OK + Salvage Nos!
           const consumedPcs = finOutPcs + finRejPcs;
           wipPcs = Math.max(0, Math.min(targetPcs, qcPassedPcs) - consumedPcs);
           wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : Math.max(0, qcPassedMtr - finOutMtr - finRejMtr);
@@ -1801,9 +1801,9 @@ function FinishingQcModal({ data, onClose }: FinishingQcModalProps) {
   const finishingRejPcs = finishingLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_pcs || 0), 0);
   const finishingRejMtr = finishingLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
 
-  // Approved for Finishing (Strictly VDI OK)
-  const totalPassedPcs = totalVdiOkPcs;
-  const totalPassedMt = totalVdiOkMt;
+  // Approved for Finishing (VDI OK + Salvage)
+  const totalPassedPcs = totalVdiOkPcs + totalVdiSalvagePcs;
+  const totalPassedMt = totalVdiOkMt + totalVdiSalvageMt;
 
   // Current WIP Available in Finishing
   const finishingWipPcs = Math.max(0, totalPassedPcs - finishingDonePcs - finishingRejPcs);
@@ -1980,7 +1980,7 @@ function FinishingQcModal({ data, onClose }: FinishingQcModalProps) {
                 <div className="font-semibold text-slate-700">Finishing Input Allowed:</div>
                 <div className="font-mono font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
                   {fmt(totalPassedPcs)} Nos ({fmt(totalPassedMt)} MT)
-                  <span className="text-[10px] text-slate-500 font-normal ml-1">(VDI OK)</span>
+                  <span className="text-[10px] text-slate-500 font-normal ml-1">(VDI OK + Salvage)</span>
                 </div>
               </div>
               <div className="flex items-center gap-3">

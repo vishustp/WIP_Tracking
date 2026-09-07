@@ -437,13 +437,15 @@ export function useQueue(stage: StageCode) {
           let rowToUse = { ...r };
           if (woQc.length > 0) {
             const qcOk = woQc.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+            const qcSalvage = woQc.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+            const qcPassed = qcOk + qcSalvage;
             const finishedLogs = logs.filter(
               (l: any) =>
                 l.work_order_id === r.work_order_id &&
                 (!finishingStageId || l.stage_id === finishingStageId)
             );
             const finishedPcs = finishedLogs.reduce((sum: number, l: any) => sum + Number(l.output_pcs || 0) + Number(l.rejection_pcs || 0), 0);
-            const availPcs = Math.max(0, qcOk - finishedPcs);
+            const availPcs = Math.max(0, qcPassed - finishedPcs);
             const effAvg = Number(r.avg_length) || 6;
             const availMtr: number = effAvg > 0 ? Number((availPcs * effAvg).toFixed(3)) : (Number(r.balance_to_make_mtr) || 0);
             const od = Number(r.od || 0);
