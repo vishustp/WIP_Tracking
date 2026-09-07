@@ -1222,7 +1222,14 @@ export default function WorkOrderTrackingClient() {
                           </div>
 
                           <div className="font-mono text-slate-800 mt-1">
-                            {wo.size_od} × {wo.size_wt} mm ({wo.l1 || '—'}-{wo.l2 || '—'}m)
+                            {wo.size_od} × {wo.size_wt} mm
+                            {wo.l1 != null && wo.l2 != null
+                              ? wo.l1 === wo.l2
+                                ? ` (${wo.l1}m)`
+                                : ` (${wo.l1}-${wo.l2}m)`
+                              : wo.l1 != null
+                              ? ` (${wo.l1}m)`
+                              : ''}
                           </div>
 
                           <div className="text-slate-500 text-[11px]">

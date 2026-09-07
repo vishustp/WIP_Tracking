@@ -75,6 +75,75 @@ function findColumn(headers: string[], names: string[]) {
   return undefined;
 }
 
+function parseLengthValues(record: any, headers: string[]): { l1: number | null; l2: number | null } {
+  // 1. Check for separate L1 and L2 columns
+  const cL1 = findColumn(headers, [
+    'L1', 'L 1', 'L-1', 'L_1',
+    'Min Length', 'Length Min', 'Length (Min)', 'Min. Length', 'Min Len',
+    'L1 (m)', 'L1(m)', 'L1 (Mtr)', 'L1(Mtr)', 'L1 Mtr', 'L1 (mtrs)', 'L1 (mm)', 'L1(mm)',
+    'Length From', 'Len From', 'From Length'
+  ]);
+  const cL2 = findColumn(headers, [
+    'L2', 'L 2', 'L-2', 'L_2',
+    'Max Length', 'Length Max', 'Length (Max)', 'Max. Length', 'Max Len',
+    'L2 (m)', 'L2(m)', 'L2 (Mtr)', 'L2(Mtr)', 'L2 Mtr', 'L2 (mtrs)', 'L2 (mm)', 'L2(mm)',
+    'Length To', 'Len To', 'To Length'
+  ]);
+
+  let rawL1 = cL1 && record[cL1] !== undefined && record[cL1] !== null && record[cL1] !== '' ? record[cL1] : null;
+  let rawL2 = cL2 && record[cL2] !== undefined && record[cL2] !== null && record[cL2] !== '' ? record[cL2] : null;
+
+  // 2. Check for single Length column (e.g. "5.8-6.2", "6.0", "6000", "5.8 to 6.2")
+  if (rawL1 === null && rawL2 === null) {
+    const cLen = findColumn(headers, [
+      'Length', 'Cut Length', 'Tube Length', 'Pipe Length',
+      'Length (m)', 'Length(m)', 'Length (Mtr)', 'Length(Mtr)', 'Length (mtrs)', 'Length (Meter)',
+      'Length (mm)', 'Length(mm)',
+      'Length Range', 'L1/L2', 'L1-L2', 'L1 - L2', 'Length L1/L2', 'Length (L1-L2)',
+      'Cut Length (m)', 'Cut Length (mm)', 'Cut Length (Mtr)', 'Len'
+    ]);
+
+    if (cLen && record[cLen] !== undefined && record[cLen] !== null && record[cLen] !== '') {
+      const valStr = String(record[cLen]).trim();
+      const rangeMatch = valStr.match(/^([0-9.]+)\s*(?:-|–|—|to|\/|~)\s*([0-9.]+)$/i);
+      if (rangeMatch) {
+        rawL1 = rangeMatch[1];
+        rawL2 = rangeMatch[2];
+      } else {
+        const singleMatch = valStr.match(/^([0-9.]+)/);
+        if (singleMatch) {
+          rawL1 = singleMatch[1];
+          rawL2 = singleMatch[1];
+        }
+      }
+    }
+  }
+
+  let l1 = rawL1 != null ? Number(String(rawL1).replace(/,/g, '').trim()) : null;
+  let l2 = rawL2 != null ? Number(String(rawL2).replace(/,/g, '').trim()) : null;
+
+  if (l1 !== null && (!Number.isFinite(l1) || l1 <= 0)) l1 = null;
+  if (l2 !== null && (!Number.isFinite(l2) || l2 <= 0)) l2 = null;
+
+  // Millimeters conversion: if > 100 mm, convert to meters (e.g. 6000 mm -> 6.0 m)
+  if (l1 !== null && l1 > 100) l1 = Number((l1 / 1000).toFixed(3));
+  if (l2 !== null && l2 > 100) l2 = Number((l2 / 1000).toFixed(3));
+
+  if (l1 !== null && l2 === null) l2 = l1;
+  if (l2 !== null && l1 === null) l1 = l2;
+
+  if (l1 !== null && l2 !== null && l1 > l2) {
+    const tmp = l1;
+    l1 = l2;
+    l2 = tmp;
+  }
+
+  return {
+    l1: l1 !== null ? l1 : 6.0,
+    l2: l2 !== null ? l2 : 6.5,
+  };
+}
+
 const SAMPLE_EXCEL_DATA = [
   {
     'W.no': 'WO-2026-101',
@@ -241,8 +310,7 @@ export default function ExcelImporter() {
 
       const odVal = cOD ? num(record[cOD]) || null : null;
       const wlVal = cWL ? num(record[cWL]) || null : null;
-      const l1Val = cL1 ? num(record[cL1]) || null : 6.0;
-      const l2Val = cL2 ? num(record[cL2]) || null : 6.5;
+      const { l1: l1Val, l2: l2Val } = parseLengthValues(record, headers);
       const targetDateVal = cTargetDate ? clean(record[cTargetDate]) : undefined;
 
       const row: ImportRow = {
@@ -408,7 +476,31 @@ export default function ExcelImporter() {
         throw error;
       }
 
-
+      // Explicitly update l1, l2, and breakdown quantities on work_orders to guarantee persistence project-wide
+      const l1l2Updates = validRows.filter((r) => r.l1 != null || r.l2 != null);
+      if (l1l2Updates.length > 0) {
+        const updateChunkSize = 25;
+        for (let i = 0; i < l1l2Updates.length; i += updateChunkSize) {
+          const chunk = l1l2Updates.slice(i, i + updateChunkSize);
+          await Promise.all(
+            chunk.map(async (row) => {
+              await supabase
+                .from('work_orders')
+                .update({
+                  l1: row.l1,
+                  l2: row.l2,
+                  ordered_qty_pcs: row.ordered_qty_pcs,
+                  ordered_qty_mtr: row.ordered_qty_mtr,
+                  ordered_qty_mt: row.ordered_qty_mt,
+                  balance_qty_pcs: row.balance_qty_pcs,
+                  balance_qty_mtr: row.balance_qty_mtr,
+                  balance_qty_mt: row.balance_qty_mt,
+                })
+                .eq('work_order_no', row.work_order_no);
+            })
+          );
+        }
+      }
 
       setImportSuccessCount(imported);
       setMessage(

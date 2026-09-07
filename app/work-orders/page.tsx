@@ -335,8 +335,8 @@ export default function WorkOrders() {
         'SPECIFICATION': w.specification || w.grade || '',
         'OD': w.size_od ?? '',
         'WL': w.size_wt ?? '',
-        'L1': w.l1 ?? 6.0,
-        'L2': w.l2 ?? 6.5,
+        'L1': w.l1 != null ? w.l1 : '',
+        'L2': w.l2 != null ? w.l2 : '',
         'Order Pcs': orderPcs,
         'Order Metre': orderMtr,
         'Order MT': orderMt,
@@ -863,7 +863,15 @@ export default function WorkOrders() {
                           {w.size_wt ?? '—'}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono text-slate-600">
-                          {w.l1 ?? 6.0} - {w.l2 ?? 6.5}
+                          {w.l1 != null && w.l2 != null
+                            ? w.l1 === w.l2
+                              ? `${w.l1} m`
+                              : `${w.l1} - ${w.l2} m`
+                            : w.l1 != null
+                            ? `${w.l1} m`
+                            : w.l2 != null
+                            ? `${w.l2} m`
+                            : '—'}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono text-slate-800">
                           {orderPcs || '—'}
