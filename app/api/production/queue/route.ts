@@ -406,9 +406,9 @@ export async function GET(req: NextRequest) {
       let finIncomingPcs = 0;
 
       if (woQcList.length > 0) {
-        // Strictly from VDI OK Nos (accepted good material released to Finishing Line; salvage handled in diversion)
-        finIncomingPcs = qcOkPcs;
-        finIncomingMtr = qcOkMtr > 0 ? qcOkMtr : (avgLength > 0 ? qcOkPcs * avgLength : 0);
+        // Strictly from VDI OK Nos * Multiple (accepted good material released to Finishing Line)
+        finIncomingPcs = Math.round(qcOkPcs * multiple);
+        finIncomingMtr = qcOkMtr > 0 ? qcOkMtr * multiple : (avgLength > 0 ? qcOkPcs * avgLength * multiple : 0);
       } else if (hasQcTable) {
         // QC table exists, but no QC inspection has been done yet for this order.
         // It must be inspected in QC first!
@@ -418,12 +418,14 @@ export async function GET(req: NextRequest) {
         // Fallback for when migration 040 is not yet applied
         if (routeCode === "HFS") {
           finIncomingMtr = rollHtcOkMtr * multiple;
+          finIncomingPcs = Math.round(rollHtcOkPcs * multiple);
         } else if (routeCode === "ALLOY_HFS") {
           finIncomingMtr = hollowHtNetMtr * multiple;
+          finIncomingPcs = Math.round(hollowHtNetPcs * multiple);
         } else {
           finIncomingMtr = htNetMtr * multiple;
+          finIncomingPcs = Math.round(htNetPcs * multiple);
         }
-        finIncomingPcs = avgLength > 0 ? Math.round(finIncomingMtr / avgLength) : 0;
       }
 
       const finDivInPcs = avgLength > 0 ? Math.round(finDivIn / avgLength) : 0;
