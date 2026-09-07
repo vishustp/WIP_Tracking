@@ -26,6 +26,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { mtFromMtr } from '@/lib/productionUtils';
 
 type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'FINISHING';
 
@@ -111,15 +112,27 @@ export default function SizeGradeWipReportClient() {
           gradeMap.set(w.id, w.grade || w.specification || 'ASTM A106 Gr.B');
         });
 
-        const mapped = wipRes.data.map((r: any) => ({
-          ...r,
-          grade: r.grade || gradeMap.get(r.work_order_id) || 'ASTM A106 Gr.B',
-          od: Number(r.od || r.size_od || 0),
-          wt: Number(r.wt || r.size_wt || 0),
-          current_wip: Number(r.current_wip || 0),
-          current_wip_pcs: Number(r.current_wip_pcs || 0),
-          available_mt: Number(r.available_mt || 0),
-        }));
+        const mapped = wipRes.data.map((r: any) => {
+          const od = Number(r.od || r.size_od || 0);
+          const wt = Number(r.wt || r.size_wt || 0);
+          const currentWipMtr = Number(r.current_wip || 0);
+          const currentWipPcs = Number(r.current_wip_pcs || 0);
+          const computedMt = mtFromMtr(currentWipMtr, od, wt);
+          const currentWipMt = Number(r.current_wip_mt || r.available_mt || 0) > 0
+            ? Number(r.current_wip_mt || r.available_mt)
+            : Number(computedMt.toFixed(3));
+
+          return {
+            ...r,
+            grade: r.grade || gradeMap.get(r.work_order_id) || 'ASTM A106 Gr.B',
+            od,
+            wt,
+            current_wip: currentWipMtr,
+            current_wip_pcs: currentWipPcs,
+            available_mt: currentWipMt,
+            current_wip_mt: currentWipMt,
+          };
+        });
 
         setRawWipRows(mapped);
       }
@@ -209,7 +222,9 @@ export default function SizeGradeWipReportClient() {
       const group = map.get(key)!;
       const mtr = Number(r.current_wip || 0);
       const pcs = Number(r.current_wip_pcs || 0);
-      const mt = Number(r.available_mt || 0);
+      const mt = Number(r.current_wip_mt || r.available_mt || 0) > 0
+        ? Number(r.current_wip_mt || r.available_mt)
+        : mtFromMtr(mtr, od, wt);
       const stage = (r.stage_code || '').toUpperCase() as StageCode;
 
       if (stage === 'ROLLING') {
@@ -266,8 +281,16 @@ export default function SizeGradeWipReportClient() {
     const totalWipMt = matrixGroups.reduce((sum, g) => sum + g.total_mt, 0);
 
     const rollingMtr = matrixGroups.reduce((sum, g) => sum + g.rolling_mtr, 0);
+    const rollingPcs = matrixGroups.reduce((sum, g) => sum + g.rolling_pcs, 0);
+    const rollingMt = matrixGroups.reduce((sum, g) => sum + g.rolling_mt, 0);
+
     const drawMtr = matrixGroups.reduce((sum, g) => sum + g.draw_mtr, 0);
+    const drawPcs = matrixGroups.reduce((sum, g) => sum + g.draw_pcs, 0);
+    const drawMt = matrixGroups.reduce((sum, g) => sum + g.draw_mt, 0);
+
     const finishingMtr = matrixGroups.reduce((sum, g) => sum + g.finishing_mtr, 0);
+    const finishingPcs = matrixGroups.reduce((sum, g) => sum + g.finishing_pcs, 0);
+    const finishingMt = matrixGroups.reduce((sum, g) => sum + g.finishing_mt, 0);
 
     // Largest WIP size
     let topGroup: SizeGradeGroup | null = null;
@@ -283,8 +306,14 @@ export default function SizeGradeWipReportClient() {
       totalWipPcs,
       totalWipMt,
       rollingMtr,
+      rollingPcs,
+      rollingMt,
       drawMtr,
+      drawPcs,
+      drawMt,
       finishingMtr,
+      finishingPcs,
+      finishingMt,
       topSize: topGroup ? `${(topGroup as SizeGradeGroup).od} × ${(topGroup as SizeGradeGroup).wt} mm (${(topGroup as SizeGradeGroup).grade})` : '—',
       topSizeMtr: topGroup ? (topGroup as SizeGradeGroup).total_mtr : 0,
     };
@@ -799,7 +828,7 @@ export default function SizeGradeWipReportClient() {
                       Total Plant Inventory:
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-blue-950 bg-blue-100/50 border-x border-blue-200">
-                      {formatCell(kpis.rollingMtr, 0, 0)}
+                      {formatCell(kpis.rollingMtr, kpis.rollingPcs, kpis.rollingMt)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-amber-950 bg-amber-100/50 border-r border-amber-200">
                       {formatCell(
@@ -809,7 +838,7 @@ export default function SizeGradeWipReportClient() {
                       )}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-indigo-950 bg-indigo-100/50 border-r border-indigo-200">
-                      {formatCell(kpis.drawMtr, 0, 0)}
+                      {formatCell(kpis.drawMtr, kpis.drawPcs, kpis.drawMt)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-orange-950 bg-orange-100/50 border-r border-orange-200">
                       {formatCell(
@@ -819,7 +848,7 @@ export default function SizeGradeWipReportClient() {
                       )}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-emerald-950 bg-emerald-100/50 border-r border-emerald-200">
-                      {formatCell(kpis.finishingMtr, 0, 0)}
+                      {formatCell(kpis.finishingMtr, kpis.finishingPcs, kpis.finishingMt)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-slate-950 bg-slate-200 text-[13px]">
                       {formatCell(kpis.totalWipMtr, kpis.totalWipPcs, kpis.totalWipMt)}

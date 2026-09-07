@@ -117,7 +117,9 @@ export default function AgingReportClient() {
             stage_name: r.stage_name || r.stage_code,
             current_wip: Number(r.current_wip) || 0,
             current_wip_pcs: Number(r.current_wip_pcs) || 0,
-            available_mt: Number(r.available_mt) || 0,
+            available_mt: Number(r.current_wip_mt || r.available_mt || 0) > 0
+              ? Number(r.current_wip_mt || r.available_mt)
+              : Number((Math.max(Number(r.od || 0) - Number(r.wt || 0), 0) * Math.max(Number(r.wt || 0), 0) * 0.0246615 * 0.001 * Number(r.current_wip || 0)).toFixed(3)),
             last_activity_date: actDateStr,
             days_stuck: diffDays,
             severity: sev,
