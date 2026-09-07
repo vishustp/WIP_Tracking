@@ -786,25 +786,35 @@ export default function ProductionEntryGrid() {
       if (rpcError) throw rpcError;
 
       // Reconcile work order status if no remaining production logs exist for this order
-      if (targetEntry?.work_order_id) {
-        const { data: remainingLogs } = await supabase
-          .from("production_logs")
+      const targetWoNo = targetEntry?.work_order_no;
+      if (targetWoNo) {
+        const { data: woData } = await supabase
+          .from("work_orders")
           .select("id")
-          .eq("work_order_id", targetEntry.work_order_id)
-          .limit(1);
+          .eq("work_order_no", targetWoNo)
+          .maybeSingle();
 
-        if (!remainingLogs || remainingLogs.length === 0) {
-          const { data: plans } = await supabase
-            .from("rolling_plans")
+        const woId = targetEntry?.work_order_id || woData?.id;
+        if (woId) {
+          const { data: remainingLogs } = await supabase
+            .from("production_logs")
             .select("id")
-            .eq("work_order_id", targetEntry.work_order_id)
+            .eq("work_order_id", woId)
             .limit(1);
 
-          const newStatus = plans && plans.length > 0 ? "Scheduled" : "Pending Plan";
-          await supabase
-            .from("work_orders")
-            .update({ status: newStatus })
-            .eq("id", targetEntry.work_order_id);
+          if (!remainingLogs || remainingLogs.length === 0) {
+            const { data: plans } = await supabase
+              .from("rolling_plans")
+              .select("id")
+              .eq("work_order_id", woId)
+              .limit(1);
+
+            const newStatus = plans && plans.length > 0 ? "Scheduled" : "Pending Plan";
+            await supabase
+              .from("work_orders")
+              .update({ status: newStatus })
+              .eq("id", woId);
+          }
         }
       }
 

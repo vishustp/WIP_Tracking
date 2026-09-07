@@ -131,6 +131,7 @@ export interface Row {
 
 export interface ProductionEntry {
   id: string;
+  work_order_id?: string;
   work_order_no: string;
   customer_name: string | null;
   route_code: string;
