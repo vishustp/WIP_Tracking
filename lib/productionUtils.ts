@@ -61,28 +61,25 @@ export const calc = (row: {
     isRolling && row.mh_wt && Number(row.mh_wt) > 0 ? Number(row.mh_wt) : n(row.wl);
 
   const avg = effectiveAvg;
-  const pcs = Math.round(row.pcs.trim() === "" && row.mtr.trim() !== "" ? pcsFromMtr(n(row.mtr), avg) : n(row.pcs));
-  const calculatedMtr = mtrFromPcs(pcs, avg);
-  const mtr = row.mtr.trim() === "" ? calculatedMtr : n(row.mtr);
-  const rejectionPcs = Math.round(
-    row.rejection_pcs.trim() !== ""
-      ? n(row.rejection_pcs)
-      : row.rejection_mtr.trim() !== ""
-      ? pcsFromMtr(n(row.rejection_mtr), avg)
-      : 0
-  );
-  const calculatedRejMtr = mtrFromPcs(rejectionPcs, avg);
-  const rejectionMtr = row.rejection_mtr.trim() === "" ? calculatedRejMtr : n(row.rejection_mtr);
 
-  const htcPcs = Math.round(
-    row.htc_ok_pcs.trim() !== ""
-      ? n(row.htc_ok_pcs)
-      : row.htc_ok_mtr.trim() !== ""
-      ? pcsFromMtr(n(row.htc_ok_mtr), avg)
-      : 0
-  );
+  // RULE: Nos cannot change based on Mtr, only Mtr will change based on Nos.
+  const hasPcs = row.pcs !== undefined && row.pcs !== null && row.pcs.trim() !== "";
+  const hasMtr = row.mtr !== undefined && row.mtr !== null && row.mtr.trim() !== "";
+  const pcs = hasPcs ? Math.round(n(row.pcs)) : (hasMtr && avg > 0 ? pcsFromMtr(n(row.mtr), avg) : 0);
+  const calculatedMtr = mtrFromPcs(pcs, avg);
+  const mtr = hasMtr ? n(row.mtr) : calculatedMtr;
+
+  const hasRejPcs = row.rejection_pcs !== undefined && row.rejection_pcs !== null && row.rejection_pcs.trim() !== "";
+  const hasRejMtr = row.rejection_mtr !== undefined && row.rejection_mtr !== null && row.rejection_mtr.trim() !== "";
+  const rejectionPcs = hasRejPcs ? Math.round(n(row.rejection_pcs)) : (hasRejMtr && avg > 0 ? pcsFromMtr(n(row.rejection_mtr), avg) : 0);
+  const calculatedRejMtr = mtrFromPcs(rejectionPcs, avg);
+  const rejectionMtr = hasRejMtr ? n(row.rejection_mtr) : calculatedRejMtr;
+
+  const hasHtcPcs = row.htc_ok_pcs !== undefined && row.htc_ok_pcs !== null && row.htc_ok_pcs.trim() !== "";
+  const hasHtcMtr = row.htc_ok_mtr !== undefined && row.htc_ok_mtr !== null && row.htc_ok_mtr.trim() !== "";
+  const htcPcs = hasHtcPcs ? Math.round(n(row.htc_ok_pcs)) : (hasHtcMtr && avg > 0 ? pcsFromMtr(n(row.htc_ok_mtr), avg) : 0);
   const calculatedHtcMtr = mtrFromPcs(htcPcs, avg);
-  const htcMtr = row.htc_ok_mtr.trim() === "" ? calculatedHtcMtr : n(row.htc_ok_mtr);
+  const htcMtr = hasHtcMtr ? n(row.htc_ok_mtr) : calculatedHtcMtr;
 
   const mt = mtFromMtr(mtr, effectiveOd, effectiveWt);
   const rejectionMt = mtFromMtr(rejectionMtr, effectiveOd, effectiveWt);
