@@ -813,9 +813,9 @@ export default function WorkOrders() {
                     ? w.ordered_qty_mtr
                     : (w.uom === 'Mtrs' ? w.ordered_qty : (avg > 0 ? Number((w.ordered_qty * avg).toFixed(1)) : 0));
 
-                  const orderPcs = w.ordered_qty_pcs != null && w.ordered_qty_pcs > 0
+                  const orderPcs = Math.round(Number(w.ordered_qty_pcs != null && w.ordered_qty_pcs > 0
                     ? w.ordered_qty_pcs
-                    : (w.uom === 'Pcs' ? w.ordered_qty : (avg > 0 && orderMtr > 0 ? Math.round(orderMtr / avg) : 0));
+                    : (w.uom === 'Pcs' ? w.ordered_qty : (avg > 0 && orderMtr > 0 ? Math.round(orderMtr / avg) : 0))));
 
                   const orderMt = w.ordered_qty_mt != null && w.ordered_qty_mt > 0
                     ? w.ordered_qty_mt
@@ -825,9 +825,9 @@ export default function WorkOrders() {
                     ? w.balance_qty_mtr
                     : (w.status === 'Completed' ? 0 : orderMtr);
 
-                  const balPcs = w.balance_qty_pcs != null
+                  const balPcs = Math.round(Number(w.balance_qty_pcs != null
                     ? w.balance_qty_pcs
-                    : (w.status === 'Completed' ? 0 : (avg > 0 && balMtr > 0 ? Math.round(balMtr / avg) : 0));
+                    : (w.status === 'Completed' ? 0 : (avg > 0 && balMtr > 0 ? Math.round(balMtr / avg) : 0))));
 
                   const balMt = w.balance_qty_mt != null
                     ? w.balance_qty_mt
@@ -874,20 +874,20 @@ export default function WorkOrders() {
                             : '—'}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono text-slate-800">
-                          {orderPcs || '—'}
+                          {orderPcs ? fmt(orderPcs) : '—'}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-medium text-slate-900">
-                          {orderMtr || '—'}
+                          {orderMtr ? fmt(orderMtr) : '—'}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono text-slate-700">
                           {orderMt ? fmt(orderMt, ' MT') : '—'}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold">
                           <span className={balMtr <= 5 ? 'text-amber-700' : 'text-slate-900'}>
-                            {balMtr}
+                            {fmt(balMtr)}
                           </span>
                           <div className="text-[11px] font-normal text-slate-400">
-                            {balPcs} pcs · {fmt(balMt, ' MT')}
+                            {fmt(balPcs)} pcs · {fmt(balMt, ' MT')}
                           </div>
                         </td>
                         {/* Work Center WIP summary badge */}
@@ -895,15 +895,15 @@ export default function WorkOrders() {
                           {activeWips.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
                               {activeWips.map((wp: WipStage) => {
-                                const pcsVal = wp.current_wip_pcs ?? (avg > 0 ? Number((wp.current_wip / avg).toFixed(1)) : 0);
+                                const pcsVal = Math.round(Number(wp.current_wip_pcs != null ? wp.current_wip_pcs : (avg > 0 ? wp.current_wip / avg : 0)));
                                 const wpMt = wp.available_mt ?? mtFromMtr(wp.current_wip, w.size_od || 0, w.size_wt || 0);
                                 return (
                                   <span
                                     key={wp.stage_name}
                                     className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-2 py-1 text-xs font-bold text-blue-800 font-mono"
-                                    title={`${wp.stage_name}: ${wp.current_wip} MTR (${pcsVal} PCS · ${fmt(wpMt, ' MT')})`}
+                                    title={`${wp.stage_name}: ${fmt(wp.current_wip)} MTR (${fmt(pcsVal)} PCS · ${fmt(wpMt, ' MT')})`}
                                   >
-                                    {wp.stage_name.replace(' Stage', '')}: {pcsVal} PCS ({wp.current_wip}m · {fmt(wpMt, ' MT')})
+                                    {wp.stage_name.replace(' Stage', '')}: {fmt(pcsVal)} PCS ({fmt(wp.current_wip)}m · {fmt(wpMt, ' MT')})
                                   </span>
                                 );
                               })}
@@ -981,10 +981,10 @@ export default function WorkOrders() {
                               </div>
                               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                                 {wips.map((wp: WipStage) => {
-                                  const wipPcs = wp.current_wip_pcs ?? (avg > 0 ? (wp.current_wip / avg).toFixed(2) : '0');
-                                  const inPcs = wp.input_pcs ?? (avg > 0 ? (wp.input_qty / avg).toFixed(2) : '0');
-                                  const outPcs = wp.output_pcs ?? (avg > 0 ? (wp.output_qty / avg).toFixed(2) : '0');
-                                  const rejPcs = wp.rejection_pcs ?? (avg > 0 ? (wp.rejection_qty / avg).toFixed(2) : '0');
+                                  const wipPcs = Math.round(Number(wp.current_wip_pcs != null ? wp.current_wip_pcs : (avg > 0 ? wp.current_wip / avg : 0)));
+                                  const inPcs = Math.round(Number(wp.input_pcs != null ? wp.input_pcs : (avg > 0 ? wp.input_qty / avg : 0)));
+                                  const outPcs = Math.round(Number(wp.output_pcs != null ? wp.output_pcs : (avg > 0 ? wp.output_qty / avg : 0)));
+                                  const rejPcs = Math.round(Number(wp.rejection_pcs != null ? wp.rejection_pcs : (avg > 0 ? wp.rejection_qty / avg : 0)));
 
                                   const wipMt = wp.available_mt ?? mtFromMtr(wp.current_wip, w.size_od || 0, w.size_wt || 0);
                                   const inMt = wp.input_mt ?? mtFromMtr(wp.input_qty, w.size_od || 0, w.size_wt || 0);
@@ -1000,20 +1000,20 @@ export default function WorkOrders() {
                                       </div>
                                       <div className="flex justify-between text-sm">
                                         <span className="text-slate-500 font-medium">Available WIP:</span>
-                                        <span className="font-bold font-mono text-blue-800">{wipPcs} PCS ({wp.current_wip}m · {fmt(wipMt, ' MT')})</span>
+                                        <span className="font-bold font-mono text-blue-800">{fmt(wipPcs)} PCS ({fmt(wp.current_wip)}m · {fmt(wipMt, ' MT')})</span>
                                       </div>
                                       <div className="flex justify-between text-xs text-slate-600">
                                         <span>Input / Output:</span>
-                                        <span className="font-mono">{inPcs} / {outPcs} PCS ({wp.input_qty} / {wp.output_qty}m · {fmt(outMt, ' MT')})</span>
+                                        <span className="font-mono">{fmt(inPcs)} / {fmt(outPcs)} PCS ({fmt(wp.input_qty)} / {fmt(wp.output_qty)}m · {fmt(outMt, ' MT')})</span>
                                       </div>
                                       <div className="flex justify-between text-xs text-rose-600">
                                         <span>Rejection:</span>
-                                        <span className="font-mono">{rejPcs} PCS ({wp.rejection_qty}m · {fmt(rejMt, ' MT')})</span>
+                                        <span className="font-mono">{fmt(rejPcs)} PCS ({fmt(wp.rejection_qty)}m · {fmt(rejMt, ' MT')})</span>
                                       </div>
-                                      {wp.htc_ok_qty !== undefined && wp.htc_ok_qty > 0 && (
-                                        <div className="flex justify-between text-xs text-emerald-700 font-medium">
+                                      {wp.htc_ok_qty != null && Number(wp.htc_ok_qty) > 0 && (
+                                        <div className="flex justify-between text-xs text-emerald-700 font-bold border-t border-slate-200/60 pt-1">
                                           <span>HTC OK:</span>
-                                          <span className="font-mono">{wp.htc_ok_pcs ?? (avg > 0 ? (wp.htc_ok_qty / avg).toFixed(1) : 0)} PCS ({wp.htc_ok_qty}m · {fmt(htcMt, ' MT')})</span>
+                                          <span className="font-mono">{fmt(Math.round(Number(wp.htc_ok_pcs != null ? wp.htc_ok_pcs : (avg > 0 ? wp.htc_ok_qty / avg : 0))))} PCS ({fmt(wp.htc_ok_qty)}m · {fmt(htcMt, ' MT')})</span>
                                         </div>
                                       )}
                                     </div>
