@@ -213,6 +213,9 @@ export function useQueue(stage: StageCode) {
           );
           const totalLoggedPcs = loggedOutputPcs + loggedRejPcs;
 
+          const rawBalMtr = Number(r.balance_to_make_mtr || 0);
+          const rawBalPcs = Number(r.balance_to_make_pcs || 0);
+
           const rollDivIn = getStageDivIn(r.work_order_id, "ROLLING");
           const rollDivOut = getStageDivOut(r.work_order_id, "ROLLING");
 
@@ -220,20 +223,27 @@ export function useQueue(stage: StageCode) {
             const totalCampaignMtr = Number(campaign.total_campaign_mtr || 0);
             const totalCampaignPcs = Number(campaign.total_campaign_pcs || 0);
 
-            // Available WIP = Total Plan issued against Master + Child Work Orders + Diversion In - Logged Rolling Production - Diversion Out
-            const availMtr = Math.max(0, totalCampaignMtr + rollDivIn - totalLoggedMtr - rollDivOut);
+            // If totalLoggedMtr > 0, calculate balance; otherwise use the database RPC computed balance
+            const availMtr = totalLoggedMtr > 0
+              ? Math.max(0, totalCampaignMtr + rollDivIn - totalLoggedMtr - rollDivOut)
+              : (rawBalMtr > 0 ? rawBalMtr : Math.max(0, totalCampaignMtr + rollDivIn - rollDivOut));
 
             const availPcs = effAvg > 0
               ? Math.round(availMtr / effAvg)
-              : (totalCampaignPcs > 0 ? Math.max(0, totalCampaignPcs - totalLoggedPcs) : 0);
+              : (rawBalPcs > 0 ? Math.round(rawBalPcs) : (totalCampaignPcs > 0 ? Math.max(0, totalCampaignPcs - totalLoggedPcs) : 0));
             const mhOd = Number(campaign.mh_od || r.mh_od || r.od || 0);
             const mhWt = Number(campaign.mh_wt || r.mh_wt || r.wl || 0);
             const availMt =
               Math.max(mhOd - mhWt, 0) * Math.max(mhWt, 0) * 0.0246615 * 0.001 * availMtr;
 
+            // Effective logged production for capping
+            const effLoggedMtr = totalLoggedMtr > 0
+              ? totalLoggedMtr
+              : (totalCampaignMtr > availMtr ? totalCampaignMtr - availMtr : 0);
+
             // Capping at rolling = 110% of total Plan issued against master + child work order - total already logged
             const maxCappingMtr = Number((totalCampaignMtr * 1.1).toFixed(3));
-            const cappingMtr = Math.max(0, maxCappingMtr - totalLoggedMtr);
+            const cappingMtr = Math.max(0, maxCappingMtr - effLoggedMtr);
             const cappingPcs = effAvg > 0
               ? Math.round(cappingMtr / effAvg)
               : Math.max(0, Math.round(totalCampaignPcs * 1.1) - totalLoggedPcs);
@@ -259,15 +269,20 @@ export function useQueue(stage: StageCode) {
           } else {
             // Standard single work order plan
             const plan = plans.find((p: any) => p.work_order_id === r.work_order_id);
-            const planMtr = plan ? Number(plan.planned_qty || 0) : Number(r.balance_to_make_mtr || 0);
-            const availMtr = Math.max(0, (planMtr || Number(r.balance_to_make_mtr || 0)) + rollDivIn - totalLoggedMtr - rollDivOut);
-            const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : (r.balance_to_make_pcs || 0);
+            const planMtr = plan ? Number(plan.planned_qty || 0) : rawBalMtr;
+            const availMtr = totalLoggedMtr > 0
+              ? Math.max(0, (planMtr || rawBalMtr) + rollDivIn - totalLoggedMtr - rollDivOut)
+              : (rawBalMtr > 0 ? rawBalMtr : Math.max(0, (planMtr || 0) + rollDivIn - rollDivOut));
+            const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : (rawBalPcs > 0 ? Math.round(rawBalPcs) : 0);
             const od = Number(r.od || 0);
             const wt = Number(r.wl || 0);
             const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
 
+            const effLoggedMtr = totalLoggedMtr > 0
+              ? totalLoggedMtr
+              : ((planMtr || availMtr) > availMtr ? (planMtr || availMtr) - availMtr : 0);
             const maxCappingMtr = Number(((planMtr || availMtr) * 1.1).toFixed(3));
-            const cappingMtr = Math.max(0, maxCappingMtr - totalLoggedMtr);
+            const cappingMtr = Math.max(0, maxCappingMtr - effLoggedMtr);
             const cappingPcs = effAvg > 0 ? Math.round(cappingMtr / effAvg) : Math.max(0, Math.round(availPcs * 1.1) - totalLoggedPcs);
 
             return {
@@ -442,6 +457,9 @@ export function useQueue(stage: StageCode) {
               availMtr = Math.max(0, incoming + drawDivIn - drawOut - drawRej - drawDivOut);
             } else if (s === "HEAT_TREATMENT") {
               availMtr = Math.max(0, drawNet + htDivIn - htOut - htRej - htDivOut);
+            }
+            if (availMtr === 0 && Number(r.balance_to_make_mtr || 0) > 0 && rollingHtcOk === 0) {
+              availMtr = Number(r.balance_to_make_mtr || 0);
             }
 
             const effAvg = Number(r.avg_length) || 6.25;
