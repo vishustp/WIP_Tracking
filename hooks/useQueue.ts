@@ -447,7 +447,7 @@ export function useQueue(stage: StageCode) {
             const finishedPcs = finishedLogs.reduce((sum: number, l: any) => sum + Number(l.output_pcs || 0) + Number(l.rejection_pcs || 0), 0);
             const availPcs = Math.max(0, qcPassed - finishedPcs);
             const effAvg = Number(r.avg_length) || 6;
-            const availMtr = effAvg > 0 ? Number((availPcs * effAvg).toFixed(3)) : r.balance_to_make_mtr;
+            const availMtr: number = effAvg > 0 ? Number((availPcs * effAvg).toFixed(3)) : (Number(r.balance_to_make_mtr) || 0);
             const od = Number(r.od || 0);
             const wt = Number(r.wl || 0);
             const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
