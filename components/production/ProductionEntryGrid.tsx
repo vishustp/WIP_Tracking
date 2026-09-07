@@ -213,9 +213,13 @@ export default function ProductionEntryGrid() {
         if (`${r.work_order_id}|${r.route_id}` !== key) return r;
 
         // Rule 5: Rolling Mtr and MT calculated based on MH dimensions if applicable
+        const mhL1 = Number(r.mh_l1 || 0);
+        const mhL2 = Number(r.mh_l2 || 0);
+        const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || 0);
+        const effectiveMhAvg = Number(r.mh_avg_length || 0) > 0 ? Number(r.mh_avg_length) : computedMhAvg;
         const effectiveAvg =
-          stage === "ROLLING" && r.mh_avg_length && r.mh_avg_length > 0
-            ? Number(r.mh_avg_length)
+          stage === "ROLLING" && effectiveMhAvg > 0
+            ? effectiveMhAvg
             : n(r.avg_length);
 
         if (field === "pcs") {
@@ -628,8 +632,11 @@ export default function ProductionEntryGrid() {
   const getEntryAvgLength = (entry: ProductionEntry | null) => {
     if (!entry) return 6.0;
     const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
-    const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no);
-    const mhLen = Number(entry.mh_avg_length || entry.mh_l1 || rowMatch?.mh_avg_length || rowMatch?.mh_l1 || 0);
+    const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no || r.work_order_id === entry.work_order_id);
+    const mhL1 = Number(entry.mh_l1 || rowMatch?.mh_l1 || 0);
+    const mhL2 = Number(entry.mh_l2 || rowMatch?.mh_l2 || 0);
+    const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || 0);
+    const mhLen = Number(entry.mh_avg_length || rowMatch?.mh_avg_length || computedMhAvg || 0);
     const woLen = Number(
       entry.avg_length ||
       rowMatch?.avg_length ||

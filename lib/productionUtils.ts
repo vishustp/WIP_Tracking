@@ -36,22 +36,29 @@ export const calc = (row: {
   wl: number | null;
   mh_od?: number | null;
   mh_wt?: number | null;
+  mh_l1?: number | null;
+  mh_l2?: number | null;
   mh_avg_length?: number | null;
   stage_code?: string;
 }) => {
-  const isRolling = row.stage_code === "ROLLING";
+  const isRolling = (row.stage_code || "").toUpperCase() === "ROLLING";
   
   // Rule 5: Rolling Mtr and MT will be calculated based on MH OD, MH WT and MH Length
+  const mhL1 = Number(row.mh_l1 || 0);
+  const mhL2 = Number(row.mh_l2 || 0);
+  const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || 0);
+  const effectiveMhAvg = Number(row.mh_avg_length || 0) > 0 ? Number(row.mh_avg_length) : computedMhAvg;
+
   const effectiveAvg =
-    isRolling && row.mh_avg_length && row.mh_avg_length > 0
-      ? Number(row.mh_avg_length)
+    isRolling && effectiveMhAvg > 0
+      ? effectiveMhAvg
       : n(row.avg_length);
 
   const effectiveOd =
-    isRolling && row.mh_od && row.mh_od > 0 ? Number(row.mh_od) : n(row.od);
+    isRolling && row.mh_od && Number(row.mh_od) > 0 ? Number(row.mh_od) : n(row.od);
 
   const effectiveWt =
-    isRolling && row.mh_wt && row.mh_wt > 0 ? Number(row.mh_wt) : n(row.wl);
+    isRolling && row.mh_wt && Number(row.mh_wt) > 0 ? Number(row.mh_wt) : n(row.wl);
 
   const avg = effectiveAvg;
   const pcs = Math.round(row.pcs.trim() === "" && row.mtr.trim() !== "" ? pcsFromMtr(n(row.mtr), avg) : n(row.pcs));
