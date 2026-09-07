@@ -52,7 +52,7 @@ export function useHistory(
       }
 
       // Collect unique work order numbers to fetch their rolling plans and accurate stage lengths
-      const woNos = Array.from(new Set(rawList.map((e) => e.work_order_no).filter(Boolean)));
+      const woNos = Array.from(new Set(rawList.map((e: ProductionEntry) => e.work_order_no).filter(Boolean)));
 
       const { data: woData } = await supabase
         .from("work_orders")
@@ -61,7 +61,7 @@ export function useHistory(
 
       const woMap = new Map<string, any>();
       const woIds: string[] = [];
-      (woData || []).forEach((w) => {
+      ((woData as any[]) || []).forEach((w: any) => {
         woMap.set(w.work_order_no, w);
         woIds.push(w.id);
       });
@@ -74,7 +74,7 @@ export function useHistory(
           .select("work_order_id, mh_l1, mh_l2, status")
           .in("work_order_id", woIds);
 
-        (rpData || []).forEach((rp) => {
+        ((rpData as any[]) || []).forEach((rp: any) => {
           const l1 = Number(rp.mh_l1 || 0);
           const l2 = Number(rp.mh_l2 || 0);
           const avg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2;
@@ -98,7 +98,7 @@ export function useHistory(
       }
 
       // Enrich entries with stage-aware pieces and rounded whole integers
-      const enrichedEntries: ProductionEntry[] = rawList.map((entry) => {
+      const enrichedEntries: ProductionEntry[] = rawList.map((entry: ProductionEntry) => {
         const wo = woMap.get(entry.work_order_no);
         const plan = wo?.id ? planMap.get(wo.id) : null;
         const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
