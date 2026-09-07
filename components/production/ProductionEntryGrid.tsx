@@ -202,7 +202,7 @@ export default function ProductionEntryGrid() {
           return { ...r, pcs: value, mtr };
         }
         if (field === "mtr") {
-          const pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
+          const pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
           return { ...r, mtr: value, pcs };
         }
         if (field === "rejection_pcs") {
@@ -210,7 +210,7 @@ export default function ProductionEntryGrid() {
           return { ...r, rejection_pcs: value, rejection_mtr };
         }
         if (field === "rejection_mtr") {
-          const rejection_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
+          const rejection_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
           return { ...r, rejection_mtr: value, rejection_pcs };
         }
         if (field === "htc_ok_pcs") {
@@ -218,7 +218,7 @@ export default function ProductionEntryGrid() {
           return { ...r, htc_ok_pcs: value, htc_ok_mtr };
         }
         if (field === "htc_ok_mtr") {
-          const htc_ok_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
+          const htc_ok_pcs = value === "" ? "" : String(pcsFromMtr(n(value), effectiveAvg));
           return { ...r, htc_ok_mtr: value, htc_ok_pcs };
         }
         return { ...r, [field]: value };
@@ -487,7 +487,7 @@ export default function ProductionEntryGrid() {
         mtr = val === "" ? "" : String(mtrFromPcs(n(val), avgLen).toFixed(3).replace(/\.?0+$/, ""));
       } else if (field === "mtr") {
         mtr = val;
-        pcs = val === "" ? "" : String(pcsFromMtr(n(val), avgLen).toFixed(3).replace(/\.?0+$/, ""));
+        pcs = val === "" ? "" : String(pcsFromMtr(n(val), avgLen));
       } else {
         return { ...prev, [woId]: { ...current, [field]: val } };
       }
@@ -605,7 +605,7 @@ export default function ProductionEntryGrid() {
     if (!entry) return 6.0;
     const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
     const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no);
-    const mhLen = Number(rowMatch?.mh_avg_length || rowMatch?.mh_l1 || 0);
+    const mhLen = Number(entry.mh_avg_length || entry.mh_l1 || rowMatch?.mh_avg_length || rowMatch?.mh_l1 || 0);
     const woLen = Number(
       entry.avg_length ||
       rowMatch?.avg_length ||
@@ -620,9 +620,16 @@ export default function ProductionEntryGrid() {
   function openEdit(entry: ProductionEntry) {
     setEditing(entry);
     const avg = getEntryAvgLength(entry);
-    const effOutPcs = Number(entry.output_pcs || 0) > 0 ? Number(entry.output_pcs) : (avg > 0 && Number(entry.output_mtr || 0) > 0 ? Math.round(Number(entry.output_mtr) / avg) : "");
-    const effRejPcs = Number(entry.rejection_pcs || 0) > 0 ? Number(entry.rejection_pcs) : (avg > 0 && Number(entry.rejection_mtr || 0) > 0 ? Math.round(Number(entry.rejection_mtr) / avg) : "");
-    const effHtcPcs = Number(entry.htc_ok_pcs || 0) > 0 ? Number(entry.htc_ok_pcs) : (avg > 0 && Number(entry.htc_ok_mtr || 0) > 0 ? Math.round(Number(entry.htc_ok_mtr) / avg) : "");
+    const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
+    const effOutPcs = isMhStage && avg > 0
+      ? Math.round(Number(entry.output_mtr || 0) / avg)
+      : (Number(entry.output_pcs || 0) > 0 ? Math.round(Number(entry.output_pcs)) : (avg > 0 && Number(entry.output_mtr || 0) > 0 ? Math.round(Number(entry.output_mtr) / avg) : ""));
+    const effRejPcs = isMhStage && avg > 0
+      ? Math.round(Number(entry.rejection_mtr || 0) / avg)
+      : (Number(entry.rejection_pcs || 0) > 0 ? Math.round(Number(entry.rejection_pcs)) : (avg > 0 && Number(entry.rejection_mtr || 0) > 0 ? Math.round(Number(entry.rejection_mtr) / avg) : ""));
+    const effHtcPcs = isMhStage && avg > 0
+      ? Math.round(Number(entry.htc_ok_mtr || 0) / avg)
+      : (Number(entry.htc_ok_pcs || 0) > 0 ? Math.round(Number(entry.htc_ok_pcs)) : (avg > 0 && Number(entry.htc_ok_mtr || 0) > 0 ? Math.round(Number(entry.htc_ok_mtr) / avg) : ""));
 
     setEditDate(entry.process_date.slice(0, 10));
     setEditMtr(String(entry.output_mtr || ""));
@@ -651,7 +658,7 @@ export default function ProductionEntryGrid() {
     if (value === "") {
       setEditPcs("");
     } else {
-      setEditPcs(String(pcsFromMtr(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
+      setEditPcs(String(pcsFromMtr(n(value), avg)));
     }
   }
 
@@ -671,7 +678,7 @@ export default function ProductionEntryGrid() {
     if (value === "") {
       setEditRejectionPcs("");
     } else {
-      setEditRejectionPcs(String(pcsFromMtr(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
+      setEditRejectionPcs(String(pcsFromMtr(n(value), avg)));
     }
   }
 
@@ -691,7 +698,7 @@ export default function ProductionEntryGrid() {
     if (value === "") {
       setEditHtcPcs("");
     } else {
-      setEditHtcPcs(String(pcsFromMtr(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
+      setEditHtcPcs(String(pcsFromMtr(n(value), avg)));
     }
   }
 
@@ -1627,7 +1634,7 @@ export default function ProductionEntryGrid() {
                 {entries.map((entry) => {
                   const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
                   const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no);
-                  const mhLen = Number(rowMatch?.mh_avg_length || rowMatch?.mh_l1 || 0);
+                  const mhLen = Number(entry.mh_avg_length || entry.mh_l1 || rowMatch?.mh_avg_length || rowMatch?.mh_l1 || 0);
                   const woLen = Number(
                     entry.avg_length ||
                     rowMatch?.avg_length ||
@@ -1637,17 +1644,29 @@ export default function ProductionEntryGrid() {
                   );
                   const effectiveLen = (isMhStage && mhLen > 0) ? mhLen : (woLen > 0 ? woLen : 6.0);
 
-                  const dispOutPcs = Number(entry.output_pcs || 0) > 0 
-                    ? Number(entry.output_pcs) 
-                    : (effectiveLen > 0 && Number(entry.output_mtr || 0) > 0 ? Math.round(Number(entry.output_mtr) / effectiveLen) : 0);
+                  const dispOutPcs = Math.round(
+                    isMhStage && mhLen > 0
+                      ? (Number(entry.output_mtr || 0) / mhLen)
+                      : (Number(entry.output_pcs || 0) > 0
+                          ? Number(entry.output_pcs)
+                          : (effectiveLen > 0 && Number(entry.output_mtr || 0) > 0 ? Number(entry.output_mtr) / effectiveLen : 0))
+                  );
 
-                  const dispRejPcs = Number(entry.rejection_pcs || 0) > 0 
-                    ? Number(entry.rejection_pcs) 
-                    : (effectiveLen > 0 && Number(entry.rejection_mtr || 0) > 0 ? Math.round(Number(entry.rejection_mtr) / effectiveLen) : 0);
+                  const dispRejPcs = Math.round(
+                    isMhStage && mhLen > 0
+                      ? (Number(entry.rejection_mtr || 0) / mhLen)
+                      : (Number(entry.rejection_pcs || 0) > 0
+                          ? Number(entry.rejection_pcs)
+                          : (effectiveLen > 0 && Number(entry.rejection_mtr || 0) > 0 ? Number(entry.rejection_mtr) / effectiveLen : 0))
+                  );
 
-                  const dispHtcOkPcs = Number(entry.htc_ok_pcs || 0) > 0 
-                    ? Number(entry.htc_ok_pcs) 
-                    : (effectiveLen > 0 && Number(entry.htc_ok_mtr || 0) > 0 ? Math.round(Number(entry.htc_ok_mtr) / effectiveLen) : 0);
+                  const dispHtcOkPcs = Math.round(
+                    isMhStage && mhLen > 0
+                      ? (Number(entry.htc_ok_mtr || 0) / mhLen)
+                      : (Number(entry.htc_ok_pcs || 0) > 0
+                          ? Number(entry.htc_ok_pcs)
+                          : (effectiveLen > 0 && Number(entry.htc_ok_mtr || 0) > 0 ? Number(entry.htc_ok_mtr) / effectiveLen : 0))
+                  );
 
                   return (
                     <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors">

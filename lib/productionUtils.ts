@@ -12,7 +12,7 @@ export const fmt = (v: unknown, suffix = "") => {
 };
 
 export const pcsFromMtr = (mtr: number, avg: number) =>
-  avg > 0 ? mtr / avg : 0;
+  avg > 0 ? Math.round(mtr / avg) : 0;
 
 export const mtrFromPcs = (pcs: number, avg: number) =>
   avg > 0 ? pcs * avg : 0;
@@ -54,27 +54,29 @@ export const calc = (row: {
     isRolling && row.mh_wt && row.mh_wt > 0 ? Number(row.mh_wt) : n(row.wl);
 
   const avg = effectiveAvg;
-  const pcs = row.pcs.trim() === "" && row.mtr.trim() !== "" ? pcsFromMtr(n(row.mtr), avg) : n(row.pcs);
+  const pcs = Math.round(row.pcs.trim() === "" && row.mtr.trim() !== "" ? pcsFromMtr(n(row.mtr), avg) : n(row.pcs));
   const calculatedMtr = mtrFromPcs(pcs, avg);
   const mtr = row.mtr.trim() === "" ? calculatedMtr : n(row.mtr);
-  const rejectionPcs =
+  const rejectionPcs = Math.round(
     row.rejection_pcs.trim() !== ""
       ? n(row.rejection_pcs)
       : row.rejection_mtr.trim() !== ""
       ? pcsFromMtr(n(row.rejection_mtr), avg)
-      : 0;
+      : 0
+  );
   const rejectionMtr =
     row.rejection_pcs.trim() !== ""
       ? mtrFromPcs(rejectionPcs, avg)
       : row.rejection_mtr.trim() !== ""
       ? n(row.rejection_mtr)
       : 0;
-  const htcPcs =
+  const htcPcs = Math.round(
     row.htc_ok_pcs.trim() !== ""
       ? n(row.htc_ok_pcs)
       : row.htc_ok_mtr.trim() !== ""
       ? pcsFromMtr(n(row.htc_ok_mtr), avg)
-      : 0;
+      : 0
+  );
   const htcMtr =
     row.htc_ok_pcs.trim() !== ""
       ? mtrFromPcs(htcPcs, avg)

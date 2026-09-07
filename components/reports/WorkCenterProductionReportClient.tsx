@@ -175,11 +175,11 @@ export default function WorkCenterProductionReportClient() {
       const effLen = avgLen > 0 ? avgLen : 6.0;
 
       const inMtr = Number(e.input_mtr || 0);
-      const inPcs = Number(e.input_pcs || 0) > 0 ? Number(e.input_pcs) : (effLen > 0 && inMtr > 0 ? Math.round(inMtr / effLen) : 0);
+      const inPcs = Math.round(Number(e.input_pcs || 0) > 0 ? Number(e.input_pcs) : (effLen > 0 && inMtr > 0 ? inMtr / effLen : 0));
       const outMtr = Number(e.output_mtr || 0);
-      const outPcs = Number(e.output_pcs || 0) > 0 ? Number(e.output_pcs) : (effLen > 0 && outMtr > 0 ? Math.round(outMtr / effLen) : 0);
+      const outPcs = Math.round(Number(e.output_pcs || 0) > 0 ? Number(e.output_pcs) : (effLen > 0 && outMtr > 0 ? outMtr / effLen : 0));
       const rMtr = Number(e.rejection_mtr || 0);
-      const rPcs = Number(e.rejection_pcs || 0) > 0 ? Number(e.rejection_pcs) : (effLen > 0 && rMtr > 0 ? Math.round(rMtr / effLen) : 0);
+      const rPcs = Math.round(Number(e.rejection_pcs || 0) > 0 ? Number(e.rejection_pcs) : (effLen > 0 && rMtr > 0 ? rMtr / effLen : 0));
 
       inputMtr += inMtr;
       inputPcs += inPcs;
