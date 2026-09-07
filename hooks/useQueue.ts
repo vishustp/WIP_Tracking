@@ -17,7 +17,10 @@ export function useQueue(stage: StageCode) {
     try {
       // 1. Try to fetch from server-side queue API (calculates strict WIP from Rolling HTC OK)
       try {
-        const apiRes = await fetch(`/api/production/queue?stage=${s}`);
+        const apiRes = await fetch(`/api/production/queue?stage=${s}&_t=${Date.now()}`, {
+          cache: "no-store",
+          headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+        });
         if (apiRes.ok) {
           const json = await apiRes.json();
           if (Array.isArray(json?.data)) {

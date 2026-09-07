@@ -107,7 +107,10 @@ export default function ProductionEntryGrid() {
   const loadFactoryWip = useCallback(async () => {
     try {
       try {
-        const qRes = await fetch(`/api/production/queue?stage=${stage}`);
+        const qRes = await fetch(`/api/production/queue?stage=${stage}&_t=${Date.now()}`, {
+          cache: "no-store",
+          headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+        });
         if (qRes.ok) {
           const json = await qRes.json();
           if (Array.isArray(json?.summary)) {

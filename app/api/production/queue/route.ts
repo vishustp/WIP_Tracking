@@ -3,6 +3,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { StageCode, Row, WorkCenterWipInfo } from "@/types";
 import { mtFromMtr } from "@/lib/productionUtils";
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: NextRequest) {
   try {
     const admin = createAdminClient();
@@ -832,13 +835,21 @@ export async function GET(req: NextRequest) {
       availMt: Number(s.availMt.toFixed(3)),
     }));
 
-    return NextResponse.json({
-      success: true,
-      stage: targetStage,
-      count: selectedRows.length,
-      data: selectedRows,
-      summary: summaryArray,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        stage: targetStage,
+        count: selectedRows.length,
+        data: selectedRows,
+        summary: summaryArray,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+          "Pragma": "no-cache",
+        },
+      }
+    );
   } catch (err: any) {
     console.error("[production/queue] Error:", err);
     return NextResponse.json(
