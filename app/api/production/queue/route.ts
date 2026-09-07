@@ -302,8 +302,8 @@ export async function GET(req: NextRequest) {
       } else if (routeCode === "ALLOY_CDS") {
         drawAvailMtr = Math.max(0, hollowHtNetMtr - drawOutMtr - drawRejMtr);
       }
-      const drawAvailPcs = avgLength > 0 ? Math.round(drawAvailMtr / avgLength) : 0;
-      const drawAvailMt = mtFromMtr(drawAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+      const drawAvailPcs = mhAvgLength > 0 ? Math.round(drawAvailMtr / mhAvgLength) : (avgLength > 0 ? Math.round(drawAvailMtr / avgLength) : 0);
+      const drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
       // 4. Heat Treatment Stage Metrics
       const htLogs = getStageLogs(woId, htStageId);

@@ -171,16 +171,26 @@ export default function WorkCenterProductionReportClient() {
     let htcOkMtr = 0;
 
     filteredEntries.forEach((e) => {
-      inputMtr += Number(e.input_mtr || 0);
-      inputPcs += Number(e.input_pcs || 0);
+      const avgLen = Number(e.avg_length || 6.0);
+      const effLen = avgLen > 0 ? avgLen : 6.0;
+
+      const inMtr = Number(e.input_mtr || 0);
+      const inPcs = Number(e.input_pcs || 0) > 0 ? Number(e.input_pcs) : (effLen > 0 && inMtr > 0 ? Math.round(inMtr / effLen) : 0);
+      const outMtr = Number(e.output_mtr || 0);
+      const outPcs = Number(e.output_pcs || 0) > 0 ? Number(e.output_pcs) : (effLen > 0 && outMtr > 0 ? Math.round(outMtr / effLen) : 0);
+      const rMtr = Number(e.rejection_mtr || 0);
+      const rPcs = Number(e.rejection_pcs || 0) > 0 ? Number(e.rejection_pcs) : (effLen > 0 && rMtr > 0 ? Math.round(rMtr / effLen) : 0);
+
+      inputMtr += inMtr;
+      inputPcs += inPcs;
       inputMt += Number(e.input_mt || 0);
 
-      outputMtr += Number(e.output_mtr || 0);
-      outputPcs += Number(e.output_pcs || 0);
+      outputMtr += outMtr;
+      outputPcs += outPcs;
       outputMt += Number(e.output_mt || 0);
 
-      rejMtr += Number(e.rejection_mtr || 0);
-      rejPcs += Number(e.rejection_pcs || 0);
+      rejMtr += rMtr;
+      rejPcs += rPcs;
       rejMt += Number(e.rejection_mt || 0);
 
       htcOkMtr += Number(e.htc_ok_mtr || 0);

@@ -474,7 +474,7 @@ export default function WorkOrderTrackingClient() {
             const downstreamConsumed = htcOutMtr + htcRejMtr > 0 ? htcOutMtr + htcRejMtr : drawOutMtr + drawRejMtr;
             wipMtr = Math.max(0, rollingHtcOkMtr - downstreamConsumed);
           }
-          const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
+          const wipPcs = mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
           const mhOd = plan?.mh_od || wo.size_od || 0;
           const mhWt = plan?.mh_wt || wo.size_wt || 0;
           const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
@@ -508,8 +508,10 @@ export default function WorkOrderTrackingClient() {
           if (rollingHtcOkMtr > 0) {
             wipMtr = Math.max(0, rollingHtcOkMtr - htcOutMtr - htcRejMtr);
           }
-          const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
-          const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
+          const wipPcs = mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
+          const mhOd = plan?.mh_od || wo.size_od || 0;
+          const mhWt = plan?.mh_wt || wo.size_wt || 0;
+          const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
           const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterHtcLogs, masterRollLogs);
 
           return {
@@ -539,8 +541,10 @@ export default function WorkOrderTrackingClient() {
           if (incoming > 0) {
             wipMtr = Math.max(0, incoming - drawOutMtr - drawRejMtr);
           }
-          const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
-          const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
+          const mhOd = plan?.mh_od || wo.size_od || 0;
+          const mhWt = plan?.mh_wt || wo.size_wt || 0;
+          const wipPcs = mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
+          const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
           const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterDrawLogs, masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs);
 
           return {
@@ -1514,43 +1518,48 @@ export default function WorkOrderTrackingClient() {
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 font-mono">
-                                    {data.logs.map((log) => (
-                                      <tr key={log.id} className="hover:bg-slate-50/60">
-                                        <td className="py-1.5 px-2 text-slate-800 font-sans">
-                                          {log.shift_date} {log.shift ? `(${log.shift})` : ''}
-                                        </td>
-                                        <td className="py-1.5 px-2 text-slate-900 font-sans font-medium">
-                                          {log.stage_name}
-                                        </td>
-                                        <td className="py-1.5 px-2 text-slate-600">
-                                          {log.heat_no || '—'} / {log.lot_no || '—'}
-                                        </td>
-                                        <td className="py-1.5 px-2 text-right font-bold text-emerald-700">
-                                          {fmt(log.output_pcs || (data.avgLen > 0 ? Math.round(log.output_qty / data.avgLen) : 0))} Nos
-                                          {log.output_qty > 0 && (
-                                            <span className="text-[10px] text-slate-400 font-normal ml-1 font-sans">
-                                              ({fmt(log.output_qty)}m)
-                                            </span>
-                                          )}
-                                        </td>
-                                        <td className="py-1.5 px-2 text-right text-rose-600">
-                                          {log.rejection_qty > 0 || log.rejection_pcs > 0
-                                            ? `${fmt(log.rejection_pcs || (data.avgLen > 0 ? Math.round(log.rejection_qty / data.avgLen) : 0))} Nos`
-                                            : '0'}
-                                        </td>
-                                        <td className="py-1.5 px-2 text-right text-indigo-700 font-semibold">
-                                          {Number(log.htc_ok_qty || 0) > 0 || Number(log.htc_ok_pcs || 0) > 0
-                                            ? `${fmt(log.htc_ok_pcs || (data.avgLen > 0 ? Math.round(Number(log.htc_ok_qty || 0) / data.avgLen) : 0))} Nos`
-                                            : '—'}
-                                        </td>
-                                        <td className="py-1.5 px-2 text-slate-600 font-sans">
-                                          {log.operator_name || '—'}
-                                        </td>
-                                        <td className="py-1.5 px-2 text-slate-500 font-sans truncate max-w-[200px]">
-                                          {log.remarks || '—'}
-                                        </td>
-                                      </tr>
-                                    ))}
+                                    {data.logs.map((log) => {
+                                      const isMh = log.stage_code === 'ROLLING' || log.stage_code === 'HOLLOW_HEAT_TREATMENT';
+                                      const mhLen = (data.plan?.mh_l1 && data.plan?.mh_l2 ? (data.plan.mh_l1 + data.plan.mh_l2) / 2 : data.plan?.mh_l1 || data.plan?.mh_l2) || data.avgLen;
+                                      const effLen = isMh && mhLen > 0 ? mhLen : (data.avgLen > 0 ? data.avgLen : 6.0);
+                                      const outPcs = log.output_pcs > 0 ? log.output_pcs : (effLen > 0 && log.output_qty > 0 ? Math.round(log.output_qty / effLen) : 0);
+                                      const rejPcs = log.rejection_pcs > 0 ? log.rejection_pcs : (effLen > 0 && log.rejection_qty > 0 ? Math.round(log.rejection_qty / effLen) : 0);
+                                      const htcPcs = Number(log.htc_ok_pcs || 0) > 0 ? Number(log.htc_ok_pcs) : (effLen > 0 && Number(log.htc_ok_qty || 0) > 0 ? Math.round(Number(log.htc_ok_qty) / effLen) : 0);
+
+                                      return (
+                                        <tr key={log.id} className="hover:bg-slate-50/60">
+                                          <td className="py-1.5 px-2 text-slate-800 font-sans">
+                                            {log.shift_date} {log.shift ? `(${log.shift})` : ''}
+                                          </td>
+                                          <td className="py-1.5 px-2 text-slate-900 font-sans font-medium">
+                                            {log.stage_name}
+                                          </td>
+                                          <td className="py-1.5 px-2 text-slate-600">
+                                            {log.heat_no || '—'} / {log.lot_no || '—'}
+                                          </td>
+                                          <td className="py-1.5 px-2 text-right font-bold text-emerald-700">
+                                            {fmt(outPcs)} Nos
+                                            {log.output_qty > 0 && (
+                                              <span className="text-[10px] text-slate-400 font-normal ml-1 font-sans">
+                                                ({fmt(log.output_qty)}m)
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="py-1.5 px-2 text-right text-rose-600">
+                                            {rejPcs > 0 ? `${fmt(rejPcs)} Nos` : '0'}
+                                          </td>
+                                          <td className="py-1.5 px-2 text-right text-indigo-700 font-semibold">
+                                            {htcPcs > 0 ? `${fmt(htcPcs)} Nos` : '—'}
+                                          </td>
+                                          <td className="py-1.5 px-2 text-slate-600 font-sans">
+                                            {log.operator_name || '—'}
+                                          </td>
+                                          <td className="py-1.5 px-2 text-slate-500 font-sans truncate max-w-[200px]">
+                                            {log.remarks || '—'}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
                                   </tbody>
                                 </table>
                               </div>

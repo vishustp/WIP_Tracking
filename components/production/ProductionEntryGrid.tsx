@@ -279,13 +279,15 @@ export default function ProductionEntryGrid() {
 
           const mtr = Number(w.current_wip ?? w.available_mtr ?? 0);
           let pcs = Number(w.current_wip_pcs ?? w.available_pcs ?? 0);
-          const avgLen = Number(w.avg_length || 6.0);
+          const isMhStage = sc === "ROLLING" || sc === "HOLLOW_HEAT_TREATMENT" || sc === "DRAW";
+          const mhAvgLen = Number(w.mh_avg_length || w.mh_l1 || 0);
+          const avgLen = (isMhStage && mhAvgLen > 0) ? mhAvgLen : Number(w.avg_length || 6.0);
           if (pcs === 0 && mtr > 0 && avgLen > 0) {
             pcs = Number((mtr / avgLen).toFixed(2));
           }
-          const isRoll = sc === "ROLLING";
-          const od = isRoll && w.mh_od ? Number(w.mh_od) : Number(w.od || w.size_od || 0);
-          const wt = isRoll && w.mh_wt ? Number(w.mh_wt) : Number(w.wl || w.wt || w.size_wt || 0);
+          const isMhDim = sc === "ROLLING" || sc === "HOLLOW_HEAT_TREATMENT" || sc === "DRAW";
+          const od = isMhDim && w.mh_od ? Number(w.mh_od) : Number(w.od || w.size_od || 0);
+          const wt = isMhDim && w.mh_wt ? Number(w.mh_wt) : Number(w.wl || w.wt || w.size_wt || 0);
           const mt = Number(w.available_mt ?? w.current_wip_mt ?? mtFromMtr(mtr, od, wt));
 
           if (mtr > 0 || pcs > 0) {
@@ -599,24 +601,43 @@ export default function ProductionEntryGrid() {
     }
   };
 
+  const getEntryAvgLength = (entry: ProductionEntry | null) => {
+    if (!entry) return 6.0;
+    const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
+    const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no);
+    const mhLen = Number(rowMatch?.mh_avg_length || rowMatch?.mh_l1 || 0);
+    const woLen = Number(
+      entry.avg_length ||
+      rowMatch?.avg_length ||
+      (Number(rowMatch?.total_order_mtr || 0) > 0 && Number(rowMatch?.total_order_pcs || 0) > 0
+        ? Number(rowMatch?.total_order_mtr) / Number(rowMatch?.total_order_pcs)
+        : 6.0)
+    );
+    return isMhStage && mhLen > 0 ? mhLen : woLen > 0 ? woLen : 6.0;
+  };
+
   // --- Edit handlers with bidirectional PCS <-> MTR ---
   function openEdit(entry: ProductionEntry) {
     setEditing(entry);
-    const avg = n(entry.avg_length) > 0 ? n(entry.avg_length) : 6.0;
+    const avg = getEntryAvgLength(entry);
+    const effOutPcs = Number(entry.output_pcs || 0) > 0 ? Number(entry.output_pcs) : (avg > 0 && Number(entry.output_mtr || 0) > 0 ? Math.round(Number(entry.output_mtr) / avg) : "");
+    const effRejPcs = Number(entry.rejection_pcs || 0) > 0 ? Number(entry.rejection_pcs) : (avg > 0 && Number(entry.rejection_mtr || 0) > 0 ? Math.round(Number(entry.rejection_mtr) / avg) : "");
+    const effHtcPcs = Number(entry.htc_ok_pcs || 0) > 0 ? Number(entry.htc_ok_pcs) : (avg > 0 && Number(entry.htc_ok_mtr || 0) > 0 ? Math.round(Number(entry.htc_ok_mtr) / avg) : "");
+
     setEditDate(entry.process_date.slice(0, 10));
     setEditMtr(String(entry.output_mtr || ""));
-    setEditPcs(String(entry.output_pcs || (entry.output_mtr ? (entry.output_mtr / avg).toFixed(2) : "")));
+    setEditPcs(String(effOutPcs));
     setEditRejectionMtr(String(entry.rejection_mtr || ""));
-    setEditRejectionPcs(String(entry.rejection_pcs || (entry.rejection_mtr ? (entry.rejection_mtr / avg).toFixed(2) : "")));
+    setEditRejectionPcs(String(effRejPcs));
     setEditHtcMtr(String(entry.htc_ok_mtr || ""));
-    setEditHtcPcs(String(entry.htc_ok_pcs || (entry.htc_ok_mtr ? (entry.htc_ok_mtr / avg).toFixed(2) : "")));
+    setEditHtcPcs(String(effHtcPcs));
     setEditHeatLot(entry.heat_lot_no || "");
     setEditRemarks(entry.remarks || "");
   }
 
   function changeEditPcs(value: string) {
     setEditPcs(value);
-    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    const avg = getEntryAvgLength(editing);
     if (value === "") {
       setEditMtr("");
     } else {
@@ -626,7 +647,7 @@ export default function ProductionEntryGrid() {
 
   function changeEditMtr(value: string) {
     setEditMtr(value);
-    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    const avg = getEntryAvgLength(editing);
     if (value === "") {
       setEditPcs("");
     } else {
@@ -636,7 +657,7 @@ export default function ProductionEntryGrid() {
 
   function changeEditRejectionPcs(value: string) {
     setEditRejectionPcs(value);
-    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    const avg = getEntryAvgLength(editing);
     if (value === "") {
       setEditRejectionMtr("");
     } else {
@@ -646,7 +667,7 @@ export default function ProductionEntryGrid() {
 
   function changeEditRejectionMtr(value: string) {
     setEditRejectionMtr(value);
-    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    const avg = getEntryAvgLength(editing);
     if (value === "") {
       setEditRejectionPcs("");
     } else {
@@ -656,7 +677,7 @@ export default function ProductionEntryGrid() {
 
   function changeEditHtcPcs(value: string) {
     setEditHtcPcs(value);
-    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    const avg = getEntryAvgLength(editing);
     if (value === "") {
       setEditHtcMtr("");
     } else {
@@ -666,7 +687,7 @@ export default function ProductionEntryGrid() {
 
   function changeEditHtcMtr(value: string) {
     setEditHtcMtr(value);
-    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    const avg = getEntryAvgLength(editing);
     if (value === "") {
       setEditHtcPcs("");
     } else {
@@ -687,7 +708,7 @@ export default function ProductionEntryGrid() {
       return;
     }
 
-    const avg = editing && n(editing.avg_length) > 0 ? n(editing.avg_length) : 6.0;
+    const avg = getEntryAvgLength(editing);
     const mtr = editPcs.trim() !== "" ? mtrFromPcs(n(editPcs), avg) : n(editMtr);
     const rejection = editRejectionPcs.trim() !== "" ? mtrFromPcs(n(editRejectionPcs), avg) : n(editRejectionMtr);
     const htc = editHtcPcs.trim() !== "" ? mtrFromPcs(n(editHtcPcs), avg) : n(editHtcMtr);
@@ -1593,43 +1614,68 @@ export default function ProductionEntryGrid() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {entries.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-2.5 px-3 font-mono text-slate-700">{entry.process_date}</td>
-                    <td className="py-2.5 px-3 font-bold text-slate-900">
-                      {entry.work_order_no}
-                      <div className="text-xs font-normal text-slate-500 truncate max-w-[130px]">
-                        {entry.customer_name || "—"}
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className="rounded bg-slate-100 border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-800">
-                        {entry.route_code}
-                      </span>
-                      <div className="text-sm text-slate-600 font-medium mt-0.5">
-                        {STAGES.find((s) => s.code === entry.stage_code)?.label || entry.stage_code}
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono">
-                      <div className="font-bold text-slate-900">{fmt(entry.output_pcs)} PCS</div>
-                      <div className="text-xs text-slate-500">{fmt(entry.output_mtr, " MTR")}</div>
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono">
-                      <div className="font-bold text-rose-600">{fmt(entry.rejection_pcs)} PCS</div>
-                      <div className="text-xs text-slate-500">{fmt(entry.rejection_mtr, " MTR")}</div>
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono text-emerald-700">
-                      {entry.htc_ok_mtr > 0 ? (
-                        <>
-                          <div className="font-bold">{fmt(entry.htc_ok_pcs)} PCS</div>
-                          <div className="text-xs text-slate-500">{fmt(entry.htc_ok_mtr, " MTR")}</div>
-                        </>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 font-mono text-slate-800">{entry.heat_lot_no || "—"}</td>
-                    <td className="py-2.5 px-3 text-slate-600 max-w-[180px] truncate">{entry.remarks || "—"}</td>
+                {entries.map((entry) => {
+                  const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
+                  const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no);
+                  const mhLen = Number(rowMatch?.mh_avg_length || rowMatch?.mh_l1 || 0);
+                  const woLen = Number(
+                    entry.avg_length ||
+                    rowMatch?.avg_length ||
+                    (Number(rowMatch?.total_order_mtr || 0) > 0 && Number(rowMatch?.total_order_pcs || 0) > 0
+                      ? Number(rowMatch?.total_order_mtr) / Number(rowMatch?.total_order_pcs)
+                      : 6.0)
+                  );
+                  const effectiveLen = (isMhStage && mhLen > 0) ? mhLen : (woLen > 0 ? woLen : 6.0);
+
+                  const dispOutPcs = Number(entry.output_pcs || 0) > 0 
+                    ? Number(entry.output_pcs) 
+                    : (effectiveLen > 0 && Number(entry.output_mtr || 0) > 0 ? Math.round(Number(entry.output_mtr) / effectiveLen) : 0);
+
+                  const dispRejPcs = Number(entry.rejection_pcs || 0) > 0 
+                    ? Number(entry.rejection_pcs) 
+                    : (effectiveLen > 0 && Number(entry.rejection_mtr || 0) > 0 ? Math.round(Number(entry.rejection_mtr) / effectiveLen) : 0);
+
+                  const dispHtcOkPcs = Number(entry.htc_ok_pcs || 0) > 0 
+                    ? Number(entry.htc_ok_pcs) 
+                    : (effectiveLen > 0 && Number(entry.htc_ok_mtr || 0) > 0 ? Math.round(Number(entry.htc_ok_mtr) / effectiveLen) : 0);
+
+                  return (
+                    <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-2.5 px-3 font-mono text-slate-700">{entry.process_date}</td>
+                      <td className="py-2.5 px-3 font-bold text-slate-900">
+                        {entry.work_order_no}
+                        <div className="text-xs font-normal text-slate-500 truncate max-w-[130px]">
+                          {entry.customer_name || "—"}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="rounded bg-slate-100 border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-800">
+                          {entry.route_code}
+                        </span>
+                        <div className="text-sm text-slate-600 font-medium mt-0.5">
+                          {STAGES.find((s) => s.code === entry.stage_code)?.label || entry.stage_code}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono">
+                        <div className="font-bold text-slate-900">{fmt(dispOutPcs)} PCS</div>
+                        <div className="text-xs text-slate-500">{fmt(entry.output_mtr, " MTR")}</div>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono">
+                        <div className="font-bold text-rose-600">{fmt(dispRejPcs)} PCS</div>
+                        <div className="text-xs text-slate-500">{fmt(entry.rejection_mtr, " MTR")}</div>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono text-emerald-700">
+                        {entry.htc_ok_mtr > 0 || dispHtcOkPcs > 0 ? (
+                          <>
+                            <div className="font-bold">{fmt(dispHtcOkPcs)} PCS</div>
+                            <div className="text-xs text-slate-500">{fmt(entry.htc_ok_mtr, " MTR")}</div>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-slate-800">{entry.heat_lot_no || "—"}</td>
+                      <td className="py-2.5 px-3 text-slate-600 max-w-[180px] truncate">{entry.remarks || "—"}</td>
                     <td className="py-2.5 px-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         {(() => {
