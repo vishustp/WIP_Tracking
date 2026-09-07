@@ -1077,7 +1077,7 @@ export default function ProductionEntryGrid() {
                 <tr>
                   <th className="py-2.5 px-3 text-left font-semibold">Work Order & Specs</th>
                   <th className="py-2.5 px-3 text-left font-semibold">Route</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">Available WIP & Capping</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">{stage === "ROLLING" ? "Plan Balance & Capping" : "Available WIP & Capping"}</th>
                   <th className="py-2.5 px-3 text-center font-semibold bg-blue-50/50">Production *</th>
                   <th className="py-2.5 px-3 text-center font-semibold bg-rose-50/40">Rejection</th>
                   {stage === "ROLLING" && (
@@ -1189,10 +1189,11 @@ export default function ProductionEntryGrid() {
                       <td className="py-3 px-3 align-top">
                         {isRollingStage ? (
                           <div className="space-y-1.5 min-w-[200px]">
-                            {/* Available WIP */}
+                            {/* Rolling Plan Balance (Plan - Production) */}
                             <div>
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                Available WIP
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
+                                <span>Rolling Plan Balance</span>
+                                <span className="text-[9px] font-medium text-slate-400 font-sans normal-case">(Plan − Production)</span>
                               </div>
                               <div className="flex items-baseline gap-1 flex-wrap mt-0.5">
                                 <span className="font-bold text-slate-900 font-mono text-sm">
