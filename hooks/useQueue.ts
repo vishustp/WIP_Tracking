@@ -428,22 +428,34 @@ export function useQueue(stage: StageCode) {
             const campaign = masterCampaignMap.get(r.work_order_id);
             const masterLogs = logs.filter((l: any) => l.work_order_id === r.work_order_id);
 
+            const mhL1 = Number(campaign?.mh_l1 || r.mh_l1 || 6);
+            const mhL2 = Number(campaign?.mh_l2 || r.mh_l2 || 6);
+            const mhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || 6;
+            const tubeAvg = Number(r.avg_length) || 6.25;
+
             const rollLogs = masterLogs.filter((l: any) => !rollingStageId || l.stage_id === rollingStageId);
-            const rollingHtcOk = rollLogs.reduce((sum: number, l: any) => sum + Number(l.htc_ok || 0), 0);
+            const rollingHtcOkMtr = rollLogs.reduce((sum: number, l: any) => sum + Number(l.htc_ok || 0), 0);
+            const rollHtcOkPcs = mhAvg > 0 ? Math.round(rollingHtcOkMtr / mhAvg) : 0;
 
             const hollowHtLogs = masterLogs.filter((l: any) => l.stage_id === hollowHtStageId);
-            const hollowHtOut = hollowHtLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
-            const hollowHtRej = hollowHtLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
-            const hollowHtNet = Math.max(0, hollowHtOut - hollowHtRej);
+            const hollowHtOutMtr = hollowHtLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+            const hollowHtRejMtr = hollowHtLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+            const hollowHtOutPcs = mhAvg > 0 ? Math.round(hollowHtOutMtr / mhAvg) : 0;
+            const hollowHtRejPcs = mhAvg > 0 ? Math.round(hollowHtRejMtr / mhAvg) : 0;
+            const hollowHtNetPcs = Math.max(0, hollowHtOutPcs - hollowHtRejPcs);
 
             const drawLogs = masterLogs.filter((l: any) => l.stage_id === drawStageId);
-            const drawOut = drawLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
-            const drawRej = drawLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
-            const drawNet = Math.max(0, drawOut - drawRej);
+            const drawOutMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+            const drawRejMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+            const drawOutPcs = tubeAvg > 0 ? Math.round(drawOutMtr / tubeAvg) : 0;
+            const drawRejPcs = tubeAvg > 0 ? Math.round(drawRejMtr / tubeAvg) : 0;
+            const drawNetPcs = Math.max(0, drawOutPcs - drawRejPcs);
 
             const htLogs = masterLogs.filter((l: any) => l.stage_id === htStageId);
-            const htOut = htLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
-            const htRej = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+            const htOutMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+            const htRejMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+            const htOutPcs = tubeAvg > 0 ? Math.round(htOutMtr / tubeAvg) : 0;
+            const htRejPcs = tubeAvg > 0 ? Math.round(htRejMtr / tubeAvg) : 0;
 
             const hhtDivIn = getStageDivIn(r.work_order_id, "HOLLOW_HEAT_TREATMENT");
             const hhtDivOut = getStageDivOut(r.work_order_id, "HOLLOW_HEAT_TREATMENT");
@@ -452,21 +464,27 @@ export function useQueue(stage: StageCode) {
             const htDivIn = getStageDivIn(r.work_order_id, "HEAT_TREATMENT");
             const htDivOut = getStageDivOut(r.work_order_id, "HEAT_TREATMENT");
 
+            let availPcs = 0;
             let availMtr = 0;
+
             if (s === "HOLLOW_HEAT_TREATMENT") {
-              availMtr = Math.max(0, rollingHtcOk + hhtDivIn - hollowHtOut - hollowHtRej - hhtDivOut);
+              const hhtDivInPcs = mhAvg > 0 ? Math.round(hhtDivIn / mhAvg) : 0;
+              const hhtDivOutPcs = mhAvg > 0 ? Math.round(hhtDivOut / mhAvg) : 0;
+              availPcs = Math.max(0, rollHtcOkPcs + hhtDivInPcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs);
+              availMtr = mhAvg > 0 ? Number((availPcs * mhAvg).toFixed(3)) : 0;
             } else if (s === "DRAW") {
-              const incoming = r.route_code === "ALLOY_CDS" ? hollowHtNet : rollingHtcOk;
-              availMtr = Math.max(0, incoming + drawDivIn - drawOut - drawRej - drawDivOut);
+              const incomingPcs = r.route_code === "ALLOY_CDS" ? hollowHtNetPcs : rollHtcOkPcs;
+              const drawDivInPcs = tubeAvg > 0 ? Math.round(drawDivIn / tubeAvg) : 0;
+              const drawDivOutPcs = tubeAvg > 0 ? Math.round(drawDivOut / tubeAvg) : 0;
+              availPcs = Math.max(0, incomingPcs + drawDivInPcs - drawOutPcs - drawRejPcs - drawDivOutPcs);
+              availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0;
             } else if (s === "HEAT_TREATMENT") {
-              availMtr = Math.max(0, drawNet + htDivIn - htOut - htRej - htDivOut);
-            }
-            if (availMtr === 0 && Number(r.balance_to_make_mtr || 0) > 0 && rollingHtcOk === 0) {
-              availMtr = Number(r.balance_to_make_mtr || 0);
+              const htDivInPcs = tubeAvg > 0 ? Math.round(htDivIn / tubeAvg) : 0;
+              const htDivOutPcs = tubeAvg > 0 ? Math.round(htDivOut / tubeAvg) : 0;
+              availPcs = Math.max(0, drawNetPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs);
+              availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0;
             }
 
-            const effAvg = Number(r.avg_length) || 6.25;
-            const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : 0;
             const od = Number(r.od || 0);
             const wt = Number(r.wl || 0);
             const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
@@ -478,7 +496,7 @@ export function useQueue(stage: StageCode) {
               balance_to_make_mt: Number(availMt.toFixed(3)),
               max_allowed_mtr: availMtr,
               max_allowed_pcs: availPcs,
-              prev_htc_ok: rollingHtcOk,
+              prev_htc_ok: rollingHtcOkMtr,
             };
 
             if (campaign) {

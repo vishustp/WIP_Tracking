@@ -301,18 +301,24 @@ export async function GET(req: NextRequest) {
       const rollCappingPcs = mhAvgLength > 0 ? Math.round(rollCappingMtr / mhAvgLength) : 0;
 
       // 2. Hollow Heat Treatment Stage Metrics (adjusted for HHT Diversions)
+      const rollHtcOkPcs = mhAvgLength > 0 ? Math.round(rollHtcOkMtr / mhAvgLength) : 0;
       const hollowHtLogs = getStageLogs(woId, hollowHtStageId);
       const hollowHtOutMtr = sumQty(hollowHtLogs, "output_qty");
       const hollowHtRejMtr = sumQty(hollowHtLogs, "rejection_qty");
       const hollowHtNetMtr = Math.max(0, hollowHtOutMtr - hollowHtRejMtr);
+      const hollowHtOutPcs = mhAvgLength > 0 ? Math.round(hollowHtOutMtr / mhAvgLength) : 0;
+      const hollowHtRejPcs = mhAvgLength > 0 ? Math.round(hollowHtRejMtr / mhAvgLength) : 0;
+      const hollowHtNetPcs = Math.max(0, hollowHtOutPcs - hollowHtRejPcs);
       const hhtDivIn = getStageDivIn(woId, "HOLLOW_HEAT_TREATMENT");
       const hhtDivOut = getStageDivOut(woId, "HOLLOW_HEAT_TREATMENT");
+      const hhtDivInPcs = mhAvgLength > 0 ? Math.round(hhtDivIn / mhAvgLength) : 0;
+      const hhtDivOutPcs = mhAvgLength > 0 ? Math.round(hhtDivOut / mhAvgLength) : 0;
 
-      // Hollow HT incoming: strictly from Rolling HTC OK!
-      const hollowHtAvailMtr = isAlloy
-        ? Math.max(0, rollHtcOkMtr + hhtDivIn - hollowHtOutMtr - hollowHtRejMtr - hhtDivOut)
+      // Hollow HT incoming: strictly from Rolling HTC OK pieces!
+      const hollowHtAvailPcs = isAlloy
+        ? Math.max(0, rollHtcOkPcs + hhtDivInPcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs)
         : 0;
-      const hollowHtAvailPcs = mhAvgLength > 0 ? Math.round(hollowHtAvailMtr / mhAvgLength) : 0;
+      const hollowHtAvailMtr = mhAvgLength > 0 ? Number((hollowHtAvailPcs * mhAvgLength).toFixed(3)) : 0;
       const hollowHtAvailMt = mtFromMtr(hollowHtAvailMtr, mhOd, mhWt);
 
       // 3. Draw Stage Metrics (adjusted for Draw Diversions)
@@ -320,32 +326,43 @@ export async function GET(req: NextRequest) {
       const drawOutMtr = sumQty(drawLogs, "output_qty");
       const drawRejMtr = sumQty(drawLogs, "rejection_qty");
       const drawNetMtr = Math.max(0, drawOutMtr - drawRejMtr);
+      const drawOutPcs = avgLength > 0 ? Math.round(drawOutMtr / avgLength) : 0;
+      const drawRejPcs = avgLength > 0 ? Math.round(drawRejMtr / avgLength) : 0;
+      const drawNetPcs = Math.max(0, drawOutPcs - drawRejPcs);
       const drawDivIn = getStageDivIn(woId, "DRAW");
       const drawDivOut = getStageDivOut(woId, "DRAW");
+      const drawDivInPcs = avgLength > 0 ? Math.round(drawDivIn / avgLength) : 0;
+      const drawDivOutPcs = avgLength > 0 ? Math.round(drawDivOut / avgLength) : 0;
 
       // Draw incoming:
-      // - CDS route: strictly from Rolling HTC OK!
-      // - ALLOY_CDS: from Hollow HT Net Output (which was generated from Rolling HTC OK)
-      let drawAvailMtr = 0;
-      if (routeCode === "CDS") {
-        drawAvailMtr = Math.max(0, rollHtcOkMtr + drawDivIn - drawOutMtr - drawRejMtr - drawDivOut);
-      } else if (routeCode === "ALLOY_CDS") {
-        drawAvailMtr = Math.max(0, hollowHtNetMtr + drawDivIn - drawOutMtr - drawRejMtr - drawDivOut);
-      }
-      const drawAvailPcs = mhAvgLength > 0 ? Math.round(drawAvailMtr / mhAvgLength) : (avgLength > 0 ? Math.round(drawAvailMtr / avgLength) : 0);
-      const drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
+      // 1 Mother Hollow piece draws into 1 Drawn Tube piece.
+      // - CDS route: incoming is Rolling HTC OK pieces
+      // - ALLOY_CDS: incoming is Hollow HT Net Output pieces
+      const drawIncomingPcs = isAlloy ? hollowHtNetPcs : rollHtcOkPcs;
+      const drawAvailPcs = isCds
+        ? Math.max(0, drawIncomingPcs + drawDivInPcs - drawOutPcs - drawRejPcs - drawDivOutPcs)
+        : 0;
+      const drawAvailMtr = avgLength > 0 ? Number((drawAvailPcs * avgLength).toFixed(3)) : 0;
+      const drawAvailMt = mtFromMtr(drawAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // 4. Heat Treatment Stage Metrics (adjusted for HT Diversions)
       const htLogs = getStageLogs(woId, htStageId);
       const htOutMtr = sumQty(htLogs, "output_qty");
       const htRejMtr = sumQty(htLogs, "rejection_qty");
       const htNetMtr = Math.max(0, htOutMtr - htRejMtr);
+      const htOutPcs = avgLength > 0 ? Math.round(htOutMtr / avgLength) : 0;
+      const htRejPcs = avgLength > 0 ? Math.round(htRejMtr / avgLength) : 0;
+      const htNetPcs = Math.max(0, htOutPcs - htRejPcs);
       const htDivIn = getStageDivIn(woId, "HEAT_TREATMENT");
       const htDivOut = getStageDivOut(woId, "HEAT_TREATMENT");
+      const htDivInPcs = avgLength > 0 ? Math.round(htDivIn / avgLength) : 0;
+      const htDivOutPcs = avgLength > 0 ? Math.round(htDivOut / avgLength) : 0;
 
-      // Heat treatment incoming: strictly from Draw net output
-      const htAvailMtr = isCds ? Math.max(0, drawNetMtr + htDivIn - htOutMtr - htRejMtr - htDivOut) : 0;
-      const htAvailPcs = avgLength > 0 ? Math.round(htAvailMtr / avgLength) : 0;
+      // Heat treatment incoming: strictly from Draw net output pieces
+      const htAvailPcs = isCds
+        ? Math.max(0, drawNetPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs)
+        : 0;
+      const htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
       const htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // 5. Finishing Stage Metrics (adjusted for Finishing Diversions)
