@@ -1100,7 +1100,9 @@ export default function ProductionEntryGrid() {
 
                   const availMtr = n(r.balance_to_make_mtr);
                   const effAvg = d.avg > 0 ? d.avg : (n(r.avg_length) || 6);
-                  const availPcs = n(r.balance_to_make_pcs) > 0 ? n(r.balance_to_make_pcs) : (effAvg > 0 ? Math.round(availMtr / effAvg) : 0);
+                  const availPcs = isRollingStage && effAvg > 0
+                    ? Math.round(availMtr / effAvg)
+                    : (n(r.balance_to_make_pcs) > 0 ? Math.round(n(r.balance_to_make_pcs)) : (effAvg > 0 ? Math.round(availMtr / effAvg) : 0));
                   const availMt = n(r.balance_to_make_mt) > 0 ? n(r.balance_to_make_mt) : mtFromMtr(availMtr, stageOd, stageWt);
 
                   const maxAllowed =
