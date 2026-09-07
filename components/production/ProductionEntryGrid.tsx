@@ -1087,7 +1087,7 @@ export default function ProductionEntryGrid() {
                 <tr>
                   <th className="py-2.5 px-3 text-left font-semibold">Work Order & Specs</th>
                   <th className="py-2.5 px-3 text-left font-semibold">Route</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">{stage === "ROLLING" ? "Plan Balance & Capping" : "Available WIP & Capping"}</th>
+                  <th className="py-2.5 px-3 text-left font-semibold">{stage === "ROLLING" ? "Plan Balance" : "Available WIP"}</th>
                   <th className="py-2.5 px-3 text-center font-semibold bg-blue-50/50">Production *</th>
                   <th className="py-2.5 px-3 text-center font-semibold bg-rose-50/40">Rejection</th>
                   {stage === "ROLLING" && (
@@ -1235,14 +1235,6 @@ export default function ProductionEntryGrid() {
                                 </div>
                               </div>
                             )}
-
-                            {/* Capping (110% Remaining Ceiling) */}
-                            <div className="flex items-baseline justify-between text-[11px] font-mono text-amber-900 bg-amber-50/70 border border-amber-200/70 rounded px-2 py-0.5">
-                              <span className="font-bold text-[10px] uppercase">
-                                Capping (110%):
-                              </span>
-                              <span className="font-bold text-slate-800">{fmt(maxAllowedPcs)} PCS / {fmt(maxAllowed, " MTR")}</span>
-                            </div>
                           </div>
                         ) : stage === "FINISHING" ? (
                           <div className="space-y-1.5 min-w-[220px]">
@@ -1302,15 +1294,6 @@ export default function ProductionEntryGrid() {
                                   {fmt(availMt, " MT")}
                                 </span>
                               </div>
-                            </div>
-
-                            {/* 4. Capping (110% of Total Order Qty) */}
-                            <div className="flex items-center justify-between gap-1 text-[10px] font-mono text-amber-900 bg-amber-50/90 border border-amber-200/80 rounded px-2 py-0.5">
-                              <span className="font-bold uppercase tracking-wider">Capping (110%):</span>
-                              <span className="font-bold">
-                                {fmt(r.order_capping_pcs || Math.round(((r.total_order_mtr || 0) * 1.1) / (effAvg || 6)))} PCS /{" "}
-                                {fmt(r.order_capping_mtr || ((r.total_order_mtr || 0) * 1.1), " MTR")}
-                              </span>
                             </div>
                           </div>
                         ) : (
