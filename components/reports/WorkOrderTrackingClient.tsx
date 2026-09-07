@@ -114,6 +114,7 @@ interface StageTrackingMetric {
   logsCount: number;
   targetMtr?: number;
   targetPcs?: number;
+  isNotInRoute?: boolean;
   dwellDays?: number;
   agingSeverity?: 'NORMAL' | 'WARNING' | 'CRITICAL';
 }
@@ -134,6 +135,7 @@ export default function WorkOrderTrackingClient() {
   const [rollingPlans, setRollingPlans] = useState<RollingPlan[]>([]);
   const [stageWip, setStageWip] = useState<StageWipRow[]>([]);
   const [productionLogs, setProductionLogs] = useState<ProductionLog[]>([]);
+  const [processRoutes, setProcessRoutes] = useState<{ id: string; route_code: string; route_name: string }[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Filters
@@ -152,7 +154,7 @@ export default function WorkOrderTrackingClient() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [woRes, plansRes, wipRes, logsRes] = await Promise.all([
+      const [woRes, plansRes, wipRes, logsRes, routesRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('rolling_plans').select('*').not('status', 'is', null).order('created_at', { ascending: false }),
         supabase.from('vw_route_stage_wip').select('*'),
@@ -161,11 +163,13 @@ export default function WorkOrderTrackingClient() {
           .select('*, process_stages(stage_code, stage_name)')
           .order('created_at', { ascending: false })
           .limit(10000),
+        supabase.from('process_routes').select('id, route_code, route_name'),
       ]);
 
       if (woRes.data) setWorkOrders(woRes.data);
       if (plansRes.data) setRollingPlans(plansRes.data);
       if (wipRes.data) setStageWip(wipRes.data);
+      if (routesRes?.data) setProcessRoutes(routesRes.data);
 
       if (logsRes.data) {
         const mappedLogs: ProductionLog[] = logsRes.data.map((l: any) => ({
@@ -359,6 +363,12 @@ export default function WorkOrderTrackingClient() {
       const masterLogs = productionLogs.filter((l) => l.work_order_id === effectiveMasterWoId);
       const woLogs = productionLogs.filter((l) => l.work_order_id === wo.id);
 
+      // Route determination: check stageWip (from vw_route_stage_wip) or rolling plan route
+      const planRoute = processRoutes.find((r) => r.id === plan?.process_route_id);
+      const woWipRows = stageWip.filter((s) => s.work_order_id === wo.id || s.work_order_id === effectiveMasterWoId);
+      const routeCode = (planRoute?.route_code || woWipRows[0]?.route_code || '').toUpperCase();
+      const hasHtcInRoute = routeCode === 'ALLOY_CDS' || routeCode.includes('ALLOY') || woWipRows.some((s) => s.stage_code === 'HOLLOW_HEAT_TREATMENT');
+
       // Rolling production stats (tracked under master campaign or single order)
       const mhAvgLen = (plan?.mh_l1 && plan?.mh_l2 ? (plan.mh_l1 + plan.mh_l2) / 2 : plan?.mh_l1 || plan?.mh_l2) || avgLen;
       const masterRollLogs = masterLogs.filter((l) => l.stage_code === 'ROLLING');
@@ -468,13 +478,16 @@ export default function WorkOrderTrackingClient() {
 
         if (stageCode === 'ROLLING') {
           // RULE 1: WIP is strictly calculated AFTER rolling production is done, and ONLY from HTC OK qty!
-          // Prior to rolling: Rolled WIP is strictly 0! (Target is shown in Plan Mtr, physical stock is 0).
           let wipMtr = 0;
+          let wipPcs = 0;
           if (rollingOutMtr > 0) {
-            const downstreamConsumed = htcOutMtr + htcRejMtr > 0 ? htcOutMtr + htcRejMtr : drawOutMtr + drawRejMtr;
+            const downstreamConsumed = hasHtcInRoute ? (htcOutMtr + htcRejMtr) : (drawOutMtr + drawRejMtr);
             wipMtr = Math.max(0, rollingHtcOkMtr - downstreamConsumed);
+            const downstreamConsumedPcs = hasHtcInRoute ? (htcOutPcs + htcRejPcs) : (drawOutPcs + drawRejPcs);
+            wipPcs = rollingHtcOkPcs > 0
+              ? Math.max(0, rollingHtcOkPcs - downstreamConsumedPcs)
+              : (mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0));
           }
-          const wipPcs = mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
           const mhOd = plan?.mh_od || wo.size_od || 0;
           const mhWt = plan?.mh_wt || wo.size_wt || 0;
           const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
@@ -503,12 +516,38 @@ export default function WorkOrderTrackingClient() {
         }
 
         if (stageCode === 'HOLLOW_HEAT_TREATMENT') {
+          if (!hasHtcInRoute) {
+            return {
+              ...stageDef,
+              isBundled: false,
+              isNotInRoute: true,
+              planMtr: 0,
+              planPcs: 0,
+              outMtr: 0,
+              outPcs: 0,
+              rejMtr: 0,
+              rejPcs: 0,
+              htcOkMtr: 0,
+              htcOkPcs: 0,
+              wipMtr: 0,
+              wipPcs: 0,
+              wipMt: 0,
+              logsCount: 0,
+              dwellDays: 0,
+              agingSeverity: 'NORMAL',
+            };
+          }
+
           // Downstream WIP only exists after rolling production is done, and strictly from HTC OK!
           let wipMtr = 0;
+          let wipPcs = 0;
           if (rollingHtcOkMtr > 0) {
             wipMtr = Math.max(0, rollingHtcOkMtr - htcOutMtr - htcRejMtr);
+            const consumedPcs = htcOutPcs + htcRejPcs;
+            wipPcs = rollingHtcOkPcs > 0
+              ? Math.max(0, rollingHtcOkPcs - consumedPcs)
+              : (mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0));
           }
-          const wipPcs = mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
           const mhOd = plan?.mh_od || wo.size_od || 0;
           const mhWt = plan?.mh_wt || wo.size_wt || 0;
           const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
@@ -517,6 +556,7 @@ export default function WorkOrderTrackingClient() {
           return {
             ...stageDef,
             isBundled: false,
+            isNotInRoute: false,
             planMtr: 0,
             planPcs: 0,
             outMtr: htcOutMtr,
@@ -535,17 +575,27 @@ export default function WorkOrderTrackingClient() {
         }
 
         if (stageCode === 'DRAW') {
-          // Incoming is either HTC output (if alloy route) or Rolling HTC OK (if CDS route)
-          const incoming = htcOutMtr > 0 ? htcOutMtr : rollingHtcOkMtr;
+          // If Hollow HT is in route, incoming stock to Draw Bench is strictly Hollow HT net output.
+          // If Hollow HT is not in route (e.g. CDS), incoming stock is directly Rolling HTC OK.
+          const incomingMtr = hasHtcInRoute ? Math.max(0, htcOutMtr - htcRejMtr) : rollingHtcOkMtr;
+          const incomingPcs = hasHtcInRoute ? Math.max(0, htcOutPcs - htcRejPcs) : rollingHtcOkPcs;
           let wipMtr = 0;
-          if (incoming > 0) {
-            wipMtr = Math.max(0, incoming - drawOutMtr - drawRejMtr);
+          let wipPcs = 0;
+          if (incomingMtr > 0) {
+            wipMtr = Math.max(0, incomingMtr - drawOutMtr - drawRejMtr);
+            const consumedPcs = drawOutPcs + drawRejPcs;
+            wipPcs = incomingPcs > 0
+              ? Math.max(0, incomingPcs - consumedPcs)
+              : (mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0));
           }
           const mhOd = plan?.mh_od || wo.size_od || 0;
           const mhWt = plan?.mh_wt || wo.size_wt || 0;
-          const wipPcs = mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
           const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
-          const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterDrawLogs, masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs);
+          const { dwellDays, agingSeverity } = getStageAging(
+            wipMtr,
+            masterDrawLogs,
+            hasHtcInRoute ? (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs) : masterRollLogs
+          );
 
           return {
             ...stageDef,
@@ -569,10 +619,16 @@ export default function WorkOrderTrackingClient() {
 
         if (stageCode === 'HEAT_TREATMENT') {
           let wipMtr = 0;
-          if (drawOutMtr > 0) {
-            wipMtr = Math.max(0, drawOutMtr - htOutMtr - htRejMtr);
+          let wipPcs = 0;
+          const drawNetMtr = Math.max(0, drawOutMtr - drawRejMtr);
+          const drawNetPcs = Math.max(0, drawOutPcs - drawRejPcs);
+          if (drawNetMtr > 0) {
+            wipMtr = Math.max(0, drawNetMtr - htOutMtr - htRejMtr);
+            const consumedPcs = htOutPcs + htRejPcs;
+            wipPcs = drawNetPcs > 0
+              ? Math.max(0, drawNetPcs - consumedPcs)
+              : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
           }
-          const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
           const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
           const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterHtLogs, masterDrawLogs);
 
@@ -597,14 +653,34 @@ export default function WorkOrderTrackingClient() {
         }
 
         // FINISHING stage:
-        const targetMtr = childInfo ? Number(childInfo.planned_mtr || wo.ordered_qty) : (plan?.planned_qty || wo.ordered_qty);
-        const targetPcs = avgLen > 0 ? Math.round(targetMtr / avgLen) : 0;
-        const precedingOutMtr = htOutMtr > 0 ? htOutMtr : drawOutMtr;
+        // Target is the actual Customer Ordered Quantity for this work order!
+        const isUomPcs = String(wo.uom || '').toUpperCase() === 'PCS';
+        const targetPcs = childInfo?.planned_pcs
+          ? Number(childInfo.planned_pcs)
+          : Number(wo.ordered_qty_pcs || (isUomPcs ? wo.ordered_qty : 0)) ||
+            (avgLen > 0 ? Math.round(Number(wo.ordered_qty_mtr || wo.ordered_qty) / avgLen) : Number(wo.ordered_qty));
+
+        const targetMtr = childInfo?.planned_mtr
+          ? Number(childInfo.planned_mtr)
+          : Number(wo.ordered_qty_mtr || 0) > 0
+          ? Number(wo.ordered_qty_mtr)
+          : !isUomPcs
+          ? Number(wo.ordered_qty)
+          : targetPcs > 0 && avgLen > 0
+          ? targetPcs * avgLen
+          : Number(wo.ordered_qty);
+
+        const precedingOutMtr = htOutMtr > 0 ? Math.max(0, htOutMtr - htRejMtr) : Math.max(0, drawOutMtr - drawRejMtr);
+        const precedingOutPcs = htOutMtr > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs);
         let wipMtr = 0;
+        let wipPcs = 0;
         if (precedingOutMtr > 0) {
           wipMtr = Math.max(0, Math.min(targetMtr, precedingOutMtr) - finOutMtr - finRejMtr);
+          const consumedPcs = finOutPcs + finRejPcs;
+          wipPcs = precedingOutPcs > 0
+            ? Math.max(0, Math.min(targetPcs, precedingOutPcs) - consumedPcs)
+            : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
         }
-        const wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
         const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
         const { dwellDays, agingSeverity } = getStageAging(wipMtr, finLogs, masterHtLogs.length > 0 ? masterHtLogs : masterDrawLogs);
 
@@ -712,8 +788,11 @@ export default function WorkOrderTrackingClient() {
 
     filteredWorkOrders.forEach((wo) => {
       const avgLen = wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : wo.l1 || wo.l2 || 6.0;
-      totalOrderedMtr += Number(wo.ordered_qty || 0);
-      totalTargetPcs += avgLen > 0 ? Math.round(Number(wo.ordered_qty || 0) / avgLen) : 0;
+      const isUomPcs = String(wo.uom || '').toUpperCase() === 'PCS';
+      const ordPcs = Number(wo.ordered_qty_pcs || (isUomPcs ? wo.ordered_qty : (avgLen > 0 ? Math.round(Number(wo.ordered_qty) / avgLen) : 0)));
+      const ordMtr = Number(wo.ordered_qty_mtr || (!isUomPcs ? wo.ordered_qty : ordPcs * avgLen));
+      totalOrderedMtr += ordMtr;
+      totalTargetPcs += ordPcs;
       const row = getWoTrackingData(wo);
       const rollStage = row.stagesData.find((s) => s.code === 'ROLLING');
       const finStage = row.stagesData.find((s) => s.code === 'FINISHING');
@@ -787,6 +866,7 @@ export default function WorkOrderTrackingClient() {
         'Rolling Output (Mtr)': rRoll?.outMtr || 0,
         'Rolling Rejection (Nos)': rRoll?.rejPcs || 0,
         'Rolling Rejection (Mtr)': rRoll?.rejMtr || 0,
+        'Rolling WIP (Pcs)': rRoll?.wipPcs || 0,
         'Rolling WIP (Mtr)': rRoll?.wipMtr || 0,
         'Rolling WIP (MT)': Number(rRoll?.wipMt || 0).toFixed(2),
         // HTC
@@ -796,18 +876,21 @@ export default function WorkOrderTrackingClient() {
         'HTC Rejection (Mtr)': rHtc?.rejMtr || 0,
         'HTC OK (Nos)': rHtc?.htcOkPcs || 0,
         'HTC OK (Mtr)': rHtc?.htcOkMtr || 0,
+        'HTC WIP (Pcs)': rHtc?.wipPcs || 0,
         'HTC WIP (Mtr)': rHtc?.wipMtr || 0,
         // Draw Bench
         'Draw Output (Nos)': rDraw?.outPcs || 0,
         'Draw Output (Mtr)': rDraw?.outMtr || 0,
         'Draw Rejection (Nos)': rDraw?.rejPcs || 0,
         'Draw Rejection (Mtr)': rDraw?.rejMtr || 0,
+        'Draw WIP (Pcs)': rDraw?.wipPcs || 0,
         'Draw WIP (Mtr)': rDraw?.wipMtr || 0,
         // Heat Treatment
         'HT Output (Nos)': rHt?.outPcs || 0,
         'HT Output (Mtr)': rHt?.outMtr || 0,
         'HT Rejection (Nos)': rHt?.rejPcs || 0,
         'HT Rejection (Mtr)': rHt?.rejMtr || 0,
+        'HT WIP (Pcs)': rHt?.wipPcs || 0,
         'HT WIP (Mtr)': rHt?.wipMtr || 0,
         // Finishing
         'Finishing Target (Pcs)': rFin?.targetPcs || 0,
@@ -815,6 +898,7 @@ export default function WorkOrderTrackingClient() {
         'Finishing Output (Mtr)': rFin?.outMtr || 0,
         'Finishing Rejection (Nos)': rFin?.rejPcs || 0,
         'Finishing Rejection (Mtr)': rFin?.rejMtr || 0,
+        'Final Goods WIP (Pcs)': rFin?.wipPcs || 0,
         'Final Goods WIP (Mtr)': rFin?.wipMtr || 0,
         // Summary
         'Completion (%)': `${row.completionPct}%`,
@@ -907,8 +991,8 @@ export default function WorkOrderTrackingClient() {
         <Card className="border-indigo-200 bg-indigo-50/50">
           <CardContent className="p-4">
             <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Rolled Stock WIP</div>
-            <div className="mt-1 text-2xl font-bold text-indigo-900 font-mono">{fmt(kpis.totalRolledStockWipMt.toFixed(2), ' MT')}</div>
-            <div className="text-[11px] text-indigo-600 mt-0.5">{fmt(kpis.totalRolledStockWipMtr, 'm')} stock inventory</div>
+            <div className="mt-1 text-2xl font-bold text-indigo-900 font-mono">{fmt(kpis.totalRolledStockWipPcs)} Pcs</div>
+            <div className="text-[11px] text-indigo-600 mt-0.5">{fmt(kpis.totalRolledStockWipMt.toFixed(2), ' MT')} ({fmt(kpis.totalRolledStockWipMtr, 'm')}) inventory</div>
           </CardContent>
         </Card>
 
@@ -1173,7 +1257,7 @@ export default function WorkOrderTrackingClient() {
                                 {data.childInfo.master_wo_no}
                               </span>
                               <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
-                                WIP: 0m
+                                WIP: 0 Nos
                               </span>
                             </div>
                           ) : (
@@ -1208,10 +1292,10 @@ export default function WorkOrderTrackingClient() {
 
                               <div className="flex justify-between pt-1 border-t border-blue-200/60 text-blue-900 font-bold">
                                 <span>Rolled WIP:</span>
-                                <span className="font-mono">{fmt(rRoll?.wipMtr || 0)}m</span>
+                                <span className="font-mono">{fmt(rRoll?.wipPcs || 0)} Nos</span>
                               </div>
 
-                              {Number(rRoll?.wipMtr || 0) > 0 && rRoll?.dwellDays !== undefined && (
+                              {Number(rRoll?.wipPcs || 0) > 0 && rRoll?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
                                   <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
                                     rRoll.agingSeverity === 'CRITICAL'
@@ -1246,13 +1330,18 @@ export default function WorkOrderTrackingClient() {
                                 {data.childInfo.master_wo_no}
                               </span>
                               <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
-                                WIP: 0m
+                                WIP: 0 Nos
                               </span>
+                            </div>
+                          ) : rHtc?.isNotInRoute ? (
+                            <div className="text-[11px] text-slate-400 italic text-center py-4 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+                              <div className="font-semibold text-slate-400">Not in Route</div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
                             </div>
                           ) : Number(rRoll?.outMtr || 0) === 0 ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
                               Waiting Rolling HTC OK
-                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0m</div>
+                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
                             </div>
                           ) : (
                             <div className="space-y-1">
@@ -1277,10 +1366,10 @@ export default function WorkOrderTrackingClient() {
 
                               <div className="flex justify-between pt-1 border-t border-amber-200/60 text-amber-900 font-bold">
                                 <span>WIP:</span>
-                                <span className="font-mono">{fmt(rHtc?.wipMtr || 0)}m</span>
+                                <span className="font-mono">{fmt(rHtc?.wipPcs || 0)} Nos</span>
                               </div>
 
-                              {Number(rHtc?.wipMtr || 0) > 0 && rHtc?.dwellDays !== undefined && (
+                              {Number(rHtc?.wipPcs || 0) > 0 && rHtc?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
                                   <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
                                     rHtc.agingSeverity === 'CRITICAL'
@@ -1309,13 +1398,13 @@ export default function WorkOrderTrackingClient() {
                                 {data.childInfo.master_wo_no}
                               </span>
                               <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
-                                WIP: 0m
+                                WIP: 0 Nos
                               </span>
                             </div>
                           ) : Number(rRoll?.outMtr || 0) === 0 ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
                               Waiting Upstream
-                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0m</div>
+                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
                             </div>
                           ) : (
                             <div className="space-y-1">
@@ -1333,10 +1422,10 @@ export default function WorkOrderTrackingClient() {
 
                               <div className="flex justify-between pt-1 border-t border-indigo-200/60 text-indigo-900 font-bold">
                                 <span>WIP:</span>
-                                <span className="font-mono">{fmt(rDraw?.wipMtr || 0)}m</span>
+                                <span className="font-mono">{fmt(rDraw?.wipPcs || 0)} Nos</span>
                               </div>
 
-                              {Number(rDraw?.wipMtr || 0) > 0 && rDraw?.dwellDays !== undefined && (
+                              {Number(rDraw?.wipPcs || 0) > 0 && rDraw?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
                                   <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
                                     rDraw.agingSeverity === 'CRITICAL'
@@ -1365,13 +1454,13 @@ export default function WorkOrderTrackingClient() {
                                 {data.childInfo.master_wo_no}
                               </span>
                               <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
-                                WIP: 0m
+                                WIP: 0 Nos
                               </span>
                             </div>
                           ) : Number(rRoll?.outMtr || 0) === 0 ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
                               Waiting Upstream
-                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0m</div>
+                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
                             </div>
                           ) : (
                             <div className="space-y-1">
@@ -1389,10 +1478,10 @@ export default function WorkOrderTrackingClient() {
 
                               <div className="flex justify-between pt-1 border-t border-orange-200/60 text-orange-900 font-bold">
                                 <span>WIP:</span>
-                                <span className="font-mono">{fmt(rHt?.wipMtr || 0)}m</span>
+                                <span className="font-mono">{fmt(rHt?.wipPcs || 0)} Nos</span>
                               </div>
 
-                              {Number(rHt?.wipMtr || 0) > 0 && rHt?.dwellDays !== undefined && (
+                              {Number(rHt?.wipPcs || 0) > 0 && rHt?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
                                   <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
                                     rHt.agingSeverity === 'CRITICAL'
@@ -1416,7 +1505,7 @@ export default function WorkOrderTrackingClient() {
                             <div className="flex justify-between text-slate-500 text-[11px]">
                               <span>Target:</span>
                               <span className="font-mono font-bold text-slate-700">
-                                {fmt(rFin?.targetPcs || (data.avgLen > 0 ? Math.round((rFin?.targetMtr || wo.ordered_qty) / data.avgLen) : 0))} Pcs
+                                {fmt(rFin?.targetPcs || 0)} Pcs
                               </span>
                             </div>
 
@@ -1434,10 +1523,10 @@ export default function WorkOrderTrackingClient() {
 
                             <div className="flex justify-between pt-1 border-t border-emerald-200/60 text-emerald-900 font-bold">
                               <span>Stock WIP:</span>
-                              <span className="font-mono">{fmt(rFin?.wipMtr || 0)}m</span>
+                              <span className="font-mono">{fmt(rFin?.wipPcs || 0)} Nos</span>
                             </div>
 
-                            {Number(rFin?.wipMtr || 0) > 0 && rFin?.dwellDays !== undefined && (
+                            {Number(rFin?.wipPcs || 0) > 0 && rFin?.dwellDays !== undefined && (
                               <div className="mt-1 flex items-center justify-end">
                                 <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
                                   rFin.agingSeverity === 'CRITICAL'
