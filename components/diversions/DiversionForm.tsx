@@ -804,6 +804,19 @@ export default function DiversionForm() {
     [plans]
   );
 
+  const totalDivertedMtr = useMemo(
+    () => plans.reduce((s, p) => s + Number(p.diverted_qty || 0), 0),
+    [plans]
+  );
+  const totalDivertedPcs = useMemo(
+    () => plans.reduce((s, p) => s + Number(p.diverted_pcs || 0), 0),
+    [plans]
+  );
+  const totalDivertedMt = useMemo(
+    () => plans.reduce((s, p) => s + Number(p.diverted_mt || 0), 0),
+    [plans]
+  );
+
   return (
     <div className="space-y-6">
       {/* Form Accessibility Banner */}
@@ -883,10 +896,11 @@ export default function DiversionForm() {
             >
               {availableWorkCenters.map((wc) => {
                 const stg = sourceWip?.stageBreakdown?.find((s) => s.stage_code === wc.code);
-                const avail = stg ? stg.available_mtr : null;
+                const availMtr = stg ? stg.available_mtr : null;
+                const availPcs = stg ? stg.available_pcs : (sourceAvgLen > 0 && availMtr != null ? Math.round(availMtr / sourceAvgLen) : null);
                 return (
                   <option key={wc.code} value={wc.code}>
-                    {wc.name} {avail != null ? `(${fmt(avail)} Mtr available)` : ''}
+                    {wc.name} {availMtr != null ? `(${fmt(availPcs, 0)} Pcs / ${fmt(availMtr)} Mtr available)` : ''}
                   </option>
                 );
               })}
@@ -980,7 +994,7 @@ export default function DiversionForm() {
               </div>
             </div>
 
-            {/* Prominent Physical WIP Cards (Showing Selected Work Center Physical WIP) */}
+            {/* Prominent Physical WIP Cards (Showing Selected Work Center Physical WIP in Pcs) */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Available Physical WIP at Selected Work Center */}
               <div className={`rounded-md border-2 p-3 shadow-2xs ${
@@ -997,23 +1011,23 @@ export default function DiversionForm() {
                       ? 'bg-[#0078d4] text-white'
                       : 'bg-amber-600 text-white'
                   }`}>
-                    {availableAtWorkCenterMtr > 0 ? 'Physical WIP OK' : '0 Mtrs (No WIP)'}
+                    {availableAtWorkCenterMtr > 0 ? `${fmt(availableAtWorkCenterPcs, 0)} Pcs Available` : '0 Pcs (No WIP)'}
                   </span>
                 </div>
                 <div className="mt-1.5">
-                  <span className={`text-xl font-black font-mono tracking-tight ${
+                  <span className={`text-2xl font-black font-mono tracking-tight ${
                     availableAtWorkCenterMtr > 0 ? 'text-slate-900' : 'text-amber-800'
                   }`}>
-                    {fmt(availableAtWorkCenterMtr)}
+                    {fmt(availableAtWorkCenterPcs, 0)}
                   </span>
-                  <span className={`text-xs font-semibold ml-1 ${
+                  <span className={`text-xs font-bold ml-1 uppercase ${
                     availableAtWorkCenterMtr > 0 ? 'text-[#0078d4]' : 'text-amber-700'
                   }`}>
-                    Mtrs Available to Divert
+                    Pcs Available to Divert
                   </span>
                 </div>
                 <div className="mt-1 flex items-center gap-2 text-xs text-slate-600 font-mono">
-                  <span>{fmt(availableAtWorkCenterPcs, 1)} Pcs</span>
+                  <span className="font-semibold text-slate-800">{fmt(availableAtWorkCenterMtr)} Mtrs</span>
                   <span>•</span>
                   <span>{fmt(availableAtWorkCenterMt, 3)} MT</span>
                 </div>
@@ -1029,16 +1043,16 @@ export default function DiversionForm() {
               {/* Rolling Production Output (HTC OK) */}
               <div className="rounded-md border border-slate-300 bg-white p-3 shadow-2xs">
                 <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
-                  Mother Hollow (HTC OK)
+                  Mother Hollow Produced (HTC OK)
                 </span>
                 <div className="mt-1.5">
-                  <span className="text-xl font-black text-slate-900 font-mono tracking-tight">
-                    {fmt(sourceWip.rollingHtcOkMtr || sourceWip.rollingNetMtr)}
+                  <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">
+                    {fmt(sourceWip.rollingHtcOkPcs || (sourceAvgLen > 0 ? Math.round((sourceWip.rollingHtcOkMtr || sourceWip.rollingNetMtr) / sourceAvgLen) : 0), 0)}
                   </span>
-                  <span className="text-xs font-semibold text-slate-500 ml-1">Mtrs</span>
+                  <span className="text-xs font-bold text-slate-600 ml-1 uppercase">Pcs</span>
                 </div>
                 <div className="mt-1 text-xs text-slate-500 font-mono">
-                  Gross: {fmt(sourceWip.rollingGrossMtr)} m | Rej: {fmt(sourceWip.rollingRejMtr)} m
+                  {fmt(sourceWip.rollingHtcOkMtr || sourceWip.rollingNetMtr)} Mtrs · {fmt(sourceWip.rollingHtcOkMt, 3)} MT
                 </div>
               </div>
 
@@ -1048,23 +1062,23 @@ export default function DiversionForm() {
                   Already Diverted Out
                 </span>
                 <div className="mt-1.5">
-                  <span className="text-xl font-black text-amber-900 font-mono tracking-tight">
-                    {fmt(sourceWip.divertedOutMtr)}
+                  <span className="text-2xl font-black text-amber-900 font-mono tracking-tight">
+                    {fmt(sourceWip.divertedOutPcs, 0)}
                   </span>
-                  <span className="text-xs font-semibold text-amber-700 ml-1">Mtrs</span>
+                  <span className="text-xs font-bold text-amber-700 ml-1 uppercase">Pcs</span>
                 </div>
                 <div className="mt-1 text-xs text-slate-500 font-mono">
-                  {sourceWip.divertedOutMtr > 0 ? `${fmt(sourceWip.divertedOutPcs, 1)} Pcs deducted` : 'No prior deductions'}
+                  {sourceWip.divertedOutMtr > 0 ? `${fmt(sourceWip.divertedOutMtr)} Mtrs · ${fmt(sourceWip.divertedOutMt, 3)} MT` : '0 Pcs deducted'}
                 </div>
               </div>
             </div>
 
-            {/* Station-wise WIP Breakdown Pills with Active Highlight */}
+            {/* Station-wise WIP Breakdown Pills with Active Highlight (Showing Pcs) */}
             {sourceWip.stageBreakdown && sourceWip.stageBreakdown.length > 0 && (
               <div className="bg-white p-2.5 rounded border border-slate-200">
                 <div className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
                   <Factory className="h-3.5 w-3.5 text-slate-500" />
-                  Station-Wise Work-In-Progress Breakdown:
+                  Station-Wise Work-In-Progress Breakdown (Pcs & Mtrs):
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {sourceWip.stageBreakdown.map((stg, idx) => {
@@ -1079,10 +1093,10 @@ export default function DiversionForm() {
                         }`}
                       >
                         <span>{stg.stage_name || stg.stage_code}:</span>
-                        <span className={stg.available_mtr > 0 ? 'font-bold' : 'text-slate-400'}>
-                          {fmt(stg.available_mtr)} m
+                        <span className={stg.available_mtr > 0 ? 'font-bold text-slate-900' : 'text-slate-400'}>
+                          {fmt(stg.available_pcs, 0)} Pcs
                         </span>
-                        <span className="text-slate-400 text-[10px]">({fmt(stg.available_pcs, 1)} pcs)</span>
+                        <span className="text-slate-500 text-[11px]">({fmt(stg.available_mtr)} m)</span>
                       </div>
                     );
                   })}
@@ -1126,9 +1140,9 @@ export default function DiversionForm() {
             />
             {sourceWip && (
               <div className="mt-1 text-xs text-slate-500 flex justify-between">
-                <span>Available at {selectedWorkCenterObj?.name.split(' ')[0] || workCenter}: <strong className="font-mono text-[#0078d4]">{fmt(availableAtWorkCenterMtr)} m</strong></span>
+                <span>Available at {selectedWorkCenterObj?.name.split(' ')[0] || workCenter}: <strong className="font-mono text-[#0078d4]">{fmt(availableAtWorkCenterPcs, 0)} Pcs</strong> ({fmt(availableAtWorkCenterMtr)} m)</span>
                 {diversionMtr > 0 && (
-                  <span className="font-mono text-slate-700">≈ {fmt(sourceDivPcs, 1)} pcs</span>
+                  <span className="font-mono font-bold text-slate-800">≈ {fmt(sourceDivPcs, 0)} Pcs</span>
                 )}
               </div>
             )}
@@ -1202,7 +1216,7 @@ export default function DiversionForm() {
                   <div className="flex justify-between items-center text-slate-600">
                     <span>Work Center WIP:</span>
                     <span className="font-mono font-semibold text-slate-900">
-                      {fmt(sourceInitialBalanceMtr)} Mtrs
+                      {fmt(availableAtWorkCenterPcs, 0)} Pcs ({fmt(sourceInitialBalanceMtr)} Mtr)
                     </span>
                   </div>
 
@@ -1211,7 +1225,7 @@ export default function DiversionForm() {
                       <TrendingDown size={13} /> Diverted Out Qty:
                     </span>
                     <span className="font-mono font-black text-red-700 text-xs">
-                      - {fmt(diversionMtr)} Mtrs
+                      - {fmt(sourceDivPcs, 0)} Pcs (- {fmt(diversionMtr)} Mtr)
                     </span>
                   </div>
 
@@ -1222,12 +1236,12 @@ export default function DiversionForm() {
                         isExceeding ? 'text-red-600' : 'text-emerald-700'
                       }`}
                     >
-                      {fmt(sourceRemainingBalanceMtr)} Mtrs
+                      {fmt(sourceRemainingBalancePcs, 0)} Pcs ({fmt(sourceRemainingBalanceMtr)} Mtr)
                     </span>
                   </div>
 
                   <div className="text-[11px] text-slate-400 font-mono text-right">
-                    ≈ {fmt(sourceRemainingBalancePcs, 1)} Pcs ({fmt(sourceRemainingBalanceMt, 3)} MT)
+                    Weight: {fmt(sourceRemainingBalanceMt, 3)} MT
                   </div>
                 </div>
               </div>
@@ -1271,19 +1285,19 @@ export default function DiversionForm() {
                       <TrendingUp size={13} /> Incoming Diverted WIP:
                     </span>
                     <span className="font-mono font-black text-emerald-700 text-xs">
-                      + {fmt(diversionMtr)} Mtrs
+                      + {fmt(targetDivPcs, 0)} Pcs (+ {fmt(diversionMtr)} Mtr)
                     </span>
                   </div>
 
                   <div className="flex justify-between items-center pt-1 border-t border-slate-100 font-medium">
                     <span className="text-slate-800 font-bold">New Available WIP:</span>
                     <span className="font-mono font-bold text-xs text-emerald-700">
-                      {fmt(targetPostWipMtr)} Mtrs
+                      {fmt(targetPostWipPcs, 0)} Pcs ({fmt(targetPostWipMtr)} Mtr)
                     </span>
                   </div>
 
                   <div className="text-[11px] text-slate-400 font-mono text-right">
-                    ≈ {fmt(targetPostWipPcs, 1)} Pcs ({fmt(targetPostWipMt, 3)} MT) ready for downstream
+                    Weight: {fmt(targetPostWipMt, 3)} MT ready for downstream
                   </div>
                 </div>
               </div>
@@ -1353,6 +1367,33 @@ export default function DiversionForm() {
               <RefreshCw className={`h-3.5 w-3.5 ${plansLoading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
+          </div>
+
+          {/* Summary Metric Cards for Issued Diversion Plans */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-3">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Diversion Plans</div>
+              <div className="mt-1 text-xl font-bold font-mono text-slate-900">{plans.length}</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Authorized records</div>
+            </div>
+
+            <div className="bg-blue-50/60 border border-blue-200 rounded-lg p-3">
+              <div className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Total Diverted Volume</div>
+              <div className="mt-1 text-xl font-bold font-mono text-blue-950">{fmt(totalDivertedPcs, 0)} Pcs</div>
+              <div className="text-[11px] text-blue-600 mt-0.5 font-mono">{fmt(totalDivertedMtr)} Mtrs transferred</div>
+            </div>
+
+            <div className="bg-emerald-50/60 border border-emerald-200 rounded-lg p-3">
+              <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Total Diverted Weight</div>
+              <div className="mt-1 text-xl font-bold font-mono text-emerald-950">{fmt(totalDivertedMt, 2)} MT</div>
+              <div className="text-[11px] text-emerald-600 mt-0.5 font-mono">Net physical mass</div>
+            </div>
+
+            <div className="bg-purple-50/60 border border-purple-200 rounded-lg p-3">
+              <div className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Active Process Routes</div>
+              <div className="mt-1 text-xl font-bold font-mono text-purple-950">{routesInPlans.length} Routes</div>
+              <div className="text-[11px] text-purple-600 mt-0.5">Across work centers</div>
+            </div>
           </div>
 
           {/* Search & Filter Toolbar */}
