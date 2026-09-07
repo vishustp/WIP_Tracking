@@ -16,8 +16,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const targetStage = (searchParams.get("stage")?.toUpperCase() || "ROLLING") as StageCode;
 
-    // Fetch plans, stages, logs, work orders, routes
-    const [plansRes, stagesRes, logsRes, woRes, routesRes] = await Promise.all([
+    // Fetch plans, stages, logs, work orders, routes, qc
+    const [plansRes, stagesRes, logsRes, woRes, routesRes, qcRes] = await Promise.all([
       admin
         .from("rolling_plans")
         .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2, multiple")
