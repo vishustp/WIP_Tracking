@@ -52,6 +52,7 @@ export default function ProductionEntryGrid() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const [search, setSearch] = useState("");
+  const [woFilter, setWoFilter] = useState("");
   const [entryStage, setEntryStage] = useState("");
   const [entryRoute, setEntryRoute] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -168,11 +169,28 @@ export default function ProductionEntryGrid() {
     }));
   };
 
+  // Filter queue rows by Work Order No, Customer, Grade, or Master Plan No
+  const filteredRows = useMemo(() => {
+    if (!woFilter.trim()) return rows;
+    const q = woFilter.toLowerCase().trim();
+    return rows.filter((r) =>
+      (r.work_order_no || "").toLowerCase().includes(q) ||
+      (r.customer_name || "").toLowerCase().includes(q) ||
+      (r.specification || "").toLowerCase().includes(q) ||
+      (r.master_plan_no || "").toLowerCase().includes(q) ||
+      (r.child_work_orders && r.child_work_orders.some((c: any) =>
+        (c.work_order_no || "").toLowerCase().includes(q) ||
+        (c.customer_name || "").toLowerCase().includes(q)
+      ))
+    );
+  }, [rows, woFilter]);
+
   // Toggle all rows expansion
   const toggleAllRows = () => {
-    const allExpanded = rows.every((r) => expandedRows[`${r.work_order_id}|${r.route_id}`]);
-    const newState: Record<string, boolean> = {};
-    rows.forEach((r) => {
+    const targetRows = filteredRows.length > 0 ? filteredRows : rows;
+    const allExpanded = targetRows.every((r) => expandedRows[`${r.work_order_id}|${r.route_id}`]);
+    const newState: Record<string, boolean> = { ...expandedRows };
+    targetRows.forEach((r) => {
       newState[`${r.work_order_id}|${r.route_id}`] = !allExpanded;
     });
     setExpandedRows(newState);
@@ -963,7 +981,9 @@ export default function ProductionEntryGrid() {
               Queue Status
             </span>
             <span className="mt-1 inline-flex items-center rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-800">
-              {rows.length} {rows.length === 1 ? 'Order' : 'Orders'} in Queue
+              {woFilter.trim()
+                ? `${filteredRows.length} of ${rows.length} ${rows.length === 1 ? 'Order' : 'Orders'}`
+                : `${rows.length} ${rows.length === 1 ? 'Order' : 'Orders'} in Queue`}
             </span>
           </div>
         </div>
@@ -984,17 +1004,39 @@ export default function ProductionEntryGrid() {
 
       {/* Queue Entry Grid Table */}
       <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-bold text-slate-900">
               {STAGES.find((x) => x.code === stage)?.label || stage} Queue
             </h2>
-            <span className="rounded-full bg-slate-200/70 px-2 py-0.2 text-[11px] font-semibold text-slate-700">
-              {rows.length}
+            <span className="rounded-full bg-slate-200/70 px-2 py-0.2 text-[11px] font-semibold text-slate-700 font-mono">
+              {woFilter.trim() ? `${filteredRows.length} of ${rows.length}` : rows.length}
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Work Order No. Filter Search Input */}
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={woFilter}
+                onChange={(e) => setWoFilter(e.target.value)}
+                placeholder="Filter by WO No, Customer, Grade..."
+                className="h-8 w-48 sm:w-64 rounded-lg border border-slate-300 bg-white pl-8 pr-7 text-xs font-medium text-slate-800 placeholder-slate-400 shadow-2xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+              {woFilter && (
+                <button
+                  type="button"
+                  onClick={() => setWoFilter("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                  title="Clear filter"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
             {(stage === "DRAW" || stage === "HOLLOW_HEAT_TREATMENT" || stage === "HEAT_TREATMENT") && (
               <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
                 <Crown size={12} /> Master Orders Consolidated
@@ -1013,6 +1055,17 @@ export default function ProductionEntryGrid() {
         ) : rows.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">
             No WIP available in queue for {STAGES.find((x) => x.code === stage)?.label}. Record production in preceding stages first.
+          </div>
+        ) : filteredRows.length === 0 ? (
+          <div className="p-8 text-center text-sm text-slate-500">
+            <p>No work orders match filter &ldquo;{woFilter}&rdquo; in {STAGES.find((x) => x.code === stage)?.label} queue.</p>
+            <button
+              type="button"
+              onClick={() => setWoFilter("")}
+              className="mt-2 text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+            >
+              Clear filter
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1034,7 +1087,7 @@ export default function ProductionEntryGrid() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map((r) => {
+                {filteredRows.map((r) => {
                   const key = `${r.work_order_id}|${r.route_id}`;
                   const isExpanded = !!expandedRows[key];
                   const d = calc(r);
