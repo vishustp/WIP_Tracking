@@ -194,6 +194,55 @@ export const emptyRow = (r: Omit<
   remarks: "",
 });
 
+export interface WorkOrder {
+  id: string;
+  work_order_no: string;
+  customer_name?: string | null;
+  size_od?: number | null;
+  size_wt?: number | null;
+  l1?: number | null;
+  l2?: number | null;
+  grade?: string | null;
+  specification?: string | null;
+  process_route_id?: string | null;
+  ordered_qty?: number;
+  ordered_qty_pcs?: number | null;
+  ordered_qty_mtr?: number | null;
+  ordered_qty_mt?: number | null;
+  balance_qty_pcs?: number | null;
+  balance_qty_mtr?: number | null;
+  balance_qty_mt?: number | null;
+  uom?: string;
+  target_date?: string | null;
+  status?: string;
+  created_at?: string;
+}
+
+export interface ProductionLog {
+  id: string;
+  work_order_id: string;
+  stage_id?: string;
+  stage_code?: string;
+  stage_name?: string;
+  shift_date?: string;
+  process_date?: string;
+  shift?: string | null;
+  heat_no?: string | null;
+  lot_no?: string | null;
+  heat_lot_no?: string | null;
+  input_qty?: number;
+  output_qty?: number;
+  output_pcs?: number;
+  rejection_qty?: number;
+  rejection_pcs?: number;
+  htc_ok?: number;
+  htc_ok_qty?: number;
+  htc_ok_pcs?: number;
+  operator_name?: string | null;
+  remarks?: string | null;
+  created_at?: string;
+}
+
 export interface SalvageReasonItem {
   id: string;
   reason: string;
