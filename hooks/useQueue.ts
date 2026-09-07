@@ -49,7 +49,7 @@ export function useQueue(stage: StageCode) {
           .select("id, stage_code"),
         supabase
           .from("production_logs")
-          .select("work_order_id, stage_id, output_qty, rejection_qty, htc_ok, output_pcs, rejection_pcs")
+          .select("work_order_id, stage_id, output_qty, rejection_qty, htc_ok")
           .order("created_at", { ascending: false })
           .limit(50000),
         supabase

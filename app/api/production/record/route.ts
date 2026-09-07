@@ -94,9 +94,6 @@ export async function POST(req: NextRequest) {
             output_qty: outputMtr,
             rejection_qty: rejMtr,
             htc_ok: htcOkMtr,
-            output_pcs: outputPcs,
-            rejection_pcs: rejPcs,
-            htc_ok_pcs: htcOkPcs,
             heat_lot_no: item.heat_lot_no || null,
             remarks: item.remarks || null,
           });

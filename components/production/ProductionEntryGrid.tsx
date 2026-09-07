@@ -1103,7 +1103,7 @@ export default function ProductionEntryGrid() {
                 {filteredRows.map((r) => {
                   const key = `${r.work_order_id}|${r.route_id}`;
                   const isExpanded = !!expandedRows[key];
-                  const d = calc(r);
+                  const d = calc({ ...r, stage_code: stage });
                   const isRollingStage = stage === "ROLLING";
                   const stageOd = isRollingStage && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
                   const stageWt = isRollingStage && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
