@@ -748,13 +748,13 @@ export default function ProductionEntryGrid() {
       setEditSaving(false);
       return;
     }
-    if (rejection < 0 || rejection > mtr) {
+    if (rejection < 0 || rejection > mtr + 0.001) {
       setError("Rejection cannot exceed production quantity.");
       setEditSaving(false);
       return;
     }
     // Heat Lot No is optional / can be null
-    if (editing.stage_code === "ROLLING" && htc > mtr - rejection) {
+    if (editing.stage_code === "ROLLING" && htc > (mtr - rejection) + 0.001) {
       setError("HTC OK cannot exceed Net Rolling output (Production - Rejection).");
       setEditSaving(false);
       return;

@@ -64,12 +64,9 @@ export const calc = (row: {
       ? pcsFromMtr(n(row.rejection_mtr), avg)
       : 0
   );
-  const rejectionMtr =
-    row.rejection_pcs.trim() !== ""
-      ? mtrFromPcs(rejectionPcs, avg)
-      : row.rejection_mtr.trim() !== ""
-      ? n(row.rejection_mtr)
-      : 0;
+  const calculatedRejMtr = mtrFromPcs(rejectionPcs, avg);
+  const rejectionMtr = row.rejection_mtr.trim() === "" ? calculatedRejMtr : n(row.rejection_mtr);
+
   const htcPcs = Math.round(
     row.htc_ok_pcs.trim() !== ""
       ? n(row.htc_ok_pcs)
@@ -77,12 +74,8 @@ export const calc = (row: {
       ? pcsFromMtr(n(row.htc_ok_mtr), avg)
       : 0
   );
-  const htcMtr =
-    row.htc_ok_pcs.trim() !== ""
-      ? mtrFromPcs(htcPcs, avg)
-      : row.htc_ok_mtr.trim() !== ""
-      ? n(row.htc_ok_mtr)
-      : 0;
+  const calculatedHtcMtr = mtrFromPcs(htcPcs, avg);
+  const htcMtr = row.htc_ok_mtr.trim() === "" ? calculatedHtcMtr : n(row.htc_ok_mtr);
 
   const mt = mtFromMtr(mtr, effectiveOd, effectiveWt);
   const rejectionMt = mtFromMtr(rejectionMtr, effectiveOd, effectiveWt);

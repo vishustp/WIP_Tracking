@@ -33,7 +33,7 @@ export function validateProductionEntry(
       workOrder: row.work_order_no,
       message: "Rejection quantity cannot be negative.",
     });
-  } else if (d.rejection > d.mtr) {
+  } else if (d.rejection > d.mtr + 0.001) {
     errors.push({
       workOrder: row.work_order_no,
       message: `Rejection (${fmt(d.rejection, " MTR")}) cannot exceed entered Production (${fmt(d.mtr, " MTR")}).`,
@@ -47,7 +47,7 @@ export function validateProductionEntry(
         workOrder: row.work_order_no,
         message: "HTC OK quantity cannot be negative.",
       });
-    } else if (d.htc > d.mtr - d.rejection) {
+    } else if (d.htc > (d.mtr - d.rejection) + 0.001) {
       errors.push({
         workOrder: row.work_order_no,
         message: `HTC OK (${fmt(d.htc, " MTR")}) cannot exceed Net Rolling Output (${fmt(d.mtr - d.rejection, " MTR")}).`,
