@@ -840,7 +840,7 @@ export default function WorkOrderTrackingClient() {
         qcList: woQcList,
       };
     },
-    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip, qcInspections]
+    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip, qcInspections, diversionPlans]
   );
 
   // Toggle single work order details

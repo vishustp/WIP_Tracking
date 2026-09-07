@@ -46,6 +46,7 @@ type WO = {
   balance_qty_mt?: number;
   status?: string;
   target_date?: string | null;
+  process_route_id?: string | null;
 };
 
 type Route = { id: string; route_code: string; route_name: string };
