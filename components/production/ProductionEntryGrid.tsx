@@ -230,6 +230,11 @@ export default function ProductionEntryGrid() {
             ? effectiveMhAvg
             : n(r.avg_length);
 
+        // For Finishing: Do NOT calculate PCS based on MTR or MTR based on PCS. Both are entered independently.
+        if (stage === "FINISHING") {
+          return { ...r, [field]: value };
+        }
+
         if (field === "pcs") {
           const mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
           return { ...r, pcs: value, mtr };
@@ -569,25 +574,14 @@ export default function ProductionEntryGrid() {
     bundleId: string,
     field: "bundle_no" | "pcs" | "mtr" | "remarks",
     val: string,
-    avgLen: number
+    _avgLen?: number
   ) => {
     setCampaignBundles((prev) =>
       prev.map((b) => {
         if (b.id !== bundleId) return b;
-        let pcs = b.pcs;
-        let mtr = b.mtr;
-
-        if (field === "pcs") {
-          pcs = val;
-          mtr = val === "" ? "" : String(mtrFromPcs(n(val), avgLen).toFixed(3).replace(/\.?0+$/, ""));
-        } else if (field === "mtr") {
-          mtr = val;
-        }
-
         return {
           ...b,
           [field]: val,
-          ...(field === "pcs" ? { pcs, mtr } : {}),
         };
       })
     );
@@ -801,6 +795,7 @@ export default function ProductionEntryGrid() {
 
   function changeEditPcs(value: string) {
     setEditPcs(value);
+    if (editing?.stage_code === "FINISHING") return;
     const avg = getEntryAvgLength(editing);
     if (value === "") {
       setEditMtr("");
@@ -815,6 +810,7 @@ export default function ProductionEntryGrid() {
 
   function changeEditRejectionPcs(value: string) {
     setEditRejectionPcs(value);
+    if (editing?.stage_code === "FINISHING") return;
     const avg = getEntryAvgLength(editing);
     if (value === "") {
       setEditRejectionMtr("");

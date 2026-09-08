@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { ProductionEntry, StageCode } from '@/types';
+import { mtFromMtr } from '@/lib/productionUtils';
 import { toast } from 'sonner';
 
 interface WorkCenterTabConfig {
@@ -171,27 +172,44 @@ export default function WorkCenterProductionReportClient() {
     let htcOkMtr = 0;
 
     filteredEntries.forEach((e) => {
+      const isFinishing = e.stage_code === 'FINISHING' || selectedWc === 'FINISHING';
       const avgLen = Number(e.avg_length || 6.0);
       const effLen = avgLen > 0 ? avgLen : 6.0;
 
       const inMtr = Number(e.input_mtr || 0);
-      const inPcs = Math.round(Number(e.input_pcs || 0) > 0 ? Number(e.input_pcs) : (effLen > 0 && inMtr > 0 ? inMtr / effLen : 0));
+      const inPcs = isFinishing
+        ? Math.round(Number(e.input_pcs || 0))
+        : Math.round(Number(e.input_pcs || 0) > 0 ? Number(e.input_pcs) : (effLen > 0 && inMtr > 0 ? inMtr / effLen : 0));
       const outMtr = Number(e.output_mtr || 0);
-      const outPcs = Math.round(Number(e.output_pcs || 0) > 0 ? Number(e.output_pcs) : (effLen > 0 && outMtr > 0 ? outMtr / effLen : 0));
+      const outPcs = isFinishing
+        ? Math.round(Number(e.output_pcs || 0))
+        : Math.round(Number(e.output_pcs || 0) > 0 ? Number(e.output_pcs) : (effLen > 0 && outMtr > 0 ? outMtr / effLen : 0));
       const rMtr = Number(e.rejection_mtr || 0);
-      const rPcs = Math.round(Number(e.rejection_pcs || 0) > 0 ? Number(e.rejection_pcs) : (effLen > 0 && rMtr > 0 ? rMtr / effLen : 0));
+      const rPcs = isFinishing
+        ? Math.round(Number(e.rejection_pcs || 0))
+        : Math.round(Number(e.rejection_pcs || 0) > 0 ? Number(e.rejection_pcs) : (effLen > 0 && rMtr > 0 ? rMtr / effLen : 0));
+
+      const inMt = isFinishing
+        ? mtFromMtr(inMtr, Number(e.od || 0), Number(e.wl || 0)) || Number(e.input_mt || 0)
+        : Number(e.input_mt || 0) || mtFromMtr(inMtr, Number(e.od || 0), Number(e.wl || 0));
+      const outMt = isFinishing
+        ? mtFromMtr(outMtr, Number(e.od || 0), Number(e.wl || 0)) || Number(e.output_mt || 0)
+        : Number(e.output_mt || 0) || mtFromMtr(outMtr, Number(e.od || 0), Number(e.wl || 0));
+      const rMt = isFinishing
+        ? mtFromMtr(rMtr, Number(e.od || 0), Number(e.wl || 0)) || Number(e.rejection_mt || 0)
+        : Number(e.rejection_mt || 0) || mtFromMtr(rMtr, Number(e.od || 0), Number(e.wl || 0));
 
       inputMtr += inMtr;
       inputPcs += inPcs;
-      inputMt += Number(e.input_mt || 0);
+      inputMt += inMt;
 
       outputMtr += outMtr;
       outputPcs += outPcs;
-      outputMt += Number(e.output_mt || 0);
+      outputMt += outMt;
 
       rejMtr += rMtr;
       rejPcs += rPcs;
-      rejMt += Number(e.rejection_mt || 0);
+      rejMt += rMt;
 
       htcOkMtr += Number(e.htc_ok_mtr || 0);
     });

@@ -62,18 +62,30 @@ export const calc = (row: {
 
   const avg = effectiveAvg;
 
-  // RULE: Nos cannot change based on Mtr, only Mtr will change based on Nos.
+  const isFinishing = (row.stage_code || "").toUpperCase() === "FINISHING";
+
+  // RULE: For Finishing, DO NOT calculate PCS or MTR based on length or MTR.
+  // Both PCS and MTR are entered directly. Only MT is calculated based on Size and MTR.
+  // For other stages: Nos cannot change based on Mtr, only Mtr will change based on Nos.
   const hasPcs = row.pcs !== undefined && row.pcs !== null && row.pcs.trim() !== "";
   const hasMtr = row.mtr !== undefined && row.mtr !== null && row.mtr.trim() !== "";
-  const pcs = hasPcs ? Math.round(n(row.pcs)) : (hasMtr && avg > 0 ? pcsFromMtr(n(row.mtr), avg) : 0);
+  const pcs = isFinishing
+    ? (hasPcs ? Math.round(n(row.pcs)) : 0)
+    : (hasPcs ? Math.round(n(row.pcs)) : (hasMtr && avg > 0 ? pcsFromMtr(n(row.mtr), avg) : 0));
   const calculatedMtr = mtrFromPcs(pcs, avg);
-  const mtr = hasMtr ? n(row.mtr) : calculatedMtr;
+  const mtr = isFinishing
+    ? (hasMtr ? n(row.mtr) : 0)
+    : (hasMtr ? n(row.mtr) : calculatedMtr);
 
   const hasRejPcs = row.rejection_pcs !== undefined && row.rejection_pcs !== null && row.rejection_pcs.trim() !== "";
   const hasRejMtr = row.rejection_mtr !== undefined && row.rejection_mtr !== null && row.rejection_mtr.trim() !== "";
-  const rejectionPcs = hasRejPcs ? Math.round(n(row.rejection_pcs)) : (hasRejMtr && avg > 0 ? pcsFromMtr(n(row.rejection_mtr), avg) : 0);
+  const rejectionPcs = isFinishing
+    ? (hasRejPcs ? Math.round(n(row.rejection_pcs)) : 0)
+    : (hasRejPcs ? Math.round(n(row.rejection_pcs)) : (hasRejMtr && avg > 0 ? pcsFromMtr(n(row.rejection_mtr), avg) : 0));
   const calculatedRejMtr = mtrFromPcs(rejectionPcs, avg);
-  const rejectionMtr = hasRejMtr ? n(row.rejection_mtr) : calculatedRejMtr;
+  const rejectionMtr = isFinishing
+    ? (hasRejMtr ? n(row.rejection_mtr) : 0)
+    : (hasRejMtr ? n(row.rejection_mtr) : calculatedRejMtr);
 
   const hasHtcPcs = row.htc_ok_pcs !== undefined && row.htc_ok_pcs !== null && row.htc_ok_pcs.trim() !== "";
   const hasHtcMtr = row.htc_ok_mtr !== undefined && row.htc_ok_mtr !== null && row.htc_ok_mtr.trim() !== "";
