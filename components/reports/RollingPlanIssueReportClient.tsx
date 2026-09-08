@@ -509,14 +509,27 @@ export default function RollingPlanIssueReportClient() {
       const reqLenEr = parsed.req_len_er || parsed.er_status || (parsed.final_length?.er) || (reqLenMin === reqLenMax ? 'EL' : 'RL');
 
       // 1. Sub-Row 1: ALWAYS the Parent Work Order
-      const parentFinishSize = parsed.master_od && parsed.master_wt
-        ? `${fmt(parsed.master_od, 2)}x${fmt(parsed.master_wt, 2)}`
-        : (p.od && p.wt ? `${fmt(p.od, 2)}x${fmt(p.wt, 2)}` : '38.1x4.73');
+      const parentFinishSize = (p.od && p.wt)
+        ? `${fmt(p.od, 2)}x${fmt(p.wt, 2)}`
+        : (parsed.master_od && parsed.master_wt
+          ? `${fmt(parsed.master_od, 2)}x${fmt(parsed.master_wt, 2)}`
+          : '38.1x4.50');
       const parentFinalLen = p.l1 && p.l2 ? `${fmt(p.l1, 2)}-${fmt(p.l2, 2)}` : (parsed.final_len || '11.55-11.55');
       const parentHollowLen = `${fmt(reqLenMin, 2)}-${fmt(reqLenMax, 2)}`;
       const parentHtcMtr = Number(parsed.master_planned_mtr ?? p.planned_mtr ?? 0);
 
+      const cleanDigits = (s: any) => String(s || '').replace(/\D/g, '');
+      const isSameWo = (id1?: string, no1?: string, id2?: string, no2?: string) => {
+        if (id1 && id2 && id1 === id2) return true;
+        const d1 = cleanDigits(no1);
+        const d2 = cleanDigits(no2);
+        if (d1 && d2 && d1 === d2) return true;
+        if (no1 && no2 && String(no1).trim().toLowerCase() === String(no2).trim().toLowerCase()) return true;
+        return false;
+      };
+
       const childSubRows: Array<{
+        workOrderId?: string;
         catg: string;
         finishSize: string;
         finalLen: string;
@@ -527,6 +540,7 @@ export default function RollingPlanIssueReportClient() {
         isParent?: boolean;
       }> = [
         {
+          workOrderId: p.work_order_id,
           catg: parsed.catg || catg,
           finishSize: parentFinishSize,
           finalLen: parentFinalLen,
@@ -538,25 +552,37 @@ export default function RollingPlanIssueReportClient() {
         },
       ];
 
-      // 2. Sub-Rows 2..N: All linked Child Work Orders
+      // 2. Sub-Rows 2..N: All linked Child Work Orders (without duplicates or master wo)
       const childOrders: any[] = parsed.child_work_orders || [];
       childOrders.forEach((c: any) => {
-        if (c.work_order_no && c.work_order_no !== p.work_order_no) {
-          const cFinishSize = c.finish_size || `${fmt(c.size_od ?? p.od, 2)}x${fmt(c.size_wt ?? p.wt, 2)}`;
-          const cFinalLen = c.final_len || (c.l1 && c.l2 ? `${fmt(c.l1, 2)}-${fmt(c.l2, 2)}` : `${fmt(c.l1 || 6, 2)}-${fmt(c.l2 || 6, 2)}`);
-          const cHollowLen = c.hollow_len || parentHollowLen;
-          const cMtr = Number(c.htc_mtr ?? c.planned_mtr ?? 0);
-          childSubRows.push({
-            catg: c.catg || catg,
-            finishSize: cFinishSize,
-            finalLen: cFinalLen,
-            woNo: c.work_order_no,
-            customer: c.customer_name || p.customer_name || 'Standard Stock',
-            hollowLen: cHollowLen,
-            htcMtr: cMtr,
-            isParent: false,
-          });
+        // Exclude if it's the parent work order!
+        if (isSameWo(c.work_order_id, c.work_order_no, p.work_order_id, p.work_order_no)) {
+          return;
         }
+        // Exclude if already in childSubRows!
+        if (childSubRows.some((r) => isSameWo(c.work_order_id, c.work_order_no, r.workOrderId, r.woNo))) {
+          return;
+        }
+
+        const cFinishSize = (c.size_od && c.size_wt)
+          ? `${fmt(c.size_od, 2)}x${fmt(c.size_wt, 2)}`
+          : (c.finish_size && !c.finish_size.includes('4.73')
+            ? c.finish_size
+            : (p.od && p.wt ? `${fmt(p.od, 2)}x${fmt(p.wt, 2)}` : '38.1x4.50'));
+        const cFinalLen = c.final_len || (c.l1 && c.l2 ? `${fmt(c.l1, 2)}-${fmt(c.l2, 2)}` : `${fmt(c.l1 || 6, 2)}-${fmt(c.l2 || 6, 2)}`);
+        const cHollowLen = c.hollow_len || parentHollowLen;
+        const cMtr = Number(c.htc_mtr ?? c.planned_mtr ?? 0);
+        childSubRows.push({
+          workOrderId: c.work_order_id,
+          catg: c.catg || catg,
+          finishSize: cFinishSize,
+          finalLen: cFinalLen,
+          woNo: c.work_order_no,
+          customer: c.customer_name || p.customer_name || 'Standard Stock',
+          hollowLen: cHollowLen,
+          htcMtr: cMtr,
+          isParent: false,
+        });
       });
 
       // Also discover child plans from the plans table that might not be in parsed.child_work_orders
@@ -574,26 +600,38 @@ export default function RollingPlanIssueReportClient() {
       });
 
       dbChildren.forEach((cp) => {
-        if (!childSubRows.some((r) => r.woNo === cp.work_order_no)) {
-          let cpSt: any = {};
-          try {
-            cpSt = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {};
-          } catch {}
-          const cFinishSize = cpSt.finish_size || (cp.od && cp.wt ? `${fmt(cp.od, 2)}x${fmt(cp.wt, 2)}` : `${fmt(p.od, 2)}x${fmt(p.wt, 2)}`);
-          const cFinalLen = cpSt.final_len || (cp.l1 && cp.l2 ? `${fmt(cp.l1, 2)}-${fmt(cp.l2, 2)}` : `${fmt(cp.l1 || 6, 2)}-${fmt(cp.l2 || 6, 2)}`);
-          const cHollowLen = cpSt.hollow_len || parentHollowLen;
-          const cMtr = Number(cpSt.htc_mtr ?? cpSt.planned_mtr ?? cp.planned_qty ?? cp.planned_mtr ?? 0);
-          childSubRows.push({
-            catg: cpSt.catg || catg,
-            finishSize: cFinishSize,
-            finalLen: cFinalLen,
-            woNo: cp.work_order_no,
-            customer: cp.customer_name || p.customer_name || 'Standard Stock',
-            hollowLen: cHollowLen,
-            htcMtr: cMtr,
-            isParent: false,
-          });
+        // Exclude if it's the parent work order!
+        if (isSameWo(cp.work_order_id, cp.work_order_no, p.work_order_id, p.work_order_no)) {
+          return;
         }
+        // Exclude if already in childSubRows!
+        if (childSubRows.some((r) => isSameWo(cp.work_order_id, cp.work_order_no, r.workOrderId, r.woNo))) {
+          return;
+        }
+
+        let cpSt: any = {};
+        try {
+          cpSt = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {};
+        } catch {}
+        const cFinishSize = (cp.od && cp.wt)
+          ? `${fmt(cp.od, 2)}x${fmt(cp.wt, 2)}`
+          : (cpSt.finish_size && !cpSt.finish_size.includes('4.73')
+            ? cpSt.finish_size
+            : (p.od && p.wt ? `${fmt(p.od, 2)}x${fmt(p.wt, 2)}` : '38.1x4.50'));
+        const cFinalLen = cpSt.final_len || (cp.l1 && cp.l2 ? `${fmt(cp.l1, 2)}-${fmt(cp.l2, 2)}` : `${fmt(cp.l1 || 6, 2)}-${fmt(cp.l2 || 6, 2)}`);
+        const cHollowLen = cpSt.hollow_len || parentHollowLen;
+        const cMtr = Number(cpSt.htc_mtr ?? cpSt.planned_mtr ?? cp.planned_qty ?? cp.planned_mtr ?? 0);
+        childSubRows.push({
+          workOrderId: cp.work_order_id,
+          catg: cpSt.catg || catg,
+          finishSize: cFinishSize,
+          finalLen: cFinalLen,
+          woNo: cp.work_order_no,
+          customer: cp.customer_name || p.customer_name || 'Standard Stock',
+          hollowLen: cHollowLen,
+          htcMtr: cMtr,
+          isParent: false,
+        });
       });
 
       // 9. RM OD (mm)
@@ -1596,7 +1634,14 @@ export default function RollingPlanIssueReportClient() {
 
                     const isMaster = !!parsedStatus?.is_master;
                     const isChild = !!parsedStatus?.is_child;
-                    const childOrders: any[] = parsedStatus?.child_work_orders || [];
+                    const rawChildOrders: any[] = parsedStatus?.child_work_orders || [];
+                    const childOrders = rawChildOrders.filter((c: any) => {
+                      if (c.work_order_id && p.work_order_id && c.work_order_id === p.work_order_id) return false;
+                      const cDigits = String(c.work_order_no || '').replace(/\D/g, '');
+                      const pDigits = String(p.work_order_no || '').replace(/\D/g, '');
+                      if (cDigits && pDigits && cDigits === pDigits) return false;
+                      return true;
+                    });
                     const isExpanded = expandedMasters[p.id];
 
                     return (
@@ -1725,7 +1770,7 @@ export default function RollingPlanIssueReportClient() {
                                         <td className="py-1 text-slate-600 font-sans">{c.customer_name || '—'}</td>
                                         <td className="py-1 text-slate-600">{c.grade || p.grade}</td>
                                         <td className="py-1 text-slate-700">
-                                          {fmt(c.size_od ?? p.od)} × {fmt(c.size_wt ?? p.wt)} mm
+                                          {fmt(c.size_od && Number(c.size_od) > 0 ? c.size_od : p.od)} × {fmt(c.size_wt && Number(c.size_wt) > 0 && Number(c.size_wt) !== 4.73 ? c.size_wt : p.wt)} mm
                                         </td>
                                         <td className="py-1 text-right font-black text-indigo-950">
                                           {fmt(c.planned_pcs ?? 0, 0)}

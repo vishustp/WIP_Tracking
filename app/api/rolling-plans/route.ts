@@ -1056,7 +1056,7 @@ export async function PUT(req: NextRequest) {
           customer_name: childWo?.customer_name ?? existingChildMeta?.customer_name ?? null,
           grade: childWo?.grade ?? existingChildMeta?.grade ?? null,
           size_od: childWo?.size_od ?? existingChildMeta?.size_od ?? null,
-          size_wt: childWo?.size_wt ?? existingChildMeta?.size_wt ?? null,
+          size_wt: childWo?.size_wt ?? (existingChildMeta?.size_wt && existingChildMeta.size_wt !== 4.73 ? existingChildMeta.size_wt : null),
           l1: childWo?.l1 ?? existingChildMeta?.l1 ?? null,
           l2: childWo?.l2 ?? existingChildMeta?.l2 ?? null,
           planned_pcs: childPcs,
@@ -1064,7 +1064,11 @@ export async function PUT(req: NextRequest) {
           planned_mt: childMt,
           plan_id: cp.id,
           catg: effCatg,
-          finish_size: existingChildMeta?.finish_size || `${childWo?.size_od || 0}x${childWo?.size_wt || 0}`,
+          finish_size: (childWo?.size_od && childWo?.size_wt)
+            ? `${childWo.size_od}x${childWo.size_wt}`
+            : (existingChildMeta?.finish_size && !existingChildMeta.finish_size.includes('4.73')
+              ? existingChildMeta.finish_size
+              : `${childWo?.size_od || targetWo?.size_od || 38.1}x${childWo?.size_wt || targetWo?.size_wt || 4.5}`),
           final_len: existingChildMeta?.final_len || `${childWo?.l1 || 0}-${childWo?.l2 || 0}`,
           hollow_len: `${effMinLen}-${effMaxLen}`,
           htc_mtr: childMtr,
@@ -1167,6 +1171,8 @@ export async function PUT(req: NextRequest) {
       parsedStatus.total_campaign_pcs = totalCampaignPcs;
       parsedStatus.total_campaign_mtr = totalCampaignMtr;
       parsedStatus.total_campaign_mt = totalCampaignMt;
+      parsedStatus.master_wt = targetWo?.size_wt ?? (parsedStatus.master_wt && parsedStatus.master_wt !== 4.73 ? parsedStatus.master_wt : 4.5);
+      parsedStatus.master_od = targetWo?.size_od ?? (parsedStatus.master_od || 38.1);
       parsedStatus.child_work_orders = updatedChildMetadata;
 
       masterUpdateObj.status = JSON.stringify(parsedStatus);

@@ -2584,7 +2584,15 @@ export default function RollingPlanForm() {
 
                   const isMaster = !!parsedStatus?.is_master;
                   const isChild = !!parsedStatus?.is_child;
-                  const childOrders = parsedStatus?.child_work_orders || [];
+                  const rawChildOrders: any[] = parsedStatus?.child_work_orders || [];
+                  // Exclude the master plan itself if it was mistakenly stored in child_work_orders
+                  const childOrders = rawChildOrders.filter((c: any) => {
+                    if (c.work_order_id && p.work_order_id && c.work_order_id === p.work_order_id) return false;
+                    const cDigits = String(c.work_order_no || '').replace(/\D/g, '');
+                    const pDigits = String(p.work_order_no || '').replace(/\D/g, '');
+                    if (cDigits && pDigits && cDigits === pDigits) return false;
+                    return true;
+                  });
                   const isExpanded = expandedMasterPlans[p.id];
 
                   return (
@@ -2804,14 +2812,25 @@ export default function RollingPlanForm() {
                                         </td>
                                         <td className="px-2 py-1.5 text-slate-600">{c.grade || '—'}</td>
                                         <td className="px-2 py-1.5 font-mono">
-                                          <div className="font-semibold">{c.size_od} × {c.size_wt} mm</div>
                                           {(() => {
-                                            const childLenStr = formatFinalSizeLength({
-                                              l1: c.l1,
-                                              l2: c.l2,
-                                              avg_length: (c.l1 && c.l2) ? (Number(c.l1) + Number(c.l2)) / 2 : (c.l1 || c.l2 || p.avg_length),
-                                            });
-                                            return childLenStr ? <div className="text-[10px] text-slate-500">{childLenStr}</div> : null;
+                                            const childWoMatch = wos.find(
+                                              (w) => w.id === c.work_order_id || (w.work_order_no && c.work_order_no && String(w.work_order_no).replace(/\D/g, '') === String(c.work_order_no).replace(/\D/g, ''))
+                                            );
+                                            const dispOd = childWoMatch?.size_od ?? (c.size_od && Number(c.size_od) > 0 ? c.size_od : p.od);
+                                            const dispWt = childWoMatch?.size_wt ?? (c.size_wt && Number(c.size_wt) > 0 && Number(c.size_wt) !== 4.73 ? c.size_wt : (childWoMatch?.size_wt ?? p.wt));
+                                            return (
+                                              <>
+                                                <div className="font-semibold">{fmt(dispOd)} × {fmt(dispWt)} mm</div>
+                                                {(() => {
+                                                  const childLenStr = formatFinalSizeLength({
+                                                    l1: childWoMatch?.l1 ?? c.l1,
+                                                    l2: childWoMatch?.l2 ?? c.l2,
+                                                    avg_length: (c.l1 && c.l2) ? (Number(c.l1) + Number(c.l2)) / 2 : (c.l1 || c.l2 || p.avg_length),
+                                                  });
+                                                  return childLenStr ? <div className="text-[10px] text-slate-500">{childLenStr}</div> : null;
+                                                })()}
+                                              </>
+                                            );
                                           })()}
                                         </td>
                                         {(() => {
