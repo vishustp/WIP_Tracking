@@ -96,12 +96,11 @@ export interface SelectedOrderEntry {
   availableMtr: number;
 }
 
-const fmt = (n: number | null | undefined, digits = 2) =>
-  n == null
-    ? '—'
-    : Number(n).toLocaleString(undefined, {
-        maximumFractionDigits: digits,
-      });
+const fmt = (n: number | string | null | undefined, digits = 2) => {
+  if (n == null || n === '') return '—';
+  const num = Number(n);
+  return isNaN(num) ? String(n) : num.toLocaleString(undefined, { maximumFractionDigits: digits });
+};
 
 const formatFinalSizeLength = (p: { l1?: number | null; l2?: number | null; avg_length?: number | null }) => {
   const hl1 = Number(p.l1 || 0);
