@@ -2219,7 +2219,26 @@ export default function ProductionEntryGrid() {
 
         // Combine master order and child orders for the dialog
         const masterCalc = calc(bundlingCampaign);
-        const ordersList = [
+        const ordersList: Array<{
+          id: any;
+          work_order_no: any;
+          customer_name: any;
+          grade: any;
+          size_od: any;
+          size_wt: any;
+          avg: any;
+          isMaster: boolean;
+          total_order_pcs: number;
+          total_order_mtr: number;
+          total_order_mt: number;
+          balance_to_make_pcs: number;
+          balance_to_make_mtr: number;
+          balance_to_make_mt: number;
+          finished_pcs: number;
+          finished_mtr: number;
+          capping_pcs: number;
+          capping_mtr: number;
+        }> = [
           {
             id: bundlingCampaign.work_order_id,
             work_order_no: bundlingCampaign.work_order_no,
@@ -2270,7 +2289,9 @@ export default function ProductionEntryGrid() {
               balance_to_make_pcs: childBalPcs,
               balance_to_make_mtr: childBalMtr,
               balance_to_make_mt: childBalMt,
+              finished_pcs: childFinishedPcs,
               finished_mtr: childFinishedMtr,
+              capping_pcs: childCapPcs,
               capping_mtr: childCapMtr,
             };
           }),
