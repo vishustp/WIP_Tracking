@@ -1,7 +1,7 @@
-// hooks/useHistory.ts
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ProductionEntry } from "@/types";
+import { extractPcsFromRemarks } from "@/lib/productionUtils";
 
 export function useHistory(
   search: string,
@@ -119,8 +119,12 @@ export function useHistory(
         const rejMtr = Number(entry.rejection_mtr || 0);
         const htcMtr = Number(entry.htc_ok_mtr || 0);
 
-        // For MH stages (Rolling, Hollow HT), pieces MUST be calculated from mother hollow length
-        const outputPcs = isMhStage && mhLen > 0
+        const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(entry.remarks);
+
+        // If exact piece count was encoded in remarks (e.g. for Finishing or manual piece overrides), respect it directly!
+        const outputPcs = parsedPcs != null
+          ? parsedPcs
+          : isMhStage && mhLen > 0
           ? Math.round(outMtr / mhLen)
           : (entry.output_pcs != null && Number(entry.output_pcs) > 0
               ? Math.round(Number(entry.output_pcs))
@@ -132,7 +136,9 @@ export function useHistory(
               ? Math.round(Number(entry.input_pcs))
               : Math.round(inMtr / effectiveLen));
 
-        const rejectionPcs = isMhStage && mhLen > 0
+        const rejectionPcs = parsedRejPcs != null
+          ? parsedRejPcs
+          : isMhStage && mhLen > 0
           ? Math.round(rejMtr / mhLen)
           : (entry.rejection_pcs != null && Number(entry.rejection_pcs) > 0
               ? Math.round(Number(entry.rejection_pcs))
@@ -146,6 +152,7 @@ export function useHistory(
 
         return {
           ...entry,
+          remarks: cleanRemarks || entry.remarks,
           mh_avg_length: mhLen > 0 ? mhLen : undefined,
           mh_l1: plan?.mh_l1,
           mh_l2: plan?.mh_l2,

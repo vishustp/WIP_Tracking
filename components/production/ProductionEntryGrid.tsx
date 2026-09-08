@@ -24,7 +24,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useQueue } from "@/hooks/useQueue";
 import { useHistory } from "@/hooks/useHistory";
 import { validateProductionEntry } from "@/lib/productionValidation";
-import { calc, fmt, n, mtrFromPcs, pcsFromMtr, mtFromMtr } from "@/lib/productionUtils";
+import { calc, fmt, n, mtrFromPcs, pcsFromMtr, mtFromMtr, attachPcsToRemarks, extractPcsFromRemarks } from "@/lib/productionUtils";
 import { StageCode, STAGES, Row, ProductionEntry } from "@/types";
 import { usePermissions, getGroupConfig, getFormAccess } from "@/lib/permissions";
 import FormAccessBanner from "@/components/common/FormAccessBanner";
@@ -449,7 +449,7 @@ export default function ProductionEntryGrid() {
           rejection_pcs: d.rejectionPcs || null,
           htc_ok_pcs: stage === "ROLLING" ? (d.htcPcs || null) : null,
           heat_lot_no: r.heat_lot_no || null,
-          remarks: r.remarks || null,
+          remarks: attachPcsToRemarks(r.remarks, d.pcs, d.rejectionPcs) || null,
         };
       });
 
@@ -604,15 +604,16 @@ export default function ProductionEntryGrid() {
         const sumPcs = bundlesForWo.reduce((s, b) => s + n(b.pcs), 0);
         const sumMtr = bundlesForWo.reduce((s, b) => s + n(b.mtr), 0);
         const bundleNos = bundlesForWo.map((b) => b.bundle_no).filter(Boolean).join(", ");
+        const baseRemarks =
+          bundlesForWo.length > 1
+            ? `Multi-Bundle (${bundlesForWo.length} bundles: ${sumPcs} PCS)`
+            : r.remarks;
         return {
           ...r,
           pcs: String(sumPcs),
           mtr: String(Number(sumMtr.toFixed(3))),
           heat_lot_no: bundleNos || r.heat_lot_no,
-          remarks:
-            bundlesForWo.length > 1
-              ? `Multi-Bundle (${bundlesForWo.length} bundles: ${sumPcs} PCS)`
-              : r.remarks,
+          remarks: attachPcsToRemarks(baseRemarks, sumPcs, 0),
         };
       })
     );
@@ -690,21 +691,25 @@ export default function ProductionEntryGrid() {
 
     setBundlingSaving(true);
     try {
-      const payload = validBundles.map((b) => ({
-        work_order_id: b.wo_id,
-        route_id: bundlingCampaign.route_id,
-        stage_code: "FINISHING",
-        input_qty: n(b.mtr),
-        output_qty: n(b.mtr),
-        rejection_qty: 0,
-        htc_ok: 0,
-        heat_lot_no: b.bundle_no || null,
-        remarks: b.remarks
+      const payload = validBundles.map((b) => {
+        const baseRemarks = b.remarks
           ? `Bundle ${b.bundle_no}: ${b.remarks}`
           : b.bundle_no
           ? `Bundle: ${b.bundle_no}`
-          : "Campaign Bundling",
-      }));
+          : "Campaign Bundling";
+        return {
+          work_order_id: b.wo_id,
+          route_id: bundlingCampaign.route_id,
+          stage_code: "FINISHING",
+          input_qty: n(b.mtr),
+          output_qty: n(b.mtr),
+          rejection_qty: 0,
+          htc_ok: 0,
+          output_pcs: n(b.pcs) || null,
+          heat_lot_no: b.bundle_no || null,
+          remarks: attachPcsToRemarks(baseRemarks, n(b.pcs), 0),
+        };
+      });
 
       const res = await fetch("/api/production/record", {
         method: "POST",
@@ -772,10 +777,15 @@ export default function ProductionEntryGrid() {
     setEditing(entry);
     const avg = getEntryAvgLength(entry);
     const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
-    const effOutPcs = isMhStage && avg > 0
+    const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(entry.remarks);
+    const effOutPcs = parsedPcs != null
+      ? parsedPcs
+      : isMhStage && avg > 0
       ? Math.round(Number(entry.output_mtr || 0) / avg)
       : (Number(entry.output_pcs || 0) > 0 ? Math.round(Number(entry.output_pcs)) : (avg > 0 && Number(entry.output_mtr || 0) > 0 ? Math.round(Number(entry.output_mtr) / avg) : ""));
-    const effRejPcs = isMhStage && avg > 0
+    const effRejPcs = parsedRejPcs != null
+      ? parsedRejPcs
+      : isMhStage && avg > 0
       ? Math.round(Number(entry.rejection_mtr || 0) / avg)
       : (Number(entry.rejection_pcs || 0) > 0 ? Math.round(Number(entry.rejection_pcs)) : (avg > 0 && Number(entry.rejection_mtr || 0) > 0 ? Math.round(Number(entry.rejection_mtr) / avg) : ""));
     const effHtcPcs = isMhStage && avg > 0
@@ -790,7 +800,7 @@ export default function ProductionEntryGrid() {
     setEditHtcMtr(String(entry.htc_ok_mtr || ""));
     setEditHtcPcs(String(effHtcPcs));
     setEditHeatLot(entry.heat_lot_no || "");
-    setEditRemarks(entry.remarks || "");
+    setEditRemarks(cleanRemarks || entry.remarks || "");
   }
 
   function changeEditPcs(value: string) {
@@ -851,9 +861,11 @@ export default function ProductionEntryGrid() {
     }
 
     const avg = getEntryAvgLength(editing);
-    const mtr = editPcs.trim() !== "" ? mtrFromPcs(n(editPcs), avg) : n(editMtr);
-    const rejection = editRejectionPcs.trim() !== "" ? mtrFromPcs(n(editRejectionPcs), avg) : n(editRejectionMtr);
+    const isFinishing = editing.stage_code === "FINISHING";
+    const mtr = isFinishing ? n(editMtr) : (editPcs.trim() !== "" ? mtrFromPcs(n(editPcs), avg) : n(editMtr));
+    const rejection = isFinishing ? n(editRejectionMtr) : (editRejectionPcs.trim() !== "" ? mtrFromPcs(n(editRejectionPcs), avg) : n(editRejectionMtr));
     const htc = editHtcPcs.trim() !== "" ? mtrFromPcs(n(editHtcPcs), avg) : n(editHtcMtr);
+    const finalRemarks = attachPcsToRemarks(editRemarks, n(editPcs), n(editRejectionPcs));
 
     if (!editDate) {
       setError("Production date is required.");
@@ -890,7 +902,7 @@ export default function ProductionEntryGrid() {
         p_rejection_qty: rejection,
         p_htc_ok: editing.stage_code === "ROLLING" ? htc : 0,
         p_heat_lot_no: editHeatLot.trim() || null,
-        p_remarks: editRemarks.trim() || null,
+        p_remarks: finalRemarks.trim() || null,
       });
       if (rpcError) throw rpcError;
 

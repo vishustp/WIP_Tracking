@@ -551,7 +551,13 @@ export function useQueue(stage: StageCode) {
                 l.work_order_id === r.work_order_id &&
                 (!finishingStageId || l.stage_id === finishingStageId)
             );
-            const finishedPcs = finishedLogs.reduce((sum: number, l: any) => sum + Number(l.output_pcs || 0) + Number(l.rejection_pcs || 0), 0);
+            const finishedPcs = finishedLogs.reduce((sum: number, l: any) => {
+              const pcsMatch = l.remarks ? l.remarks.match(/\[PCS:(\d+)\]/i) : null;
+              const rejMatch = l.remarks ? l.remarks.match(/\[REJ_PCS:(\d+)\]/i) : null;
+              const outP = pcsMatch ? parseInt(pcsMatch[1], 10) : (Number(l.output_pcs || 0) > 0 ? Number(l.output_pcs) : (effAvg > 0 ? Math.round(Number(l.output_qty || 0) / effAvg) : 0));
+              const rejP = rejMatch ? parseInt(rejMatch[1], 10) : (Number(l.rejection_pcs || 0) > 0 ? Number(l.rejection_pcs) : (effAvg > 0 ? Math.round(Number(l.rejection_qty || 0) / effAvg) : 0));
+              return sum + outP + rejP;
+            }, 0);
             const availPcs = Math.max(0, qcOk + finDivInPcs - finishedPcs - finDivOutPcs);
             const availMtr: number = effAvg > 0 ? Number((availPcs * effAvg).toFixed(3)) : Math.max(0, (Number(r.balance_to_make_mtr) || 0) + finDivIn - finDivOut);
             const od = Number(r.od || 0);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { attachPcsToRemarks } from '@/lib/productionUtils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -44,9 +45,15 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
           routeId = rp?.process_route_id || defaultRouteId;
         }
+        const finalRemarks = attachPcsToRemarks(
+          item.remarks,
+          Number(item.output_pcs || 0) || null,
+          Number(item.rejection_pcs || 0) || null
+        );
         return {
           ...item,
           route_id: routeId,
+          remarks: finalRemarks || null,
         };
       })
     );

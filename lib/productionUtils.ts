@@ -144,3 +144,41 @@ export const calculateYieldWithScrap = (
   return Math.min(100, Math.max(0, Math.round(yieldVal * 10) / 10));
 };
 
+export function attachPcsToRemarks(
+  remarks: string | null | undefined,
+  pcs?: number | null,
+  rejPcs?: number | null
+): string {
+  const clean = (remarks || "")
+    .replace(/\[PCS:\d+\]/gi, "")
+    .replace(/\[REJ_PCS:\d+\]/gi, "")
+    .trim();
+  const tags: string[] = [];
+  if (pcs != null && !isNaN(Number(pcs)) && Number(pcs) > 0) {
+    tags.push(`[PCS:${Math.round(Number(pcs))}]`);
+  }
+  if (rejPcs != null && !isNaN(Number(rejPcs)) && Number(rejPcs) > 0) {
+    tags.push(`[REJ_PCS:${Math.round(Number(rejPcs))}]`);
+  }
+  if (tags.length === 0) return clean;
+  return clean ? `${clean} ${tags.join(" ")}` : tags.join(" ");
+}
+
+export function extractPcsFromRemarks(remarks: string | null | undefined): {
+  pcs: number | null;
+  rejPcs: number | null;
+  cleanRemarks: string;
+} {
+  if (!remarks) return { pcs: null, rejPcs: null, cleanRemarks: "" };
+  const pcsMatch = remarks.match(/\[PCS:(\d+)\]/i);
+  const rejMatch = remarks.match(/\[REJ_PCS:(\d+)\]/i);
+  const pcs = pcsMatch ? parseInt(pcsMatch[1], 10) : null;
+  const rejPcs = rejMatch ? parseInt(rejMatch[1], 10) : null;
+  const cleanRemarks = remarks
+    .replace(/\[PCS:\d+\]/gi, "")
+    .replace(/\[REJ_PCS:\d+\]/gi, "")
+    .trim();
+  return { pcs, rejPcs, cleanRemarks };
+}
+
+

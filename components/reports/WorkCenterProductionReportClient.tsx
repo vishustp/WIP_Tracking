@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { ProductionEntry, StageCode } from '@/types';
-import { mtFromMtr } from '@/lib/productionUtils';
+import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
 import { toast } from 'sonner';
 
 interface WorkCenterTabConfig {
@@ -117,7 +117,17 @@ export default function WorkCenterProductionReportClient() {
       });
 
       if (error) throw error;
-      setEntries((data as ProductionEntry[]) || []);
+      const raw = (data as ProductionEntry[]) || [];
+      const enriched = raw.map((e) => {
+        const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(e.remarks);
+        return {
+          ...e,
+          output_pcs: parsedPcs != null ? parsedPcs : e.output_pcs,
+          rejection_pcs: parsedRejPcs != null ? parsedRejPcs : e.rejection_pcs,
+          remarks: cleanRemarks || e.remarks,
+        };
+      });
+      setEntries(enriched);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to load production entries.');
       setEntries([]);
