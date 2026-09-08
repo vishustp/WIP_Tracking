@@ -3181,7 +3181,7 @@ export default function RollingPlanForm() {
                   className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium cursor-pointer"
                 >
                   <option value="ALL">All Grades</option>
-                  {Array.from(new Set(availableWosToAdd.map((w) => w.grade).filter(Boolean))).map((g) => (
+                  {availableGrades.map((g) => (
                     <option key={g} value={g}>
                       {g}
                     </option>
