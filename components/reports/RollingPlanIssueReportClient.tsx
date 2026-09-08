@@ -14,6 +14,8 @@ import {
   X,
   FileText,
   Table as TableIcon,
+  Edit2,
+  CheckCircle2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -101,6 +103,7 @@ export interface FactoryPlanRow {
   monthStr: string;
   issueDate: string;
   prevPlanNo: string;
+  plan?: Plan;
   childSubRows: Array<{
     catg: string;
     finishSize: string;
@@ -109,6 +112,7 @@ export interface FactoryPlanRow {
     customer: string;
     hollowLen: string;
     htcMtr: number;
+    isParent?: boolean;
   }>;
 }
 
@@ -145,6 +149,33 @@ export default function RollingPlanIssueReportClient() {
 
   const [expandedMasters, setExpandedMasters] = useState<Record<string, boolean>>({});
   const [selectedPlanForSlip, setSelectedPlanForSlip] = useState<Plan | null>(null);
+
+  // Edit Specs & Tolerances modal state
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editCatg, setEditCatg] = useState('CDS');
+  const [editSpec, setEditSpec] = useState('ASME SA210 Gr.A1');
+  const [editGrade, setEditGrade] = useState('SAE-1018');
+  const [editIbrStatus, setEditIbrStatus] = useState('IBR');
+  const [editRmOd, setEditRmOd] = useState('63.00');
+  const [editRmLenMin, setEditRmLenMin] = useState('2.030');
+  const [editRmLenMax, setEditRmLenMax] = useState('2.035');
+  const [editPmOd, setEditPmOd] = useState('66.0');
+  const [editPmWt, setEditPmWt] = useState('6.00');
+  const [editCustOd, setEditCustOd] = useState('47.00');
+  const [editCustWt, setEditCustWt] = useState('6.25');
+  const [editRollingWt, setEditRollingWt] = useState('6.25');
+  const [editFeLen, setEditFeLen] = useState('0.000');
+  const [editBeLen, setEditBeLen] = useState('0.000');
+  const [editReqLenEr, setEditReqLenEr] = useState('EL');
+  const [editReqLenMin, setEditReqLenMin] = useState('7.53');
+  const [editReqLenMax, setEditReqLenMax] = useState('7.53');
+  const [editTolOdMin, setEditTolOdMin] = useState('46.50');
+  const [editTolOdMax, setEditTolOdMax] = useState('47.40');
+  const [editTolWtMin, setEditTolWtMin] = useState('5.78');
+  const [editTolWtMax, setEditTolWtMax] = useState('6.88');
+  const [editProcessYieldPct, setEditProcessYieldPct] = useState('95.22');
+  const [editPlannedPcs, setEditPlannedPcs] = useState('180');
 
   // View Mode: Factory Cutting Plan (Mill-02) or Standard Table View
   const [viewMode, setViewMode] = useState<'factory' | 'standard'>('factory');
@@ -290,6 +321,111 @@ export default function RollingPlanIssueReportClient() {
     loadData();
   }, [loadData]);
 
+  const openEditSpecs = (p: Plan) => {
+    setEditingPlan(p);
+    let st: any = {};
+    try {
+      st = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {};
+    } catch {}
+
+    setEditCatg(st.catg || 'CDS');
+    setEditSpec(st.spec || 'ASME SA210 Gr.A1');
+    setEditGrade(st.grade || p.grade || 'SAE-1018');
+    setEditIbrStatus(st.ibr_status || 'IBR');
+    setEditRmOd(String(st.rm_od || st.billet?.rm_od || 63.0));
+
+    const rawRMin = st.rm_len_min != null ? Number(st.rm_len_min) : (st.billet?.rm_len_min != null ? Number(st.billet.rm_len_min) : 2.030);
+    setEditRmLenMin(String(rawRMin > 20 ? (rawRMin / 1000).toFixed(3) : rawRMin));
+
+    const rawRMax = st.rm_len_max != null ? Number(st.rm_len_max) : (st.billet?.rm_len_max != null ? Number(st.billet.rm_len_max) : 2.035);
+    setEditRmLenMax(String(rawRMax > 20 ? (rawRMax / 1000).toFixed(3) : rawRMax));
+
+    setEditPmOd(String(st.pm_od || st.piercer_mill?.pm_od || 66.0));
+    setEditPmWt(String(st.pm_wt || st.piercer_mill?.pm_wt || 6.00));
+    setEditCustOd(String(st.cust_od || st.sm?.cust_od || p.mh_od || p.od || 47.00));
+    setEditCustWt(String(st.cust_wt || st.sm?.cust_wt || p.mh_wt || p.wt || 6.25));
+    setEditRollingWt(String(st.rolling_wt || st.sm?.rolling_wt || st.cust_wt || 6.25));
+    setEditFeLen(String(st.fe_len != null ? st.fe_len : (st.thicken_ends?.fe_len ?? 0.0)));
+    setEditBeLen(String(st.be_len != null ? st.be_len : (st.thicken_ends?.be_len ?? 0.0)));
+    setEditReqLenEr(st.req_len_er || st.final_length?.er || 'EL');
+    setEditReqLenMin(String(st.req_len_min || st.final_length?.min || p.mh_l1 || 7.53));
+    setEditReqLenMax(String(st.req_len_max || st.final_length?.max || p.mh_l2 || 7.53));
+
+    setEditTolOdMin(String(st.tol_od_min != null ? st.tol_od_min : (st.tolerances?.od_min ?? 46.50)));
+    setEditTolOdMax(String(st.tol_od_max != null ? st.tol_od_max : (st.tolerances?.od_max ?? 47.40)));
+    setEditTolWtMin(String(st.tol_wt_min != null ? st.tol_wt_min : (st.tolerances?.wt_min ?? 5.78)));
+    setEditTolWtMax(String(st.tol_wt_max != null ? st.tol_wt_max : (st.tolerances?.wt_max ?? 6.88)));
+    setEditProcessYieldPct(String(st.process_yield_pct != null ? st.process_yield_pct : 95.22));
+    setEditPlannedPcs(String(p.planned_pcs || st.master_planned_pcs || st.plan_qty?.nos || 180));
+  };
+
+  const saveReportSpecs = async () => {
+    if (!editingPlan) return;
+    setEditSaving(true);
+    try {
+      const parsedRMin = Number(editRmLenMin) > 20 ? Number((Number(editRmLenMin) / 1000).toFixed(3)) : (Number(editRmLenMin) || 2.030);
+      const parsedRMax = Number(editRmLenMax) > 20 ? Number((Number(editRmLenMax) / 1000).toFixed(3)) : (Number(editRmLenMax) || parsedRMin);
+
+      const payload: any = {
+        plan_id: editingPlan.id,
+        planned_pcs: Number(editPlannedPcs) || editingPlan.planned_pcs || 1,
+        planned_rolling_date: editingPlan.planned_rolling_date,
+        route_id: editingPlan.route_id,
+        multiple: Number(editingPlan.multiple) || 1,
+        multiple_str: Number(editingPlan.multiple) === 2 ? '2-Multi' : '1',
+        force: true,
+
+        catg: editCatg,
+        spec: editSpec,
+        grade: editGrade,
+        ibr_status: editIbrStatus,
+        rm_od: Number(editRmOd) || 63.0,
+        rm_len_min: parsedRMin,
+        rm_len_max: parsedRMax,
+        pm_od: Number(editPmOd) || 66.0,
+        pm_wt: Number(editPmWt) || 6.00,
+        cust_od: Number(editCustOd) || 47.00,
+        cust_wt: Number(editCustWt) || 6.25,
+        rolling_wt: Number(editRollingWt) || 6.25,
+        fe_len: Number(editFeLen) || 0.0,
+        be_len: Number(editBeLen) || 0.0,
+        req_len_er: editReqLenEr,
+        req_len_min: Number(editReqLenMin) || 7.53,
+        req_len_max: Number(editReqLenMax) || 7.53,
+
+        tol_od_min: Number(editTolOdMin),
+        tol_od_max: Number(editTolOdMax),
+        tol_wt_min: Number(editTolWtMin),
+        tol_wt_max: Number(editTolWtMax),
+        process_yield_pct: Number(editProcessYieldPct) || 95.22,
+
+        mh_od: Number(editCustOd) || 47.00,
+        mh_wt: Number(editRollingWt) || 6.25,
+        mh_l1: Number(editReqLenMin) || 7.53,
+        mh_l2: Number(editReqLenMax) || 7.53,
+      };
+
+      const res = await fetch('/api/rolling-plans', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update specifications.');
+      }
+
+      toast.success('Specifications and tolerances updated successfully!');
+      setEditingPlan(null);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update specifications.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   // Filter plans based on type (Master, Child, Standard)
   const filteredPlans = useMemo(() => {
     return plans.filter((p) => {
@@ -365,38 +501,100 @@ export default function RollingPlanIssueReportClient() {
       const grade = parsed.grade || p.grade || 'SAE 1018';
       const ibr = parsed.ibr_status || 'IBR';
 
+      // 33. Min, 34. Max
+      const reqLenMin = parsed.req_len_min != null ? Number(parsed.req_len_min) : (parsed.final_length?.min != null ? Number(parsed.final_length.min) : Number(p.mh_l1 || p.l1 || 7.53));
+      const reqLenMax = parsed.req_len_max != null ? Number(parsed.req_len_max) : (parsed.final_length?.max != null ? Number(parsed.final_length.max) : Number(p.mh_l2 || p.l2 || 7.53));
+
+      // 32. E/R = if Min=Max, "EL", "RL"
+      const reqLenEr = parsed.req_len_er || parsed.er_status || (parsed.final_length?.er) || (reqLenMin === reqLenMax ? 'EL' : 'RL');
+
+      // 1. Sub-Row 1: ALWAYS the Parent Work Order
+      const parentFinishSize = parsed.master_od && parsed.master_wt
+        ? `${fmt(parsed.master_od, 2)}x${fmt(parsed.master_wt, 2)}`
+        : (p.od && p.wt ? `${fmt(p.od, 2)}x${fmt(p.wt, 2)}` : '38.1x4.73');
+      const parentFinalLen = p.l1 && p.l2 ? `${fmt(p.l1, 2)}-${fmt(p.l2, 2)}` : (parsed.final_len || '11.55-11.55');
+      const parentHollowLen = `${fmt(reqLenMin, 2)}-${fmt(reqLenMax, 2)}`;
+      const parentHtcMtr = Number(parsed.master_planned_mtr ?? p.planned_mtr ?? 0);
+
+      const childSubRows: Array<{
+        catg: string;
+        finishSize: string;
+        finalLen: string;
+        woNo: string;
+        customer: string;
+        hollowLen: string;
+        htcMtr: number;
+        isParent?: boolean;
+      }> = [
+        {
+          catg: parsed.catg || catg,
+          finishSize: parentFinishSize,
+          finalLen: parentFinalLen,
+          woNo: p.work_order_no,
+          customer: p.customer_name || parsed.master_customer || 'Standard Stock',
+          hollowLen: parentHollowLen,
+          htcMtr: parentHtcMtr,
+          isParent: true,
+        },
+      ];
+
+      // 2. Sub-Rows 2..N: All linked Child Work Orders
       const childOrders: any[] = parsed.child_work_orders || [];
-      let childSubRows = childOrders.map((c: any) => {
-        const cFinishSize = c.finish_size || `${fmt(c.size_od ?? p.od, 2)}x${fmt(c.size_wt ?? p.wt, 2)}`;
-        const cFinalLen = c.final_len || (c.l1 && c.l2 ? `${fmt(c.l1, 2)}-${fmt(c.l2, 2)}` : `${fmt(c.l1 || 6, 2)}-${fmt(c.l2 || 6, 2)}`);
-        const cHollowLen = c.hollow_len || (p.mh_l1 && p.mh_l2 ? `${fmt(p.mh_l1, 2)}-${fmt(p.mh_l2, 2)}` : '7.55-7.55');
-        const cMtr = Number(c.htc_mtr ?? c.planned_mtr ?? 0);
-        return {
-          catg: c.catg || catg,
-          finishSize: cFinishSize,
-          finalLen: cFinalLen,
-          woNo: c.work_order_no || '',
-          customer: c.customer_name || p.customer_name || 'Standard Stock',
-          hollowLen: cHollowLen,
-          htcMtr: cMtr,
-        };
+      childOrders.forEach((c: any) => {
+        if (c.work_order_no && c.work_order_no !== p.work_order_no) {
+          const cFinishSize = c.finish_size || `${fmt(c.size_od ?? p.od, 2)}x${fmt(c.size_wt ?? p.wt, 2)}`;
+          const cFinalLen = c.final_len || (c.l1 && c.l2 ? `${fmt(c.l1, 2)}-${fmt(c.l2, 2)}` : `${fmt(c.l1 || 6, 2)}-${fmt(c.l2 || 6, 2)}`);
+          const cHollowLen = c.hollow_len || parentHollowLen;
+          const cMtr = Number(c.htc_mtr ?? c.planned_mtr ?? 0);
+          childSubRows.push({
+            catg: c.catg || catg,
+            finishSize: cFinishSize,
+            finalLen: cFinalLen,
+            woNo: c.work_order_no,
+            customer: c.customer_name || p.customer_name || 'Standard Stock',
+            hollowLen: cHollowLen,
+            htcMtr: cMtr,
+            isParent: false,
+          });
+        }
       });
 
-      // If no child sub-rows configured, create one for the main WO
-      if (childSubRows.length === 0) {
-        const finishSize = `${fmt(p.od || 38.1, 2)}x${fmt(p.wt || 4.26, 2)}`;
-        const finalLen = p.l1 && p.l2 ? `${fmt(p.l1, 2)}-${fmt(p.l2, 2)}` : '11.8-11.8';
-        const hollowLen = p.mh_l1 && p.mh_l2 ? `${fmt(p.mh_l1, 2)}-${fmt(p.mh_l2, 2)}` : '7.55-7.55';
-        childSubRows.push({
-          catg,
-          finishSize,
-          finalLen,
-          woNo: p.work_order_no,
-          customer: p.customer_name || 'Standard Stock',
-          hollowLen,
-          htcMtr: Number(p.planned_mtr || 0),
-        });
-      }
+      // Also discover child plans from the plans table that might not be in parsed.child_work_orders
+      const dbChildren = plans.filter((cp) => {
+        if (cp.id === p.id) return false;
+        let cpSt: any = {};
+        try {
+          cpSt = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {};
+        } catch {}
+        return (
+          cpSt.master_plan_id === p.id ||
+          cpSt.master_plan_no === p.plan_no ||
+          (p.plan_no && cp.plan_no && cp.plan_no.startsWith(p.plan_no + '-C'))
+        );
+      });
+
+      dbChildren.forEach((cp) => {
+        if (!childSubRows.some((r) => r.woNo === cp.work_order_no)) {
+          let cpSt: any = {};
+          try {
+            cpSt = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {};
+          } catch {}
+          const cFinishSize = cpSt.finish_size || (cp.od && cp.wt ? `${fmt(cp.od, 2)}x${fmt(cp.wt, 2)}` : `${fmt(p.od, 2)}x${fmt(p.wt, 2)}`);
+          const cFinalLen = cpSt.final_len || (cp.l1 && cp.l2 ? `${fmt(cp.l1, 2)}-${fmt(cp.l2, 2)}` : `${fmt(cp.l1 || 6, 2)}-${fmt(cp.l2 || 6, 2)}`);
+          const cHollowLen = cpSt.hollow_len || parentHollowLen;
+          const cMtr = Number(cpSt.htc_mtr ?? cpSt.planned_mtr ?? cp.planned_qty ?? cp.planned_mtr ?? 0);
+          childSubRows.push({
+            catg: cpSt.catg || catg,
+            finishSize: cFinishSize,
+            finalLen: cFinalLen,
+            woNo: cp.work_order_no,
+            customer: cp.customer_name || p.customer_name || 'Standard Stock',
+            hollowLen: cHollowLen,
+            htcMtr: cMtr,
+            isParent: false,
+          });
+        }
+      });
 
       // 9. RM OD (mm)
       const rmOd = parsed.rm_od != null ? Number(parsed.rm_od) : (parsed.billet?.rm_od != null ? Number(parsed.billet.rm_od) : 63.00);
@@ -485,10 +683,11 @@ export default function RollingPlanIssueReportClient() {
         ? parsedPmLen
         : (pmKgMtr > 0 ? Number((billetWtWhf / pmKgMtr).toFixed(2)) : 5.37);
 
-      // 8. Rolling mtr = Calculated from Planned Nos * MH Average Length (or sum of child HTC mtr)
-      const rollingMtr = parsed.rolling_mtr != null && Number(parsed.rolling_mtr) < 100000
-        ? Number(parsed.rolling_mtr)
-        : (childSubRows.length > 0 ? childSubRows.reduce((sum, r) => sum + r.htcMtr, 0) : Number(p.planned_mtr || 0));
+      // 8. Rolling mtr = Calculated from sum of childSubRows HTC mtr or planned_mtr
+      const subRowsTotalMtr = childSubRows.reduce((sum, r) => sum + r.htcMtr, 0);
+      const rollingMtr = subRowsTotalMtr > 0
+        ? subRowsTotalMtr
+        : (parsed.rolling_mtr != null && Number(parsed.rolling_mtr) < 100000 ? Number(parsed.rolling_mtr) : Number(p.planned_mtr || 0));
 
       // 13. Nos
       const parsedNos = parsed.plan_qty?.nos != null ? Number(parsed.plan_qty.nos) : (parsed.plan_qty_nos != null ? Number(parsed.plan_qty_nos) : null);
@@ -498,13 +697,6 @@ export default function RollingPlanIssueReportClient() {
 
       // 14. Mton = (Weight (Kgs) * Nos) / 1000
       const planQtyMton = Number(((weightKg * planQtyNos) / 1000).toFixed(1));
-
-      // 33. Min, 34. Max
-      const reqLenMin = parsed.req_len_min != null ? Number(parsed.req_len_min) : (parsed.final_length?.min != null ? Number(parsed.final_length.min) : Number(p.l1 || 7.55));
-      const reqLenMax = parsed.req_len_max != null ? Number(parsed.req_len_max) : (parsed.final_length?.max != null ? Number(parsed.final_length.max) : Number(p.l2 || 7.55));
-
-      // 32. E/R = if Min=Max, "EL", "RL"
-      const reqLenEr = parsed.req_len_er || parsed.er_status || (parsed.final_length?.er) || (reqLenMin === reqLenMax ? 'EL' : 'RL');
 
       // 35. Multi
       const mult = parsed.multiple_str || (p.multiple > 1 ? `${p.multiple}-Multi` : '1');
@@ -569,6 +761,7 @@ export default function RollingPlanIssueReportClient() {
         monthStr,
         issueDate,
         prevPlanNo,
+        plan: p,
         childSubRows,
       };
     });
@@ -1164,7 +1357,19 @@ export default function RollingPlanIssueReportClient() {
                           
                           {/* 4. W.O. / S.O. No */}
                           <td className="border border-black px-1.5 py-1 font-bold font-mono whitespace-nowrap">
-                            {row.woNo}
+                            <div className="flex items-center justify-between gap-1">
+                              <span>{row.woNo}</span>
+                              {row.plan && (
+                                <button
+                                  type="button"
+                                  onClick={() => openEditSpecs(row.plan!)}
+                                  className="print:hidden p-0.5 rounded text-slate-400 hover:text-amber-700 hover:bg-amber-100 transition cursor-pointer"
+                                  title="Edit Setup Specs & Tolerances"
+                                >
+                                  <Edit2 className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                           
                           {/* 5. Spec */}
@@ -1464,6 +1669,15 @@ export default function RollingPlanIssueReportClient() {
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
+                                onClick={() => openEditSpecs(p)}
+                                className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition cursor-pointer inline-flex items-center gap-1"
+                                title="Edit Setup Specs & Tolerances"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                                Edit Specs
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => setSelectedPlanForSlip(p)}
                                 className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 transition cursor-pointer"
                               >
@@ -1622,6 +1836,365 @@ export default function RollingPlanIssueReportClient() {
               >
                 <Printer className="h-3.5 w-3.5" />
                 Print Slip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Setup Specs & Tolerances Modal */}
+      {editingPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto print:hidden">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="rounded-md bg-amber-100 text-amber-900 px-2 py-0.5 text-xs font-bold font-mono">
+                  EDIT SPECS & TOLERANCES
+                </span>
+                <span className="font-mono font-bold text-slate-900">
+                  Plan #{editingPlan.plan_no} (WO: {editingPlan.work_order_no})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingPlan(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Live Calculation Preview Hook */}
+            {(() => {
+              const parsedRMin = Number(editRmLenMin) > 20 ? Number((Number(editRmLenMin) / 1000).toFixed(3)) : (Number(editRmLenMin) || 2.03);
+              const rmOdNum = Number(editRmOd) || 63.0;
+              const liveWeightKg = (rmOdNum * rmOdNum) * 0.006165 * (parsedRMin * 1000) / 1000;
+              const liveBilletWhf = liveWeightKg * 0.985;
+              const pmOdNum = Number(editPmOd) || 66.0;
+              const pmWtNum = Number(editPmWt) || 6.0;
+              const livePmKgMtr = (pmOdNum - pmWtNum) * pmWtNum * 0.0246615;
+              const livePmLen = livePmKgMtr > 0 ? liveBilletWhf / livePmKgMtr : 0;
+              const custOdNum = Number(editCustOd) || 47.0;
+              const rollingWtNum = Number(editRollingWt) || 6.25;
+              const liveSmKgMtr = (custOdNum - rollingWtNum) * rollingWtNum * 0.0246615;
+              const liveSmLen = liveSmKgMtr > 0 ? liveBilletWhf / liveSmKgMtr : 0;
+              const feLenNum = Number(editFeLen) || 0;
+              const beLenNum = Number(editBeLen) || 0;
+              const liveFeWg = feLenNum * liveSmKgMtr * 1.07;
+              const liveBeWg = beLenNum * liveSmKgMtr * 1.07;
+              const liveEffectiveWg = liveBilletWhf - (liveFeWg + liveBeWg);
+              const liveEffLen = liveSmKgMtr > 0 ? liveEffectiveWg / liveSmKgMtr : 0;
+
+              return (
+                <div className="space-y-4">
+                  {/* Setup Specifications (35-Column Standards) */}
+                  <div className="bg-amber-50/50 rounded-xl p-4 border border-amber-200/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wide flex items-center gap-1.5">
+                        <Flame className="h-4 w-4 text-amber-600" />
+                        <span>Setup Specifications (35-Column Standards)</span>
+                      </h4>
+                      <span className="text-[11px] text-amber-800 font-mono font-semibold">Mill-02 / F-PROD-01A</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Catg</label>
+                        <select
+                          value={editCatg}
+                          onChange={(e) => setEditCatg(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        >
+                          <option value="CDS">CDS</option>
+                          <option value="HRS">HRS</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Spec</label>
+                        <input
+                          type="text"
+                          value={editSpec}
+                          onChange={(e) => setEditSpec(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Grade</label>
+                        <input
+                          type="text"
+                          value={editGrade}
+                          onChange={(e) => setEditGrade(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">IBR / NIBR</label>
+                        <select
+                          value={editIbrStatus}
+                          onChange={(e) => setEditIbrStatus(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        >
+                          <option value="IBR">IBR</option>
+                          <option value="NIBR">NIBR</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">RM OD (mm)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editRmOd}
+                          onChange={(e) => setEditRmOd(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">RM Len Min (m)</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={editRmLenMin}
+                          onChange={(e) => setEditRmLenMin(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">RM Len Max (m)</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={editRmLenMax}
+                          onChange={(e) => setEditRmLenMax(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Planned Pcs</label>
+                        <input
+                          type="number"
+                          value={editPlannedPcs}
+                          onChange={(e) => setEditPlannedPcs(e.target.value)}
+                          className="w-full rounded-lg border border-indigo-300 bg-white px-2.5 py-1.5 text-xs font-mono font-bold text-indigo-900 focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">PM OD (mm)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editPmOd}
+                          onChange={(e) => setEditPmOd(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">PM WT (mm)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editPmWt}
+                          onChange={(e) => setEditPmWt(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Cust OD (mm)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editCustOd}
+                          onChange={(e) => setEditCustOd(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Cust WT (mm)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editCustWt}
+                          onChange={(e) => setEditCustWt(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Rolling WT (mm)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editRollingWt}
+                          onChange={(e) => setEditRollingWt(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">FE Lg (m)</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={editFeLen}
+                          onChange={(e) => setEditFeLen(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">BE Lg (m)</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={editBeLen}
+                          onChange={(e) => setEditBeLen(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">E/R (EL / RL)</label>
+                        <select
+                          value={editReqLenEr}
+                          onChange={(e) => setEditReqLenEr(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        >
+                          <option value="EL">EL (Exact Length)</option>
+                          <option value="RL">RL (Random Length)</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5 col-span-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Min Len (m)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editReqLenMin}
+                            onChange={(e) => setEditReqLenMin(e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Max Len (m)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editReqLenMax}
+                            onChange={(e) => setEditReqLenMax(e.target.value)}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Real-Time Calculation Preview Badge */}
+                    <div className="rounded-lg bg-indigo-50/80 border border-indigo-200 p-2.5 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold uppercase">Billet Weight</span>
+                        <span className="font-mono font-black text-indigo-950">{fmt(liveWeightKg, 2)} kg</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold uppercase">Wt. After WHF</span>
+                        <span className="font-mono font-black text-indigo-950">{fmt(liveBilletWhf, 2)} kg</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold uppercase">PM (Kg/m • Len)</span>
+                        <span className="font-mono font-black text-indigo-950">{fmt(livePmKgMtr, 2)} • {fmt(livePmLen, 2)}m</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold uppercase">SM (Kg/m • Len)</span>
+                        <span className="font-mono font-black text-indigo-950">{fmt(liveSmKgMtr, 2)} • {fmt(liveSmLen, 2)}m</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold uppercase">Effective Len</span>
+                        <span className="font-mono font-black text-emerald-800">{fmt(liveEffLen, 2)} m</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tolerances & Process Yield */}
+                  <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                        <CheckCircle2 className="h-4 w-4 text-teal-600" />
+                        <span>Tolerances & Process Yield</span>
+                      </h4>
+                      <span className="text-[11px] text-slate-500 font-medium">Quality Parameters</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">OD Min (mm)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editTolOdMin}
+                          onChange={(e) => setEditTolOdMin(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">OD Max (mm)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editTolOdMax}
+                          onChange={(e) => setEditTolOdMax(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">WT Min (mm)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editTolWtMin}
+                          onChange={(e) => setEditTolWtMin(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">WT Max (mm)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editTolWtMax}
+                          onChange={(e) => setEditTolWtMax(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Process Yield (%)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editProcessYieldPct}
+                          onChange={(e) => setEditProcessYieldPct(e.target.value)}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setEditingPlan(null)}
+                disabled={editSaving}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveReportSpecs}
+                disabled={editSaving}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-5 py-2 text-xs font-bold text-white hover:bg-indigo-500 transition cursor-pointer disabled:opacity-50"
+              >
+                {editSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                {editSaving ? 'Saving Changes...' : 'Save Specs & Tolerances'}
               </button>
             </div>
           </div>

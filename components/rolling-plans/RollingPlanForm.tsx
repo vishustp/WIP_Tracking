@@ -467,6 +467,31 @@ export default function RollingPlanForm() {
   const [editMhL2, setEditMhL2] = useState('6.5');
   const [editPassRequired, setEditPassRequired] = useState('1');
   const [editMultiple, setEditMultiple] = useState('1');
+
+  // Setup Specifications (35-Column Standards) for Editing Modal
+  const [editCatg, setEditCatg] = useState('CDS');
+  const [editSpec, setEditSpec] = useState('ASME SA210 Gr.A1');
+  const [editGrade, setEditGrade] = useState('SAE-1018');
+  const [editIbrStatus, setEditIbrStatus] = useState('IBR');
+  const [editRmOd, setEditRmOd] = useState('63.00');
+  const [editRmLenMin, setEditRmLenMin] = useState('2.030');
+  const [editRmLenMax, setEditRmLenMax] = useState('2.035');
+  const [editPmOd, setEditPmOd] = useState('66.0');
+  const [editPmWt, setEditPmWt] = useState('6.00');
+  const [editCustOd, setEditCustOd] = useState('47.00');
+  const [editCustWt, setEditCustWt] = useState('6.25');
+  const [editRollingWt, setEditRollingWt] = useState('6.25');
+  const [editFeLen, setEditFeLen] = useState('0.000');
+  const [editBeLen, setEditBeLen] = useState('0.000');
+  const [editReqLenEr, setEditReqLenEr] = useState('EL');
+  const [editReqLenMin, setEditReqLenMin] = useState('7.53');
+  const [editReqLenMax, setEditReqLenMax] = useState('7.53');
+  const [editTolOdMin, setEditTolOdMin] = useState('46.50');
+  const [editTolOdMax, setEditTolOdMax] = useState('47.40');
+  const [editTolWtMin, setEditTolWtMin] = useState('5.78');
+  const [editTolWtMax, setEditTolWtMax] = useState('6.88');
+  const [editProcessYieldPct, setEditProcessYieldPct] = useState('95.22');
+
   const [editChildOrders, setEditChildOrders] = useState<
     Array<{
       work_order_id: string;
@@ -1089,8 +1114,9 @@ export default function RollingPlanForm() {
     
     let isMaster = false;
     let childList: any[] = [];
+    let parsed: any = {};
     try {
-      const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+      parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {};
       if (parsed?.is_master) {
         isMaster = true;
         childList = parsed.child_work_orders || [];
@@ -1109,6 +1135,37 @@ export default function RollingPlanForm() {
     setEditMhL2(p.mh_l2 != null ? String(p.mh_l2) : '6.5');
     setEditPassRequired(String(p.pass_required ?? 1));
     setEditMultiple(String(p.multiple ?? 1));
+
+    // Setup Specifications
+    setEditCatg(parsed.catg || 'CDS');
+    setEditSpec(parsed.spec || 'ASME SA210 Gr.A1');
+    setEditGrade(parsed.grade || p.grade || 'SAE-1018');
+    setEditIbrStatus(parsed.ibr_status || 'IBR');
+    setEditRmOd(String(parsed.rm_od || parsed.billet?.rm_od || 63.0));
+
+    const rawRMin = parsed.rm_len_min != null ? Number(parsed.rm_len_min) : (parsed.billet?.rm_len_min != null ? Number(parsed.billet.rm_len_min) : 2.030);
+    setEditRmLenMin(String(rawRMin > 20 ? (rawRMin / 1000).toFixed(3) : rawRMin));
+
+    const rawRMax = parsed.rm_len_max != null ? Number(parsed.rm_len_max) : (parsed.billet?.rm_len_max != null ? Number(parsed.billet.rm_len_max) : 2.035);
+    setEditRmLenMax(String(rawRMax > 20 ? (rawRMax / 1000).toFixed(3) : rawRMax));
+
+    setEditPmOd(String(parsed.pm_od || parsed.piercer_mill?.pm_od || 66.0));
+    setEditPmWt(String(parsed.pm_wt || parsed.piercer_mill?.pm_wt || 6.00));
+    setEditCustOd(String(parsed.cust_od || parsed.sm?.cust_od || p.mh_od || p.od || 47.00));
+    setEditCustWt(String(parsed.cust_wt || parsed.sm?.cust_wt || p.mh_wt || p.wt || 6.25));
+    setEditRollingWt(String(parsed.rolling_wt || parsed.sm?.rolling_wt || parsed.cust_wt || 6.25));
+    setEditFeLen(String(parsed.fe_len != null ? parsed.fe_len : (parsed.thicken_ends?.fe_len ?? 0.0)));
+    setEditBeLen(String(parsed.be_len != null ? parsed.be_len : (parsed.thicken_ends?.be_len ?? 0.0)));
+    setEditReqLenEr(parsed.req_len_er || parsed.final_length?.er || 'EL');
+    setEditReqLenMin(String(parsed.req_len_min || parsed.final_length?.min || p.mh_l1 || 7.53));
+    setEditReqLenMax(String(parsed.req_len_max || parsed.final_length?.max || p.mh_l2 || 7.53));
+
+    // Tolerances & Yield
+    setEditTolOdMin(String(parsed.tol_od_min != null ? parsed.tol_od_min : (parsed.tolerances?.od_min ?? 46.50)));
+    setEditTolOdMax(String(parsed.tol_od_max != null ? parsed.tol_od_max : (parsed.tolerances?.od_max ?? 47.40)));
+    setEditTolWtMin(String(parsed.tol_wt_min != null ? parsed.tol_wt_min : (parsed.tolerances?.wt_min ?? 5.78)));
+    setEditTolWtMax(String(parsed.tol_wt_max != null ? parsed.tol_wt_max : (parsed.tolerances?.wt_max ?? 6.88)));
+    setEditProcessYieldPct(String(parsed.process_yield_pct != null ? parsed.process_yield_pct : 95.22));
 
     if (isMaster && childList.length > 0) {
       setEditChildOrders(
@@ -1146,36 +1203,67 @@ export default function RollingPlanForm() {
       return;
     }
 
-    const mhOdVal = Number(editMhOd);
-    const mhWtVal = Number(editMhWt);
-    const mhL1Val = Number(editMhL1) || 6.0;
-    const mhL2Val = Number(editMhL2) || 6.5;
+    const mhOdVal = Number(editCustOd) || Number(editMhOd) || 47.0;
+    const mhWtVal = Number(editRollingWt) || Number(editMhWt) || 6.25;
+    const mhL1Val = Number(editReqLenMin) || Number(editMhL1) || 7.53;
+    const mhL2Val = Number(editReqLenMax) || Number(editMhL2) || 7.53;
 
-    if (editMhOd && (!Number.isFinite(mhOdVal) || mhOdVal <= 0)) {
+    if (mhOdVal <= 0) {
       toast.error('Enter valid MH OD.');
       return;
     }
-    if (editMhWt && (!Number.isFinite(mhWtVal) || mhWtVal <= 0)) {
+    if (mhWtVal <= 0) {
       toast.error('Enter valid MH WT.');
       return;
     }
 
     setEditSaving(true);
     try {
+      const parsedRMin = Number(editRmLenMin) > 20 ? Number((Number(editRmLenMin) / 1000).toFixed(3)) : (Number(editRmLenMin) || 2.030);
+      const parsedRMax = Number(editRmLenMax) > 20 ? Number((Number(editRmLenMax) / 1000).toFixed(3)) : (Number(editRmLenMax) || parsedRMin);
+
       const payload: any = {
         plan_id: editing.id,
         planned_pcs: pcs,
         planned_rolling_date: editDate,
         route_id: editRoute,
         multiple: Number(editMultiple) || 1,
+        multiple_str: editMultiple === '2' ? '2-Multi' : '1',
         pass_required: Number(editPassRequired) || 1,
         force: true,
-      };
 
-      if (Number.isFinite(mhOdVal) && mhOdVal > 0) payload.mh_od = mhOdVal;
-      if (Number.isFinite(mhWtVal) && mhWtVal > 0) payload.mh_wt = mhWtVal;
-      if (Number.isFinite(mhL1Val) && mhL1Val > 0) payload.mh_l1 = mhL1Val;
-      if (Number.isFinite(mhL2Val) && mhL2Val > 0) payload.mh_l2 = mhL2Val;
+        // Specifications (35-columns)
+        catg: editCatg,
+        spec: editSpec,
+        grade: editGrade,
+        ibr_status: editIbrStatus,
+        rm_od: Number(editRmOd) || 63.0,
+        rm_len_min: parsedRMin,
+        rm_len_max: parsedRMax,
+        pm_od: Number(editPmOd) || 66.0,
+        pm_wt: Number(editPmWt) || 6.00,
+        cust_od: Number(editCustOd) || 47.00,
+        cust_wt: Number(editCustWt) || 6.25,
+        rolling_wt: Number(editRollingWt) || 6.25,
+        fe_len: Number(editFeLen) || 0.0,
+        be_len: Number(editBeLen) || 0.0,
+        req_len_er: editReqLenEr,
+        req_len_min: Number(editReqLenMin) || 7.53,
+        req_len_max: Number(editReqLenMax) || 7.53,
+
+        // Tolerances & Yield
+        tol_od_min: Number(editTolOdMin),
+        tol_od_max: Number(editTolOdMax),
+        tol_wt_min: Number(editTolWtMin),
+        tol_wt_max: Number(editTolWtMax),
+        process_yield_pct: Number(editProcessYieldPct) || 95.22,
+
+        // Sync mother hollow root columns
+        mh_od: mhOdVal,
+        mh_wt: mhWtVal,
+        mh_l1: mhL1Val,
+        mh_l2: mhL2Val,
+      };
 
       if (editChildOrders.length > 0) {
         payload.child_adjustments = editChildOrders.map((c) => ({
@@ -1196,7 +1284,7 @@ export default function RollingPlanForm() {
         throw new Error(data.error || 'Failed to update rolling plan.');
       }
 
-      toast.success(data.message || 'Rolling plan updated successfully.');
+      toast.success(data.message || 'Rolling plan specifications and tolerances updated successfully.');
       setEditing(null);
       await Promise.all([loadPlans(), loadWorkOrders()]);
     } catch (err: any) {
@@ -3065,6 +3153,218 @@ export default function RollingPlanForm() {
                       value={editPassRequired}
                       onChange={(e) => setEditPassRequired(e.target.value)}
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Setup Specifications (35-Column Standards) */}
+              {(() => {
+                const liveRmOd = Number(editRmOd) || 63.0;
+                const rawLiveRmMin = Number(editRmLenMin) || 2.030;
+                const liveRmMin = rawLiveRmMin > 20 ? Number((rawLiveRmMin / 1000).toFixed(3)) : rawLiveRmMin;
+                const liveWeightKg = Number((((liveRmOd * liveRmOd * 3.14 * 0.007856) / 4) * liveRmMin).toFixed(2));
+                const liveBilletWhf = Number((liveWeightKg * 0.97).toFixed(2));
+
+                const liveCustOd = Number(editCustOd) || 47.0;
+                const liveCustWt = Number(editCustWt) || 6.25;
+                const liveRollingWt = Number(editRollingWt) || liveCustWt;
+
+                const livePmOd = Number(editPmOd) || 66.0;
+                const livePmWt = Number(editPmWt) || 6.00;
+                const livePmKgMtr = (livePmOd > livePmWt && livePmWt > 0) ? Number(((livePmOd - livePmWt) * livePmWt * 0.02467).toFixed(3)) : 8.88;
+                const livePmLen = livePmKgMtr > 0 ? Number((liveBilletWhf / livePmKgMtr).toFixed(2)) : 5.37;
+
+                const liveSmKgMtr = (liveCustOd > liveCustWt && liveCustWt > 0) ? Number(((liveCustOd - liveCustWt) * liveCustWt * 0.02467).toFixed(3)) : 6.28;
+                const liveSmLen = liveSmKgMtr > 0 ? Number((liveBilletWhf / liveSmKgMtr).toFixed(2)) : 7.67;
+
+                const liveFeLen = Number(editFeLen) || 0;
+                const liveBeLen = Number(editBeLen) || 0;
+                const liveFeWg = Number((liveSmKgMtr * liveFeLen).toFixed(2));
+                const liveBeWg = Number((liveSmKgMtr * liveBeLen).toFixed(2));
+                const liveEffectiveWg = Number(Math.max(0, liveBilletWhf - liveFeWg - liveBeWg).toFixed(2));
+                const liveEffLen = liveSmKgMtr > 0 ? Number((liveEffectiveWg / liveSmKgMtr).toFixed(2)) : liveSmLen;
+
+                return (
+                  <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                        <Flame className="h-4 w-4 text-orange-600" />
+                        <span>Setup Specifications (35-Column Standards)</span>
+                      </h4>
+                      <span className="text-[11px] text-slate-500 font-medium">Billet & Hollow Parameters</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Catg</label>
+                        <Input value={editCatg} onChange={(e) => setEditCatg(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Spec</label>
+                        <Input value={editSpec} onChange={(e) => setEditSpec(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Grade</label>
+                        <Input value={editGrade} onChange={(e) => setEditGrade(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">IBR / NIBR</label>
+                        <Select value={editIbrStatus} onChange={(e) => setEditIbrStatus(e.target.value)}>
+                          <option value="IBR">IBR</option>
+                          <option value="NIBR">NIBR</option>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">RM OD (mm)</label>
+                        <Input type="number" step="0.01" value={editRmOd} onChange={(e) => setEditRmOd(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">RM Len Min (m)</label>
+                        <Input type="number" step="0.001" value={editRmLenMin} onChange={(e) => setEditRmLenMin(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">RM Len Max (m)</label>
+                        <Input type="number" step="0.001" value={editRmLenMax} onChange={(e) => setEditRmLenMax(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">PM OD (mm)</label>
+                        <Input type="number" step="0.1" value={editPmOd} onChange={(e) => setEditPmOd(e.target.value)} />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">PM Wt (mm)</label>
+                        <Input type="number" step="0.01" value={editPmWt} onChange={(e) => setEditPmWt(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Cust OD (mm)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={editCustOd}
+                          onChange={(e) => {
+                            setEditCustOd(e.target.value);
+                            setEditMhOd(e.target.value);
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Cust WT (mm)</label>
+                        <Input type="number" step="0.01" value={editCustWt} onChange={(e) => setEditCustWt(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Rolling WT (mm)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={editRollingWt}
+                          onChange={(e) => {
+                            setEditRollingWt(e.target.value);
+                            setEditMhWt(e.target.value);
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">FE Lg (m)</label>
+                        <Input type="number" step="0.001" value={editFeLen} onChange={(e) => setEditFeLen(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">BE Lg (m)</label>
+                        <Input type="number" step="0.001" value={editBeLen} onChange={(e) => setEditBeLen(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">E/R (EL / RL)</label>
+                        <Select value={editReqLenEr} onChange={(e) => setEditReqLenEr(e.target.value)}>
+                          <option value="EL">EL (Exact Length)</option>
+                          <option value="RL">RL (Random Length)</option>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Min Len (m)</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={editReqLenMin}
+                            onChange={(e) => {
+                              setEditReqLenMin(e.target.value);
+                              setEditMhL1(e.target.value);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Max Len (m)</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={editReqLenMax}
+                            onChange={(e) => {
+                              setEditReqLenMax(e.target.value);
+                              setEditMhL2(e.target.value);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Real-Time Calculation Preview Banner */}
+                    <div className="rounded-lg bg-indigo-50/70 border border-indigo-200 p-2.5 grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold uppercase">Billet Weight</span>
+                        <span className="font-mono font-black text-indigo-950">{fmt(liveWeightKg, 2)} kg</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold uppercase">Wt. After WHF</span>
+                        <span className="font-mono font-black text-indigo-950">{fmt(liveBilletWhf, 2)} kg</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold uppercase">PM (Kg/m • Len)</span>
+                        <span className="font-mono font-black text-indigo-950">{fmt(livePmKgMtr, 2)} kg/m • {fmt(livePmLen, 2)}m</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold uppercase">SM (Kg/m • Len)</span>
+                        <span className="font-mono font-black text-indigo-950">{fmt(liveSmKgMtr, 2)} kg/m • {fmt(liveSmLen, 2)}m</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-500 font-bold uppercase">Effective Len</span>
+                        <span className="font-mono font-black text-emerald-800">{fmt(liveEffLen, 2)} m</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Tolerances & Process Yield */}
+              <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4 text-teal-600" />
+                    <span>Tolerances & Process Yield</span>
+                  </h4>
+                  <span className="text-[11px] text-slate-500 font-medium">Quality Tolerances</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">OD Min (mm)</label>
+                    <Input type="number" step="0.01" value={editTolOdMin} onChange={(e) => setEditTolOdMin(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">OD Max (mm)</label>
+                    <Input type="number" step="0.01" value={editTolOdMax} onChange={(e) => setEditTolOdMax(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">WT Min (mm)</label>
+                    <Input type="number" step="0.01" value={editTolWtMin} onChange={(e) => setEditTolWtMin(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">WT Max (mm)</label>
+                    <Input type="number" step="0.01" value={editTolWtMax} onChange={(e) => setEditTolWtMax(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Process Yield (%)</label>
+                    <Input type="number" step="0.01" value={editProcessYieldPct} onChange={(e) => setEditProcessYieldPct(e.target.value)} />
                   </div>
                 </div>
               </div>

@@ -744,16 +744,49 @@ export interface UpdateRollingPlanPayload {
   planned_rolling_date: string;
   route_id: string;
   multiple?: number;
+  multiple_str?: string;
   mh_od?: number;
   mh_wt?: number;
   mh_l1?: number;
   mh_l2?: number;
   pass_required?: number;
   force?: boolean;
+
+  // Setup Specifications (35 Columns)
+  catg?: string;
+  spec?: string;
+  grade?: string;
+  ibr_status?: string;
+  rm_od?: number;
+  rm_len_min?: number;
+  rm_len_max?: number;
+  pm_od?: number;
+  pm_wt?: number;
+  cust_od?: number;
+  cust_wt?: number;
+  rolling_wt?: number;
+  fe_len?: number;
+  be_len?: number;
+  req_len_er?: string;
+  req_len_min?: number;
+  req_len_max?: number;
+
+  // Tolerances & Yield
+  tol_od_min?: number;
+  tol_od_max?: number;
+  tol_wt_min?: number;
+  tol_wt_max?: number;
+  process_yield_pct?: number;
+
   child_adjustments?: Array<{
     plan_id?: string;
     work_order_id: string;
     planned_pcs: number;
+    catg?: string;
+    finish_size?: string;
+    final_len?: string;
+    hollow_len?: string;
+    htc_mtr?: number;
   }>;
 }
 
@@ -774,12 +807,38 @@ export async function PUT(req: NextRequest) {
       planned_rolling_date,
       route_id,
       multiple = 1,
+      multiple_str,
       mh_od,
       mh_wt,
       mh_l1,
       mh_l2,
       pass_required = 1,
       force = false,
+
+      catg,
+      spec,
+      grade,
+      ibr_status,
+      rm_od,
+      rm_len_min,
+      rm_len_max,
+      pm_od,
+      pm_wt,
+      cust_od,
+      cust_wt,
+      rolling_wt,
+      fe_len,
+      be_len,
+      req_len_er,
+      req_len_min,
+      req_len_max,
+
+      tol_od_min,
+      tol_od_max,
+      tol_wt_min,
+      tol_wt_max,
+      process_yield_pct,
+
       child_adjustments = [],
     } = body;
 
@@ -838,29 +897,7 @@ export async function PUT(req: NextRequest) {
       .eq('id', targetPlan.work_order_id)
       .single();
 
-    // Mother Hollow dimensions take priority for calculating planned MTR and MT
-    const effMhOd = (mh_od != null && !isNaN(Number(mh_od)) && Number(mh_od) > 0)
-      ? Number(mh_od)
-      : Number(targetPlan.mh_od || targetWo?.size_od || 0);
-    const effMhWt = (mh_wt != null && !isNaN(Number(mh_wt)) && Number(mh_wt) > 0)
-      ? Number(mh_wt)
-      : Number(targetPlan.mh_wt || targetWo?.size_wt || 0);
-    const effMhL1 = (mh_l1 != null && !isNaN(Number(mh_l1)) && Number(mh_l1) > 0)
-      ? Number(mh_l1)
-      : Number(targetPlan.mh_l1 || targetWo?.l1 || 0);
-    const effMhL2 = (mh_l2 != null && !isNaN(Number(mh_l2)) && Number(mh_l2) > 0)
-      ? Number(mh_l2)
-      : Number(targetPlan.mh_l2 || targetWo?.l2 || 0);
-
-    const targetAvg = (effMhL1 > 0 && effMhL2 > 0)
-      ? (effMhL1 + effMhL2) / 2
-      : (effMhL1 > 0 ? effMhL1 : (effMhL2 > 0 ? effMhL2 : (Number(targetWo?.l1 || 0) && Number(targetWo?.l2 || 0) ? (Number(targetWo.l1) + Number(targetWo.l2)) / 2 : 6.0)));
-    const targetMtr = Number((planned_pcs * targetAvg).toFixed(2));
-    const targetMt = Number(
-      (Math.max(effMhOd - effMhWt, 0) * Math.max(effMhWt, 0) * 0.0246615 * 0.001 * targetMtr).toFixed(3)
-    );
-
-    // 4. Parse status to determine if Master, Child, or Standalone
+    // 4. Parse existing status to retrieve existing specs
     let parsedStatus: any = {};
     try {
       parsedStatus =
@@ -868,6 +905,58 @@ export async function PUT(req: NextRequest) {
           ? JSON.parse(targetPlan.status)
           : targetPlan.status || {};
     } catch {}
+
+    // Calculate effective normalized specifications
+    const rawRmLenMin = rm_len_min != null ? Number(rm_len_min) : (parsedStatus.rm_len_min || parsedStatus.billet?.rm_len_min || 1.890);
+    const effRmLenMin = rawRmLenMin > 20 ? Number((rawRmLenMin / 1000).toFixed(3)) : rawRmLenMin;
+
+    const rawRmLenMax = rm_len_max != null ? Number(rm_len_max) : (parsedStatus.rm_len_max || parsedStatus.billet?.rm_len_max || effRmLenMin);
+    const effRmLenMax = rawRmLenMax > 20 ? Number((rawRmLenMax / 1000).toFixed(3)) : rawRmLenMax;
+
+    const effRmOd = rm_od != null ? Number(rm_od) : (parsedStatus.rm_od || parsedStatus.billet?.rm_od || 63.0);
+    const effWeightKg = Number((((effRmOd * effRmOd * 3.14 * 0.007856) / 4) * effRmLenMin).toFixed(3));
+    const effBilletWtWhf = Number((effWeightKg * 0.97).toFixed(3));
+
+    const effCustOd = cust_od != null ? Number(cust_od) : (mh_od != null && Number(mh_od) > 0 ? Number(mh_od) : (parsedStatus.cust_od || Number(targetPlan.mh_od || targetWo?.size_od || 47.0)));
+    const effCustWt = cust_wt != null ? Number(cust_wt) : (parsedStatus.cust_wt || Number(targetPlan.mh_wt || targetWo?.size_wt || 6.25));
+    const effRollingWt = rolling_wt != null ? Number(rolling_wt) : (mh_wt != null && Number(mh_wt) > 0 ? Number(mh_wt) : (parsedStatus.rolling_wt || effCustWt));
+
+    const effPmOd = pm_od != null ? Number(pm_od) : (parsedStatus.pm_od || 66.0);
+    const effPmWt = pm_wt != null ? Number(pm_wt) : (parsedStatus.pm_wt || (effRollingWt > 0.25 ? Number((effRollingWt - 0.25).toFixed(2)) : 6.00));
+    const effPmKgMtr = (effPmOd > effPmWt && effPmWt > 0) ? Number(((effPmOd - effPmWt) * effPmWt * 0.02467).toFixed(3)) : 8.88;
+    const effPmLen = effPmKgMtr > 0 ? Number((effBilletWtWhf / effPmKgMtr).toFixed(2)) : 5.37;
+
+    const effSmKgMtr = (effCustOd > effCustWt && effCustWt > 0) ? Number(((effCustOd - effCustWt) * effCustWt * 0.02467).toFixed(3)) : 6.28;
+    const effWtWbf = effBilletWtWhf;
+    const effSmLen = effSmKgMtr > 0 ? Number((effWtWbf / effSmKgMtr).toFixed(2)) : 7.67;
+
+    const effFeLen = fe_len != null ? Number(fe_len) : (parsedStatus.fe_len || 0);
+    const effBeLen = be_len != null ? Number(be_len) : (parsedStatus.be_len || 0);
+    const effFeWg = Number((effSmKgMtr * effFeLen).toFixed(2));
+    const effBeWg = Number((effSmKgMtr * effBeLen).toFixed(2));
+    const effEffectiveWg = Number(Math.max(0, effWtWbf - effFeWg - effBeWg).toFixed(2));
+    const effEffectiveLen = effSmKgMtr > 0 ? Number((effEffectiveWg / effSmKgMtr).toFixed(2)) : effSmLen;
+
+    const effMinLen = req_len_min != null ? Number(req_len_min) : (mh_l1 != null && Number(mh_l1) > 0 ? Number(mh_l1) : (parsedStatus.req_len_min || Number(targetPlan.mh_l1 || 7.53)));
+    const effMaxLen = req_len_max != null ? Number(req_len_max) : (mh_l2 != null && Number(mh_l2) > 0 ? Number(mh_l2) : (parsedStatus.req_len_max || effMinLen));
+    const effErStatus = req_len_er || (effMinLen === effMaxLen ? 'EL' : 'RL');
+
+    const effCatg = catg || parsedStatus.catg || 'CDS';
+    const effSpec = spec || parsedStatus.spec || targetWo?.specification || 'ASME SA210 Gr.A1';
+    const effGrade = grade || parsedStatus.grade || targetWo?.grade || 'SAE-1018';
+    const effIbr = ibr_status || parsedStatus.ibr_status || 'IBR';
+
+    const effTolOdMin = tol_od_min != null ? Number(tol_od_min) : (parsedStatus.tolerances?.od_min ?? (effCustOd - 0.4));
+    const effTolOdMax = tol_od_max != null ? Number(tol_od_max) : (parsedStatus.tolerances?.od_max ?? (effCustOd + 0.4));
+    const effTolWtMin = tol_wt_min != null ? Number(tol_wt_min) : (parsedStatus.tolerances?.wt_min ?? (effCustWt * 0.92));
+    const effTolWtMax = tol_wt_max != null ? Number(tol_wt_max) : (parsedStatus.tolerances?.wt_max ?? (effCustWt * 1.1));
+    const effYieldPct = process_yield_pct != null ? Number(process_yield_pct) : (parsedStatus.process_yield_pct ?? 95.22);
+
+    const targetAvg = effMinLen > 0 ? effMinLen : 6.0;
+    const targetMtr = Number((planned_pcs * targetAvg).toFixed(2));
+    const targetMt = Number(
+      (Math.max(effCustOd - effRollingWt, 0) * Math.max(effRollingWt, 0) * 0.0246615 * 0.001 * targetMtr).toFixed(3)
+    );
 
     const isMaster = Boolean(parsedStatus.is_master || (parsedStatus.child_work_orders && parsedStatus.child_work_orders.length > 0));
     const isChild = Boolean(parsedStatus.is_child && parsedStatus.master_plan_id);
@@ -881,13 +970,13 @@ export async function PUT(req: NextRequest) {
         planned_rolling_date,
         process_route_id: route_id,
         multiple: Number(multiple) || 1,
+        mh_od: effCustOd,
+        mh_wt: effRollingWt,
+        mh_l1: effMinLen,
+        mh_l2: effMaxLen,
+        pass_required: Number(pass_required) || 1,
         updated_at: new Date().toISOString(),
       };
-      if (mh_od != null && !isNaN(Number(mh_od))) masterUpdateObj.mh_od = Number(mh_od);
-      if (mh_wt != null && !isNaN(Number(mh_wt))) masterUpdateObj.mh_wt = Number(mh_wt);
-      if (mh_l1 != null && !isNaN(Number(mh_l1))) masterUpdateObj.mh_l1 = Number(mh_l1);
-      if (mh_l2 != null && !isNaN(Number(mh_l2))) masterUpdateObj.mh_l2 = Number(mh_l2);
-      if (pass_required != null && !isNaN(Number(pass_required))) masterUpdateObj.pass_required = Number(pass_required);
 
       // Find all linked child plans by prefix or master_plan_id
       const { data: childPlans } = await admin
@@ -898,59 +987,49 @@ export async function PUT(req: NextRequest) {
       const updatedChildMetadata: any[] = [];
       const children = childPlans || [];
 
-      for (const cp of children) {
-        // Check if there is an explicit adjustment for this child order
+      for (let cIdx = 0; cIdx < children.length; cIdx++) {
+        const cp = children[cIdx];
         const childAdj = child_adjustments?.find(
           (a) => a.plan_id === cp.id || a.work_order_id === cp.work_order_id
         );
 
-        // Fetch child work order
         const { data: childWo } = await admin
           .from('work_orders')
           .select('*')
           .eq('id', cp.work_order_id)
           .single();
 
-        const cl1 = Number(childWo?.l1 || 0);
-        const cl2 = Number(childWo?.l2 || 0);
-        const childAvg = (effMhL1 > 0 && effMhL2 > 0)
-          ? (effMhL1 + effMhL2) / 2
-          : (effMhL1 > 0 ? effMhL1 : (effMhL2 > 0 ? effMhL2 : (cl1 > 0 && cl2 > 0 ? (cl1 + cl2) / 2 : 6.0)));
+        let cpStatus: any = {};
+        try {
+          cpStatus = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {};
+        } catch {}
+
+        const childAvg = effMinLen > 0 ? effMinLen : (Number(childWo?.l1 || 6.0));
 
         let childPcs: number;
         if (childAdj && Number(childAdj.planned_pcs) > 0) {
           childPcs = Number(childAdj.planned_pcs);
         } else {
-          let cpStatus: any = {};
-          try {
-            cpStatus = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {};
-          } catch {}
           childPcs = Number(cpStatus.planned_pcs) || Math.round(Number(cp.planned_qty || 0) / (childAvg || 1));
         }
 
         const childMtr = Number((childPcs * childAvg).toFixed(2));
         const childMt = Number(
-          (Math.max(effMhOd - effMhWt, 0) * Math.max(effMhWt, 0) * 0.0246615 * 0.001 * childMtr).toFixed(3)
+          (Math.max(effCustOd - effRollingWt, 0) * Math.max(effRollingWt, 0) * 0.0246615 * 0.001 * childMtr).toFixed(3)
         );
 
-        // Update child plan: synchronize rolling date, route, mother hollow specs, multiple, pass_required
         const childUpdateObj: any = {
           planned_qty: childMtr,
-          planned_rolling_date, // synchronized with master
-          process_route_id: route_id, // synchronized with master
-          multiple: Number(multiple) || 1, // synchronized with master
+          planned_rolling_date,
+          process_route_id: route_id,
+          multiple: Number(multiple) || 1,
+          mh_od: effCustOd,
+          mh_wt: effRollingWt,
+          mh_l1: effMinLen,
+          mh_l2: effMaxLen,
+          pass_required: Number(pass_required) || 1,
           updated_at: new Date().toISOString(),
         };
-        if (effMhOd > 0) childUpdateObj.mh_od = effMhOd;
-        if (effMhWt > 0) childUpdateObj.mh_wt = effMhWt;
-        if (effMhL1 > 0) childUpdateObj.mh_l1 = effMhL1;
-        if (effMhL2 > 0) childUpdateObj.mh_l2 = effMhL2;
-        if (pass_required != null && !isNaN(Number(pass_required))) childUpdateObj.pass_required = Number(pass_required);
-
-        let cpStatus: any = {};
-        try {
-          cpStatus = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {};
-        } catch {}
 
         cpStatus.type = 'MULTI_WO';
         cpStatus.is_child = true;
@@ -961,23 +1040,35 @@ export async function PUT(req: NextRequest) {
         cpStatus.planned_pcs = childPcs;
         cpStatus.planned_mtr = childMtr;
         cpStatus.planned_mt = childMt;
+        cpStatus.catg = effCatg;
+        cpStatus.hollow_len = `${effMinLen}-${effMaxLen}`;
         childUpdateObj.status = JSON.stringify(cpStatus);
 
         await admin.from('rolling_plans').update(childUpdateObj).eq('id', cp.id);
 
+        const existingChildMeta = (parsedStatus.child_work_orders || []).find(
+          (c: any) => c.work_order_id === cp.work_order_id || c.plan_id === cp.id
+        );
+
         updatedChildMetadata.push({
           work_order_id: cp.work_order_id,
-          work_order_no: childWo?.work_order_no || '',
-          customer_name: childWo?.customer_name ?? null,
-          grade: childWo?.grade ?? null,
-          size_od: childWo?.size_od ?? null,
-          size_wt: childWo?.size_wt ?? null,
-          l1: childWo?.l1 ?? null,
-          l2: childWo?.l2 ?? null,
+          work_order_no: childWo?.work_order_no || existingChildMeta?.work_order_no || '',
+          customer_name: childWo?.customer_name ?? existingChildMeta?.customer_name ?? null,
+          grade: childWo?.grade ?? existingChildMeta?.grade ?? null,
+          size_od: childWo?.size_od ?? existingChildMeta?.size_od ?? null,
+          size_wt: childWo?.size_wt ?? existingChildMeta?.size_wt ?? null,
+          l1: childWo?.l1 ?? existingChildMeta?.l1 ?? null,
+          l2: childWo?.l2 ?? existingChildMeta?.l2 ?? null,
           planned_pcs: childPcs,
           planned_mtr: childMtr,
           planned_mt: childMt,
           plan_id: cp.id,
+          catg: effCatg,
+          finish_size: existingChildMeta?.finish_size || `${childWo?.size_od || 0}x${childWo?.size_wt || 0}`,
+          final_len: existingChildMeta?.final_len || `${childWo?.l1 || 0}-${childWo?.l2 || 0}`,
+          hollow_len: `${effMinLen}-${effMaxLen}`,
+          htc_mtr: childMtr,
+          alloc_tag: existingChildMeta?.alloc_tag || `${cIdx + 1}`,
         });
       }
 
@@ -990,9 +1081,89 @@ export async function PUT(req: NextRequest) {
         (targetMt + updatedChildMetadata.reduce((sum, c) => sum + c.planned_mt, 0)).toFixed(3)
       );
 
+      parsedStatus.catg = effCatg;
+      parsedStatus.spec = effSpec;
+      parsedStatus.grade = effGrade;
+      parsedStatus.ibr_status = effIbr;
+      parsedStatus.rm_od = effRmOd;
+      parsedStatus.rm_len_min = effRmLenMin;
+      parsedStatus.rm_len_max = effRmLenMax;
+      parsedStatus.weight_kg = effWeightKg;
+      parsedStatus.billet_wt_whf = effBilletWtWhf;
+      parsedStatus.pm_od = effPmOd;
+      parsedStatus.pm_wt = effPmWt;
+      parsedStatus.pm_kg_mtr = effPmKgMtr;
+      parsedStatus.pm_len = effPmLen;
+      parsedStatus.wt_wbf = effWtWbf;
+      parsedStatus.cust_od = effCustOd;
+      parsedStatus.cust_wt = effCustWt;
+      parsedStatus.rolling_wt = effRollingWt;
+      parsedStatus.sm_kg_mtr = effSmKgMtr;
+      parsedStatus.sm_len = effSmLen;
+      parsedStatus.fe_len = effFeLen;
+      parsedStatus.fe_wg = effFeWg;
+      parsedStatus.be_len = effBeLen;
+      parsedStatus.be_wg = effBeWg;
+      parsedStatus.effective_wg = effEffectiveWg;
+      parsedStatus.eff_len = effEffectiveLen;
+      parsedStatus.req_len_er = effErStatus;
+      parsedStatus.req_len_min = effMinLen;
+      parsedStatus.req_len_max = effMaxLen;
+      parsedStatus.multiple = Number(multiple) || 1;
+      parsedStatus.multiple_str = multiple_str || (Number(multiple) === 2 ? '2-Multi' : '1');
+      parsedStatus.tolerances = {
+        od_min: effTolOdMin,
+        od_max: effTolOdMax,
+        wt_min: effTolWtMin,
+        wt_max: effTolWtMax,
+      };
+      parsedStatus.process_yield_pct = effYieldPct;
+
+      parsedStatus.billet = {
+        rm_od: effRmOd,
+        rm_len_min: effRmLenMin,
+        rm_len_max: effRmLenMax,
+        weight_kg: effWeightKg,
+        billet_wt_whf: effBilletWtWhf,
+      };
+      parsedStatus.piercer_mill = {
+        pm_od: effPmOd,
+        pm_wt: effPmWt,
+        pm_kg_mtr: effPmKgMtr,
+        pm_len: effPmLen,
+      };
+      parsedStatus.sm = {
+        wt_wbf: effWtWbf,
+        cust_od: effCustOd,
+        cust_wt: effCustWt,
+        rolling_wt: effRollingWt,
+        sm_kg_mtr: effSmKgMtr,
+        sm_len: effSmLen,
+      };
+      parsedStatus.thicken_ends = {
+        fe_len: effFeLen,
+        fe_wg: effFeWg,
+        be_len: effBeLen,
+        be_wg: effBeWg,
+        effective_wg: effEffectiveWg,
+        eff_len: effEffectiveLen,
+      };
+      parsedStatus.final_length = {
+        er: effErStatus,
+        min: effMinLen,
+        max: effMaxLen,
+      };
+      parsedStatus.plan_qty = {
+        nos: totalCampaignPcs,
+        mton: Number(((effWeightKg * totalCampaignPcs) / 1000).toFixed(2)),
+      };
+
       parsedStatus.master_planned_pcs = planned_pcs;
       parsedStatus.master_planned_mtr = targetMtr;
       parsedStatus.master_planned_mt = targetMt;
+      parsedStatus.total_group_pcs = totalCampaignPcs;
+      parsedStatus.total_group_mtr = totalCampaignMtr;
+      parsedStatus.total_group_mt = totalCampaignMt;
       parsedStatus.total_campaign_pcs = totalCampaignPcs;
       parsedStatus.total_campaign_mtr = totalCampaignMtr;
       parsedStatus.total_campaign_mt = totalCampaignMt;
@@ -1021,13 +1192,13 @@ export async function PUT(req: NextRequest) {
         planned_rolling_date,
         process_route_id: route_id,
         multiple: Number(multiple) || 1,
+        mh_od: effCustOd,
+        mh_wt: effRollingWt,
+        mh_l1: effMinLen,
+        mh_l2: effMaxLen,
+        pass_required: Number(pass_required) || 1,
         updated_at: new Date().toISOString(),
       };
-      if (effMhOd > 0) childUpdateObj.mh_od = effMhOd;
-      if (effMhWt > 0) childUpdateObj.mh_wt = effMhWt;
-      if (effMhL1 > 0) childUpdateObj.mh_l1 = effMhL1;
-      if (effMhL2 > 0) childUpdateObj.mh_l2 = effMhL2;
-      if (pass_required != null && !isNaN(Number(pass_required))) childUpdateObj.pass_required = Number(pass_required);
 
       parsedStatus.planned_pcs = planned_pcs;
       parsedStatus.planned_mtr = targetMtr;
@@ -1057,6 +1228,7 @@ export async function PUT(req: NextRequest) {
                 planned_pcs,
                 planned_mtr: targetMtr,
                 planned_mt: targetMt,
+                htc_mtr: targetMtr,
               };
             }
             return c;
@@ -1095,13 +1267,90 @@ export async function PUT(req: NextRequest) {
       planned_rolling_date,
       process_route_id: route_id,
       multiple: Number(multiple) || 1,
+      mh_od: effCustOd,
+      mh_wt: effRollingWt,
+      mh_l1: effMinLen,
+      mh_l2: effMaxLen,
+      pass_required: Number(pass_required) || 1,
       updated_at: new Date().toISOString(),
     };
-    if (effMhOd > 0) standaloneUpdateObj.mh_od = effMhOd;
-    if (effMhWt > 0) standaloneUpdateObj.mh_wt = effMhWt;
-    if (effMhL1 > 0) standaloneUpdateObj.mh_l1 = effMhL1;
-    if (effMhL2 > 0) standaloneUpdateObj.mh_l2 = effMhL2;
-    if (pass_required != null && !isNaN(Number(pass_required))) standaloneUpdateObj.pass_required = Number(pass_required);
+
+    parsedStatus.catg = effCatg;
+    parsedStatus.spec = effSpec;
+    parsedStatus.grade = effGrade;
+    parsedStatus.ibr_status = effIbr;
+    parsedStatus.rm_od = effRmOd;
+    parsedStatus.rm_len_min = effRmLenMin;
+    parsedStatus.rm_len_max = effRmLenMax;
+    parsedStatus.weight_kg = effWeightKg;
+    parsedStatus.billet_wt_whf = effBilletWtWhf;
+    parsedStatus.pm_od = effPmOd;
+    parsedStatus.pm_wt = effPmWt;
+    parsedStatus.pm_kg_mtr = effPmKgMtr;
+    parsedStatus.pm_len = effPmLen;
+    parsedStatus.wt_wbf = effWtWbf;
+    parsedStatus.cust_od = effCustOd;
+    parsedStatus.cust_wt = effCustWt;
+    parsedStatus.rolling_wt = effRollingWt;
+    parsedStatus.sm_kg_mtr = effSmKgMtr;
+    parsedStatus.sm_len = effSmLen;
+    parsedStatus.fe_len = effFeLen;
+    parsedStatus.fe_wg = effFeWg;
+    parsedStatus.be_len = effBeLen;
+    parsedStatus.be_wg = effBeWg;
+    parsedStatus.effective_wg = effEffectiveWg;
+    parsedStatus.eff_len = effEffectiveLen;
+    parsedStatus.req_len_er = effErStatus;
+    parsedStatus.req_len_min = effMinLen;
+    parsedStatus.req_len_max = effMaxLen;
+    parsedStatus.multiple = Number(multiple) || 1;
+    parsedStatus.multiple_str = multiple_str || (Number(multiple) === 2 ? '2-Multi' : '1');
+    parsedStatus.tolerances = {
+      od_min: effTolOdMin,
+      od_max: effTolOdMax,
+      wt_min: effTolWtMin,
+      wt_max: effTolWtMax,
+    };
+    parsedStatus.process_yield_pct = effYieldPct;
+
+    parsedStatus.billet = {
+      rm_od: effRmOd,
+      rm_len_min: effRmLenMin,
+      rm_len_max: effRmLenMax,
+      weight_kg: effWeightKg,
+      billet_wt_whf: effBilletWtWhf,
+    };
+    parsedStatus.piercer_mill = {
+      pm_od: effPmOd,
+      pm_wt: effPmWt,
+      pm_kg_mtr: effPmKgMtr,
+      pm_len: effPmLen,
+    };
+    parsedStatus.sm = {
+      wt_wbf: effWtWbf,
+      cust_od: effCustOd,
+      cust_wt: effCustWt,
+      rolling_wt: effRollingWt,
+      sm_kg_mtr: effSmKgMtr,
+      sm_len: effSmLen,
+    };
+    parsedStatus.thicken_ends = {
+      fe_len: effFeLen,
+      fe_wg: effFeWg,
+      be_len: effBeLen,
+      be_wg: effBeWg,
+      effective_wg: effEffectiveWg,
+      eff_len: effEffectiveLen,
+    };
+    parsedStatus.final_length = {
+      er: effErStatus,
+      min: effMinLen,
+      max: effMaxLen,
+    };
+    parsedStatus.plan_qty = {
+      nos: planned_pcs,
+      mton: Number(((effWeightKg * planned_pcs) / 1000).toFixed(2)),
+    };
 
     parsedStatus.planned_pcs = planned_pcs;
     parsedStatus.planned_mtr = targetMtr;
