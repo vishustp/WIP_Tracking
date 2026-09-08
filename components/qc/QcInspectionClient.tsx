@@ -719,7 +719,7 @@ export default function QcInspectionClient() {
           diversion_reason: reworkDiversionReason || null,
           rejection_pcs: reworkFormMetrics.rejPcs,
           remarks: reworkRemarks,
-          processed_by: currentUser?.full_name || 'QC Inspector',
+          processed_by: currentUser?.name || currentUser?.email || 'QC Inspector',
         }),
       });
 
