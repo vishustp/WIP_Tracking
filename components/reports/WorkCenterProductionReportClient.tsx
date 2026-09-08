@@ -567,7 +567,11 @@ export default function WorkCenterProductionReportClient() {
           {/* Card 4: Prime / Net Accepted / HTC OK */}
           <div className="rounded-xl bg-emerald-50/40 p-3 border-2 border-emerald-200 print:bg-white print:border-black shadow-2xs">
             <span className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 print:text-black">
-              {selectedWc === 'ROLLING' ? 'HTC OK / Prime Output' : 'Prime / Net Accepted'}
+              {selectedWc === 'ROLLING'
+                ? 'HTC OK / Prime Output'
+                : selectedWc === 'FINISHING'
+                ? 'VDI HT OK / Net Accepted'
+                : 'Prime / Net Accepted'}
             </span>
             <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
@@ -578,7 +582,11 @@ export default function WorkCenterProductionReportClient() {
               </span>
             </div>
             <span className="text-[11px] text-emerald-800 block font-bold mt-1 font-mono print:text-black">
-              {selectedWc === 'ROLLING' ? `HTC OK: ${fmt(metrics.htcOkMtr)} MTR` : `Net MTR: ${fmt(metrics.netMtr)} MTR`}
+              {selectedWc === 'ROLLING'
+                ? `HTC OK: ${fmt(metrics.htcOkMtr)} MTR`
+                : selectedWc === 'FINISHING'
+                ? `Net Accepted: ${fmt(metrics.netMtr)} MTR`
+                : `Net MTR: ${fmt(metrics.netMtr)} MTR`}
             </span>
           </div>
 
@@ -625,6 +633,9 @@ export default function WorkCenterProductionReportClient() {
                 {selectedWc === 'ROLLING' && (
                   <th className="px-3 py-2.5 text-right whitespace-nowrap">HTC OK</th>
                 )}
+                {selectedWc === 'FINISHING' && (
+                  <th className="px-3 py-2.5 text-right whitespace-nowrap">VDI OK (Net)</th>
+                )}
                 <th className="px-3 py-2.5 text-center whitespace-nowrap">Yield %</th>
                 <th className="px-3 py-2.5">Operator Remarks</th>
               </tr>
@@ -632,14 +643,14 @@ export default function WorkCenterProductionReportClient() {
             <tbody className="divide-y divide-slate-200 print:divide-black">
               {loading ? (
                 <tr>
-                  <td colSpan={selectedWc === 'ROLLING' ? 13 : 12} className="p-8 text-center text-slate-500">
+                  <td colSpan={selectedWc === 'ROLLING' || selectedWc === 'FINISHING' ? 13 : 12} className="p-8 text-center text-slate-500">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                     Loading shift production records...
                   </td>
                 </tr>
               ) : filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={selectedWc === 'ROLLING' ? 13 : 12} className="p-8 text-center text-slate-500">
+                  <td colSpan={selectedWc === 'ROLLING' || selectedWc === 'FINISHING' ? 13 : 12} className="p-8 text-center text-slate-500">
                     No production entries logged for {activeWcConfig.label} during this time frame.
                   </td>
                 </tr>
@@ -716,6 +727,11 @@ export default function WorkCenterProductionReportClient() {
                           {fmt(e.htc_ok_mtr)}
                         </td>
                       )}
+                      {selectedWc === 'FINISHING' && (
+                        <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700 print:text-black">
+                          {fmt(net)}
+                        </td>
+                      )}
 
                       <td className="px-3 py-2 text-center font-mono font-bold print:text-black">
                         <span
@@ -749,14 +765,20 @@ export default function WorkCenterProductionReportClient() {
           </div>
           <div className="flex flex-wrap items-center gap-3 font-mono">
             <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-100 text-indigo-950 font-black text-xs sm:text-sm border border-indigo-300 print:border-black print:bg-white print:text-black">
-              TOTAL: {fmt(metrics.outputPcs, 0)} PCS
+              {selectedWc === 'FINISHING'
+                ? `ACCEPTED: ${fmt(Math.max(metrics.outputPcs - metrics.rejPcs, 0), 0)} PCS`
+                : `TOTAL: ${fmt(metrics.outputPcs, 0)} PCS`}
             </span>
             <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 font-black text-xs sm:text-sm border border-emerald-300 print:border-black print:bg-white print:text-black">
-              TOTAL: {fmt(metrics.outputMt)} MT
+              {selectedWc === 'FINISHING'
+                ? `NET: ${fmt(metrics.netMt)} MT`
+                : `TOTAL: ${fmt(metrics.outputMt)} MT`}
             </span>
-            <span className="text-blue-700 font-semibold">Length: {fmt(metrics.outputMtr)} MTR</span>
+            <span className="text-blue-700 font-semibold">Gross: {fmt(metrics.outputMtr)} MTR</span>
             <span className="text-rose-600 font-semibold">Rej: {fmt(metrics.rejMtr)} MTR</span>
-            <span className="text-emerald-700 font-semibold">Prime: {fmt(metrics.netMtr)} MTR</span>
+            <span className="text-emerald-700 font-semibold">
+              {selectedWc === 'FINISHING' ? 'VDI Accepted' : 'Prime'}: {fmt(metrics.netMtr)} MTR
+            </span>
             <span className="text-indigo-700 font-semibold">Yield: {fmt(metrics.yieldPct, 1)}%</span>
           </div>
         </div>
