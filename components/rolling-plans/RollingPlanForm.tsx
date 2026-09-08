@@ -26,6 +26,8 @@ import {
   AlertTriangle,
   Info,
   Flame,
+  Sliders,
+  FileText,
 } from 'lucide-react';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
@@ -89,11 +91,49 @@ export type Plan = {
   can_modify: boolean;
 };
 
-export interface SelectedOrderEntry {
+export interface ChildOrderEntry {
+  id: string;
   wo: WO;
-  isMaster: boolean;
   plannedPcs: string;
   availableMtr: number;
+}
+
+export interface WorkOrderGroup {
+  id: string;
+  wo: WO;
+  plannedPcs: string;
+  availableMtr: number;
+  children: ChildOrderEntry[];
+
+  // Setup Specifications & Factory Tolerances
+  catg: string; // 'CDS' | 'HFS'
+  spec: string;
+  grade: string;
+  ibrStatus: string; // 'IBR' | 'NIBR'
+  rmOd: string;
+  rmLenMin: string;
+  rmLenMax: string;
+  pmOd: string;
+  pmWt: string;
+  pmLen: string;
+  custOd: string;
+  custWt: string;
+  rollingWt: string;
+  smLen: string;
+  feLen: string;
+  beLen: string;
+  effLen: string;
+  reqLenEr: string;
+  reqLenMin: string;
+  reqLenMax: string;
+  multipleStr: string;
+  tolOdMin: string;
+  tolOdMax: string;
+  tolWtMin: string;
+  tolWtMax: string;
+  processYieldPct: string;
+
+  isSpecsExpanded?: boolean;
 }
 
 const fmt = (n: number | string | null | undefined, digits = 2) => {
@@ -116,45 +156,52 @@ const formatFinalSizeLength = (p: { l1?: number | null; l2?: number | null; avg_
   return null;
 };
 
-export interface HollowDimensions {
-  od?: number | string | null;
-  wt?: number | string | null;
-  l1?: number | string | null;
-  l2?: number | string | null;
+export function createDefaultGroup(wo: WO, availMtr: number): WorkOrderGroup {
+  const lAvg = wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : wo.l1 || 6;
+  const initPcs = availMtr > 0 ? Math.max(1, Math.floor(availMtr / lAvg)) : 100;
+  const custOdNum = Number(wo.size_od || 47.0);
+  const custWtNum = Number(wo.size_wt || 5.75);
+  const smLenNum = Number(wo.l1 || 7.67);
+
+  const pmOdNum = Number((custOdNum * 1.4).toFixed(1));
+  const pmWtNum = Number((custWtNum * 0.95).toFixed(2));
+
+  return {
+    id: `grp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    wo,
+    plannedPcs: String(initPcs),
+    availableMtr: availMtr,
+    children: [],
+
+    catg: 'CDS',
+    spec: 'ASME SA210 Gr.A1',
+    grade: wo.grade || 'SAE 1018',
+    ibrStatus: 'IBR',
+    rmOd: '63.00',
+    rmLenMin: '1.890',
+    rmLenMax: '1.895',
+    pmOd: String(pmOdNum > 0 ? pmOdNum : '66.0'),
+    pmWt: String(pmWtNum > 0 ? pmWtNum : '5.50'),
+    pmLen: '5.41',
+    custOd: String(custOdNum.toFixed(2)),
+    custWt: String(custWtNum.toFixed(2)),
+    rollingWt: String(custWtNum.toFixed(2)),
+    smLen: String(smLenNum.toFixed(2)),
+    feLen: '0.000',
+    beLen: '0.000',
+    effLen: String(smLenNum.toFixed(2)),
+    reqLenEr: 'EL',
+    reqLenMin: wo.l1 ? String(Number(wo.l1).toFixed(2)) : '7.55',
+    reqLenMax: wo.l2 ? String(Number(wo.l2).toFixed(2)) : '7.55',
+    multipleStr: '1',
+    tolOdMin: String((custOdNum - 0.4).toFixed(2)),
+    tolOdMax: String((custOdNum + 0.4).toFixed(2)),
+    tolWtMin: String((custWtNum * 0.92).toFixed(2)),
+    tolWtMax: String((custWtNum * 1.1).toFixed(2)),
+    processYieldPct: '95.50',
+    isSpecsExpanded: false,
+  };
 }
-
-// Calculate Planned MTR and MT based on Mother Hollow OD, WT, and Average Length
-const calcHollowMetrics = (
-  wo: WO | null,
-  pcs: number,
-  hollow?: HollowDimensions
-) => {
-  if (!wo && pcs <= 0) return { avg: 0, mtr: 0, mt: 0, hod: 0, hwt: 0 };
-
-  const hl1 = Number(hollow?.l1 || 0);
-  const hl2 = Number(hollow?.l2 || 0);
-  const wol1 = Number(wo?.l1 || 0);
-  const wol2 = Number(wo?.l2 || 0);
-
-  // 1. Hollow average length takes priority; falls back to WO length or 6.0m
-  const avg = (hl1 > 0 && hl2 > 0)
-    ? (hl1 + hl2) / 2
-    : (hl1 > 0 ? hl1 : (hl2 > 0 ? hl2 : ((wol1 > 0 && wol2 > 0) ? (wol1 + wol2) / 2 : wol1 || wol2 || 6.0)));
-
-  // 2. Planned MTR = Planned PCS * Hollow Average Length
-  const mtr = Number((pcs * avg).toFixed(2));
-
-  // 3. Hollow OD & WT take priority; falls back to WO OD & WT if hollow not yet specified
-  const hod = Number(hollow?.od || 0) > 0 ? Number(hollow?.od) : Number(wo?.size_od || 0);
-  const hwt = Number(hollow?.wt || 0) > 0 ? Number(hollow?.wt) : Number(wo?.size_wt || 0);
-
-  // 4. Planned MT = (Hollow OD - Hollow WT) * Hollow WT * 0.0246615 * 0.001 * Planned MTR
-  const mt = Number(
-    (Math.max(hod - hwt, 0) * Math.max(hwt, 0) * 0.0246615 * 0.001 * mtr).toFixed(3)
-  );
-
-  return { avg, mtr, mt, hod, hwt };
-};
 
 export default function RollingPlanForm() {
   const searchParams = useSearchParams();
@@ -163,12 +210,17 @@ export default function RollingPlanForm() {
   const [wos, setWos] = useState<WO[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
 
-  // Selected work orders for the campaign (Rule 1)
-  const [selectedOrders, setSelectedOrders] = useState<SelectedOrderEntry[]>([]);
+  // Setup groups for the campaign
+  const [groups, setGroups] = useState<WorkOrderGroup[]>([]);
   const [woSearchQuery, setWoSearchQuery] = useState('');
   const [addWoSelectValue, setAddWoSelectValue] = useState('');
 
-  // Multi-Work Order Selection Dialog State
+  // Child Work Order Picker Modal State
+  const [activeChildTargetGroupId, setActiveChildTargetGroupId] = useState<string | null>(null);
+  const [childModalSearch, setChildModalSearch] = useState('');
+  const [childModalGradeFilter, setChildModalGradeFilter] = useState('ALL');
+
+  // Multi-Work Order Selection Dialog State (for adding parent setup groups)
   const [isMultiPickerOpen, setIsMultiPickerOpen] = useState(false);
   const [modalSearch, setModalSearch] = useState('');
   const [modalGradeFilter, setModalGradeFilter] = useState('ALL');
@@ -177,12 +229,6 @@ export default function RollingPlanForm() {
   // Common campaign parameters
   const [route, setRoute] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [mhOd, setMhOd] = useState('');
-  const [mhWt, setMhWt] = useState('');
-  const [mhL1, setMhL1] = useState('6.0');
-  const [mhL2, setMhL2] = useState('6.5');
-  const [passRequired, setPassRequired] = useState('1');
-  const [multiple, setMultiple] = useState('1');
   const [loading, setLoading] = useState(false);
 
   // Factory Production Plan (Mill-02 or Mill-03) Sheet Parameters (From Photo)
@@ -191,46 +237,6 @@ export default function RollingPlanForm() {
   const [monthStr, setMonthStr] = useState('Sep-26');
   const [planNoOverride, setPlanNoOverride] = useState('02');
   const [prevPlanNo, setPrevPlanNo] = useState('01');
-
-  // Setup Row Technical Parameters
-  const [factoryCatg, setFactoryCatg] = useState('CDS');
-  const [factorySpec, setFactorySpec] = useState('ASME SA210 Gr.A1');
-  const [factoryGrade, setFactoryGrade] = useState('SAE 1018');
-  const [factoryIbr, setFactoryIbr] = useState('IBR');
-
-  // Billet Dimensions
-  const [rmOd, setRmOd] = useState('63.00');
-  const [rmLenMin, setRmLenMin] = useState('1.890');
-  const [rmLenMax, setRmLenMax] = useState('1.895');
-
-  // Piercer Mill
-  const [pmOd, setPmOd] = useState('66.0');
-  const [pmWt, setPmWt] = useState('5.50');
-  const [pmLen, setPmLen] = useState('5.41');
-
-  // SM (Sizing Mill)
-  const [custOd, setCustOd] = useState('47.00');
-  const [custWt, setCustWt] = useState('5.75');
-  const [rollingWt, setRollingWt] = useState('5.75');
-  const [smLen, setSmLen] = useState('7.67');
-
-  // Thicken Ends
-  const [feLen, setFeLen] = useState('0.000');
-  const [beLen, setBeLen] = useState('0.000');
-  const [effLen, setEffLen] = useState('7.67');
-
-  // Final Length Reqd
-  const [reqLenEr, setReqLenEr] = useState('EL');
-  const [reqLenMin, setReqLenMin] = useState('7.55');
-  const [reqLenMax, setReqLenMax] = useState('7.55');
-
-  // Multiple & Tolerances
-  const [multipleStr, setMultipleStr] = useState('1');
-  const [tolOdMin, setTolOdMin] = useState('46.60');
-  const [tolOdMax, setTolOdMax] = useState('47.40');
-  const [tolWtMin, setTolWtMin] = useState('5.32');
-  const [tolWtMax, setTolWtMax] = useState('6.33');
-  const [processYieldPct, setProcessYieldPct] = useState('95.50');
 
   // Plans table & filtering
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -491,21 +497,12 @@ export default function RollingPlanForm() {
         }
 
         // Auto-select initial WO if query param present
+        // Auto-select initial WO if query param present
         if (initialWoId && woList.length > 0) {
           const match = woList.find((x) => x.id === initialWoId);
           if (match) {
             const availMtr = await fetchUnplannedQty(match.id);
-            const lAvg = match.l1 && match.l2 ? (match.l1 + match.l2) / 2 : match.l1 || 6;
-            const initPcs = availMtr > 0 ? Math.floor(availMtr / lAvg) : 100;
-            setSelectedOrders([
-              {
-                wo: match,
-                isMaster: true,
-                plannedPcs: String(initPcs),
-                availableMtr: availMtr,
-              },
-            ]);
-            suggestMhDimensions(match);
+            setGroups([createDefaultGroup(match, availMtr)]);
           }
         }
       })
@@ -514,17 +511,20 @@ export default function RollingPlanForm() {
         setRoutes([]);
         toast.error(error instanceof Error ? error.message : 'Failed to load rolling plan masters.');
       });
-  }, [initialWoId, fetchUnplannedQty, suggestMhDimensions]);
+  }, [initialWoId, fetchUnplannedQty]);
 
   useEffect(() => {
     void loadPlans();
   }, [loadPlans]);
 
-  // Add work order to campaign
+  // Add parent work order to campaign (new setup group)
   const handleAddOrder = async (woId: string) => {
     if (!woId) return;
-    if (selectedOrders.some((s) => s.wo.id === woId)) {
-      toast.info('This work order is already selected in the campaign.');
+    const isAlreadySelected = groups.some(
+      (g) => g.wo.id === woId || g.children.some((c) => c.wo.id === woId)
+    );
+    if (isAlreadySelected) {
+      toast.info('This work order is already included in the plan.');
       setAddWoSelectValue('');
       return;
     }
@@ -533,158 +533,186 @@ export default function RollingPlanForm() {
     if (!targetWo) return;
 
     const availMtr = await fetchUnplannedQty(woId);
-    const avgLen = targetWo.l1 && targetWo.l2 ? (targetWo.l1 + targetWo.l2) / 2 : targetWo.l1 || 6;
-    const defaultPcs = availMtr > 0 ? Math.min(100, Math.floor(availMtr / avgLen)) : 50;
-
-    const isFirst = selectedOrders.length === 0;
-
-    setSelectedOrders((prev) => [
-      ...prev,
-      {
-        wo: targetWo,
-        isMaster: isFirst, // First one is Master by default (Rule 1)
-        plannedPcs: String(defaultPcs),
-        availableMtr: availMtr,
-      },
-    ]);
-
-    if (isFirst) {
-      suggestMhDimensions(targetWo);
-    }
-
+    const newGrp = createDefaultGroup(targetWo, availMtr);
+    setGroups((prev) => [...prev, newGrp]);
     setAddWoSelectValue('');
-    toast.success(
-      `Added ${targetWo.work_order_no} as ${isFirst ? 'Master Work Order' : 'Child Work Order'}.`
-    );
+    toast.success(`Added ${targetWo.work_order_no} as Setup #${groups.length + 1}.`);
   };
 
   // Batch Add Work Orders from Multi-Select Modal
   const handleBatchAddOrders = async (woIds: string[]) => {
     if (woIds.length === 0) return;
-    const toAdd = wos.filter((w) => woIds.includes(w.id) && !selectedOrders.some((s) => s.wo.id === w.id));
+    const existingIds = new Set<string>();
+    groups.forEach((g) => {
+      existingIds.add(g.wo.id);
+      g.children.forEach((c) => existingIds.add(c.wo.id));
+    });
+    const toAdd = wos.filter((w) => woIds.includes(w.id) && !existingIds.has(w.id));
     if (toAdd.length === 0) {
-      toast.info('Selected orders are already in the campaign.');
+      toast.info('Selected orders are already in the plan.');
       setIsMultiPickerOpen(false);
       return;
     }
 
-    const hadNoMaster = !selectedOrders.some((s) => s.isMaster);
-    const newEntries: SelectedOrderEntry[] = [];
-
-    for (let i = 0; i < toAdd.length; i++) {
-      const targetWo = toAdd[i];
+    const newGroups: WorkOrderGroup[] = [];
+    for (const targetWo of toAdd) {
       const availMtr = await fetchUnplannedQty(targetWo.id);
-      const avgLen = targetWo.l1 && targetWo.l2 ? (targetWo.l1 + targetWo.l2) / 2 : targetWo.l1 || 6;
-      const defaultPcs = availMtr > 0 ? Math.min(100, Math.floor(availMtr / avgLen)) : 50;
-      const isMaster = hadNoMaster && i === 0;
-
-      newEntries.push({
-        wo: targetWo,
-        isMaster,
-        plannedPcs: String(defaultPcs),
-        availableMtr: availMtr,
-      });
-
-      if (isMaster) {
-        suggestMhDimensions(targetWo);
-      }
+      newGroups.push(createDefaultGroup(targetWo, availMtr));
     }
 
-    setSelectedOrders((prev) => [...prev, ...newEntries]);
+    setGroups((prev) => [...prev, ...newGroups]);
     setIsMultiPickerOpen(false);
     setModalSelectedIds([]);
-    toast.success(`Added ${newEntries.length} work orders to campaign.`);
+    toast.success(`Added ${newGroups.length} work orders to campaign.`);
   };
 
-  // Remove work order from campaign
-  const handleRemoveOrder = (woId: string) => {
-    const remaining = selectedOrders.filter((s) => s.wo.id !== woId);
-    // If the master was removed and there are other orders, designate the first remaining as Master
-    const hasMaster = remaining.some((s) => s.isMaster);
-    if (!hasMaster && remaining.length > 0) {
-      remaining[0].isMaster = true;
-    }
-    setSelectedOrders(remaining);
+  // Remove setup group
+  const handleRemoveGroup = (groupId: string) => {
+    setGroups((prev) => prev.filter((g) => g.id !== groupId));
   };
 
-  // Set designated Master Work Order (Rule 1)
-  const handleSetMaster = (woId: string) => {
-    setSelectedOrders((prev) =>
-      prev.map((s) => ({
-        ...s,
-        isMaster: s.wo.id === woId,
-      }))
+  // Add child to specific parent work order group
+  const handleAddChildToGroup = async (groupId: string, childWoId: string) => {
+    const childWo = wos.find((w) => w.id === childWoId);
+    if (!childWo) return;
+    const childAvailMtr = await fetchUnplannedQty(childWo.id);
+    const lAvg = childWo.l1 && childWo.l2 ? (childWo.l1 + childWo.l2) / 2 : childWo.l1 || 6;
+    const defaultChildPcs = childAvailMtr > 0 ? Math.max(1, Math.floor(childAvailMtr / lAvg)) : 50;
+
+    const newChild: ChildOrderEntry = {
+      id: `c-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      wo: childWo,
+      plannedPcs: String(defaultChildPcs),
+      availableMtr: childAvailMtr,
+    };
+
+    setGroups((prev) =>
+      prev.map((g) => {
+        if (g.id !== groupId) return g;
+        return {
+          ...g,
+          children: [...g.children, newChild],
+        };
+      })
     );
-    const newMaster = selectedOrders.find((s) => s.wo.id === woId);
-    if (newMaster) {
-      suggestMhDimensions(newMaster.wo);
-      toast.success(`${newMaster.wo.work_order_no} assigned as Master Work Order.`);
-    }
+
+    setActiveChildTargetGroupId(null);
+    toast.success(`Added ${childWo.work_order_no} as child.`);
   };
 
-  // Update planned PCS for a specific order
-  const handleUpdatePcs = (woId: string, val: string) => {
-    setSelectedOrders((prev) =>
-      prev.map((s) => (s.wo.id === woId ? { ...s, plannedPcs: val } : s))
+  // Remove child from group
+  const handleRemoveChildFromGroup = (groupId: string, childId: string) => {
+    setGroups((prev) =>
+      prev.map((g) => {
+        if (g.id !== groupId) return g;
+        return {
+          ...g,
+          children: g.children.filter((c) => c.id !== childId),
+        };
+      })
     );
   };
 
-  // Active master work order entry
-  const masterEntry = useMemo(() => selectedOrders.find((s) => s.isMaster), [selectedOrders]);
-  const childEntries = useMemo(() => selectedOrders.filter((s) => !s.isMaster), [selectedOrders]);
+  // Update field on group
+  const handleUpdateGroupField = (groupId: string, field: keyof WorkOrderGroup, value: any) => {
+    setGroups((prev) =>
+      prev.map((g) => (g.id === groupId ? { ...g, [field]: value } : g))
+    );
+  };
 
-  // Campaign Calculations based on Mother Hollow OD, WT, and Average Length
+  // Update child planned pcs
+  const handleUpdateChildPcs = (groupId: string, childId: string, pcs: string) => {
+    setGroups((prev) =>
+      prev.map((g) => {
+        if (g.id !== groupId) return g;
+        return {
+          ...g,
+          children: g.children.map((c) => (c.id === childId ? { ...c, plannedPcs: pcs } : c)),
+        };
+      })
+    );
+  };
+
+  // Toggle specs expansion for a group
+  const toggleGroupSpecs = (groupId: string) => {
+    setGroups((prev) =>
+      prev.map((g) => (g.id === groupId ? { ...g, isSpecsExpanded: !g.isSpecsExpanded } : g))
+    );
+  };
+
+  // Campaign Calculations for all setups & children
   const campaignSummary = useMemo(() => {
-    let totalPcs = 0;
-    let totalMtr = 0;
-    let totalMt = 0;
+    let grandTotalPcs = 0;
+    let grandTotalMtr = 0;
+    let grandTotalMt = 0;
 
-    const hollowSpecs: HollowDimensions = { od: mhOd, wt: mhWt, l1: mhL1, l2: mhL2 };
+    const groupSummaries = groups.map((g) => {
+      const smLenNum = Number(g.smLen || g.effLen || g.wo.l1 || 6.0);
+      const avgLen = smLenNum > 0 ? smLenNum : 6.0;
+      const custOdNum = Number(g.custOd || g.wo.size_od || 0);
+      const custWtNum = Number(g.custWt || g.rollingWt || g.wo.size_wt || 0);
 
-    const orderCalculations = selectedOrders.map((entry) => {
-      const pcs = Number(entry.plannedPcs || 0);
-      const metrics = calcHollowMetrics(entry.wo, pcs, hollowSpecs);
-      totalPcs += pcs;
-      totalMtr += metrics.mtr;
-      totalMt += metrics.mt;
+      const calcMtr = (pcs: number) => Number((pcs * avgLen).toFixed(2));
+      const calcMt = (mtr: number) =>
+        Number((Math.max(custOdNum - custWtNum, 0) * Math.max(custWtNum, 0) * 0.0246615 * 0.001 * mtr).toFixed(3));
 
-      const availPcs = entry.availableMtr > 0 && metrics.avg > 0 ? Math.floor(entry.availableMtr / metrics.avg) : 0;
-      const exceeds = metrics.mtr > entry.availableMtr + 0.001;
+      const parentPcs = Number(g.plannedPcs || 0);
+      const parentMtr = calcMtr(parentPcs);
+      const parentMt = calcMt(parentMtr);
+
+      const childSummaries = g.children.map((c) => {
+        const cPcs = Number(c.plannedPcs || 0);
+        const cMtr = calcMtr(cPcs);
+        const cMt = calcMt(cMtr);
+        return {
+          id: c.id,
+          wo: c.wo,
+          pcs: cPcs,
+          mtr: cMtr,
+          mt: cMt,
+          availableMtr: c.availableMtr,
+        };
+      });
+
+      const totalGroupChildPcs = childSummaries.reduce((sum, c) => sum + c.pcs, 0);
+      const totalGroupChildMtr = childSummaries.reduce((sum, c) => sum + c.mtr, 0);
+      const totalGroupChildMt = childSummaries.reduce((sum, c) => sum + c.mt, 0);
+
+      const totalGroupPcs = parentPcs + totalGroupChildPcs;
+      const totalGroupMtr = Number((parentMtr + totalGroupChildMtr).toFixed(2));
+      const totalGroupMt = Number((parentMt + totalGroupChildMt).toFixed(3));
+
+      grandTotalPcs += totalGroupPcs;
+      grandTotalMtr += totalGroupMtr;
+      grandTotalMt += totalGroupMt;
 
       return {
-        id: entry.wo.id,
-        work_order_no: entry.wo.work_order_no,
-        isMaster: entry.isMaster,
-        pcs,
-        mtr: metrics.mtr,
-        mt: metrics.mt,
-        avgLen: metrics.avg,
-        availMtr: entry.availableMtr,
-        availPcs,
-        exceeds,
+        groupId: g.id,
+        parentPcs,
+        parentMtr,
+        parentMt,
+        childSummaries,
+        totalGroupPcs,
+        totalGroupMtr,
+        totalGroupMt,
+        avgLen,
       };
     });
 
     return {
-      totalPcs,
-      totalMtr,
-      totalMt,
-      orderCalculations,
-      hasErrors: orderCalculations.some((o) => o.exceeds || o.pcs <= 0),
+      grandTotalPcs,
+      grandTotalMtr: Number(grandTotalMtr.toFixed(2)),
+      grandTotalMt: Number(grandTotalMt.toFixed(3)),
+      groupSummaries,
     };
-  }, [selectedOrders, mhOd, mhWt, mhL1, mhL2]);
+  }, [groups]);
 
-  // Submit Multi-WO Rolling Plan (Rule 1)
+  // Submit Multi-WO Rolling Plan (in one go, with NO plan qty validation blocking)
   async function submitMultiWoPlan(e: React.FormEvent) {
     e.preventDefault();
 
-    if (selectedOrders.length === 0) {
+    if (groups.length === 0) {
       toast.error('Please select at least one Work Order for the Rolling Plan.');
-      return;
-    }
-
-    if (!masterEntry) {
-      toast.error('Please assign one Work Order as the Master Work Order.');
       return;
     }
 
@@ -693,109 +721,70 @@ export default function RollingPlanForm() {
       return;
     }
 
-    if (campaignSummary.hasErrors) {
-      const overErr = campaignSummary.orderCalculations.find((o) => o.exceeds);
-      if (overErr) {
-        toast.error(
-          `${overErr.work_order_no} planned quantity (${fmt(overErr.mtr)} MTR) exceeds available unplanned balance (${fmt(overErr.availMtr)} MTR).`
-        );
-        return;
-      }
-      const zeroErr = campaignSummary.orderCalculations.find((o) => o.pcs <= 0);
-      if (zeroErr) {
-        toast.error(`Please enter a valid Planned PCS for ${zeroErr.work_order_no}.`);
-        return;
-      }
-    }
-
-    const mhOdVal = Number(mhOd);
-    const mhWtVal = Number(mhWt);
-    const mhL1Val = Number(mhL1);
-    const mhL2Val = Number(mhL2);
-
-    if (!Number.isFinite(mhOdVal) || mhOdVal <= 0) {
-      toast.error('Enter valid Mother Hollow OD.');
-      return;
-    }
-    if (!Number.isFinite(mhWtVal) || mhWtVal <= 0) {
-      toast.error('Enter valid Mother Hollow WT.');
-      return;
-    }
-    if (!Number.isFinite(mhL1Val) || mhL1Val <= 0) {
-      toast.error('Enter valid Mother Hollow L1.');
-      return;
-    }
-    if (!Number.isFinite(mhL2Val) || mhL2Val <= 0) {
-      toast.error('Enter valid Mother Hollow L2.');
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const masterCalc = campaignSummary.orderCalculations.find((o) => o.isMaster)!;
-      const totalRollingMtr = campaignSummary.totalMtr;
-      const calcSmLen = Number(smLen) > 0 ? Number(smLen) : 7.67;
-      const calcNos = totalRollingMtr > 0 ? Math.ceil(totalRollingMtr / calcSmLen) : Number(masterCalc.pcs);
-      const calcMton = Number(
-        (totalRollingMtr * Math.max(Number(custOd) - Number(custWt), 0) * Number(custWt) * 0.0246615 * 0.001).toFixed(3)
-      );
-
-      const payload = {
+      const payload: CreateMultiWoRollingPlanPayload = {
         mill_name: millName,
         month_str: monthStr,
         plan_no_override: planNoOverride.trim() || undefined,
         prev_plan_no: prevPlanNo,
         rolling_date: date,
         route_id: route,
-        mh_od: Number(custOd) || mhOdVal,
-        mh_wt: Number(custWt) || mhWtVal,
-        mh_l1: Number(smLen) || mhL1Val,
-        mh_l2: Number(smLen) || mhL2Val,
-        pass_required: Number(passRequired),
-        multiple: Number(multiple),
+        multiple: Number(groups[0]?.multipleStr === '2' || groups[0]?.multipleStr === '2-Multi' ? 2 : 1),
 
-        master_groups: [
-          {
-            master_work_order_id: masterEntry.wo.id,
-            master_planned_pcs: masterCalc.pcs,
-            master_planned_mtr: masterCalc.mtr,
-            master_planned_mt: masterCalc.mt,
-            catg: factoryCatg,
-            spec: factorySpec,
-            grade: factoryGrade,
-            ibr_status: factoryIbr,
-            rolling_mtr: totalRollingMtr,
-            rm_od: Number(rmOd),
-            rm_len_min: Number(rmLenMin),
-            rm_len_max: Number(rmLenMax),
+        master_groups: groups.map((g) => {
+          const gSummary = campaignSummary.groupSummaries.find((s) => s.groupId === g.id)!;
+          const parentSmLen = Number(g.smLen || g.effLen || g.wo.l1 || 6.0);
+          const parentAvgLen = parentSmLen > 0 ? parentSmLen : 6.0;
+          const calcNos = gSummary.totalGroupMtr > 0 ? Math.ceil(gSummary.totalGroupMtr / parentAvgLen) : gSummary.totalGroupPcs;
+          const calcMton = gSummary.totalGroupMt;
+
+          return {
+            master_work_order_id: g.wo.id,
+            master_planned_pcs: gSummary.parentPcs,
+            master_planned_mtr: gSummary.parentMtr,
+            master_planned_mt: gSummary.parentMt,
+
+            // Setup specifications for this work order
+            catg: g.catg,
+            spec: g.spec,
+            grade: g.grade,
+            ibr_status: g.ibrStatus,
+            rolling_mtr: gSummary.totalGroupMtr,
+
+            rm_od: Number(g.rmOd),
+            rm_len_min: Number(g.rmLenMin),
+            rm_len_max: Number(g.rmLenMax),
             plan_qty_nos: calcNos,
             plan_qty_mton: calcMton,
-            pm_od: Number(pmOd),
-            pm_wt: Number(pmWt),
-            pm_len: Number(pmLen),
-            cust_od: Number(custOd),
-            cust_wt: Number(custWt),
-            rolling_wt: Number(rollingWt),
-            sm_len: Number(smLen),
-            fe_len: Number(feLen),
-            be_len: Number(beLen),
-            eff_len: Number(effLen),
-            req_len_er: reqLenEr,
-            req_len_min: Number(reqLenMin),
-            req_len_max: Number(reqLenMax),
-            multiple_str: multipleStr,
-            tol_od_min: Number(tolOdMin),
-            tol_od_max: Number(tolOdMax),
-            tol_wt_min: Number(tolWtMin),
-            tol_wt_max: Number(tolWtMax),
-            process_yield_pct: Number(processYieldPct),
 
-            child_work_orders: childEntries.map((c) => {
-              const cCalc = campaignSummary.orderCalculations.find((o) => o.id === c.wo.id)!;
-              const cFinishSize = `${fmt(c.wo.size_od, 2)}x${fmt(c.wo.size_wt, 2)}`;
-              const cFinalLen = `${fmt(c.wo.l1, 2)}-${fmt(c.wo.l2, 2)}`;
-              const cHollowLen = `${fmt(reqLenMin, 2)}-${fmt(reqLenMax, 2)}`;
+            pm_od: Number(g.pmOd),
+            pm_wt: Number(g.pmWt),
+            pm_len: Number(g.pmLen),
+
+            cust_od: Number(g.custOd),
+            cust_wt: Number(g.custWt),
+            rolling_wt: Number(g.rollingWt),
+            sm_len: Number(g.smLen),
+
+            fe_len: Number(g.feLen),
+            be_len: Number(g.beLen),
+            eff_len: Number(g.effLen),
+
+            req_len_er: g.reqLenEr,
+            req_len_min: Number(g.reqLenMin),
+            req_len_max: Number(g.reqLenMax),
+            multiple_str: g.multipleStr,
+            multiple: Number(g.multipleStr === '2' || g.multipleStr === '2-Multi' ? 2 : 1),
+            tol_od_min: Number(g.tolOdMin),
+            tol_od_max: Number(g.tolOdMax),
+            tol_wt_min: Number(g.tolWtMin),
+            tol_wt_max: Number(g.tolWtMax),
+            process_yield_pct: Number(g.processYieldPct),
+
+            child_work_orders: g.children.map((c, cIdx) => {
+              const cSummary = gSummary.childSummaries.find((cs) => cs.id === c.id)!;
               return {
                 id: c.wo.id,
                 work_order_no: c.wo.work_order_no,
@@ -805,37 +794,17 @@ export default function RollingPlanForm() {
                 size_wt: c.wo.size_wt,
                 l1: c.wo.l1,
                 l2: c.wo.l2,
-                planned_pcs: cCalc.pcs,
-                planned_mtr: cCalc.mtr,
-                planned_mt: cCalc.mt,
-                catg: factoryCatg,
-                finish_size: cFinishSize,
-                final_len: cFinalLen,
-                hollow_len: cHollowLen,
-                htc_mtr: cCalc.mtr,
+                planned_pcs: cSummary.pcs,
+                planned_mtr: cSummary.mtr,
+                planned_mt: cSummary.mt,
+                catg: g.catg,
+                finish_size: `${fmt(c.wo.size_od, 2)}x${fmt(c.wo.size_wt, 2)}`,
+                final_len: `${fmt(c.wo.l1, 2)}-${fmt(c.wo.l2, 2)}`,
+                hollow_len: `${fmt(g.reqLenMin, 2)}-${fmt(g.reqLenMax, 2)}`,
+                htc_mtr: cSummary.mtr,
+                alloc_tag: `${cIdx + 1}`,
               };
             }),
-          },
-        ],
-        // Legacy single-master compatibility
-        master_work_order_id: masterEntry.wo.id,
-        master_planned_pcs: masterCalc.pcs,
-        master_planned_mtr: masterCalc.mtr,
-        master_planned_mt: masterCalc.mt,
-        child_work_orders: childEntries.map((c) => {
-          const cCalc = campaignSummary.orderCalculations.find((o) => o.id === c.wo.id)!;
-          return {
-            id: c.wo.id,
-            work_order_no: c.wo.work_order_no,
-            customer_name: c.wo.customer_name,
-            grade: c.wo.grade,
-            size_od: c.wo.size_od,
-            size_wt: c.wo.size_wt,
-            l1: c.wo.l1,
-            l2: c.wo.l2,
-            planned_pcs: cCalc.pcs,
-            planned_mtr: cCalc.mtr,
-            planned_mt: cCalc.mt,
           };
         }),
       };
@@ -847,22 +816,15 @@ export default function RollingPlanForm() {
       });
 
       const data = await res.json();
-
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to create rolling plan.');
       }
 
       toast.success(
-        `Rolling Plan ${data.plan_no} created successfully! (Master WO: ${masterEntry.wo.work_order_no}, ${data.child_count || 0} Child Orders Linked)`
+        `Rolling Plan ${data.plan_no} issued successfully in one go! (${groups.length} Setup(s), ${data.child_count || 0} Child Order(s))`
       );
 
-      // Reset form
-      setSelectedOrders([]);
-      setMhOd('');
-      setMhWt('');
-      setPassRequired('1');
-      setMultiple('1');
-
+      setGroups([]);
       await Promise.all([loadPlans(), loadWorkOrders()]);
     } catch (err: any) {
       console.error('Submit error:', err);
@@ -1025,9 +987,13 @@ export default function RollingPlanForm() {
     }
   }
 
-  // Available Work Orders for addition (exclude already selected)
+  // Available Work Orders for addition (exclude already selected as parent or child)
   const availableWosToAdd = useMemo(() => {
-    const selectedIds = new Set(selectedOrders.map((s) => s.wo.id));
+    const selectedIds = new Set<string>();
+    groups.forEach((g) => {
+      selectedIds.add(g.wo.id);
+      g.children.forEach((c) => selectedIds.add(c.wo.id));
+    });
     return wos
       .filter((w) => !selectedIds.has(w.id))
       .filter((w) => {
@@ -1040,7 +1006,7 @@ export default function RollingPlanForm() {
           `${w.size_od}x${w.size_wt}`.includes(q)
         );
       });
-  }, [wos, selectedOrders, woSearchQuery]);
+  }, [wos, groups, woSearchQuery]);
 
   // Distinct Grades for Multi-WO picker
   const availableGrades = useMemo(() => {
@@ -1051,9 +1017,13 @@ export default function RollingPlanForm() {
     return Array.from(s).sort();
   }, [wos]);
 
-  // Filtered available WOs for Multi-Select modal
+  // Filtered available WOs for Multi-Select modal (parent setups)
   const modalFilteredWos = useMemo(() => {
-    const selectedIds = new Set(selectedOrders.map((s) => s.wo.id));
+    const selectedIds = new Set<string>();
+    groups.forEach((g) => {
+      selectedIds.add(g.wo.id);
+      g.children.forEach((c) => selectedIds.add(c.wo.id));
+    });
     return wos
       .filter((w) => !selectedIds.has(w.id))
       .filter((w) => {
@@ -1067,7 +1037,29 @@ export default function RollingPlanForm() {
           `${w.size_od}x${w.size_wt}`.includes(q)
         );
       });
-  }, [wos, selectedOrders, modalSearch, modalGradeFilter]);
+  }, [wos, groups, modalSearch, modalGradeFilter]);
+
+  // Filtered available WOs for Child Order Picker modal
+  const childModalFilteredWos = useMemo(() => {
+    const selectedIds = new Set<string>();
+    groups.forEach((g) => {
+      selectedIds.add(g.wo.id);
+      g.children.forEach((c) => selectedIds.add(c.wo.id));
+    });
+    return wos
+      .filter((w) => !selectedIds.has(w.id))
+      .filter((w) => {
+        if (childModalGradeFilter !== 'ALL' && w.grade !== childModalGradeFilter) return false;
+        if (!childModalSearch) return true;
+        const q = childModalSearch.toLowerCase();
+        return (
+          w.work_order_no.toLowerCase().includes(q) ||
+          (w.customer_name && w.customer_name.toLowerCase().includes(q)) ||
+          (w.grade && w.grade.toLowerCase().includes(q)) ||
+          `${w.size_od}x${w.size_wt}`.includes(q)
+        );
+      });
+  }, [wos, groups, childModalSearch, childModalGradeFilter]);
 
   // Filtered plans based on planTypeFilter
   const filteredPlans = useMemo(() => {
@@ -1093,248 +1085,31 @@ export default function RollingPlanForm() {
       {/* Campaign Rolling Plan Creation Card */}
       <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs">
         <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Layers className="h-5 w-5 text-indigo-600" />
             <h1 className="text-xl font-bold tracking-tight text-slate-900">Issue Rolling Plan</h1>
             <span className="rounded-full bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
-              Campaign Planning
+              Multi-WO Campaign Planning
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-slate-500">
-              {selectedOrders.length} Order{selectedOrders.length === 1 ? '' : 's'} in Campaign
-            </span>
+          <div className="flex items-center gap-3 text-xs font-medium text-slate-600 font-mono">
+            <span><b>{groups.length}</b> Setup{groups.length === 1 ? '' : 's'}</span>
+            <span>•</span>
+            <span><b>{fmt(campaignSummary.totalPcs)}</b> Pcs</span>
+            <span>•</span>
+            <span className="text-indigo-700 font-bold">{fmt(campaignSummary.totalMtr)} MTR</span>
           </div>
         </div>
 
         <form onSubmit={submitMultiWoPlan} className="space-y-5">
-          {/* Section 1: Work Order Selection & Role Assignment */}
-          <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <span>Work Orders & Campaign Roles</span>
-                <span className="text-rose-500">*</span>
-              </h3>
-
-              {/* Work Order Picker Controls: Batch Dialog Button + Single Select */}
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setModalSelectedIds([]);
-                    setIsMultiPickerOpen(true);
-                  }}
-                  disabled={!canManagePlans}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  Select Multiple Work Orders (Dialog)
-                </Button>
-
-                <Select
-                  value={addWoSelectValue}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val) handleAddOrder(val);
-                  }}
-                  disabled={!canManagePlans}
-                  className="w-full sm:w-72 bg-white"
-                >
-                  <option value="">+ Add Single Work Order...</option>
-                  {availableWosToAdd.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.work_order_no} · {w.size_od}×{w.size_wt}mm · {w.grade} · {fmt(w.balance_qty_mtr)} MTR
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-
-            {/* Selected Work Orders Table / Cards */}
-            {selectedOrders.length === 0 ? (
-              <div className="rounded-xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
-                <Layers className="mx-auto h-8 w-8 text-slate-400" />
-                <p className="mt-2 text-sm font-semibold text-slate-700">No Work Orders Selected</p>
-                <p className="text-xs text-slate-400 mt-0.5">Select orders above to start this campaign</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-2xs">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
-                      <tr>
-                        <th className="px-3 py-2.5 font-bold">Role</th>
-                        <th className="px-3 py-2.5 font-bold">Work Order</th>
-                        <th className="px-3 py-2.5 font-bold">Customer & Grade</th>
-                        <th className="px-3 py-2.5 font-bold">Size (OD × WT)</th>
-                        <th className="px-3 py-2.5 font-bold">Length</th>
-                        <th className="px-3 py-2.5 font-bold text-right">Available Unplanned</th>
-                        <th className="px-3 py-2.5 font-bold text-center w-32">Planned PCS *</th>
-                        <th className="px-3 py-2.5 font-bold text-right">Planned MTR</th>
-                        <th className="px-3 py-2.5 font-bold text-right">Planned MT</th>
-                        <th className="px-3 py-2.5 text-center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {selectedOrders.map((entry) => {
-                        const pcsNum = Number(entry.plannedPcs || 0);
-                        const metrics = calcHollowMetrics(entry.wo, pcsNum, {
-                          od: mhOd,
-                          wt: mhWt,
-                          l1: mhL1,
-                          l2: mhL2,
-                        });
-                        const exceeds = metrics.mtr > entry.availableMtr + 0.001;
-
-                        return (
-                          <tr
-                            key={entry.wo.id}
-                            className={
-                              entry.isMaster
-                                ? 'bg-indigo-50/40 font-medium'
-                                : 'hover:bg-slate-50'
-                            }
-                          >
-                            {/* Role Selector Button */}
-                            <td className="px-3 py-2 whitespace-nowrap">
-                              {entry.isMaster ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-1 text-xs font-bold text-white shadow-xs">
-                                  <Crown className="h-3.5 w-3.5" />
-                                  Master Order
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleSetMaster(entry.wo.id)}
-                                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-indigo-400 hover:text-indigo-600 cursor-pointer transition-colors"
-                                  title="Click to designate this as the Master Work Order"
-                                >
-                                  <Link2 className="h-3.5 w-3.5 text-slate-400" />
-                                  Child Order (Set Master)
-                                </button>
-                              )}
-                            </td>
-
-                            <td className="px-3 py-2 font-bold text-slate-900 whitespace-nowrap">
-                              {entry.wo.work_order_no}
-                            </td>
-
-                            <td className="px-3 py-2 max-w-[160px] truncate text-slate-600">
-                              <span className="font-semibold text-slate-800">
-                                {entry.wo.customer_name || '—'}
-                              </span>
-                              <div className="text-[11px] text-slate-500">{entry.wo.grade}</div>
-                            </td>
-
-                            <td className="px-3 py-2 font-mono whitespace-nowrap">
-                              {entry.wo.size_od} × {entry.wo.size_wt} mm
-                            </td>
-
-                            <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-500">
-                              <div>{entry.wo.l1}–{entry.wo.l2} m (WO)</div>
-                              <div className="text-[10px] text-indigo-600 font-semibold">
-                                Hollow: {fmt(metrics.avg)} m avg
-                              </div>
-                            </td>
-
-                            <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
-                              <span className="font-bold text-slate-700">
-                                {fmt(entry.availableMtr)}
-                              </span>{' '}
-                              MTR
-                              <div className="text-[10px] text-slate-400">
-                                ~{metrics.avg > 0 ? Math.floor(entry.availableMtr / metrics.avg) : 0} Pcs
-                              </div>
-                            </td>
-
-                            {/* Planned PCS Input */}
-                            <td className="px-3 py-2 text-center">
-                              <Input
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={entry.plannedPcs}
-                                onChange={(e) => handleUpdatePcs(entry.wo.id, e.target.value)}
-                                disabled={!canManagePlans}
-                                className={`h-8 w-28 text-center font-mono font-bold ${
-                                  exceeds ? 'border-rose-500 text-rose-700 bg-rose-50' : 'bg-white'
-                                }`}
-                                required
-                              />
-                              {exceeds && (
-                                <div className="text-[10px] text-rose-600 font-semibold mt-0.5">
-                                  Exceeds available!
-                                </div>
-                              )}
-                            </td>
-
-                            <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
-                              {fmt(metrics.mtr)} m
-                            </td>
-
-                            <td className="px-3 py-2 text-right font-mono text-slate-700 whitespace-nowrap">
-                              {fmt(metrics.mt)} MT
-                            </td>
-
-                            <td className="px-3 py-2 text-center">
-                              {selectedOrders.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveOrder(entry.wo.id)}
-                                  className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                                  title="Remove order from campaign"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Campaign Totals Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 text-xs">
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-indigo-950 flex items-center gap-1.5">
-                      <Sparkles className="h-4 w-4 text-indigo-600" />
-                      Consolidated Campaign Totals:
-                    </span>
-                    <span className="text-slate-700">
-                      Master: <b>{masterEntry?.wo.work_order_no || 'None'}</b>
-                    </span>
-                    <span className="text-slate-500">|</span>
-                    <span className="text-slate-700">
-                      Child Orders: <b>{childEntries.length}</b> ({childEntries.map((c) => c.wo.work_order_no).join(', ') || 'None'})
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-4 font-mono font-bold">
-                    <span className="text-indigo-900">
-                      Total Pcs: <span className="text-indigo-700">{fmt(campaignSummary.totalPcs)}</span>
-                    </span>
-                    <span className="text-indigo-900">
-                      Total MTR: <span className="text-indigo-700">{fmt(campaignSummary.totalMtr)}</span>
-                    </span>
-                    <span className="text-indigo-900">
-                      Total MT: <span className="text-indigo-700">{fmt(campaignSummary.totalMt)}</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Section 2: Factory Daily Production Plan & Campaign Headers (Mill-02 Photo Format) */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4 shadow-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          {/* Section 1: Factory Daily Production Plan & Campaign Headers (Mill-02 Photo Format) */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div className="flex items-center gap-2">
                 <Flame className="h-4 w-4 text-amber-600" />
-                <h3 className="text-sm font-bold text-slate-900">
-                  Factory Daily Production Plan Parameters ({selectedMill})
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                  Daily Production Plan Parameters ({selectedMill})
                 </h3>
               </div>
               <span className="text-[11px] font-mono text-slate-500">
@@ -1439,292 +1214,722 @@ export default function RollingPlanForm() {
                 </Select>
               </div>
             </div>
+          </div>
 
-            {/* Technical 17-Column Group Setup (Matching Sheet) */}
-            <div className="rounded-lg border border-amber-200 bg-amber-50/30 p-3 space-y-3">
-              <div className="text-xs font-bold text-amber-950 flex items-center justify-between">
-                <span>Setup Specifications & Factory Tolerances</span>
-                <span className="text-[10px] text-amber-700 font-normal">
-                  Values propagate to shop floor cutting plan sheet
-                </span>
+          {/* Section 2: Work Orders & Setup Groups */}
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                  <Sliders className="h-4 w-4 text-indigo-600" />
+                  <span>Work Orders & Setup Groups ({groups.length})</span>
+                  <span className="text-rose-500">*</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Each work order has its own setup specifications. Click &quot;+ Add Child&quot; near any Work Order No to link child orders.
+                </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5 text-xs">
-                {/* 1. Classification */}
-                <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200">
-                  <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                    Classification
-                  </span>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">Category (Catg)</label>
-                    <select
-                      value={factoryCatg}
-                      onChange={(e) => setFactoryCatg(e.target.value)}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-semibold"
-                    >
-                      <option value="CDS">CDS (Cold Drawn Seamless)</option>
-                      <option value="HFS">HFS (Hot Finished Seamless)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">Specification (Spec)</label>
-                    <input
-                      type="text"
-                      value={factorySpec}
-                      onChange={(e) => setFactorySpec(e.target.value)}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">Grade & IBR Status</label>
-                    <div className="flex gap-1">
-                      <input
-                        type="text"
-                        value={factoryGrade}
-                        onChange={(e) => setFactoryGrade(e.target.value)}
-                        className="w-2/3 rounded border border-slate-300 p-1 text-xs font-mono"
-                      />
-                      <select
-                        value={factoryIbr}
-                        onChange={(e) => setFactoryIbr(e.target.value)}
-                        className="w-1/3 rounded border border-slate-300 p-1 text-xs font-bold"
-                      >
-                        <option value="IBR">IBR</option>
-                        <option value="NIBR">NIBR</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
+              {/* Work Order Picker Controls: Batch Dialog Button + Single Select */}
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setModalSelectedIds([]);
+                    setIsMultiPickerOpen(true);
+                  }}
+                  disabled={!canManagePlans}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Select Multiple Work Orders (Dialog)
+                </Button>
 
-                {/* 2. Billet Dimensions */}
-                <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200">
-                  <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                    Billet Dimensions
-                  </span>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">RM OD (mm)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={rmOd}
-                      onChange={(e) => setRmOd(e.target.value)}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">RM Len Min (m)</label>
-                    <input
-                      type="number"
-                      step="0.001"
-                      value={rmLenMin}
-                      onChange={(e) => setRmLenMin(e.target.value)}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">RM Len Max (m)</label>
-                    <input
-                      type="number"
-                      step="0.001"
-                      value={rmLenMax}
-                      onChange={(e) => setRmLenMax(e.target.value)}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* 3. Piercer Mill */}
-                <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200">
-                  <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                    Piercer Mill
-                  </span>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">PM OD (mm)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={pmOd}
-                      onChange={(e) => setPmOd(e.target.value)}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">PM Wthk (mm)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={pmWt}
-                      onChange={(e) => setPmWt(e.target.value)}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">PM Length (m)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={pmLen}
-                      onChange={(e) => setPmLen(e.target.value)}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* 4. SM / Sizing Mill */}
-                <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200">
-                  <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                    SM (Sizing Mill)
-                  </span>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">Cust. OD × WT (mm)</label>
-                    <div className="flex gap-1">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={custOd}
-                        onChange={(e) => {
-                          setCustOd(e.target.value);
-                          setMhOd(e.target.value);
-                        }}
-                        className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono font-bold"
-                        placeholder="OD"
-                      />
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={custWt}
-                        onChange={(e) => {
-                          setCustWt(e.target.value);
-                          setMhWt(e.target.value);
-                          setRollingWt(e.target.value);
-                        }}
-                        className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono font-bold"
-                        placeholder="WT"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">Rolling WT (mm)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={rollingWt}
-                      onChange={(e) => setRollingWt(e.target.value)}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">SM Length (m)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={smLen}
-                      onChange={(e) => {
-                        setSmLen(e.target.value);
-                        setEffLen(e.target.value);
-                        setMhL1(e.target.value);
-                        setMhL2(e.target.value);
-                      }}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* 5. Tolerances & Process Yield */}
-                <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200">
-                  <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                    Tolerances & Mult
-                  </span>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">Mult / Multiple</label>
-                    <input
-                      type="text"
-                      value={multipleStr}
-                      onChange={(e) => setMultipleStr(e.target.value)}
-                      placeholder="e.g. 1 or 2-Multi"
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">OD Min - Max</label>
-                    <div className="flex gap-1">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={tolOdMin}
-                        onChange={(e) => setTolOdMin(e.target.value)}
-                        className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono"
-                      />
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={tolOdMax}
-                        onChange={(e) => setTolOdMax(e.target.value)}
-                        className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500 block">Process Yield %</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={processYieldPct}
-                      onChange={(e) => setProcessYieldPct(e.target.value)}
-                      className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold text-emerald-700"
-                    />
-                  </div>
-                </div>
+                <Select
+                  value={addWoSelectValue}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val) handleAddOrder(val);
+                  }}
+                  disabled={!canManagePlans}
+                  className="w-full sm:w-72 bg-white"
+                >
+                  <option value="">+ Add Single Work Order...</option>
+                  {availableWosToAdd.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.work_order_no} · {w.size_od}×{w.size_wt}mm · {w.grade} · {fmt(w.balance_qty_mtr)} MTR
+                    </option>
+                  ))}
+                </Select>
               </div>
             </div>
 
-            {/* Live Sheet Breakdown Preview */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs space-y-1.5">
-              <div className="flex flex-wrap items-center justify-between gap-2 font-bold text-slate-800">
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Factory Cutting Sheet Live Preview:
-                </span>
-                <div className="flex items-center gap-3 font-mono">
-                  <span>Rolling mtr: <b className="text-blue-700">{fmt(campaignSummary.totalMtr, 0)}</b></span>
-                  <span>Plan Nos: <b className="text-indigo-700">{fmt(Number(smLen) > 0 ? Math.ceil(campaignSummary.totalMtr / Number(smLen)) : campaignSummary.totalPcs, 0)}</b></span>
-                  <span>Plan MT: <b className="text-emerald-700">{fmt(campaignSummary.totalMt, 1)}</b></span>
-                </div>
+            {/* Groups List */}
+            {groups.length === 0 ? (
+              <div className="rounded-xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
+                <Layers className="mx-auto h-8 w-8 text-slate-400" />
+                <p className="mt-2 text-sm font-semibold text-slate-700">No Work Orders Selected</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Select work orders above to add them as rolling plan setups.
+                </p>
               </div>
+            ) : (
+              <div className="space-y-4">
+                {groups.map((group, groupIndex) => {
+                  const gSummary = campaignSummary.groupSummaries.find((s) => s.groupId === group.id);
+                  const pMetrics = gSummary?.parentMetrics || { pcs: 0, mtr: 0, mt: 0, avg: 0 };
 
-              {/* Sub-row pills preview */}
-              <div className="space-y-1 pt-1 font-mono text-[11px] text-slate-700">
-                {selectedOrders.map((o, idx) => {
-                  const oCalc = campaignSummary.orderCalculations.find((c) => c.id === o.wo.id);
-                  const fs = `${fmt(o.wo.size_od, 2)}x${fmt(o.wo.size_wt, 2)}`;
-                  const fl = `${fmt(o.wo.l1, 2)}-${fmt(o.wo.l2, 2)}`;
-                  const hl = `${fmt(reqLenMin, 2)}-${fmt(reqLenMax, 2)}`;
                   return (
-                    <div key={idx} className="bg-white border border-slate-200 rounded px-2 py-0.5 text-slate-800">
-                      <span className="font-bold">{factoryCatg}</span>(finish size-{fs})(Final len - {fl})(OA-{o.wo.work_order_no})(Cust.- {o.wo.customer_name || '—'})(Hollow len-{hl})(HTC mtr-{fmt(oCalc?.mtr || 0, 0)})
+                    <div
+                      key={group.id}
+                      className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden transition-all hover:border-indigo-300"
+                    >
+                      {/* Setup Card Header */}
+                      <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <span className="rounded-md bg-indigo-600 px-2 py-0.5 text-xs font-bold text-white shadow-xs">
+                            Setup #{groupIndex + 1}
+                          </span>
+
+                          <div className="flex items-center gap-1.5 font-mono">
+                            <span className="text-xs text-slate-500 font-sans font-medium">WO:</span>
+                            <span className="text-sm font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                              {group.parentWo.work_order_no}
+                            </span>
+                          </div>
+
+                          {/* ADD CHILD BUTTON NEAR WORK ORDER NO */}
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setChildModalSearch('');
+                              setChildModalGradeFilter('ALL');
+                              setActiveChildTargetGroupId(group.id);
+                            }}
+                            disabled={!canManagePlans}
+                            className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md shadow-xs cursor-pointer flex items-center gap-1"
+                            title="Add child work orders under this work order"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            <span>Add Child</span>
+                          </Button>
+
+                          {group.children.length > 0 && (
+                            <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                              <Link2 className="h-3 w-3" />
+                              {group.children.length} Child Order{group.children.length === 1 ? '' : 's'}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroupSpecs(group.id)}
+                            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+                              group.specsOpen
+                                ? 'bg-amber-100 border-amber-300 text-amber-900'
+                                : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Sliders className="h-3.5 w-3.5 text-amber-600" />
+                            <span>{group.specsOpen ? 'Hide Specs' : 'Setup Specs & Tolerances'}</span>
+                            <span className="text-[10px] text-slate-400 font-mono hidden md:inline">
+                              ({group.factoryCatg} · RM {group.rmOd}mm · PM {group.pmOd}mm · SM {group.custOd}×{group.custWt})
+                            </span>
+                          </button>
+
+                          {groups.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveGroup(group.id)}
+                              className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition"
+                              title="Remove this setup group"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Parent Work Order Row Details */}
+                      <div className="p-3.5 bg-white">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                              <tr>
+                                <th className="px-3 py-1.5 font-bold">Role</th>
+                                <th className="px-3 py-1.5 font-bold">Work Order</th>
+                                <th className="px-3 py-1.5 font-bold">Customer & Grade</th>
+                                <th className="px-3 py-1.5 font-bold">Size (OD × WT)</th>
+                                <th className="px-3 py-1.5 font-bold">Length</th>
+                                <th className="px-3 py-1.5 font-bold text-right">Available Balance</th>
+                                <th className="px-3 py-1.5 font-bold text-center w-32">Planned PCS *</th>
+                                <th className="px-3 py-1.5 font-bold text-right">Planned MTR</th>
+                                <th className="px-3 py-1.5 font-bold text-right">Planned MT</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="bg-indigo-50/20 font-medium">
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-2xs">
+                                    <Crown className="h-3 w-3" />
+                                    Master Order
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap">
+                                  {group.parentWo.work_order_no}
+                                </td>
+                                <td className="px-3 py-2 max-w-[180px] truncate text-slate-600">
+                                  <span className="font-semibold text-slate-800">
+                                    {group.parentWo.customer_name || 'Standard Stock'}
+                                  </span>
+                                  <div className="text-[11px] text-slate-500">{group.parentWo.grade}</div>
+                                </td>
+                                <td className="px-3 py-2 font-mono whitespace-nowrap">
+                                  {group.parentWo.size_od} × {group.parentWo.size_wt} mm
+                                </td>
+                                <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-500">
+                                  <div>{group.parentWo.l1}–{group.parentWo.l2} m (WO)</div>
+                                  <div className="text-[10px] text-indigo-600 font-semibold">
+                                    Hollow: {fmt(pMetrics.avg)} m avg
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-right font-mono whitespace-nowrap text-slate-600">
+                                  <span className="font-bold text-slate-700">
+                                    {fmt(group.availableMtr)}
+                                  </span>{' '}
+                                  MTR
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={group.parentPlannedPcs}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'parentPlannedPcs', e.target.value)
+                                    }
+                                    disabled={!canManagePlans}
+                                    className="h-8 w-28 text-center font-mono font-bold bg-white text-slate-900 border-slate-300"
+                                    required
+                                  />
+                                </td>
+                                <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                  {fmt(pMetrics.mtr)} m
+                                </td>
+                                <td className="px-3 py-2 text-right font-mono text-slate-700 whitespace-nowrap">
+                                  {fmt(pMetrics.mt)} MT
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Nested Child Work Orders Sub-Table (if any) */}
+                      {group.children.length > 0 && (
+                        <div className="border-t border-slate-100 bg-emerald-50/20 p-3.5 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+                              <Link2 className="h-3.5 w-3.5 text-emerald-600" />
+                              Child Work Orders under {group.parentWo.work_order_no}:
+                            </span>
+                            <span className="text-slate-500 font-medium">
+                              Linked to parent setup specifications
+                            </span>
+                          </div>
+
+                          <div className="overflow-x-auto rounded-lg border border-emerald-200 bg-white">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-emerald-50/70 text-slate-700 border-b border-emerald-200">
+                                <tr>
+                                  <th className="px-3 py-1.5 font-bold">Role</th>
+                                  <th className="px-3 py-1.5 font-bold">Child Work Order</th>
+                                  <th className="px-3 py-1.5 font-bold">Customer & Grade</th>
+                                  <th className="px-3 py-1.5 font-bold">Size (OD × WT)</th>
+                                  <th className="px-3 py-1.5 font-bold">Length</th>
+                                  <th className="px-3 py-1.5 font-bold text-right">Available Balance</th>
+                                  <th className="px-3 py-1.5 font-bold text-center w-32">Planned PCS *</th>
+                                  <th className="px-3 py-1.5 font-bold text-right">Planned MTR</th>
+                                  <th className="px-3 py-1.5 font-bold text-right">Planned MT</th>
+                                  <th className="px-3 py-1.5 text-center">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-emerald-100">
+                                {group.children.map((child) => {
+                                  const cMetrics =
+                                    gSummary?.childrenMetrics.find((c) => c.childWoId === child.wo.id)
+                                      ?.metrics || { pcs: 0, mtr: 0, mt: 0, avg: 0 };
+
+                                  return (
+                                    <tr key={child.wo.id} className="hover:bg-emerald-50/30">
+                                      <td className="px-3 py-2 whitespace-nowrap">
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                                          <Link2 className="h-3 w-3" />
+                                          Child Order
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap">
+                                        {child.wo.work_order_no}
+                                      </td>
+                                      <td className="px-3 py-2 max-w-[180px] truncate text-slate-600">
+                                        <span className="font-semibold text-slate-800">
+                                          {child.wo.customer_name || 'Standard Stock'}
+                                        </span>
+                                        <div className="text-[11px] text-slate-500">{child.wo.grade}</div>
+                                      </td>
+                                      <td className="px-3 py-2 font-mono whitespace-nowrap">
+                                        {child.wo.size_od} × {child.wo.size_wt} mm
+                                      </td>
+                                      <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-500">
+                                        <div>{child.wo.l1}–{child.wo.l2} m (WO)</div>
+                                        <div className="text-[10px] text-emerald-700 font-semibold">
+                                          Hollow: {fmt(cMetrics.avg)} m avg
+                                        </div>
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-mono whitespace-nowrap text-slate-600">
+                                        <span className="font-bold text-slate-700">
+                                          {fmt(child.availableMtr)}
+                                        </span>{' '}
+                                        MTR
+                                      </td>
+                                      <td className="px-3 py-2 text-center">
+                                        <Input
+                                          type="number"
+                                          min="1"
+                                          step="1"
+                                          value={child.plannedPcs}
+                                          onChange={(e) =>
+                                            handleUpdateChildPcs(group.id, child.wo.id, e.target.value)
+                                          }
+                                          disabled={!canManagePlans}
+                                          className="h-8 w-28 text-center font-mono font-bold bg-white text-slate-900 border-emerald-300"
+                                          required
+                                        />
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                        {fmt(cMetrics.mtr)} m
+                                      </td>
+                                      <td className="px-3 py-2 text-right font-mono text-slate-700 whitespace-nowrap">
+                                        {fmt(cMetrics.mt)} MT
+                                      </td>
+                                      <td className="px-3 py-2 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveChildFromGroup(group.id, child.wo.id)}
+                                          className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition"
+                                          title="Remove child order from setup"
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Setup Summary Footer */}
+                      <div className="bg-slate-50/80 px-4 py-2 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                        <div className="text-slate-600">
+                          Setup #{groupIndex + 1} Total:{' '}
+                          <span className="font-bold text-slate-900">
+                            {1 + group.children.length} Order(s)
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span>
+                            Pcs: <b className="text-indigo-700">{fmt(gSummary?.groupTotalPcs || 0)}</b>
+                          </span>
+                          <span>
+                            MTR: <b className="text-indigo-700">{fmt(gSummary?.groupTotalMtr || 0)} m</b>
+                          </span>
+                          <span>
+                            MT: <b className="text-emerald-700">{fmt(gSummary?.groupTotalMt || 0)} MT</b>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Collapsible Setup Specifications & Factory Tolerances Accordion */}
+                      {group.specsOpen && (
+                        <div className="border-t border-amber-200 bg-amber-50/40 p-4 space-y-3">
+                          <div className="text-xs font-bold text-amber-950 flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                              <Flame className="h-4 w-4 text-amber-600" />
+                              Setup Specifications & Factory Tolerances (Setup #{groupIndex + 1})
+                            </span>
+                            <span className="text-[11px] text-amber-800 font-normal">
+                              Values propagate to shop floor cutting plan for this setup
+                            </span>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5 text-xs">
+                            {/* 1. Classification */}
+                            <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
+                                Classification
+                              </span>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">Category (Catg)</label>
+                                <select
+                                  value={group.factoryCatg}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'factoryCatg', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-semibold"
+                                >
+                                  <option value="CDS">CDS (Cold Drawn)</option>
+                                  <option value="HFS">HFS (Hot Finished)</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">Specification (Spec)</label>
+                                <input
+                                  type="text"
+                                  value={group.factorySpec}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'factorySpec', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">Grade & IBR Status</label>
+                                <div className="flex gap-1">
+                                  <input
+                                    type="text"
+                                    value={group.factoryGrade}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'factoryGrade', e.target.value)
+                                    }
+                                    className="w-2/3 rounded border border-slate-300 p-1 text-xs font-mono"
+                                  />
+                                  <select
+                                    value={group.factoryIbr}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'factoryIbr', e.target.value)
+                                    }
+                                    className="w-1/3 rounded border border-slate-300 p-1 text-xs font-bold"
+                                  >
+                                    <option value="IBR">IBR</option>
+                                    <option value="NIBR">NIBR</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 2. Billet Dimensions */}
+                            <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
+                                Billet Dimensions
+                              </span>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">RM OD (mm)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={group.rmOd}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'rmOd', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">RM Len Min (m)</label>
+                                <input
+                                  type="number"
+                                  step="0.001"
+                                  value={group.rmLenMin}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'rmLenMin', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">RM Len Max (m)</label>
+                                <input
+                                  type="number"
+                                  step="0.001"
+                                  value={group.rmLenMax}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'rmLenMax', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+
+                            {/* 3. Piercer Mill */}
+                            <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
+                                Piercer Mill
+                              </span>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">PM OD (mm)</label>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={group.pmOd}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'pmOd', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">PM Wthk (mm)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={group.pmWt}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'pmWt', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">PM Length (m)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={group.pmLen}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'pmLen', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+
+                            {/* 4. SM / Sizing Mill */}
+                            <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
+                                SM (Sizing Mill)
+                              </span>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">Cust. OD × WT (mm)</label>
+                                <div className="flex gap-1">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={group.custOd}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'custOd', e.target.value)
+                                    }
+                                    className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono font-bold"
+                                    placeholder="OD"
+                                  />
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={group.custWt}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'custWt', e.target.value)
+                                    }
+                                    className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono font-bold"
+                                    placeholder="WT"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">Rolling WT (mm)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={group.rollingWt}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'rollingWt', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">SM Length (m)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={group.smLen}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'smLen', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                />
+                              </div>
+                            </div>
+
+                            {/* 5. Tolerances & Process Yield */}
+                            <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
+                                Tolerances & Mult
+                              </span>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">Mult / Multiple</label>
+                                <input
+                                  type="text"
+                                  value={group.multipleStr}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'multipleStr', e.target.value)
+                                  }
+                                  placeholder="e.g. 1 or 2-Multi"
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">OD Min - Max</label>
+                                <div className="flex gap-1">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={group.tolOdMin}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'tolOdMin', e.target.value)
+                                    }
+                                    className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono"
+                                  />
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={group.tolOdMax}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'tolOdMax', e.target.value)
+                                    }
+                                    className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-500 block">Process Yield %</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={group.processYieldPct}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'processYieldPct', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold text-emerald-700"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
-            </div>
+            )}
           </div>
 
-          {/* Submit Button */}
+          {/* Campaign Consolidated Summary & Live Sheet Breakdown Preview */}
+          {groups.length > 0 && (
+            <div className="space-y-3">
+              {/* Campaign Totals Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3.5 text-xs shadow-2xs">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="font-bold text-indigo-950 flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-indigo-600" />
+                    Consolidated Campaign Totals:
+                  </span>
+                  <span className="text-slate-700 font-medium">
+                    <b>{groups.length}</b> Setup{groups.length === 1 ? '' : 's'}
+                  </span>
+                  <span className="text-slate-400">|</span>
+                  <span className="text-slate-700 font-medium">
+                    <b>{groups.reduce((acc, g) => acc + g.children.length, 0)}</b> Child Order(s)
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-4 font-mono font-bold text-sm">
+                  <span className="text-indigo-950">
+                    Total Pcs: <span className="text-indigo-700">{fmt(campaignSummary.totalPcs)}</span>
+                  </span>
+                  <span className="text-indigo-950">
+                    Total MTR: <span className="text-indigo-700">{fmt(campaignSummary.totalMtr)} m</span>
+                  </span>
+                  <span className="text-indigo-950">
+                    Total MT: <span className="text-emerald-700">{fmt(campaignSummary.totalMt)} MT</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Live Sheet Breakdown Preview */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 font-bold text-slate-800">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Factory Cutting Sheet Live Preview:
+                  </span>
+                  <div className="flex items-center gap-3 font-mono">
+                    <span>Rolling mtr: <b className="text-blue-700">{fmt(campaignSummary.totalMtr, 0)}</b></span>
+                    <span>Total Orders: <b className="text-indigo-700">{groups.reduce((acc, g) => acc + 1 + g.children.length, 0)}</b></span>
+                    <span>Plan MT: <b className="text-emerald-700">{fmt(campaignSummary.totalMt, 1)}</b></span>
+                  </div>
+                </div>
+
+                {/* Sub-row pills preview */}
+                <div className="space-y-1 pt-1 font-mono text-[11px]">
+                  {groups.flatMap((g, gIdx) => {
+                    const gSum = campaignSummary.groupSummaries.find((s) => s.groupId === g.id);
+                    const pCalc = gSum?.parentMetrics;
+                    const fs = `${fmt(g.parentWo.size_od, 2)}x${fmt(g.parentWo.size_wt, 2)}`;
+                    const fl = `${fmt(g.parentWo.l1, 2)}-${fmt(g.parentWo.l2, 2)}`;
+
+                    const parentPill = (
+                      <div
+                        key={`p-${g.id}`}
+                        className="bg-white border border-slate-200 rounded px-2.5 py-1 text-slate-800 shadow-2xs"
+                      >
+                        <span className="font-bold text-indigo-700 mr-1.5">Setup #{gIdx + 1} [Master]:</span>
+                        <span className="font-bold">{g.factoryCatg}</span>(finish size-{fs})(Final len - {fl})(OA-{g.parentWo.work_order_no})(Cust.- {g.parentWo.customer_name || '—'})(HTC mtr-{fmt(pCalc?.mtr || 0, 0)})
+                      </div>
+                    );
+
+                    const childPills = g.children.map((c) => {
+                      const cCalc = gSum?.childrenMetrics.find((cm) => cm.childWoId === c.wo.id)?.metrics;
+                      const cfs = `${fmt(c.wo.size_od, 2)}x${fmt(c.wo.size_wt, 2)}`;
+                      const cfl = `${fmt(c.wo.l1, 2)}-${fmt(c.wo.l2, 2)}`;
+
+                      return (
+                        <div
+                          key={`c-${c.wo.id}`}
+                          className="bg-emerald-50/70 border border-emerald-200 rounded px-2.5 py-1 text-slate-800 ml-4 shadow-2xs"
+                        >
+                          <span className="font-bold text-emerald-800 mr-1.5">↳ Child of #{g.parentWo.work_order_no}:</span>
+                          <span className="font-bold">{g.factoryCatg}</span>(finish size-{cfs})(Final len - {cfl})(OA-{c.wo.work_order_no})(Cust.- {c.wo.customer_name || '—'})(HTC mtr-{fmt(cCalc?.mtr || 0, 0)})
+                        </div>
+                      );
+                    });
+
+                    return [parentPill, ...childPills];
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Submit Button - All setups in one go */}
           <div className="flex items-center justify-end gap-3 pt-2">
             <Button
               type="submit"
-              disabled={loading || !canManagePlans || selectedOrders.length === 0 || campaignSummary.hasErrors}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-2 rounded-lg cursor-pointer"
+              disabled={loading || !canManagePlans || groups.length === 0}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-2.5 rounded-lg cursor-pointer text-sm shadow-md transition"
             >
               {loading ? (
                 <>
                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Issuing Campaign Plan...
+                  Issuing Rolling Plan in One Go...
                 </>
               ) : (
                 <>
                   <Layers className="mr-2 h-4 w-4" />
-                  Issue Rolling Plan ({selectedOrders.length} Order{selectedOrders.length === 1 ? '' : 's'})
+                  Issue Rolling Plan ({groups.length} Setup{groups.length === 1 ? '' : 's'} in One Go)
                 </>
               )}
             </Button>
@@ -2917,6 +3122,134 @@ export default function RollingPlanForm() {
           </div>
         </div>
       )}
+
+      {/* Modal Dialog for Adding Child Work Orders to a Specific Setup Group */}
+      {activeChildTargetGroupId !== null && (() => {
+        const targetGroup = groups.find((g) => g.id === activeChildTargetGroupId);
+        if (!targetGroup) return null;
+        const targetGroupIndex = groups.indexOf(targetGroup);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+            <div className="w-full max-w-4xl rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link2 className="h-5 w-5 text-emerald-600" />
+                  <h3 className="text-base font-bold text-slate-900">
+                    Add Child Work Order to Setup #{targetGroupIndex + 1}
+                  </h3>
+                  <span className="rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-0.5 text-xs font-bold border border-emerald-200">
+                    Parent WO: {targetGroup.parentWo.work_order_no} ({targetGroup.parentWo.size_od}×{targetGroup.parentWo.size_wt}mm)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveChildTargetGroupId(null)}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Filters Bar */}
+              <div className="my-3 flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by WO No, customer, size, grade..."
+                    value={childModalSearch}
+                    onChange={(e) => setChildModalSearch(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 py-1.5 pl-9 pr-3 text-xs focus:border-emerald-500 focus:outline-hidden"
+                  />
+                </div>
+                <select
+                  value={childModalGradeFilter}
+                  onChange={(e) => setChildModalGradeFilter(e.target.value)}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium cursor-pointer"
+                >
+                  <option value="ALL">All Grades</option>
+                  {Array.from(new Set(availableWosToAdd.map((w) => w.grade).filter(Boolean))).map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Work Orders Table */}
+              <div className="flex-1 overflow-y-auto rounded-xl border border-slate-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="sticky top-0 bg-slate-100 text-slate-700 font-bold border-b border-slate-200 shadow-2xs">
+                    <tr>
+                      <th className="px-3 py-2.5">Work Order</th>
+                      <th className="px-3 py-2.5">Customer</th>
+                      <th className="px-3 py-2.5">Grade</th>
+                      <th className="px-3 py-2.5">Size (OD × WT)</th>
+                      <th className="px-3 py-2.5">Length</th>
+                      <th className="px-3 py-2.5 text-right">Available Balance</th>
+                      <th className="px-3 py-2.5 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {childModalFilteredWos.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-slate-400">
+                          No eligible work orders available to add as child.
+                        </td>
+                      </tr>
+                    ) : (
+                      childModalFilteredWos.map((w) => (
+                        <tr key={w.id} className="hover:bg-emerald-50/40 transition">
+                          <td className="px-3 py-2 font-mono font-bold text-slate-900">{w.work_order_no}</td>
+                          <td className="px-3 py-2 text-slate-700">{w.customer_name || 'Standard Stock'}</td>
+                          <td className="px-3 py-2 font-mono text-slate-600">{w.grade}</td>
+                          <td className="px-3 py-2 font-mono font-semibold">
+                            {w.size_od} × {w.size_wt} mm
+                          </td>
+                          <td className="px-3 py-2 font-mono text-slate-500">
+                            {w.l1 && w.l2 ? `${w.l1}–${w.l2} m` : w.l1 || w.l2 ? `${w.l1 || w.l2} m` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
+                            {fmt(w.balance_qty_mtr)} MTR
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <Button
+                              type="button"
+                              onClick={() => handleAddChildToGroup(targetGroup.id, w)}
+                              className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                            >
+                              <Plus className="h-3 w-3" />
+                              Add as Child
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                <div className="text-xs text-slate-500">
+                  Current children in this setup:{' '}
+                  <span className="font-bold text-emerald-700">{targetGroup.children.length}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => setActiveChildTargetGroupId(null)}
+                    className="bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold px-4 py-1.5 rounded-lg cursor-pointer"
+                  >
+                    Done Adding Children
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );
