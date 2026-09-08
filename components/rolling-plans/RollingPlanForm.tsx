@@ -434,9 +434,28 @@ export default function RollingPlanForm() {
   // Factory Production Plan (Mill-02 or Mill-03) Sheet Parameters (From Photo)
   const [selectedMill, setSelectedMill] = useState<'Mill-02' | 'Mill-03'>('Mill-02');
   const [millName, setMillName] = useState('Production Plan-Hot Mill-02');
-  const [monthStr, setMonthStr] = useState('Sep-26');
-  const [planNoOverride, setPlanNoOverride] = useState('02');
-  const [prevPlanNo, setPrevPlanNo] = useState('01');
+
+  const formatMonthToCampaign = (val: string) => {
+    if (!val) return 'Sep-26';
+    const [y, m] = val.split('-');
+    if (!y || !m) return val;
+    const d = new Date(Number(y), Number(m) - 1, 1);
+    const mShort = d.toLocaleString('en-US', { month: 'short' });
+    return `${mShort}-${y.slice(-2)}`;
+  };
+
+  const [campaignMonth, setCampaignMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  const [monthStr, setMonthStr] = useState(() => {
+    const d = new Date();
+    const mShort = d.toLocaleString('en-US', { month: 'short' });
+    return `${mShort}-${String(d.getFullYear()).slice(-2)}`;
+  });
+  const [planNoOverride, setPlanNoOverride] = useState('');
+  const [prevPlanNo, setPrevPlanNo] = useState('');
 
   // Plans table & filtering
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -448,6 +467,31 @@ export default function RollingPlanForm() {
   const [toDate, setToDate] = useState('');
   const [plansLoading, setPlansLoading] = useState(false);
   const [expandedMasterPlans, setExpandedMasterPlans] = useState<Record<string, boolean>>({});
+
+  // Auto-calculated next daily plan number (e.g. 01, 02, 03...)
+  const autoNextPlanNo = useMemo(() => {
+    let maxNum = 0;
+    plans.forEach((p) => {
+      let parsed: any = {};
+      try {
+        parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {};
+      } catch {}
+      const candidate = String(parsed.campaign_plan_no || p.plan_no || '').trim();
+      const m = candidate.match(/^(\d+)/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > maxNum && n < 1000) maxNum = n;
+      }
+    });
+    const nextNum = maxNum + 1;
+    return String(nextNum).padStart(2, '0');
+  }, [plans]);
+
+  useEffect(() => {
+    if (autoNextPlanNo) {
+      setPlanNoOverride(autoNextPlanNo);
+    }
+  }, [autoNextPlanNo]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -1424,8 +1468,8 @@ export default function RollingPlanForm() {
               </span>
             </div>
 
-            {/* Campaign Subheaders Grid */}
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-6">
+            {/* Campaign Subheaders Grid: 4 Clean Columns */}
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-700">
                   Select Mill *
@@ -1446,44 +1490,42 @@ export default function RollingPlanForm() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                  Campaign Month
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Campaign Month *
+                  </label>
+                  <span className="text-[10px] font-bold font-mono px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">
+                    {monthStr}
+                  </span>
+                </div>
                 <Input
-                  type="text"
-                  value={monthStr}
+                  type="month"
+                  value={campaignMonth}
                   disabled={!canManagePlans}
-                  onChange={(e) => setMonthStr(e.target.value)}
-                  placeholder="e.g. Sep-26"
-                  className="bg-white text-xs font-medium font-mono"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCampaignMonth(val);
+                    setMonthStr(formatMonthToCampaign(val));
+                  }}
+                  className="bg-white text-xs font-medium font-mono cursor-pointer"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                  Daily Plan No :-
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Daily Plan No :-
+                  </label>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 font-mono">
+                    Auto
+                  </span>
+                </div>
                 <Input
                   type="text"
-                  value={planNoOverride}
-                  disabled={!canManagePlans}
-                  onChange={(e) => setPlanNoOverride(e.target.value)}
-                  placeholder="e.g. 02"
-                  className="bg-white text-xs font-bold font-mono text-indigo-700"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                  Started after Plan No.
-                </label>
-                <Input
-                  type="text"
-                  value={prevPlanNo}
-                  disabled={!canManagePlans}
-                  onChange={(e) => setPrevPlanNo(e.target.value)}
-                  placeholder="e.g. 01"
-                  className="bg-white text-xs font-medium font-mono"
+                  value={planNoOverride || autoNextPlanNo}
+                  readOnly
+                  disabled
+                  className="bg-slate-100 text-xs font-black font-mono text-indigo-800 border-indigo-200 cursor-not-allowed"
                 />
               </div>
 
@@ -1497,36 +1539,8 @@ export default function RollingPlanForm() {
                   disabled={!canManagePlans}
                   onChange={(e) => setDate(e.target.value)}
                   required
-                  className="bg-white text-xs font-medium"
+                  className="bg-white text-xs font-medium cursor-pointer"
                 />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-700">
-                  Process Route (Default)
-                </label>
-                <Select
-                  value={route}
-                  disabled={!canManagePlans}
-                  onChange={(e) => {
-                    const newR = e.target.value;
-                    setRoute(newR);
-                    setGroups((prev) =>
-                      prev.map((g) => ({
-                        ...g,
-                        routeId: g.routeId || newR,
-                      }))
-                    );
-                  }}
-                  className="bg-white text-xs font-medium"
-                >
-                  <option value="">Select Default Route</option>
-                  {routes.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.route_code} — {r.route_name}
-                    </option>
-                  ))}
-                </Select>
               </div>
             </div>
           </div>
@@ -1545,8 +1559,8 @@ export default function RollingPlanForm() {
                 </p>
               </div>
 
-              {/* Work Order Picker Controls: Batch Dialog Button + Single Select */}
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              {/* Work Order Picker Controls: Batch Dialog Button */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Button
                   type="button"
                   onClick={() => {
@@ -1554,28 +1568,11 @@ export default function RollingPlanForm() {
                     setIsMultiPickerOpen(true);
                   }}
                   disabled={!canManagePlans}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 cursor-pointer"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 cursor-pointer shadow-xs"
                 >
                   <Plus className="h-3.5 w-3.5 mr-1" />
-                  Select Multiple Work Orders (Dialog)
+                  Select Work Orders (Dialog)
                 </Button>
-
-                <Select
-                  value={addWoSelectValue}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val) handleAddOrder(val);
-                  }}
-                  disabled={!canManagePlans}
-                  className="w-full sm:w-72 bg-white"
-                >
-                  <option value="">+ Add Single Work Order...</option>
-                  {availableWosToAdd.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.work_order_no} · {w.size_od}×{w.size_wt}mm · {w.grade} · {fmt(w.balance_qty_mtr)} MTR
-                    </option>
-                  ))}
-                </Select>
               </div>
             </div>
 
