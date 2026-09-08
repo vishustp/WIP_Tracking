@@ -36,7 +36,8 @@ export interface MasterGroupPayload {
   mh_l2?: number | null;
   pass_required?: number | null;
 
-  // Factory parameters
+  // Factory parameters & Process Route
+  route_id?: string | null;
   catg?: string; // e.g. 'CDS'
   spec?: string;
   grade?: string;
@@ -281,7 +282,7 @@ export async function POST(req: NextRequest) {
           work_order_id: masterWo.id,
           planned_rolling_date: rolling_date,
           planned_qty: mMtr > 0 ? mMtr : gTotalMtr,
-          process_route_id: route_id,
+          process_route_id: g.route_id || route_id,
           multiple: Number(g.multiple || multiple || 1),
           mh_od: grpCustOd,
           mh_wt: grpCustWt,
@@ -343,7 +344,7 @@ export async function POST(req: NextRequest) {
             work_order_id: c.id,
             planned_rolling_date: rolling_date,
             planned_qty: c.planned_mtr,
-            process_route_id: route_id,
+            process_route_id: g.route_id || route_id,
             multiple: Number(g.multiple || multiple || 1),
             mh_od: grpCustOd,
             mh_wt: grpCustWt,

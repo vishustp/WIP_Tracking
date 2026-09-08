@@ -106,7 +106,8 @@ export interface WorkOrderGroup {
   availableMtr: number;
   children: ChildOrderEntry[];
 
-  // Setup Specifications & Factory Tolerances
+  // Process Route & Setup Specifications & Factory Tolerances
+  routeId: string;
   catg: string; // 'CDS' | 'HFS'
   spec: string;
   grade: string;
@@ -184,7 +185,7 @@ export function calcHollowMetrics(
   return { avg, mtr, mt };
 }
 
-export function createDefaultGroup(wo: WO, availMtr: number): WorkOrderGroup {
+export function createDefaultGroup(wo: WO, availMtr: number, defaultRouteId = ''): WorkOrderGroup {
   const lAvg = wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : wo.l1 || 6;
   const initPcs = availMtr > 0 ? Math.max(1, Math.floor(availMtr / lAvg)) : 100;
   const custOdNum = Number(wo.size_od || 47.0);
@@ -201,6 +202,7 @@ export function createDefaultGroup(wo: WO, availMtr: number): WorkOrderGroup {
     availableMtr: availMtr,
     children: [],
 
+    routeId: defaultRouteId,
     catg: 'CDS',
     spec: 'ASME SA210 Gr.A1',
     grade: wo.grade || 'SAE 1018',
@@ -512,12 +514,11 @@ export default function RollingPlanForm() {
         }
 
         // Auto-select initial WO if query param present
-        // Auto-select initial WO if query param present
         if (initialWoId && woList.length > 0) {
           const match = woList.find((x) => x.id === initialWoId);
           if (match) {
             const availMtr = await fetchUnplannedQty(match.id);
-            setGroups([createDefaultGroup(match, availMtr)]);
+            setGroups([createDefaultGroup(match, availMtr, routeList[0]?.id || '')]);
           }
         }
       })
@@ -548,7 +549,7 @@ export default function RollingPlanForm() {
     if (!targetWo) return;
 
     const availMtr = await fetchUnplannedQty(woId);
-    const newGrp = createDefaultGroup(targetWo, availMtr);
+    const newGrp = createDefaultGroup(targetWo, availMtr, route);
     setGroups((prev) => [...prev, newGrp]);
     setAddWoSelectValue('');
     toast.success(`Added ${targetWo.work_order_no} as Setup #${groups.length + 1}.`);
@@ -572,7 +573,7 @@ export default function RollingPlanForm() {
     const newGroups: WorkOrderGroup[] = [];
     for (const targetWo of toAdd) {
       const availMtr = await fetchUnplannedQty(targetWo.id);
-      newGroups.push(createDefaultGroup(targetWo, availMtr));
+      newGroups.push(createDefaultGroup(targetWo, availMtr, route));
     }
 
     setGroups((prev) => [...prev, ...newGroups]);
@@ -728,21 +729,23 @@ export default function RollingPlanForm() {
       return;
     }
 
-    if (!route) {
-      toast.error('Please select a Target Process Route.');
+    const unroutedGroup = groups.find((g) => !g.routeId && !route);
+    if (unroutedGroup) {
+      toast.error(`Please select a Process Route for Work Order ${unroutedGroup.wo.work_order_no} in Setup Specifications.`);
       return;
     }
 
     setLoading(true);
 
     try {
+      const defaultRouteId = route || groups[0]?.routeId || '';
       const payload: CreateMultiWoRollingPlanPayload = {
         mill_name: millName,
         month_str: monthStr,
         plan_no_override: planNoOverride.trim() || undefined,
         prev_plan_no: prevPlanNo,
         rolling_date: date,
-        route_id: route,
+        route_id: defaultRouteId,
         multiple: Number(groups[0]?.multipleStr === '2' || groups[0]?.multipleStr === '2-Multi' ? 2 : 1),
 
         master_groups: groups.map((g) => {
@@ -751,9 +754,11 @@ export default function RollingPlanForm() {
           const parentAvgLen = parentSmLen > 0 ? parentSmLen : 6.0;
           const calcNos = gSummary.totalGroupMtr > 0 ? Math.ceil(gSummary.totalGroupMtr / parentAvgLen) : gSummary.totalGroupPcs;
           const calcMton = gSummary.totalGroupMt;
+          const grpRoute = g.routeId || route;
 
           return {
             master_work_order_id: g.wo.id,
+            route_id: grpRoute,
             master_planned_pcs: gSummary.parentPcs,
             master_planned_mtr: gSummary.parentMtr,
             master_planned_mt: gSummary.parentMt,
@@ -1208,16 +1213,24 @@ export default function RollingPlanForm() {
 
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-700">
-                  Process Route *
+                  Process Route (Default)
                 </label>
                 <Select
                   value={route}
                   disabled={!canManagePlans}
-                  onChange={(e) => setRoute(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    const newR = e.target.value;
+                    setRoute(newR);
+                    setGroups((prev) =>
+                      prev.map((g) => ({
+                        ...g,
+                        routeId: g.routeId || newR,
+                      }))
+                    );
+                  }}
                   className="bg-white text-xs font-medium"
                 >
-                  <option value="">Select Route</option>
+                  <option value="">Select Default Route</option>
                   {routes.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.route_code} — {r.route_name}
@@ -1310,6 +1323,21 @@ export default function RollingPlanForm() {
                             </span>
                           </div>
 
+                          {/* Route Badge */}
+                          {(() => {
+                            const curRouteId = group.routeId || route;
+                            const curRouteObj = routes.find((r) => r.id === curRouteId);
+                            return curRouteObj ? (
+                              <span className="rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-xs font-bold text-blue-700 font-mono flex items-center gap-1">
+                                <span>Route:</span> {curRouteObj.route_code}
+                              </span>
+                            ) : (
+                              <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs font-bold text-amber-700">
+                                Route: Select in Specs
+                              </span>
+                            );
+                          })()}
+
                           {/* ADD CHILD BUTTON NEAR WORK ORDER NO */}
                           <Button
                             type="button"
@@ -1347,7 +1375,7 @@ export default function RollingPlanForm() {
                             <Sliders className="h-3.5 w-3.5 text-amber-600" />
                             <span>{group.isSpecsExpanded ? 'Hide Specs' : 'Setup Specs & Tolerances'}</span>
                             <span className="text-[10px] text-slate-400 font-mono hidden md:inline">
-                              ({group.catg} · RM {group.rmOd}mm · PM {group.pmOd}mm · SM {group.custOd}×{group.custWt})
+                              ({routes.find((r) => r.id === (group.routeId || route))?.route_code || 'No Route'} · {group.catg} · RM {group.rmOd}mm · PM {group.pmOd}mm · SM {group.custOd}×{group.custWt})
                             </span>
                           </button>
 
@@ -1579,11 +1607,31 @@ export default function RollingPlanForm() {
                           </div>
 
                           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5 text-xs">
-                            {/* 1. Classification */}
+                            {/* 1. Route & Classification */}
                             <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
                               <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                                Classification
+                                Route & Classification
                               </span>
+                              <div>
+                                <label className="text-[10px] text-indigo-700 font-bold block">
+                                  Process Route *
+                                </label>
+                                <select
+                                  value={group.routeId || route}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'routeId', e.target.value)
+                                  }
+                                  className="w-full rounded border border-indigo-300 bg-indigo-50/40 p-1 text-xs font-bold text-slate-900 cursor-pointer focus:border-indigo-500 focus:outline-hidden"
+                                  required
+                                >
+                                  <option value="">-- Select Process Route --</option>
+                                  {routes.map((r) => (
+                                    <option key={r.id} value={r.id}>
+                                      {r.route_code} — {r.route_name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                               <div>
                                 <label className="text-[10px] text-slate-500 block">Category (Catg)</label>
                                 <select
