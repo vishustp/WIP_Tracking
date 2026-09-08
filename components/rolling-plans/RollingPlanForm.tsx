@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Info,
+  Flame,
 } from 'lucide-react';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
@@ -185,7 +186,8 @@ export default function RollingPlanForm() {
   const [multiple, setMultiple] = useState('1');
   const [loading, setLoading] = useState(false);
 
-  // Factory Production Plan (Mill-02) Sheet Parameters (From Photo)
+  // Factory Production Plan (Mill-02 or Mill-03) Sheet Parameters (From Photo)
+  const [selectedMill, setSelectedMill] = useState<'Mill-02' | 'Mill-03'>('Mill-02');
   const [millName, setMillName] = useState('Production Plan-Hot Mill-02');
   const [monthStr, setMonthStr] = useState('Sep-26');
   const [planNoOverride, setPlanNoOverride] = useState('02');
@@ -1333,7 +1335,7 @@ export default function RollingPlanForm() {
               <div className="flex items-center gap-2">
                 <Flame className="h-4 w-4 text-amber-600" />
                 <h3 className="text-sm font-bold text-slate-900">
-                  Factory Daily Production Plan Parameters (Hot Mill-02)
+                  Factory Daily Production Plan Parameters ({selectedMill})
                 </h3>
               </div>
               <span className="text-[11px] font-mono text-slate-500">
@@ -1345,16 +1347,21 @@ export default function RollingPlanForm() {
             <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-6">
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-700">
-                  Target Mill Name
+                  Select Mill *
                 </label>
-                <Input
-                  type="text"
-                  value={millName}
+                <select
+                  value={selectedMill}
                   disabled={!canManagePlans}
-                  onChange={(e) => setMillName(e.target.value)}
-                  placeholder="e.g. Production Plan-Hot Mill-02"
-                  className="bg-white text-xs font-medium"
-                />
+                  onChange={(e) => {
+                    const m = e.target.value as 'Mill-02' | 'Mill-03';
+                    setSelectedMill(m);
+                    setMillName(`Production Plan-Hot ${m}`);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-indigo-700 focus:border-indigo-500 focus:outline-hidden cursor-pointer"
+                >
+                  <option value="Mill-02">Hot Mill-02</option>
+                  <option value="Mill-03">Hot Mill-03</option>
+                </select>
               </div>
 
               <div>

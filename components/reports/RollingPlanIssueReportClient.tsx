@@ -122,6 +122,7 @@ export default function RollingPlanIssueReportClient() {
   const [search, setSearch] = useState('');
   const [routeFilter, setRouteFilter] = useState('ALL');
   const [typeFilter, setTypeFilter] = useState('ALL');
+  const [millFilter, setMillFilter] = useState<'ALL' | 'Mill-02' | 'Mill-03'>('ALL');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [routes, setRoutes] = useState<{ id: string; route_code: string; route_name: string }[]>([]);
@@ -288,9 +289,16 @@ export default function RollingPlanIssueReportClient() {
       if (typeFilter === 'CHILD' && !isChild) return false;
       if (typeFilter === 'STANDARD' && (isMaster || isChild)) return false;
 
+      if (millFilter !== 'ALL') {
+        const planMill = parsedStatus?.mill_name || 'Production Plan-Hot Mill-02';
+        if (!planMill.toLowerCase().includes(millFilter.toLowerCase())) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [plans, typeFilter]);
+  }, [plans, typeFilter, millFilter]);
 
   // Distinct Campaign Plan Nos for filtering
   const availableCampaigns = useMemo(() => {
@@ -469,13 +477,13 @@ export default function RollingPlanIssueReportClient() {
       };
     }
     return {
-      millName: 'Production Plan-Hot Mill-02',
+      millName: millFilter !== 'ALL' ? `Production Plan-Hot ${millFilter}` : 'Production Plan-Hot Mill-02',
       monthStr: 'Sep-26',
       planNo: selectedCampaignPlan !== 'ALL' ? selectedCampaignPlan : '02',
       issueDate: '7-Sep',
       prevPlanNo: '01',
     };
-  }, [factoryRows, selectedCampaignPlan]);
+  }, [factoryRows, selectedCampaignPlan, millFilter]);
 
   // Summary Metrics
   const summary = useMemo(() => {
@@ -692,7 +700,22 @@ export default function RollingPlanIssueReportClient() {
 
       {/* Screen Filters Bar (Hidden on Print) */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs print:hidden">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-6">
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Select Mill
+            </label>
+            <select
+              value={millFilter}
+              onChange={(e) => setMillFilter(e.target.value as any)}
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-indigo-700 focus:border-indigo-500 focus:outline-hidden cursor-pointer"
+            >
+              <option value="ALL">All Mills</option>
+              <option value="Mill-02">Hot Mill-02</option>
+              <option value="Mill-03">Hot Mill-03</option>
+            </select>
+          </div>
+
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
               Search Order / Plan / Customer
@@ -797,12 +820,12 @@ export default function RollingPlanIssueReportClient() {
                   (SEAMLESS DIVISION)
                 </div>
                 <h3 className="text-xs sm:text-sm font-black uppercase tracking-tight text-black mt-0.5">
-                  ROUND BAR CUTTING PLAN & HOT MILL DAILY PRODUCTION PLAN MILL - 02
+                  ROUND BAR CUTTING PLAN & HOT MILL DAILY PRODUCTION PLAN {activeSheetMeta.millName.toLowerCase().includes('03') ? 'MILL - 03' : 'MILL - 02'}
                 </h3>
               </div>
 
               <div className="text-right text-[10px] font-mono text-black">
-                <div className="font-bold">MILL - 02</div>
+                <div className="font-bold">{activeSheetMeta.millName.toLowerCase().includes('03') ? 'MILL - 03' : 'MILL - 02'}</div>
                 <div>DOC: F-PROD-01A</div>
               </div>
             </div>

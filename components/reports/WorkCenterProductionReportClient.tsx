@@ -246,7 +246,7 @@ export default function WorkCenterProductionReportClient() {
       rejRatePct,
       yieldPct,
     };
-  }, [filteredEntries]);
+  }, [filteredEntries, selectedWc]);
 
   const activeWcConfig = useMemo(() => {
     return WORK_CENTERS.find((w) => w.code === selectedWc) || WORK_CENTERS[0];
