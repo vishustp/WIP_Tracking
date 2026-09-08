@@ -88,11 +88,26 @@ export async function GET(req: NextRequest) {
     // Parse multi-WO campaigns from rolling plans
     const masterCampaignMap = new Map<string, any>(); // key: master_wo_id
     const childWoMap = new Map<string, any>(); // key: child_wo_id -> child info
+    const planByWoMap = new Map<string, any>(); // key: work_order_id -> plan info
 
     for (const p of plans) {
       if (!p.status) continue;
       try {
         const parsed = typeof p.status === "string" ? JSON.parse(p.status) : p.status;
+        const lifecycle = parsed?.lifecycle_status || (parsed?.issued_at ? "ISSUED" : "DRAFT");
+        const isIssued = (lifecycle === "ISSUED" || lifecycle === "REVISED") && lifecycle !== "CLOSED";
+
+        if (!planByWoMap.has(p.work_order_id)) {
+          planByWoMap.set(p.work_order_id, {
+            id: p.id,
+            plan_no: p.plan_no,
+            lifecycle_status: lifecycle,
+            is_issued: isIssued,
+            revision_no: Number(parsed?.revision_no || 0),
+            revision_date: parsed?.revision_date || null,
+          });
+        }
+
         if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
           const masterPlannedMtr = Number(parsed.master_planned_mtr || p.planned_qty || 0);
           const childPlannedMtr = (parsed.child_work_orders || []).reduce(
@@ -185,6 +200,10 @@ export async function GET(req: NextRequest) {
               mh_l1: p.mh_l1,
               mh_l2: p.mh_l2,
               multiple: p.multiple || 1,
+              is_issued: isIssued,
+              lifecycle_status: lifecycle,
+              revision_no: Number(parsed?.revision_no || 0),
+              revision_date: parsed?.revision_date || null,
             });
 
             for (const child of enrichedChildOrders) {
@@ -253,6 +272,9 @@ export async function GET(req: NextRequest) {
 
       const campaign = masterCampaignMap.get(woId);
       const plan = plans.find((p) => p.work_order_id === woId);
+      const planInfo = planByWoMap.get(woId);
+      const isRollingPlanIssued = campaign ? Boolean(campaign.is_issued) : Boolean(planInfo?.is_issued);
+
       const routeId = campaign?.route_id || plan?.process_route_id || routes[0]?.id;
       const route = routeMap.get(routeId);
       const routeCode = route?.route_code || "CDS";
@@ -450,9 +472,9 @@ export async function GET(req: NextRequest) {
           stage_code: "ROLLING",
           stage_name: "Rolling",
           sequence_no: 1,
-          available_mtr: rollAvailMtr,
-          available_pcs: rollAvailPcs,
-          available_mt: rollAvailMt,
+          available_mtr: isRollingPlanIssued ? rollAvailMtr : 0,
+          available_pcs: isRollingPlanIssued ? rollAvailPcs : 0,
+          available_mt: isRollingPlanIssued ? rollAvailMt : 0,
           gross_output_mtr: rollOutMtr,
           gross_output_pcs: mhAvgLength > 0 ? Math.round(rollOutMtr / mhAvgLength) : 0,
           gross_output_mt: mtFromMtr(rollOutMtr, mhOd, mhWt),
@@ -546,7 +568,7 @@ export async function GET(req: NextRequest) {
 
       // Update workCenterSummary for the 5 stages
       // (Pre-finishing: only Master orders; Finishing: Master and Child orders)
-      if (rollAvailMtr > 0) {
+      if (isRollingPlanIssued && rollAvailMtr > 0) {
         workCenterSummary.ROLLING.availMtr += rollAvailMtr;
         workCenterSummary.ROLLING.availPcs += rollAvailPcs;
         workCenterSummary.ROLLING.availMt += rollAvailMt;
@@ -631,7 +653,11 @@ export async function GET(req: NextRequest) {
         multiple,
         ht_nos: null,
         is_master: !!campaign,
-        master_plan_no: campaign?.plan_no || plan?.plan_no,
+        master_plan_no: campaign?.plan_no || planInfo?.plan_no || plan?.plan_no,
+        plan_no: campaign?.plan_no || planInfo?.plan_no || plan?.plan_no,
+        plan_id: campaign?.plan_id || planInfo?.id || plan?.id,
+        lifecycle_status: campaign?.lifecycle_status || planInfo?.lifecycle_status || (plan ? "DRAFT" : undefined),
+        revision_no: campaign?.revision_no ?? planInfo?.revision_no ?? 0,
         campaign_total_mtr: totalCampaignMtr,
         campaign_total_pcs: totalCampaignPcs,
         child_work_orders: campaign?.child_work_orders,
@@ -649,7 +675,7 @@ export async function GET(req: NextRequest) {
 
       const queueRows: Record<StageCode, Row | null> = {
         ROLLING:
-          rollAvailMtr > 0
+          isRollingPlanIssued && rollAvailMtr > 0
             ? {
                 ...baseRowData,
                 stage_code: "ROLLING",

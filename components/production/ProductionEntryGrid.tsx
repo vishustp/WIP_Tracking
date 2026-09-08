@@ -19,6 +19,7 @@ import {
   Link2,
   Package,
   Plus,
+  FileText,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useQueue } from "@/hooks/useQueue";
@@ -1183,7 +1184,9 @@ export default function ProductionEntryGrid() {
           <div className="p-8 text-center text-sm text-slate-500">Loading work order production queue...</div>
         ) : rows.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">
-            No WIP available in queue for {STAGES.find((x) => x.code === stage)?.label}. Record production in preceding stages first.
+            {stage === "ROLLING"
+              ? "No issued rolling plans available in queue. Only officially issued rolling plans appear in Rolling Production."
+              : `No WIP available in queue for ${STAGES.find((x) => x.code === stage)?.label}. Record production in preceding stages first.`}
           </div>
         ) : filteredRows.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">
@@ -1246,6 +1249,19 @@ export default function ProductionEntryGrid() {
                       <td className="py-3 px-3 align-top">
                         <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
                           <span>{r.work_order_no}</span>
+                          {isRollingStage && (r.master_plan_no || r.plan_no) && (
+                            <span className="inline-flex items-center gap-1 rounded bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700">
+                              <FileText size={10} />
+                              Plan: {r.master_plan_no || r.plan_no}
+                              {Number(r.revision_no || 0) > 0 ? ` (Rev.${String(r.revision_no).padStart(2, '0')})` : ''}
+                            </span>
+                          )}
+                          {isRollingStage && (
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                              <CheckCircle2 size={10} />
+                              Issued
+                            </span>
+                          )}
                           <button
                             type="button"
                             onClick={() => toggleRowExpansion(key)}

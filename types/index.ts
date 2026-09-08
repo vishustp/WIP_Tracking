@@ -99,6 +99,10 @@ export interface Row {
   master_wo_id?: string;
   master_wo_no?: string;
   master_plan_no?: string;
+  plan_no?: string;
+  plan_id?: string;
+  lifecycle_status?: string;
+  revision_no?: number;
   campaign_total_mtr?: number;
   campaign_total_pcs?: number;
   child_work_orders?: Array<{

@@ -90,11 +90,25 @@ export function useQueue(stage: StageCode) {
       // Parse multi-WO campaigns from rolling plans
       const masterCampaignMap = new Map<string, any>(); // key: master_wo_id
       const childWoMap = new Map<string, any>(); // key: child_wo_id -> child metadata + master info
+      const planByWoMap = new Map<string, any>(); // key: work_order_id -> plan info
 
       for (const p of plans) {
         if (!p.status) continue;
         try {
           const parsed = typeof p.status === "string" ? JSON.parse(p.status) : p.status;
+          const lifecycle = parsed?.lifecycle_status || (parsed?.issued_at ? "ISSUED" : "DRAFT");
+          const isIssued = (lifecycle === "ISSUED" || lifecycle === "REVISED") && lifecycle !== "CLOSED";
+
+          if (!planByWoMap.has(p.work_order_id)) {
+            planByWoMap.set(p.work_order_id, {
+              id: p.id,
+              plan_no: p.plan_no,
+              lifecycle_status: lifecycle,
+              is_issued: isIssued,
+              revision_no: Number(parsed?.revision_no || 0),
+            });
+          }
+
           if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
             const masterPlannedMtr = Number(parsed.master_planned_mtr || p.planned_qty || 0);
             const childPlannedMtr = (parsed.child_work_orders || []).reduce(
@@ -131,6 +145,9 @@ export function useQueue(stage: StageCode) {
               mh_wt: p.mh_wt,
               mh_l1: p.mh_l1,
               mh_l2: p.mh_l2,
+              is_issued: isIssued,
+              lifecycle_status: lifecycle,
+              revision_no: Number(parsed?.revision_no || 0),
             });
 
             for (const child of parsed.child_work_orders) {
@@ -167,8 +184,14 @@ export function useQueue(stage: StageCode) {
         s === "ROLLING";
 
       if (s === "ROLLING") {
-        // Filter out any child work orders
-        const filtered = rawRows.filter((r) => !childWoMap.has(r.work_order_id));
+        // Filter out any child work orders AND only show work orders with an ISSUED rolling plan!
+        const filtered = rawRows.filter((r) => {
+          if (childWoMap.has(r.work_order_id)) return false;
+          const campaign = masterCampaignMap.get(r.work_order_id);
+          const planInfo = planByWoMap.get(r.work_order_id);
+          const isPlanIssued = campaign ? Boolean(campaign.is_issued) : Boolean(planInfo?.is_issued);
+          return isPlanIssued;
+        });
 
         // Enrich master rows with aggregated campaign WIP and Capping
         const enriched: Row[] = filtered.map((r) => {
@@ -260,6 +283,10 @@ export function useQueue(stage: StageCode) {
               mh_avg_length: mhAvg,
               is_master: true,
               master_plan_no: campaign.plan_no,
+              plan_no: campaign.plan_no,
+              plan_id: campaign.plan_id,
+              lifecycle_status: campaign.lifecycle_status,
+              revision_no: campaign.revision_no,
               campaign_total_mtr: totalCampaignMtr,
               campaign_total_pcs: totalCampaignPcs,
               child_work_orders: campaign.child_work_orders,
@@ -271,6 +298,7 @@ export function useQueue(stage: StageCode) {
             };
           } else {
             // Standard single work order plan
+            const planInfo = planByWoMap.get(r.work_order_id);
             const plan = plans.find((p: any) => p.work_order_id === r.work_order_id);
             const planMtr = plan ? Number(plan.planned_qty || 0) : rawBalMtr;
             const availMtr = totalLoggedMtr > 0
@@ -290,6 +318,11 @@ export function useQueue(stage: StageCode) {
 
             return {
               ...r,
+              master_plan_no: planInfo?.plan_no || plan?.plan_no,
+              plan_no: planInfo?.plan_no || plan?.plan_no,
+              plan_id: planInfo?.id || plan?.id,
+              lifecycle_status: planInfo?.lifecycle_status || "ISSUED",
+              revision_no: planInfo?.revision_no || 0,
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
               balance_to_make_mt: Number(availMt.toFixed(3)),
@@ -302,7 +335,7 @@ export function useQueue(stage: StageCode) {
         // Ensure any Master Campaign with remaining available WIP is included
         const existingWoIds = new Set(filtered.map((r) => r.work_order_id));
         for (const [masterWoId, campaign] of masterCampaignMap.entries()) {
-          if (!existingWoIds.has(masterWoId)) {
+          if (!existingWoIds.has(masterWoId) && campaign.is_issued) {
             const masterLogs = logs.filter(
               (l: any) =>
                 l.work_order_id === masterWoId &&
@@ -403,6 +436,10 @@ export function useQueue(stage: StageCode) {
                     ht_nos: null,
                     is_master: true,
                     master_plan_no: campaign.plan_no,
+                    plan_no: campaign.plan_no,
+                    plan_id: campaign.plan_id,
+                    lifecycle_status: campaign.lifecycle_status,
+                    revision_no: campaign.revision_no,
                     campaign_total_mtr: campaign.total_campaign_mtr,
                     campaign_total_pcs: campaign.total_campaign_pcs,
                     child_work_orders: campaign.child_work_orders,
