@@ -157,6 +157,33 @@ const formatFinalSizeLength = (p: { l1?: number | null; l2?: number | null; avg_
   return null;
 };
 
+/** Mother Hollow dimension inputs used for edit-modal live calculations */
+export interface HollowDimensions {
+  od: number | string | null | undefined;
+  wt: number | string | null | undefined;
+  l1: number | string | null | undefined;
+  l2: number | string | null | undefined;
+}
+
+/** Compute planned MTR and MT from hollow specs + planned pcs */
+export function calcHollowMetrics(
+  wo: Pick<WO, 'size_od' | 'size_wt' | 'l1' | 'l2'>,
+  pcs: number,
+  hollow: HollowDimensions
+): { avg: number; mtr: number; mt: number } {
+  const hl1 = Number(hollow.l1 || wo.l1 || 0);
+  const hl2 = Number(hollow.l2 || wo.l2 || 0);
+  const avg = hl1 > 0 && hl2 > 0 ? (hl1 + hl2) / 2 : hl1 > 0 ? hl1 : hl2 > 0 ? hl2 : 6.0;
+  const mtr = Number((pcs * avg).toFixed(2));
+  const hod = Number(hollow.od || wo.size_od || 0);
+  const hwt = Number(hollow.wt || wo.size_wt || 0);
+  const mt =
+    hod > 0 && hwt > 0 && hod > hwt
+      ? Number(((hod - hwt) * hwt * 0.0246615 * 0.001 * mtr).toFixed(3))
+      : 0;
+  return { avg, mtr, mt };
+}
+
 export function createDefaultGroup(wo: WO, availMtr: number): WorkOrderGroup {
   const lAvg = wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : wo.l1 || 6;
   const initPcs = availMtr > 0 ? Math.max(1, Math.floor(availMtr / lAvg)) : 100;
