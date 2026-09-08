@@ -359,6 +359,8 @@ export default function RollingPlanIssueReportClient() {
       } catch { }
 
       const catg = parsed.catg || (p.route_code?.includes('CDS') ? 'CDS' : 'CDS');
+      const customer = p.customer_name || 'Standard Stock';
+      const woNo = p.work_order_no;
       const spec = parsed.spec || 'ASME SA210 Gr.A1';
       const grade = parsed.grade || p.grade || 'SAE 1018';
       const ibr = parsed.ibr_status || 'IBR';

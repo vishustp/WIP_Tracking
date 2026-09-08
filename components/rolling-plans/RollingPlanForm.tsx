@@ -904,7 +904,7 @@ export default function RollingPlanForm() {
       grandTotalMt: Number(grandTotalMt.toFixed(3)),
       groupSummaries,
     };
-  }, [groups, routes]);
+  }, [groups]);
 
   // Submit Multi-WO Rolling Plan (in one go, with NO plan qty validation blocking)
   async function submitMultiWoPlan(e: React.FormEvent) {
