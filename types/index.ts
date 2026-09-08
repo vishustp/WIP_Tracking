@@ -252,6 +252,20 @@ export interface SalvageReasonItem {
   remarks?: string;
 }
 
+export interface ReworkHistoryItem {
+  id: string;
+  date: string;
+  processed_pcs: number;
+  vdi_ok_pcs: number;
+  diverted_pcs: number;
+  diverted_to_wo_id?: string | null;
+  diverted_to_wo_no?: string | null;
+  rejection_pcs: number;
+  remarks?: string;
+  processed_by?: string | null;
+  created_at: string;
+}
+
 export interface QcInspection {
   id: string;
   work_order_id: string;
@@ -275,6 +289,7 @@ export interface QcInspection {
   vdi_rejection_mtr: number;
   vdi_rejection_mt: number;
   salvage_reasons: SalvageReasonItem[];
+  rework_history?: ReworkHistoryItem[];
   remarks?: string | null;
   created_by?: string | null;
   created_at: string;
@@ -300,4 +315,20 @@ export interface QcQueueItem {
   available_ht_ok_pcs: number;
   available_ht_ok_mtr: number;
   available_ht_ok_mt: number;
+}
+
+export interface QcSalvageQueueItem {
+  work_order_id: string;
+  work_order_no: string;
+  customer_name: string | null;
+  specification: string | null;
+  size_od: number;
+  size_wt: number;
+  avg_length: number;
+  process_route_id?: string | null;
+  total_salvage_pcs: number;
+  total_salvage_mtr: number;
+  total_salvage_mt: number;
+  salvage_reasons: SalvageReasonItem[];
+  inspections: QcInspection[];
 }

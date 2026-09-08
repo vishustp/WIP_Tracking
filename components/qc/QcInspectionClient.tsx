@@ -6,10 +6,11 @@ import { fmt, n, mtFromMtr } from '@/lib/productionUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
 import { isUserAuthorizedForQc } from '@/lib/permissions';
 import type { AppUserProfile } from '@/lib/users/types';
-import type { QcInspection, SalvageReasonItem, QcQueueItem, WorkOrder, ProductionLog } from '@/types';
+import type { QcInspection, SalvageReasonItem, QcQueueItem, QcSalvageQueueItem, WorkOrder, ProductionLog } from '@/types';
 import {
   ClipboardCheck, Search, Plus, Trash2, Edit2, AlertCircle, CheckCircle2,
-  ShieldCheck, Lock, RefreshCw, X, Filter, Layers, ArrowRight, Info, Check
+  ShieldCheck, Lock, RefreshCw, X, Filter, Layers, ArrowRight, Info, Check,
+  Wrench, ArrowRightLeft, GitFork, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -40,8 +41,9 @@ export default function QcInspectionClient() {
 
   // Search & Filter
   const [queueSearch, setQueueSearch] = useState('');
+  const [salvageSearch, setSalvageSearch] = useState('');
   const [historySearch, setHistorySearch] = useState('');
-  const [activeTab, setActiveTab] = useState<'queue' | 'history'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'salvage' | 'history'>('queue');
   const [historyFromDate, setHistoryFromDate] = useState('');
   const [historyToDate, setHistoryToDate] = useState('');
 
@@ -63,6 +65,19 @@ export default function QcInspectionClient() {
   // Delete modal state
   const [deleteTarget, setDeleteTarget] = useState<QcInspection | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // --- Post-Rework Processing Modal State ---
+  const [reworkModalOpen, setReworkModalOpen] = useState(false);
+  const [reworkTargetWo, setReworkTargetWo] = useState<QcSalvageQueueItem | null>(null);
+  const [reworkTargetInspection, setReworkTargetInspection] = useState<QcInspection | null>(null);
+  const [reworkDate, setReworkDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reworkVdiOkPcs, setReworkVdiOkPcs] = useState('');
+  const [reworkDivertedPcs, setReworkDivertedPcs] = useState('');
+  const [reworkTargetWoId, setReworkTargetWoId] = useState('');
+  const [reworkDiversionReason, setReworkDiversionReason] = useState('');
+  const [reworkRejectionPcs, setReworkRejectionPcs] = useState('');
+  const [reworkRemarks, setReworkRemarks] = useState('');
+  const [reworkSaving, setReworkSaving] = useState(false);
 
   // Load current user profile
   useEffect(() => {
@@ -239,6 +254,66 @@ export default function QcInspectionClient() {
     });
   }, [enrichedHistory, historySearch, historyFromDate, historyToDate]);
 
+  // Build Salvage Queue Items: Work orders with active VDI Salvage pieces pending rework
+  const salvageQueueItems = useMemo(() => {
+    const items: QcSalvageQueueItem[] = [];
+
+    workOrders.forEach((wo) => {
+      const woInspections = qcInspections.filter(
+        (q) => q.work_order_id === wo.id && Number(q.vdi_salvage_pcs || 0) > 0
+      );
+      if (woInspections.length === 0) return;
+
+      const od = Number(wo.size_od || 0);
+      const wt = Number(wo.size_wt || 0);
+      const l1 = Number(wo.l1 || 0);
+      const l2 = Number(wo.l2 || 0);
+      const avgLen = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
+
+      const totalSalvagePcs = woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+      const totalSalvageMtr = Number(woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0).toFixed(2));
+      const totalSalvageMt = Number(woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_mt || 0), 0).toFixed(3));
+
+      // Collect all salvage reasons across inspections
+      const allReasons: SalvageReasonItem[] = [];
+      woInspections.forEach((q) => {
+        if (Array.isArray(q.salvage_reasons)) {
+          allReasons.push(...q.salvage_reasons);
+        }
+      });
+
+      items.push({
+        work_order_id: wo.id,
+        work_order_no: wo.work_order_no,
+        customer_name: wo.customer_name || null,
+        specification: wo.specification || wo.grade || null,
+        size_od: od,
+        size_wt: wt,
+        avg_length: avgLen,
+        process_route_id: wo.process_route_id || null,
+        total_salvage_pcs: totalSalvagePcs,
+        total_salvage_mtr: totalSalvageMtr,
+        total_salvage_mt: totalSalvageMt,
+        salvage_reasons: allReasons,
+        inspections: woInspections,
+      });
+    });
+
+    return items;
+  }, [workOrders, qcInspections]);
+
+  // Filtered Salvage Queue
+  const filteredSalvageQueue = useMemo(() => {
+    if (!salvageSearch.trim()) return salvageQueueItems;
+    const q = salvageSearch.toLowerCase();
+    return salvageQueueItems.filter(
+      (item) =>
+        item.work_order_no.toLowerCase().includes(q) ||
+        (item.customer_name || '').toLowerCase().includes(q) ||
+        (item.specification || '').toLowerCase().includes(q)
+    );
+  }, [salvageQueueItems, salvageSearch]);
+
   // Top KPI Metrics
   const kpis = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -259,6 +334,9 @@ export default function QcInspectionClient() {
     const rejTodayPcs = todayLogs.reduce((sum, q) => sum + Number(q.vdi_rejection_pcs || 0), 0);
     const rejTodayMt = todayLogs.reduce((sum, q) => sum + Number(q.vdi_rejection_mt || 0), 0);
 
+    const totalPendingSalvagePcs = salvageQueueItems.reduce((sum, item) => sum + item.total_salvage_pcs, 0);
+    const totalPendingSalvageMt = salvageQueueItems.reduce((sum, item) => sum + item.total_salvage_mt, 0);
+
     return {
       pendingPcs,
       pendingMt,
@@ -270,8 +348,10 @@ export default function QcInspectionClient() {
       salvageTodayMt,
       rejTodayPcs,
       rejTodayMt,
+      totalPendingSalvagePcs,
+      totalPendingSalvageMt,
     };
-  }, [queueItems, qcInspections]);
+  }, [queueItems, qcInspections, salvageQueueItems]);
 
   // Open modal to record inspection for a queue item
   const openRecordModal = (item: QcQueueItem) => {
@@ -506,6 +586,170 @@ export default function QcInspectionClient() {
     }
   };
 
+  // --- Post-Rework Handlers & Form Calculations ---
+  const availableTargetWos = useMemo(() => {
+    if (!reworkTargetWo) return workOrders;
+    return workOrders.filter((w) => w.id !== reworkTargetWo.work_order_id);
+  }, [workOrders, reworkTargetWo]);
+
+  const openReworkModal = (item: QcSalvageQueueItem, inspection?: QcInspection) => {
+    if (!canModify) {
+      toast.error('Permission Denied: Only PPC and QC personnel can process rework.');
+      return;
+    }
+    setReworkTargetWo(item);
+    setReworkTargetInspection(inspection || null);
+    setReworkDate(new Date().toISOString().slice(0, 10));
+
+    const availPcs = inspection
+      ? Number(inspection.vdi_salvage_pcs || 0)
+      : item.total_salvage_pcs;
+
+    setReworkVdiOkPcs(String(availPcs));
+    setReworkDivertedPcs('0');
+    setReworkTargetWoId('');
+    setReworkDiversionReason('');
+    setReworkRejectionPcs('0');
+    setReworkRemarks('');
+    setReworkModalOpen(true);
+  };
+
+  const reworkFormMetrics = useMemo(() => {
+    if (!reworkTargetWo) {
+      return {
+        availPcs: 0,
+        availMtr: 0,
+        availMt: 0,
+        okPcs: 0,
+        okMtr: 0,
+        okMt: 0,
+        divPcs: 0,
+        divMtr: 0,
+        divMt: 0,
+        rejPcs: 0,
+        rejMtr: 0,
+        rejMt: 0,
+        totalProcessed: 0,
+        remainingSalvage: 0,
+        isValid: false,
+      };
+    }
+
+    const avg = reworkTargetWo.avg_length || 6.0;
+    const od = reworkTargetWo.size_od || 0;
+    const wt = reworkTargetWo.size_wt || 0;
+
+    const availPcs = reworkTargetInspection
+      ? Number(reworkTargetInspection.vdi_salvage_pcs || 0)
+      : reworkTargetWo.total_salvage_pcs;
+    const availMtr = Number((availPcs * avg).toFixed(2));
+    const availMt = Number(mtFromMtr(availMtr, od, wt).toFixed(3));
+
+    const okPcs = Math.max(0, n(reworkVdiOkPcs));
+    const divPcs = Math.max(0, n(reworkDivertedPcs));
+    const rejPcs = Math.max(0, n(reworkRejectionPcs));
+
+    const okMtr = Number((okPcs * avg).toFixed(2));
+    const okMt = Number(mtFromMtr(okMtr, od, wt).toFixed(3));
+
+    const divMtr = Number((divPcs * avg).toFixed(2));
+    const divMt = Number(mtFromMtr(divMtr, od, wt).toFixed(3));
+
+    const rejMtr = Number((rejPcs * avg).toFixed(2));
+    const rejMt = Number(mtFromMtr(rejMtr, od, wt).toFixed(3));
+
+    const totalProcessed = okPcs + divPcs + rejPcs;
+    const remainingSalvage = Math.max(0, availPcs - totalProcessed);
+    const isValid = totalProcessed > 0 && totalProcessed <= availPcs && (divPcs === 0 || reworkTargetWoId !== '');
+
+    return {
+      availPcs,
+      availMtr,
+      availMt,
+      okPcs,
+      okMtr,
+      okMt,
+      divPcs,
+      divMtr,
+      divMt,
+      rejPcs,
+      rejMtr,
+      rejMt,
+      totalProcessed,
+      remainingSalvage,
+      isValid,
+    };
+  }, [reworkTargetWo, reworkTargetInspection, reworkVdiOkPcs, reworkDivertedPcs, reworkRejectionPcs, reworkTargetWoId]);
+
+  const handleReworkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canModify) {
+      toast.error('Permission Denied: Only PPC and QC personnel can process rework.');
+      return;
+    }
+    if (!reworkTargetWo) return;
+
+    if (!reworkFormMetrics.isValid) {
+      if (reworkFormMetrics.totalProcessed <= 0) {
+        toast.error('Please enter at least 1 piece to process into VDI OK, Diverted, or Rejection.');
+        return;
+      }
+      if (reworkFormMetrics.totalProcessed > reworkFormMetrics.availPcs) {
+        toast.error(`Total processed (${reworkFormMetrics.totalProcessed} Nos) exceeds available salvage (${reworkFormMetrics.availPcs} Nos).`);
+        return;
+      }
+      if (reworkFormMetrics.divPcs > 0 && !reworkTargetWoId) {
+        toast.error('Please select a Target Work Order for the diverted quantity.');
+        return;
+      }
+    }
+
+    setReworkSaving(true);
+    try {
+      const res = await fetch('/api/qc/rework', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          work_order_id: reworkTargetWo.work_order_id,
+          inspection_id: reworkTargetInspection?.id || null,
+          rework_date: reworkDate,
+          vdi_ok_pcs: reworkFormMetrics.okPcs,
+          diverted_pcs: reworkFormMetrics.divPcs,
+          target_work_order_id: reworkTargetWoId || null,
+          diversion_reason: reworkDiversionReason || null,
+          rejection_pcs: reworkFormMetrics.rejPcs,
+          remarks: reworkRemarks,
+          processed_by: currentUser?.full_name || 'QC Inspector',
+        }),
+      });
+
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        throw new Error(resData.error || 'Failed to process VDI Salvage rework.');
+      }
+
+      const summaryParts = [
+        reworkFormMetrics.okPcs > 0 ? `${reworkFormMetrics.okPcs} Nos -> VDI OK` : null,
+        reworkFormMetrics.divPcs > 0 ? `${reworkFormMetrics.divPcs} Nos -> Diverted` : null,
+        reworkFormMetrics.rejPcs > 0 ? `${reworkFormMetrics.rejPcs} Nos -> Scrapped` : null,
+      ].filter(Boolean);
+
+      toast.success(
+        `Successfully processed rework for WO ${reworkTargetWo.work_order_no}: ${summaryParts.join(', ')}`
+      );
+
+      setReworkModalOpen(false);
+      setReworkTargetWo(null);
+      setReworkTargetInspection(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error submitting rework disposition:', err);
+      toast.error(err.message || 'Failed to record rework disposition.');
+    } finally {
+      setReworkSaving(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50/60 p-4 sm:p-6 lg:p-8 space-y-6">
       {/* Header Banner */}
@@ -600,15 +844,24 @@ export default function QcInspectionClient() {
           </div>
         </div>
 
-        {/* VDI Salvage Today */}
-        <div className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50/70 to-white p-4 shadow-sm">
-          <div className="text-xs font-bold text-amber-800 uppercase tracking-wider">VDI Salvage Today</div>
+        {/* VDI Salvage Pending Rework */}
+        <div
+          onClick={() => setActiveTab('salvage')}
+          className="rounded-xl border border-amber-300 bg-gradient-to-br from-amber-50/80 to-white p-4 shadow-sm cursor-pointer hover:border-amber-400 hover:shadow-md transition-all group"
+          title="Click to view VDI Salvage & Rework Queue"
+        >
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-bold text-amber-800 uppercase tracking-wider">VDI Salvage Pending</div>
+            <span className="text-[10px] font-semibold bg-amber-200/80 text-amber-900 px-1.5 py-0.5 rounded group-hover:bg-amber-300 transition-colors">
+              Queue →
+            </span>
+          </div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="font-mono text-2xl font-black text-amber-950">{fmt(kpis.salvageTodayPcs)}</span>
+            <span className="font-mono text-2xl font-black text-amber-950">{fmt(kpis.totalPendingSalvagePcs)}</span>
             <span className="text-xs font-semibold text-amber-700">Nos</span>
           </div>
           <div className="mt-1 text-xs text-amber-700 font-mono">
-            {fmt(kpis.salvageTodayMt, ' MT')} reworkable
+            {fmt(kpis.totalPendingSalvageMt, ' MT')} reworkable ({fmt(kpis.salvageTodayPcs)} logged today)
           </div>
         </div>
 
@@ -640,6 +893,28 @@ export default function QcInspectionClient() {
           Pending Inspection Queue
           <span className="rounded-full bg-blue-100 text-blue-800 px-2 py-0.5 text-xs font-bold font-mono">
             {queueItems.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('salvage')}
+          className={`pb-3.5 flex items-center gap-2 border-b-2 transition-colors ${
+            activeTab === 'salvage'
+              ? 'border-amber-600 text-amber-700 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Wrench size={16} />
+          VDI Salvage & Rework
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-bold font-mono ${
+              salvageQueueItems.length > 0
+                ? 'bg-amber-100 text-amber-900 font-black'
+                : 'bg-slate-100 text-slate-700'
+            }`}
+          >
+            {salvageQueueItems.length}
           </span>
         </button>
 
@@ -761,7 +1036,117 @@ export default function QcInspectionClient() {
         </div>
       )}
 
-      {/* TAB 2: INSPECTION HISTORY LOGS */}
+      {/* TAB 2: VDI SALVAGE & REWORK QUEUE */}
+      {activeTab === 'salvage' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+            <div className="relative flex-1 max-w-md">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={salvageSearch}
+                onChange={(e) => setSalvageSearch(e.target.value)}
+                placeholder="Search salvage by WO#, customer, defect..."
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              />
+            </div>
+            <div className="text-xs text-slate-500 font-medium">
+              Showing <span className="font-bold text-amber-900">{filteredSalvageQueue.length}</span> orders with active VDI Salvage
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-amber-200/90 bg-white shadow-sm overflow-hidden">
+            {filteredSalvageQueue.length === 0 ? (
+              <div className="p-12 text-center text-sm text-slate-500 space-y-1">
+                <CheckCircle2 size={32} className="mx-auto text-emerald-500 mb-1" />
+                <div className="font-bold text-slate-800">No VDI Salvage Material Pending Rework</div>
+                <div className="text-xs text-slate-400">
+                  {salvageSearch ? 'No orders match your search criteria.' : 'All inspected tubes have been released as VDI OK, diverted, or scrapped.'}
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-xs">
+                  <thead className="bg-amber-50/70 border-b border-amber-200 text-amber-950 font-semibold">
+                    <tr>
+                      <th className="py-3 px-3.5">Work Order #</th>
+                      <th className="py-3 px-3">Customer</th>
+                      <th className="py-3 px-3">Specification</th>
+                      <th className="py-3 px-3 text-right">OD x WT</th>
+                      <th className="py-3 px-3 text-right">Length</th>
+                      <th className="py-3 px-3 text-right bg-amber-100/60 font-black text-amber-950">
+                        Pending Salvage
+                      </th>
+                      <th className="py-3 px-3">Defects Requiring Rework</th>
+                      <th className="py-3 px-3">Inspections</th>
+                      <th className="py-3 px-3.5 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredSalvageQueue.map((item) => (
+                      <tr key={item.work_order_id} className="hover:bg-amber-50/40 transition-colors">
+                        <td className="py-3 px-3.5 font-bold font-mono text-slate-900 text-sm">
+                          {item.work_order_no}
+                        </td>
+                        <td className="py-3 px-3 text-slate-700 font-medium">
+                          {item.customer_name || '—'}
+                        </td>
+                        <td className="py-3 px-3 text-slate-600">
+                          {item.specification || '—'}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-slate-700">
+                          {item.size_od} × {item.size_wt} mm
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-slate-600">
+                          {item.avg_length} m
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono bg-amber-50/50 text-amber-950">
+                          <div className="font-black text-sm text-amber-900">{fmt(item.total_salvage_pcs)} Nos</div>
+                          <div className="text-[10px] text-amber-700 font-semibold">{fmt(item.total_salvage_mt, ' MT')} · {item.total_salvage_mtr}m</div>
+                        </td>
+                        <td className="py-3 px-3 max-w-[220px]">
+                          {item.salvage_reasons && item.salvage_reasons.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {item.salvage_reasons.map((r, i) => (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center rounded bg-amber-100/90 border border-amber-300 px-1.5 py-0.5 text-[10px] text-amber-950 font-medium font-mono"
+                                  title={`${r.reason}: ${r.pcs} Nos ${r.remarks ? `(${r.remarks})` : ''}`}
+                                >
+                                  {r.reason}: {r.pcs} Nos
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">Salvage recorded without specific lines</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-slate-600 text-[11px] font-mono">
+                          {item.inspections.length} log(s) · latest {item.inspections[0]?.inspection_date}
+                        </td>
+                        <td className="py-3 px-3.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => openReworkModal(item)}
+                            disabled={!canModify}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-amber-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            title="Process Rework for this order"
+                          >
+                            <Wrench size={13} />
+                            Process Rework
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: INSPECTION HISTORY LOGS */}
       {activeTab === 'history' && (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 bg-white p-3 rounded-xl border border-slate-200 shadow-sm text-xs">
@@ -871,6 +1256,36 @@ export default function QcInspectionClient() {
                           </td>
                           <td className="py-3 px-3.5 text-center">
                             <div className="flex items-center justify-center gap-1">
+                              {Number(item.vdi_salvage_pcs || 0) > 0 && (
+                                <button
+                                  type="button"
+                                  disabled={!canModify}
+                                  onClick={() => {
+                                    const matchedWo = workOrders.find((w) => w.id === item.work_order_id);
+                                    const avgLen = matchedWo?.l1 && matchedWo?.l2 ? (Number(matchedWo.l1) + Number(matchedWo.l2)) / 2 : 6.0;
+                                    const sqItem: QcSalvageQueueItem = {
+                                      work_order_id: item.work_order_id,
+                                      work_order_no: item.work_order_no || matchedWo?.work_order_no || '—',
+                                      customer_name: item.customer_name || matchedWo?.customer_name || null,
+                                      specification: item.specification || matchedWo?.specification || null,
+                                      size_od: Number(item.size_od || matchedWo?.size_od || 0),
+                                      size_wt: Number(item.size_wt || matchedWo?.size_wt || 0),
+                                      avg_length: avgLen,
+                                      process_route_id: item.process_route_id || matchedWo?.process_route_id || null,
+                                      total_salvage_pcs: Number(item.vdi_salvage_pcs || 0),
+                                      total_salvage_mtr: Number(item.vdi_salvage_mtr || 0),
+                                      total_salvage_mt: Number(item.vdi_salvage_mt || 0),
+                                      salvage_reasons: Array.isArray(item.salvage_reasons) ? item.salvage_reasons : [],
+                                      inspections: [item],
+                                    };
+                                    openReworkModal(sqItem, item);
+                                  }}
+                                  className="inline-flex items-center rounded border border-amber-300 bg-amber-50 p-1.5 text-amber-800 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  title="Process Rework for this inspection"
+                                >
+                                  <Wrench size={12} />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 disabled={!canModify}
@@ -1205,6 +1620,297 @@ export default function QcInspectionClient() {
                 {deleting ? 'Deleting...' : 'Confirm Delete'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* POST-REWORK DISPOSITION MODAL */}
+      {reworkModalOpen && reworkTargetWo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-amber-100 bg-amber-50/70 px-6 py-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-600 text-white shadow">
+                  <Wrench size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">
+                    Process VDI Salvage Rework
+                  </h3>
+                  <p className="text-xs text-slate-600">
+                    Work Order #{reworkTargetWo.work_order_no} · {reworkTargetWo.customer_name || 'Commercial Tube'}
+                    {reworkTargetInspection ? ` (Inspection from ${reworkTargetInspection.inspection_date})` : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReworkModalOpen(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleReworkSubmit} className="p-6 space-y-5">
+              {/* Order & Salvage Info Badge */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 rounded-xl bg-amber-50/50 border border-amber-200 p-3 text-xs">
+                <div>
+                  <span className="text-slate-500 block">Specification:</span>
+                  <span className="font-bold text-slate-800">{reworkTargetWo.specification || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Dimensions:</span>
+                  <span className="font-bold font-mono text-slate-800">
+                    {reworkTargetWo.size_od} × {reworkTargetWo.size_wt} mm
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Avg Length:</span>
+                  <span className="font-bold font-mono text-slate-800">{reworkTargetWo.avg_length} m</span>
+                </div>
+                <div>
+                  <span className="text-amber-800 font-semibold block">Available Salvage:</span>
+                  <span className="font-black font-mono text-amber-950 text-sm">
+                    {reworkFormMetrics.availPcs} Nos
+                  </span>
+                  <span className="text-[10px] text-amber-700 block font-mono">
+                    {reworkFormMetrics.availMt} MT · {reworkFormMetrics.availMtr}m
+                  </span>
+                </div>
+              </div>
+
+              {/* Active Defects List */}
+              {reworkTargetWo.salvage_reasons && reworkTargetWo.salvage_reasons.length > 0 && (
+                <div className="rounded-lg bg-slate-50 border border-slate-200 p-2.5 text-xs">
+                  <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                    Original Defects Identified at QC
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {reworkTargetWo.salvage_reasons.map((r, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center rounded-md bg-white border border-amber-200 px-2 py-0.5 text-xs font-mono font-medium text-amber-900 shadow-sm"
+                      >
+                        {r.reason}: <strong className="ml-1 text-amber-950">{r.pcs} Nos</strong>
+                        {r.remarks && <span className="ml-1 text-slate-400 font-normal italic">({r.remarks})</span>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Rework Processing Date */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Rework Disposition Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={reworkDate}
+                  onChange={(e) => setReworkDate(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                />
+              </div>
+
+              {/* Disposition Breakdown Cards */}
+              <div className="space-y-3">
+                <div className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                  Post-Rework Disposition Breakdown
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Option 1: VDI OK */}
+                  <div className="rounded-xl border border-emerald-300 bg-emerald-50/40 p-3.5 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-emerald-950">
+                        1. Passed: VDI OK
+                      </label>
+                      <span className="text-[10px] font-semibold bg-emerald-200/80 text-emerald-900 px-1.5 py-0.5 rounded">
+                        Finishing WIP
+                      </span>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      max={reworkFormMetrics.availPcs}
+                      value={reworkVdiOkPcs}
+                      onChange={(e) => setReworkVdiOkPcs(e.target.value)}
+                      placeholder="0"
+                      className="w-full rounded-lg border border-emerald-300 px-3 py-1.5 font-mono text-sm font-black text-emerald-900 focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <div className="text-[11px] font-mono text-emerald-700">
+                      {reworkFormMetrics.okMt} MT · {reworkFormMetrics.okMtr}m
+                    </div>
+                    <p className="text-[10px] text-emerald-800 leading-tight">
+                      Releases directly to Finishing Queue for Work Order #{reworkTargetWo.work_order_no}.
+                    </p>
+                  </div>
+
+                  {/* Option 2: Diverted */}
+                  <div className="rounded-xl border border-blue-300 bg-blue-50/40 p-3.5 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-blue-950">
+                        2. Diverted
+                      </label>
+                      <span className="text-[10px] font-semibold bg-blue-200/80 text-blue-900 px-1.5 py-0.5 rounded">
+                        Other WO
+                      </span>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      max={reworkFormMetrics.availPcs}
+                      value={reworkDivertedPcs}
+                      onChange={(e) => setReworkDivertedPcs(e.target.value)}
+                      placeholder="0"
+                      className="w-full rounded-lg border border-blue-300 px-3 py-1.5 font-mono text-sm font-black text-blue-900 focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="text-[11px] font-mono text-blue-700">
+                      {reworkFormMetrics.divMt} MT · {reworkFormMetrics.divMtr}m
+                    </div>
+                    <p className="text-[10px] text-blue-800 leading-tight">
+                      Diverts reworked tubes to another Work Order.
+                    </p>
+                  </div>
+
+                  {/* Option 3: Scrapped */}
+                  <div className="rounded-xl border border-rose-300 bg-rose-50/40 p-3.5 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-rose-950">
+                        3. Rejection / Scrap
+                      </label>
+                      <span className="text-[10px] font-semibold bg-rose-200/80 text-rose-900 px-1.5 py-0.5 rounded">
+                        Scrapped
+                      </span>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      max={reworkFormMetrics.availPcs}
+                      value={reworkRejectionPcs}
+                      onChange={(e) => setReworkRejectionPcs(e.target.value)}
+                      placeholder="0"
+                      className="w-full rounded-lg border border-rose-300 px-3 py-1.5 font-mono text-sm font-black text-rose-900 focus:ring-2 focus:ring-rose-500"
+                    />
+                    <div className="text-[11px] font-mono text-rose-700">
+                      {reworkFormMetrics.rejMt} MT · {reworkFormMetrics.rejMtr}m
+                    </div>
+                    <p className="text-[10px] text-rose-800 leading-tight">
+                      Material unrecoverable after rework attempt.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Conditional Target Work Order Selection if Diverted > 0 */}
+              {reworkFormMetrics.divPcs > 0 && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-3 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-2 text-blue-900 font-bold text-xs">
+                    <GitFork size={15} />
+                    Target Work Order for Diversion ({reworkFormMetrics.divPcs} Nos / {reworkFormMetrics.divMtr}m)
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Select Target Work Order *
+                      </label>
+                      <select
+                        required
+                        value={reworkTargetWoId}
+                        onChange={(e) => setReworkTargetWoId(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">-- Choose Target WO --</option>
+                        {availableTargetWos.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            WO #{w.work_order_no} ({w.customer_name || 'Commercial'} · {w.size_od}×{w.size_wt}mm · {w.specification || w.grade})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Diversion Reason / Justification
+                      </label>
+                      <input
+                        type="text"
+                        value={reworkDiversionReason}
+                        onChange={(e) => setReworkDiversionReason(e.target.value)}
+                        placeholder="e.g. Diverted after straightening/cutting to size"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Live Processing Balance Bar */}
+              <div
+                className={`p-3 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1 font-mono font-medium ${
+                  reworkFormMetrics.isValid
+                    ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
+                    : 'bg-rose-50 text-rose-900 border border-rose-300 font-bold'
+                }`}
+              >
+                <span>
+                  Processed: <strong>{reworkFormMetrics.totalProcessed}</strong> / {reworkFormMetrics.availPcs} Nos
+                  (OK: {reworkFormMetrics.okPcs}, Diverted: {reworkFormMetrics.divPcs}, Scrap: {reworkFormMetrics.rejPcs})
+                </span>
+                <span>
+                  {reworkFormMetrics.totalProcessed === 0 ? (
+                    '⚠️ Enter at least 1 Nos to process'
+                  ) : reworkFormMetrics.totalProcessed > reworkFormMetrics.availPcs ? (
+                    `⚠️ Exceeds available salvage by ${reworkFormMetrics.totalProcessed - reworkFormMetrics.availPcs} Nos`
+                  ) : reworkFormMetrics.divPcs > 0 && !reworkTargetWoId ? (
+                    '⚠️ Select a Target Work Order for diversion'
+                  ) : (
+                    `✓ Valid (${reworkFormMetrics.remainingSalvage} Nos salvage will remain)`
+                  )}
+                </span>
+              </div>
+
+              {/* Remarks */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Rework Clearance Remarks / Notes
+                </label>
+                <input
+                  type="text"
+                  value={reworkRemarks}
+                  onChange={(e) => setReworkRemarks(e.target.value)}
+                  placeholder="e.g. Straightened on Bigwood machine, surface re-inspected 100% OK"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setReworkModalOpen(false)}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={reworkSaving || !reworkFormMetrics.isValid}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-amber-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  {reworkSaving ? (
+                    <>
+                      <RefreshCw size={13} className="animate-spin" /> Processing Rework...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={14} /> Confirm & Process Rework
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
