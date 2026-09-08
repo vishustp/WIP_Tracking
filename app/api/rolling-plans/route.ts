@@ -13,22 +13,94 @@ export interface ChildWoPayload {
   planned_pcs: number;
   planned_mtr: number;
   planned_mt: number;
+  // Factory sheet fields
+  catg?: string;
+  finish_size?: string;
+  final_len?: string;
+  hollow_len?: string;
+  htc_mtr?: number;
+  alloc_tag?: string;
+}
+
+export interface MasterGroupPayload {
+  master_work_order_id: string;
+  master_planned_pcs: number;
+  master_planned_mtr?: number;
+  master_planned_mt?: number;
+  child_work_orders?: ChildWoPayload[];
+
+  // Factory parameters
+  catg?: string; // e.g. 'CDS'
+  spec?: string;
+  grade?: string;
+  ibr_status?: string; // 'IBR' | 'NIBR'
+  rolling_mtr?: number;
+
+  // Billet Dimensions
+  rm_od?: number | null;
+  rm_len_min?: number | null;
+  rm_len_max?: number | null;
+
+  // Plan Qty
+  plan_qty_nos?: number | null;
+  plan_qty_mton?: number | null;
+
+  // Piercer Mill
+  pm_od?: number | null;
+  pm_wt?: number | null;
+  pm_len?: number | null;
+
+  // SM (Sizing Mill / Hot Hollow)
+  cust_od?: number | null;
+  cust_wt?: number | null;
+  rolling_wt?: number | null;
+  sm_len?: number | null;
+
+  // Thicken Ends
+  fe_len?: number | null;
+  be_len?: number | null;
+  eff_len?: number | null;
+
+  // Final Length Reqd
+  req_len_er?: string | null;
+  req_len_min?: number | null;
+  req_len_max?: number | null;
+
+  // Multiple & Yield
+  multiple_str?: string | null;
+  multiple?: number | null;
+  tol_od_min?: number | null;
+  tol_od_max?: number | null;
+  tol_wt_min?: number | null;
+  tol_wt_max?: number | null;
+  process_yield_pct?: number | null;
 }
 
 export interface CreateMultiWoRollingPlanPayload {
-  master_work_order_id: string;
-  master_planned_pcs: number;
-  master_planned_mtr: number;
-  master_planned_mt: number;
-  child_work_orders: ChildWoPayload[];
+  master_groups?: MasterGroupPayload[];
+
+  // Legacy single-master fields
+  master_work_order_id?: string;
+  master_planned_pcs?: number;
+  master_planned_mtr?: number;
+  master_planned_mt?: number;
+  child_work_orders?: ChildWoPayload[];
+
+  // Common metadata
+  plan_no_override?: string;
+  mill_name?: string;
+  month_str?: string;
+  prev_plan_no?: string;
   rolling_date: string;
   route_id: string;
-  mh_od: number;
-  mh_wt: number;
-  mh_l1: number;
-  mh_l2: number;
-  pass_required: number;
-  multiple: number;
+
+  // Hollow specs
+  mh_od?: number;
+  mh_wt?: number;
+  mh_l1?: number;
+  mh_l2?: number;
+  pass_required?: number;
+  multiple?: number;
 }
 
 export async function POST(req: NextRequest) {
@@ -43,252 +115,360 @@ export async function POST(req: NextRequest) {
     const body: CreateMultiWoRollingPlanPayload = await req.json();
 
     const {
-      master_work_order_id,
-      master_planned_pcs,
-      master_planned_mtr,
-      master_planned_mt,
-      child_work_orders = [],
       rolling_date,
       route_id,
-      mh_od,
-      mh_wt,
-      mh_l1,
-      mh_l2,
+      mh_od = 47.0,
+      mh_wt = 5.75,
+      mh_l1 = 6.0,
+      mh_l2 = 6.5,
       pass_required = 1,
       multiple = 1,
+      plan_no_override,
+      mill_name = 'Hot Mill-02',
+      month_str,
+      prev_plan_no,
     } = body;
 
-    if (!master_work_order_id || !route_id || !rolling_date) {
+    if (!route_id || !rolling_date) {
       return NextResponse.json(
-        { error: 'Master work order, process route, and rolling date are required.' },
+        { error: 'Process route and rolling date are required.' },
         { status: 400 }
       );
     }
 
-    if (master_planned_mtr <= 0) {
+    // Determine Master Groups (multi-master or legacy single master)
+    let masterGroups: MasterGroupPayload[] = [];
+    if (Array.isArray(body.master_groups) && body.master_groups.length > 0) {
+      masterGroups = body.master_groups;
+    } else if (body.master_work_order_id) {
+      masterGroups = [
+        {
+          master_work_order_id: body.master_work_order_id,
+          master_planned_pcs: body.master_planned_pcs || 0,
+          master_planned_mtr: body.master_planned_mtr || 0,
+          master_planned_mt: body.master_planned_mt || 0,
+          child_work_orders: body.child_work_orders || [],
+          mh_od,
+          mh_wt,
+          mh_l1,
+          mh_l2,
+          pass_required,
+          multiple,
+        } as any,
+      ];
+    }
+
+    if (masterGroups.length === 0) {
       return NextResponse.json(
-        { error: 'Master work order planned quantity must be greater than zero.' },
+        { error: 'Please include at least one Master Work Order group.' },
         { status: 400 }
       );
     }
 
-    // 1. Fetch Master Work Order details
-    const { data: masterWo, error: masterWoErr } = await admin
+    // Collect all involved Work Order IDs
+    const allWoIds = new Set<string>();
+    for (const g of masterGroups) {
+      if (g.master_work_order_id) allWoIds.add(g.master_work_order_id);
+      for (const c of g.child_work_orders || []) {
+        if (c.id) allWoIds.add(c.id);
+      }
+    }
+
+    const { data: woRows, error: woErr } = await admin
       .from('work_orders')
       .select('*')
-      .eq('id', master_work_order_id)
-      .single();
+      .in('id', Array.from(allWoIds));
 
-    if (masterWoErr || !masterWo) {
+    if (woErr || !woRows) {
       return NextResponse.json(
-        { error: 'Master work order not found.' },
-        { status: 404 }
-      );
-    }
-
-    // 2. Calculate Planned Quantities based on Mother Hollow OD, WT, and Average Length
-    const effMhOd = (mh_od != null && !isNaN(Number(mh_od)) && Number(mh_od) > 0)
-      ? Number(mh_od)
-      : Number(masterWo.size_od || 0);
-    const effMhWt = (mh_wt != null && !isNaN(Number(mh_wt)) && Number(mh_wt) > 0)
-      ? Number(mh_wt)
-      : Number(masterWo.size_wt || 0);
-    const effMhL1 = (mh_l1 != null && !isNaN(Number(mh_l1)) && Number(mh_l1) > 0)
-      ? Number(mh_l1)
-      : Number(masterWo.l1 || 0);
-    const effMhL2 = (mh_l2 != null && !isNaN(Number(mh_l2)) && Number(mh_l2) > 0)
-      ? Number(mh_l2)
-      : Number(masterWo.l2 || 0);
-
-    const hollowAvg = (effMhL1 > 0 && effMhL2 > 0)
-      ? (effMhL1 + effMhL2) / 2
-      : (effMhL1 > 0 ? effMhL1 : (effMhL2 > 0 ? effMhL2 : 6.0));
-
-    const calcHollowMtr = (pcs: number) => Number((pcs * hollowAvg).toFixed(2));
-    const calcHollowMt = (mtr: number) => Number(
-      (Math.max(effMhOd - effMhWt, 0) * Math.max(effMhWt, 0) * 0.0246615 * 0.001 * mtr).toFixed(3)
-    );
-
-    const calcMasterMtr = master_planned_pcs > 0 ? calcHollowMtr(master_planned_pcs) : Number(master_planned_mtr || 0);
-    const calcMasterMt = calcHollowMt(calcMasterMtr);
-
-    // Process child work orders with hollow dimensions
-    const processedChildren = child_work_orders.map((c: any) => {
-      const cPcs = Number(c.planned_pcs || 0);
-      const cMtr = cPcs > 0 ? calcHollowMtr(cPcs) : Number(c.planned_mtr || 0);
-      const cMt = calcHollowMt(cMtr);
-      return { ...c, planned_pcs: cPcs, planned_mtr: cMtr, planned_mt: cMt };
-    });
-
-    const totalChildMtr = processedChildren.reduce((sum: number, c: any) => sum + Number(c.planned_mtr || 0), 0);
-    const totalChildPcs = processedChildren.reduce((sum: number, c: any) => sum + Number(c.planned_pcs || 0), 0);
-    const totalChildMt = processedChildren.reduce((sum: number, c: any) => sum + Number(c.planned_mt || 0), 0);
-
-    const totalCampaignMtr = calcMasterMtr + totalChildMtr;
-    const totalCampaignPcs = master_planned_pcs + totalChildPcs;
-    const totalCampaignMt = calcMasterMt + totalChildMt;
-
-    // 3. Create the Master Rolling Plan using RPC to ensure proper sequence & trigger handling
-    const { data: planNoData, error: planRpcErr } = await admin.rpc(
-      'create_rolling_plan',
-      {
-        p_work_order_id: master_work_order_id,
-        p_planned_qty: calcMasterMtr,
-        p_rolling_date: rolling_date,
-        p_route_id: route_id,
-        p_mh_od: effMhOd,
-        p_mh_wt: effMhWt,
-        p_mh_l1: effMhL1,
-        p_mh_l2: effMhL2,
-        p_pass_required: pass_required,
-        p_multiple: multiple,
-      }
-    );
-
-    if (planRpcErr) {
-      return NextResponse.json(
-        { error: `Failed to create master rolling plan: ${planRpcErr.message}` },
-        { status: 400 }
-      );
-    }
-
-    const planNo = String(planNoData);
-
-    // Retrieve the master rolling plan row
-    const { data: masterPlan, error: masterPlanFetchErr } = await admin
-      .from('rolling_plans')
-      .select('*')
-      .eq('plan_no', planNo)
-      .single();
-
-    if (masterPlanFetchErr || !masterPlan) {
-      return NextResponse.json(
-        { error: 'Could not fetch created master rolling plan.' },
+        { error: 'Failed to fetch Work Order details from database.' },
         { status: 500 }
       );
     }
 
-    // 4. If child work orders exist, create rolling plans for each child order and link them
-    const childPlanIds: string[] = [];
-    const childMetadataList: Array<{
-      work_order_id: string;
-      work_order_no: string;
-      customer_name: string | null;
-      grade: string | null;
-      size_od: number | null;
-      size_wt: number | null;
-      l1: number | null;
-      l2: number | null;
-      planned_pcs: number;
-      planned_mtr: number;
-      planned_mt: number;
-      plan_id?: string;
-    }> = [];
+    const woMap = new Map<string, any>();
+    woRows.forEach((w) => woMap.set(w.id, w));
 
-    for (const child of processedChildren) {
-      const childPcs = Number(child.planned_pcs || 0);
-      const childMtr = Number(child.planned_mtr || 0);
-      const childMt = Number(child.planned_mt || 0);
+    // Determine Base Campaign Plan Number
+    let basePlanNo = plan_no_override?.trim() || '';
+    if (!basePlanNo) {
+      const now = new Date();
+      const yr = now.getFullYear();
+      const mo = String(now.getMonth() + 1).padStart(2, '0');
+      const da = String(now.getDate()).padStart(2, '0');
+      const hr = String(now.getHours()).padStart(2, '0');
+      const mi = String(now.getMinutes()).padStart(2, '0');
+      const se = String(now.getSeconds()).padStart(2, '0');
+      const ms = String(now.getMilliseconds()).padStart(3, '0');
+      basePlanNo = `RP-${yr}${mo}${da}${hr}${mi}${se}${ms}`;
+    }
 
-      if (childMtr <= 0) continue;
+    // Track all created plan IDs
+    const allMasterPlanIds: string[] = [];
+    const allChildPlanIds: string[] = [];
+    let grandTotalPcs = 0;
+    let grandTotalMtr = 0;
+    let grandTotalMt = 0;
+    let totalChildCount = 0;
 
-      // Create a linked rolling plan row for the child order
-      const childPlanNo = `${planNo}-C${childPlanIds.length + 1}`;
+    // Process each Master Group
+    for (let gIdx = 0; gIdx < masterGroups.length; gIdx++) {
+      const g = masterGroups[gIdx];
+      const masterWo = woMap.get(g.master_work_order_id);
+      if (!masterWo) {
+        throw new Error(`Master Work Order ${g.master_work_order_id} not found.`);
+      }
 
-      const childStatusMetadata = JSON.stringify({
-        type: 'MULTI_WO',
-        is_child: true,
-        master_plan_id: masterPlan.id,
-        master_plan_no: planNo,
-        master_wo_id: master_work_order_id,
-        master_wo_no: masterWo.work_order_no,
-        planned_pcs: childPcs,
-        planned_mtr: childMtr,
-        planned_mt: childMt,
+      // Hollow dimensions for this group
+      const grpCustOd = Number(g.cust_od || g.mh_od || mh_od || masterWo.size_od || 0);
+      const grpCustWt = Number(g.cust_wt || g.rolling_wt || g.mh_wt || mh_wt || masterWo.size_wt || 0);
+      const grpSmLen = Number(g.sm_len || g.eff_len || g.mh_l1 || mh_l1 || 6.0);
+      const grpAvgLen = grpSmLen > 0 ? grpSmLen : 6.0;
+
+      const calcHollowMtr = (pcs: number) => Number((pcs * grpAvgLen).toFixed(2));
+      const calcHollowMt = (mtr: number) =>
+        Number((Math.max(grpCustOd - grpCustWt, 0) * Math.max(grpCustWt, 0) * 0.0246615 * 0.001 * mtr).toFixed(3));
+
+      // Master calculations
+      const mPcs = Number(g.master_planned_pcs || 0);
+      const mMtr = mPcs > 0 ? calcHollowMtr(mPcs) : Number(g.master_planned_mtr || 0);
+      const mMt = calcHollowMt(mMtr);
+
+      // Child calculations
+      const childList = g.child_work_orders || [];
+      const processedChildren = childList.map((c) => {
+        const cPcs = Number(c.planned_pcs || 0);
+        const cMtr = cPcs > 0 ? calcHollowMtr(cPcs) : Number(c.planned_mtr || c.htc_mtr || 0);
+        const cMt = calcHollowMt(cMtr);
+        return {
+          ...c,
+          planned_pcs: cPcs,
+          planned_mtr: cMtr,
+          planned_mt: cMt,
+        };
       });
 
-      const { data: childPlan, error: childPlanErr } = await admin
+      const gChildPcs = processedChildren.reduce((sum, c) => sum + c.planned_pcs, 0);
+      const gChildMtr = processedChildren.reduce((sum, c) => sum + c.planned_mtr, 0);
+      const gChildMt = processedChildren.reduce((sum, c) => sum + c.planned_mt, 0);
+
+      const gTotalPcs = mPcs + gChildPcs;
+      const gTotalMtr = Number((mMtr + gChildMtr).toFixed(2));
+      const gTotalMt = Number((mMt + gChildMt).toFixed(3));
+
+      grandTotalPcs += gTotalPcs;
+      grandTotalMtr += gTotalMtr;
+      grandTotalMt += gTotalMt;
+      totalChildCount += processedChildren.length;
+
+      // Plan number for this Master:
+      // If 1 group: basePlanNo
+      // If multiple groups: `${basePlanNo}-M${gIdx + 1}`
+      const masterPlanNo = masterGroups.length === 1 ? basePlanNo : `${basePlanNo}-M${gIdx + 1}`;
+
+      // Insert Master Rolling Plan
+      const { data: createdMasterPlan, error: mPlanErr } = await admin
         .from('rolling_plans')
         .insert({
-          plan_no: childPlanNo,
-          work_order_id: child.id,
+          plan_no: masterPlanNo,
+          work_order_id: masterWo.id,
           planned_rolling_date: rolling_date,
-          planned_qty: childMtr,
+          planned_qty: mMtr > 0 ? mMtr : gTotalMtr,
           process_route_id: route_id,
-          multiple: multiple,
-          status: childStatusMetadata,
-          mh_od: effMhOd,
-          mh_wt: effMhWt,
-          mh_l1: effMhL1,
-          mh_l2: effMhL2,
-          pass_required: pass_required,
+          multiple: Number(g.multiple || multiple || 1),
+          mh_od: grpCustOd,
+          mh_wt: grpCustWt,
+          mh_l1: grpSmLen,
+          mh_l2: grpSmLen,
+          pass_required: Number(g.pass_required || pass_required || 1),
+          status: 'Scheduled',
         })
         .select()
         .single();
 
-      if (childPlanErr) {
-        console.error('Error inserting child plan:', childPlanErr);
-      } else if (childPlan) {
-        childPlanIds.push(childPlan.id);
-
-        // Update child work order status to 'Scheduled'
-        await admin
-          .from('work_orders')
-          .update({ status: 'Scheduled' })
-          .eq('id', child.id)
-          .eq('status', 'Pending Plan');
-
-        childMetadataList.push({
-          work_order_id: child.id,
-          work_order_no: child.work_order_no,
-          customer_name: child.customer_name ?? null,
-          grade: child.grade ?? null,
-          size_od: child.size_od ?? null,
-          size_wt: child.size_wt ?? null,
-          l1: child.l1 ?? null,
-          l2: child.l2 ?? null,
-          planned_pcs: childPcs,
-          planned_mtr: childMtr,
-          planned_mt: childMt,
-          plan_id: childPlan.id,
-        });
+      if (mPlanErr || !createdMasterPlan) {
+        throw new Error(`Failed to create master rolling plan ${masterPlanNo}: ${mPlanErr?.message}`);
       }
+
+      allMasterPlanIds.push(createdMasterPlan.id);
+
+      // Update master WO status to Scheduled
+      await admin
+        .from('work_orders')
+        .update({ status: 'Scheduled' })
+        .eq('id', masterWo.id)
+        .eq('status', 'Pending Plan');
+
+      // Create Child Rolling Plans
+      const childMetadataList: any[] = [];
+      for (let cIdx = 0; cIdx < processedChildren.length; cIdx++) {
+        const c = processedChildren[cIdx];
+        const childWo = woMap.get(c.id);
+
+        const childPlanNo =
+          masterGroups.length === 1
+            ? `${basePlanNo}-C${cIdx + 1}`
+            : `${basePlanNo}-M${gIdx + 1}-C${cIdx + 1}`;
+
+        const childStatusMetadata = JSON.stringify({
+          type: 'MULTI_WO',
+          is_child: true,
+          campaign_plan_no: basePlanNo,
+          master_plan_id: createdMasterPlan.id,
+          master_plan_no: masterPlanNo,
+          master_wo_id: masterWo.id,
+          master_wo_no: masterWo.work_order_no,
+          planned_pcs: c.planned_pcs,
+          planned_mtr: c.planned_mtr,
+          planned_mt: c.planned_mt,
+          catg: c.catg || g.catg || 'CDS',
+          finish_size: c.finish_size || `${childWo?.size_od || 0}x${childWo?.size_wt || 0}`,
+          final_len: c.final_len || `${childWo?.l1 || 0}-${childWo?.l2 || 0}`,
+          hollow_len: c.hollow_len || `${grpSmLen}-${grpSmLen}`,
+          htc_mtr: c.planned_mtr,
+          alloc_tag: c.alloc_tag || `${cIdx + 1}`,
+        });
+
+        const { data: createdChildPlan, error: cPlanErr } = await admin
+          .from('rolling_plans')
+          .insert({
+            plan_no: childPlanNo,
+            work_order_id: c.id,
+            planned_rolling_date: rolling_date,
+            planned_qty: c.planned_mtr,
+            process_route_id: route_id,
+            multiple: Number(g.multiple || multiple || 1),
+            mh_od: grpCustOd,
+            mh_wt: grpCustWt,
+            mh_l1: grpSmLen,
+            mh_l2: grpSmLen,
+            pass_required: Number(g.pass_required || pass_required || 1),
+            status: childStatusMetadata,
+          })
+          .select()
+          .single();
+
+        if (cPlanErr) {
+          console.error(`Error inserting child plan ${childPlanNo}:`, cPlanErr);
+        } else if (createdChildPlan) {
+          allChildPlanIds.push(createdChildPlan.id);
+
+          await admin
+            .from('work_orders')
+            .update({ status: 'Scheduled' })
+            .eq('id', c.id)
+            .eq('status', 'Pending Plan');
+
+          childMetadataList.push({
+            work_order_id: c.id,
+            work_order_no: c.work_order_no,
+            customer_name: c.customer_name ?? childWo?.customer_name ?? null,
+            grade: c.grade ?? childWo?.grade ?? null,
+            size_od: c.size_od ?? childWo?.size_od ?? null,
+            size_wt: c.size_wt ?? childWo?.size_wt ?? null,
+            l1: c.l1 ?? childWo?.l1 ?? null,
+            l2: c.l2 ?? childWo?.l2 ?? null,
+            planned_pcs: c.planned_pcs,
+            planned_mtr: c.planned_mtr,
+            planned_mt: c.planned_mt,
+            plan_id: createdChildPlan.id,
+            plan_no: childPlanNo,
+            catg: c.catg || g.catg || 'CDS',
+            finish_size: c.finish_size || `${childWo?.size_od || 0}x${childWo?.size_wt || 0}`,
+            final_len: c.final_len || `${childWo?.l1 || 0}-${childWo?.l2 || 0}`,
+            hollow_len: c.hollow_len || `${grpSmLen}-${grpSmLen}`,
+            htc_mtr: c.planned_mtr,
+            alloc_tag: c.alloc_tag || `${cIdx + 1}`,
+          });
+        }
+      }
+
+      // Update Master Plan status metadata with complete factory details
+      const masterStatusMetadata = JSON.stringify({
+        type: 'MULTI_WO',
+        is_master: true,
+        campaign_plan_no: basePlanNo,
+        master_plan_no: masterPlanNo,
+        mill_name,
+        month_str: month_str || 'Sep-26',
+        prev_plan_no: prev_plan_no || '',
+        catg: g.catg || 'CDS',
+        spec: g.spec || masterWo.specification || '',
+        grade: g.grade || masterWo.grade || '',
+        ibr_status: g.ibr_status || 'IBR',
+        rolling_mtr: gTotalMtr,
+        billet: {
+          rm_od: Number(g.rm_od || 63.0),
+          rm_len_min: Number(g.rm_len_min || (masterWo.l1 ? Number(masterWo.l1) / 3.5 : 1.89)),
+          rm_len_max: Number(g.rm_len_max || (masterWo.l2 ? Number(masterWo.l2) / 3.5 : 1.895)),
+        },
+        plan_qty: {
+          nos: gTotalPcs,
+          mton: gTotalMt,
+        },
+        piercer_mill: {
+          pm_od: Number(g.pm_od || 66.0),
+          pm_wt: Number(g.pm_wt || 5.5),
+          pm_len: Number(g.pm_len || 5.41),
+        },
+        sm: {
+          cust_od: grpCustOd,
+          cust_wt: grpCustWt,
+          rolling_wt: Number(g.rolling_wt || grpCustWt),
+          sm_len: grpSmLen,
+        },
+        thicken_ends: {
+          fe_len: Number(g.fe_len || 0),
+          be_len: Number(g.be_len || 0),
+          eff_len: Number(g.eff_len || grpSmLen),
+        },
+        final_length: {
+          er: g.req_len_er || 'EL',
+          min: Number(g.req_len_min || masterWo.l1 || 7.55),
+          max: Number(g.req_len_max || masterWo.l2 || 7.55),
+        },
+        multiple: Number(g.multiple || multiple || 1),
+        multiple_str: g.multiple_str || (Number(g.multiple || multiple) === 2 ? '2-Multi' : '1'),
+        tolerances: {
+          od_min: Number(g.tol_od_min || (grpCustOd - 0.4)),
+          od_max: Number(g.tol_od_max || (grpCustOd + 0.4)),
+          wt_min: Number(g.tol_wt_min || (grpCustWt * 0.92)),
+          wt_max: Number(g.tol_wt_max || (grpCustWt * 1.1)),
+        },
+        process_yield_pct: Number(g.process_yield_pct || 95.5),
+        master_wo_id: masterWo.id,
+        master_wo_no: masterWo.work_order_no,
+        master_customer: masterWo.customer_name,
+        master_grade: masterWo.grade,
+        master_od: masterWo.size_od,
+        master_wt: masterWo.size_wt,
+        master_planned_pcs: mPcs,
+        master_planned_mtr: mMtr,
+        master_planned_mt: mMt,
+        total_group_pcs: gTotalPcs,
+        total_group_mtr: gTotalMtr,
+        total_group_mt: gTotalMt,
+        child_work_orders: childMetadataList,
+        group_index: gIdx + 1,
+        total_master_groups: masterGroups.length,
+      });
+
+      await admin
+        .from('rolling_plans')
+        .update({ status: masterStatusMetadata })
+        .eq('id', createdMasterPlan.id);
     }
-
-    // 5. Update Master Plan status metadata with complete campaign info
-    const masterStatusMetadata = JSON.stringify({
-      type: 'MULTI_WO',
-      is_master: true,
-      master_plan_no: planNo,
-      master_wo_id: master_work_order_id,
-      master_wo_no: masterWo.work_order_no,
-      master_customer: masterWo.customer_name,
-      master_grade: masterWo.grade,
-      master_od: masterWo.size_od,
-      master_wt: masterWo.size_wt,
-      master_planned_pcs,
-      master_planned_mtr: calcMasterMtr,
-      master_planned_mt: calcMasterMt,
-      total_campaign_pcs: totalCampaignPcs,
-      total_campaign_mtr: totalCampaignMtr,
-      total_campaign_mt: totalCampaignMt,
-      child_work_orders: childMetadataList,
-    });
-
-    await admin
-      .from('rolling_plans')
-      .update({ status: masterStatusMetadata })
-      .eq('id', masterPlan.id);
 
     return NextResponse.json({
       success: true,
-      plan_no: planNo,
-      master_plan_id: masterPlan.id,
-      child_plan_ids: childPlanIds,
-      total_campaign_mtr: totalCampaignMtr,
-      total_campaign_pcs: totalCampaignPcs,
-      total_campaign_mt: totalCampaignMt,
-      child_count: childMetadataList.length,
+      plan_no: basePlanNo,
+      master_count: masterGroups.length,
+      child_count: totalChildCount,
+      total_campaign_pcs: grandTotalPcs,
+      total_campaign_mtr: Number(grandTotalMtr.toFixed(2)),
+      total_campaign_mt: Number(grandTotalMt.toFixed(3)),
+      master_plan_ids: allMasterPlanIds,
+      child_plan_ids: allChildPlanIds,
     });
   } catch (error: any) {
     console.error('Create multi-WO rolling plan error:', error);

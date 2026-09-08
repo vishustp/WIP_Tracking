@@ -12,6 +12,8 @@ import {
   Download,
   Flame,
   X,
+  FileText,
+  Table as TableIcon,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -48,6 +50,55 @@ export type Plan = {
   can_modify: boolean;
 };
 
+export interface FactoryPlanRow {
+  srNo: number;
+  catg: string;
+  customer: string;
+  woNo: string;
+  spec: string;
+  grade: string;
+  ibr: string;
+  rollingMtr: number;
+  rmOd: number;
+  rmLenMin: number;
+  rmLenMax: number;
+  planQtyNos: number;
+  planQtyMton: number;
+  pmOd: number;
+  pmWthk: number;
+  pmLen: number;
+  custOd: number;
+  custWt: number;
+  rollingWt: number;
+  smLen: number;
+  feLen: number;
+  beLen: number;
+  effLen: number;
+  reqLenEr: string;
+  reqLenMin: number;
+  reqLenMax: number;
+  mult: string;
+  tolOdMin: number;
+  tolOdMax: number;
+  tolWtMin: number;
+  tolWtMax: number;
+  processYieldPct: number;
+  campaignPlanNo: string;
+  millName: string;
+  monthStr: string;
+  issueDate: string;
+  prevPlanNo: string;
+  childSubRows: Array<{
+    catg: string;
+    finishSize: string;
+    finalLen: string;
+    woNo: string;
+    customer: string;
+    hollowLen: string;
+    htcMtr: number;
+  }>;
+}
+
 const fmt = (n: number | null | undefined, digits = 2) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: digits });
 
@@ -77,6 +128,10 @@ export default function RollingPlanIssueReportClient() {
 
   const [expandedMasters, setExpandedMasters] = useState<Record<string, boolean>>({});
   const [selectedPlanForSlip, setSelectedPlanForSlip] = useState<Plan | null>(null);
+
+  // View Mode: Factory Cutting Plan (Mill-02) or Standard Table View
+  const [viewMode, setViewMode] = useState<'factory' | 'standard'>('factory');
+  const [selectedCampaignPlan, setSelectedCampaignPlan] = useState<string>('ALL');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -237,6 +292,191 @@ export default function RollingPlanIssueReportClient() {
     });
   }, [plans, typeFilter]);
 
+  // Distinct Campaign Plan Nos for filtering
+  const availableCampaigns = useMemo(() => {
+    const set = new Set<string>();
+    plans.forEach((p) => {
+      let parsedStatus: any = {};
+      try {
+        parsedStatus = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+      } catch { }
+      const camp = parsedStatus?.campaign_plan_no || p.plan_no;
+      if (camp) set.add(camp);
+    });
+    return Array.from(set).sort();
+  }, [plans]);
+
+  // Transform filtered plans into Factory Cutting Plan Rows (Mill-02 format)
+  const factoryRows = useMemo(() => {
+    // In factory view, each row represents a setup group (Master plan or standalone plan)
+    // Child plans are represented as sub-rows under their master
+    const masterOrStandardPlans = filteredPlans.filter((p) => {
+      let parsed: any = {};
+      try {
+        parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+      } catch { }
+      return !parsed?.is_child; // exclude children from being separate master rows
+    });
+
+    const targetPlans = selectedCampaignPlan === 'ALL'
+      ? masterOrStandardPlans
+      : masterOrStandardPlans.filter((p) => {
+        let parsed: any = {};
+        try {
+          parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+        } catch { }
+        return (parsed?.campaign_plan_no || p.plan_no) === selectedCampaignPlan;
+      });
+
+    return targetPlans.map((p, idx) => {
+      let parsed: any = {};
+      try {
+        parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {};
+      } catch { }
+
+      const catg = parsed.catg || (p.route_code?.includes('CDS') ? 'CDS' : 'CDS');
+      const spec = parsed.spec || 'ASME SA210 Gr.A1';
+      const grade = parsed.grade || p.grade || 'SAE 1018';
+      const ibr = parsed.ibr_status || 'IBR';
+
+      const childOrders: any[] = parsed.child_work_orders || [];
+      let childSubRows = childOrders.map((c: any) => {
+        const cFinishSize = c.finish_size || `${fmt(c.size_od ?? p.od, 2)}x${fmt(c.size_wt ?? p.wt, 2)}`;
+        const cFinalLen = c.final_len || (c.l1 && c.l2 ? `${fmt(c.l1, 2)}-${fmt(c.l2, 2)}` : `${fmt(c.l1 || 6, 2)}-${fmt(c.l2 || 6, 2)}`);
+        const cHollowLen = c.hollow_len || (p.mh_l1 && p.mh_l2 ? `${fmt(p.mh_l1, 2)}-${fmt(p.mh_l2, 2)}` : '7.55-7.55');
+        const cMtr = Number(c.htc_mtr ?? c.planned_mtr ?? 0);
+        return {
+          catg: c.catg || catg,
+          finishSize: cFinishSize,
+          finalLen: cFinalLen,
+          woNo: c.work_order_no || '',
+          customer: c.customer_name || p.customer_name || 'Standard Stock',
+          hollowLen: cHollowLen,
+          htcMtr: cMtr,
+        };
+      });
+
+      // If no child sub-rows configured, create one for the main WO
+      if (childSubRows.length === 0) {
+        const finishSize = `${fmt(p.od || 38.1, 2)}x${fmt(p.wt || 4.26, 2)}`;
+        const finalLen = p.l1 && p.l2 ? `${fmt(p.l1, 2)}-${fmt(p.l2, 2)}` : '11.8-11.8';
+        const hollowLen = p.mh_l1 && p.mh_l2 ? `${fmt(p.mh_l1, 2)}-${fmt(p.mh_l2, 2)}` : '7.55-7.55';
+        childSubRows.push({
+          catg,
+          finishSize,
+          finalLen,
+          woNo: p.work_order_no,
+          customer: p.customer_name || 'Standard Stock',
+          hollowLen,
+          htcMtr: Number(p.planned_mtr || 0),
+        });
+      }
+
+      const rollingMtr = parsed.rolling_mtr != null
+        ? Number(parsed.rolling_mtr)
+        : (childSubRows.length > 0 ? childSubRows.reduce((sum, r) => sum + r.htcMtr, 0) : Number(p.planned_mtr || 0));
+
+      const rmOd = parsed.rm_od != null ? Number(parsed.rm_od) : 63.00;
+      const rmLenMin = parsed.rm_len_min != null ? Number(parsed.rm_len_min) : 1.890;
+      const rmLenMax = parsed.rm_len_max != null ? Number(parsed.rm_len_max) : 1.895;
+
+      const planQtyNos = parsed.plan_qty_nos != null ? Number(parsed.plan_qty_nos) : Number(p.planned_pcs || 1563);
+      const planQtyMton = parsed.plan_qty_mton != null ? Number(parsed.plan_qty_mton) : Number(p.planned_mt || 72.3);
+
+      const pmOd = parsed.pm_od != null ? Number(parsed.pm_od) : Number(p.mh_od || 66.0);
+      const pmWthk = parsed.pm_wt != null ? Number(parsed.pm_wt) : 5.50;
+      const pmLen = parsed.pm_len != null ? Number(parsed.pm_len) : 5.41;
+
+      const custOd = parsed.cust_od != null ? Number(parsed.cust_od) : Number(p.mh_od || p.od || 47.00);
+      const custWt = parsed.cust_wt != null ? Number(parsed.cust_wt) : Number(p.mh_wt || p.wt || 5.75);
+      const rollingWt = parsed.rolling_wt != null ? Number(parsed.rolling_wt) : custWt;
+      const smLen = parsed.sm_len != null ? Number(parsed.sm_len) : Number(p.mh_l1 || 7.67);
+
+      const feLen = parsed.fe_len != null ? Number(parsed.fe_len) : 0.000;
+      const beLen = parsed.be_len != null ? Number(parsed.be_len) : 0.000;
+      const effLen = parsed.eff_len != null ? Number(parsed.eff_len) : smLen;
+
+      const reqLenEr = parsed.req_len_er || 'EL';
+      const reqLenMin = parsed.req_len_min != null ? Number(parsed.req_len_min) : Number(p.l1 || 7.55);
+      const reqLenMax = parsed.req_len_max != null ? Number(parsed.req_len_max) : Number(p.l2 || 7.55);
+
+      const mult = parsed.multiple_str || (p.multiple > 1 ? `${p.multiple}-Multi` : '1');
+      const tolOdMin = parsed.tol_od_min != null ? Number(parsed.tol_od_min) : 46.60;
+      const tolOdMax = parsed.tol_od_max != null ? Number(parsed.tol_od_max) : 47.40;
+      const tolWtMin = parsed.tol_wt_min != null ? Number(parsed.tol_wt_min) : 5.32;
+      const tolWtMax = parsed.tol_wt_max != null ? Number(parsed.tol_wt_max) : 6.33;
+      const processYieldPct = parsed.process_yield_pct != null ? Number(parsed.process_yield_pct) : 95.50;
+
+      const campaignPlanNo = parsed.campaign_plan_no || p.plan_no;
+      const millName = parsed.mill_name || 'Production Plan-Hot Mill-02';
+      const monthStr = parsed.month_str || 'Sep-26';
+      const issueDate = p.planned_rolling_date || '7-Sep';
+      const prevPlanNo = parsed.prev_plan_no || '01';
+
+      return {
+        srNo: idx + 1,
+        catg,
+        customer: p.customer_name || 'Shanta Techno',
+        woNo: p.work_order_no,
+        spec,
+        grade,
+        ibr,
+        rollingMtr,
+        rmOd,
+        rmLenMin,
+        rmLenMax,
+        planQtyNos,
+        planQtyMton,
+        pmOd,
+        pmWthk,
+        pmLen,
+        custOd,
+        custWt,
+        rollingWt,
+        smLen,
+        feLen,
+        beLen,
+        effLen,
+        reqLenEr,
+        reqLenMin,
+        reqLenMax,
+        mult,
+        tolOdMin,
+        tolOdMax,
+        tolWtMin,
+        tolWtMax,
+        processYieldPct,
+        campaignPlanNo,
+        millName,
+        monthStr,
+        issueDate,
+        prevPlanNo,
+        childSubRows,
+      };
+    });
+  }, [filteredPlans, selectedCampaignPlan]);
+
+  // Primary Metadata for Active Factory Sheet Header
+  const activeSheetMeta = useMemo(() => {
+    if (factoryRows.length > 0) {
+      const first = factoryRows[0];
+      return {
+        millName: first.millName,
+        monthStr: first.monthStr,
+        planNo: selectedCampaignPlan !== 'ALL' ? selectedCampaignPlan : (first.campaignPlanNo || '02'),
+        issueDate: first.issueDate,
+        prevPlanNo: first.prevPlanNo,
+      };
+    }
+    return {
+      millName: 'Production Plan-Hot Mill-02',
+      monthStr: 'Sep-26',
+      planNo: selectedCampaignPlan !== 'ALL' ? selectedCampaignPlan : '02',
+      issueDate: '7-Sep',
+      prevPlanNo: '01',
+    };
+  }, [factoryRows, selectedCampaignPlan]);
+
   // Summary Metrics
   const summary = useMemo(() => {
     let totalMtr = 0;
@@ -315,7 +555,7 @@ export default function RollingPlanIssueReportClient() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Rolling_Plan_Issue_Schedule_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `Rolling_Plan_Schedule_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -323,13 +563,14 @@ export default function RollingPlanIssueReportClient() {
   };
 
   return (
-    <div className="space-y-6 print:space-y-3 print:p-0 print:m-0 print:w-full">
-      {/* Print Stylesheet for A4 Landscape with Narrow Margins */}
-      <style dangerouslySetInnerHTML={{ __html: `
+    <div className="space-y-6 print:space-y-2 print:p-0 print:m-0 print:w-full">
+      {/* Print Stylesheet for A4 Landscape with Factory-Exact Borders */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @media print {
           @page {
             size: A4 landscape;
-            margin: 5mm 6mm 5mm 6mm;
+            margin: 4mm 5mm 4mm 5mm;
           }
           html, body {
             width: 100% !important;
@@ -338,6 +579,7 @@ export default function RollingPlanIssueReportClient() {
             background: #ffffff !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            font-size: 10px !important;
           }
           main {
             max-width: 100% !important;
@@ -348,15 +590,20 @@ export default function RollingPlanIssueReportClient() {
           .overflow-x-auto {
             overflow: visible !important;
           }
+          .factory-print-sheet {
+            display: block !important;
+            width: 100% !important;
+          }
+          .standard-screen-sheet {
+            display: none !important;
+          }
           table {
             width: 100% !important;
             border-collapse: collapse !important;
           }
           th, td {
-            padding-top: 3.5px !important;
-            padding-bottom: 3.5px !important;
-            padding-left: 5px !important;
-            padding-right: 5px !important;
+            border: 1px solid #000000 !important;
+            padding: 2px 3px !important;
           }
           tr {
             break-inside: avoid !important;
@@ -369,25 +616,53 @@ export default function RollingPlanIssueReportClient() {
         }
       `}} />
 
-      {/* Screen Toolbar / Header Actions */}
+      {/* Screen Toolbar / View Mode Switcher */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
         <div>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 border border-amber-200">
               <Flame className="h-3.5 w-3.5 text-amber-700" />
-              HOT ROLLING MILL
+              HOT MILL-02 PRODUCTION PLANNING
             </span>
-            <span className="text-xs font-semibold text-slate-500">Document Ref: STP/PPC/RP-01 (Rev 04)</span>
+            <span className="text-xs font-semibold text-slate-500">Doc: F-PROD-01A (Rev 02)</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 mt-1">
-            Rolling Plan Issue Schedule & Circulation Report
+          <h1 className="text-2xl font-black tracking-tight text-slate-900 mt-1">
+            Round Bar Cutting Plan & Hot Mill Daily Production Plan
           </h1>
           <p className="text-xs text-slate-500">
-            Official shop floor rolling allocation schedule for billet charging, mother hollow piercing, and mill campaign planning.
+            Factory shop-floor campaign schedule with Mother Hollow piercing specs, billet dimensions, and child order allocations.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* View Mode Segmented Switcher */}
+          <div className="flex items-center rounded-lg bg-slate-100 p-1 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setViewMode('factory')}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+                viewMode === 'factory'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Factory Sheet (Photo Layout)
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('standard')}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+                viewMode === 'standard'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              <TableIcon className="h-3.5 w-3.5" />
+              Standard Table
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={loadData}
@@ -407,44 +682,17 @@ export default function RollingPlanIssueReportClient() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-500 transition cursor-pointer"
+            className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-600 transition cursor-pointer"
           >
             <Printer className="h-4 w-4" />
-            Print / PDF Circulation Sheet
+            Print Factory Sheet
           </button>
         </div>
       </div>
 
-      {/* Printable Formal Header */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs print:border-black print:p-3 print:shadow-none">
-        <div className="flex items-start justify-between border-b border-slate-200 pb-4 print:border-black print:pb-2">
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-xl bg-blue-700 text-white flex items-center justify-center font-black text-lg print:border print:border-black">
-              STP
-            </div>
-            <div>
-              <h2 className="text-base font-black uppercase tracking-wide text-slate-900 print:text-black">
-                Rashmi Green Hydrogen Limited.
-              </h2>
-              <div className="text-xs font-bold text-slate-600 print:text-black">
-                Production Planning & Control (PPC)
-              </div>
-              <div className="text-[11px] text-slate-400 print:text-black">
-                Rolling Mill Issue Schedule & Campaign Allocation Sheet
-              </div>
-            </div>
-          </div>
-
-          <div className="text-right text-xs space-y-0.5 print:text-black">
-            <div className="font-mono font-bold text-slate-900">DOC: F-PROD-01a,EFF.Date:01.04.2023, Rev.02,Rev.Dt.01.04.2024</div>
-            <div className="text-slate-500">Rev: 02 · Approved</div>
-            <div className="text-slate-500 font-mono">Date: {new Date().toLocaleDateString('en-GB')}</div>
-            <div className="text-slate-500">Target Mill: Hot Assel / Mandrel Mill</div>
-          </div>
-        </div>
-
-        {/* Filter controls (hidden when printing) */}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5 print:hidden">
+      {/* Screen Filters Bar (Hidden on Print) */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs print:hidden">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5">
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
               Search Order / Plan / Customer
@@ -453,12 +701,30 @@ export default function RollingPlanIssueReportClient() {
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="e.g. RP-2026 or WO-102"
+                placeholder="e.g. DOM-SHANTA or 06233"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-hidden"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Select Daily Plan / Campaign
+            </label>
+            <select
+              value={selectedCampaignPlan}
+              onChange={(e) => setSelectedCampaignPlan(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-hidden"
+            >
+              <option value="ALL">All Campaign Plans</option>
+              {availableCampaigns.map((camp) => (
+                <option key={camp} value={camp}>
+                  Plan No: {camp}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -476,22 +742,6 @@ export default function RollingPlanIssueReportClient() {
                   {r.route_code} — {r.route_name}
                 </option>
               ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-              Plan Type
-            </label>
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-hidden"
-            >
-              <option value="ALL">All Plan Types</option>
-              <option value="MASTER">Master Multi-WO Campaigns</option>
-              <option value="CHILD">Child Linked Orders</option>
-              <option value="STANDARD">Standard Single Orders</option>
             </select>
           </div>
 
@@ -519,337 +769,525 @@ export default function RollingPlanIssueReportClient() {
             />
           </div>
         </div>
-
-        {/* Summary Metric KPI Badges - Focus on PCS and MT */}
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 border-t border-slate-100 pt-4 print:border-black print:pt-2">
-          <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-              Total Plans Issued
-            </span>
-            <span className="text-lg font-black text-slate-900 font-mono print:text-black">{summary.count}</span>
-            <span className="text-[10px] text-indigo-600 block print:hidden">({summary.masterCount} Master Campaigns)</span>
-          </div>
-
-          {/* Primary Focus Card 1: Total Planned Pieces (PCS) */}
-          <div className="rounded-xl bg-indigo-50/50 p-3 border-2 border-indigo-200 shadow-2xs print:bg-white print:border-black">
-            <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-900 print:text-black">
-              Total Planned Pieces (PCS) ★
-            </span>
-            <div className="mt-1">
-              <span className="inline-block px-2.5 py-0.5 rounded-md text-base sm:text-lg font-black font-mono bg-indigo-100 text-indigo-950 border border-indigo-300 print:border-black print:bg-white print:text-black">
-                {fmt(summary.totalPcs, 0)} PCS
-              </span>
-            </div>
-            <span className="text-[10px] text-indigo-700 block font-semibold mt-1 print:text-black">
-              Billets / Tubes Allocated
-            </span>
-          </div>
-
-          {/* Primary Focus Card 2: Total Billet Tonnage (MT) */}
-          <div className="rounded-xl bg-emerald-50/50 p-3 border-2 border-emerald-200 shadow-2xs print:bg-white print:border-black">
-            <span className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 print:text-black">
-              Total Billet Tonnage (MT) ★
-            </span>
-            <div className="mt-1">
-              <span className="inline-block px-2.5 py-0.5 rounded-md text-base sm:text-lg font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
-                {fmt(summary.totalMt)} MT
-              </span>
-            </div>
-            <span className="text-[10px] text-emerald-700 block font-semibold mt-1 print:text-black">
-              Gross Rolling Campaign Mass
-            </span>
-          </div>
-
-          <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 print:bg-white print:border-black">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-              Total Planned Meters
-            </span>
-            <span className="text-lg font-black text-blue-700 font-mono print:text-black">{fmt(summary.totalMtr)} MTR</span>
-            <span className="text-[10px] text-slate-500 block mt-1">Linear rolling schedule</span>
-          </div>
-        </div>
       </div>
 
-      {/* Rolling Plans Schedule Table */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden print:border-black print:shadow-none">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-100/90 font-bold uppercase tracking-wider text-slate-700 print:bg-slate-200 print:border-black print:text-black">
-                <th className="px-3 py-2.5 whitespace-nowrap">Plan No</th>
-                <th className="px-3 py-2.5 whitespace-nowrap">Rolling Date</th>
-                <th className="px-3 py-2.5 whitespace-nowrap">Work Order #</th>
-                <th className="px-3 py-2.5">Customer & Grade</th>
-                <th className="px-3 py-2.5 whitespace-nowrap font-bold">Mother Hollow Size (OD × WT × Len)</th>
-                <th className="px-3 py-2.5 whitespace-nowrap font-bold">Final Size (OD × WT × Len)</th>
-                <th className="px-3 py-2.5 whitespace-nowrap">Route</th>
+      {/* ========================================================================= */}
+      {/* 1. FACTORY CUTTING PLAN VIEW (PHOTO MATCH - MILL 02 FORMAT)               */}
+      {/* ========================================================================= */}
+      {(viewMode === 'factory' || true) && (
+        <div className={`space-y-3 ${viewMode === 'factory' ? 'block' : 'hidden print:block'} factory-print-sheet`}>
+          <div className="rounded-xl border-2 border-black bg-white p-3 shadow-md print:border-black print:p-2 print:shadow-none">
+            {/* Header: Company Title & Document Name (Exact match from photo) */}
+            <div className="flex items-center justify-between border-b-2 border-black pb-2">
+              <div className="flex items-center gap-3">
+                {/* Rashmi Seamless Logo Representation */}
+                <div className="border-2 border-black px-2 py-1 text-center font-black">
+                  <div className="text-base tracking-tight text-slate-900 leading-none">RASHMI</div>
+                  <div className="text-[8px] tracking-widest text-slate-700 font-bold border-t border-black mt-0.5 pt-0.5">
+                    SEAMLESS
+                  </div>
+                </div>
+              </div>
 
-                {/* Primary Focus Columns: PCS and MT */}
-                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-indigo-950 bg-indigo-100/90 border-l border-indigo-300 print:border-black print:bg-white print:text-black">
-                  PLANNED PCS ★
-                </th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-emerald-950 bg-emerald-100/90 border-r border-emerald-300 print:border-black print:bg-white print:text-black">
-                  TONNAGE (MT) ★
-                </th>
+              <div className="text-center flex-1 mx-2">
+                <h2 className="text-base sm:text-lg font-black uppercase tracking-wide text-black leading-tight">
+                  RASHMI GREEN HYDROGEN STEEL PVT. LTD.
+                </h2>
+                <div className="text-xs font-bold uppercase tracking-wider text-black">
+                  (SEAMLESS DIVISION)
+                </div>
+                <h3 className="text-xs sm:text-sm font-black uppercase tracking-tight text-black mt-0.5">
+                  ROUND BAR CUTTING PLAN & HOT MILL DAILY PRODUCTION PLAN MILL - 02
+                </h3>
+              </div>
 
-                <th className="px-3 py-2.5 text-right whitespace-nowrap">Meters</th>
-                <th className="px-3 py-2.5 text-center whitespace-nowrap print:hidden">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 print:divide-black">
-              {loading ? (
-                <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-500">
-                    <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
-                    Loading rolling plan issue schedule...
-                  </td>
-                </tr>
-              ) : filteredPlans.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-500">
-                    No rolling plan records found for the selected criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredPlans.map((p) => {
-                  let parsedStatus: any = {};
-                  try {
-                    parsedStatus = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
-                  } catch { }
+              <div className="text-right text-[10px] font-mono text-black">
+                <div className="font-bold">MILL - 02</div>
+                <div>DOC: F-PROD-01A</div>
+              </div>
+            </div>
 
-                  const isMaster = !!parsedStatus?.is_master;
-                  const isChild = !!parsedStatus?.is_child;
-                  const childOrders: any[] = parsedStatus?.child_work_orders || [];
-                  const isExpanded = expandedMasters[p.id];
+            {/* Sub-Header Bar: Production Plan-Hot Mill-02 | Month | Plan No | Issue Date */}
+            <div className="grid grid-cols-4 border-b border-black text-xs font-bold text-black py-1 px-1 bg-slate-50 print:bg-white text-center">
+              <div className="border-r border-black">{activeSheetMeta.millName}</div>
+              <div className="border-r border-black">Month: <span className="font-mono">{activeSheetMeta.monthStr}</span></div>
+              <div className="border-r border-black">Plan No :- <span className="font-mono">{activeSheetMeta.planNo}</span></div>
+              <div>Issue Date: <span className="font-mono">{activeSheetMeta.issueDate}</span></div>
+            </div>
 
-                  return (
-                    <React.Fragment key={p.id}>
-                      <tr
-                        className={`transition-colors ${isMaster ? 'bg-indigo-50/30' : isChild ? 'bg-slate-50/40' : 'hover:bg-slate-50/50'
-                          } print:text-black`}
-                      >
-                        <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap print:text-black">
-                          {p.plan_no}
-                          {isMaster && (
-                            <span className="ml-1.5 inline-flex items-center rounded-full bg-indigo-100 text-indigo-800 px-1.5 py-0.2 text-[10px] font-bold print:border print:border-black">
-                              <Crown className="h-2.5 w-2.5 mr-0.5" />
-                              Master
-                            </span>
-                          )}
-                        </td>
+            {/* Note Line: This Plan is Started after Plan No. XX */}
+            <div className="border-b border-black py-0.5 px-2 text-xs font-bold italic text-black bg-white">
+              This Plan is Started after Plan No. {activeSheetMeta.prevPlanNo}
+            </div>
 
-                        <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap print:text-black">
-                          {p.planned_rolling_date}
-                        </td>
+            {/* Main Production Plan Table (17 Column Groups - Exact 2-Tier Header) */}
+            <div className="overflow-x-auto mt-1">
+              <table className="w-full text-left text-[11px] border-collapse border border-black font-sans">
+                <thead>
+                  {/* Tier 1 Header */}
+                  <tr className="bg-slate-100 print:bg-white text-center font-bold text-black border-b border-black text-[10px]">
+                    <th rowSpan={2} className="border border-black px-1 py-1 w-6">Sr No.</th>
+                    <th rowSpan={2} className="border border-black px-1 py-1 w-10">Catg</th>
+                    <th rowSpan={2} className="border border-black px-1.5 py-1">Customer</th>
+                    <th rowSpan={2} className="border border-black px-1.5 py-1 whitespace-nowrap">W.O./S.O. No.</th>
+                    <th rowSpan={2} className="border border-black px-1 py-1">Spec</th>
+                    <th rowSpan={2} className="border border-black px-1 py-1">Grade</th>
+                    <th rowSpan={2} className="border border-black px-1 py-1 w-12">IBR/NIBR</th>
+                    <th rowSpan={2} className="border border-black px-1.5 py-1 whitespace-nowrap">Rolling mtr</th>
+                    
+                    {/* Billet Dimensions (3 cols) */}
+                    <th colSpan={3} className="border border-black px-1 py-0.5">Billet Dimensions</th>
+                    
+                    {/* Plan qty (2 cols) */}
+                    <th colSpan={2} className="border border-black px-1 py-0.5">Plan qty</th>
+                    
+                    {/* Piercer Mill (3 cols) */}
+                    <th colSpan={3} className="border border-black px-1 py-0.5">Piercer Mill</th>
+                    
+                    {/* SM (4 cols) */}
+                    <th colSpan={4} className="border border-black px-1 py-0.5">SM</th>
+                    
+                    {/* Thicken Ends (3 cols) */}
+                    <th colSpan={3} className="border border-black px-1 py-0.5">Thicken Ends</th>
+                    
+                    {/* Final Length Reqd (3 cols) */}
+                    <th colSpan={3} className="border border-black px-1 py-0.5">Final Length Reqd</th>
+                    
+                    <th rowSpan={2} className="border border-black px-1 py-1 w-8">Mult</th>
+                    
+                    {/* Dimension Tolerances (4 cols) */}
+                    <th colSpan={4} className="border border-black px-1 py-0.5">Dimension Tolerances</th>
+                    
+                    <th rowSpan={2} className="border border-black px-1 py-1 whitespace-nowrap">Process Yld %</th>
+                  </tr>
 
-                        <td className="px-3 py-2 font-bold text-slate-900 whitespace-nowrap print:text-black">
-                          {p.work_order_no}
-                          {isChild && (
-                            <span className="block text-[10px] text-teal-700 font-medium">
-                              Child of {parsedStatus.master_wo_no || 'Master'}
-                            </span>
-                          )}
-                        </td>
+                  {/* Tier 2 Header */}
+                  <tr className="bg-slate-100 print:bg-white text-center font-bold text-black border-b border-black text-[9px]">
+                    {/* Billet Dimensions */}
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">RM OD (mm)</th>
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">RM Len Min</th>
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">RM Len Max</th>
+                    
+                    {/* Plan qty */}
+                    <th className="border border-black px-1 py-0.5">Nos</th>
+                    <th className="border border-black px-1 py-0.5">Mton</th>
+                    
+                    {/* Piercer Mill */}
+                    <th className="border border-black px-1 py-0.5">PM OD</th>
+                    <th className="border border-black px-1 py-0.5">PM Wthk</th>
+                    <th className="border border-black px-1 py-0.5">PM Length</th>
+                    
+                    {/* SM */}
+                    <th className="border border-black px-1 py-0.5">Cust. OD</th>
+                    <th className="border border-black px-1 py-0.5">Cust. WT</th>
+                    <th className="border border-black px-1 py-0.5">Rolling WT</th>
+                    <th className="border border-black px-1 py-0.5">SM Length</th>
+                    
+                    {/* Thicken Ends */}
+                    <th className="border border-black px-1 py-0.5">FE Lg (Mtr)</th>
+                    <th className="border border-black px-1 py-0.5">BE Lg (Mtr)</th>
+                    <th className="border border-black px-1 py-0.5">Effective Length</th>
+                    
+                    {/* Final Length Reqd */}
+                    <th className="border border-black px-1 py-0.5">E/R</th>
+                    <th className="border border-black px-1 py-0.5">Min</th>
+                    <th className="border border-black px-1 py-0.5">Max</th>
+                    
+                    {/* Dimension Tolerances */}
+                    <th className="border border-black px-1 py-0.5">OD Min</th>
+                    <th className="border border-black px-1 py-0.5">OD Max</th>
+                    <th className="border border-black px-1 py-0.5">Thk Min</th>
+                    <th className="border border-black px-1 py-0.5">Thk Max</th>
+                  </tr>
+                </thead>
 
-                        <td className="px-3 py-2 max-w-[170px] truncate">
-                          <div className="font-semibold text-slate-800 print:text-black">{p.customer_name || 'Standard Stock'}</div>
-                          <div className="text-[11px] font-mono text-slate-500 print:text-black">{p.grade}</div>
-                        </td>
-
-                        <td className="px-3 py-2 font-mono font-semibold text-slate-800 whitespace-nowrap print:text-black">
-                          {p.mh_od && p.mh_wt ? (
-                            <span>
-                              {fmt(p.mh_od)} × {fmt(p.mh_wt)} mm
-                              <span className="text-[10px] text-slate-500 block">
-                                L: {fmt(p.mh_l1)} - {fmt(p.mh_l2)} m (Pass: {p.pass_required || 1}, Mult: {p.multiple || 1})
+                <tbody className="divide-y divide-black text-black">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={28} className="p-8 text-center text-slate-500 border border-black">
+                        <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
+                        Loading factory cutting plan schedule...
+                      </td>
+                    </tr>
+                  ) : factoryRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={28} className="p-8 text-center text-slate-500 border border-black">
+                        No active cutting plan records found. Create or select a plan above.
+                      </td>
+                    </tr>
+                  ) : (
+                    factoryRows.map((row) => (
+                      <React.Fragment key={`setup-${row.srNo}-${row.woNo}`}>
+                        {/* Optional Multi Header row (like 2-Multi in photo above rows 5 & 6) */}
+                        {row.mult.includes('Multi') && (
+                          <tr className="bg-slate-50 print:bg-white text-center font-bold text-xs border border-black">
+                            <td colSpan={28} className="py-0.5 text-center font-black border border-black">
+                              <span className="inline-block px-3 py-0.5 rounded bg-slate-200 border border-black font-mono">
+                                {row.mult}
                               </span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">Direct Rolling</span>
-                          )}
-                        </td>
+                            </td>
+                          </tr>
+                        )}
 
-                        <td className="px-3 py-2 font-mono text-slate-700 whitespace-nowrap print:text-black">
-                          <div className="font-bold text-slate-800 print:text-black">
-                            {p.od && p.wt ? `${fmt(p.od)} × ${fmt(p.wt)} mm` : <span className="text-slate-400 font-normal">—</span>}
-                          </div>
-                          {(() => {
-                            const lenStr = formatFinalSizeLength(p);
-                            return lenStr ? (
-                              <span className="text-[10px] text-slate-500 block print:text-black">
-                                {lenStr}
+                        {/* Main Master Setup Row */}
+                        <tr className="hover:bg-slate-50/60 print:hover:bg-transparent font-medium border-t border-black text-[10px]">
+                          {/* 1. Sr No */}
+                          <td className="border border-black px-1 py-1 text-center font-bold">{row.srNo}</td>
+                          
+                          {/* 2. Catg */}
+                          <td className="border border-black px-1 py-1 text-center font-semibold">{row.catg}</td>
+                          
+                          {/* 3. Customer */}
+                          <td className="border border-black px-1.5 py-1 font-semibold max-w-[140px] truncate" title={row.customer}>
+                            {row.customer}
+                          </td>
+                          
+                          {/* 4. W.O./S.O. No */}
+                          <td className="border border-black px-1.5 py-1 font-bold font-mono whitespace-nowrap">
+                            {row.woNo}
+                          </td>
+                          
+                          {/* 5. Spec */}
+                          <td className="border border-black px-1 py-1 text-center whitespace-nowrap">{row.spec}</td>
+                          
+                          {/* 6. Grade */}
+                          <td className="border border-black px-1 py-1 text-center font-mono whitespace-nowrap">{row.grade}</td>
+                          
+                          {/* 7. IBR/NIBR */}
+                          <td className="border border-black px-1 py-1 text-center font-bold">{row.ibr}</td>
+                          
+                          {/* 8. Rolling mtr */}
+                          <td className="border border-black px-1.5 py-1 text-right font-mono font-black">
+                            {fmt(row.rollingMtr, 0)}
+                          </td>
+                          
+                          {/* 9. Billet Dimensions */}
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rmOd, 2)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rmLenMin, 3)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rmLenMax, 3)}</td>
+                          
+                          {/* 10. Plan qty */}
+                          <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.planQtyNos, 0)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.planQtyMton, 1)}</td>
+                          
+                          {/* 11. Piercer Mill */}
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmOd, 1)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmWthk, 2)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmLen, 2)}</td>
+                          
+                          {/* 12. SM */}
+                          <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.custOd, 2)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.custWt, 2)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rollingWt, 2)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.smLen, 2)}</td>
+                          
+                          {/* 13. Thicken Ends */}
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.feLen, 3)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.beLen, 3)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.effLen, 2)}</td>
+                          
+                          {/* 14. Final Length Reqd */}
+                          <td className="border border-black px-1 py-1 text-center font-bold">{row.reqLenEr}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.reqLenMin, 2)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.reqLenMax, 2)}</td>
+                          
+                          {/* 15. Mult */}
+                          <td className="border border-black px-1 py-1 text-center font-mono font-bold">{row.mult}</td>
+                          
+                          {/* 16. Dimension Tolerances */}
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.tolOdMin, 2)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.tolOdMax, 2)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.tolWtMin, 2)}</td>
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.tolWtMax, 2)}</td>
+                          
+                          {/* 17. Process Yld % */}
+                          <td className="border border-black px-1.5 py-1 text-right font-mono font-bold">
+                            {fmt(row.processYieldPct, 2)}%
+                          </td>
+                        </tr>
+
+                        {/* Sub-Rows: Exact child order breakdown lines matching the photo */}
+                        {row.childSubRows.map((child, cIdx) => (
+                          <tr key={`sub-${row.srNo}-${cIdx}`} className="bg-white text-[9.5px] border-b border-black">
+                            <td colSpan={28} className="px-3 py-0.5 border border-black font-mono text-black leading-tight">
+                              <span className="font-bold">
+                                {child.catg}(finish size-{child.finishSize})(Final len - {child.finalLen})(OA-{child.woNo})(Cust.- {child.customer})(Hollow len-{child.hollowLen})(HTC mtr-{fmt(child.htcMtr, 0)})
                               </span>
-                            ) : null;
-                          })()}
-                        </td>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono font-semibold text-slate-700 print:border print:border-black print:text-black">
-                            {p.route_code}
-                          </span>
-                        </td>
+            {/* Footer with Document Control & Official Signature Blocks (From photo) */}
+            <div className="mt-3 pt-2 border-t-2 border-black flex flex-col sm:flex-row items-end justify-between text-xs text-black break-inside-avoid">
+              <div className="text-[10px] font-mono space-y-0.5">
+                <div className="font-bold">F-PROD-01A, EFF. Date: 01.04.2023, Rev.02, Rev Dt. 01.04.2024 / PPC</div>
+                <div className="text-slate-600">Confidential Shop Floor Copy · Rashmi Green Hydrogen Steel Pvt. Ltd.</div>
+              </div>
 
-                        {/* Primary Focus Cells: Planned Pcs (Highlighted, Bold) */}
-                        <td className="px-3 py-2 text-right font-mono bg-indigo-50/60 border-l border-indigo-200 print:bg-white print:border-black">
-                          <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-indigo-950 bg-indigo-100/90 border border-indigo-300 print:bg-white print:border-black print:text-black">
-                            {fmt(p.planned_pcs, 0)}
-                          </span>
-                        </td>
+              {/* Signatures Area */}
+              <div className="flex items-center gap-12 my-2 sm:my-0">
+                <div className="text-center">
+                  <div className="h-8 border-b border-dashed border-black w-28 mb-1"></div>
+                  <span className="text-[10px] font-bold block">Prepared by (PPC)</span>
+                </div>
+                <div className="text-center">
+                  <div className="h-8 border-b border-dashed border-black w-32 mb-1"></div>
+                  <span className="text-[10px] font-bold block">Checked by (Hot Mill Incharge)</span>
+                </div>
+              </div>
 
-                        {/* Primary Focus Cells: Tonnage MT (Highlighted, Bold) */}
-                        <td className="px-3 py-2 text-right font-mono bg-emerald-50/60 border-r border-emerald-200 print:bg-white print:border-black">
-                          <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-emerald-950 bg-emerald-100/90 border border-emerald-300 print:bg-white print:border-black print:text-black">
-                            {fmt(p.planned_mt)}
-                          </span>
-                        </td>
+              <div className="text-[10px] font-mono font-bold">
+                Page 1 of 1
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-                        <td className="px-3 py-2 text-right font-mono font-bold text-blue-700 print:text-black">
-                          {fmt(p.planned_mtr)}
-                        </td>
+      {/* ========================================================================= */}
+      {/* 2. STANDARD SCHEDULE TABLE VIEW (ORIGINAL SUMMARY & LIST)                 */}
+      {/* ========================================================================= */}
+      {viewMode === 'standard' && (
+        <div className="space-y-4 standard-screen-sheet">
+          {/* Summary Metric KPI Badges */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-xl bg-slate-50 p-3 border border-slate-200">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                Total Plans Issued
+              </span>
+              <span className="text-lg font-black text-slate-900 font-mono">{summary.count}</span>
+              <span className="text-[10px] text-indigo-600 block">({summary.masterCount} Master Campaigns)</span>
+            </div>
 
-                        <td className="px-3 py-2 text-center whitespace-nowrap print:hidden">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedPlanForSlip(p)}
-                              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 transition cursor-pointer"
-                              title="View and print Mill Issue Slip"
-                            >
-                              Issue Slip
-                            </button>
-                            {isMaster && childOrders.length > 0 && (
+            <div className="rounded-xl bg-indigo-50/50 p-3 border-2 border-indigo-200 shadow-2xs">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-900">
+                Total Planned Pieces (PCS) ★
+              </span>
+              <div className="mt-1">
+                <span className="inline-block px-2.5 py-0.5 rounded-md text-base sm:text-lg font-black font-mono bg-indigo-100 text-indigo-950 border border-indigo-300">
+                  {fmt(summary.totalPcs, 0)} PCS
+                </span>
+              </div>
+              <span className="text-[10px] text-indigo-700 block font-semibold mt-1">
+                Billets / Tubes Allocated
+              </span>
+            </div>
+
+            <div className="rounded-xl bg-emerald-50/50 p-3 border-2 border-emerald-200 shadow-2xs">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-emerald-900">
+                Total Billet Tonnage (MT) ★
+              </span>
+              <div className="mt-1">
+                <span className="inline-block px-2.5 py-0.5 rounded-md text-base sm:text-lg font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300">
+                  {fmt(summary.totalMt)} MT
+                </span>
+              </div>
+              <span className="text-[10px] text-emerald-700 block font-semibold mt-1">
+                Gross Rolling Campaign Mass
+              </span>
+            </div>
+
+            <div className="rounded-xl bg-slate-50 p-3 border border-slate-200">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                Total Planned Meters
+              </span>
+              <span className="text-lg font-black text-blue-700 font-mono">{fmt(summary.totalMtr)} MTR</span>
+              <span className="text-[10px] text-slate-500 block mt-1">Linear rolling schedule</span>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-100/90 font-bold uppercase tracking-wider text-slate-700">
+                    <th className="px-3 py-2.5 whitespace-nowrap">Plan No</th>
+                    <th className="px-3 py-2.5 whitespace-nowrap">Rolling Date</th>
+                    <th className="px-3 py-2.5 whitespace-nowrap">Work Order #</th>
+                    <th className="px-3 py-2.5">Customer & Grade</th>
+                    <th className="px-3 py-2.5 whitespace-nowrap font-bold">Mother Hollow Size</th>
+                    <th className="px-3 py-2.5 whitespace-nowrap font-bold">Final Size</th>
+                    <th className="px-3 py-2.5 whitespace-nowrap">Route</th>
+                    <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-indigo-950 bg-indigo-100/90">
+                      PLANNED PCS ★
+                    </th>
+                    <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-emerald-950 bg-emerald-100/90">
+                      TONNAGE (MT) ★
+                    </th>
+                    <th className="px-3 py-2.5 text-right whitespace-nowrap">Meters</th>
+                    <th className="px-3 py-2.5 text-center whitespace-nowrap">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {filteredPlans.map((p) => {
+                    let parsedStatus: any = {};
+                    try {
+                      parsedStatus = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+                    } catch { }
+
+                    const isMaster = !!parsedStatus?.is_master;
+                    const isChild = !!parsedStatus?.is_child;
+                    const childOrders: any[] = parsedStatus?.child_work_orders || [];
+                    const isExpanded = expandedMasters[p.id];
+
+                    return (
+                      <React.Fragment key={p.id}>
+                        <tr className={`transition-colors ${isMaster ? 'bg-indigo-50/30' : isChild ? 'bg-slate-50/40' : 'hover:bg-slate-50/50'}`}>
+                          <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap">
+                            {p.plan_no}
+                            {isMaster && (
+                              <span className="ml-1.5 inline-flex items-center rounded-full bg-indigo-100 text-indigo-800 px-1.5 py-0.2 text-[10px] font-bold">
+                                <Crown className="h-2.5 w-2.5 mr-0.5" />
+                                Master
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">
+                            {p.planned_rolling_date}
+                          </td>
+                          <td className="px-3 py-2 font-bold text-slate-900 whitespace-nowrap">
+                            {p.work_order_no}
+                            {isChild && (
+                              <span className="block text-[10px] text-teal-700 font-medium">
+                                Child of {parsedStatus.master_wo_no || 'Master'}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 max-w-[170px] truncate">
+                            <div className="font-semibold text-slate-800">{p.customer_name || 'Standard Stock'}</div>
+                            <div className="text-[11px] font-mono text-slate-500">{p.grade}</div>
+                          </td>
+                          <td className="px-3 py-2 font-mono font-semibold text-slate-800 whitespace-nowrap">
+                            {p.mh_od && p.mh_wt ? (
+                              <span>
+                                {fmt(p.mh_od)} × {fmt(p.mh_wt)} mm
+                                <span className="text-[10px] text-slate-500 block">
+                                  L: {fmt(p.mh_l1)} - {fmt(p.mh_l2)} m
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-slate-700 whitespace-nowrap">
+                            <div className="font-bold text-slate-800">
+                              {p.od && p.wt ? `${fmt(p.od)} × ${fmt(p.wt)} mm` : <span className="text-slate-400">—</span>}
+                            </div>
+                            {(() => {
+                              const lenStr = formatFinalSizeLength(p);
+                              return lenStr ? <span className="text-[10px] text-slate-500 block">{lenStr}</span> : null;
+                            })()}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono font-semibold text-slate-700">
+                              {p.route_code}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono bg-indigo-50/60 border-l border-indigo-200">
+                            <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-indigo-950 bg-indigo-100/90 border border-indigo-300">
+                              {fmt(p.planned_pcs, 0)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono bg-emerald-50/60 border-r border-emerald-200">
+                            <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-emerald-950 bg-emerald-100/90 border border-emerald-300">
+                              {fmt(p.planned_mt)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold text-blue-700">
+                            {fmt(p.planned_mtr)}
+                          </td>
+                          <td className="px-3 py-2 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => toggleExpand(p.id)}
-                                className="rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer inline-flex items-center gap-0.5"
-                                title="Toggle Child Work Orders"
+                                onClick={() => setSelectedPlanForSlip(p)}
+                                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 transition cursor-pointer"
                               >
-                                {childOrders.length} Child
-                                {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                Issue Slip
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-
-                      {/* Expandable Child Work Orders for Master Campaign */}
-                      {isMaster && isExpanded && childOrders.length > 0 && (
-                        <tr className="bg-indigo-50/40 print:bg-slate-100">
-                          <td colSpan={11} className="px-6 py-3">
-                            <div className="rounded-lg border border-indigo-200 bg-white p-3 shadow-2xs print:border-black">
-                              <div className="text-xs font-bold text-indigo-900 mb-2 flex items-center gap-1.5">
-                                <Link2 className="h-3.5 w-3.5 text-indigo-600" />
-                                Linked Child Work Orders in Campaign (Bundled Piercing Batch)
-                              </div>
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr className="text-slate-500 font-semibold border-b border-indigo-100">
-                                    <th className="py-1 text-left">Child WO #</th>
-                                    <th className="py-1 text-left">Customer</th>
-                                    <th className="py-1 text-left">Grade</th>
-                                    <th className="py-1 text-left">Final Size (OD × WT × Len)</th>
-                                    <th className="py-1 text-right font-black text-indigo-900">Planned Pcs ★</th>
-                                    <th className="py-1 text-right font-black text-emerald-900">Planned MT ★</th>
-                                    <th className="py-1 text-right">Planned Mtr</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-indigo-50 font-mono">
-                                  {childOrders.map((c: any, idx: number) => (
-                                    <tr key={idx} className="hover:bg-indigo-50/30">
-                                      <td className="py-1 text-slate-800 font-bold">{c.work_order_no}</td>
-                                      <td className="py-1 text-slate-600 font-sans">{c.customer_name || '—'}</td>
-                                      <td className="py-1 text-slate-600">{c.grade || p.grade}</td>
-                                      <td className="py-1 text-slate-700">
-                                        <div className="font-semibold">{fmt(c.size_od ?? p.od)} × {fmt(c.size_wt ?? p.wt)} mm</div>
-                                        {(() => {
-                                          const childLenStr = formatFinalSizeLength({
-                                            l1: c.l1,
-                                            l2: c.l2,
-                                            avg_length: (c.l1 && c.l2) ? (Number(c.l1) + Number(c.l2)) / 2 : (c.l1 || c.l2 || p.avg_length),
-                                          });
-                                          return childLenStr ? (
-                                            <span className="text-[10px] text-slate-500 block">
-                                              {childLenStr}
-                                            </span>
-                                          ) : null;
-                                        })()}
-                                      </td>
-                                      <td className="py-1 text-right font-black text-indigo-950">
-                                        <span className="px-1.5 py-0.5 rounded bg-indigo-100/90 border border-indigo-200">
-                                          {fmt(c.planned_pcs ?? 0, 0)}
-                                        </span>
-                                      </td>
-                                      <td className="py-1 text-right font-black text-emerald-950">
-                                        <span className="px-1.5 py-0.5 rounded bg-emerald-100/90 border border-emerald-200">
-                                          {fmt(c.planned_mt ?? 0)}
-                                        </span>
-                                      </td>
-                                      <td className="py-1 text-right font-bold text-slate-700">
-                                        {fmt(c.planned_mtr ?? 0)}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                              {isMaster && childOrders.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpand(p.id)}
+                                  className="rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition cursor-pointer inline-flex items-center gap-0.5"
+                                >
+                                  {childOrders.length} Child
+                                  {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
 
-        {/* Total Summary Footer with highlighted PCS and MT */}
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 print:bg-slate-100 print:border-black gap-2">
-          <div>
-            Showing <span className="font-mono">{filteredPlans.length}</span> Rolling Plan{filteredPlans.length === 1 ? '' : 's'}
-          </div>
-          <div className="flex flex-wrap items-center gap-3 font-mono">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-100 text-indigo-950 font-black text-xs sm:text-sm border border-indigo-300 print:border-black print:bg-white print:text-black">
-              TOTAL: {fmt(summary.totalPcs, 0)} PCS
-            </span>
-            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 font-black text-xs sm:text-sm border border-emerald-300 print:border-black print:bg-white print:text-black">
-              TOTAL: {fmt(summary.totalMt)} MT
-            </span>
-            <span className="text-blue-700 font-semibold">Total Length: {fmt(summary.totalMtr)} MTR</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Formal Shop Floor Circulation Sign-Off Block */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs print:border-black print:shadow-none break-inside-avoid">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-4 print:text-black">
-          Shop Floor Circulation & Authorization Sign-Off
-        </h3>
-
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-xs">
-          <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50 print:bg-white print:border-black">
-            <div className="font-bold text-slate-800 print:text-black">Prepared & Issued By</div>
-            <div className="text-[11px] text-slate-500 mb-8 print:text-black">PPC Production Planning</div>
-            <div className="border-t border-dashed border-slate-300 pt-1 text-[11px] text-slate-400 print:text-black print:border-black">
-              Signature & Date
+                        {/* Expandable Child Work Orders for Master Campaign */}
+                        {isMaster && isExpanded && childOrders.length > 0 && (
+                          <tr className="bg-indigo-50/40">
+                            <td colSpan={11} className="px-6 py-3">
+                              <div className="rounded-lg border border-indigo-200 bg-white p-3 shadow-2xs">
+                                <div className="text-xs font-bold text-indigo-900 mb-2 flex items-center gap-1.5">
+                                  <Link2 className="h-3.5 w-3.5 text-indigo-600" />
+                                  Linked Child Work Orders in Campaign
+                                </div>
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="text-slate-500 font-semibold border-b border-indigo-100">
+                                      <th className="py-1 text-left">Child WO #</th>
+                                      <th className="py-1 text-left">Customer</th>
+                                      <th className="py-1 text-left">Grade</th>
+                                      <th className="py-1 text-left">Final Size</th>
+                                      <th className="py-1 text-right font-black text-indigo-900">Planned Pcs ★</th>
+                                      <th className="py-1 text-right font-black text-emerald-900">Planned MT ★</th>
+                                      <th className="py-1 text-right">Planned Mtr</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-indigo-50 font-mono">
+                                    {childOrders.map((c: any, idx: number) => (
+                                      <tr key={idx} className="hover:bg-indigo-50/30">
+                                        <td className="py-1 text-slate-800 font-bold">{c.work_order_no}</td>
+                                        <td className="py-1 text-slate-600 font-sans">{c.customer_name || '—'}</td>
+                                        <td className="py-1 text-slate-600">{c.grade || p.grade}</td>
+                                        <td className="py-1 text-slate-700">
+                                          {fmt(c.size_od ?? p.od)} × {fmt(c.size_wt ?? p.wt)} mm
+                                        </td>
+                                        <td className="py-1 text-right font-black text-indigo-950">
+                                          {fmt(c.planned_pcs ?? 0, 0)}
+                                        </td>
+                                        <td className="py-1 text-right font-black text-emerald-950">
+                                          {fmt(c.planned_mt ?? 0)}
+                                        </td>
+                                        <td className="py-1 text-right font-bold text-slate-700">
+                                          {fmt(c.planned_mtr ?? 0)}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
-
-          <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50 print:bg-white print:border-black">
-            <div className="font-bold text-slate-800 print:text-black">Verified & Accepted By</div>
-            <div className="text-[11px] text-slate-500 mb-8 print:text-black">Hot Rolling Shift In-Charge</div>
-            <div className="border-t border-dashed border-slate-300 pt-1 text-[11px] text-slate-400 print:text-black print:border-black">
-              Signature & Date
-            </div>
-          </div>
         </div>
-      </div>
+      )}
 
       {/* Individual Plan Issue Slip Modal */}
       {selectedPlanForSlip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 print:p-0 print:static print:bg-white">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 print:border-black print:shadow-none print:p-4">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 print:hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 print:hidden">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div className="flex items-center gap-2">
                 <span className="rounded-md bg-amber-100 text-amber-800 px-2 py-0.5 text-xs font-bold">
                   HOT ROLLING SLIP
@@ -865,12 +1303,11 @@ export default function RollingPlanIssueReportClient() {
               </button>
             </div>
 
-            {/* Slip Content */}
             <div className="mt-4 space-y-4 text-xs">
-              <div className="flex items-start justify-between border-b border-slate-200 pb-3 print:border-black">
+              <div className="flex items-start justify-between border-b border-slate-200 pb-3">
                 <div>
                   <h4 className="font-black text-sm uppercase text-slate-900">HOT ROLLING MILL ISSUE SLIP</h4>
-                  <div className="text-slate-500">Seamless Tubular Products Ltd. · Mill Floor Copy</div>
+                  <div className="text-slate-500">Rashmi Green Hydrogen Steel Pvt. Ltd. · Seamless Division</div>
                 </div>
                 <div className="text-right font-mono">
                   <div className="font-bold text-slate-900">PLAN: {selectedPlanForSlip.plan_no}</div>
@@ -878,7 +1315,7 @@ export default function RollingPlanIssueReportClient() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 border border-slate-200 rounded-lg p-3 bg-slate-50 print:bg-white print:border-black">
+              <div className="grid grid-cols-2 gap-3 border border-slate-200 rounded-lg p-3 bg-slate-50">
                 <div>
                   <span className="text-slate-500 block">Work Order Number:</span>
                   <span className="font-bold text-slate-900 text-sm font-mono">{selectedPlanForSlip.work_order_no}</span>
@@ -897,91 +1334,23 @@ export default function RollingPlanIssueReportClient() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 print:bg-white print:border-black">
-                <div className="font-bold text-amber-950 mb-1.5 flex items-center gap-1.5">
-                  <Flame className="h-4 w-4 text-amber-700" />
-                  Mother Hollow (MH) Rolling Dimensions & Setup:
+              <div className="grid grid-cols-3 gap-3 rounded-lg border border-slate-200 p-3 bg-slate-50 font-mono text-center">
+                <div className="rounded-md bg-indigo-50 border border-indigo-200 p-2">
+                  <span className="text-indigo-900 text-[10px] block uppercase font-bold">Planned Pcs ★</span>
+                  <span className="text-lg font-black text-indigo-950">{fmt(selectedPlanForSlip.planned_pcs, 0)} PCS</span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 font-mono">
-                  <div>
-                    <span className="text-slate-500 text-[10px] block">MH OD × WT:</span>
-                    <span className="font-bold text-slate-900">
-                      {fmt(selectedPlanForSlip.mh_od)} × {fmt(selectedPlanForSlip.mh_wt)} mm
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 text-[10px] block">MH Length (L1 - L2):</span>
-                    <span className="font-bold text-slate-900">
-                      {fmt(selectedPlanForSlip.mh_l1)} - {fmt(selectedPlanForSlip.mh_l2)} m
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 text-[10px] block">Pass & Multiple:</span>
-                    <span className="font-bold text-slate-900">
-                      Pass: {selectedPlanForSlip.pass_required || 1} · Mult: {selectedPlanForSlip.multiple || 1}
-                    </span>
-                  </div>
+                <div className="rounded-md bg-emerald-50 border border-emerald-200 p-2">
+                  <span className="text-emerald-900 text-[10px] block uppercase font-bold">Planned Weight (MT) ★</span>
+                  <span className="text-lg font-black text-emerald-950">{fmt(selectedPlanForSlip.planned_mt)} MT</span>
                 </div>
-              </div>
-
-              {/* Final / Finished Tube Size (Target Dimensions) */}
-              <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 print:bg-white print:border-black">
-                <div className="font-bold text-blue-950 mb-1.5 flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-blue-600"></span>
-                  Final / Finished Tube Size (Target Delivery Dimensions):
-                </div>
-                <div className="grid grid-cols-3 gap-2 font-mono">
-                  <div>
-                    <span className="text-slate-500 text-[10px] block">Final OD × WT:</span>
-                    <span className="font-bold text-slate-900">
-                      {selectedPlanForSlip.od && selectedPlanForSlip.wt
-                        ? `${fmt(selectedPlanForSlip.od)} × ${fmt(selectedPlanForSlip.wt)} mm`
-                        : '—'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 text-[10px] block">Finished Length:</span>
-                    <span className="font-bold text-slate-900">
-                      {formatFinalSizeLength(selectedPlanForSlip) || 'Standard Length'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 text-[10px] block">Process Route:</span>
-                    <span className="font-bold text-slate-900">
-                      {selectedPlanForSlip.route_code}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 rounded-lg border border-slate-200 p-3 bg-slate-50 print:bg-white print:border-black font-mono text-center">
-                <div className="rounded-md bg-indigo-50 border border-indigo-200 p-2 print:bg-white print:border-black">
-                  <span className="text-indigo-900 text-[10px] block uppercase font-bold print:text-black">Planned Pcs / Billets ★</span>
-                  <span className="text-lg font-black text-indigo-950 print:text-black">{fmt(selectedPlanForSlip.planned_pcs, 0)} PCS</span>
-                </div>
-                <div className="rounded-md bg-emerald-50 border border-emerald-200 p-2 print:bg-white print:border-black">
-                  <span className="text-emerald-900 text-[10px] block uppercase font-bold print:text-black">Planned Weight (MT) ★</span>
-                  <span className="text-lg font-black text-emerald-950 print:text-black">{fmt(selectedPlanForSlip.planned_mt)} MT</span>
-                </div>
-                <div className="rounded-md bg-white border border-slate-200 p-2 print:bg-white print:border-black">
+                <div className="rounded-md bg-white border border-slate-200 p-2">
                   <span className="text-slate-500 text-[10px] block uppercase font-bold">Planned Length</span>
                   <span className="text-base font-black text-blue-700">{fmt(selectedPlanForSlip.planned_mtr)} M</span>
                 </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200 print:border-black">
-                <div>
-                  <div className="text-slate-500 text-[10px]">PPC Planning Signature:</div>
-                  <div className="border-b border-slate-300 mt-6 print:border-black"></div>
-                </div>
-                <div>
-                  <div className="text-slate-500 text-[10px]">Rolling Mill Pulpit In-Charge:</div>
-                  <div className="border-b border-slate-300 mt-6 print:border-black"></div>
-                </div>
-              </div>
             </div>
 
-            <div className="mt-5 flex items-center justify-end gap-2 print:hidden border-t border-slate-100 pt-3">
+            <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
               <button
                 type="button"
                 onClick={() => setSelectedPlanForSlip(null)}
