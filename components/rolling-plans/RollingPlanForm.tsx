@@ -227,11 +227,17 @@ export interface ComputedGroupSpecs {
 export function computeGroupSpecs(
   group: WorkOrderGroup,
   totalRollingMtr: number,
-  srIndex = 1
+  srIndex = 1,
+  totalPlannedPcs = 0
 ): ComputedGroupSpecs {
   const rmOd = Number(group.rmOd) || 0;
-  const rmLenMin = Number(group.rmLenMin) || 0;
-  const rmLenMax = Number(group.rmLenMax) || 0;
+  const rawRmLenMin = Number(group.rmLenMin) || 0;
+  const rawRmLenMax = Number(group.rmLenMax) || 0;
+
+  // Billet cutting lengths in steel mills are often input in mm (e.g. 2030, 1890, 1770) or meters (2.030, 1.890).
+  // Automatically normalize values > 20 to meters to prevent astronomical weight and length computations.
+  const rmLenMin = rawRmLenMin > 20 ? Number((rawRmLenMin / 1000).toFixed(3)) : rawRmLenMin;
+  const rmLenMax = rawRmLenMax > 20 ? Number((rawRmLenMax / 1000).toFixed(3)) : (rawRmLenMax || rmLenMin);
 
   // 12. Weight (Kgs) = (((RM OD)*(RM OD)*3.14*0.007856/4)*RM Len Min)
   const weightKg = Number((((rmOd * rmOd * 3.14 * 0.007856) / 4) * rmLenMin).toFixed(3));
@@ -239,16 +245,18 @@ export function computeGroupSpecs(
   // 21-23. Cust. OD, Cust. WT, Rolling WT = Cust. WT
   const custOd = Number(group.custOd) || Number(group.wo.size_od) || 0;
   const custWt = Number(group.custWt) || Number(group.wo.size_wt) || 0;
-  const rollingWt = custWt;
+  const rollingWt = Number(group.rollingWt) || custWt;
 
   // 15. Billet Wt. After WHF = Weight (Kgs) * 0.97
   const billetWtWhf = Number((weightKg * 0.97).toFixed(3));
 
-  // 16. PM OD = RM OD (mm) + 5
-  const pmOd = rmOd > 0 ? Number((rmOd + 5).toFixed(2)) : 0;
+  // 16. PM OD: Use user input if provided, otherwise default to 66.0 (for 63mm RM OD) or rmOd + 3
+  const userPmOd = Number(group.pmOd) || 0;
+  const pmOd = userPmOd > 0 ? userPmOd : (rmOd === 63 ? 66.0 : (rmOd > 0 ? Number((rmOd + 3).toFixed(2)) : 66.0));
 
-  // 17. PM Wt = Rolling WT - 0.25
-  const pmWt = rollingWt > 0.25 ? Number((rollingWt - 0.25).toFixed(2)) : rollingWt;
+  // 17. PM Wt: Use user input if provided, otherwise default to Rolling WT - 0.25
+  const userPmWt = Number(group.pmWt) || 0;
+  const pmWt = userPmWt > 0 ? userPmWt : (rollingWt > 0.25 ? Number((rollingWt - 0.25).toFixed(2)) : 6.00);
 
   // 18. PM Kg/Mtr = (PM OD - PM WT) * PM WT * 0.02467
   const pmKgMtr =
@@ -288,14 +296,14 @@ export function computeGroupSpecs(
   const maxLen = Number(group.reqLenMax) || Number(group.wo.l2) || minLen;
   const erStatus: 'EL' | 'RL' = minLen > 0 && minLen === maxLen ? 'EL' : 'RL';
 
-  // 13. Nos = Rolling MTR / Effective Length
+  // 13. Nos = Total Planned Pcs if entered, else Rolling MTR / Effective Length
   const nos =
-    totalRollingMtr > 0 && effectiveLen > 0
-      ? Math.ceil(totalRollingMtr / effectiveLen)
-      : 0;
+    totalPlannedPcs > 0
+      ? totalPlannedPcs
+      : (totalRollingMtr > 0 && effectiveLen > 0 ? Math.ceil(totalRollingMtr / effectiveLen) : 0);
 
   // 14. Mton = (Weight (Kgs) * Nos) / 1000
-  const mton = Number(((weightKg * nos) / 1000).toFixed(3));
+  const mton = Number(((weightKg * nos) / 1000).toFixed(2));
 
   return {
     srNo: srIndex,
@@ -843,7 +851,9 @@ export default function RollingPlanForm() {
       // Preliminary computation of group specs to get effective length
       const prelimSpecs = computeGroupSpecs(g, 0, gIdx + 1);
       const avgLen =
-        prelimSpecs.effectiveLen > 0 ? prelimSpecs.effectiveLen : Number(g.wo.l1 || 6.0);
+        Number(g.reqLenMin) > 0
+          ? Number(g.reqLenMin)
+          : (prelimSpecs.effectiveLen > 0 ? prelimSpecs.effectiveLen : Number(g.wo.l1 || 6.0));
       const custOdNum = prelimSpecs.custOd;
       const custWtNum = prelimSpecs.custWt;
 
@@ -877,8 +887,8 @@ export default function RollingPlanForm() {
       const totalGroupMtr = Number((parentMtr + totalGroupChildMtr).toFixed(2));
       const totalGroupMt = Number((parentMt + totalGroupChildMt).toFixed(3));
 
-      // Final specs with total group rolling mtr
-      const specs = computeGroupSpecs(g, totalGroupMtr, gIdx + 1);
+      // Final specs with total group rolling mtr and total pcs
+      const specs = computeGroupSpecs(g, totalGroupMtr, gIdx + 1, totalGroupPcs);
 
       grandTotalPcs += totalGroupPcs;
       grandTotalMtr += totalGroupMtr;

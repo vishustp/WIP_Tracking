@@ -400,17 +400,20 @@ export default function RollingPlanIssueReportClient() {
 
       // 9. RM OD (mm)
       const rmOd = parsed.rm_od != null ? Number(parsed.rm_od) : (parsed.billet?.rm_od != null ? Number(parsed.billet.rm_od) : 63.00);
-      // 10. RM Len Min
-      const rmLenMin = parsed.rm_len_min != null ? Number(parsed.rm_len_min) : (parsed.billet?.rm_len_min != null ? Number(parsed.billet.rm_len_min) : 1.890);
-      // 11. RM Len Max
-      const rmLenMax = parsed.rm_len_max != null ? Number(parsed.rm_len_max) : (parsed.billet?.rm_len_max != null ? Number(parsed.billet.rm_len_max) : 1.895);
+      
+      // 10. RM Len Min (normalize if entered in mm)
+      const rawRmLenMin = parsed.rm_len_min != null ? Number(parsed.rm_len_min) : (parsed.billet?.rm_len_min != null ? Number(parsed.billet.rm_len_min) : 1.890);
+      const rmLenMin = rawRmLenMin > 20 ? Number((rawRmLenMin / 1000).toFixed(3)) : rawRmLenMin;
+
+      // 11. RM Len Max (normalize if entered in mm)
+      const rawRmLenMax = parsed.rm_len_max != null ? Number(parsed.rm_len_max) : (parsed.billet?.rm_len_max != null ? Number(parsed.billet.rm_len_max) : 1.895);
+      const rmLenMax = rawRmLenMax > 20 ? Number((rawRmLenMax / 1000).toFixed(3)) : (rawRmLenMax || rmLenMin);
 
       // 12. Weight (Kgs) = (((RM OD)*(RM OD)*3.14*0.007856/4)*RM Len Min)
-      const weightKg = parsed.weight_kg != null
-        ? Number(parsed.weight_kg)
-        : (parsed.billet?.weight_kg != null
-          ? Number(parsed.billet.weight_kg)
-          : Number((((rmOd * rmOd * 3.14 * 0.007856) / 4) * rmLenMin).toFixed(2)));
+      const parsedWeightKg = parsed.weight_kg != null ? Number(parsed.weight_kg) : (parsed.billet?.weight_kg != null ? Number(parsed.billet.weight_kg) : null);
+      const weightKg = parsedWeightKg != null && parsedWeightKg < 1000
+        ? parsedWeightKg
+        : Number((((rmOd * rmOd * 3.14 * 0.007856) / 4) * rmLenMin).toFixed(2));
 
       // 21. Cust. OD
       const custOd = parsed.cust_od != null ? Number(parsed.cust_od) : (parsed.sm?.cust_od != null ? Number(parsed.sm.cust_od) : Number(p.mh_od || p.od || 47.00));
@@ -427,14 +430,14 @@ export default function RollingPlanIssueReportClient() {
           : (custOd > custWt ? Number(((custOd - custWt) * custWt * 0.02467).toFixed(3)) : 0));
 
       // 20. Wt. After WBF = Weight (Kgs) * 0.97
-      const wtWbf = parsed.wt_wbf != null ? Number(parsed.wt_wbf) : (parsed.sm?.wt_wbf != null ? Number(parsed.sm.wt_wbf) : Number((weightKg * 0.97).toFixed(2)));
+      const parsedWtWbf = parsed.wt_wbf != null ? Number(parsed.wt_wbf) : (parsed.sm?.wt_wbf != null ? Number(parsed.sm.wt_wbf) : null);
+      const wtWbf = parsedWtWbf != null && parsedWtWbf < 1000 ? parsedWtWbf : Number((weightKg * 0.97).toFixed(2));
 
       // 25. SM Length = Wt. After WBF / SM Kg/Mtr
-      const smLen = parsed.sm_len != null
-        ? Number(parsed.sm_len)
-        : (parsed.sm?.sm_len != null
-          ? Number(parsed.sm.sm_len)
-          : (smKgMtr > 0 ? Number((wtWbf / smKgMtr).toFixed(2)) : 7.67));
+      const parsedSmLen = parsed.sm_len != null ? Number(parsed.sm_len) : (parsed.sm?.sm_len != null ? Number(parsed.sm.sm_len) : null);
+      const smLen = parsedSmLen != null && parsedSmLen < 50
+        ? parsedSmLen
+        : (smKgMtr > 0 ? Number((wtWbf / smKgMtr).toFixed(2)) : 7.67);
 
       // 26. FE Lg (Mtr)
       const feLen = parsed.fe_len != null ? Number(parsed.fe_len) : (parsed.thicken_ends?.fe_len != null ? Number(parsed.thicken_ends.fe_len) : 0.000);
@@ -455,53 +458,46 @@ export default function RollingPlanIssueReportClient() {
           : (smKgMtr > 0 && beLen > 0 ? Number((smKgMtr * beLen).toFixed(2)) : 0.0));
 
       // 30. Effective Wg (Kg) = Wt. After WBF - FE Wg(Kgs) - BE Wg(Kgs)
-      const effectiveWg = parsed.effective_wg != null
-        ? Number(parsed.effective_wg)
-        : (parsed.thicken_ends?.effective_wg != null
-          ? Number(parsed.thicken_ends.effective_wg)
-          : Number(Math.max(0, wtWbf - feWg - beWg).toFixed(2)));
+      const effectiveWg = Number(Math.max(0, wtWbf - feWg - beWg).toFixed(2));
 
       // 31. Effective Length = Effective Wg (Kg) / SM Kg/Mtr
-      const effLen = parsed.eff_len != null
-        ? Number(parsed.eff_len)
-        : (parsed.thicken_ends?.eff_len != null
-          ? Number(parsed.thicken_ends.eff_len)
-          : (smKgMtr > 0 ? Number((effectiveWg / smKgMtr).toFixed(2)) : smLen));
+      const parsedEffLen = parsed.eff_len != null ? Number(parsed.eff_len) : (parsed.thicken_ends?.eff_len != null ? Number(parsed.thicken_ends.eff_len) : null);
+      const effLen = parsedEffLen != null && parsedEffLen < 50
+        ? parsedEffLen
+        : (smKgMtr > 0 ? Number((effectiveWg / smKgMtr).toFixed(2)) : smLen);
 
       // 15. Billet Wt. After WHF = Weight (Kgs) * 0.97
-      const billetWtWhf = parsed.billet_wt_whf != null ? Number(parsed.billet_wt_whf) : (parsed.billet?.billet_wt_whf != null ? Number(parsed.billet.billet_wt_whf) : Number((weightKg * 0.97).toFixed(2)));
+      const billetWtWhf = wtWbf;
 
-      // 16. PM OD = RM OD (mm) + 5
-      const pmOd = parsed.pm_od != null ? Number(parsed.pm_od) : (parsed.piercer_mill?.pm_od != null ? Number(parsed.piercer_mill.pm_od) : Number((rmOd + 5).toFixed(1)));
+      // 16. PM OD: Use user input if provided, otherwise default to 66.0 (for 63mm RM OD)
+      const parsedPmOd = parsed.pm_od != null ? Number(parsed.pm_od) : (parsed.piercer_mill?.pm_od != null ? Number(parsed.piercer_mill.pm_od) : null);
+      const pmOd = parsedPmOd != null && (parsedPmOd !== 68 || rmOd !== 63) ? parsedPmOd : 66.0;
+
       // 17. PM Wt = Rolling WT - 0.25
-      const pmWt = parsed.pm_wt != null ? Number(parsed.pm_wt) : (parsed.piercer_mill?.pm_wt != null ? Number(parsed.piercer_mill.pm_wt) : Number((rollingWt - 0.25).toFixed(2)));
+      const pmWt = parsed.pm_wt != null ? Number(parsed.pm_wt) : (parsed.piercer_mill?.pm_wt != null ? Number(parsed.piercer_mill.pm_wt) : (rollingWt > 0.25 ? Number((rollingWt - 0.25).toFixed(2)) : 6.00));
+
       // 18. PM Kg/Mtr = (PM OD - PM WT) * PM WT * 0.02467
-      const pmKgMtr = parsed.pm_kg_mtr != null
-        ? Number(parsed.pm_kg_mtr)
-        : (parsed.piercer_mill?.pm_kg_mtr != null
-          ? Number(parsed.piercer_mill.pm_kg_mtr)
-          : (pmOd > pmWt ? Number(((pmOd - pmWt) * pmWt * 0.02467).toFixed(3)) : 0));
+      const pmKgMtr = (pmOd > pmWt && pmWt > 0) ? Number(((pmOd - pmWt) * pmWt * 0.02467).toFixed(3)) : 8.88;
+
       // 19. PM Length = Billet Wt. After WHF / PM KG/MTR
-      const pmLen = parsed.pm_len != null
-        ? Number(parsed.pm_len)
-        : (parsed.piercer_mill?.pm_len != null
-          ? Number(parsed.piercer_mill.pm_len)
-          : (pmKgMtr > 0 ? Number((billetWtWhf / pmKgMtr).toFixed(2)) : 5.41));
+      const parsedPmLen = parsed.pm_len != null ? Number(parsed.pm_len) : (parsed.piercer_mill?.pm_len != null ? Number(parsed.piercer_mill.pm_len) : null);
+      const pmLen = parsedPmLen != null && parsedPmLen < 50
+        ? parsedPmLen
+        : (pmKgMtr > 0 ? Number((billetWtWhf / pmKgMtr).toFixed(2)) : 5.37);
 
       // 8. Rolling mtr = Calculated from Planned Nos * MH Average Length (or sum of child HTC mtr)
-      const rollingMtr = parsed.rolling_mtr != null
+      const rollingMtr = parsed.rolling_mtr != null && Number(parsed.rolling_mtr) < 100000
         ? Number(parsed.rolling_mtr)
         : (childSubRows.length > 0 ? childSubRows.reduce((sum, r) => sum + r.htcMtr, 0) : Number(p.planned_mtr || 0));
 
-      // 13. Nos = Rolling MTR / Effective Length
-      const planQtyNos = parsed.plan_qty_nos != null
-        ? Number(parsed.plan_qty_nos)
+      // 13. Nos
+      const parsedNos = parsed.plan_qty?.nos != null ? Number(parsed.plan_qty.nos) : (parsed.plan_qty_nos != null ? Number(parsed.plan_qty_nos) : null);
+      const planQtyNos = parsedNos != null && parsedNos > 0
+        ? parsedNos
         : (effLen > 0 ? Math.round(rollingMtr / effLen) : Number(p.planned_pcs || 0));
 
       // 14. Mton = (Weight (Kgs) * Nos) / 1000
-      const planQtyMton = parsed.plan_qty_mton != null
-        ? Number(parsed.plan_qty_mton)
-        : Number(((weightKg * planQtyNos) / 1000).toFixed(2));
+      const planQtyMton = Number(((weightKg * planQtyNos) / 1000).toFixed(1));
 
       // 33. Min, 34. Max
       const reqLenMin = parsed.req_len_min != null ? Number(parsed.req_len_min) : (parsed.final_length?.min != null ? Number(parsed.final_length.min) : Number(p.l1 || 7.55));

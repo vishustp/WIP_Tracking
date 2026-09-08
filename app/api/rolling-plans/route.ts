@@ -239,7 +239,8 @@ export async function POST(req: NextRequest) {
       // Hollow dimensions for this group
       const grpCustOd = Number(g.cust_od || g.mh_od || mh_od || masterWo.size_od || 0);
       const grpCustWt = Number(g.cust_wt || g.rolling_wt || g.mh_wt || mh_wt || masterWo.size_wt || 0);
-      const grpSmLen = Number(g.sm_len || g.eff_len || g.mh_l1 || mh_l1 || 6.0);
+      const rawSmLen = Number(g.sm_len || g.eff_len || g.mh_l1 || mh_l1 || 6.0);
+      const grpSmLen = rawSmLen > 50 ? Number((rawSmLen / 1000).toFixed(2)) : rawSmLen;
       const grpAvgLen = grpSmLen > 0 ? grpSmLen : 6.0;
 
       const calcHollowMtr = (pcs: number) => Number((pcs * grpAvgLen).toFixed(2));
@@ -400,6 +401,20 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      const rawRmLenMin = Number(g.rm_len_min || (masterWo.l1 ? Number(masterWo.l1) / 3.5 : 1.89));
+      const grpRmLenMin = rawRmLenMin > 20 ? Number((rawRmLenMin / 1000).toFixed(3)) : rawRmLenMin;
+
+      const rawRmLenMax = Number(g.rm_len_max || (masterWo.l2 ? Number(masterWo.l2) / 3.5 : 1.895));
+      const grpRmLenMax = rawRmLenMax > 20 ? Number((rawRmLenMax / 1000).toFixed(3)) : (rawRmLenMax || grpRmLenMin);
+
+      const grpWeightKg = Number(g.weight_kg && Number(g.weight_kg) < 1000 ? g.weight_kg : ((((Number(g.rm_od || 63) ** 2) * 3.14 * 0.007856) / 4) * grpRmLenMin).toFixed(3));
+      const grpBilletWtWhf = Number((grpWeightKg * 0.97).toFixed(3));
+
+      const grpPmOd = Number(g.pm_od || (Number(g.rm_od) === 63 ? 66.0 : 66.0));
+      const grpPmWt = Number(g.pm_wt || (grpCustWt > 0.25 ? Number((grpCustWt - 0.25).toFixed(2)) : 6.00));
+      const grpPmKgMtr = Number(g.pm_kg_mtr || ((grpPmOd - grpPmWt) * grpPmWt * 0.02467).toFixed(3));
+      const grpPmLen = Number(g.pm_len || (grpPmKgMtr > 0 ? (grpBilletWtWhf / grpPmKgMtr).toFixed(2) : 5.37));
+
       // Update Master Plan status metadata with complete factory details
       const masterStatusMetadata = JSON.stringify({
         type: 'MULTI_WO',
@@ -416,23 +431,23 @@ export async function POST(req: NextRequest) {
         rolling_mtr: gTotalMtr,
         billet: {
           rm_od: Number(g.rm_od || 63.0),
-          rm_len_min: Number(g.rm_len_min || (masterWo.l1 ? Number(masterWo.l1) / 3.5 : 1.89)),
-          rm_len_max: Number(g.rm_len_max || (masterWo.l2 ? Number(masterWo.l2) / 3.5 : 1.895)),
-          weight_kg: Number(g.weight_kg || 0),
-          billet_wt_whf: Number(g.billet_wt_whf || 0),
+          rm_len_min: grpRmLenMin,
+          rm_len_max: grpRmLenMax,
+          weight_kg: grpWeightKg,
+          billet_wt_whf: grpBilletWtWhf,
         },
         plan_qty: {
           nos: gTotalPcs,
-          mton: gTotalMt,
+          mton: Number(((grpWeightKg * gTotalPcs) / 1000).toFixed(2)),
         },
         piercer_mill: {
-          pm_od: Number(g.pm_od || 66.0),
-          pm_wt: Number(g.pm_wt || 5.5),
-          pm_kg_mtr: Number(g.pm_kg_mtr || 0),
-          pm_len: Number(g.pm_len || 5.41),
+          pm_od: grpPmOd,
+          pm_wt: grpPmWt,
+          pm_kg_mtr: grpPmKgMtr,
+          pm_len: grpPmLen,
         },
         sm: {
-          wt_wbf: Number(g.wt_wbf || 0),
+          wt_wbf: grpBilletWtWhf,
           cust_od: grpCustOd,
           cust_wt: grpCustWt,
           rolling_wt: Number(g.rolling_wt || grpCustWt),
@@ -444,7 +459,7 @@ export async function POST(req: NextRequest) {
           fe_wg: Number(g.fe_wg || 0),
           be_len: Number(g.be_len || 0),
           be_wg: Number(g.be_wg || 0),
-          effective_wg: Number(g.effective_wg || 0),
+          effective_wg: Number(g.effective_wg || grpBilletWtWhf),
           eff_len: Number(g.eff_len || grpSmLen),
         },
         final_length: {
@@ -454,15 +469,15 @@ export async function POST(req: NextRequest) {
         },
         // Direct root fields matching 35-column specification
         rm_od: Number(g.rm_od || 63.0),
-        rm_len_min: Number(g.rm_len_min || (masterWo.l1 ? Number(masterWo.l1) / 3.5 : 1.89)),
-        rm_len_max: Number(g.rm_len_max || (masterWo.l2 ? Number(masterWo.l2) / 3.5 : 1.895)),
-        weight_kg: Number(g.weight_kg || 0),
-        billet_wt_whf: Number(g.billet_wt_whf || 0),
-        pm_od: Number(g.pm_od || 66.0),
-        pm_wt: Number(g.pm_wt || 5.5),
-        pm_kg_mtr: Number(g.pm_kg_mtr || 0),
-        pm_len: Number(g.pm_len || 5.41),
-        wt_wbf: Number(g.wt_wbf || 0),
+        rm_len_min: grpRmLenMin,
+        rm_len_max: grpRmLenMax,
+        weight_kg: grpWeightKg,
+        billet_wt_whf: grpBilletWtWhf,
+        pm_od: grpPmOd,
+        pm_wt: grpPmWt,
+        pm_kg_mtr: grpPmKgMtr,
+        pm_len: grpPmLen,
+        wt_wbf: grpBilletWtWhf,
         cust_od: grpCustOd,
         cust_wt: grpCustWt,
         rolling_wt: Number(g.rolling_wt || grpCustWt),
