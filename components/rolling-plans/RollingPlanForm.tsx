@@ -429,19 +429,6 @@ export default function RollingPlanForm() {
     }
   }, [filterRoute, fromDate, debouncedSearch, toDate]);
 
-  // Helper to suggest standard Mother Hollow dimensions based on finished pipe size
-  const suggestMhDimensions = useCallback((wo: WO) => {
-    const od = Number(wo.size_od || 0);
-    const wt = Number(wo.size_wt || 0);
-    if (od > 0 && wt > 0) {
-      // Standard Mother Hollow expansion: OD typically +10-25%, WT +20-35%
-      const suggestedOd = Number((od * 1.18).toFixed(1));
-      const suggestedWt = Number((wt * 1.25).toFixed(2));
-      setMhOd(String(suggestedOd));
-      setMhWt(String(suggestedWt));
-    }
-  }, []);
-
   // Helper to fetch unplanned quantity
   const fetchUnplannedQty = useCallback(async (woId: string): Promise<number> => {
     try {
@@ -572,9 +559,7 @@ export default function RollingPlanForm() {
   };
 
   // Add child to specific parent work order group
-  const handleAddChildToGroup = async (groupId: string, childWoId: string) => {
-    const childWo = wos.find((w) => w.id === childWoId);
-    if (!childWo) return;
+  const handleAddChildToGroup = async (groupId: string, childWo: WO) => {
     const childAvailMtr = await fetchUnplannedQty(childWo.id);
     const lAvg = childWo.l1 && childWo.l2 ? (childWo.l1 + childWo.l2) / 2 : childWo.l1 || 6;
     const defaultChildPcs = childAvailMtr > 0 ? Math.max(1, Math.floor(childAvailMtr / lAvg)) : 50;
@@ -596,11 +581,10 @@ export default function RollingPlanForm() {
       })
     );
 
-    setActiveChildTargetGroupId(null);
-    toast.success(`Added ${childWo.work_order_no} as child.`);
+    toast.success(`Added ${childWo.work_order_no} as child of this setup.`);
   };
 
-  // Remove child from group
+  // Remove child from group (childId is the ChildOrderEntry.id, not wo.id)
   const handleRemoveChildFromGroup = (groupId: string, childId: string) => {
     setGroups((prev) =>
       prev.map((g) => {
@@ -620,7 +604,7 @@ export default function RollingPlanForm() {
     );
   };
 
-  // Update child planned pcs
+  // Update child planned pcs (childId is the ChildOrderEntry.id)
   const handleUpdateChildPcs = (groupId: string, childId: string, pcs: string) => {
     setGroups((prev) =>
       prev.map((g) => {
@@ -633,7 +617,7 @@ export default function RollingPlanForm() {
     );
   };
 
-  // Toggle specs expansion for a group
+  // Toggle specs expansion for a group (uses isSpecsExpanded field)
   const toggleGroupSpecs = (groupId: string) => {
     setGroups((prev) =>
       prev.map((g) => (g.id === groupId ? { ...g, isSpecsExpanded: !g.isSpecsExpanded } : g))
@@ -1096,9 +1080,9 @@ export default function RollingPlanForm() {
           <div className="flex items-center gap-3 text-xs font-medium text-slate-600 font-mono">
             <span><b>{groups.length}</b> Setup{groups.length === 1 ? '' : 's'}</span>
             <span>•</span>
-            <span><b>{fmt(campaignSummary.totalPcs)}</b> Pcs</span>
+            <span><b>{fmt(campaignSummary.grandTotalPcs)}</b> Pcs</span>
             <span>•</span>
-            <span className="text-indigo-700 font-bold">{fmt(campaignSummary.totalMtr)} MTR</span>
+            <span className="text-indigo-700 font-bold">{fmt(campaignSummary.grandTotalMtr)} MTR</span>
           </div>
         </div>
 
@@ -1277,7 +1261,7 @@ export default function RollingPlanForm() {
               <div className="space-y-4">
                 {groups.map((group, groupIndex) => {
                   const gSummary = campaignSummary.groupSummaries.find((s) => s.groupId === group.id);
-                  const pMetrics = gSummary?.parentMetrics || { pcs: 0, mtr: 0, mt: 0, avg: 0 };
+                  const pMetrics = { pcs: gSummary?.parentPcs || 0, mtr: gSummary?.parentMtr || 0, mt: gSummary?.parentMt || 0, avg: gSummary?.avgLen || 0 };
 
                   return (
                     <div
@@ -1294,7 +1278,7 @@ export default function RollingPlanForm() {
                           <div className="flex items-center gap-1.5 font-mono">
                             <span className="text-xs text-slate-500 font-sans font-medium">WO:</span>
                             <span className="text-sm font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
-                              {group.parentWo.work_order_no}
+                              {group.wo.work_order_no}
                             </span>
                           </div>
 
@@ -1327,15 +1311,15 @@ export default function RollingPlanForm() {
                             type="button"
                             onClick={() => toggleGroupSpecs(group.id)}
                             className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
-                              group.specsOpen
+                              group.isSpecsExpanded
                                 ? 'bg-amber-100 border-amber-300 text-amber-900'
                                 : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
                             }`}
                           >
                             <Sliders className="h-3.5 w-3.5 text-amber-600" />
-                            <span>{group.specsOpen ? 'Hide Specs' : 'Setup Specs & Tolerances'}</span>
+                            <span>{group.isSpecsExpanded ? 'Hide Specs' : 'Setup Specs & Tolerances'}</span>
                             <span className="text-[10px] text-slate-400 font-mono hidden md:inline">
-                              ({group.factoryCatg} · RM {group.rmOd}mm · PM {group.pmOd}mm · SM {group.custOd}×{group.custWt})
+                              ({group.catg} · RM {group.rmOd}mm · PM {group.pmOd}mm · SM {group.custOd}×{group.custWt})
                             </span>
                           </button>
 
@@ -1378,19 +1362,19 @@ export default function RollingPlanForm() {
                                   </span>
                                 </td>
                                 <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap">
-                                  {group.parentWo.work_order_no}
+                                  {group.wo.work_order_no}
                                 </td>
                                 <td className="px-3 py-2 max-w-[180px] truncate text-slate-600">
                                   <span className="font-semibold text-slate-800">
-                                    {group.parentWo.customer_name || 'Standard Stock'}
+                                    {group.wo.customer_name || 'Standard Stock'}
                                   </span>
-                                  <div className="text-[11px] text-slate-500">{group.parentWo.grade}</div>
+                                  <div className="text-[11px] text-slate-500">{group.wo.grade}</div>
                                 </td>
                                 <td className="px-3 py-2 font-mono whitespace-nowrap">
-                                  {group.parentWo.size_od} × {group.parentWo.size_wt} mm
+                                  {group.wo.size_od} × {group.wo.size_wt} mm
                                 </td>
                                 <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-500">
-                                  <div>{group.parentWo.l1}–{group.parentWo.l2} m (WO)</div>
+                                  <div>{group.wo.l1}–{group.wo.l2} m (WO)</div>
                                   <div className="text-[10px] text-indigo-600 font-semibold">
                                     Hollow: {fmt(pMetrics.avg)} m avg
                                   </div>
@@ -1406,9 +1390,9 @@ export default function RollingPlanForm() {
                                     type="number"
                                     min="1"
                                     step="1"
-                                    value={group.parentPlannedPcs}
+                                    value={group.plannedPcs}
                                     onChange={(e) =>
-                                      handleUpdateGroupField(group.id, 'parentPlannedPcs', e.target.value)
+                                      handleUpdateGroupField(group.id, 'plannedPcs', e.target.value)
                                     }
                                     disabled={!canManagePlans}
                                     className="h-8 w-28 text-center font-mono font-bold bg-white text-slate-900 border-slate-300"
@@ -1433,7 +1417,7 @@ export default function RollingPlanForm() {
                           <div className="flex items-center justify-between text-xs">
                             <span className="font-bold text-emerald-900 flex items-center gap-1.5">
                               <Link2 className="h-3.5 w-3.5 text-emerald-600" />
-                              Child Work Orders under {group.parentWo.work_order_no}:
+                              Child Work Orders under {group.wo.work_order_no}:
                             </span>
                             <span className="text-slate-500 font-medium">
                               Linked to parent setup specifications
@@ -1458,12 +1442,11 @@ export default function RollingPlanForm() {
                               </thead>
                               <tbody className="divide-y divide-emerald-100">
                                 {group.children.map((child) => {
-                                  const cMetrics =
-                                    gSummary?.childrenMetrics.find((c) => c.childWoId === child.wo.id)
-                                      ?.metrics || { pcs: 0, mtr: 0, mt: 0, avg: 0 };
+                                  const cSumEntry = gSummary?.childSummaries.find((c) => c.id === child.id);
+                                  const cMetrics = { pcs: cSumEntry?.pcs || 0, mtr: cSumEntry?.mtr || 0, mt: cSumEntry?.mt || 0, avg: gSummary?.avgLen || 0 };
 
                                   return (
-                                    <tr key={child.wo.id} className="hover:bg-emerald-50/30">
+                                    <tr key={child.id} className="hover:bg-emerald-50/30">
                                       <td className="px-3 py-2 whitespace-nowrap">
                                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
                                           <Link2 className="h-3 w-3" />
@@ -1501,7 +1484,7 @@ export default function RollingPlanForm() {
                                           step="1"
                                           value={child.plannedPcs}
                                           onChange={(e) =>
-                                            handleUpdateChildPcs(group.id, child.wo.id, e.target.value)
+                                            handleUpdateChildPcs(group.id, child.id, e.target.value)
                                           }
                                           disabled={!canManagePlans}
                                           className="h-8 w-28 text-center font-mono font-bold bg-white text-slate-900 border-emerald-300"
@@ -1517,7 +1500,7 @@ export default function RollingPlanForm() {
                                       <td className="px-3 py-2 text-center">
                                         <button
                                           type="button"
-                                          onClick={() => handleRemoveChildFromGroup(group.id, child.wo.id)}
+                                          onClick={() => handleRemoveChildFromGroup(group.id, child.id)}
                                           className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition"
                                           title="Remove child order from setup"
                                         >
@@ -1543,19 +1526,19 @@ export default function RollingPlanForm() {
                         </div>
                         <div className="flex items-center gap-4">
                           <span>
-                            Pcs: <b className="text-indigo-700">{fmt(gSummary?.groupTotalPcs || 0)}</b>
+                            Pcs: <b className="text-indigo-700">{fmt(gSummary?.totalGroupPcs || 0)}</b>
                           </span>
                           <span>
-                            MTR: <b className="text-indigo-700">{fmt(gSummary?.groupTotalMtr || 0)} m</b>
+                            MTR: <b className="text-indigo-700">{fmt(gSummary?.totalGroupMtr || 0)} m</b>
                           </span>
                           <span>
-                            MT: <b className="text-emerald-700">{fmt(gSummary?.groupTotalMt || 0)} MT</b>
+                            MT: <b className="text-emerald-700">{fmt(gSummary?.totalGroupMt || 0)} MT</b>
                           </span>
                         </div>
                       </div>
 
                       {/* Collapsible Setup Specifications & Factory Tolerances Accordion */}
-                      {group.specsOpen && (
+                      {group.isSpecsExpanded && (
                         <div className="border-t border-amber-200 bg-amber-50/40 p-4 space-y-3">
                           <div className="text-xs font-bold text-amber-950 flex items-center justify-between">
                             <span className="flex items-center gap-1.5">
@@ -1576,9 +1559,9 @@ export default function RollingPlanForm() {
                               <div>
                                 <label className="text-[10px] text-slate-500 block">Category (Catg)</label>
                                 <select
-                                  value={group.factoryCatg}
+                                  value={group.catg}
                                   onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'factoryCatg', e.target.value)
+                                    handleUpdateGroupField(group.id, 'catg', e.target.value)
                                   }
                                   className="w-full rounded border border-slate-300 p-1 text-xs font-semibold"
                                 >
@@ -1590,9 +1573,9 @@ export default function RollingPlanForm() {
                                 <label className="text-[10px] text-slate-500 block">Specification (Spec)</label>
                                 <input
                                   type="text"
-                                  value={group.factorySpec}
+                                  value={group.spec}
                                   onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'factorySpec', e.target.value)
+                                    handleUpdateGroupField(group.id, 'spec', e.target.value)
                                   }
                                   className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
                                 />
@@ -1602,16 +1585,16 @@ export default function RollingPlanForm() {
                                 <div className="flex gap-1">
                                   <input
                                     type="text"
-                                    value={group.factoryGrade}
+                                    value={group.grade}
                                     onChange={(e) =>
-                                      handleUpdateGroupField(group.id, 'factoryGrade', e.target.value)
+                                      handleUpdateGroupField(group.id, 'grade', e.target.value)
                                     }
                                     className="w-2/3 rounded border border-slate-300 p-1 text-xs font-mono"
                                   />
                                   <select
-                                    value={group.factoryIbr}
+                                    value={group.ibrStatus}
                                     onChange={(e) =>
-                                      handleUpdateGroupField(group.id, 'factoryIbr', e.target.value)
+                                      handleUpdateGroupField(group.id, 'ibrStatus', e.target.value)
                                     }
                                     className="w-1/3 rounded border border-slate-300 p-1 text-xs font-bold"
                                   >
@@ -1848,13 +1831,13 @@ export default function RollingPlanForm() {
 
                 <div className="flex items-center gap-4 font-mono font-bold text-sm">
                   <span className="text-indigo-950">
-                    Total Pcs: <span className="text-indigo-700">{fmt(campaignSummary.totalPcs)}</span>
+                    Total Pcs: <span className="text-indigo-700">{fmt(campaignSummary.grandTotalPcs)}</span>
                   </span>
                   <span className="text-indigo-950">
-                    Total MTR: <span className="text-indigo-700">{fmt(campaignSummary.totalMtr)} m</span>
+                    Total MTR: <span className="text-indigo-700">{fmt(campaignSummary.grandTotalMtr)} m</span>
                   </span>
                   <span className="text-indigo-950">
-                    Total MT: <span className="text-emerald-700">{fmt(campaignSummary.totalMt)} MT</span>
+                    Total MT: <span className="text-emerald-700">{fmt(campaignSummary.grandTotalMt)} MT</span>
                   </span>
                 </div>
               </div>
@@ -1867,9 +1850,9 @@ export default function RollingPlanForm() {
                     Factory Cutting Sheet Live Preview:
                   </span>
                   <div className="flex items-center gap-3 font-mono">
-                    <span>Rolling mtr: <b className="text-blue-700">{fmt(campaignSummary.totalMtr, 0)}</b></span>
+                    <span>Rolling mtr: <b className="text-blue-700">{fmt(campaignSummary.grandTotalMtr, 0)}</b></span>
                     <span>Total Orders: <b className="text-indigo-700">{groups.reduce((acc, g) => acc + 1 + g.children.length, 0)}</b></span>
-                    <span>Plan MT: <b className="text-emerald-700">{fmt(campaignSummary.totalMt, 1)}</b></span>
+                    <span>Plan MT: <b className="text-emerald-700">{fmt(campaignSummary.grandTotalMt, 1)}</b></span>
                   </div>
                 </div>
 
@@ -1877,9 +1860,9 @@ export default function RollingPlanForm() {
                 <div className="space-y-1 pt-1 font-mono text-[11px]">
                   {groups.flatMap((g, gIdx) => {
                     const gSum = campaignSummary.groupSummaries.find((s) => s.groupId === g.id);
-                    const pCalc = gSum?.parentMetrics;
-                    const fs = `${fmt(g.parentWo.size_od, 2)}x${fmt(g.parentWo.size_wt, 2)}`;
-                    const fl = `${fmt(g.parentWo.l1, 2)}-${fmt(g.parentWo.l2, 2)}`;
+                    const pMtr = gSum?.parentMtr || 0;
+                    const fs = `${fmt(g.wo.size_od, 2)}x${fmt(g.wo.size_wt, 2)}`;
+                    const fl = `${fmt(g.wo.l1, 2)}-${fmt(g.wo.l2, 2)}`;
 
                     const parentPill = (
                       <div
@@ -1887,12 +1870,13 @@ export default function RollingPlanForm() {
                         className="bg-white border border-slate-200 rounded px-2.5 py-1 text-slate-800 shadow-2xs"
                       >
                         <span className="font-bold text-indigo-700 mr-1.5">Setup #{gIdx + 1} [Master]:</span>
-                        <span className="font-bold">{g.factoryCatg}</span>(finish size-{fs})(Final len - {fl})(OA-{g.parentWo.work_order_no})(Cust.- {g.parentWo.customer_name || '—'})(HTC mtr-{fmt(pCalc?.mtr || 0, 0)})
+                        <span className="font-bold">{g.catg}</span>(finish size-{fs})(Final len - {fl})(OA-{g.wo.work_order_no})(Cust.- {g.wo.customer_name || '—'})(HTC mtr-{fmt(pMtr, 0)})
                       </div>
                     );
 
                     const childPills = g.children.map((c) => {
-                      const cCalc = gSum?.childrenMetrics.find((cm) => cm.childWoId === c.wo.id)?.metrics;
+                      const cSumEntry = gSum?.childSummaries.find((cs) => cs.id === c.id);
+                      const cMtr = cSumEntry?.mtr || 0;
                       const cfs = `${fmt(c.wo.size_od, 2)}x${fmt(c.wo.size_wt, 2)}`;
                       const cfl = `${fmt(c.wo.l1, 2)}-${fmt(c.wo.l2, 2)}`;
 
@@ -1901,8 +1885,8 @@ export default function RollingPlanForm() {
                           key={`c-${c.wo.id}`}
                           className="bg-emerald-50/70 border border-emerald-200 rounded px-2.5 py-1 text-slate-800 ml-4 shadow-2xs"
                         >
-                          <span className="font-bold text-emerald-800 mr-1.5">↳ Child of #{g.parentWo.work_order_no}:</span>
-                          <span className="font-bold">{g.factoryCatg}</span>(finish size-{cfs})(Final len - {cfl})(OA-{c.wo.work_order_no})(Cust.- {c.wo.customer_name || '—'})(HTC mtr-{fmt(cCalc?.mtr || 0, 0)})
+                          <span className="font-bold text-emerald-800 mr-1.5">↳ Child of #{g.wo.work_order_no}:</span>
+                          <span className="font-bold">{g.catg}</span>(finish size-{cfs})(Final len - {cfl})(OA-{c.wo.work_order_no})(Cust.- {c.wo.customer_name || '—'})(HTC mtr-{fmt(cMtr, 0)})
                         </div>
                       );
                     });
@@ -3139,7 +3123,7 @@ export default function RollingPlanForm() {
                     Add Child Work Order to Setup #{targetGroupIndex + 1}
                   </h3>
                   <span className="rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-0.5 text-xs font-bold border border-emerald-200">
-                    Parent WO: {targetGroup.parentWo.work_order_no} ({targetGroup.parentWo.size_od}×{targetGroup.parentWo.size_wt}mm)
+                    Parent WO: {targetGroup.wo.work_order_no} ({targetGroup.wo.size_od}×{targetGroup.wo.size_wt}mm)
                   </span>
                 </div>
                 <button
