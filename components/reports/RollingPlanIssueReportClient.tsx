@@ -809,12 +809,35 @@ export default function RollingPlanIssueReportClient() {
   const activeSheetMeta = useMemo(() => {
     if (factoryRows.length > 0) {
       const first = factoryRows[0];
+      let pStatus: any = {};
+      try {
+        pStatus = typeof first.plan?.status === 'string' ? JSON.parse(first.plan.status) : first.plan?.status || {};
+      } catch {}
+
+      const revNo = Number(pStatus.revision_no || 0);
+      const revDateRaw = pStatus.revision_date;
+      let revDateFormatted = '—';
+      if (revDateRaw) {
+        try {
+          const d = new Date(revDateRaw);
+          revDateFormatted = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+        } catch {}
+      }
+      const lifecycleStatus = pStatus.lifecycle_status || (pStatus.issued_at ? 'ISSUED' : 'DRAFT');
+
       return {
         millName: first.millName,
         monthStr: first.monthStr,
         planNo: selectedCampaignPlan !== 'ALL' ? selectedCampaignPlan : (first.campaignPlanNo || '02'),
         issueDate: first.issueDate,
         prevPlanNo: first.prevPlanNo,
+        revisionNo: revNo,
+        revisionDate: revDateFormatted,
+        lifecycleStatus,
+        closedReason: pStatus.closed_reason || '',
+        closedPcs: pStatus.closed_pcs,
+        closedMtr: pStatus.closed_mtr,
+        unrolledReleased: pStatus.unrolled_mtr_released,
       };
     }
     return {
@@ -823,6 +846,13 @@ export default function RollingPlanIssueReportClient() {
       planNo: selectedCampaignPlan !== 'ALL' ? selectedCampaignPlan : '02',
       issueDate: '7-Sep',
       prevPlanNo: '01',
+      revisionNo: 0,
+      revisionDate: '—',
+      lifecycleStatus: 'DRAFT',
+      closedReason: '',
+      closedPcs: null,
+      closedMtr: null,
+      unrolledReleased: null,
     };
   }, [factoryRows, selectedCampaignPlan, millFilter]);
 
@@ -1259,20 +1289,46 @@ export default function RollingPlanIssueReportClient() {
               <div className="text-right text-[10px] font-mono text-black">
                 <div className="font-bold">{activeSheetMeta.millName.toLowerCase().includes('03') ? 'MILL - 03' : 'MILL - 02'}</div>
                 <div>DOC: F-PROD-01A</div>
+                <div>REV. NO: {String(activeSheetMeta.revisionNo).padStart(2, '0')}</div>
+                <div>REV. DT: {activeSheetMeta.revisionDate}</div>
               </div>
             </div>
 
             {/* Sub-Header Bar: Production Plan-Hot Mill-02 | Month | Plan No | Issue Date */}
-            <div className="grid grid-cols-4 border-b border-black text-xs font-bold text-black py-1 px-1 bg-slate-50 print:bg-white text-center">
+            <div className="grid grid-cols-4 border-b border-black text-xs font-bold text-black py-1 px-1 bg-slate-50 print:bg-white text-center items-center">
               <div className="border-r border-black">{activeSheetMeta.millName}</div>
               <div className="border-r border-black">Month: <span className="font-mono">{activeSheetMeta.monthStr}</span></div>
-              <div className="border-r border-black">Plan No :- <span className="font-mono">{activeSheetMeta.planNo}</span></div>
-              <div>Issue Date: <span className="font-mono">{activeSheetMeta.issueDate}</span></div>
+              <div className="border-r border-black">
+                Plan No :- <span className="font-mono">{activeSheetMeta.planNo}</span>
+                {activeSheetMeta.revisionNo > 0 && (
+                  <span className="ml-1 px-1 py-0.2 rounded bg-purple-100 text-purple-900 border border-purple-300 text-[10px] font-bold">
+                    Rev.{String(activeSheetMeta.revisionNo).padStart(2, '0')}
+                  </span>
+                )}
+              </div>
+              <div>
+                Issue Date: <span className="font-mono">{activeSheetMeta.issueDate}</span>
+                {activeSheetMeta.lifecycleStatus === 'DRAFT' && (
+                  <span className="ml-1 px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold">
+                    DRAFT
+                  </span>
+                )}
+                {activeSheetMeta.lifecycleStatus === 'CLOSED' && (
+                  <span className="ml-1 px-1 py-0.2 rounded bg-slate-200 text-slate-800 border border-slate-400 text-[10px] font-bold">
+                    CLOSED
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Note Line: This Plan is Started after Plan No. XX */}
-            <div className="border-b border-black py-0.5 px-2 text-xs font-bold italic text-black bg-white">
-              This Plan is Started after Plan No. {activeSheetMeta.prevPlanNo}
+            <div className="border-b border-black py-0.5 px-2 text-xs font-bold italic text-black bg-white flex items-center justify-between">
+              <span>This Plan is Started after Plan No. {activeSheetMeta.prevPlanNo}</span>
+              {activeSheetMeta.lifecycleStatus === 'CLOSED' && activeSheetMeta.unrolledReleased != null && activeSheetMeta.unrolledReleased > 0 && (
+                <span className="text-slate-700 font-normal not-italic text-[11px]">
+                  Short-closed at {activeSheetMeta.closedPcs} PCS ({activeSheetMeta.closedMtr} m) — {activeSheetMeta.unrolledReleased} m balance released to Work Order.
+                </span>
+              )}
             </div>
 
             {/* Main Production Plan Table (35 Columns - Exact 2-Tier Header) */}

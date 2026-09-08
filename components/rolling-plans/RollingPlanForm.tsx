@@ -554,6 +554,15 @@ export default function RollingPlanForm() {
   >([]);
   const [editSaving, setEditSaving] = useState(false);
 
+  // Revision & Short-Close state
+  const [isRevisionMode, setIsRevisionMode] = useState(false);
+  const [revisionReason, setRevisionReason] = useState('');
+  const [closingPlan, setClosingPlan] = useState<Plan | null>(null);
+  const [closeActualPcs, setCloseActualPcs] = useState('');
+  const [closeReason, setCloseReason] = useState('');
+  const [isClosing, setIsClosing] = useState(false);
+  const [isIssuing, setIsIssuing] = useState(false);
+
   // Deleting plan modal state
   const [deletingPlan, setDeletingPlan] = useState<Plan | null>(null);
   const [deleteClearLogs, setDeleteClearLogs] = useState<boolean>(true);
@@ -1152,9 +1161,70 @@ export default function RollingPlanForm() {
     }
   }
 
-  // Start Edit
-  function startEdit(p: Plan) {
+  // Issue Plan officially to hot rolling floor
+  async function handleIssuePlan(p: Plan) {
+    setIsIssuing(true);
+    try {
+      const res = await fetch('/api/rolling-plans', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: p.id,
+          lifecycle_action: 'ISSUE',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to issue plan.');
+      }
+      toast.success(data.message || `Plan ${p.plan_no} has been officially issued to Hot Rolling.`);
+      await Promise.all([loadPlans(), loadWorkOrders()]);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to issue plan.');
+    } finally {
+      setIsIssuing(false);
+    }
+  }
+
+  // Close Plan for partial quantity (Short-Close)
+  async function handleClosePlanPartial() {
+    if (!closingPlan) return;
+    const actPcs = Number(closeActualPcs);
+    if (!Number.isFinite(actPcs) || actPcs < 0) {
+      toast.error('Please enter a valid actual rolled quantity (PCS).');
+      return;
+    }
+    setIsClosing(true);
+    try {
+      const res = await fetch('/api/rolling-plans', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: closingPlan.id,
+          lifecycle_action: 'CLOSE_PARTIAL',
+          actual_pcs: actPcs,
+          close_reason: closeReason.trim() || 'Short-closed for partial quantity',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to close plan.');
+      }
+      toast.success(data.message || `Plan ${closingPlan.plan_no} closed successfully.`);
+      setClosingPlan(null);
+      await Promise.all([loadPlans(), loadWorkOrders()]);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to close plan.');
+    } finally {
+      setIsClosing(false);
+    }
+  }
+
+  // Start Edit or Revise
+  function startEdit(p: Plan, asRevision = false) {
     setEditing(p);
+    setIsRevisionMode(asRevision);
+    setRevisionReason('');
     
     let isMaster = false;
     let childList: any[] = [];
@@ -1230,7 +1300,7 @@ export default function RollingPlanForm() {
     );
   };
 
-  // Save Edit
+  // Save Edit / Revise
   async function saveEdit() {
     if (!editing) return;
     const pcs = Number(editQtyPcs);
@@ -1244,6 +1314,10 @@ export default function RollingPlanForm() {
     }
     if (!editRoute) {
       toast.error('Please select a Target Route.');
+      return;
+    }
+    if (isRevisionMode && !revisionReason.trim()) {
+      toast.error('Please enter a Reason for Revision before saving.');
       return;
     }
 
@@ -1275,6 +1349,9 @@ export default function RollingPlanForm() {
         multiple_str: editMultiple === '2' ? '2-Multi' : '1',
         pass_required: Number(editPassRequired) || 1,
         force: true,
+
+        lifecycle_action: isRevisionMode ? 'REVISE' : 'EDIT',
+        revision_reason: isRevisionMode ? revisionReason.trim() : undefined,
 
         // Specifications (35-columns)
         catg: editCatg,
@@ -1328,7 +1405,11 @@ export default function RollingPlanForm() {
         throw new Error(data.error || 'Failed to update rolling plan.');
       }
 
-      toast.success(data.message || 'Rolling plan specifications and tolerances updated successfully.');
+      toast.success(
+        isRevisionMode
+          ? 'Plan revision saved successfully! Document stamped with new Rev number.'
+          : data.message || 'Rolling plan specifications and tolerances updated successfully.'
+      );
       setEditing(null);
       await Promise.all([loadPlans(), loadWorkOrders()]);
     } catch (err: any) {
@@ -2720,41 +2801,132 @@ export default function RollingPlanForm() {
                         <td className="px-3 py-2 text-center font-bold">{p.pass_required}</td>
 
                         <td className="px-3 py-2">
-                          <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-                            {isMaster ? 'Master Campaign' : isChild ? 'Child Linked' : 'Scheduled'}
-                          </span>
+                          {(() => {
+                            let pSt: any = {};
+                            try { pSt = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {}; } catch {}
+                            const lifecycle = pSt.lifecycle_status || (pSt.issued_at ? 'ISSUED' : 'DRAFT');
+                            const revNo = Number(pSt.revision_no || 0);
+
+                            if (lifecycle === 'CLOSED') {
+                              return (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700" title={`Closed for partial qty: ${pSt.closed_pcs || 0} PCS (${pSt.closed_mtr || 0}m)`}>
+                                  Closed
+                                </span>
+                              );
+                            }
+                            if (lifecycle === 'REVISED' || revNo > 0) {
+                              return (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-purple-300 bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-800" title={`Revised (Rev.${String(revNo).padStart(2, '0')})`}>
+                                  <Sparkles className="h-2.5 w-2.5 text-purple-600" />
+                                  Rev.{String(revNo).padStart(2, '0')}
+                                </span>
+                              );
+                            }
+                            if (lifecycle === 'ISSUED') {
+                              return (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                                  <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
+                                  Issued
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                                Draft
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         <td className="px-2.5 py-1.5 whitespace-nowrap text-center">
                           {canManagePlans ? (
                             <div className="flex items-center justify-center gap-1.5">
-                              {!p.can_modify && (
-                                <span
-                                  className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-200"
-                                  title="Production entries have already been recorded for this Work Order"
-                                >
-                                  <Lock className="h-2.5 w-2.5 text-amber-600" />
-                                  In Prod
-                                </span>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => startEdit(p)}
-                                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-2xs"
-                                title={!p.can_modify ? 'Edit plan specifications (Admin override)' : 'Edit plan'}
+                              {/* Print / View Report */}
+                              <a
+                                href={`/reports/rolling-plans?plan_no=${p.plan_no}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer shadow-2xs"
+                                title="View / Print 35-Column Factory Schedule Report"
                               >
-                                <Edit2 className="h-3 w-3 text-slate-500" />
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openDeleteModal(p)}
-                                className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 cursor-pointer shadow-2xs"
-                                title={isMaster ? 'Delete Master Campaign & All Child Plans' : 'Delete rolling plan'}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                                Delete
-                              </button>
+                                <FileText className="h-3.5 w-3.5 text-slate-500" />
+                              </a>
+
+                              {(() => {
+                                let pSt: any = {};
+                                try { pSt = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {}; } catch {}
+                                const lifecycle = pSt.lifecycle_status || (pSt.issued_at ? 'ISSUED' : 'DRAFT');
+
+                                return (
+                                  <>
+                                    {/* Issue button for DRAFT */}
+                                    {lifecycle === 'DRAFT' && (
+                                      <button
+                                        type="button"
+                                        disabled={isIssuing}
+                                        onClick={() => handleIssuePlan(p)}
+                                        className="inline-flex items-center gap-1 rounded-md border border-emerald-400 bg-emerald-600 px-2 py-1 text-xs font-bold text-white hover:bg-emerald-700 cursor-pointer shadow-2xs"
+                                        title="Officially Issue Plan to Hot Rolling Floor"
+                                      >
+                                        <CheckCircle2 className="h-3 w-3" />
+                                        Issue
+                                      </button>
+                                    )}
+
+                                    {/* Revise button for ISSUED or REVISED */}
+                                    {(lifecycle === 'ISSUED' || lifecycle === 'REVISED') && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => startEdit(p, true)}
+                                          className="inline-flex items-center gap-1 rounded-md border border-purple-400 bg-purple-600 px-2 py-1 text-xs font-bold text-white hover:bg-purple-700 cursor-pointer shadow-2xs"
+                                          title="Revise plan specifications (increments revision number & stamps rev date on report)"
+                                        >
+                                          <Sparkles className="h-3 w-3" />
+                                          Revise
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setClosingPlan(p);
+                                            setCloseActualPcs('');
+                                            setCloseReason('Finished rolling early / Partial balance closed');
+                                          }}
+                                          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 cursor-pointer shadow-2xs"
+                                          title="Close plan for partial quantity and release unrolled balance back to Work Order"
+                                        >
+                                          <Sliders className="h-3 w-3 text-amber-700" />
+                                          Close
+                                        </button>
+                                      </>
+                                    )}
+
+                                    {/* Edit button */}
+                                    {lifecycle !== 'CLOSED' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => startEdit(p, false)}
+                                        className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-2xs"
+                                        title={!p.can_modify ? 'Edit plan specifications (Admin override)' : 'Edit plan without incrementing revision number'}
+                                      >
+                                        <Edit2 className="h-3 w-3 text-slate-500" />
+                                        Edit
+                                      </button>
+                                    )}
+
+                                    {/* Delete button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => openDeleteModal(p)}
+                                      className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 cursor-pointer shadow-2xs"
+                                      title={isMaster ? 'Delete Master Campaign & All Child Plans' : 'Delete rolling plan'}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                      Delete
+                                    </button>
+                                  </>
+                                );
+                              })()}
                             </div>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-xs text-slate-400">
@@ -2906,8 +3078,10 @@ export default function RollingPlanForm() {
         let editingIsChild = false;
         let editingMasterPlanNo = '';
         let editingMasterWoNo = '';
+        let currentRevNo = 0;
         try {
           const st = typeof editing.status === 'string' ? JSON.parse(editing.status) : editing.status;
+          currentRevNo = Number(st?.revision_no || 0);
           if (st?.is_master) editingIsMaster = true;
           if (st?.is_child) {
             editingIsChild = true;
@@ -2915,6 +3089,7 @@ export default function RollingPlanForm() {
             editingMasterWoNo = st.master_wo_no || '';
           }
         } catch {}
+        const nextRevNo = currentRevNo + 1;
 
         const editHollowSpecs: HollowDimensions = {
           od: editMhOd || editing.mh_od,
@@ -2978,9 +3153,15 @@ export default function RollingPlanForm() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-base font-bold text-slate-900">
-                      Edit Rolling Plan {editing.plan_no}
+                      {isRevisionMode
+                        ? `Revise Rolling Plan ${editing.plan_no} (Rev.${String(nextRevNo).padStart(2, '0')})`
+                        : `Edit Rolling Plan ${editing.plan_no}`}
                     </h3>
-                    {editingIsMaster ? (
+                    {isRevisionMode ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-300">
+                        Formal Revision
+                      </span>
+                    ) : editingIsMaster ? (
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
                         👑 Master Campaign Plan
                       </span>
@@ -3008,6 +3189,31 @@ export default function RollingPlanForm() {
                   <X className="h-5 w-5" />
                 </button>
               </div>
+
+              {/* Revision Reason Field */}
+              {isRevisionMode && (
+                <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-3 text-xs text-purple-950 space-y-2">
+                  <div className="flex items-center gap-1.5 font-bold text-purple-950">
+                    <Sparkles className="h-4 w-4 text-purple-700 shrink-0" />
+                    <span>Formal Document Revision (Rev.{String(nextRevNo).padStart(2, '0')})</span>
+                  </div>
+                  <p className="text-purple-900 text-[11px] leading-relaxed">
+                    A formal revision bumps the Document Control revision number and records the revision date on Factory Document F-PROD-01A.
+                  </p>
+                  <div>
+                    <label className="block font-bold text-purple-950 mb-1">
+                      Reason for Revision *
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. Changed Mother Hollow dimensions as per tooling setup / Work Order updated"
+                      value={revisionReason}
+                      onChange={(e) => setRevisionReason(e.target.value)}
+                      className="bg-white border-purple-300 text-purple-950 font-medium text-xs"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Notice if production logs have already been recorded */}
               {!editing.can_modify && (
@@ -3476,9 +3682,135 @@ export default function RollingPlanForm() {
                   type="button"
                   onClick={saveEdit}
                   disabled={editSaving}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                  className={isRevisionMode ? "bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer" : "bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer"}
                 >
-                  {editSaving ? 'Saving...' : 'Save Changes'}
+                  {editSaving ? 'Saving...' : isRevisionMode ? 'Save & Issue Revision' : 'Save Changes'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Short-Close / Partial Quantity Modal */}
+      {closingPlan && (() => {
+        const hl1Num = Number(closingPlan.mh_l1 || 0);
+        const hl2Num = Number(closingPlan.mh_l2 || 0);
+        const hlAvg = (hl1Num > 0 && hl2Num > 0)
+          ? (hl1Num + hl2Num) / 2
+          : (hl1Num > 0 ? hl1Num : (hl2Num > 0 ? hl2Num : closingPlan.avg_length || 6.0));
+
+        const plannedPcs = closingPlan.planned_pcs || 0;
+        const plannedMtr = closingPlan.planned_mtr || 0;
+        const actPcs = Math.max(0, Number(closeActualPcs || 0));
+        const actMtr = Number((actPcs * hlAvg).toFixed(2));
+        const unrolledMtr = Math.max(0, Number((plannedMtr - actMtr).toFixed(2)));
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                    <Sliders className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Close Plan for Partial Quantity (Short-Close)
+                    </h3>
+                    <div className="text-xs text-slate-500">
+                      Plan No: <span className="font-mono font-bold text-slate-800">{closingPlan.plan_no}</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setClosingPlan(null)}
+                  disabled={isClosing}
+                  className="rounded-lg p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Summary of original planned vs actual */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Work Order:</span>
+                  <span className="font-bold text-slate-800 font-mono">{closingPlan.work_order_no}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Original Planned Qty:</span>
+                  <span className="font-bold text-indigo-900 font-mono">
+                    {fmt(plannedPcs)} PCS • {fmt(plannedMtr)} m
+                  </span>
+                </div>
+              </div>
+
+              {/* Input for Actual Rolled PCS */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    Actual Rolled Quantity (PCS) *
+                  </label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max={plannedPcs}
+                    step="1"
+                    placeholder="Enter actual rolled PCS..."
+                    value={closeActualPcs}
+                    onChange={(e) => setCloseActualPcs(e.target.value)}
+                    className="font-mono font-bold text-slate-900"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Calculated Rolled Length: <strong className="text-emerald-700 font-mono">{fmt(actMtr)} m</strong>
+                  </p>
+                </div>
+
+                {/* Balance Release Info */}
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-950 space-y-1">
+                  <div className="flex items-center justify-between font-bold">
+                    <span>Unrolled Balance to Release:</span>
+                    <span className="font-mono text-emerald-800">{fmt(unrolledMtr)} meters</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    This unrolled balance ({fmt(unrolledMtr)} m) will be restored back to Work Order <strong>{closingPlan.work_order_no}</strong>, and its status will revert to &apos;Pending Plan&apos; so it can be re-planned in a future rolling schedule.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    Reason for Short-Close
+                  </label>
+                  <Input
+                    type="text"
+                    value={closeReason}
+                    onChange={(e) => setCloseReason(e.target.value)}
+                    placeholder="e.g. Mill shift ended / Material shortage / Order split"
+                    className="text-xs text-slate-800"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isClosing}
+                  onClick={() => setClosingPlan(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={isClosing || !closeActualPcs}
+                  onClick={handleClosePlanPartial}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Sliders className="h-4 w-4" />
+                  {isClosing ? 'Closing...' : 'Confirm & Short-Close Plan'}
                 </Button>
               </div>
             </div>

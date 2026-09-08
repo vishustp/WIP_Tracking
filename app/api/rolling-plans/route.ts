@@ -331,6 +331,8 @@ export async function POST(req: NextRequest) {
         const childStatusMetadata = JSON.stringify({
           type: 'MULTI_WO',
           is_child: true,
+          lifecycle_status: 'DRAFT',
+          revision_no: 0,
           campaign_plan_no: basePlanNo,
           master_plan_id: createdMasterPlan.id,
           master_plan_no: masterPlanNo,
@@ -419,6 +421,8 @@ export async function POST(req: NextRequest) {
       const masterStatusMetadata = JSON.stringify({
         type: 'MULTI_WO',
         is_master: true,
+        lifecycle_status: 'DRAFT',
+        revision_no: 0,
         campaign_plan_no: basePlanNo,
         master_plan_no: masterPlanNo,
         mill_name,
@@ -778,6 +782,12 @@ export interface UpdateRollingPlanPayload {
   tol_wt_max?: number;
   process_yield_pct?: number;
 
+  // Lifecycle actions
+  lifecycle_action?: 'ISSUE' | 'REVISE' | 'CLOSE_PARTIAL' | 'EDIT';
+  revision_reason?: string;
+  close_reason?: string;
+  actual_pcs?: number;
+
   child_adjustments?: Array<{
     plan_id?: string;
     work_order_id: string;
@@ -839,6 +849,36 @@ export async function PUT(req: NextRequest) {
       tol_wt_max,
       process_yield_pct,
 
+      // Lifecycle actions
+      lifecycle_action,
+      revision_reason,
+      close_reason,
+      actual_pcs,
+
+      catg,
+      spec,
+      grade,
+      ibr_status,
+      rm_od,
+      rm_len_min,
+      rm_len_max,
+      pm_od,
+      pm_wt,
+      cust_od,
+      cust_wt,
+      rolling_wt,
+      fe_len,
+      be_len,
+      req_len_er,
+      req_len_min,
+      req_len_max,
+
+      tol_od_min,
+      tol_od_max,
+      tol_wt_min,
+      tol_wt_max,
+      process_yield_pct,
+
       child_adjustments = [],
     } = body;
 
@@ -846,6 +886,145 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Plan ID is required.' }, { status: 400 });
     }
 
+    // 1. Fetch the target plan
+    const { data: targetPlan, error: planErr } = await admin
+      .from('rolling_plans')
+      .select('*')
+      .eq('id', plan_id)
+      .single();
+
+    if (planErr || !targetPlan) {
+      return NextResponse.json({ error: 'Rolling plan not found.' }, { status: 404 });
+    }
+
+    // 2. Parse existing status
+    let parsedStatus: any = {};
+    try {
+      parsedStatus =
+        typeof targetPlan.status === 'string'
+          ? JSON.parse(targetPlan.status)
+          : targetPlan.status || {};
+    } catch {}
+
+    // =========================================================================
+    // LIFECYCLE ACTION: ISSUE ROLLING PLAN
+    // =========================================================================
+    if (lifecycle_action === 'ISSUE') {
+      const nowIso = new Date().toISOString();
+      parsedStatus.lifecycle_status = 'ISSUED';
+      parsedStatus.issued_at = nowIso;
+      if (parsedStatus.revision_no == null) parsedStatus.revision_no = 0;
+
+      await admin
+        .from('rolling_plans')
+        .update({
+          status: JSON.stringify(parsedStatus),
+          updated_at: nowIso,
+        })
+        .eq('id', targetPlan.id);
+
+      // If master plan, also mark child plans as ISSUED
+      if (parsedStatus.is_master) {
+        const { data: childPlans } = await admin
+          .from('rolling_plans')
+          .select('id, status')
+          .ilike('plan_no', `${targetPlan.plan_no}-C%`);
+
+        for (const cp of childPlans || []) {
+          let cpSt: any = {};
+          try { cpSt = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {}; } catch {}
+          cpSt.lifecycle_status = 'ISSUED';
+          cpSt.issued_at = nowIso;
+          if (cpSt.revision_no == null) cpSt.revision_no = 0;
+          await admin.from('rolling_plans').update({ status: JSON.stringify(cpSt), updated_at: nowIso }).eq('id', cp.id);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Plan ${targetPlan.plan_no} has been officially issued to Hot Rolling.`,
+        plan_no: targetPlan.plan_no,
+        lifecycle_status: 'ISSUED',
+      });
+    }
+
+    // =========================================================================
+    // LIFECYCLE ACTION: CLOSE PLAN FOR PARTIAL QUANTITY (SHORT-CLOSE)
+    // =========================================================================
+    if (lifecycle_action === 'CLOSE_PARTIAL') {
+      const nowIso = new Date().toISOString();
+      const actPcs = Math.max(0, Number(actual_pcs || 0));
+      const { data: targetWo } = await admin.from('work_orders').select('*').eq('id', targetPlan.work_order_id).single();
+
+      const hl1Num = Number(targetPlan.mh_l1 || targetWo?.l1 || 6.0);
+      const hl2Num = Number(targetPlan.mh_l2 || targetWo?.l2 || hl1Num);
+      const avgLen = hl1Num > 0 && hl2Num > 0 ? (hl1Num + hl2Num) / 2 : hl1Num;
+
+      const actMtr = Number((actPcs * avgLen).toFixed(2));
+      const origMtr = Number(targetPlan.planned_qty || 0);
+      const unrolledMtr = Math.max(0, Number((origMtr - actMtr).toFixed(2)));
+
+      parsedStatus.lifecycle_status = 'CLOSED';
+      parsedStatus.closed_at = nowIso;
+      parsedStatus.closed_reason = close_reason || 'Closed for partial quantity';
+      parsedStatus.closed_pcs = actPcs;
+      parsedStatus.closed_mtr = actMtr;
+      parsedStatus.unrolled_mtr_released = unrolledMtr;
+      parsedStatus.planned_pcs = actPcs;
+      parsedStatus.planned_mtr = actMtr;
+
+      await admin
+        .from('rolling_plans')
+        .update({
+          planned_qty: actMtr,
+          status: JSON.stringify(parsedStatus),
+          updated_at: nowIso,
+        })
+        .eq('id', targetPlan.id);
+
+      // Release unrolled balance back to work order!
+      if (targetWo && unrolledMtr > 0) {
+        const curBal = Number(targetWo.balance_qty_mtr || 0);
+        const newBal = Number((curBal + unrolledMtr).toFixed(2));
+        await admin
+          .from('work_orders')
+          .update({
+            balance_qty_mtr: newBal,
+            status: newBal > 0 ? 'Pending Plan' : 'Scheduled',
+            updated_at: nowIso,
+          })
+          .eq('id', targetPlan.work_order_id);
+      }
+
+      // If master plan, also close linked child plans
+      if (parsedStatus.is_master) {
+        const { data: childPlans } = await admin
+          .from('rolling_plans')
+          .select('id, status')
+          .ilike('plan_no', `${targetPlan.plan_no}-C%`);
+
+        for (const cp of childPlans || []) {
+          let cpSt: any = {};
+          try { cpSt = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {}; } catch {}
+          cpSt.lifecycle_status = 'CLOSED';
+          cpSt.closed_at = nowIso;
+          cpSt.closed_reason = close_reason || 'Closed with master campaign';
+          await admin.from('rolling_plans').update({ status: JSON.stringify(cpSt), updated_at: nowIso }).eq('id', cp.id);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Plan ${targetPlan.plan_no} closed for ${actPcs} PCS (${actMtr} M). ${unrolledMtr} M released back to Work Order.`,
+        plan_no: targetPlan.plan_no,
+        lifecycle_status: 'CLOSED',
+        closed_pcs: actPcs,
+        closed_mtr: actMtr,
+        unrolled_mtr_released: unrolledMtr,
+      });
+    }
+
+    // 3. For EDIT or REVISE, validate planned_pcs, planned_rolling_date, route_id
     if (!planned_pcs || planned_pcs <= 0) {
       return NextResponse.json(
         { error: 'Planned quantity (PCS) must be greater than zero.' },
@@ -860,18 +1039,7 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // 1. Fetch the target plan
-    const { data: targetPlan, error: planErr } = await admin
-      .from('rolling_plans')
-      .select('*')
-      .eq('id', plan_id)
-      .single();
-
-    if (planErr || !targetPlan) {
-      return NextResponse.json({ error: 'Rolling plan not found.' }, { status: 404 });
-    }
-
-    // 2. Check if production has already been logged for this work order and route
+    // 4. Check if production has already been logged for this work order and route
     const { data: logs } = await admin
       .from('production_logs')
       .select('id')
@@ -890,21 +1058,33 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // 3. Fetch target work order to compute metrics
+    // 5. Fetch target work order to compute metrics
     const { data: targetWo } = await admin
       .from('work_orders')
       .select('*')
       .eq('id', targetPlan.work_order_id)
       .single();
 
-    // 4. Parse existing status to retrieve existing specs
-    let parsedStatus: any = {};
-    try {
-      parsedStatus =
-        typeof targetPlan.status === 'string'
-          ? JSON.parse(targetPlan.status)
-          : targetPlan.status || {};
-    } catch {}
+    // 6. If REVISE, increment revision number and record history
+    const isRevision = lifecycle_action === 'REVISE';
+    let revisionNo = Number(parsedStatus.revision_no || 0);
+    let revisionDate = parsedStatus.revision_date;
+    if (isRevision) {
+      revisionNo = revisionNo + 1;
+      revisionDate = new Date().toISOString();
+      parsedStatus.revision_history = parsedStatus.revision_history || [];
+      parsedStatus.revision_history.push({
+        revision_no: revisionNo,
+        revision_date: revisionDate,
+        revision_reason: revision_reason || 'Plan specifications revised',
+      });
+      parsedStatus.lifecycle_status = 'REVISED';
+      parsedStatus.revision_no = revisionNo;
+      parsedStatus.revision_date = revisionDate;
+      parsedStatus.revision_reason = revision_reason || 'Plan specifications revised';
+    } else if (!parsedStatus.lifecycle_status) {
+      parsedStatus.lifecycle_status = 'DRAFT';
+    }
 
     // Calculate effective normalized specifications
     const rawRmLenMin = rm_len_min != null ? Number(rm_len_min) : (parsedStatus.rm_len_min || parsedStatus.billet?.rm_len_min || 1.890);
@@ -1042,6 +1222,14 @@ export async function PUT(req: NextRequest) {
         cpStatus.planned_mt = childMt;
         cpStatus.catg = effCatg;
         cpStatus.hollow_len = `${effMinLen}-${effMaxLen}`;
+        if (isRevision) {
+          cpStatus.lifecycle_status = 'REVISED';
+          cpStatus.revision_no = revisionNo;
+          cpStatus.revision_date = revisionDate;
+          cpStatus.revision_reason = parsedStatus.revision_reason;
+        } else if (parsedStatus.lifecycle_status) {
+          cpStatus.lifecycle_status = parsedStatus.lifecycle_status;
+        }
         childUpdateObj.status = JSON.stringify(cpStatus);
 
         await admin.from('rolling_plans').update(childUpdateObj).eq('id', cp.id);
