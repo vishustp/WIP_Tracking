@@ -855,30 +855,6 @@ export async function PUT(req: NextRequest) {
       close_reason,
       actual_pcs,
 
-      catg,
-      spec,
-      grade,
-      ibr_status,
-      rm_od,
-      rm_len_min,
-      rm_len_max,
-      pm_od,
-      pm_wt,
-      cust_od,
-      cust_wt,
-      rolling_wt,
-      fe_len,
-      be_len,
-      req_len_er,
-      req_len_min,
-      req_len_max,
-
-      tol_od_min,
-      tol_od_max,
-      tol_wt_min,
-      tol_wt_max,
-      process_yield_pct,
-
       child_adjustments = [],
     } = body;
 

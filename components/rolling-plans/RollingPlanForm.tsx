@@ -2136,20 +2136,28 @@ export default function RollingPlanForm() {
                                 3. Piercer Mill (PM)
                               </span>
                               <div className="p-1.5 rounded bg-slate-50 border border-slate-100 space-y-1.5 text-[11px]">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-slate-500">PM OD:</span>
-                                  <span className="font-mono font-bold text-slate-900 bg-white px-1.5 py-0.5 rounded border">
-                                    {fmt(specs.pmOd, 2)} mm
-                                  </span>
+                                <div>
+                                  <label className="text-[10px] font-semibold text-slate-600 block mb-0.5">PM OD (mm) *</label>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    value={group.pmOd}
+                                    placeholder={String(specs.pmOd)}
+                                    onChange={(e) => updateGroupField(group.id, 'pmOd', e.target.value)}
+                                    className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs font-mono font-bold text-slate-900 focus:border-indigo-500 focus:outline-hidden"
+                                  />
                                 </div>
-                                <div className="text-[10px] text-slate-400">RM OD + 5 mm</div>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-slate-500">PM Wt:</span>
-                                  <span className="font-mono font-bold text-slate-900 bg-white px-1.5 py-0.5 rounded border">
-                                    {fmt(specs.pmWt, 2)} mm
-                                  </span>
+                                <div>
+                                  <label className="text-[10px] font-semibold text-slate-600 block mb-0.5">PM Wt (mm) *</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={group.pmWt}
+                                    placeholder={String(specs.pmWt)}
+                                    onChange={(e) => updateGroupField(group.id, 'pmWt', e.target.value)}
+                                    className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs font-mono font-bold text-slate-900 focus:border-indigo-500 focus:outline-hidden"
+                                  />
                                 </div>
-                                <div className="text-[10px] text-slate-400">Rolling WT - 0.25 mm</div>
                                 <div className="flex justify-between items-center pt-1 border-t border-slate-200">
                                   <span className="text-slate-500">PM Kg/Mtr:</span>
                                   <span className="font-mono font-bold text-slate-800">{fmt(specs.pmKgMtr, 3)}</span>
