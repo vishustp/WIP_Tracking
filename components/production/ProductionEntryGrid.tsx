@@ -641,36 +641,38 @@ export default function ProductionEntryGrid() {
       return;
     }
 
-    const totalBundledMtr = validBundles.reduce((sum, b) => sum + n(b.mtr), 0);
-    const maxAvailMtr =
-      n(bundlingCampaign.max_allowed_mtr) > 0
-        ? n(bundlingCampaign.max_allowed_mtr)
-        : n(bundlingCampaign.balance_to_make_mtr);
+    const totalBundledPcs = validBundles.reduce((sum, b) => sum + n(b.pcs), 0);
+    const maxAvailPcs =
+      n(bundlingCampaign.max_allowed_pcs) > 0
+        ? n(bundlingCampaign.max_allowed_pcs)
+        : calc(bundlingCampaign).avg > 0
+        ? Math.round(n(bundlingCampaign.balance_to_make_mtr) / calc(bundlingCampaign).avg)
+        : n(bundlingCampaign.balance_to_make_pcs);
 
-    if (totalBundledMtr > maxAvailMtr + 0.05) {
+    if (maxAvailPcs > 0 && totalBundledPcs > maxAvailPcs) {
       setError(
-        `Total bundled quantity (${fmt(totalBundledMtr)} MTR) exceeds available finishing WIP (${fmt(
-          maxAvailMtr
-        )} MTR).`
+        `Total bundled pieces (${fmt(totalBundledPcs)} PCS) exceeds available finishing WIP (${fmt(
+          maxAvailPcs
+        )} PCS).`
       );
       return;
     }
 
-    // Validate that bundling for each work order does not exceed 110% of its total order quantity
-    const masterTotalMtr = Number(bundlingCampaign.total_order_mtr || 0);
-    const masterCapMtr = Number(bundlingCampaign.order_capping_mtr || (masterTotalMtr * 1.10).toFixed(3));
-    const masterFinished = Number(bundlingCampaign.finished_output_mtr || 0);
+    // Validate that bundling for each work order does not exceed 110% of its total order PCS (strictly Nos, not MTR)
+    const masterTotalPcs = Number(bundlingCampaign.total_order_pcs || 0);
+    const masterCapPcs = Math.round(masterTotalPcs * 1.10);
+    const masterFinishedPcs = Number(bundlingCampaign.finished_output_pcs || 0);
 
-    const sumByWo = new Map<string, number>();
+    const sumPcsByWo = new Map<string, number>();
     validBundles.forEach((b) => {
-      sumByWo.set(b.wo_id, (sumByWo.get(b.wo_id) || 0) + n(b.mtr));
+      sumPcsByWo.set(b.wo_id, (sumPcsByWo.get(b.wo_id) || 0) + n(b.pcs));
     });
 
-    for (const [woId, enteredMtr] of sumByWo.entries()) {
+    for (const [woId, enteredPcs] of sumPcsByWo.entries()) {
       if (woId === bundlingCampaign.work_order_id) {
-        if (masterTotalMtr > 0 && enteredMtr + masterFinished > masterCapMtr + 0.05) {
+        if (masterTotalPcs > 0 && enteredPcs + masterFinishedPcs > masterCapPcs) {
           setError(
-            `Work Order ${bundlingCampaign.work_order_no}: Total bundled quantity (${fmt(enteredMtr)} MTR${masterFinished > 0 ? ` + already finished ${fmt(masterFinished)} MTR` : ""}) exceeds maximum allowed 110% of Total Order Quantity (${fmt(masterTotalMtr)} MTR, max capping: ${fmt(masterCapMtr)} MTR).`
+            `Work Order ${bundlingCampaign.work_order_no}: Total bundled pieces (${fmt(enteredPcs)} PCS${masterFinishedPcs > 0 ? ` + already finished ${fmt(masterFinishedPcs)} PCS` : ""}) exceeds maximum allowed 110% of Total Order Quantity (${fmt(masterTotalPcs)} PCS, max capping: ${fmt(masterCapPcs)} PCS).`
           );
           return;
         }
@@ -679,12 +681,12 @@ export default function ProductionEntryGrid() {
           (c: any) => (c.work_order_id || c.id) === woId
         );
         if (child) {
-          const cTotalMtr = Number(child.total_order_mtr || child.planned_mtr || 0);
-          const cCapMtr = Number(child.order_capping_mtr || (cTotalMtr * 1.10).toFixed(3));
-          const cFinished = Number(child.finished_output_mtr || 0);
-          if (cTotalMtr > 0 && enteredMtr + cFinished > cCapMtr + 0.05) {
+          const cTotalPcs = Number(child.total_order_pcs || child.planned_pcs || 0);
+          const cCapPcs = Math.round(cTotalPcs * 1.10);
+          const cFinishedPcs = Number(child.finished_output_pcs || 0);
+          if (cTotalPcs > 0 && enteredPcs + cFinishedPcs > cCapPcs) {
             setError(
-              `Work Order ${child.work_order_no}: Total bundled quantity (${fmt(enteredMtr)} MTR${cFinished > 0 ? ` + already finished ${fmt(cFinished)} MTR` : ""}) exceeds maximum allowed 110% of Total Order Quantity (${fmt(cTotalMtr)} MTR, max capping: ${fmt(cCapMtr)} MTR).`
+              `Work Order ${child.work_order_no}: Total bundled pieces (${fmt(enteredPcs)} PCS${cFinishedPcs > 0 ? ` + already finished ${fmt(cFinishedPcs)} PCS` : ""}) exceeds maximum allowed 110% of Total Order Quantity (${fmt(cTotalPcs)} PCS, max capping: ${fmt(cCapPcs)} PCS).`
             );
             return;
           }
@@ -2211,8 +2213,9 @@ export default function ProductionEntryGrid() {
             ? n(bundlingCampaign.max_allowed_pcs)
             : calc(bundlingCampaign).avg > 0
             ? Math.round(maxAvailMtr / calc(bundlingCampaign).avg)
-            : 0;
-        const exceeds = totalEnteredMtr > maxAvailMtr + 0.05;
+            : n(bundlingCampaign.balance_to_make_pcs);
+        // Strictly validate based on PCS (Nos), NEVER based on MTR in finishing
+        const exceeds = maxAvailPcs > 0 && totalEnteredPcs > maxAvailPcs;
 
         // Combine master order and child orders for the dialog
         const masterCalc = calc(bundlingCampaign);
@@ -2232,7 +2235,9 @@ export default function ProductionEntryGrid() {
             balance_to_make_pcs: bundlingCampaign.balance_to_make_order_pcs ?? bundlingCampaign.balance_to_make_pcs ?? 0,
             balance_to_make_mtr: bundlingCampaign.balance_to_make_order_mtr ?? bundlingCampaign.balance_to_make_mtr ?? 0,
             balance_to_make_mt: bundlingCampaign.balance_to_make_order_mt ?? bundlingCampaign.balance_to_make_mt ?? 0,
+            finished_pcs: bundlingCampaign.finished_output_pcs || (masterCalc.avg > 0 ? Math.round(Number(bundlingCampaign.finished_output_mtr || 0) / masterCalc.avg) : 0),
             finished_mtr: bundlingCampaign.finished_output_mtr || 0,
+            capping_pcs: Math.round(Number(bundlingCampaign.total_order_pcs || 0) * 1.1),
             capping_mtr: bundlingCampaign.order_capping_mtr || Number(((bundlingCampaign.total_order_mtr || 0) * 1.1).toFixed(3)),
           },
           ...(bundlingCampaign.child_work_orders || []).map((c: any) => {
@@ -2243,9 +2248,11 @@ export default function ProductionEntryGrid() {
             const childWt = Number(c.size_wt || bundlingCampaign.wl || 0);
             const childTotalMt = Number(c.total_order_mt || c.planned_mt || 0) || mtFromMtr(childTotalMtr, childOd, childWt);
             const childFinishedMtr = Number(c.finished_output_mtr || 0);
+            const childFinishedPcs = Number(c.finished_output_pcs || 0) || (childAvg > 0 ? Math.round(childFinishedMtr / childAvg) : 0);
             const childBalMtr = Number(c.balance_to_make_mtr ?? Math.max(0, childTotalMtr - childFinishedMtr));
             const childBalPcs = childAvg > 0 ? Math.round(childBalMtr / childAvg) : 0;
             const childBalMt = mtFromMtr(childBalMtr, childOd, childWt);
+            const childCapPcs = Math.round(childTotalPcs * 1.1);
             const childCapMtr = Number(c.order_capping_mtr || (childTotalMtr * 1.1).toFixed(3));
 
             return {
@@ -2335,8 +2342,10 @@ export default function ProductionEntryGrid() {
                   const woValidBundlesCount = woBundles.filter(
                     (b) => n(b.pcs) > 0 || n(b.mtr) > 0
                   ).length;
-                  const maxCap = wo.capping_mtr || (wo.total_order_mtr > 0 ? wo.total_order_mtr * 1.1 : 0);
-                  const woExceeds110 = maxCap > 0 && woEnteredMtr + (wo.finished_mtr || 0) > maxCap + 0.05;
+                  const maxCapPcs = wo.capping_pcs || (wo.total_order_pcs > 0 ? Math.round(wo.total_order_pcs * 1.1) : 0);
+                  const maxCapMtr = wo.capping_mtr || (wo.total_order_mtr > 0 ? wo.total_order_mtr * 1.1 : 0);
+                  // Strictly validate based on PCS (Nos), NEVER based on MTR in finishing
+                  const woExceeds110 = maxCapPcs > 0 && woEnteredPcs + (wo.finished_pcs || 0) > maxCapPcs;
 
                   return (
                     <div
@@ -2497,7 +2506,7 @@ export default function ProductionEntryGrid() {
 
                           {woExceeds110 && (
                             <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded px-2 py-0.5">
-                              ⚠️ Total for {wo.work_order_no} ({fmt(woEnteredMtr)} MTR) exceeds 110% maximum order limit ({fmt(maxCap)} MTR)!
+                              ⚠️ Total for {wo.work_order_no} ({fmt(woEnteredPcs)} PCS) exceeds 110% maximum order limit ({fmt(maxCapPcs)} PCS)!
                             </span>
                           )}
                         </div>
@@ -2510,7 +2519,7 @@ export default function ProductionEntryGrid() {
                   <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
                     <AlertTriangle size={16} className="text-rose-600 shrink-0" />
                     <span>
-                      Total bundled quantity ({fmt(totalEnteredMtr)} MTR) exceeds the available WIP balance ({fmt(maxAvailMtr)} MTR) for this campaign. Please adjust quantities.
+                      Total bundled pieces ({fmt(totalEnteredPcs)} PCS) exceeds the available WIP balance ({fmt(maxAvailPcs)} PCS) for this campaign. Please adjust piece counts.
                     </span>
                   </div>
                 )}
@@ -2535,7 +2544,7 @@ export default function ProductionEntryGrid() {
                   <button
                     type="button"
                     onClick={applyBundlesToGrid}
-                    disabled={bundlingSaving || totalEnteredMtr <= 0}
+                    disabled={bundlingSaving || totalEnteredPcs <= 0}
                     className="rounded-lg border border-teal-600 bg-white hover:bg-teal-50 text-teal-800 font-bold px-4 py-2 text-sm shadow-xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-2 transition-colors"
                     title="Populate the main production grid rows with the sum of all bundles"
                   >
@@ -2546,7 +2555,7 @@ export default function ProductionEntryGrid() {
                   <button
                     type="button"
                     onClick={saveCampaignBundling}
-                    disabled={bundlingSaving || totalEnteredMtr <= 0 || exceeds}
+                    disabled={bundlingSaving || totalEnteredPcs <= 0 || exceeds}
                     className="rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-2 text-sm shadow cursor-pointer disabled:opacity-50 inline-flex items-center gap-2 transition-colors"
                   >
                     {bundlingSaving ? (

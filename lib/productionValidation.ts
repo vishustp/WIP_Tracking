@@ -166,7 +166,7 @@ export function validateProductionEntry(
         message: `Production (${d.pcs} PCS) exceeds maximum allowed (${fmt(allowedPcs)} PCS).`,
       });
     }
-  } else if (d.pcs <= 0 && d.mtr > 0 && allowedMtr > 0 && d.mtr > allowedMtr + 0.001) {
+  } else if (stage !== "FINISHING" && d.pcs <= 0 && d.mtr > 0 && allowedMtr > 0 && d.mtr > allowedMtr + 0.001) {
     errors.push({
       workOrder: row.work_order_no,
       message: `Production (${fmt(d.mtr, " MTR")}) exceeds maximum allowed (${fmt(allowedMtr, " MTR")}).`,
