@@ -10,7 +10,7 @@ import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
   User, ShieldCheck, ChevronDown, Check, Sparkles, Lock, Activity, Clock,
-  ClipboardCheck
+  ClipboardCheck, BookOpen
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
@@ -46,6 +46,7 @@ const groups = [
       { href: '/reports/production', label: 'Production', icon: Factory },
       { href: '/reports/rolling-plans', label: 'Rolling Plans', icon: CalendarClock },
       { href: '/reports/diversions', label: 'Diversions', icon: Shuffle },
+      { href: '/reports/training', label: 'Training Manual (PDF)', icon: BookOpen },
     ],
   },
   {

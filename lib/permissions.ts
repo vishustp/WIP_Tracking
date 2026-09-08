@@ -134,6 +134,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/reports/aging',
     '/reports/rolling-plans',
     '/reports/diversions',
+    '/reports/training',
   ];
 
   return allowedUserRoutes.some((allowed) => href === allowed || href.startsWith(allowed + '/'));
