@@ -29,6 +29,13 @@ export interface MasterGroupPayload {
   master_planned_mt?: number;
   child_work_orders?: ChildWoPayload[];
 
+  // Mother hollow & pass overrides
+  mh_od?: number | null;
+  mh_wt?: number | null;
+  mh_l1?: number | null;
+  mh_l2?: number | null;
+  pass_required?: number | null;
+
   // Factory parameters
   catg?: string; // e.g. 'CDS'
   spec?: string;
