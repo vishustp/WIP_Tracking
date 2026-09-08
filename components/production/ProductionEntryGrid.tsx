@@ -1161,6 +1161,7 @@ export default function ProductionEntryGrid() {
                   onClick={() => setWoFilter("")}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
                   title="Clear filter"
+                  aria-label="Clear filter"
                 >
                   <X size={12} />
                 </button>
@@ -1266,6 +1267,7 @@ export default function ProductionEntryGrid() {
                             type="button"
                             onClick={() => toggleRowExpansion(key)}
                             title="Toggle Work Center WIP Pipeline"
+                            aria-label="Toggle Work Center WIP Pipeline"
                             className={`inline-flex items-center gap-0.5 rounded px-2 py-1 text-xs font-semibold border transition-colors ${
                               isExpanded
                                 ? "bg-blue-600 text-white border-blue-600"
@@ -2529,6 +2531,7 @@ export default function ProductionEntryGrid() {
                                     type="button"
                                     onClick={() => removeBundle(b.id)}
                                     title="Delete this bundle row"
+                                    aria-label="Delete this bundle row"
                                     className="p-1 rounded text-rose-500 hover:bg-rose-50 hover:text-rose-700 cursor-pointer transition-colors"
                                   >
                                     <Trash2 size={15} />

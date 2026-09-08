@@ -1455,6 +1455,7 @@ export default function DiversionForm() {
                   onClick={() => { setFromDate(''); setToDate(''); }}
                   className="rounded p-1 text-slate-400 hover:text-red-600 hover:bg-slate-100 transition shrink-0"
                   title="Clear date filter"
+                  aria-label="Clear date filter"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>

@@ -1760,6 +1760,7 @@ export default function RollingPlanForm() {
                             onClick={() => handleRemoveGroup(group.id)}
                             className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition"
                             title="Remove this setup group"
+                            aria-label="Remove this setup group"
                           >
                             <X className="h-4 w-4" />
                           </button>
@@ -1842,6 +1843,7 @@ export default function RollingPlanForm() {
                                     onClick={() => handleRemoveGroup(group.id)}
                                     className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition"
                                     title="Remove this work order setup group"
+                                    aria-label="Remove this work order setup group"
                                   >
                                     <X className="h-4 w-4" />
                                   </button>
@@ -1944,6 +1946,7 @@ export default function RollingPlanForm() {
                                           onClick={() => handleRemoveChildFromGroup(group.id, child.id)}
                                           className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer transition"
                                           title="Remove child order from setup"
+                                          aria-label="Remove child order from setup"
                                         >
                                           <X className="h-4 w-4" />
                                         </button>
