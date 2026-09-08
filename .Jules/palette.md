@@ -1,0 +1,3 @@
+## 2024-05-18 - Accessibility on Icon-Only Buttons
+**Learning:** Found multiple instances where icon-only action buttons (e.g., Delete, Edit, Remove, Clear) had `title` attributes for sighted users but lacked `aria-label` attributes, which are necessary for screen readers.
+**Action:** Always verify if an icon-only button needs an `aria-label` to provide context for assistive technologies. When adding `aria-label` attributes to elements that already possess dynamic `title` tooltips, ensure the `aria-label` incorporates the dynamic data so screen readers do not lose important contextual information.
