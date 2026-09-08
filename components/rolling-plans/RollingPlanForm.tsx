@@ -38,6 +38,7 @@ export type WO = {
   work_order_no: string;
   customer_name: string | null;
   grade: string | null;
+  specification?: string | null;
   size_od: number | null;
   size_wt: number | null;
   l1: number | null;
@@ -185,7 +186,162 @@ export function calcHollowMetrics(
   return { avg, mtr, mt };
 }
 
-export function createDefaultGroup(wo: WO, availMtr: number, defaultRouteId = ''): WorkOrderGroup {
+export interface ComputedGroupSpecs {
+  srNo: number;
+  catg: string;
+  customer: string;
+  woNo: string;
+  spec: string;
+  grade: string;
+  ibr: string;
+  rollingMtr: number;
+  rmOd: number;
+  rmLenMin: number;
+  rmLenMax: number;
+  weightKg: number;
+  nos: number;
+  mton: number;
+  billetWtWhf: number;
+  pmOd: number;
+  pmWt: number;
+  pmKgMtr: number;
+  pmLen: number;
+  wtWbf: number;
+  custOd: number;
+  custWt: number;
+  rollingWt: number;
+  smKgMtr: number;
+  smLen: number;
+  feLen: number;
+  feWg: number;
+  beLen: number;
+  beWg: number;
+  effectiveWg: number;
+  effectiveLen: number;
+  erStatus: 'EL' | 'RL';
+  minLen: number;
+  maxLen: number;
+  multi: string;
+}
+
+export function computeGroupSpecs(
+  group: WorkOrderGroup,
+  totalRollingMtr: number,
+  srIndex = 1
+): ComputedGroupSpecs {
+  const rmOd = Number(group.rmOd) || 0;
+  const rmLenMin = Number(group.rmLenMin) || 0;
+  const rmLenMax = Number(group.rmLenMax) || 0;
+
+  // 12. Weight (Kgs) = (((RM OD)*(RM OD)*3.14*0.007856/4)*RM Len Min)
+  const weightKg = Number((((rmOd * rmOd * 3.14 * 0.007856) / 4) * rmLenMin).toFixed(3));
+
+  // 21-23. Cust. OD, Cust. WT, Rolling WT = Cust. WT
+  const custOd = Number(group.custOd) || Number(group.wo.size_od) || 0;
+  const custWt = Number(group.custWt) || Number(group.wo.size_wt) || 0;
+  const rollingWt = custWt;
+
+  // 15. Billet Wt. After WHF = Weight (Kgs) * 0.97
+  const billetWtWhf = Number((weightKg * 0.97).toFixed(3));
+
+  // 16. PM OD = RM OD (mm) + 5
+  const pmOd = rmOd > 0 ? Number((rmOd + 5).toFixed(2)) : 0;
+
+  // 17. PM Wt = Rolling WT - 0.25
+  const pmWt = rollingWt > 0.25 ? Number((rollingWt - 0.25).toFixed(2)) : rollingWt;
+
+  // 18. PM Kg/Mtr = (PM OD - PM WT) * PM WT * 0.02467
+  const pmKgMtr =
+    pmOd > pmWt && pmWt > 0
+      ? Number(((pmOd - pmWt) * pmWt * 0.02467).toFixed(3))
+      : 0;
+
+  // 19. PM Length = Billet Wt. After WHF / PM KG/MTR
+  const pmLen = pmKgMtr > 0 ? Number((billetWtWhf / pmKgMtr).toFixed(2)) : 0;
+
+  // 20. Wt. After WBF = Weight (Kgs) * 0.97
+  const wtWbf = billetWtWhf;
+
+  // 24. SM Kg/Mtr = (Cust OD - Cust WT) * Cust WT * 0.02467
+  const smKgMtr =
+    custOd > custWt && custWt > 0
+      ? Number(((custOd - custWt) * custWt * 0.02467).toFixed(3))
+      : 0;
+
+  // 25. SM Length = Wt. After WBF / SM Kg/Mtr
+  const smLen = smKgMtr > 0 ? Number((wtWbf / smKgMtr).toFixed(2)) : 0;
+
+  // 26-29. FE & BE Lengths & Weights
+  const feLen = Number(group.feLen) || 0;
+  const feWg = Number((smKgMtr * feLen).toFixed(3));
+  const beLen = Number(group.beLen) || 0;
+  const beWg = Number((smKgMtr * beLen).toFixed(3));
+
+  // 30. Effective Wg (Kg) = Wt. After WBF - FE Wg - BE Wg
+  const effectiveWg = Number(Math.max(0, wtWbf - feWg - beWg).toFixed(3));
+
+  // 31. Effective Length = Effective Wg / SM Kg/Mtr
+  const effectiveLen = smKgMtr > 0 ? Number((effectiveWg / smKgMtr).toFixed(2)) : smLen;
+
+  // 32-34. Min, Max, E/R
+  const minLen = Number(group.reqLenMin) || Number(group.wo.l1) || 0;
+  const maxLen = Number(group.reqLenMax) || Number(group.wo.l2) || minLen;
+  const erStatus: 'EL' | 'RL' = minLen > 0 && minLen === maxLen ? 'EL' : 'RL';
+
+  // 13. Nos = Rolling MTR / Effective Length
+  const nos =
+    totalRollingMtr > 0 && effectiveLen > 0
+      ? Math.ceil(totalRollingMtr / effectiveLen)
+      : 0;
+
+  // 14. Mton = (Weight (Kgs) * Nos) / 1000
+  const mton = Number(((weightKg * nos) / 1000).toFixed(3));
+
+  return {
+    srNo: srIndex,
+    catg: group.catg || 'CDS',
+    customer: group.wo.customer_name || 'Standard Stock',
+    woNo: group.wo.work_order_no,
+    spec: group.spec || group.wo.specification || group.wo.grade || '—',
+    grade: group.grade || group.wo.grade || '—',
+    ibr: group.ibrStatus || 'IBR',
+    rollingMtr: totalRollingMtr,
+    rmOd,
+    rmLenMin,
+    rmLenMax,
+    weightKg,
+    nos,
+    mton,
+    billetWtWhf,
+    pmOd,
+    pmWt,
+    pmKgMtr,
+    pmLen,
+    wtWbf,
+    custOd,
+    custWt,
+    rollingWt,
+    smKgMtr,
+    smLen,
+    feLen,
+    feWg,
+    beLen,
+    beWg,
+    effectiveWg,
+    effectiveLen,
+    erStatus,
+    minLen,
+    maxLen,
+    multi: group.multipleStr || '1',
+  };
+}
+
+export function createDefaultGroup(
+  wo: WO,
+  availMtr: number,
+  defaultRouteId = '',
+  defaultRoute?: Route
+): WorkOrderGroup {
   const lAvg = wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : wo.l1 || 6;
   const initPcs = availMtr > 0 ? Math.max(1, Math.floor(availMtr / lAvg)) : 100;
   const custOdNum = Number(wo.size_od || 47.0);
@@ -195,6 +351,12 @@ export function createDefaultGroup(wo: WO, availMtr: number, defaultRouteId = ''
   const pmOdNum = Number((custOdNum * 1.4).toFixed(1));
   const pmWtNum = Number((custWtNum * 0.95).toFixed(2));
 
+  // Determine IBR status: auto-detect from spec or grade
+  const specText = `${wo.specification || ''} ${wo.grade || ''}`.toUpperCase();
+  const autoIbr = specText.includes('IBR') ? 'IBR' : 'NIBR';
+
+  const catgFromRoute = defaultRoute?.material_category || 'CDS';
+
   return {
     id: `grp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     wo,
@@ -203,10 +365,10 @@ export function createDefaultGroup(wo: WO, availMtr: number, defaultRouteId = ''
     children: [],
 
     routeId: defaultRouteId,
-    catg: 'CDS',
-    spec: 'ASME SA210 Gr.A1',
+    catg: catgFromRoute,
+    spec: wo.specification || wo.grade || 'ASME SA210 Gr.A1',
     grade: wo.grade || 'SAE 1018',
-    ibrStatus: 'IBR',
+    ibrStatus: autoIbr,
     rmOd: '63.00',
     rmLenMin: '1.890',
     rmLenMax: '1.895',
@@ -220,7 +382,7 @@ export function createDefaultGroup(wo: WO, availMtr: number, defaultRouteId = ''
     feLen: '0.000',
     beLen: '0.000',
     effLen: String(smLenNum.toFixed(2)),
-    reqLenEr: 'EL',
+    reqLenEr: wo.l1 && wo.l2 && wo.l1 === wo.l2 ? 'EL' : 'RL',
     reqLenMin: wo.l1 ? String(Number(wo.l1).toFixed(2)) : '7.55',
     reqLenMax: wo.l2 ? String(Number(wo.l2).toFixed(2)) : '7.55',
     multipleStr: '1',
@@ -478,7 +640,7 @@ export default function RollingPlanForm() {
       const s = createClient();
       const { data, error } = await s
         .from('work_orders')
-        .select('id,work_order_no,customer_name,grade,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_mtr')
+        .select('id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_mtr')
         .order('work_order_no');
       if (error) throw error;
       setWos((data ?? []) as WO[]);
@@ -493,7 +655,7 @@ export default function RollingPlanForm() {
     Promise.all([
       s
         .from('work_orders')
-        .select('id,work_order_no,customer_name,grade,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_mtr')
+        .select('id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_mtr')
         .order('work_order_no'),
       s
         .from('process_routes')
@@ -518,7 +680,7 @@ export default function RollingPlanForm() {
           const match = woList.find((x) => x.id === initialWoId);
           if (match) {
             const availMtr = await fetchUnplannedQty(match.id);
-            setGroups([createDefaultGroup(match, availMtr, routeList[0]?.id || '')]);
+            setGroups([createDefaultGroup(match, availMtr, routeList[0]?.id || '', routeList[0])]);
           }
         }
       })
@@ -549,7 +711,8 @@ export default function RollingPlanForm() {
     if (!targetWo) return;
 
     const availMtr = await fetchUnplannedQty(woId);
-    const newGrp = createDefaultGroup(targetWo, availMtr, route);
+    const rObj = routes.find((r) => r.id === (route || routes[0]?.id));
+    const newGrp = createDefaultGroup(targetWo, availMtr, route || routes[0]?.id || '', rObj);
     setGroups((prev) => [...prev, newGrp]);
     setAddWoSelectValue('');
     toast.success(`Added ${targetWo.work_order_no} as Setup #${groups.length + 1}.`);
@@ -570,10 +733,11 @@ export default function RollingPlanForm() {
       return;
     }
 
+    const rObj = routes.find((r) => r.id === (route || routes[0]?.id));
     const newGroups: WorkOrderGroup[] = [];
     for (const targetWo of toAdd) {
       const availMtr = await fetchUnplannedQty(targetWo.id);
-      newGroups.push(createDefaultGroup(targetWo, availMtr, route));
+      newGroups.push(createDefaultGroup(targetWo, availMtr, route || routes[0]?.id || '', rObj));
     }
 
     setGroups((prev) => [...prev, ...newGroups]);
@@ -629,7 +793,23 @@ export default function RollingPlanForm() {
   // Update field on group
   const handleUpdateGroupField = (groupId: string, field: keyof WorkOrderGroup, value: any) => {
     setGroups((prev) =>
-      prev.map((g) => (g.id === groupId ? { ...g, [field]: value } : g))
+      prev.map((g) => {
+        if (g.id !== groupId) return g;
+        const updated = { ...g, [field]: value };
+        if (field === 'routeId') {
+          const matchedRoute = routes.find((r) => r.id === value);
+          if (matchedRoute?.material_category) {
+            updated.catg = matchedRoute.material_category;
+          }
+        } else if (field === 'custWt') {
+          updated.rollingWt = value;
+        } else if (field === 'reqLenMin' || field === 'reqLenMax') {
+          const min = field === 'reqLenMin' ? Number(value) : Number(g.reqLenMin);
+          const max = field === 'reqLenMax' ? Number(value) : Number(g.reqLenMax);
+          updated.reqLenEr = min > 0 && min === max ? 'EL' : 'RL';
+        }
+        return updated;
+      })
     );
   };
 
@@ -653,23 +833,23 @@ export default function RollingPlanForm() {
     );
   };
 
-
-
   // Campaign Calculations for all setups & children
   const campaignSummary = useMemo(() => {
     let grandTotalPcs = 0;
     let grandTotalMtr = 0;
     let grandTotalMt = 0;
 
-    const groupSummaries = groups.map((g) => {
-      const smLenNum = Number(g.smLen || g.effLen || g.wo.l1 || 6.0);
-      const avgLen = smLenNum > 0 ? smLenNum : 6.0;
-      const custOdNum = Number(g.custOd || g.wo.size_od || 0);
-      const custWtNum = Number(g.custWt || g.rollingWt || g.wo.size_wt || 0);
+    const groupSummaries = groups.map((g, gIdx) => {
+      // Preliminary computation of group specs to get effective length
+      const prelimSpecs = computeGroupSpecs(g, 0, gIdx + 1);
+      const avgLen =
+        prelimSpecs.effectiveLen > 0 ? prelimSpecs.effectiveLen : Number(g.wo.l1 || 6.0);
+      const custOdNum = prelimSpecs.custOd;
+      const custWtNum = prelimSpecs.custWt;
 
       const calcMtr = (pcs: number) => Number((pcs * avgLen).toFixed(2));
       const calcMt = (mtr: number) =>
-        Number((Math.max(custOdNum - custWtNum, 0) * Math.max(custWtNum, 0) * 0.0246615 * 0.001 * mtr).toFixed(3));
+        Number((Math.max(custOdNum - custWtNum, 0) * Math.max(custWtNum, 0) * 0.02467 * 0.001 * mtr).toFixed(3));
 
       const parentPcs = Number(g.plannedPcs || 0);
       const parentMtr = calcMtr(parentPcs);
@@ -697,6 +877,9 @@ export default function RollingPlanForm() {
       const totalGroupMtr = Number((parentMtr + totalGroupChildMtr).toFixed(2));
       const totalGroupMt = Number((parentMt + totalGroupChildMt).toFixed(3));
 
+      // Final specs with total group rolling mtr
+      const specs = computeGroupSpecs(g, totalGroupMtr, gIdx + 1);
+
       grandTotalPcs += totalGroupPcs;
       grandTotalMtr += totalGroupMtr;
       grandTotalMt += totalGroupMt;
@@ -711,6 +894,7 @@ export default function RollingPlanForm() {
         totalGroupMtr,
         totalGroupMt,
         avgLen,
+        specs,
       };
     });
 
@@ -720,7 +904,7 @@ export default function RollingPlanForm() {
       grandTotalMt: Number(grandTotalMt.toFixed(3)),
       groupSummaries,
     };
-  }, [groups]);
+  }, [groups, routes]);
 
   // Submit Multi-WO Rolling Plan (in one go, with NO plan qty validation blocking)
   async function submitMultiWoPlan(e: React.FormEvent) {
@@ -750,12 +934,9 @@ export default function RollingPlanForm() {
         route_id: defaultRouteId,
         multiple: Number(groups[0]?.multipleStr === '2' || groups[0]?.multipleStr === '2-Multi' ? 2 : 1),
 
-        master_groups: groups.map((g) => {
+        master_groups: groups.map((g, gIdx) => {
           const gSummary = campaignSummary.groupSummaries.find((s) => s.groupId === g.id)!;
-          const parentSmLen = Number(g.smLen || g.effLen || g.wo.l1 || 6.0);
-          const parentAvgLen = parentSmLen > 0 ? parentSmLen : 6.0;
-          const calcNos = gSummary.totalGroupMtr > 0 ? Math.ceil(gSummary.totalGroupMtr / parentAvgLen) : gSummary.totalGroupPcs;
-          const calcMton = gSummary.totalGroupMt;
+          const specs = gSummary?.specs || computeGroupSpecs(g, gSummary?.totalGroupMtr || 0, gIdx + 1);
           const grpRoute = g.routeId || route;
 
           return {
@@ -765,37 +946,46 @@ export default function RollingPlanForm() {
             master_planned_mtr: gSummary.parentMtr,
             master_planned_mt: gSummary.parentMt,
 
-            // Setup specifications for this work order
-            catg: g.catg,
-            spec: g.spec,
-            grade: g.grade,
-            ibr_status: g.ibrStatus,
-            rolling_mtr: gSummary.totalGroupMtr,
+            // Setup specifications for this work order (35 Columns)
+            catg: specs.catg,
+            spec: specs.spec,
+            grade: specs.grade,
+            ibr_status: specs.ibr,
+            rolling_mtr: specs.rollingMtr,
 
-            rm_od: Number(g.rmOd),
-            rm_len_min: Number(g.rmLenMin),
-            rm_len_max: Number(g.rmLenMax),
-            plan_qty_nos: calcNos,
-            plan_qty_mton: calcMton,
+            rm_od: specs.rmOd,
+            rm_len_min: specs.rmLenMin,
+            rm_len_max: specs.rmLenMax,
+            weight_kg: specs.weightKg,
+            plan_qty_nos: specs.nos,
+            plan_qty_mton: specs.mton,
+            billet_wt_whf: specs.billetWtWhf,
 
-            pm_od: Number(g.pmOd),
-            pm_wt: Number(g.pmWt),
-            pm_len: Number(g.pmLen),
+            pm_od: specs.pmOd,
+            pm_wt: specs.pmWt,
+            pm_kg_mtr: specs.pmKgMtr,
+            pm_len: specs.pmLen,
 
-            cust_od: Number(g.custOd),
-            cust_wt: Number(g.custWt),
-            rolling_wt: Number(g.rollingWt),
-            sm_len: Number(g.smLen),
+            wt_wbf: specs.wtWbf,
+            cust_od: specs.custOd,
+            cust_wt: specs.custWt,
+            rolling_wt: specs.rollingWt,
+            sm_kg_mtr: specs.smKgMtr,
+            sm_len: specs.smLen,
 
-            fe_len: Number(g.feLen),
-            be_len: Number(g.beLen),
-            eff_len: Number(g.effLen),
+            fe_len: specs.feLen,
+            fe_wg: specs.feWg,
+            be_len: specs.beLen,
+            be_wg: specs.beWg,
+            effective_wg: specs.effectiveWg,
+            eff_len: specs.effectiveLen,
+            effective_len: specs.effectiveLen,
 
-            req_len_er: g.reqLenEr,
-            req_len_min: Number(g.reqLenMin),
-            req_len_max: Number(g.reqLenMax),
-            multiple_str: g.multipleStr,
-            multiple: Number(g.multipleStr === '2' || g.multipleStr === '2-Multi' ? 2 : 1),
+            req_len_er: specs.erStatus,
+            req_len_min: specs.minLen,
+            req_len_max: specs.maxLen,
+            multiple_str: specs.multi,
+            multiple: Number(specs.multi === '2' || specs.multi === '2-Multi' ? 2 : 1),
             tol_od_min: Number(g.tolOdMin),
             tol_od_max: Number(g.tolOdMax),
             tol_wt_min: Number(g.tolWtMin),
@@ -816,10 +1006,10 @@ export default function RollingPlanForm() {
                 planned_pcs: cSummary.pcs,
                 planned_mtr: cSummary.mtr,
                 planned_mt: cSummary.mt,
-                catg: g.catg,
+                catg: specs.catg,
                 finish_size: `${fmt(c.wo.size_od, 2)}x${fmt(c.wo.size_wt, 2)}`,
                 final_len: `${fmt(c.wo.l1, 2)}-${fmt(c.wo.l2, 2)}`,
-                hollow_len: `${fmt(g.reqLenMin, 2)}-${fmt(g.reqLenMax, 2)}`,
+                hollow_len: `${fmt(specs.minLen, 2)}-${fmt(specs.maxLen, 2)}`,
                 htc_mtr: cSummary.mtr,
                 alloc_tag: `${cIdx + 1}`,
               };
@@ -1304,7 +1494,15 @@ export default function RollingPlanForm() {
               <div className="space-y-4">
                 {groups.map((group, groupIndex) => {
                   const gSummary = campaignSummary.groupSummaries.find((s) => s.groupId === group.id);
-                  const pMetrics = { pcs: gSummary?.parentPcs || 0, mtr: gSummary?.parentMtr || 0, mt: gSummary?.parentMt || 0, avg: gSummary?.avgLen || 0 };
+                  const pMetrics = {
+                    pcs: gSummary?.parentPcs || 0,
+                    mtr: gSummary?.parentMtr || 0,
+                    mt: gSummary?.parentMt || 0,
+                    avg: gSummary?.avgLen || 0,
+                  };
+                  const specs =
+                    gSummary?.specs ||
+                    computeGroupSpecs(group, gSummary?.totalGroupMtr || 0, groupIndex + 1);
 
                   return (
                     <div
@@ -1377,7 +1575,7 @@ export default function RollingPlanForm() {
                             <Sliders className="h-3.5 w-3.5 text-amber-600" />
                             <span>{group.isSpecsExpanded ? 'Hide Specs' : 'Setup Specs & Tolerances'}</span>
                             <span className="text-[10px] text-slate-400 font-mono hidden md:inline">
-                              ({routes.find((r) => r.id === (group.routeId || route))?.route_code || 'No Route'} · {group.catg} · RM {group.rmOd}mm · PM {group.pmOd}mm · SM {group.custOd}×{group.custWt})
+                              ({routes.find((r) => r.id === (group.routeId || route))?.route_code || 'No Route'} · {specs.catg} · RM {specs.rmOd}mm · PM {specs.pmOd}mm · SM {specs.custOd}×{specs.custWt} · {specs.nos} Nos / {fmt(specs.mton, 2)} MT)
                             </span>
                           </button>
 
@@ -1606,22 +1804,22 @@ export default function RollingPlanForm() {
 
                       {/* Collapsible Setup Specifications & Factory Tolerances Accordion */}
                       {group.isSpecsExpanded && (
-                        <div className="border-t border-amber-200 bg-amber-50/40 p-4 space-y-3">
+                        <div className="border-t border-amber-200 bg-amber-50/40 p-4 space-y-4">
                           <div className="text-xs font-bold text-amber-950 flex items-center justify-between">
                             <span className="flex items-center gap-1.5">
                               <Flame className="h-4 w-4 text-amber-600" />
-                              Setup Specifications & Factory Tolerances (Setup #{groupIndex + 1})
+                              Setup Specifications & Manufacturing Parameters (Setup #{groupIndex + 1})
                             </span>
                             <span className="text-[11px] text-amber-800 font-normal">
-                              Values propagate to shop floor cutting plan for this setup
+                              35-Column Schedule Parameters · Live reactive calculations for shop floor cutting plan
                             </span>
                           </div>
 
-                          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-5 text-xs">
-                            {/* 1. Route & Classification */}
-                            <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
-                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                                Route & Classification
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 text-xs">
+                            {/* 1. Route & Work Order Classification */}
+                            <div className="space-y-1.5 p-2.5 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider border-b pb-1">
+                                1. Route & Work Order
                               </span>
                               <div>
                                 <label className="text-[10px] text-indigo-700 font-bold block">
@@ -1632,10 +1830,10 @@ export default function RollingPlanForm() {
                                   onChange={(e) =>
                                     handleUpdateGroupField(group.id, 'routeId', e.target.value)
                                   }
-                                  className="w-full rounded border border-indigo-300 bg-indigo-50/40 p-1 text-xs font-bold text-slate-900 cursor-pointer focus:border-indigo-500 focus:outline-hidden"
+                                  className="w-full rounded border border-indigo-300 bg-indigo-50/40 p-1 text-xs font-bold text-slate-900 cursor-pointer"
                                   required
                                 >
-                                  <option value="">-- Select Process Route --</option>
+                                  <option value="">-- Select Route --</option>
                                   {routes.map((r) => (
                                     <option key={r.id} value={r.id}>
                                       {r.route_code} — {r.route_name}
@@ -1643,21 +1841,34 @@ export default function RollingPlanForm() {
                                   ))}
                                 </select>
                               </div>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">Category (Catg)</label>
-                                <select
-                                  value={group.catg}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'catg', e.target.value)
-                                  }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-semibold"
-                                >
-                                  <option value="CDS">CDS (Cold Drawn)</option>
-                                  <option value="HFS">HFS (Hot Finished)</option>
-                                </select>
+                              <div className="flex gap-1.5">
+                                <div className="w-1/2">
+                                  <label className="text-[10px] text-slate-500 block">Catg</label>
+                                  <input
+                                    type="text"
+                                    value={group.catg}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'catg', e.target.value)
+                                    }
+                                    className="w-full rounded border border-slate-300 p-1 text-xs font-bold bg-slate-50"
+                                  />
+                                </div>
+                                <div className="w-1/2">
+                                  <label className="text-[10px] text-slate-500 block">IBR / NIBR</label>
+                                  <select
+                                    value={group.ibrStatus}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'ibrStatus', e.target.value)
+                                    }
+                                    className="w-full rounded border border-slate-300 p-1 text-xs font-bold"
+                                  >
+                                    <option value="IBR">IBR</option>
+                                    <option value="NIBR">NIBR</option>
+                                  </select>
+                                </div>
                               </div>
                               <div>
-                                <label className="text-[10px] text-slate-500 block">Specification (Spec)</label>
+                                <label className="text-[10px] text-slate-500 block">Spec</label>
                                 <input
                                   type="text"
                                   value={group.spec}
@@ -1668,37 +1879,25 @@ export default function RollingPlanForm() {
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] text-slate-500 block">Grade & IBR Status</label>
-                                <div className="flex gap-1">
-                                  <input
-                                    type="text"
-                                    value={group.grade}
-                                    onChange={(e) =>
-                                      handleUpdateGroupField(group.id, 'grade', e.target.value)
-                                    }
-                                    className="w-2/3 rounded border border-slate-300 p-1 text-xs font-mono"
-                                  />
-                                  <select
-                                    value={group.ibrStatus}
-                                    onChange={(e) =>
-                                      handleUpdateGroupField(group.id, 'ibrStatus', e.target.value)
-                                    }
-                                    className="w-1/3 rounded border border-slate-300 p-1 text-xs font-bold"
-                                  >
-                                    <option value="IBR">IBR</option>
-                                    <option value="NIBR">NIBR</option>
-                                  </select>
-                                </div>
+                                <label className="text-[10px] text-slate-500 block">Grade</label>
+                                <input
+                                  type="text"
+                                  value={group.grade}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'grade', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                />
                               </div>
                             </div>
 
-                            {/* 2. Billet Dimensions */}
-                            <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
-                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                                Billet Dimensions
+                            {/* 2. Billet & Weight */}
+                            <div className="space-y-1.5 p-2.5 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider border-b pb-1">
+                                2. Billet & Weight
                               </span>
                               <div>
-                                <label className="text-[10px] text-slate-500 block">RM OD (mm)</label>
+                                <label className="text-[10px] text-slate-500 block">RM OD (mm) *</label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -1709,83 +1908,91 @@ export default function RollingPlanForm() {
                                   className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
                                 />
                               </div>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">RM Len Min (m)</label>
-                                <input
-                                  type="number"
-                                  step="0.001"
-                                  value={group.rmLenMin}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'rmLenMin', e.target.value)
-                                  }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                                />
+                              <div className="flex gap-1.5">
+                                <div className="w-1/2">
+                                  <label className="text-[10px] text-slate-500 block">RM Len Min (m)</label>
+                                  <input
+                                    type="number"
+                                    step="0.001"
+                                    value={group.rmLenMin}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'rmLenMin', e.target.value)
+                                    }
+                                    className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                  />
+                                </div>
+                                <div className="w-1/2">
+                                  <label className="text-[10px] text-slate-500 block">RM Len Max (m)</label>
+                                  <input
+                                    type="number"
+                                    step="0.001"
+                                    value={group.rmLenMax}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'rmLenMax', e.target.value)
+                                    }
+                                    className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                  />
+                                </div>
                               </div>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">RM Len Max (m)</label>
-                                <input
-                                  type="number"
-                                  step="0.001"
-                                  value={group.rmLenMax}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'rmLenMax', e.target.value)
-                                  }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                                />
-                              </div>
-                            </div>
-
-                            {/* 3. Piercer Mill */}
-                            <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
-                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                                Piercer Mill
-                              </span>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">PM OD (mm)</label>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  value={group.pmOd}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'pmOd', e.target.value)
-                                  }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">PM Wthk (mm)</label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={group.pmWt}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'pmWt', e.target.value)
-                                  }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">PM Length (m)</label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={group.pmLen}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'pmLen', e.target.value)
-                                  }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                                />
+                              <div className="pt-1 border-t border-slate-100 space-y-1">
+                                <div className="flex justify-between text-[11px]">
+                                  <span className="text-slate-500">Weight:</span>
+                                  <span className="font-mono font-bold text-slate-900">{fmt(specs.weightKg, 3)} kg</span>
+                                </div>
+                                <div className="flex justify-between text-[11px]">
+                                  <span className="text-slate-500">Wt. After WHF:</span>
+                                  <span className="font-mono font-bold text-slate-700">{fmt(specs.billetWtWhf, 3)} kg</span>
+                                </div>
+                                <div className="flex justify-between text-[11px]">
+                                  <span className="text-slate-500">Nos (Charge):</span>
+                                  <span className="font-mono font-bold text-indigo-700">{specs.nos} Nos</span>
+                                </div>
+                                <div className="flex justify-between text-[11px]">
+                                  <span className="text-slate-500">Mton:</span>
+                                  <span className="font-mono font-bold text-emerald-700">{fmt(specs.mton, 3)} MT</span>
+                                </div>
                               </div>
                             </div>
 
-                            {/* 4. SM / Sizing Mill */}
-                            <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
-                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                                SM (Sizing Mill)
+                            {/* 3. Piercer Mill (PM) */}
+                            <div className="space-y-1.5 p-2.5 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider border-b pb-1">
+                                3. Piercer Mill (PM)
+                              </span>
+                              <div className="p-1.5 rounded bg-slate-50 border border-slate-100 space-y-1.5 text-[11px]">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-500">PM OD:</span>
+                                  <span className="font-mono font-bold text-slate-900 bg-white px-1.5 py-0.5 rounded border">
+                                    {fmt(specs.pmOd, 2)} mm
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-slate-400">RM OD + 5 mm</div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-500">PM Wt:</span>
+                                  <span className="font-mono font-bold text-slate-900 bg-white px-1.5 py-0.5 rounded border">
+                                    {fmt(specs.pmWt, 2)} mm
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-slate-400">Rolling WT - 0.25 mm</div>
+                                <div className="flex justify-between items-center pt-1 border-t border-slate-200">
+                                  <span className="text-slate-500">PM Kg/Mtr:</span>
+                                  <span className="font-mono font-bold text-slate-800">{fmt(specs.pmKgMtr, 3)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-500">PM Length:</span>
+                                  <span className="font-mono font-bold text-indigo-700">{fmt(specs.pmLen, 2)} m</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 4. Sizing Mill (SM) */}
+                            <div className="space-y-1.5 p-2.5 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider border-b pb-1">
+                                4. Sizing Mill (SM)
                               </span>
                               <div>
-                                <label className="text-[10px] text-slate-500 block">Cust. OD × WT (mm)</label>
-                                <div className="flex gap-1">
+                                <label className="text-[10px] text-slate-500 block">Cust. OD × WT (mm) *</label>
+                                <div className="flex gap-1.5">
                                   <input
                                     type="number"
                                     step="0.01"
@@ -1808,85 +2015,224 @@ export default function RollingPlanForm() {
                                   />
                                 </div>
                               </div>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">Rolling WT (mm)</label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={group.rollingWt}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'rollingWt', e.target.value)
-                                  }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">SM Length (m)</label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={group.smLen}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'smLen', e.target.value)
-                                  }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                                />
+                              <div className="pt-1 border-t border-slate-100 space-y-1 text-[11px]">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-500">Rolling WT:</span>
+                                  <span className="font-mono font-bold text-slate-800">{fmt(specs.rollingWt, 2)} mm</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-500">Wt. After WBF:</span>
+                                  <span className="font-mono font-bold text-slate-800">{fmt(specs.wtWbf, 3)} kg</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-500">SM Kg/Mtr:</span>
+                                  <span className="font-mono font-bold text-slate-800">{fmt(specs.smKgMtr, 3)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-500">SM Length:</span>
+                                  <span className="font-mono font-bold text-indigo-700">{fmt(specs.smLen, 2)} m</span>
+                                </div>
                               </div>
                             </div>
 
-                            {/* 5. Tolerances & Process Yield */}
-                            <div className="space-y-1.5 p-2 rounded-md bg-white border border-slate-200 shadow-2xs">
-                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
-                                Tolerances & Mult
+                            {/* 5. Thicken Ends & Effective */}
+                            <div className="space-y-1.5 p-2.5 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider border-b pb-1">
+                                5. Ends & Effective
                               </span>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">Mult / Multiple</label>
-                                <input
-                                  type="text"
-                                  value={group.multipleStr}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'multipleStr', e.target.value)
-                                  }
-                                  placeholder="e.g. 1 or 2-Multi"
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">OD Min - Max</label>
-                                <div className="flex gap-1">
+                              <div className="flex gap-1.5">
+                                <div className="w-1/2">
+                                  <label className="text-[10px] text-slate-500 block">FE Lg (m)</label>
                                   <input
                                     type="number"
-                                    step="0.01"
-                                    value={group.tolOdMin}
+                                    step="0.001"
+                                    value={group.feLen}
                                     onChange={(e) =>
-                                      handleUpdateGroupField(group.id, 'tolOdMin', e.target.value)
+                                      handleUpdateGroupField(group.id, 'feLen', e.target.value)
                                     }
-                                    className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono"
+                                    className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                    placeholder="0.000"
                                   />
+                                </div>
+                                <div className="w-1/2">
+                                  <label className="text-[10px] text-slate-500 block">BE Lg (m)</label>
                                   <input
                                     type="number"
-                                    step="0.01"
-                                    value={group.tolOdMax}
+                                    step="0.001"
+                                    value={group.beLen}
                                     onChange={(e) =>
-                                      handleUpdateGroupField(group.id, 'tolOdMax', e.target.value)
+                                      handleUpdateGroupField(group.id, 'beLen', e.target.value)
                                     }
-                                    className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono"
+                                    className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                    placeholder="0.000"
                                   />
                                 </div>
                               </div>
-                              <div>
-                                <label className="text-[10px] text-slate-500 block">Process Yield %</label>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={group.processYieldPct}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'processYieldPct', e.target.value)
-                                  }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold text-emerald-700"
-                                />
+                              <div className="pt-1 border-t border-slate-100 space-y-1 text-[11px]">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-500">FE Wg:</span>
+                                  <span className="font-mono text-slate-700">{fmt(specs.feWg, 3)} kg</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-500">BE Wg:</span>
+                                  <span className="font-mono text-slate-700">{fmt(specs.beWg, 3)} kg</span>
+                                </div>
+                                <div className="flex justify-between font-bold">
+                                  <span className="text-slate-700">Effective Wg:</span>
+                                  <span className="font-mono text-slate-900">{fmt(specs.effectiveWg, 3)} kg</span>
+                                </div>
+                                <div className="flex justify-between font-bold">
+                                  <span className="text-emerald-800">Effective Len:</span>
+                                  <span className="font-mono text-emerald-700">{fmt(specs.effectiveLen, 2)} m</span>
+                                </div>
                               </div>
                             </div>
+
+                            {/* 6. Length & Multi */}
+                            <div className="space-y-1.5 p-2.5 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider border-b pb-1">
+                                6. Length & Multi
+                              </span>
+                              <div className="flex gap-1.5">
+                                <div className="w-1/2">
+                                  <label className="text-[10px] text-slate-500 block">Min (m) *</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={group.reqLenMin}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'reqLenMin', e.target.value)
+                                    }
+                                    className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
+                                  />
+                                </div>
+                                <div className="w-1/2">
+                                  <label className="text-[10px] text-slate-500 block">Max (m) *</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={group.reqLenMax}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'reqLenMax', e.target.value)
+                                    }
+                                    className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex gap-1.5">
+                                <div className="w-1/2">
+                                  <label className="text-[10px] text-slate-500 block">E/R</label>
+                                  <div className="w-full rounded border border-slate-200 bg-slate-50 p-1 text-center font-mono font-bold text-xs">
+                                    {specs.erStatus}
+                                  </div>
+                                </div>
+                                <div className="w-1/2">
+                                  <label className="text-[10px] text-slate-500 block">Multi</label>
+                                  <input
+                                    type="text"
+                                    value={group.multipleStr}
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'multipleStr', e.target.value)
+                                    }
+                                    className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold text-center"
+                                  />
+                                </div>
+                              </div>
+                              <div className="pt-1 border-t border-slate-100 space-y-1 text-[11px]">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-500">Rolling mtr:</span>
+                                  <span className="font-mono font-bold text-blue-700">{fmt(specs.rollingMtr, 1)} m</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Live 35-Column Schedule Row Preview */}
+                          <div className="rounded-lg border border-slate-200 bg-white p-2.5 overflow-x-auto">
+                            <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                              <Sparkles className="h-3 w-3 text-indigo-600" />
+                              Live 35-Column Schedule Row Preview:
+                            </div>
+                            <table className="w-full text-left text-[10px] border-collapse font-mono">
+                              <thead>
+                                <tr className="bg-slate-100 text-slate-700 text-center border-b border-slate-300 font-bold">
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Sr</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Catg</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Customer</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">WO No</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Spec</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Grade</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">IBR</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Rolling Mtr</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">RM OD</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">RM Min</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">RM Max</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Wt(Kg)</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Nos</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Mton</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">WHF Wt</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">PM OD</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">PM Wt</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">PM Kg/m</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">PM Len</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">WBF Wt</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Cust OD</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Cust WT</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Roll WT</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">SM Kg/m</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">SM Len</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">FE Lg</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">FE Wg</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">BE Lg</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">BE Wg</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Eff Wg</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Eff Len</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">E/R</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Min</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Max</th>
+                                  <th className="px-1.5 py-0.5">Multi</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr className="text-center font-medium bg-slate-50/50">
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold">{specs.srNo}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold">{specs.catg}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 max-w-[100px] truncate text-left">{specs.customer}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold">{specs.woNo}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 truncate max-w-[80px]">{specs.spec}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{specs.grade}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold">{specs.ibr}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold text-blue-700">{fmt(specs.rollingMtr, 0)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.rmOd, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.rmLenMin, 3)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.rmLenMax, 3)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold">{fmt(specs.weightKg, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold text-indigo-700">{specs.nos}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold text-emerald-700">{fmt(specs.mton, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.billetWtWhf, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.pmOd, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.pmWt, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.pmKgMtr, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.pmLen, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.wtWbf, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.custOd, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.custWt, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.rollingWt, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.smKgMtr, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.smLen, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.feLen, 3)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.feWg, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.beLen, 3)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.beWg, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold">{fmt(specs.effectiveWg, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold text-emerald-800">{fmt(specs.effectiveLen, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200 font-bold">{specs.erStatus}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.minLen, 2)}</td>
+                                  <td className="px-1.5 py-1 border-r border-slate-200">{fmt(specs.maxLen, 2)}</td>
+                                  <td className="px-1.5 py-1 font-bold">{specs.multi}</td>
+                                </tr>
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       )}

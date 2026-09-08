@@ -48,6 +48,8 @@ export interface MasterGroupPayload {
   rm_od?: number | null;
   rm_len_min?: number | null;
   rm_len_max?: number | null;
+  weight_kg?: number | null;
+  billet_wt_whf?: number | null;
 
   // Plan Qty
   plan_qty_nos?: number | null;
@@ -56,21 +58,28 @@ export interface MasterGroupPayload {
   // Piercer Mill
   pm_od?: number | null;
   pm_wt?: number | null;
+  pm_kg_mtr?: number | null;
   pm_len?: number | null;
 
   // SM (Sizing Mill / Hot Hollow)
+  wt_wbf?: number | null;
   cust_od?: number | null;
   cust_wt?: number | null;
   rolling_wt?: number | null;
+  sm_kg_mtr?: number | null;
   sm_len?: number | null;
 
   // Thicken Ends
   fe_len?: number | null;
+  fe_wg?: number | null;
   be_len?: number | null;
+  be_wg?: number | null;
+  effective_wg?: number | null;
   eff_len?: number | null;
 
   // Final Length Reqd
   req_len_er?: string | null;
+  er_status?: string | null;
   req_len_min?: number | null;
   req_len_max?: number | null;
 
@@ -409,6 +418,8 @@ export async function POST(req: NextRequest) {
           rm_od: Number(g.rm_od || 63.0),
           rm_len_min: Number(g.rm_len_min || (masterWo.l1 ? Number(masterWo.l1) / 3.5 : 1.89)),
           rm_len_max: Number(g.rm_len_max || (masterWo.l2 ? Number(masterWo.l2) / 3.5 : 1.895)),
+          weight_kg: Number(g.weight_kg || 0),
+          billet_wt_whf: Number(g.billet_wt_whf || 0),
         },
         plan_qty: {
           nos: gTotalPcs,
@@ -417,24 +428,55 @@ export async function POST(req: NextRequest) {
         piercer_mill: {
           pm_od: Number(g.pm_od || 66.0),
           pm_wt: Number(g.pm_wt || 5.5),
+          pm_kg_mtr: Number(g.pm_kg_mtr || 0),
           pm_len: Number(g.pm_len || 5.41),
         },
         sm: {
+          wt_wbf: Number(g.wt_wbf || 0),
           cust_od: grpCustOd,
           cust_wt: grpCustWt,
           rolling_wt: Number(g.rolling_wt || grpCustWt),
+          sm_kg_mtr: Number(g.sm_kg_mtr || 0),
           sm_len: grpSmLen,
         },
         thicken_ends: {
           fe_len: Number(g.fe_len || 0),
+          fe_wg: Number(g.fe_wg || 0),
           be_len: Number(g.be_len || 0),
+          be_wg: Number(g.be_wg || 0),
+          effective_wg: Number(g.effective_wg || 0),
           eff_len: Number(g.eff_len || grpSmLen),
         },
         final_length: {
-          er: g.req_len_er || 'EL',
+          er: g.req_len_er || g.er_status || 'EL',
           min: Number(g.req_len_min || masterWo.l1 || 7.55),
           max: Number(g.req_len_max || masterWo.l2 || 7.55),
         },
+        // Direct root fields matching 35-column specification
+        rm_od: Number(g.rm_od || 63.0),
+        rm_len_min: Number(g.rm_len_min || (masterWo.l1 ? Number(masterWo.l1) / 3.5 : 1.89)),
+        rm_len_max: Number(g.rm_len_max || (masterWo.l2 ? Number(masterWo.l2) / 3.5 : 1.895)),
+        weight_kg: Number(g.weight_kg || 0),
+        billet_wt_whf: Number(g.billet_wt_whf || 0),
+        pm_od: Number(g.pm_od || 66.0),
+        pm_wt: Number(g.pm_wt || 5.5),
+        pm_kg_mtr: Number(g.pm_kg_mtr || 0),
+        pm_len: Number(g.pm_len || 5.41),
+        wt_wbf: Number(g.wt_wbf || 0),
+        cust_od: grpCustOd,
+        cust_wt: grpCustWt,
+        rolling_wt: Number(g.rolling_wt || grpCustWt),
+        sm_kg_mtr: Number(g.sm_kg_mtr || 0),
+        sm_len: grpSmLen,
+        fe_len: Number(g.fe_len || 0),
+        fe_wg: Number(g.fe_wg || 0),
+        be_len: Number(g.be_len || 0),
+        be_wg: Number(g.be_wg || 0),
+        effective_wg: Number(g.effective_wg || 0),
+        eff_len: Number(g.eff_len || grpSmLen),
+        req_len_er: g.req_len_er || g.er_status || 'EL',
+        req_len_min: Number(g.req_len_min || masterWo.l1 || 7.55),
+        req_len_max: Number(g.req_len_max || masterWo.l2 || 7.55),
         multiple: Number(g.multiple || multiple || 1),
         multiple_str: g.multiple_str || (Number(g.multiple || multiple) === 2 ? '2-Multi' : '1'),
         tolerances: {

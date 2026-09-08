@@ -51,38 +51,51 @@ export type Plan = {
 };
 
 export interface FactoryPlanRow {
-  srNo: number;
-  catg: string;
-  customer: string;
-  woNo: string;
-  spec: string;
-  grade: string;
-  ibr: string;
-  rollingMtr: number;
-  rmOd: number;
-  rmLenMin: number;
-  rmLenMax: number;
-  planQtyNos: number;
-  planQtyMton: number;
-  pmOd: number;
-  pmWthk: number;
-  pmLen: number;
-  custOd: number;
-  custWt: number;
-  rollingWt: number;
-  smLen: number;
-  feLen: number;
-  beLen: number;
-  effLen: number;
-  reqLenEr: string;
-  reqLenMin: number;
-  reqLenMax: number;
-  mult: string;
-  tolOdMin: number;
-  tolOdMax: number;
-  tolWtMin: number;
-  tolWtMax: number;
-  processYieldPct: number;
+  // 35-Column Manufacturing Schedule Fields
+  srNo: number;            // 1. Sr No.
+  catg: string;            // 2. Catg
+  customer: string;        // 3. Customer
+  woNo: string;            // 4. W.O. / S.O. No.
+  spec: string;            // 5. Spec
+  grade: string;           // 6. Grade
+  ibr: string;             // 7. IBR/NIBR
+  rollingMtr: number;      // 8. Rolling mtr
+  rmOd: number;            // 9. RM OD (mm)
+  rmLenMin: number;        // 10. RM Len Min
+  rmLenMax: number;        // 11. RM Len Max
+  weightKg: number;        // 12. Weight (Kgs)
+  planQtyNos: number;      // 13. Nos
+  planQtyMton: number;     // 14. Mton
+  billetWtWhf: number;     // 15. Billet Wt. After WHF
+  pmOd: number;            // 16. PM OD
+  pmWt: number;            // 17. PM Wt
+  pmKgMtr: number;         // 18. PM Kg/Mtr
+  pmLen: number;           // 19. PM Length
+  wtWbf: number;           // 20. Wt. After WBF
+  custOd: number;          // 21. Cust. OD
+  custWt: number;          // 22. Cust. WT
+  rollingWt: number;       // 23. Rolling WT
+  smKgMtr: number;         // 24. SM Kg/Mtr
+  smLen: number;           // 25. SM Length
+  feLen: number;           // 26. FE Lg (Mtr)
+  feWg: number;            // 27. FE Wg(Kgs)
+  beLen: number;           // 28. BE Lg (Mtr)
+  beWg: number;            // 29. BE Wg(Kgs)
+  effectiveWg: number;     // 30. Effective Wg (Kg)
+  effLen: number;          // 31. Effective Length
+  reqLenEr: string;        // 32. E/R
+  reqLenMin: number;       // 33. Min
+  reqLenMax: number;       // 34. Max
+  mult: string;            // 35. Multi
+
+  // Tolerances & Yield
+  tolOdMin?: number;
+  tolOdMax?: number;
+  tolWtMin?: number;
+  tolWtMax?: number;
+  processYieldPct?: number;
+
+  // Header & Linking Metadata
   campaignPlanNo: string;
   millName: string;
   monthStr: string;
@@ -383,39 +396,124 @@ export default function RollingPlanIssueReportClient() {
         });
       }
 
+      // 9. RM OD (mm)
+      const rmOd = parsed.rm_od != null ? Number(parsed.rm_od) : (parsed.billet?.rm_od != null ? Number(parsed.billet.rm_od) : 63.00);
+      // 10. RM Len Min
+      const rmLenMin = parsed.rm_len_min != null ? Number(parsed.rm_len_min) : (parsed.billet?.rm_len_min != null ? Number(parsed.billet.rm_len_min) : 1.890);
+      // 11. RM Len Max
+      const rmLenMax = parsed.rm_len_max != null ? Number(parsed.rm_len_max) : (parsed.billet?.rm_len_max != null ? Number(parsed.billet.rm_len_max) : 1.895);
+
+      // 12. Weight (Kgs) = (((RM OD)*(RM OD)*3.14*0.007856/4)*RM Len Min)
+      const weightKg = parsed.weight_kg != null
+        ? Number(parsed.weight_kg)
+        : (parsed.billet?.weight_kg != null
+          ? Number(parsed.billet.weight_kg)
+          : Number((((rmOd * rmOd * 3.14 * 0.007856) / 4) * rmLenMin).toFixed(2)));
+
+      // 21. Cust. OD
+      const custOd = parsed.cust_od != null ? Number(parsed.cust_od) : (parsed.sm?.cust_od != null ? Number(parsed.sm.cust_od) : Number(p.mh_od || p.od || 47.00));
+      // 22. Cust. WT
+      const custWt = parsed.cust_wt != null ? Number(parsed.cust_wt) : (parsed.sm?.cust_wt != null ? Number(parsed.sm.cust_wt) : Number(p.mh_wt || p.wt || 5.75));
+      // 23. Rolling WT = Cust. WT
+      const rollingWt = parsed.rolling_wt != null ? Number(parsed.rolling_wt) : (parsed.sm?.rolling_wt != null ? Number(parsed.sm.rolling_wt) : custWt);
+
+      // 24. SM Kg/Mtr = (cust OD - Cust WT) * Cust WT * 0.02467
+      const smKgMtr = parsed.sm_kg_mtr != null
+        ? Number(parsed.sm_kg_mtr)
+        : (parsed.sm?.sm_kg_mtr != null
+          ? Number(parsed.sm.sm_kg_mtr)
+          : (custOd > custWt ? Number(((custOd - custWt) * custWt * 0.02467).toFixed(3)) : 0));
+
+      // 20. Wt. After WBF = Weight (Kgs) * 0.97
+      const wtWbf = parsed.wt_wbf != null ? Number(parsed.wt_wbf) : (parsed.sm?.wt_wbf != null ? Number(parsed.sm.wt_wbf) : Number((weightKg * 0.97).toFixed(2)));
+
+      // 25. SM Length = Wt. After WBF / SM Kg/Mtr
+      const smLen = parsed.sm_len != null
+        ? Number(parsed.sm_len)
+        : (parsed.sm?.sm_len != null
+          ? Number(parsed.sm.sm_len)
+          : (smKgMtr > 0 ? Number((wtWbf / smKgMtr).toFixed(2)) : 7.67));
+
+      // 26. FE Lg (Mtr)
+      const feLen = parsed.fe_len != null ? Number(parsed.fe_len) : (parsed.thicken_ends?.fe_len != null ? Number(parsed.thicken_ends.fe_len) : 0.000);
+      // 27. FE Wg(Kgs) = SM Kg/Mtr * FE Lg (Mtr)
+      const feWg = parsed.fe_wg != null
+        ? Number(parsed.fe_wg)
+        : (parsed.thicken_ends?.fe_wg != null
+          ? Number(parsed.thicken_ends.fe_wg)
+          : (smKgMtr > 0 && feLen > 0 ? Number((smKgMtr * feLen).toFixed(2)) : 0.0));
+
+      // 28. BE Lg (Mtr)
+      const beLen = parsed.be_len != null ? Number(parsed.be_len) : (parsed.thicken_ends?.be_len != null ? Number(parsed.thicken_ends.be_len) : 0.000);
+      // 29. BE Wg(Kgs) = SM Kg/Mtr * BE Lg (Mtr)
+      const beWg = parsed.be_wg != null
+        ? Number(parsed.be_wg)
+        : (parsed.thicken_ends?.be_wg != null
+          ? Number(parsed.thicken_ends.be_wg)
+          : (smKgMtr > 0 && beLen > 0 ? Number((smKgMtr * beLen).toFixed(2)) : 0.0));
+
+      // 30. Effective Wg (Kg) = Wt. After WBF - FE Wg(Kgs) - BE Wg(Kgs)
+      const effectiveWg = parsed.effective_wg != null
+        ? Number(parsed.effective_wg)
+        : (parsed.thicken_ends?.effective_wg != null
+          ? Number(parsed.thicken_ends.effective_wg)
+          : Number(Math.max(0, wtWbf - feWg - beWg).toFixed(2)));
+
+      // 31. Effective Length = Effective Wg (Kg) / SM Kg/Mtr
+      const effLen = parsed.eff_len != null
+        ? Number(parsed.eff_len)
+        : (parsed.thicken_ends?.eff_len != null
+          ? Number(parsed.thicken_ends.eff_len)
+          : (smKgMtr > 0 ? Number((effectiveWg / smKgMtr).toFixed(2)) : smLen));
+
+      // 15. Billet Wt. After WHF = Weight (Kgs) * 0.97
+      const billetWtWhf = parsed.billet_wt_whf != null ? Number(parsed.billet_wt_whf) : (parsed.billet?.billet_wt_whf != null ? Number(parsed.billet.billet_wt_whf) : Number((weightKg * 0.97).toFixed(2)));
+
+      // 16. PM OD = RM OD (mm) + 5
+      const pmOd = parsed.pm_od != null ? Number(parsed.pm_od) : (parsed.piercer_mill?.pm_od != null ? Number(parsed.piercer_mill.pm_od) : Number((rmOd + 5).toFixed(1)));
+      // 17. PM Wt = Rolling WT - 0.25
+      const pmWt = parsed.pm_wt != null ? Number(parsed.pm_wt) : (parsed.piercer_mill?.pm_wt != null ? Number(parsed.piercer_mill.pm_wt) : Number((rollingWt - 0.25).toFixed(2)));
+      // 18. PM Kg/Mtr = (PM OD - PM WT) * PM WT * 0.02467
+      const pmKgMtr = parsed.pm_kg_mtr != null
+        ? Number(parsed.pm_kg_mtr)
+        : (parsed.piercer_mill?.pm_kg_mtr != null
+          ? Number(parsed.piercer_mill.pm_kg_mtr)
+          : (pmOd > pmWt ? Number(((pmOd - pmWt) * pmWt * 0.02467).toFixed(3)) : 0));
+      // 19. PM Length = Billet Wt. After WHF / PM KG/MTR
+      const pmLen = parsed.pm_len != null
+        ? Number(parsed.pm_len)
+        : (parsed.piercer_mill?.pm_len != null
+          ? Number(parsed.piercer_mill.pm_len)
+          : (pmKgMtr > 0 ? Number((billetWtWhf / pmKgMtr).toFixed(2)) : 5.41));
+
+      // 8. Rolling mtr = Calculated from Planned Nos * MH Average Length (or sum of child HTC mtr)
       const rollingMtr = parsed.rolling_mtr != null
         ? Number(parsed.rolling_mtr)
         : (childSubRows.length > 0 ? childSubRows.reduce((sum, r) => sum + r.htcMtr, 0) : Number(p.planned_mtr || 0));
 
-      const rmOd = parsed.rm_od != null ? Number(parsed.rm_od) : 63.00;
-      const rmLenMin = parsed.rm_len_min != null ? Number(parsed.rm_len_min) : 1.890;
-      const rmLenMax = parsed.rm_len_max != null ? Number(parsed.rm_len_max) : 1.895;
+      // 13. Nos = Rolling MTR / Effective Length
+      const planQtyNos = parsed.plan_qty_nos != null
+        ? Number(parsed.plan_qty_nos)
+        : (effLen > 0 ? Math.round(rollingMtr / effLen) : Number(p.planned_pcs || 0));
 
-      const planQtyNos = parsed.plan_qty_nos != null ? Number(parsed.plan_qty_nos) : Number(p.planned_pcs || 1563);
-      const planQtyMton = parsed.plan_qty_mton != null ? Number(parsed.plan_qty_mton) : Number(p.planned_mt || 72.3);
+      // 14. Mton = (Weight (Kgs) * Nos) / 1000
+      const planQtyMton = parsed.plan_qty_mton != null
+        ? Number(parsed.plan_qty_mton)
+        : Number(((weightKg * planQtyNos) / 1000).toFixed(2));
 
-      const pmOd = parsed.pm_od != null ? Number(parsed.pm_od) : Number(p.mh_od || 66.0);
-      const pmWthk = parsed.pm_wt != null ? Number(parsed.pm_wt) : 5.50;
-      const pmLen = parsed.pm_len != null ? Number(parsed.pm_len) : 5.41;
+      // 33. Min, 34. Max
+      const reqLenMin = parsed.req_len_min != null ? Number(parsed.req_len_min) : (parsed.final_length?.min != null ? Number(parsed.final_length.min) : Number(p.l1 || 7.55));
+      const reqLenMax = parsed.req_len_max != null ? Number(parsed.req_len_max) : (parsed.final_length?.max != null ? Number(parsed.final_length.max) : Number(p.l2 || 7.55));
 
-      const custOd = parsed.cust_od != null ? Number(parsed.cust_od) : Number(p.mh_od || p.od || 47.00);
-      const custWt = parsed.cust_wt != null ? Number(parsed.cust_wt) : Number(p.mh_wt || p.wt || 5.75);
-      const rollingWt = parsed.rolling_wt != null ? Number(parsed.rolling_wt) : custWt;
-      const smLen = parsed.sm_len != null ? Number(parsed.sm_len) : Number(p.mh_l1 || 7.67);
+      // 32. E/R = if Min=Max, "EL", "RL"
+      const reqLenEr = parsed.req_len_er || parsed.er_status || (parsed.final_length?.er) || (reqLenMin === reqLenMax ? 'EL' : 'RL');
 
-      const feLen = parsed.fe_len != null ? Number(parsed.fe_len) : 0.000;
-      const beLen = parsed.be_len != null ? Number(parsed.be_len) : 0.000;
-      const effLen = parsed.eff_len != null ? Number(parsed.eff_len) : smLen;
-
-      const reqLenEr = parsed.req_len_er || 'EL';
-      const reqLenMin = parsed.req_len_min != null ? Number(parsed.req_len_min) : Number(p.l1 || 7.55);
-      const reqLenMax = parsed.req_len_max != null ? Number(parsed.req_len_max) : Number(p.l2 || 7.55);
-
+      // 35. Multi
       const mult = parsed.multiple_str || (p.multiple > 1 ? `${p.multiple}-Multi` : '1');
-      const tolOdMin = parsed.tol_od_min != null ? Number(parsed.tol_od_min) : 46.60;
-      const tolOdMax = parsed.tol_od_max != null ? Number(parsed.tol_od_max) : 47.40;
-      const tolWtMin = parsed.tol_wt_min != null ? Number(parsed.tol_wt_min) : 5.32;
-      const tolWtMax = parsed.tol_wt_max != null ? Number(parsed.tol_wt_max) : 6.33;
+      const tolOdMin = parsed.tol_od_min != null ? Number(parsed.tol_od_min) : (custOd - 0.4);
+      const tolOdMax = parsed.tol_od_max != null ? Number(parsed.tol_od_max) : (custOd + 0.4);
+      const tolWtMin = parsed.tol_wt_min != null ? Number(parsed.tol_wt_min) : (custWt * 0.92);
+      const tolWtMax = parsed.tol_wt_max != null ? Number(parsed.tol_wt_max) : (custWt * 1.1);
       const processYieldPct = parsed.process_yield_pct != null ? Number(parsed.process_yield_pct) : 95.50;
 
       const campaignPlanNo = parsed.campaign_plan_no || p.plan_no;
@@ -425,33 +523,44 @@ export default function RollingPlanIssueReportClient() {
       const prevPlanNo = parsed.prev_plan_no || '01';
 
       return {
-        srNo: idx + 1,
-        catg,
-        customer: p.customer_name || 'Shanta Techno',
-        woNo: p.work_order_no,
-        spec,
-        grade,
-        ibr,
-        rollingMtr,
-        rmOd,
-        rmLenMin,
-        rmLenMax,
-        planQtyNos,
-        planQtyMton,
-        pmOd,
-        pmWthk,
-        pmLen,
-        custOd,
-        custWt,
-        rollingWt,
-        smLen,
-        feLen,
-        beLen,
-        effLen,
-        reqLenEr,
-        reqLenMin,
-        reqLenMax,
-        mult,
+        // Exact 35 Columns
+        srNo: idx + 1,        // 1. Sr No.
+        catg,                 // 2. Catg
+        customer,             // 3. Customer
+        woNo,                 // 4. W.O. / S.O. No.
+        spec,                 // 5. Spec
+        grade,                // 6. Grade
+        ibr,                  // 7. IBR/NIBR
+        rollingMtr,           // 8. Rolling mtr
+        rmOd,                 // 9. RM OD (mm)
+        rmLenMin,             // 10. RM Len Min
+        rmLenMax,             // 11. RM Len Max
+        weightKg,             // 12. Weight (Kgs)
+        planQtyNos,           // 13. Nos
+        planQtyMton,          // 14. Mton
+        billetWtWhf,          // 15. Billet Wt. After WHF
+        pmOd,                 // 16. PM OD
+        pmWt,                 // 17. PM Wt
+        pmKgMtr,              // 18. PM Kg/Mtr
+        pmLen,                // 19. PM Length
+        wtWbf,                // 20. Wt. After WBF
+        custOd,               // 21. Cust. OD
+        custWt,               // 22. Cust. WT
+        rollingWt,            // 23. Rolling WT
+        smKgMtr,              // 24. SM Kg/Mtr
+        smLen,                // 25. SM Length
+        feLen,                // 26. FE Lg (Mtr)
+        feWg,                 // 27. FE Wg(Kgs)
+        beLen,                // 28. BE Lg (Mtr)
+        beWg,                 // 29. BE Wg(Kgs)
+        effectiveWg,          // 30. Effective Wg (Kg)
+        effLen,               // 31. Effective Length
+        reqLenEr,             // 32. E/R
+        reqLenMin,            // 33. Min
+        reqLenMax,            // 34. Max
+        mult,                 // 35. Multi
+
+        // Metadata & linking
         tolOdMin,
         tolOdMax,
         tolWtMin,
@@ -521,6 +630,97 @@ export default function RollingPlanIssueReportClient() {
   };
 
   const exportCSV = () => {
+    if (viewMode === 'factory') {
+      if (!factoryRows.length) {
+        toast.error('No data available to export.');
+        return;
+      }
+      const headers = [
+        'Sr No.',
+        'Catg',
+        'Customer',
+        'W.O. / S.O. No.',
+        'Spec',
+        'Grade',
+        'IBR/NIBR',
+        'Rolling mtr',
+        'RM OD (mm)',
+        'RM Len Min',
+        'RM Len Max',
+        'Weight (Kgs)',
+        'Nos',
+        'Mton',
+        'Billet Wt. After WHF',
+        'PM OD',
+        'PM Wt',
+        'PM Kg/Mtr',
+        'PM Length',
+        'Wt. After WBF',
+        'Cust. OD',
+        'Cust. WT',
+        'Rolling WT',
+        'SM Kg/Mtr',
+        'SM Length',
+        'FE Lg (Mtr)',
+        'FE Wg(Kgs)',
+        'BE Lg (Mtr)',
+        'BE Wg(Kgs)',
+        'Effective Wg (Kg)',
+        'Effective Length',
+        'E/R',
+        'Min',
+        'Max',
+        'Multi',
+      ];
+      const rows = factoryRows.map((r) => [
+        r.srNo,
+        r.catg,
+        `"${(r.customer || '').replace(/"/g, '""')}"`,
+        r.woNo,
+        `"${(r.spec || '').replace(/"/g, '""')}"`,
+        r.grade,
+        r.ibr,
+        r.rollingMtr,
+        r.rmOd,
+        r.rmLenMin,
+        r.rmLenMax,
+        r.weightKg,
+        r.planQtyNos,
+        r.planQtyMton,
+        r.billetWtWhf,
+        r.pmOd,
+        r.pmWt,
+        r.pmKgMtr,
+        r.pmLen,
+        r.wtWbf,
+        r.custOd,
+        r.custWt,
+        r.rollingWt,
+        r.smKgMtr,
+        r.smLen,
+        r.feLen,
+        r.feWg,
+        r.beLen,
+        r.beWg,
+        r.effectiveWg,
+        r.effLen,
+        r.reqLenEr,
+        r.reqLenMin,
+        r.reqLenMax,
+        r.mult,
+      ]);
+      const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `Rolling_Plan_35Col_Schedule_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('35-Column Factory Schedule exported to CSV.');
+      return;
+    }
+
     if (!filteredPlans.length) {
       toast.error('No data available to export.');
       return;
@@ -846,7 +1046,7 @@ export default function RollingPlanIssueReportClient() {
               This Plan is Started after Plan No. {activeSheetMeta.prevPlanNo}
             </div>
 
-            {/* Main Production Plan Table (17 Column Groups - Exact 2-Tier Header) */}
+            {/* Main Production Plan Table (35 Columns - Exact 2-Tier Header) */}
             <div className="overflow-x-auto mt-1">
               <table className="w-full text-left text-[11px] border-collapse border border-black font-sans">
                 <thead>
@@ -855,99 +1055,95 @@ export default function RollingPlanIssueReportClient() {
                     <th rowSpan={2} className="border border-black px-1 py-1 w-6">Sr No.</th>
                     <th rowSpan={2} className="border border-black px-1 py-1 w-10">Catg</th>
                     <th rowSpan={2} className="border border-black px-1.5 py-1">Customer</th>
-                    <th rowSpan={2} className="border border-black px-1.5 py-1 whitespace-nowrap">W.O./S.O. No.</th>
+                    <th rowSpan={2} className="border border-black px-1.5 py-1 whitespace-nowrap">W.O. / S.O. No.</th>
                     <th rowSpan={2} className="border border-black px-1 py-1">Spec</th>
                     <th rowSpan={2} className="border border-black px-1 py-1">Grade</th>
                     <th rowSpan={2} className="border border-black px-1 py-1 w-12">IBR/NIBR</th>
                     <th rowSpan={2} className="border border-black px-1.5 py-1 whitespace-nowrap">Rolling mtr</th>
                     
-                    {/* Billet Dimensions (3 cols) */}
-                    <th colSpan={3} className="border border-black px-1 py-0.5">Billet Dimensions</th>
+                    {/* Billet Dimensions & Weight (4 cols) */}
+                    <th colSpan={4} className="border border-black px-1 py-0.5">Billet Dimensions & Weight</th>
                     
-                    {/* Plan qty (2 cols) */}
-                    <th colSpan={2} className="border border-black px-1 py-0.5">Plan qty</th>
+                    {/* Plan qty & WHF (3 cols) */}
+                    <th colSpan={3} className="border border-black px-1 py-0.5">Plan Qty & WHF</th>
                     
-                    {/* Piercer Mill (3 cols) */}
-                    <th colSpan={3} className="border border-black px-1 py-0.5">Piercer Mill</th>
+                    {/* Piercer Mill (4 cols) */}
+                    <th colSpan={4} className="border border-black px-1 py-0.5">Piercer Mill</th>
                     
-                    {/* SM (4 cols) */}
-                    <th colSpan={4} className="border border-black px-1 py-0.5">SM</th>
+                    {/* Sizing Mill (SM) / Hollow (6 cols) */}
+                    <th colSpan={6} className="border border-black px-1 py-0.5">Sizing Mill (SM) / Hot Hollow</th>
                     
-                    {/* Thicken Ends (3 cols) */}
-                    <th colSpan={3} className="border border-black px-1 py-0.5">Thicken Ends</th>
+                    {/* Thicken Ends & Effective (6 cols) */}
+                    <th colSpan={6} className="border border-black px-1 py-0.5">Thicken Ends & Effective</th>
                     
-                    {/* Final Length Reqd (3 cols) */}
-                    <th colSpan={3} className="border border-black px-1 py-0.5">Final Length Reqd</th>
-                    
-                    <th rowSpan={2} className="border border-black px-1 py-1 w-8">Mult</th>
-                    
-                    {/* Dimension Tolerances (4 cols) */}
-                    <th colSpan={4} className="border border-black px-1 py-0.5">Dimension Tolerances</th>
-                    
-                    <th rowSpan={2} className="border border-black px-1 py-1 whitespace-nowrap">Process Yld %</th>
+                    {/* Final Length Reqd & Multi (4 cols) */}
+                    <th colSpan={4} className="border border-black px-1 py-0.5">Final Length Reqd & Multi</th>
                   </tr>
 
-                  {/* Tier 2 Header */}
+                  {/* Tier 2 Header (35 Columns Detailed Names) */}
                   <tr className="bg-slate-100 print:bg-white text-center font-bold text-black border-b border-black text-[9px]">
-                    {/* Billet Dimensions */}
+                    {/* 9-12. Billet Dimensions & Weight */}
                     <th className="border border-black px-1 py-0.5 whitespace-nowrap">RM OD (mm)</th>
                     <th className="border border-black px-1 py-0.5 whitespace-nowrap">RM Len Min</th>
                     <th className="border border-black px-1 py-0.5 whitespace-nowrap">RM Len Max</th>
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">Weight (Kgs)</th>
                     
-                    {/* Plan qty */}
+                    {/* 13-15. Plan qty & WHF */}
                     <th className="border border-black px-1 py-0.5">Nos</th>
                     <th className="border border-black px-1 py-0.5">Mton</th>
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">Billet Wt. After WHF</th>
                     
-                    {/* Piercer Mill */}
+                    {/* 16-19. Piercer Mill */}
                     <th className="border border-black px-1 py-0.5">PM OD</th>
-                    <th className="border border-black px-1 py-0.5">PM Wthk</th>
+                    <th className="border border-black px-1 py-0.5">PM Wt</th>
+                    <th className="border border-black px-1 py-0.5">PM Kg/Mtr</th>
                     <th className="border border-black px-1 py-0.5">PM Length</th>
                     
-                    {/* SM */}
+                    {/* 20-25. Sizing Mill (SM) / Hollow */}
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">Wt. After WBF</th>
                     <th className="border border-black px-1 py-0.5">Cust. OD</th>
                     <th className="border border-black px-1 py-0.5">Cust. WT</th>
                     <th className="border border-black px-1 py-0.5">Rolling WT</th>
+                    <th className="border border-black px-1 py-0.5">SM Kg/Mtr</th>
                     <th className="border border-black px-1 py-0.5">SM Length</th>
                     
-                    {/* Thicken Ends */}
-                    <th className="border border-black px-1 py-0.5">FE Lg (Mtr)</th>
-                    <th className="border border-black px-1 py-0.5">BE Lg (Mtr)</th>
-                    <th className="border border-black px-1 py-0.5">Effective Length</th>
+                    {/* 26-31. Thicken Ends & Effective */}
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">FE Lg (Mtr)</th>
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">FE Wg (Kgs)</th>
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">BE Lg (Mtr)</th>
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">BE Wg (Kgs)</th>
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">Effective Wg (Kg)</th>
+                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">Effective Length</th>
                     
-                    {/* Final Length Reqd */}
+                    {/* 32-35. Final Length Reqd & Multi */}
                     <th className="border border-black px-1 py-0.5">E/R</th>
                     <th className="border border-black px-1 py-0.5">Min</th>
                     <th className="border border-black px-1 py-0.5">Max</th>
-                    
-                    {/* Dimension Tolerances */}
-                    <th className="border border-black px-1 py-0.5">OD Min</th>
-                    <th className="border border-black px-1 py-0.5">OD Max</th>
-                    <th className="border border-black px-1 py-0.5">Thk Min</th>
-                    <th className="border border-black px-1 py-0.5">Thk Max</th>
+                    <th className="border border-black px-1 py-0.5">Multi</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-black text-black">
                   {loading ? (
                     <tr>
-                      <td colSpan={28} className="p-8 text-center text-slate-500 border border-black">
+                      <td colSpan={35} className="p-8 text-center text-slate-500 border border-black">
                         <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                         Loading factory cutting plan schedule...
                       </td>
                     </tr>
                   ) : factoryRows.length === 0 ? (
                     <tr>
-                      <td colSpan={28} className="p-8 text-center text-slate-500 border border-black">
+                      <td colSpan={35} className="p-8 text-center text-slate-500 border border-black">
                         No active cutting plan records found. Create or select a plan above.
                       </td>
                     </tr>
                   ) : (
                     factoryRows.map((row) => (
                       <React.Fragment key={`setup-${row.srNo}-${row.woNo}`}>
-                        {/* Optional Multi Header row (like 2-Multi in photo above rows 5 & 6) */}
+                        {/* Optional Multi Header row */}
                         {row.mult.includes('Multi') && (
                           <tr className="bg-slate-50 print:bg-white text-center font-bold text-xs border border-black">
-                            <td colSpan={28} className="py-0.5 text-center font-black border border-black">
+                            <td colSpan={35} className="py-0.5 text-center font-black border border-black">
                               <span className="inline-block px-3 py-0.5 rounded bg-slate-200 border border-black font-mono">
                                 {row.mult}
                               </span>
@@ -955,7 +1151,7 @@ export default function RollingPlanIssueReportClient() {
                           </tr>
                         )}
 
-                        {/* Main Master Setup Row */}
+                        {/* Main Master Setup Row - All 35 Columns */}
                         <tr className="hover:bg-slate-50/60 print:hover:bg-transparent font-medium border-t border-black text-[10px]">
                           {/* 1. Sr No */}
                           <td className="border border-black px-1 py-1 text-center font-bold">{row.srNo}</td>
@@ -968,7 +1164,7 @@ export default function RollingPlanIssueReportClient() {
                             {row.customer}
                           </td>
                           
-                          {/* 4. W.O./S.O. No */}
+                          {/* 4. W.O. / S.O. No */}
                           <td className="border border-black px-1.5 py-1 font-bold font-mono whitespace-nowrap">
                             {row.woNo}
                           </td>
@@ -987,55 +1183,92 @@ export default function RollingPlanIssueReportClient() {
                             {fmt(row.rollingMtr, 0)}
                           </td>
                           
-                          {/* 9. Billet Dimensions */}
+                          {/* 9. RM OD (mm) */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rmOd, 2)}</td>
+                          
+                          {/* 10. RM Len Min */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rmLenMin, 3)}</td>
+                          
+                          {/* 11. RM Len Max */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rmLenMax, 3)}</td>
                           
-                          {/* 10. Plan qty */}
-                          <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.planQtyNos, 0)}</td>
-                          <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.planQtyMton, 1)}</td>
+                          {/* 12. Weight (Kgs) */}
+                          <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.weightKg, 2)}</td>
                           
-                          {/* 11. Piercer Mill */}
+                          {/* 13. Nos */}
+                          <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.planQtyNos, 0)}</td>
+                          
+                          {/* 14. Mton */}
+                          <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.planQtyMton, 2)}</td>
+                          
+                          {/* 15. Billet Wt. After WHF */}
+                          <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.billetWtWhf, 2)}</td>
+                          
+                          {/* 16. PM OD */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmOd, 1)}</td>
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmWthk, 2)}</td>
+                          
+                          {/* 17. PM Wt */}
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmWt, 2)}</td>
+                          
+                          {/* 18. PM Kg/Mtr */}
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmKgMtr, 3)}</td>
+                          
+                          {/* 19. PM Length */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmLen, 2)}</td>
                           
-                          {/* 12. SM */}
+                          {/* 20. Wt. After WBF */}
+                          <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.wtWbf, 2)}</td>
+                          
+                          {/* 21. Cust. OD */}
                           <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.custOd, 2)}</td>
+                          
+                          {/* 22. Cust. WT */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.custWt, 2)}</td>
+                          
+                          {/* 23. Rolling WT */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rollingWt, 2)}</td>
+                          
+                          {/* 24. SM Kg/Mtr */}
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.smKgMtr, 3)}</td>
+                          
+                          {/* 25. SM Length */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.smLen, 2)}</td>
                           
-                          {/* 13. Thicken Ends */}
+                          {/* 26. FE Lg (Mtr) */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.feLen, 3)}</td>
+                          
+                          {/* 27. FE Wg(Kgs) */}
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.feWg, 2)}</td>
+                          
+                          {/* 28. BE Lg (Mtr) */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.beLen, 3)}</td>
+                          
+                          {/* 29. BE Wg(Kgs) */}
+                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.beWg, 2)}</td>
+                          
+                          {/* 30. Effective Wg (Kg) */}
+                          <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.effectiveWg, 2)}</td>
+                          
+                          {/* 31. Effective Length */}
                           <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.effLen, 2)}</td>
                           
-                          {/* 14. Final Length Reqd */}
+                          {/* 32. E/R */}
                           <td className="border border-black px-1 py-1 text-center font-bold">{row.reqLenEr}</td>
+                          
+                          {/* 33. Min */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.reqLenMin, 2)}</td>
+                          
+                          {/* 34. Max */}
                           <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.reqLenMax, 2)}</td>
                           
-                          {/* 15. Mult */}
+                          {/* 35. Multi */}
                           <td className="border border-black px-1 py-1 text-center font-mono font-bold">{row.mult}</td>
-                          
-                          {/* 16. Dimension Tolerances */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.tolOdMin, 2)}</td>
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.tolOdMax, 2)}</td>
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.tolWtMin, 2)}</td>
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.tolWtMax, 2)}</td>
-                          
-                          {/* 17. Process Yld % */}
-                          <td className="border border-black px-1.5 py-1 text-right font-mono font-bold">
-                            {fmt(row.processYieldPct, 2)}%
-                          </td>
                         </tr>
 
                         {/* Sub-Rows: Exact child order breakdown lines matching the photo */}
                         {row.childSubRows.map((child, cIdx) => (
                           <tr key={`sub-${row.srNo}-${cIdx}`} className="bg-white text-[9.5px] border-b border-black">
-                            <td colSpan={28} className="px-3 py-0.5 border border-black font-mono text-black leading-tight">
+                            <td colSpan={35} className="px-3 py-0.5 border border-black font-mono text-black leading-tight">
                               <span className="font-bold">
                                 {child.catg}(finish size-{child.finishSize})(Final len - {child.finalLen})(OA-{child.woNo})(Cust.- {child.customer})(Hollow len-{child.hollowLen})(HTC mtr-{fmt(child.htcMtr, 0)})
                               </span>
