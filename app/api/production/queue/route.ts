@@ -369,18 +369,25 @@ export async function GET(req: NextRequest) {
       const finLogs = getStageLogs(woId, finStageId);
       let finOutMtr = sumQty(finLogs, "output_qty");
       let finRejMtr = sumQty(finLogs, "rejection_qty");
-      let finOutPcs = sumQty(finLogs, "output_pcs");
-      let finRejPcs = sumQty(finLogs, "rejection_pcs");
+      let finOutPcs = avgLength > 0 ? Math.round(finOutMtr / avgLength) : 0;
+      let finRejPcs = avgLength > 0 ? Math.round(finRejMtr / avgLength) : 0;
 
       // If this is a master campaign with child orders, also include child finishing production in consumed stock
       if (campaign && Array.isArray(campaign.child_work_orders)) {
         for (const child of campaign.child_work_orders) {
           const cId = child.work_order_id || child.id;
           const childFinLogs = getStageLogs(cId, finStageId);
-          finOutMtr += sumQty(childFinLogs, "output_qty");
-          finRejMtr += sumQty(childFinLogs, "rejection_qty");
-          finOutPcs += sumQty(childFinLogs, "output_pcs");
-          finRejPcs += sumQty(childFinLogs, "rejection_pcs");
+          const cOutMtr = sumQty(childFinLogs, "output_qty");
+          const cRejMtr = sumQty(childFinLogs, "rejection_qty");
+          const childWo = woMap.get(cId);
+          const childL1 = Number(child.l1 || childWo?.l1 || 0);
+          const childL2 = Number(child.l2 || childWo?.l2 || 0);
+          const childAvg = childL1 > 0 && childL2 > 0 ? (childL1 + childL2) / 2 : childL1 || avgLength;
+
+          finOutMtr += cOutMtr;
+          finRejMtr += cRejMtr;
+          finOutPcs += childAvg > 0 ? Math.round(cOutMtr / childAvg) : 0;
+          finRejPcs += childAvg > 0 ? Math.round(cRejMtr / childAvg) : 0;
         }
       }
       const finNetMtr = Math.max(0, finOutMtr - finRejMtr);
@@ -432,8 +439,8 @@ export async function GET(req: NextRequest) {
       const finDivOutPcs = avgLength > 0 ? Math.round(finDivOut / avgLength) : 0;
 
       const finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finOutPcs - finRejPcs - finDivOutPcs);
-      const finAvailMtr = avgLength > 0 && finAvailPcs > 0
-        ? Number((finAvailPcs * avgLength).toFixed(3))
+      const finAvailMtr = avgLength > 0
+        ? (finAvailPcs > 0 ? Number((finAvailPcs * avgLength).toFixed(3)) : 0)
         : Math.max(0, finIncomingMtr + finDivIn - finOutMtr - finRejMtr - finDivOut);
       const finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 

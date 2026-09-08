@@ -139,9 +139,15 @@ export default async function Dashboard() {
         const htRejPcs = avgLen > 0 ? Math.round(htRejMtr / avgLen) : 0;
         const htTotalPcs = htOutPcs + htRejPcs;
 
-        // Finishing (tracked per work order)
-        const woLogs = prodLogs.filter((l: any) => l.work_order_id === r.work_order_id);
-        const finLogs = woLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'FINISHING');
+        // Finishing (tracked per work order, aggregating child orders for master campaign)
+        const isMasterWithChildren = !childInfo && Array.from(childMap.values()).some((c) => c.master_wo_id === r.work_order_id);
+        const finLogs = prodLogs.filter((l: any) => {
+          const stage = l.process_stages?.stage_code || l.stage_code;
+          if (stage !== 'FINISHING') return false;
+          if (l.work_order_id === r.work_order_id) return true;
+          if (isMasterWithChildren && childMap.get(l.work_order_id)?.master_wo_id === r.work_order_id) return true;
+          return false;
+        });
         const finOutMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
         const finRejMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
         const finOutPcs = avgLen > 0 ? Math.round(finOutMtr / avgLen) : 0;
