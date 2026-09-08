@@ -803,7 +803,7 @@ export default function RollingPlanIssueReportClient() {
         childSubRows,
       };
     });
-  }, [filteredPlans, selectedCampaignPlan]);
+  }, [filteredPlans, selectedCampaignPlan, plans]);
 
   // Primary Metadata for Active Factory Sheet Header
   const activeSheetMeta = useMemo(() => {

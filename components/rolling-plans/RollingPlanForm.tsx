@@ -2143,7 +2143,7 @@ export default function RollingPlanForm() {
                                     step="0.1"
                                     value={group.pmOd}
                                     placeholder={String(specs.pmOd)}
-                                    onChange={(e) => updateGroupField(group.id, 'pmOd', e.target.value)}
+                                    onChange={(e) => handleUpdateGroupField(group.id, 'pmOd', e.target.value)}
                                     className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs font-mono font-bold text-slate-900 focus:border-indigo-500 focus:outline-hidden"
                                   />
                                 </div>
@@ -2154,7 +2154,7 @@ export default function RollingPlanForm() {
                                     step="0.01"
                                     value={group.pmWt}
                                     placeholder={String(specs.pmWt)}
-                                    onChange={(e) => updateGroupField(group.id, 'pmWt', e.target.value)}
+                                    onChange={(e) => handleUpdateGroupField(group.id, 'pmWt', e.target.value)}
                                     className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs font-mono font-bold text-slate-900 focus:border-indigo-500 focus:outline-hidden"
                                   />
                                 </div>
