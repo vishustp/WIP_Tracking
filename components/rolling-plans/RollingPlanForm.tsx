@@ -96,11 +96,11 @@ export interface SelectedOrderEntry {
   availableMtr: number;
 }
 
-const fmt = (n: number | null | undefined) =>
+const fmt = (n: number | null | undefined, digits = 2) =>
   n == null
     ? '—'
     : Number(n).toLocaleString(undefined, {
-        maximumFractionDigits: 3,
+        maximumFractionDigits: digits,
       });
 
 const formatFinalSizeLength = (p: { l1?: number | null; l2?: number | null; avg_length?: number | null }) => {
