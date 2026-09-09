@@ -80,20 +80,14 @@ function buildMarkingString(
   const hydroStr = params.hydroPsi
     ? (params.hydroPsi.includes('PSI') ? params.hydroPsi : `${params.hydroPsi} PSI`)
     : '2500 PSI';
-  const woNoClean = String(params.woNo || '').trim();
-  const poNoClean = String(params.poNo || '').trim();
-  const woPart = woNoClean ? `WO NO -${woNoClean}` : 'WO NO -';
-  const poPart = poNoClean ? ` / PO NO -${poNoClean}` : '';
 
   if (type === 'triple') {
-    return `(IBR) RASHMI SMLS / LOGO / ${rCode} / ASTM A106 Gr B / ASTM A106 Gr B /ASME SA106 GR B/ASTM A53 GR B/ API 5L GR B/ NACE MR0103/MR0175 OD ${odStr} MM X WT ${wtStr} MM / HYDRO TESTED ${hydroStr} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
+    return `(IBR) RASHMI SMLS / LOGO / ${rCode} /ASTM A106 Gr B /ASME SA106 GR B/ASTM A53 GR B/ API 5L GR B/ NACE MR0103/MR0175 OD ${odStr} MM X WT ${wtStr} MM / HYDRO TESTED ${hydroStr} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
   }
 
-  // Single Marking (existing format)
-  if (params.hydroPsi) {
-    return `RASHMI SMLS / LOGO / ${rCode} / ${params.specification || 'ASTM SPEC'} / ${params.grade || 'STEEL GRADE'} / OD ${odStr} MM X WT ${wtStr} MM / HYDRO TESTED ${hydroStr} / NDE / ${woPart}${poPart} + LENGTH......MM + H .NO____  + BUNDLE NO..............`;
-  }
-  return `RASHMI SMLS / LOGO / ${rCode} / ${params.specification || 'ASTM SPEC'} / ${params.grade || 'STEEL GRADE'} / OD ${odStr} MM X WT ${wtStr} MM / NDE / ${woPart}${poPart} + LENGTH......MM + H .NO____  + BUNDLE NO..............`;
+  // Single Marking
+  const specGrade = params.specification || params.grade || 'ASME SA210 Gr.A1';
+  return `(IBR) RASHMI SMLS / LOGO / ${rCode} / ${specGrade} / OD ${odStr} MM X WT ${wtStr} MM / HYDRO TESTED ${hydroStr} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
 }
 
 export default function ProcessSheetReportClient() {
@@ -227,7 +221,7 @@ export default function ProcessSheetReportClient() {
   const [markingType, setMarkingType] = useState<'single' | 'triple'>('single');
   const markingTypeRef = useRef<'single' | 'triple'>('single');
   markingTypeRef.current = markingType;
-  const [marking, setMarking] = useState('RASHMI SMLS / LOGO / HFS / ASTM SPEC / STEEL GRADE / OD 0.00 MM X WT 0.00 MM / NDE / WO NO - + LENGTH......MM + H .NO____  + BUNDLE NO..............');
+  const [marking, setMarking] = useState('(IBR) RASHMI SMLS / LOGO / CDS / ASME SA210 Gr.A1 / OD 63.50 MM X WT 4.06 MM / HYDRO TESTED 2500 PSI / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............');
 
   // Signatures
   const [preparedBy] = useState('PPC EXEC');
