@@ -197,144 +197,180 @@ export default function ProcessSheetReportClient() {
     return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
   });
 
-  // Load Work Orders with Issued Rolling Plans and Diversion Plans
+  // Load ALL Work Orders (User requested: remove Plan issued condition, all work orders available)
   const loadIssuedPlans = useCallback(async () => {
     setLoading(true);
     try {
       const s = createClient();
 
-      // 1. Try standard get_rolling_plans RPC (same as Rolling Plan Schedule)
-      const { data: rpcData, error: rpcErr } = await s.rpc('get_rolling_plans', {
-        p_search: null,
-        p_route_code: null,
-        p_from_date: null,
-        p_to_date: null,
-        p_limit: 2000,
-        p_offset: 0,
-      });
+      // 1. Fetch ALL Work Orders unconditionally
+      const { data: woRes, error: woErr } = await s
+        .from('work_orders')
+        .select('*')
+        .order('work_order_no', { ascending: false })
+        .limit(2000);
 
+      if (woErr) {
+        console.warn('Error fetching work orders:', woErr);
+      }
+      const allWorkOrders: any[] = woRes || [];
+
+      // 2. Fetch Rolling Plans (if available, to enrich work orders with plan specifications)
       let rawPlans: any[] = [];
-      if (!rpcErr && rpcData && Array.isArray(rpcData)) {
-        rawPlans = rpcData;
-      } else {
-        // Fallback directly to rolling_plans table without non-existent columns
+      try {
         const { data: directRps, error: directErr } = await s
           .from('rolling_plans')
           .select('id, plan_no, work_order_id, planned_rolling_date, planned_qty, process_route_id, multiple, status, mh_od, mh_wt, mh_l1, mh_l2, pass_required')
           .order('planned_rolling_date', { ascending: false })
-          .limit(500);
-
-        if (directErr) throw directErr;
-        rawPlans = directRps || [];
+          .limit(2000);
+        if (!directErr && directRps) {
+          rawPlans = directRps;
+        }
+      } catch (rpE) {
+        console.warn('Rolling plans fetch note:', rpE);
       }
 
-      // 2. Fetch Diversion Plans (Diversion plan issued work orders)
+      // 3. Fetch Diversion Plans
       let rawDivs: any[] = [];
       try {
-        const { data: divRpcData, error: divRpcErr } = await s.rpc('get_diversion_plans', {
-          p_search: null,
-          p_route_code: null,
-          p_work_center: null,
-          p_from_date: null,
-          p_to_date: null,
-          p_limit: 1000,
-        });
-
-        if (!divRpcErr && divRpcData && Array.isArray(divRpcData)) {
-          rawDivs = divRpcData;
-        } else {
-          const { data: directDivs } = await s
-            .from('diversion_plans')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(500);
-          rawDivs = directDivs || [];
-        }
+        const { data: directDivs } = await s
+          .from('diversion_plans')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(1000);
+        rawDivs = directDivs || [];
       } catch (e) {
         console.warn('Diversion plans query note:', e);
       }
 
-      // Fetch Work Orders & Routes for complete metadata including PO and material code
-      const woIds = Array.from(
-        new Set([
-          ...rawPlans.map((x) => x.work_order_id).filter(Boolean),
-          ...rawDivs.map((x) => x.target_wo_id || x.source_wo_id).filter(Boolean),
-        ])
-      );
-      const planIds = rawPlans.map((x) => x.id);
-
-      const [woRes, routesRes, rpDetailsRes] = await Promise.all([
-        woIds.length > 0
-          ? s.from('work_orders').select('*').in('id', woIds)
-          : Promise.resolve({ data: [] }),
-        s.from('process_routes').select('id, route_code, route_name'),
-        planIds.length > 0
-          ? s.from('rolling_plans').select('id, mh_od, mh_wt, mh_l1, mh_l2, pass_required, multiple, status, planned_qty').in('id', planIds)
-          : Promise.resolve({ data: [] }),
-      ]);
-
-      const woMap = new Map<string, any>();
-      (woRes.data || []).forEach((w: any) => woMap.set(w.id, w));
+      // 4. Fetch Process Routes
+      let routesData: any[] = [];
+      try {
+        const { data: rData } = await s.from('process_routes').select('id, route_code, route_name');
+        routesData = rData || [];
+      } catch (rE) {
+        console.warn('Routes fetch note:', rE);
+      }
 
       const routeMap = new Map<string, any>();
-      (routesRes.data || []).forEach((r: any) => routeMap.set(r.id, r));
+      routesData.forEach((r: any) => routeMap.set(r.id, r));
 
-      const rpDetailMap = new Map<string, any>();
-      (rpDetailsRes.data || []).forEach((d: any) => rpDetailMap.set(d.id, d));
+      const woMap = new Map<string, any>();
+      allWorkOrders.forEach((w: any) => woMap.set(w.id, w));
 
-      const mappedPlans: RollingPlanRecord[] = rawPlans.map((r: any) => {
-        const wo = woMap.get(r.work_order_id) || {};
-        const route = routeMap.get(r.process_route_id) || {};
-        const detail = rpDetailMap.get(r.id) || {};
-
-        let parsedSt: any = {};
-        try {
-          parsedSt = typeof detail.status === 'string'
-            ? JSON.parse(detail.status)
-            : detail.status || (typeof r.status === 'string' ? JSON.parse(r.status) : r.status || {});
-        } catch { }
-
-        const finalOd = Number(wo.size_od ?? r.od ?? parsedSt.master_od ?? 88.9);
-        const finalWt = Number(wo.size_wt ?? r.wt ?? parsedSt.master_wt ?? 5.49);
-        const finalL1 = Number(wo.l1 ?? r.l1 ?? 4.0);
-        const finalL2 = Number(wo.l2 ?? r.l2 ?? 7.0);
-
-        return {
-          id: r.id,
-          plan_no: r.plan_no,
-          work_order_id: r.work_order_id,
-          planned_rolling_date: r.planned_rolling_date,
-          planned_qty: Number(r.planned_mtr ?? r.planned_qty ?? 0),
-          process_route_id: r.process_route_id || r.route_id,
-          target_mother_size: null,
-          multiple: Number(detail.multiple ?? r.multiple ?? 1),
-          status: parsedSt,
-          mh_od: detail.mh_od ?? r.mh_od ?? finalOd,
-          mh_wt: detail.mh_wt ?? r.mh_wt ?? finalWt,
-          mh_l1: detail.mh_l1 ?? r.mh_l1 ?? 5.533,
-          mh_l2: detail.mh_l2 ?? r.mh_l2 ?? 5.533,
-          pass_required: detail.pass_required ?? r.pass_required ?? 1,
-          work_order_no: wo.work_order_no || r.work_order_no || 'WO-UNKNOWN',
-          customer_name: wo.customer_name || r.customer_name || 'Standard Customer',
-          grade: wo.grade || r.grade || parsedSt.grade || '',
-          specification: wo.specification || r.specification || parsedSt.spec || '',
-          size_od: finalOd,
-          size_wt: finalWt,
-          l1: finalL1,
-          l2: finalL2,
-          ordered_qty: Number(wo.ordered_qty || 0),
-          ordered_qty_pcs: Number(wo.ordered_qty_pcs || r.planned_pcs || 0),
-          ordered_qty_mtr: Number(wo.ordered_qty_mtr || r.planned_mtr || 0),
-          route_code: route.route_code || r.route_code || 'HFS',
-          route_name: route.route_name || r.route_name || 'Standard HFS',
-          po_no: wo.po_no || wo.purchase_order_no || parsedSt.po_no || null,
-          po_date: wo.po_date || wo.purchase_order_date || parsedSt.po_date || null,
-          material_code: wo.material_code || wo.item_code || parsedSt.material_code || null,
-          is_diversion: false,
-          display_label: wo.work_order_no || r.work_order_no || 'WO-UNKNOWN',
-        };
+      // Map rolling plans by work_order_id
+      const rpsByWoId = new Map<string, any[]>();
+      rawPlans.forEach((rp: any) => {
+        if (rp.work_order_id) {
+          const list = rpsByWoId.get(rp.work_order_id) || [];
+          list.push(rp);
+          rpsByWoId.set(rp.work_order_id, list);
+        }
       });
 
+      const mappedWoPlans: RollingPlanRecord[] = [];
+
+      // A. For each work order in allWorkOrders:
+      allWorkOrders.forEach((wo: any) => {
+        const associatedRps = rpsByWoId.get(wo.id) || [];
+
+        const finalOd = Number(wo.size_od ?? 88.9);
+        const finalWt = Number(wo.size_wt ?? 5.49);
+        const finalL1 = Number(wo.l1 ?? 4.0);
+        const finalL2 = Number(wo.l2 ?? 7.0);
+
+        if (associatedRps.length > 0) {
+          // If work order has one or more rolling plans, generate a record for each plan
+          associatedRps.forEach((r: any) => {
+            const route = routeMap.get(r.process_route_id) || {};
+            let parsedSt: any = {};
+            try {
+              parsedSt = typeof r.status === 'string' ? JSON.parse(r.status) : r.status || {};
+            } catch { }
+
+            mappedWoPlans.push({
+              id: r.id,
+              plan_no: r.plan_no || 'Standard Plan',
+              work_order_id: wo.id,
+              planned_rolling_date: r.planned_rolling_date || wo.target_date || new Date().toISOString().split('T')[0],
+              planned_qty: Number(r.planned_qty ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0),
+              process_route_id: r.process_route_id,
+              target_mother_size: r.target_mother_size || null,
+              multiple: Number(r.multiple ?? 1),
+              status: parsedSt,
+              mh_od: Number(r.mh_od ?? finalOd),
+              mh_wt: Number(r.mh_wt ?? finalWt),
+              mh_l1: Number(r.mh_l1 ?? 5.533),
+              mh_l2: Number(r.mh_l2 ?? 5.533),
+              pass_required: Number(r.pass_required ?? 1),
+              work_order_no: wo.work_order_no || 'WO-UNKNOWN',
+              customer_name: wo.customer_name || 'Standard Customer',
+              grade: wo.grade || parsedSt.grade || '',
+              specification: wo.specification || parsedSt.spec || wo.grade || '',
+              size_od: finalOd,
+              size_wt: finalWt,
+              l1: finalL1,
+              l2: finalL2,
+              ordered_qty: Number(wo.ordered_qty || 0),
+              ordered_qty_pcs: Number(wo.ordered_qty_pcs || 0),
+              ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
+              route_code: route.route_code || 'HFS',
+              route_name: route.route_name || 'Standard HFS',
+              po_no: wo.po_no || wo.purchase_order_no || parsedSt.po_no || null,
+              po_date: wo.po_date || wo.purchase_order_date || parsedSt.po_date || null,
+              material_code: wo.material_code || wo.item_code || parsedSt.material_code || null,
+              is_diversion: false,
+              display_label: wo.work_order_no || 'WO-UNKNOWN',
+            });
+          });
+        } else {
+          // Direct Work Order (without an issued rolling plan)
+          mappedWoPlans.push({
+            id: `wo-${wo.id}`,
+            plan_no: 'Pending Plan',
+            work_order_id: wo.id,
+            planned_rolling_date: wo.target_date || new Date().toISOString().split('T')[0],
+            planned_qty: Number(wo.ordered_qty_mtr || wo.ordered_qty || 0),
+            process_route_id: null,
+            target_mother_size: null,
+            multiple: 1,
+            status: { work_order_status: wo.status },
+            mh_od: finalOd,
+            mh_wt: finalWt,
+            mh_l1: 5.533,
+            mh_l2: 5.533,
+            pass_required: 1,
+            work_order_no: wo.work_order_no || 'WO-UNKNOWN',
+            customer_name: wo.customer_name || 'Standard Customer',
+            grade: wo.grade || '',
+            specification: wo.specification || wo.grade || '',
+            size_od: finalOd,
+            size_wt: finalWt,
+            l1: finalL1,
+            l2: finalL2,
+            ordered_qty: Number(wo.ordered_qty || 0),
+            ordered_qty_pcs: Number(wo.ordered_qty_pcs || 0),
+            ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
+            route_code: 'HFS',
+            route_name: 'Standard HFS',
+            po_no: wo.po_no || wo.purchase_order_no || null,
+            po_date: wo.po_date || wo.purchase_order_date || null,
+            material_code: wo.material_code || wo.item_code || null,
+            is_diversion: false,
+            display_label: wo.work_order_no || 'WO-UNKNOWN',
+          });
+        }
+      });
+
+      // B. Sort work orders numerically / descending by work order number
+      mappedWoPlans.sort((a, b) => {
+        const numA = parseInt(a.work_order_no.replace(/\D/g, ''), 10) || 0;
+        const numB = parseInt(b.work_order_no.replace(/\D/g, ''), 10) || 0;
+        if (numA !== numB) return numB - numA;
+        return b.work_order_no.localeCompare(a.work_order_no);
+      });
+
+      // C. Map Diversion Plans
       const mappedDivPlans: RollingPlanRecord[] = rawDivs.map((d: any) => {
         const woId = d.target_wo_id || d.source_wo_id;
         const wo = woMap.get(woId) || {};
@@ -388,7 +424,7 @@ export default function ProcessSheetReportClient() {
         };
       });
 
-      const combinedPlans = [...mappedPlans, ...mappedDivPlans];
+      const combinedPlans = [...mappedWoPlans, ...mappedDivPlans];
       setPlans(combinedPlans);
 
       if (combinedPlans.length > 0) {
@@ -402,8 +438,8 @@ export default function ProcessSheetReportClient() {
         });
       }
     } catch (err: any) {
-      console.error('Error loading rolling plans:', err);
-      toast.error(err.message || 'Failed to load Work Orders with issued rolling plans.');
+      console.error('Error loading work orders:', err);
+      toast.error(err.message || 'Failed to load Work Orders.');
     } finally {
       setLoading(false);
     }
@@ -761,7 +797,7 @@ export default function ProcessSheetReportClient() {
       }
 
       // 3. If standard rolling plan, also update rolling_plans status
-      if (!selectedPlanId.startsWith('div-')) {
+      if (!selectedPlanId.startsWith('div-') && !selectedPlanId.startsWith('wo-')) {
         try {
           const activePlan = plans.find((p) => p.id === selectedPlanId);
           const currentSt = activePlan?.status && typeof activePlan.status === 'object' ? activePlan.status : {};
@@ -988,9 +1024,12 @@ export default function ProcessSheetReportClient() {
             <div className="text-xs font-medium text-slate-300 flex items-center gap-2">
               <Layers className="w-4 h-4 text-emerald-400" />
               <span>
-                Active Orders Available: <strong className="text-white">{plans.length}</strong> Total (
-                <span className="text-indigo-400 font-semibold">{plans.filter((p) => !p.is_diversion).length} Rolling Plans</span>,{' '}
-                <span className="text-amber-400 font-semibold">{plans.filter((p) => p.is_diversion).length} Diversion Plans</span>)
+                Work Orders Available: <strong className="text-white">{plans.length}</strong> Total (
+                <span className="text-indigo-400 font-semibold">{plans.filter((p) => !p.is_diversion).length} Work Orders</span>
+                {plans.filter((p) => p.is_diversion).length > 0 && (
+                  <>, <span className="text-amber-400 font-semibold">{plans.filter((p) => p.is_diversion).length} Diversion Plans</span></>
+                )}
+                )
               </span>
             </div>
 
@@ -1006,11 +1045,11 @@ export default function ProcessSheetReportClient() {
             </div>
           </div>
 
-          {/* User Requested: Primary Dropdown list fetching Plan issued & Diversion plan issued orders */}
+          {/* User Requested: Primary Dropdown list showing all work orders (plan issued condition removed) */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
-                <span>Select Work Order / Diversion Plan ({filteredPlans.length} matching):</span>
+                <span>Select Work Order / Plan ({filteredPlans.length} matching):</span>
               </label>
               {activePlan?.is_diversion && (
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -1028,28 +1067,32 @@ export default function ProcessSheetReportClient() {
               className="w-full px-3 py-2 bg-slate-950 border border-slate-700 hover:border-indigo-500 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500 font-medium cursor-pointer shadow-sm transition-colors"
             >
               <option value="" disabled>
-                -- Select Issued Work Order / Diversion Plan --
+                -- Select Work Order --
               </option>
 
               {filteredPlans.some((p) => !p.is_diversion) && (
-                <optgroup label="📋 Standard Rolling Plans Issued">
+                <optgroup label="📋 Work Orders">
                   {filteredPlans
                     .filter((p) => !p.is_diversion)
                     .map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.work_order_no} | Plan: {p.plan_no} | {p.grade} | OD {p.size_od} × {p.size_wt} mm — {p.customer_name}
+                        {p.work_order_no}
+                        {p.plan_no && p.plan_no !== 'Pending Plan' && p.plan_no !== 'Standard Plan'
+                          ? ` | Plan: ${p.plan_no}`
+                          : ''}{' '}
+                        | {p.grade || 'Standard'} | OD {p.size_od} × {p.size_wt} mm — {p.customer_name}
                       </option>
                     ))}
                 </optgroup>
               )}
 
               {filteredPlans.some((p) => p.is_diversion) && (
-                <optgroup label="🔀 Diversion Plans Issued (-Div)">
+                <optgroup label="🔀 Diversion Plans (-Div)">
                   {filteredPlans
                     .filter((p) => p.is_diversion)
                     .map((p) => (
                       <option key={p.id} value={p.id} className="text-amber-300">
-                        {p.work_order_no}-Div | Diversion Plan: {p.plan_no} | {p.grade} | OD {p.size_od} × {p.size_wt} mm — {p.customer_name}
+                        {p.work_order_no}-Div | Diversion Plan: {p.plan_no} | {p.grade || 'Standard'} | OD {p.size_od} × {p.size_wt} mm — {p.customer_name}
                       </option>
                     ))}
                 </optgroup>
