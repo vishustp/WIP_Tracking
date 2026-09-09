@@ -268,18 +268,122 @@ export default function ProcessSheetReportClient() {
         }
       });
 
+      // Map master campaigns by child work order id and child work order no
+      const masterCampaignByChildWoId = new Map<string, { masterPlan: any; childMeta: any }>();
+      rawPlans.forEach((rp: any) => {
+        let parsedSt: any = {};
+        try {
+          parsedSt = typeof rp.status === 'string' ? JSON.parse(rp.status) : rp.status || {};
+        } catch {}
+        if (parsedSt.is_master && Array.isArray(parsedSt.child_work_orders)) {
+          parsedSt.child_work_orders.forEach((c: any) => {
+            const cId = c.work_order_id || c.id;
+            if (cId) {
+              masterCampaignByChildWoId.set(cId, { masterPlan: rp, childMeta: c });
+            }
+            if (c.work_order_no) {
+              const cleanNo = String(c.work_order_no).trim().toLowerCase();
+              masterCampaignByChildWoId.set(cleanNo, { masterPlan: rp, childMeta: c });
+            }
+          });
+        }
+      });
+
       const mappedWoPlans: RollingPlanRecord[] = [];
 
       // A. For each work order in allWorkOrders:
       allWorkOrders.forEach((wo: any) => {
         const associatedRps = rpsByWoId.get(wo.id) || [];
 
+        // Check if this work order is a Child Work Order linked to a Parent Campaign
+        const childCampaignInfo =
+          masterCampaignByChildWoId.get(wo.id) ||
+          masterCampaignByChildWoId.get(String(wo.work_order_no || '').trim().toLowerCase());
+
+        let parentPlan = childCampaignInfo?.masterPlan;
+        if (!parentPlan && associatedRps.length > 0) {
+          try {
+            const st = typeof associatedRps[0].status === 'string' ? JSON.parse(associatedRps[0].status) : associatedRps[0].status || {};
+            if (st.is_child && (st.master_plan_id || st.master_plan_no)) {
+              parentPlan = rawPlans.find((p) => p.id === st.master_plan_id || p.plan_no === st.master_plan_no);
+            }
+          } catch {}
+        }
+
+        let parentParsedSt: any = {};
+        if (parentPlan) {
+          try {
+            parentParsedSt = typeof parentPlan.status === 'string' ? JSON.parse(parentPlan.status) : parentPlan.status || {};
+          } catch {}
+        }
+
         const finalOd = Number(wo.size_od ?? 88.9);
         const finalWt = Number(wo.size_wt ?? 5.49);
         const finalL1 = Number(wo.l1 ?? 4.0);
         const finalL2 = Number(wo.l2 ?? 7.0);
 
-        if (associatedRps.length > 0) {
+        if (parentPlan) {
+          // RULE: Rolling plan for child work order will be the SAME as parent work order
+          const parentRoute = routeMap.get(parentPlan.process_route_id) || {};
+          const effPlanNo = parentPlan.plan_no;
+          const effRollingDate = parentPlan.planned_rolling_date || wo.target_date || new Date().toISOString().split('T')[0];
+          const effMhOd = Number(parentPlan.mh_od ?? finalOd);
+          const effMhWt = Number(parentPlan.mh_wt ?? finalWt);
+          const effMhL1 = Number(parentPlan.mh_l1 ?? 5.533);
+          const effMhL2 = Number(parentPlan.mh_l2 ?? 5.533);
+          const effPass = Number(parentPlan.pass_required ?? 1);
+          const effMultiple = Number(parentPlan.multiple ?? 1);
+
+          let childParsedSt: any = {};
+          if (associatedRps.length > 0) {
+            try {
+              childParsedSt = typeof associatedRps[0].status === 'string' ? JSON.parse(associatedRps[0].status) : associatedRps[0].status || {};
+            } catch {}
+          }
+
+          const mergedStatus = {
+            ...parentParsedSt,
+            ...childParsedSt,
+            is_child: true,
+            master_plan_no: parentPlan.plan_no,
+            master_wo_id: parentPlan.work_order_id,
+          };
+
+          mappedWoPlans.push({
+            id: associatedRps.length > 0 ? associatedRps[0].id : `child-wo-${wo.id}`,
+            plan_no: effPlanNo, // Same rolling plan as parent work order
+            work_order_id: wo.id,
+            planned_rolling_date: effRollingDate,
+            planned_qty: Number(childCampaignInfo?.childMeta?.planned_mtr ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0),
+            process_route_id: parentPlan.process_route_id,
+            target_mother_size: parentPlan.target_mother_size || null,
+            multiple: effMultiple,
+            status: mergedStatus,
+            mh_od: effMhOd,
+            mh_wt: effMhWt,
+            mh_l1: effMhL1,
+            mh_l2: effMhL2,
+            pass_required: effPass,
+            work_order_no: wo.work_order_no || 'WO-UNKNOWN',
+            customer_name: wo.customer_name || 'Standard Customer',
+            grade: wo.grade || parentParsedSt.grade || '',
+            specification: wo.specification || parentParsedSt.spec || wo.grade || '',
+            size_od: finalOd,
+            size_wt: finalWt,
+            l1: finalL1,
+            l2: finalL2,
+            ordered_qty: Number(wo.ordered_qty || 0),
+            ordered_qty_pcs: Number(wo.ordered_qty_pcs || 0),
+            ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
+            route_code: parentRoute.route_code || 'HFS',
+            route_name: parentRoute.route_name || 'Standard HFS',
+            po_no: wo.po_no || wo.purchase_order_no || mergedStatus.po_no || null,
+            po_date: wo.po_date || wo.purchase_order_date || mergedStatus.po_date || null,
+            material_code: wo.material_code || wo.item_code || mergedStatus.material_code || null,
+            is_diversion: false,
+            display_label: wo.work_order_no || 'WO-UNKNOWN',
+          });
+        } else if (associatedRps.length > 0) {
           // If work order has one or more rolling plans, generate a record for each plan
           associatedRps.forEach((r: any) => {
             const route = routeMap.get(r.process_route_id) || {};
@@ -290,7 +394,7 @@ export default function ProcessSheetReportClient() {
 
             mappedWoPlans.push({
               id: r.id,
-              plan_no: r.plan_no || 'Standard Plan',
+              plan_no: parsedSt.master_plan_no || r.plan_no || 'Standard Plan',
               work_order_id: wo.id,
               planned_rolling_date: r.planned_rolling_date || wo.target_date || new Date().toISOString().split('T')[0],
               planned_qty: Number(r.planned_qty ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0),

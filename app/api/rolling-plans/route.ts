@@ -323,11 +323,7 @@ export async function POST(req: NextRequest) {
         const c = processedChildren[cIdx];
         const childWo = woMap.get(c.id);
 
-        const childPlanNo =
-          masterGroups.length === 1
-            ? `${basePlanNo}-C${cIdx + 1}`
-            : `${basePlanNo}-M${gIdx + 1}-C${cIdx + 1}`;
-
+        // The Rolling Plan for a Child Work Order will be the SAME as the Parent Work Order:
         const childStatusMetadata = JSON.stringify({
           type: 'MULTI_WO',
           is_child: true,
@@ -349,10 +345,14 @@ export async function POST(req: NextRequest) {
           alloc_tag: c.alloc_tag || `${cIdx + 1}`,
         });
 
-        const { data: createdChildPlan, error: cPlanErr } = await admin
+        // 1. First attempt: Insert with the exact same plan_no as the parent work order
+        let createdChildPlan: any = null;
+        let effectiveChildPlanNo = masterPlanNo;
+
+        const { data: directChildPlan, error: cPlanErr } = await admin
           .from('rolling_plans')
           .insert({
-            plan_no: childPlanNo,
+            plan_no: masterPlanNo,
             work_order_id: c.id,
             planned_rolling_date: rolling_date,
             planned_qty: c.planned_mtr,
@@ -369,8 +369,44 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (cPlanErr) {
-          console.error(`Error inserting child plan ${childPlanNo}:`, cPlanErr);
-        } else if (createdChildPlan) {
+          // If unique constraint violation on plan_no (before DB migration 044 is applied in Supabase),
+          // fallback to suffixed plan_no while preserving master_plan_no in childStatusMetadata
+          console.warn(`Direct insert with master plan_no ${masterPlanNo} failed (likely unique constraint), using fallback:`, cPlanErr.message);
+          const fallbackChildPlanNo =
+            masterGroups.length === 1
+              ? `${basePlanNo}-C${cIdx + 1}`
+              : `${basePlanNo}-M${gIdx + 1}-C${cIdx + 1}`;
+          effectiveChildPlanNo = fallbackChildPlanNo;
+
+          const { data: fbChildPlan, error: fbErr } = await admin
+            .from('rolling_plans')
+            .insert({
+              plan_no: fallbackChildPlanNo,
+              work_order_id: c.id,
+              planned_rolling_date: rolling_date,
+              planned_qty: c.planned_mtr,
+              process_route_id: g.route_id || route_id,
+              multiple: Number(g.multiple || multiple || 1),
+              mh_od: grpCustOd,
+              mh_wt: grpCustWt,
+              mh_l1: grpSmLen,
+              mh_l2: grpSmLen,
+              pass_required: Number(g.pass_required || pass_required || 1),
+              status: childStatusMetadata,
+            })
+            .select()
+            .single();
+
+          if (fbErr) {
+            console.error(`Error inserting fallback child plan ${fallbackChildPlanNo}:`, fbErr);
+          } else {
+            createdChildPlan = fbChildPlan;
+          }
+        } else {
+          createdChildPlan = directChildPlan;
+        }
+
+        if (createdChildPlan) {
           allChildPlanIds.push(createdChildPlan.id);
 
           await admin
@@ -392,7 +428,7 @@ export async function POST(req: NextRequest) {
             planned_mtr: c.planned_mtr,
             planned_mt: c.planned_mt,
             plan_id: createdChildPlan.id,
-            plan_no: childPlanNo,
+            plan_no: masterPlanNo, // Same plan number as parent work order
             catg: c.catg || g.catg || 'CDS',
             finish_size: c.finish_size || `${childWo?.size_od || 0}x${childWo?.size_wt || 0}`,
             final_len: c.final_len || `${childWo?.l1 || 0}-${childWo?.l2 || 0}`,

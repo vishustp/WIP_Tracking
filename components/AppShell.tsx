@@ -119,6 +119,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       ? 'User Profile'
       : pathname === '/admin'
       ? 'Admin Control Panel'
+      : pathname === '/qc/vdi' || pathname === '/vdi' || pathname === '/qc'
+      ? 'Visual & Dimensional (VDI)'
       : pathname.split('/').filter(Boolean).slice(-1)[0]?.replace(/-/g, ' ');
 
   return (

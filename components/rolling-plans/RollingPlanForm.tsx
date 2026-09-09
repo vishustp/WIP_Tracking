@@ -2694,7 +2694,7 @@ export default function RollingPlanForm() {
                         }
                       >
                         <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap">
-                          {p.plan_no}
+                          {isChild ? (parsedStatus.master_plan_no || p.plan_no) : p.plan_no}
                         </td>
 
                         {/* Plan Type Badge */}

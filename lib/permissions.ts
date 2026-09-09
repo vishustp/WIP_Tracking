@@ -125,6 +125,8 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
   const allowedUserRoutes = [
     '/production',
     '/qc',
+    '/qc/vdi',
+    '/vdi',
     '/dashboard',
     '/profile',
     '/reports/pending-orders',
