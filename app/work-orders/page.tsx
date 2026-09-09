@@ -51,6 +51,11 @@ type WO = {
   balance_qty_mt?: number | null;
   target_date: string | null;
   status: string;
+  po_no?: string | null;
+  po_date?: string | null;
+  purchase_order_no?: string | null;
+  purchase_order_date?: string | null;
+  material_code?: string | null;
 };
 
 type WipStage = {
@@ -851,6 +856,17 @@ export default function WorkOrders() {
                               </button>
                             )}
                           </div>
+                          {(w.po_no || w.purchase_order_no || w.material_code) && (
+                            <div className="text-[11px] font-normal text-slate-500 font-mono mt-0.5">
+                              {(w.po_no || w.purchase_order_no) && (
+                                <span>PO: {w.po_no || w.purchase_order_no}</span>
+                              )}
+                              {(w.po_no || w.purchase_order_no) && w.material_code && <span> · </span>}
+                              {w.material_code && (
+                                <span className="text-indigo-600 font-semibold">Mat: {w.material_code}</span>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-slate-700 max-w-[150px] truncate">{w.customer_name || '—'}</td>
                         <td className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate" title={w.specification || w.grade || '—'}>

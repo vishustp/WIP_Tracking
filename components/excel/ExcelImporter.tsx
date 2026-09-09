@@ -304,14 +304,19 @@ export default function ExcelImporter() {
     const cStatus = findColumn(headers, ['Current Status', 'Status', 'Order Status']);
     const cTargetDate = findColumn(headers, ['Target Date', 'Delivery Date', 'Target Delivery Date', 'Due Date', 'Promised Date', 'Schedule Date']);
     const cPO = findColumn(headers, [
-      'PO No', 'PO Number', 'PO NO', 'Purchase Order No', 'Purchase Order Number',
-      'PO', 'P.O. No', 'P.O. Number', 'Customer PO', 'PO Details', 'P.O.', 'Cust PO', 'Cust PO No'
+      'Purchase Order No', 'Purchase Order No.', 'Purchase Order Number', 'Purchase Order', 'Purchase Order #',
+      'PO No', 'PO No.', 'PO Number', 'PO NO', 'P.O. No', 'P.O. No.', 'P.O. Number', 'PO#',
+      'PO', 'P.O.', 'P.O', 'Customer PO', 'Customer PO No', 'Customer PO Number', 'Cust PO', 'Cust PO No',
+      'PO Details', 'Order PO', 'Client PO'
     ]);
     const cPODate = findColumn(headers, [
-      'PO Date', 'Purchase Order Date', 'P.O. Date', 'PO DT', 'PO Dt', 'P.O Dt', 'Cust PO Date'
+      'Purchase Order Date', 'Purchase Order Dt', 'Purchase Order Dt.', 'Purchase Order Date.', 'P.O. Date', 'P.O. Dt',
+      'PO Date', 'PO Date.', 'PO DT', 'PO Dt', 'P.O Dt', 'Customer PO Date', 'Cust PO Date', 'PO Date/Dt', 'Order Date'
     ]);
     const cMatCode = findColumn(headers, [
-      'Material Code', 'Item Code', 'Mat Code', 'Product Code', 'Mat. Code', 'Item No', 'Material No', 'SAP Code'
+      'Material Code', 'Material Code/No', 'Material No', 'Material No.', 'Material Number', 'Material ID',
+      'Item Code', 'Item No', 'Item No.', 'Item Number', 'Mat Code', 'Mat. Code', 'Mat Code.', 'Mat.Code',
+      'Product Code', 'Part No', 'Part No.', 'Part Number', 'SAP Code', 'SAP Material Code', 'SAP Mat Code'
     ]);
 
     if (!cWO) {
@@ -529,9 +534,17 @@ export default function ExcelImporter() {
               balance_qty_mtr: row.balance_qty_mtr,
               balance_qty_mt: row.balance_qty_mt,
             };
-            if (row.po_no) updateObj.po_no = row.po_no;
-            if (row.po_date) updateObj.po_date = row.po_date;
-            if (row.material_code) updateObj.material_code = row.material_code;
+            if (row.po_no) {
+              updateObj.po_no = row.po_no;
+              updateObj.purchase_order_no = row.po_no;
+            }
+            if (row.po_date) {
+              updateObj.po_date = row.po_date;
+              updateObj.purchase_order_date = row.po_date;
+            }
+            if (row.material_code) {
+              updateObj.material_code = row.material_code;
+            }
 
             await supabase
               .from('work_orders')
@@ -839,6 +852,9 @@ export default function ExcelImporter() {
                   <tr>
                     <th className="py-2.5 px-3 text-left font-semibold">Status / Diff</th>
                     <th className="py-2.5 px-3 text-left font-semibold">Work Order</th>
+                    <th className="py-2.5 px-3 text-left font-semibold">PO No</th>
+                    <th className="py-2.5 px-3 text-left font-semibold">PO Date</th>
+                    <th className="py-2.5 px-3 text-left font-semibold">Material Code</th>
                     <th className="py-2.5 px-3 text-left font-semibold">Customer</th>
                     <th className="py-2.5 px-3 text-left font-semibold">Specification</th>
                     <th className="py-2.5 px-3 text-right font-semibold">OD (mm)</th>
@@ -876,6 +892,9 @@ export default function ExcelImporter() {
                           )}
                         </td>
                         <td className="py-2 px-3 font-bold text-slate-900">{r.work_order_no || '—'}</td>
+                        <td className="py-2 px-3 text-slate-700 font-mono text-xs">{r.po_no || '—'}</td>
+                        <td className="py-2 px-3 text-slate-600 font-mono text-xs">{r.po_date || '—'}</td>
+                        <td className="py-2 px-3 text-indigo-700 font-mono text-xs font-medium">{r.material_code || '—'}</td>
                         <td className="py-2 px-3 text-slate-700 max-w-[140px] truncate">{r.customer_name || '—'}</td>
                         <td className="py-2 px-3 text-slate-600 max-w-[140px] truncate">{r.specification || '—'}</td>
                         <td

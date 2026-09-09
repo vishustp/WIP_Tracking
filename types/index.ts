@@ -219,6 +219,11 @@ export interface WorkOrder {
   uom?: string;
   target_date?: string | null;
   status?: string;
+  po_no?: string | null;
+  po_date?: string | null;
+  purchase_order_no?: string | null;
+  purchase_order_date?: string | null;
+  material_code?: string | null;
   created_at?: string;
 }
 
