@@ -29,7 +29,7 @@ interface RollingPlanRecord {
   work_order_id: string;
   planned_rolling_date: string;
   planned_qty: number;
-  process_route_id: string;
+  process_route_id: string | null;
   target_mother_size: string | null;
   multiple: number;
   status: any;
