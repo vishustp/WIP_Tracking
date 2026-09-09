@@ -10,7 +10,7 @@ import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
   User, ShieldCheck, ChevronDown, Check, Sparkles, Lock, Activity, Clock,
-  ClipboardCheck, BookOpen
+  ClipboardCheck, BookOpen, FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
@@ -29,7 +29,7 @@ const groups = [
   {
     label: 'Quality & QC',
     items: [
-      { href: '/qc', label: 'QC / VDI Inspection', icon: ClipboardCheck },
+      { href: '/qc/vdi', label: 'Visual & Dimensional (VDI)', icon: ClipboardCheck },
     ],
   },
   {
@@ -39,6 +39,7 @@ const groups = [
   {
     label: 'Reports',
     items: [
+      { href: '/reports/process-sheet', label: 'Process Sheet (F-11)', icon: FileText },
       { href: '/reports/tracking', label: 'WO Tracking Sheet', icon: Activity },
       { href: '/reports/aging', label: 'WIP Aging & Bottlenecks', icon: Clock },
       { href: '/reports/pending-orders', label: 'Pending Orders', icon: BarChart3 },
