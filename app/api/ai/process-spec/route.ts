@@ -143,7 +143,7 @@ Respond ONLY with a valid JSON object matching this structure:
             const tolerances: DimensionalTolerances = {
               od_min: Number(parsedData.tolerances?.od_min) || (od - 0.8),
               od_max: Number(parsedData.tolerances?.od_max) || (od + 0.8),
-              od_tol_str: parsedData.tolerances?.od_tol_str || (isMinWallOrder ? '±0.20 mm' : '±0.8 mm'),
+              od_tol_str: parsedData.tolerances?.od_tol_str || (isMinWallOrder ? '±0.30 mm' : '±0.8 mm'),
               wt_min: enforcedWtMin,
               wt_max: enforcedWtMax,
               wt_tol_str:

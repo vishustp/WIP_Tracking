@@ -130,7 +130,7 @@ export function calculateStandardTolerances(
   let wtTolStr = '+20% / -12.5%';
 
   if (isCds) {
-    // Cold Drawn Seamless tolerances (ASTM A450 / ASME SA450 / ASTM A1016)
+    // Cold Drawn Seamless tolerances (ASTM A450 / ASME SA450 Table 1 / ASTM A1016)
     if (odMm < 25.4) {
       odMin = Number((odMm - 0.10).toFixed(2));
       odMax = Number((odMm + 0.10).toFixed(2));
@@ -139,19 +139,23 @@ export function calculateStandardTolerances(
       odMin = Number((odMm - 0.13).toFixed(2));
       odMax = Number((odMm + 0.13).toFixed(2));
       odTolStr = '±0.13 mm';
-    } else if (odMm <= 50.8) {
+    } else if (odMm < 50.8) {
       odMin = Number((odMm - 0.15).toFixed(2));
       odMax = Number((odMm + 0.15).toFixed(2));
       odTolStr = '±0.15 mm';
     } else if (odMm <= 63.5) {
-      // ASTM A450 Table 1: Over 50.8 to 63.5 mm OD cold drawn is +/- 0.20 mm
-      odMin = Number((odMm - 0.20).toFixed(2));
-      odMax = Number((odMm + 0.20).toFixed(2));
-      odTolStr = '±0.20 mm';
+      // ASTM A450 Table 1: Size 50.8 to 63.5 mm OD is ±0.30 mm (or 63.20 - 63.80 mm for 63.50 mm)
+      odMin = Number((odMm - 0.30).toFixed(2));
+      odMax = Number((odMm + 0.30).toFixed(2));
+      odTolStr = '±0.30 mm';
+    } else if (odMm <= 76.2) {
+      odMin = Number((odMm - 0.38).toFixed(2));
+      odMax = Number((odMm + 0.38).toFixed(2));
+      odTolStr = '±0.38 mm';
     } else {
-      odMin = Number((odMm - 0.25).toFixed(2));
-      odMax = Number((odMm + 0.25).toFixed(2));
-      odTolStr = '±0.25 mm';
+      odMin = Number((odMm - 0.50).toFixed(2));
+      odMax = Number((odMm + 0.50).toFixed(2));
+      odTolStr = '±0.50 mm';
     }
 
     if (isMinWall) {
