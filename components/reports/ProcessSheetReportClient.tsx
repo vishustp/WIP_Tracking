@@ -962,6 +962,29 @@ export default function ProcessSheetReportClient() {
 
   return (
     <div className="space-y-6 pb-20">
+      {/* Print Overrides: Suppress layout header/sidebar and set page size */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media print {
+              @page {
+                size: A4 portrait;
+                margin: 6mm 5mm;
+              }
+              header, aside, nav, .print\\:hidden, [role="navigation"] {
+                display: none !important;
+              }
+              body, html {
+                background: #ffffff !important;
+                color: #000000 !important;
+                padding: 0 !important;
+                margin: 0 !important;
+              }
+            }
+          `,
+        }}
+      />
+
       {/* Action Header & WO Selector (Hidden on Print) */}
       <div className="print:hidden space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-lg">

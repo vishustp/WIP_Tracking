@@ -81,3 +81,18 @@ input:focus, select:focus, textarea:focus {
   color: #3730a3;
 }
 
+@media print {
+  header,
+  aside,
+  nav,
+  .print\:hidden {
+    display: none !important;
+  }
+  body, html {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
+

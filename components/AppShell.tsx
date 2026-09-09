@@ -132,7 +132,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200 ease-out lg:translate-x-0 ${open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200 ease-out lg:translate-x-0 print:hidden ${open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
           <div className="flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-500 text-white flex items-center justify-center font-bold text-sm shadow-sm shadow-blue-600/30">
@@ -197,8 +197,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </aside>
 
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-16 items-center border-b border-slate-200 bg-white/80 backdrop-blur-md">
+      <div className="lg:pl-64 print:pl-0">
+        <header className="sticky top-0 z-20 flex h-16 items-center border-b border-slate-200 bg-white/80 backdrop-blur-md print:hidden">
           <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2">
             <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu size={22} /></button>
@@ -276,7 +276,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 print:p-0 print:m-0 print:max-w-none">{children}</main>
       </div>
     </div>
   );
