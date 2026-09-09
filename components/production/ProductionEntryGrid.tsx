@@ -1161,6 +1161,7 @@ export default function ProductionEntryGrid() {
                   onClick={() => setWoFilter("")}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
                   title="Clear filter"
+                  aria-label="Clear filter"
                 >
                   <X size={12} />
                 </button>
@@ -2006,6 +2007,8 @@ export default function ProductionEntryGrid() {
                 type="button"
                 onClick={() => setEditing(null)}
                 className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
+                title="Close"
               >
                 <X size={18} />
               </button>
@@ -2349,6 +2352,8 @@ export default function ProductionEntryGrid() {
                   type="button"
                   onClick={() => setBundlingCampaign(null)}
                   className="rounded-lg p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  aria-label="Close"
+                  title="Close"
                 >
                   <X size={20} />
                 </button>
