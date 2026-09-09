@@ -46,6 +46,7 @@ type ImportRow = {
   po_no?: string;
   po_date?: string;
   material_code?: string;
+  destination?: string;
   error?: string;
   duplicate?: boolean;
 };
@@ -151,6 +152,7 @@ const SAMPLE_EXCEL_DATA = [
   {
     'W.no': 'WO-2026-101',
     Customer: 'Apex High-Pressure Tubes Ltd',
+    'Destination-2': 'Kolkata Port / Ex-Works',
     'PO No': 'PO-APX-8821',
     'PO Date': '2026-08-15',
     'Material Code': 'MAT-A106B-088',
@@ -318,6 +320,11 @@ export default function ExcelImporter() {
       'Item Code', 'Item No', 'Item No.', 'Item Number', 'Mat Code', 'Mat. Code', 'Mat Code.', 'Mat.Code',
       'Product Code', 'Part No', 'Part No.', 'Part Number', 'SAP Code', 'SAP Material Code', 'SAP Mat Code'
     ]);
+    const cDestination = findColumn(headers, [
+      'Destination-2', 'Destination 2', 'Destination_2', 'Destination - 2', 'Destination- 2',
+      'DESTINATION-2', 'DESTINATION 2', 'DESTINATION_2', 'DESTINATION',
+      'Destination', 'Destination Port', 'Ship To', 'Delivery Destination', 'Consignee Destination'
+    ]);
 
     if (!cWO) {
       throw new Error(`Column "W.no" or "Work Order No" was not found in the Excel file.\n\nDetected columns:\n${headers.join(', ')}`);
@@ -348,6 +355,7 @@ export default function ExcelImporter() {
       const poNoVal = cPO ? clean(record[cPO]) : undefined;
       const poDateVal = cPODate ? clean(record[cPODate]) : undefined;
       const matCodeVal = cMatCode ? clean(record[cMatCode]) : undefined;
+      const destinationVal = cDestination ? clean(record[cDestination]) : undefined;
 
       const row: ImportRow = {
         work_order_no: wo,
@@ -369,6 +377,7 @@ export default function ExcelImporter() {
         po_no: poNoVal,
         po_date: poDateVal,
         material_code: matCodeVal,
+        destination: destinationVal,
       };
 
       const errors: string[] = [];
@@ -469,6 +478,7 @@ export default function ExcelImporter() {
         po_no: r.po_no || null,
         po_date: r.po_date || null,
         material_code: r.material_code || null,
+        destination: r.destination || null,
       }));
 
       let imported = 0;
@@ -518,7 +528,7 @@ export default function ExcelImporter() {
         throw error;
       }
 
-      // Explicitly update l1, l2, po_no, po_date, material_code, and breakdown quantities on work_orders to guarantee persistence project-wide
+      // Explicitly update l1, l2, po_no, po_date, material_code, destination, and breakdown quantities on work_orders to guarantee persistence project-wide
       const updateChunkSize = 25;
       for (let i = 0; i < validRows.length; i += updateChunkSize) {
         const chunk = validRows.slice(i, i + updateChunkSize);
@@ -545,11 +555,23 @@ export default function ExcelImporter() {
             if (row.material_code) {
               updateObj.material_code = row.material_code;
             }
+            if (row.destination) {
+              updateObj.destination = row.destination;
+            }
 
-            await supabase
+            const { error: updErr } = await supabase
               .from('work_orders')
               .update(updateObj)
               .eq('work_order_no', row.work_order_no);
+
+            // If destination column doesn't exist yet on DB, retry without destination so import still succeeds
+            if (updErr && updateObj.destination) {
+              delete updateObj.destination;
+              await supabase
+                .from('work_orders')
+                .update(updateObj)
+                .eq('work_order_no', row.work_order_no);
+            }
           })
         );
       }
@@ -856,6 +878,7 @@ export default function ExcelImporter() {
                     <th className="py-2.5 px-3 text-left font-semibold">PO Date</th>
                     <th className="py-2.5 px-3 text-left font-semibold">Material Code</th>
                     <th className="py-2.5 px-3 text-left font-semibold">Customer</th>
+                    <th className="py-2.5 px-3 text-left font-semibold">Destination</th>
                     <th className="py-2.5 px-3 text-left font-semibold">Specification</th>
                     <th className="py-2.5 px-3 text-right font-semibold">OD (mm)</th>
                     <th className="py-2.5 px-3 text-right font-semibold">WT (mm)</th>
@@ -896,6 +919,7 @@ export default function ExcelImporter() {
                         <td className="py-2 px-3 text-slate-600 font-mono text-xs">{r.po_date || '—'}</td>
                         <td className="py-2 px-3 text-indigo-700 font-mono text-xs font-medium">{r.material_code || '—'}</td>
                         <td className="py-2 px-3 text-slate-700 max-w-[140px] truncate">{r.customer_name || '—'}</td>
+                        <td className="py-2 px-3 text-emerald-700 font-mono text-xs font-medium max-w-[140px] truncate">{r.destination || '—'}</td>
                         <td className="py-2 px-3 text-slate-600 max-w-[140px] truncate">{r.specification || '—'}</td>
                         <td
                           className={`py-2 px-3 text-right font-mono ${

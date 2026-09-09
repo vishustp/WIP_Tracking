@@ -56,6 +56,7 @@ type WO = {
   purchase_order_no?: string | null;
   purchase_order_date?: string | null;
   material_code?: string | null;
+  destination?: string | null;
 };
 
 type WipStage = {
@@ -856,14 +857,18 @@ export default function WorkOrders() {
                               </button>
                             )}
                           </div>
-                          {(w.po_no || w.purchase_order_no || w.material_code) && (
+                          {(w.po_no || w.purchase_order_no || w.material_code || w.destination) && (
                             <div className="text-[11px] font-normal text-slate-500 font-mono mt-0.5">
                               {(w.po_no || w.purchase_order_no) && (
                                 <span>PO: {w.po_no || w.purchase_order_no}</span>
                               )}
-                              {(w.po_no || w.purchase_order_no) && w.material_code && <span> · </span>}
+                              {(w.po_no || w.purchase_order_no) && (w.material_code || w.destination) && <span> · </span>}
                               {w.material_code && (
                                 <span className="text-indigo-600 font-semibold">Mat: {w.material_code}</span>
+                              )}
+                              {w.material_code && w.destination && <span> · </span>}
+                              {w.destination && (
+                                <span className="text-emerald-700 font-semibold">Dest: {w.destination}</span>
                               )}
                             </div>
                           )}

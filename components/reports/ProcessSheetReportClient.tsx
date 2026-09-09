@@ -55,6 +55,7 @@ interface RollingPlanRecord {
   po_no?: string | null;
   po_date?: string | null;
   material_code?: string | null;
+  destination?: string | null;
   is_diversion?: boolean;
   display_label?: string;
 }
@@ -380,6 +381,7 @@ export default function ProcessSheetReportClient() {
             po_no: wo.po_no || wo.purchase_order_no || mergedStatus.po_no || null,
             po_date: wo.po_date || wo.purchase_order_date || mergedStatus.po_date || null,
             material_code: wo.material_code || wo.item_code || mergedStatus.material_code || null,
+            destination: wo.destination || mergedStatus.destination || null,
             is_diversion: false,
             display_label: wo.work_order_no || 'WO-UNKNOWN',
           });
@@ -423,6 +425,7 @@ export default function ProcessSheetReportClient() {
               po_no: wo.po_no || wo.purchase_order_no || parsedSt.po_no || null,
               po_date: wo.po_date || wo.purchase_order_date || parsedSt.po_date || null,
               material_code: wo.material_code || wo.item_code || parsedSt.material_code || null,
+              destination: wo.destination || parsedSt.destination || null,
               is_diversion: false,
               display_label: wo.work_order_no || 'WO-UNKNOWN',
             });
@@ -460,6 +463,7 @@ export default function ProcessSheetReportClient() {
             po_no: wo.po_no || wo.purchase_order_no || null,
             po_date: wo.po_date || wo.purchase_order_date || null,
             material_code: wo.material_code || wo.item_code || null,
+            destination: wo.destination || null,
             is_diversion: false,
             display_label: wo.work_order_no || 'WO-UNKNOWN',
           });
@@ -683,7 +687,8 @@ export default function ProcessSheetReportClient() {
       }
     }
     setCustomer(plan.customer_name || 'Standard Client');
-    setDestination(parsedSt.destination || '');
+    // 2. Destination from Work Order table
+    setDestination(plan.destination || parsedSt.destination || '');
 
     // 3. PURCHASE ORDER NO, PURCHASE ORDER DATE, MATERIAL CODE from Work Order table
     setPoNo(plan.po_no || parsedSt.po_no || '');

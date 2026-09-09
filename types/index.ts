@@ -224,6 +224,7 @@ export interface WorkOrder {
   purchase_order_no?: string | null;
   purchase_order_date?: string | null;
   material_code?: string | null;
+  destination?: string | null;
   created_at?: string;
 }
 
