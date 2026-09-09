@@ -51,6 +51,9 @@ interface RollingPlanRecord {
   ordered_qty_mtr: number | null;
   route_code: string;
   route_name: string;
+  po_no?: string | null;
+  po_date?: string | null;
+  material_code?: string | null;
 }
 
 export default function ProcessSheetReportClient() {
@@ -220,13 +223,13 @@ export default function ProcessSheetReportClient() {
         rawPlans = directRps || [];
       }
 
-      // Fetch Work Orders & Routes for complete metadata
+      // Fetch Work Orders & Routes for complete metadata including PO and material code
       const woIds = Array.from(new Set(rawPlans.map((x) => x.work_order_id).filter(Boolean)));
       const planIds = rawPlans.map((x) => x.id);
 
       const [woRes, routesRes, rpDetailsRes] = await Promise.all([
         woIds.length > 0
-          ? s.from('work_orders').select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2, ordered_qty, ordered_qty_pcs, ordered_qty_mtr').in('id', woIds)
+          ? s.from('work_orders').select('*').in('id', woIds)
           : Promise.resolve({ data: [] }),
         s.from('process_routes').select('id, route_code, route_name'),
         planIds.length > 0
@@ -277,8 +280,8 @@ export default function ProcessSheetReportClient() {
           pass_required: detail.pass_required ?? r.pass_required ?? 1,
           work_order_no: wo.work_order_no || r.work_order_no || 'WO-UNKNOWN',
           customer_name: wo.customer_name || r.customer_name || 'Standard Customer',
-          grade: wo.grade || r.grade || parsedSt.grade || 'SAE 1018',
-          specification: wo.specification || r.specification || parsedSt.spec || 'ASTM A106 Gr B',
+          grade: wo.grade || r.grade || parsedSt.grade || '',
+          specification: wo.specification || r.specification || parsedSt.spec || '',
           size_od: finalOd,
           size_wt: finalWt,
           l1: finalL1,
@@ -288,18 +291,22 @@ export default function ProcessSheetReportClient() {
           ordered_qty_mtr: Number(wo.ordered_qty_mtr || r.planned_mtr || 0),
           route_code: route.route_code || r.route_code || 'HFS',
           route_name: route.route_name || r.route_name || 'Standard HFS',
+          po_no: wo.po_no || wo.purchase_order_no || parsedSt.po_no || null,
+          po_date: wo.po_date || wo.purchase_order_date || parsedSt.po_date || null,
+          material_code: wo.material_code || wo.item_code || parsedSt.material_code || null,
         };
       });
 
       setPlans(mappedPlans);
       if (mappedPlans.length > 0) {
-        // Look for plan 6192 if specifically present
-        const match6192 = mappedPlans.find((p) => p.work_order_no.includes('6192') || p.plan_no.includes('6192'));
-        if (match6192) {
-          selectPlan(match6192);
-        } else if (!selectedPlanId) {
-          selectPlan(mappedPlans[0]);
-        }
+        setSelectedPlanId((prev) => {
+          if (!prev) {
+            selectPlan(mappedPlans[0]);
+            return mappedPlans[0].id;
+          }
+          // If already selected, do not force-switch
+          return prev;
+        });
       }
     } catch (err: any) {
       console.error('Error loading rolling plans:', err);
@@ -307,7 +314,7 @@ export default function ProcessSheetReportClient() {
     } finally {
       setLoading(false);
     }
-  }, [selectedPlanId]);
+  }, []);
 
   useEffect(() => {
     loadIssuedPlans();
@@ -324,14 +331,20 @@ export default function ProcessSheetReportClient() {
 
     const parsedSt = plan.status && typeof plan.status === 'object' ? plan.status : {};
 
-    // 1. Order & Header Details
-    setSheetNo(plan.plan_no ? plan.plan_no.replace('RP-', 'PS-') : `PS-${plan.work_order_no}`);
+    // 2. Process sheet No = Last 2 digits of the year + D + Work order no
+    const yr2 = String(new Date().getFullYear()).slice(-2);
+    const cleanWo = String(plan.work_order_no || '').trim();
+    setSheetNo(`${yr2}D${cleanWo}`);
+
     setWoNo(plan.work_order_no || '');
     setCustomer(plan.customer_name || 'Standard Client');
     setDestination(parsedSt.destination || '');
-    setPoNo(parsedSt.po_no || '');
-    setPoDate(parsedSt.po_date || '');
-    setMaterialCode(parsedSt.material_code || '');
+
+    // 3. PURCHASE ORDER NO, PURCHASE ORDER DATE, MATERIAL CODE from Work Order table
+    setPoNo(plan.po_no || parsedSt.po_no || '');
+    setPoDate(plan.po_date || parsedSt.po_date || '');
+    setMaterialCode(plan.material_code || parsedSt.material_code || '');
+
     setHeatNo(parsedSt.heat_no || '');
     setSteelGrade(plan.grade || parsedSt.grade || '');
     setMaterialSpec(plan.specification || parsedSt.spec || '');
@@ -345,7 +358,20 @@ export default function ProcessSheetReportClient() {
 
     setCustOd(targetOd.toFixed(2));
     setCustWt(targetWt.toFixed(2));
-    setProcessWt(targetWt.toFixed(2));
+
+    // 6. Process Wall: For material without negative tolerance -> Customer WT * 1.05; For rest -> Customer WT * 0.97
+    const specUpper = `${plan.specification || ''} ${plan.grade || ''} ${parsedSt.spec || ''}`.toUpperCase();
+    const isNoNegativeTol =
+      specUpper.includes('MIN') ||
+      specUpper.includes('MW') ||
+      specUpper.includes('MIN WALL') ||
+      specUpper.includes('NO NEG');
+
+    const calcProcessWt = isNoNegativeTol
+      ? Number((targetWt * 1.05).toFixed(2))
+      : Number((targetWt * 0.97).toFixed(2));
+    setProcessWt(calcProcessWt.toFixed(2));
+
     setFinalOrderLen1(l1Val.toFixed(3));
     setFinalOrderLen2(l2Val.toFixed(3));
     setFinalLength(avgLen.toFixed(2));
@@ -354,6 +380,12 @@ export default function ProcessSheetReportClient() {
     const kgMtr = Math.max(targetOd - targetWt, 0) * Math.max(targetWt, 0) * 0.0246615;
     setFinalPipeWeight(kgMtr.toFixed(2));
     setMotherHollowKgMtr(kgMtr.toFixed(2));
+
+    // 5. BUNDLE QTY. (PCS) calculated based on Bundle weight Fixed to 2 MT (2000 kg)
+    const wtPerPieceKg = kgMtr * avgLen;
+    const calcBundleQtyPcs = wtPerPieceKg > 0 ? Math.round(2000 / wtPerPieceKg) : 0;
+    setBundleQtyPcs(calcBundleQtyPcs > 0 ? calcBundleQtyPcs.toString() : '-');
+    setBundleWeightMt('2 MT');
 
     // Rolling / Piercer Hollow values
     const mhOd = Number(parsedSt.sizing_mill?.cust_od || plan.mh_od || targetOd);
@@ -403,7 +435,7 @@ export default function ProcessSheetReportClient() {
       route_code: rCode,
       customer_name: plan.customer_name,
       wo_no: plan.work_order_no,
-      po_no: parsedSt.po_no || '',
+      po_no: plan.po_no || parsedSt.po_no || '',
       heat_no: parsedSt.heat_no || '',
     });
   };
@@ -474,6 +506,20 @@ export default function ProcessSheetReportClient() {
       setMhTolOdMax((d.tolerances.od_max - 0.01).toFixed(2));
       setMhTolWtMin(d.tolerances.wt_min.toFixed(2));
       setMhTolWtMax((d.tolerances.wt_max - 0.28).toFixed(2));
+
+      // Rule 6: Process Wall for material without negative tolerance is Customer WT * 1.05, rest is Customer WT * 0.97
+      const isNoNeg =
+        d.tolerances.wt_min >= targetWt - 0.01 ||
+        d.tolerances.wt_tolerance.includes('-0') ||
+        targetSpec.toUpperCase().includes('MIN') ||
+        targetSpec.toUpperCase().includes('MW') ||
+        targetSpec.toUpperCase().includes('MIN WALL') ||
+        targetSpec.toUpperCase().includes('NO NEG') ||
+        targetSpec.toUpperCase().includes('A213') ||
+        targetSpec.toUpperCase().includes('A192') ||
+        targetSpec.toUpperCase().includes('A210');
+      const calcProcWt = isNoNeg ? Number((targetWt * 1.05).toFixed(2)) : Number((targetWt * 0.97).toFixed(2));
+      setProcessWt(calcProcWt.toFixed(2));
 
       // Thermal & Coating
       setWhfTemp(d.thermal.whf_temp);
@@ -1096,23 +1142,65 @@ export default function ProcessSheetReportClient() {
           </div>
           <div className="col-span-2 p-1 text-center">
             <div className="text-[8px] text-slate-500">CUSTOMER OD (MM)</div>
-            <div className="font-bold text-sm text-indigo-900 print:text-black">{custOd}</div>
+            <input
+              type="text"
+              value={custOd}
+              onChange={(e) => setCustOd(e.target.value)}
+              className="w-full bg-transparent border-none focus:outline-none font-bold text-sm text-indigo-900 print:text-black text-center"
+            />
           </div>
           <div className="col-span-2 p-1 text-center">
             <div className="text-[8px] text-slate-500">CUSTOMER WT(MM)</div>
-            <div className="font-bold text-sm text-indigo-900 print:text-black">{custWt}</div>
+            <input
+              type="text"
+              value={custWt}
+              onChange={(e) => {
+                const val = e.target.value;
+                setCustWt(val);
+                const w = parseFloat(val);
+                if (!isNaN(w) && w > 0) {
+                  const specUpper = `${materialSpec} ${steelGrade}`.toUpperCase();
+                  const isNoNeg =
+                    specUpper.includes('MIN') ||
+                    specUpper.includes('MW') ||
+                    specUpper.includes('MIN WALL') ||
+                    specUpper.includes('NO NEG') ||
+                    specUpper.includes('A213') ||
+                    specUpper.includes('A192') ||
+                    specUpper.includes('A210');
+                  const pWt = isNoNeg ? w * 1.05 : w * 0.97;
+                  setProcessWt(pWt.toFixed(2));
+                }
+              }}
+              className="w-full bg-transparent border-none focus:outline-none font-bold text-sm text-indigo-900 print:text-black text-center"
+            />
           </div>
           <div className="col-span-2 p-1 text-center">
             <div className="text-[8px] text-slate-500">PROCESS WT(MM)</div>
-            <div className="font-bold text-sm">{processWt}</div>
+            <input
+              type="text"
+              value={processWt}
+              onChange={(e) => setProcessWt(e.target.value)}
+              className="w-full bg-transparent border-none focus:outline-none font-bold text-sm text-center"
+            />
           </div>
           <div className="col-span-2 p-1 text-center">
             <div className="text-[8px] text-slate-500">FINAL PIPE WEIGHT (KG/MTR)</div>
-            <div className="font-bold">{finalPipeWeight}</div>
+            <input
+              type="text"
+              value={finalPipeWeight}
+              onChange={(e) => setFinalPipeWeight(e.target.value)}
+              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+            />
           </div>
           <div className="col-span-2 p-1 text-center">
             <div className="text-[8px] text-slate-500">FINAL LENGTH (MTRS)</div>
-            <div className="font-bold">{finalLength}</div>
+            <input
+              type="text"
+              value={finalLength}
+              onChange={(e) => setFinalLength(e.target.value)}
+              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+            />
           </div>
         </div>
 
@@ -1161,17 +1249,44 @@ export default function ProcessSheetReportClient() {
             {/* Heat Treatment & Straightness */}
             <div className="grid grid-cols-8 divide-x divide-black text-[8.5px]">
               <div className="col-span-2 p-1 font-bold bg-slate-50">HEAT TREATMENT</div>
-              <div className="col-span-2 p-1 text-center font-medium">CYCLE: {htCycle}</div>
+              <div className="col-span-2 p-1 text-center font-medium">
+                CYCLE:{' '}
+                <input
+                  type="text"
+                  value={htCycle}
+                  onChange={(e) => setHtCycle(e.target.value)}
+                  className="bg-transparent border-none focus:outline-none font-semibold text-center w-24"
+                />
+              </div>
               <div className="col-span-2 p-1 font-bold bg-slate-50">STRAIGHTNESS</div>
-              <div className="col-span-2 p-1 text-center font-bold">{straightness}</div>
+              <div className="col-span-2 p-1 text-center font-bold">
+                <input
+                  type="text"
+                  value={straightness}
+                  onChange={(e) => setStraightness(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-8 divide-x divide-black text-[8.5px]">
               <div className="col-span-2 p-1 font-bold bg-slate-50">CONDITION</div>
-              <div className="col-span-2 p-1 text-center font-medium">{htCondition}</div>
+              <div className="col-span-2 p-1 text-center font-medium">
+                <input
+                  type="text"
+                  value={htCondition}
+                  onChange={(e) => setHtCondition(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-semibold text-center"
+                />
+              </div>
               <div className="col-span-2 p-1 font-bold bg-slate-50">HARDNESS</div>
               <div className="col-span-2 p-1 text-center font-bold text-purple-950 print:text-black">
-                {hardness}
+                <input
+                  type="text"
+                  value={hardness}
+                  onChange={(e) => setHardness(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+                />
               </div>
             </div>
 
@@ -1194,30 +1309,66 @@ export default function ProcessSheetReportClient() {
               {/* YST */}
               <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MIN.</div>
               <div className="col-span-2 p-0.5 font-extrabold text-sm text-indigo-900 print:text-black">
-                {ystMin}
+                <input
+                  type="text"
+                  value={ystMin}
+                  onChange={(e) => setYstMin(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-extrabold text-sm text-indigo-900 print:text-black text-center"
+                />
               </div>
               {/* UTS */}
               <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MIN.</div>
               <div className="col-span-2 p-0.5 font-extrabold text-sm text-indigo-900 print:text-black">
-                {utsMin}
+                <input
+                  type="text"
+                  value={utsMin}
+                  onChange={(e) => setUtsMin(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-extrabold text-sm text-indigo-900 print:text-black text-center"
+                />
               </div>
               {/* ELONGATION */}
               <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MIN.</div>
               <div className="col-span-2 p-0.5 font-extrabold text-sm text-indigo-900 print:text-black">
-                {elongationMin}%
+                <input
+                  type="text"
+                  value={elongationMin}
+                  onChange={(e) => setElongationMin(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-extrabold text-sm text-indigo-900 print:text-black text-center"
+                />
               </div>
             </div>
 
             <div className="grid grid-cols-9 divide-x divide-black text-center text-[8.5px]">
               {/* YST MAX */}
               <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MAX.</div>
-              <div className="col-span-2 p-0.5 font-medium text-slate-700">{ystMax}</div>
+              <div className="col-span-2 p-0.5 font-medium text-slate-700">
+                <input
+                  type="text"
+                  value={ystMax}
+                  onChange={(e) => setYstMax(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-medium text-slate-700 text-center"
+                />
+              </div>
               {/* UTS MAX */}
               <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MAX.</div>
-              <div className="col-span-2 p-0.5 font-medium text-slate-700">{utsMax}</div>
+              <div className="col-span-2 p-0.5 font-medium text-slate-700">
+                <input
+                  type="text"
+                  value={utsMax}
+                  onChange={(e) => setUtsMax(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-medium text-slate-700 text-center"
+                />
+              </div>
               {/* ELONGATION MAX */}
               <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MAX.</div>
-              <div className="col-span-2 p-0.5 font-medium text-slate-700">{elongationMax}</div>
+              <div className="col-span-2 p-0.5 font-medium text-slate-700">
+                <input
+                  type="text"
+                  value={elongationMax}
+                  onChange={(e) => setElongationMax(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-medium text-slate-700 text-center"
+                />
+              </div>
             </div>
 
             {/* 
@@ -1227,35 +1378,90 @@ export default function ProcessSheetReportClient() {
             */}
             <div className="grid grid-cols-8 divide-x divide-black text-[8.5px] border-t border-black">
               <div className="col-span-2 p-1 font-bold bg-slate-50">TESTING</div>
-              <div className="col-span-2 p-1 text-center font-bold">NDT: {ndt}</div>
+              <div className="col-span-2 p-1 text-center font-bold">
+                NDT:{' '}
+                <input
+                  type="text"
+                  value={ndt}
+                  onChange={(e) => setNdt(e.target.value)}
+                  className="bg-transparent border-none focus:outline-none font-bold text-center w-16"
+                />
+              </div>
               <div className="col-span-2 p-1 font-bold bg-emerald-100 text-emerald-950 print:bg-white print:text-black">
                 HYDRO PRESSURE
               </div>
               <div className="col-span-2 p-1 text-center font-extrabold text-sm text-emerald-900 print:text-black">
-                {hydroPressurePsi}
+                <input
+                  type="text"
+                  value={hydroPressurePsi}
+                  onChange={(e) => setHydroPressurePsi(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-extrabold text-sm text-emerald-900 print:text-black text-center"
+                />
               </div>
             </div>
 
             <div className="grid grid-cols-8 divide-x divide-black text-[8.5px]">
               <div className="col-span-2 p-1 font-bold bg-slate-50">HOLDING TIME:</div>
-              <div className="col-span-2 p-1 text-center font-bold">{holdingTime}</div>
+              <div className="col-span-2 p-1 text-center font-bold">
+                <input
+                  type="text"
+                  value={holdingTime}
+                  onChange={(e) => setHoldingTime(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+                />
+              </div>
               <div className="col-span-2 p-1 font-bold bg-slate-50">END CONDITION</div>
-              <div className="col-span-2 p-1 text-[7.5px] font-semibold">{endCondition}</div>
+              <div className="col-span-2 p-1 text-[7.5px] font-semibold">
+                <input
+                  type="text"
+                  value={endCondition}
+                  onChange={(e) => setEndCondition(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none text-[7.5px] font-semibold text-center"
+                />
+              </div>
             </div>
 
             {/* Coating & Bundling */}
             <div className="grid grid-cols-8 divide-x divide-black text-[8.5px]">
               <div className="col-span-2 p-1 font-bold bg-slate-50">COATING</div>
-              <div className="col-span-2 p-1 font-bold text-center">{coating}</div>
+              <div className="col-span-2 p-1 font-bold text-center">
+                <input
+                  type="text"
+                  value={coating}
+                  onChange={(e) => setCoating(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+                />
+              </div>
               <div className="col-span-2 p-1 font-bold bg-slate-50">BUNDLING</div>
-              <div className="col-span-2 p-1 font-bold text-center">{bundling}</div>
+              <div className="col-span-2 p-1 font-bold text-center">
+                <input
+                  type="text"
+                  value={bundling}
+                  onChange={(e) => setBundling(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-8 divide-x divide-black text-[8.5px]">
               <div className="col-span-2 p-1 font-bold bg-slate-50">BUNDLE QTY. (PCS)</div>
-              <div className="col-span-2 p-1 font-bold text-center">{bundleQtyPcs}</div>
+              <div className="col-span-2 p-1 font-bold text-center">
+                <input
+                  type="text"
+                  value={bundleQtyPcs}
+                  onChange={(e) => setBundleQtyPcs(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+                />
+              </div>
               <div className="col-span-2 p-1 font-bold bg-slate-50">BUNDLE WEIGHT (MT)</div>
-              <div className="col-span-2 p-1 font-bold text-center">{bundleWeightMt}</div>
+              <div className="col-span-2 p-1 font-bold text-center">
+                <input
+                  type="text"
+                  value={bundleWeightMt}
+                  onChange={(e) => setBundleWeightMt(e.target.value)}
+                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+                />
+              </div>
             </div>
           </div>
 

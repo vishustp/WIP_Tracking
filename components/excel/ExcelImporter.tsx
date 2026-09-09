@@ -43,6 +43,9 @@ type ImportRow = {
   current_status: string;
   balance_to_make_mtr: number;
   target_date?: string;
+  po_no?: string;
+  po_date?: string;
+  material_code?: string;
   error?: string;
   duplicate?: boolean;
 };
@@ -148,6 +151,9 @@ const SAMPLE_EXCEL_DATA = [
   {
     'W.no': 'WO-2026-101',
     Customer: 'Apex High-Pressure Tubes Ltd',
+    'PO No': 'PO-APX-8821',
+    'PO Date': '2026-08-15',
+    'Material Code': 'MAT-A106B-088',
     SPECIFICATION: 'ASTM A106 Gr.B Seamless Boiler Pipe',
     OD: 88.9,
     WL: 7.62,
@@ -166,6 +172,9 @@ const SAMPLE_EXCEL_DATA = [
   {
     'W.no': 'WO-2026-102',
     Customer: 'Reliance Hydro & Thermal Systems',
+    'PO No': 'PO-REL-9942',
+    'PO Date': '2026-08-18',
+    'Material Code': 'MAT-P11-114',
     SPECIFICATION: 'ASTM A335 P11 Alloy Steel Superheater',
     OD: 114.3,
     WL: 8.56,
@@ -184,6 +193,9 @@ const SAMPLE_EXCEL_DATA = [
   {
     'W.no': 'WO-2026-103',
     Customer: 'Bharat Petrochemical Equipments',
+    'PO No': 'PO-BPE-3301',
+    'PO Date': '2026-08-20',
+    'Material Code': 'MAT-T22-060',
     SPECIFICATION: 'ASTM A213 T22 Heat Exchanger Tube',
     OD: 60.3,
     WL: 5.54,
@@ -202,6 +214,9 @@ const SAMPLE_EXCEL_DATA = [
   {
     'W.no': 'WO-2026-104',
     Customer: 'L&T Heavy Engineering Division',
+    'PO No': 'PO-LT-5540',
+    'PO Date': '2026-08-22',
+    'Material Code': 'MAT-API5L-073',
     SPECIFICATION: 'API 5L Gr.B Line Pipe Seamless',
     OD: 73.0,
     WL: 7.01,
@@ -220,6 +235,9 @@ const SAMPLE_EXCEL_DATA = [
   {
     'W.no': 'WO-2026-105',
     Customer: 'Thermax Energy Infrastructure',
+    'PO No': 'PO-TMX-7719',
+    'PO Date': '2026-08-25',
+    'Material Code': 'MAT-DIN-051',
     SPECIFICATION: 'DIN 17175 St45.8 High Temp Tube',
     OD: 51.0,
     WL: 4.5,
@@ -285,6 +303,16 @@ export default function ExcelImporter() {
     const cBalToMakeMtr = findColumn(headers, ['Bal to Make Mtr.', 'Bal to Make Mtr', 'Bal to Make MTR', 'Bal to Make Meter', 'Bal to Make (Mtr)', 'Balance to Make Mtr', 'Pending Mtr']);
     const cStatus = findColumn(headers, ['Current Status', 'Status', 'Order Status']);
     const cTargetDate = findColumn(headers, ['Target Date', 'Delivery Date', 'Target Delivery Date', 'Due Date', 'Promised Date', 'Schedule Date']);
+    const cPO = findColumn(headers, [
+      'PO No', 'PO Number', 'PO NO', 'Purchase Order No', 'Purchase Order Number',
+      'PO', 'P.O. No', 'P.O. Number', 'Customer PO', 'PO Details', 'P.O.', 'Cust PO', 'Cust PO No'
+    ]);
+    const cPODate = findColumn(headers, [
+      'PO Date', 'Purchase Order Date', 'P.O. Date', 'PO DT', 'PO Dt', 'P.O Dt', 'Cust PO Date'
+    ]);
+    const cMatCode = findColumn(headers, [
+      'Material Code', 'Item Code', 'Mat Code', 'Product Code', 'Mat. Code', 'Item No', 'Material No', 'SAP Code'
+    ]);
 
     if (!cWO) {
       throw new Error(`Column "W.no" or "Work Order No" was not found in the Excel file.\n\nDetected columns:\n${headers.join(', ')}`);
@@ -312,6 +340,9 @@ export default function ExcelImporter() {
       const wlVal = cWL ? num(record[cWL]) || null : null;
       const { l1: l1Val, l2: l2Val } = parseLengthValues(record, headers);
       const targetDateVal = cTargetDate ? clean(record[cTargetDate]) : undefined;
+      const poNoVal = cPO ? clean(record[cPO]) : undefined;
+      const poDateVal = cPODate ? clean(record[cPODate]) : undefined;
+      const matCodeVal = cMatCode ? clean(record[cMatCode]) : undefined;
 
       const row: ImportRow = {
         work_order_no: wo,
@@ -330,6 +361,9 @@ export default function ExcelImporter() {
         current_status: currentStatus || 'Pending',
         balance_to_make_mtr: balanceToMakeMtr,
         target_date: targetDateVal,
+        po_no: poNoVal,
+        po_date: poDateVal,
+        material_code: matCodeVal,
       };
 
       const errors: string[] = [];
@@ -427,6 +461,9 @@ export default function ExcelImporter() {
         balance_to_make_mtr: r.balance_to_make_mtr,
         target_date: r.target_date,
         current_status: r.current_status,
+        po_no: r.po_no || null,
+        po_date: r.po_date || null,
+        material_code: r.material_code || null,
       }));
 
       let imported = 0;
@@ -476,30 +513,32 @@ export default function ExcelImporter() {
         throw error;
       }
 
-      // Explicitly update l1, l2, and breakdown quantities on work_orders to guarantee persistence project-wide
-      const l1l2Updates = validRows.filter((r) => r.l1 != null || r.l2 != null);
-      if (l1l2Updates.length > 0) {
-        const updateChunkSize = 25;
-        for (let i = 0; i < l1l2Updates.length; i += updateChunkSize) {
-          const chunk = l1l2Updates.slice(i, i + updateChunkSize);
-          await Promise.all(
-            chunk.map(async (row) => {
-              await supabase
-                .from('work_orders')
-                .update({
-                  l1: row.l1,
-                  l2: row.l2,
-                  ordered_qty_pcs: row.ordered_qty_pcs,
-                  ordered_qty_mtr: row.ordered_qty_mtr,
-                  ordered_qty_mt: row.ordered_qty_mt,
-                  balance_qty_pcs: row.balance_qty_pcs,
-                  balance_qty_mtr: row.balance_qty_mtr,
-                  balance_qty_mt: row.balance_qty_mt,
-                })
-                .eq('work_order_no', row.work_order_no);
-            })
-          );
-        }
+      // Explicitly update l1, l2, po_no, po_date, material_code, and breakdown quantities on work_orders to guarantee persistence project-wide
+      const updateChunkSize = 25;
+      for (let i = 0; i < validRows.length; i += updateChunkSize) {
+        const chunk = validRows.slice(i, i + updateChunkSize);
+        await Promise.all(
+          chunk.map(async (row) => {
+            const updateObj: Record<string, any> = {
+              l1: row.l1,
+              l2: row.l2,
+              ordered_qty_pcs: row.ordered_qty_pcs,
+              ordered_qty_mtr: row.ordered_qty_mtr,
+              ordered_qty_mt: row.ordered_qty_mt,
+              balance_qty_pcs: row.balance_qty_pcs,
+              balance_qty_mtr: row.balance_qty_mtr,
+              balance_qty_mt: row.balance_qty_mt,
+            };
+            if (row.po_no) updateObj.po_no = row.po_no;
+            if (row.po_date) updateObj.po_date = row.po_date;
+            if (row.material_code) updateObj.material_code = row.material_code;
+
+            await supabase
+              .from('work_orders')
+              .update(updateObj)
+              .eq('work_order_no', row.work_order_no);
+          })
+        );
       }
 
       setImportSuccessCount(imported);
