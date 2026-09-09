@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Printer,
-  Save,
   Sparkles,
   RefreshCw,
   Search,
@@ -63,7 +62,6 @@ interface RollingPlanRecord {
 export default function ProcessSheetReportClient() {
   const selectPlanRef = useRef<(plan: RollingPlanRecord) => void>(() => {});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [plans, setPlans] = useState<RollingPlanRecord[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -189,7 +187,7 @@ export default function ProcessSheetReportClient() {
   const [endCap, setEndCap] = useState('PLASTIC PROTECTOR');
 
   const [specialReq, setSpecialReq] = useState('');
-  const [marking, setMarking] = useState('');
+  const [marking, setMarking] = useState('RASHMI SMLS / LOGO / HFS / ASTM SPEC / STEEL GRADE / OD 0.00 MM X WT 0.00 MM / NDE / WO NO - + LENGTH......MM + H .NO____  + BUNDLE NO..............');
 
   // Signatures
   const [preparedBy] = useState('PPC EXEC');
@@ -572,105 +570,6 @@ export default function ProcessSheetReportClient() {
     const cleanWo = String(plan.work_order_no || '').trim();
     const effectiveWoNo = plan.is_diversion ? `${cleanWo}-Div` : cleanWo;
 
-    // Check if saved process sheet data exists in local storage or plan status
-    let saved: any = null;
-    if (typeof window !== 'undefined') {
-      const cached =
-        localStorage.getItem(`process_sheet_${plan.id}`) ||
-        localStorage.getItem(`process_sheet_wo_${effectiveWoNo}`);
-      if (cached) {
-        try {
-          saved = JSON.parse(cached);
-        } catch { }
-      }
-    }
-    if (!saved && parsedSt.process_sheet_saved) {
-      saved = parsedSt.process_sheet_saved;
-    }
-
-    if (saved) {
-      if (saved.sheetNo) setSheetNo(saved.sheetNo);
-      if (saved.revNo) setRevNo(saved.revNo);
-      if (saved.orderType) setOrderType(saved.orderType);
-      if (saved.routeType) setRouteType(saved.routeType);
-      if (saved.sheetDate) setSheetDate(saved.sheetDate);
-      if (saved.customer) setCustomer(saved.customer);
-      if (saved.destination) setDestination(saved.destination);
-      if (saved.poNo !== undefined) setPoNo(saved.poNo);
-      if (saved.poDate !== undefined) setPoDate(saved.poDate);
-      if (saved.woNo) setWoNo(saved.woNo);
-      if (saved.woDate) setWoDate(saved.woDate);
-      if (saved.orderQty) setOrderQty(saved.orderQty);
-      if (saved.deliveryDate) setDeliveryDate(saved.deliveryDate);
-      if (saved.materialCode !== undefined) setMaterialCode(saved.materialCode);
-      if (saved.priority) setPriority(saved.priority);
-      if (saved.materialSpec) setMaterialSpec(saved.materialSpec);
-      if (saved.pipeColorCode) setPipeColorCode(saved.pipeColorCode);
-      if (saved.rmColorCode) setRmColorCode(saved.rmColorCode);
-      if (saved.steelGrade) setSteelGrade(saved.steelGrade);
-      if (saved.heatNo) setHeatNo(saved.heatNo);
-      if (saved.billetDia) setBilletDia(saved.billetDia);
-      if (saved.billetSectWt) setBilletSectWt(saved.billetSectWt);
-      if (saved.totalWeightMt) setTotalWeightMt(saved.totalWeightMt);
-      if (saved.billetLength) setBilletLength(saved.billetLength);
-      if (saved.cuttingTol) setCuttingTol(saved.cuttingTol);
-      if (saved.multiple) setMultiple(saved.multiple);
-      if (saved.whfTemp) setWhfTemp(saved.whfTemp);
-      if (saved.inductionTemp) setInductionTemp(saved.inductionTemp);
-      if (saved.sizingOutletTemp) setSizingOutletTemp(saved.sizingOutletTemp);
-      if (saved.piercerOd) setPiercerOd(saved.piercerOd);
-      if (saved.piercerWt) setPiercerWt(saved.piercerWt);
-      if (saved.piercerShellLen) setPiercerShellLen(saved.piercerShellLen);
-      if (saved.shellWeight) setShellWeight(saved.shellWeight);
-      if (saved.motherHollowOd) setMotherHollowOd(saved.motherHollowOd);
-      if (saved.motherHollowWt) setMotherHollowWt(saved.motherHollowWt);
-      if (saved.rollingWt) setRollingWt(saved.rollingWt);
-      if (saved.motherHollowKgMtr) setMotherHollowKgMtr(saved.motherHollowKgMtr);
-      if (saved.smLength) setSmLength(saved.smLength);
-      if (saved.hfsFinalLength) setHfsFinalLength(saved.hfsFinalLength);
-      if (saved.mhTolOdMin) setMhTolOdMin(saved.mhTolOdMin);
-      if (saved.mhTolOdMax) setMhTolOdMax(saved.mhTolOdMax);
-      if (saved.mhTolWtMin) setMhTolWtMin(saved.mhTolWtMin);
-      if (saved.mhTolWtMax) setMhTolWtMax(saved.mhTolWtMax);
-      if (saved.planQtyNos) setPlanQtyNos(saved.planQtyNos);
-      if (saved.planQtyMtrs) setPlanQtyMtrs(saved.planQtyMtrs);
-      if (saved.planQtyMt) setPlanQtyMt(saved.planQtyMt);
-      if (saved.inspection) setInspection(saved.inspection);
-      if (saved.processRouteStr) setProcessRouteStr(saved.processRouteStr);
-      if (saved.custOd) setCustOd(saved.custOd);
-      if (saved.custWt) setCustWt(saved.custWt);
-      if (saved.processWt) setProcessWt(saved.processWt);
-      if (saved.finalPipeWeight) setFinalPipeWeight(saved.finalPipeWeight);
-      if (saved.finalLength) setFinalLength(saved.finalLength);
-      if (saved.finalOrderLen1) setFinalOrderLen1(saved.finalOrderLen1);
-      if (saved.finalOrderLen2) setFinalOrderLen2(saved.finalOrderLen2);
-      if (saved.finalTolOdMin) setFinalTolOdMin(saved.finalTolOdMin);
-      if (saved.finalTolOdMax) setFinalTolOdMax(saved.finalTolOdMax);
-      if (saved.finalTolWtMin) setFinalTolWtMin(saved.finalTolWtMin);
-      if (saved.finalTolWtMax) setFinalTolWtMax(saved.finalTolWtMax);
-      if (saved.htCycle) setHtCycle(saved.htCycle);
-      if (saved.htCondition) setHtCondition(saved.htCondition);
-      if (saved.straightness) setStraightness(saved.straightness);
-      if (saved.hardness) setHardness(saved.hardness);
-      if (saved.ystMin) setYstMin(saved.ystMin);
-      if (saved.ystMax) setYstMax(saved.ystMax);
-      if (saved.utsMin) setUtsMin(saved.utsMin);
-      if (saved.utsMax) setUtsMax(saved.utsMax);
-      if (saved.elongationMin) setElongationMin(saved.elongationMin);
-      if (saved.elongationMax) setElongationMax(saved.elongationMax);
-      if (saved.ndt) setNdt(saved.ndt);
-      if (saved.hydroPressurePsi) setHydroPressurePsi(saved.hydroPressurePsi);
-      if (saved.holdingTime) setHoldingTime(saved.holdingTime);
-      if (saved.coating) setCoating(saved.coating);
-      if (saved.endCondition) setEndCondition(saved.endCondition);
-      if (saved.bundling) setBundling(saved.bundling);
-      if (saved.bundleQtyPcs) setBundleQtyPcs(saved.bundleQtyPcs);
-      if (saved.bundleWeightMt) setBundleWeightMt(saved.bundleWeightMt);
-      if (saved.specialReq !== undefined) setSpecialReq(saved.specialReq);
-      if (saved.marking) setMarking(saved.marking);
-      return;
-    }
-
     // 2. Process sheet No = Last 2 digits of the year + D + Work order no
     const yr2 = String(new Date().getFullYear()).slice(-2);
     setSheetNo(`${yr2}D${effectiveWoNo}`);
@@ -772,7 +671,7 @@ export default function ProcessSheetReportClient() {
 
     // Reset marking string for the newly selected Work Order
     setMarking(
-      `RASHMI SMLS / LOGO / ${rCode} / ${plan.specification || 'ASTM SPEC'} / ${plan.grade || 'STEEL GRADE'} / OD ${targetOd.toFixed(2)} MM X WT ${targetWt.toFixed(2)} MM / NDE / WO NO -${plan.work_order_no}`
+      `RASHMI SMLS / LOGO / ${rCode} / ${plan.specification || 'ASTM SPEC'} / ${plan.grade || 'STEEL GRADE'} / OD ${targetOd.toFixed(2)} MM X WT ${targetWt.toFixed(2)} MM / NDE / WO NO -${plan.work_order_no} + LENGTH......MM + H .NO____  + BUNDLE NO..............`
     );
 
     // Fetch mechanical & tolerances automatically specifically for this work order
@@ -790,158 +689,6 @@ export default function ProcessSheetReportClient() {
     });
   };
   selectPlanRef.current = selectPlan;
-
-  // Save current Process Sheet specifications
-  const saveProcessSheet = async () => {
-    if (!selectedPlanId) {
-      toast.error('Please select a Work Order or Diversion Plan first.');
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        planId: selectedPlanId,
-        sheetNo,
-        revNo,
-        orderType,
-        routeType,
-        sheetDate,
-        customer,
-        destination,
-        poNo,
-        poDate,
-        woNo,
-        woDate,
-        orderQty,
-        deliveryDate,
-        materialCode,
-        priority,
-        materialSpec,
-        pipeColorCode,
-        rmColorCode,
-        steelGrade,
-        heatNo,
-        billetDia,
-        billetSectWt,
-        totalWeightMt,
-        billetLength,
-        cuttingTol,
-        multiple,
-        whfTemp,
-        inductionTemp,
-        sizingOutletTemp,
-        piercerOd,
-        piercerWt,
-        piercerShellLen,
-        shellWeight,
-        motherHollowOd,
-        motherHollowWt,
-        rollingWt,
-        motherHollowKgMtr,
-        smLength,
-        hfsFinalLength,
-        mhTolOdMin,
-        mhTolOdMax,
-        mhTolWtMin,
-        mhTolWtMax,
-        planQtyNos,
-        planQtyMtrs,
-        planQtyMt,
-        inspection,
-        processRouteStr,
-        custOd,
-        custWt,
-        processWt,
-        finalPipeWeight,
-        finalLength,
-        finalOrderLen1,
-        finalOrderLen2,
-        finalTolOdMin,
-        finalTolOdMax,
-        finalTolWtMin,
-        finalTolWtMax,
-        p1Od,
-        p1Wt,
-        p2Od,
-        p2Wt,
-        p3Od,
-        p3Wt,
-        htCycle,
-        htCondition,
-        straightness,
-        hardness,
-        ystMin,
-        ystMax,
-        utsMin,
-        utsMax,
-        elongationMin,
-        elongationMax,
-        ndt,
-        hydroPressurePsi,
-        holdingTime,
-        coating,
-        endCondition,
-        bundling,
-        bundleQtyPcs,
-        bundleWeightMt,
-        endCap,
-        specialReq,
-        marking,
-        preparedBy,
-        preparedDate,
-        savedAt: new Date().toISOString(),
-      };
-
-      // 1. Instant local persistence
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(`process_sheet_${selectedPlanId}`, JSON.stringify(payload));
-        localStorage.setItem(`process_sheet_wo_${woNo}`, JSON.stringify(payload));
-      }
-
-      // 2. Persist in database process_sheets table
-      const s = createClient();
-      try {
-        await s.from('process_sheets').upsert(
-          {
-            plan_id: selectedPlanId,
-            work_order_no: woNo,
-            sheet_no: sheetNo,
-            sheet_data: payload,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'sheet_no' }
-        );
-      } catch (dbErr) {
-        console.warn('Database note (process_sheets):', dbErr);
-      }
-
-      // 3. If standard rolling plan, also update rolling_plans status
-      if (!selectedPlanId.startsWith('div-') && !selectedPlanId.startsWith('wo-')) {
-        try {
-          const activePlan = plans.find((p) => p.id === selectedPlanId);
-          const currentSt = activePlan?.status && typeof activePlan.status === 'object' ? activePlan.status : {};
-          await s
-            .from('rolling_plans')
-            .update({
-              status: {
-                ...currentSt,
-                process_sheet_saved: payload,
-              },
-            })
-            .eq('id', selectedPlanId);
-        } catch (rpErr) {
-          console.warn('Rolling plan status note:', rpErr);
-        }
-      }
-
-      toast.success(`✓ Process Sheet (${sheetNo}) saved successfully!`);
-    } catch (err: any) {
-      console.error('Error saving process sheet:', err);
-      toast.error(err.message || 'Failed to save process sheet.');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // Fetch Mechanical Properties, Tolerances & Hydro Pressure PSI via AI / Metallurgical Engine
   const fetchAiSpecs = async (customParams?: any) => {
@@ -1040,7 +787,7 @@ export default function ProcessSheetReportClient() {
 
       // Update marking string with calculated hydro pressure & active order details
       setMarking(
-        `RASHMI SMLS / LOGO / ${targetRoute} / ${targetSpec} / ${targetGrade} / OD ${targetOd.toFixed(2)} MM X WT ${targetWt.toFixed(2)} MM / HYDRO TESTED ${d.testing.hydro_pressure_psi} PSI / NDE / WO NO -${targetWoNo}${targetPoNo ? ` / PO NO -${targetPoNo}` : ''}${targetHeatNo ? ` / H.NO -${targetHeatNo}` : ''}`
+        `RASHMI SMLS / LOGO / ${targetRoute} / ${targetSpec} / ${targetGrade} / OD ${targetOd.toFixed(2)} MM X WT ${targetWt.toFixed(2)} MM / HYDRO TESTED ${d.testing.hydro_pressure_psi} PSI / NDE / WO NO -${targetWoNo}${targetPoNo ? ` / PO NO -${targetPoNo}` : ''} + LENGTH......MM + H .NO____  + BUNDLE NO..............`
       );
 
       toast.success(
@@ -1126,15 +873,6 @@ export default function ProcessSheetReportClient() {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            <button
-              onClick={saveProcessSheet}
-              disabled={saving || !selectedPlanId}
-              className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm shadow-blue-500/20 transition-all disabled:opacity-50 cursor-pointer"
-              title="Save current Process Sheet specifications"
-            >
-              {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              {saving ? 'Saving...' : 'Save Sheet'}
-            </button>
 
             <button
               onClick={() => fetchAiSpecs()}
