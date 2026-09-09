@@ -112,6 +112,14 @@ export function calculateStandardTolerances(
   processRoute: string = 'HFS'
 ): DimensionalTolerances {
   const isCds = processRoute.toUpperCase().includes('CDS') || processRoute.toUpperCase().includes('COLD');
+  const stdUpper = (standard || '').toUpperCase();
+  const isMinWall =
+    stdUpper.includes('210') ||
+    stdUpper.includes('213') ||
+    stdUpper.includes('192') ||
+    stdUpper.includes('179') ||
+    stdUpper.includes('MIN') ||
+    stdUpper.includes('MW');
 
   let odMin = odMm;
   let odMax = odMm;
@@ -121,9 +129,8 @@ export function calculateStandardTolerances(
   let wtMax = wtMm;
   let wtTolStr = '+20% / -12.5%';
 
-  // ASTM A530 / A106 tolerances for seamless pipe
   if (isCds) {
-    // Cold Drawn Seamless tolerances (ASTM A450 / A1016 / ASTM A213 CDS)
+    // Cold Drawn Seamless tolerances (ASTM A450 / ASME SA450 / ASTM A1016)
     if (odMm < 25.4) {
       odMin = Number((odMm - 0.10).toFixed(2));
       odMax = Number((odMm + 0.10).toFixed(2));
@@ -137,6 +144,7 @@ export function calculateStandardTolerances(
       odMax = Number((odMm + 0.15).toFixed(2));
       odTolStr = '±0.15 mm';
     } else if (odMm <= 63.5) {
+      // ASTM A450 Table 1: Over 50.8 to 63.5 mm OD cold drawn is +/- 0.20 mm
       odMin = Number((odMm - 0.20).toFixed(2));
       odMax = Number((odMm + 0.20).toFixed(2));
       odTolStr = '±0.20 mm';
@@ -145,12 +153,22 @@ export function calculateStandardTolerances(
       odMax = Number((odMm + 0.25).toFixed(2));
       odTolStr = '±0.25 mm';
     }
-    // WT tolerance for CDS typically ±10% or +15% / -10%
-    wtMin = Number((wtMm * 0.90).toFixed(2));
-    wtMax = Number((wtMm * 1.15).toFixed(2));
-    wtTolStr = '+15% / -10%';
+
+    if (isMinWall) {
+      // Minimum Wall per ASTM A450 / ASME SA450 Table 3:
+      // For Cold-Drawn: Specified WT is MINIMUM, so minus tolerance is 0% (-0)
+      // Plus tolerance is +20% (or +22% for severe gauges), 0% minus
+      wtMin = Number(wtMm.toFixed(2)); // 0% minus tolerance
+      wtMax = Number((wtMm * 1.20).toFixed(2)); // +20% max
+      wtTolStr = '+20% / -0% (MIN WALL)';
+    } else {
+      // Nominal wall for CDS: +15% / -10% (or ±10%)
+      wtMin = Number((wtMm * 0.90).toFixed(2));
+      wtMax = Number((wtMm * 1.15).toFixed(2));
+      wtTolStr = '+15% / -10%';
+    }
   } else {
-    // Hot Finished Seamless (HFS) per ASTM A530 / ASTM A106
+    // Hot Finished Seamless (HFS) per ASTM A530 / ASTM A106 / ASTM A450
     if (odMm <= 48.3) {
       odMin = Number((odMm - 0.79).toFixed(2));
       odMax = Number((odMm + 0.40).toFixed(2));
@@ -166,10 +184,17 @@ export function calculateStandardTolerances(
       odTolStr = '+1.60 / -0.80 mm';
     }
 
-    // WT tolerance for HFS: Typically +20% / -12.5%
-    wtMin = Number((wtMm * 0.875).toFixed(2)); // -12.5%
-    wtMax = Number((wtMm * 1.20).toFixed(2));  // +20%
-    wtTolStr = '+20% / -12.5%';
+    if (isMinWall) {
+      // Hot finished minimum wall per ASTM A450 Table 3: +28% / -0% (or +33% for thick/small OD)
+      wtMin = Number(wtMm.toFixed(2)); // 0% minus tolerance
+      wtMax = Number((wtMm * 1.28).toFixed(2)); // +28% max
+      wtTolStr = '+28% / -0% (MIN WALL)';
+    } else {
+      // Nominal wall for HFS: Typically +20% / -12.5% per ASTM A530
+      wtMin = Number((wtMm * 0.875).toFixed(2)); // -12.5%
+      wtMax = Number((wtMm * 1.20).toFixed(2));  // +20%
+      wtTolStr = '+20% / -12.5%';
+    }
   }
 
   return {
@@ -319,6 +344,50 @@ export const KNOWN_STANDARDS_LIBRARY: Record<string, any> = {
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC CAP',
   },
+  'A210': {
+    spec_full: 'ASME SA210 Gr A-1 (IBR) / ASTM A210 Gr A-1',
+    steel_grade: 'MEDIUM-CARBON STEEL (SA210 Gr.A1)',
+    smys_mpa: 255, // 37 ksi = 255 MPa
+    uts_mpa: 415,  // 60 ksi = 415 MPa
+    elongation_pct: 30, // 30% min for 2-inch gauge
+    hardness: '79 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'WHITE + BLUE',
+    rm_color: 'YELLOW + BLUE',
+    whf_temp: '1200° C - 1240° C',
+    induction_temp: '860 °C - 890° C',
+    sizing_outlet_temp: '880° C TO 920° C',
+    ht_cycle: 'SUB-CRITICAL ANNEALED / NORMALIZED',
+    ht_condition: 'SUB-CRITICAL ANNEAL (650°C - 700°C) / NORMALIZED',
+    ndt: 'UT / ET',
+    holding_time_sec: 5,
+    coating: 'BLACK VARNISH / RUST OIL',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
+  'A210_C': {
+    spec_full: 'ASME SA210 Gr C (IBR) / ASTM A210 Gr C',
+    steel_grade: 'MEDIUM-CARBON STEEL (SA210 Gr.C)',
+    smys_mpa: 275, // 40 ksi = 275 MPa
+    uts_mpa: 485,  // 70 ksi = 485 MPa
+    elongation_pct: 30,
+    hardness: '89 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'WHITE + RED',
+    rm_color: 'YELLOW + RED',
+    whf_temp: '1200° C - 1240° C',
+    induction_temp: '860 °C - 890° C',
+    sizing_outlet_temp: '880° C TO 920° C',
+    ht_cycle: 'SUB-CRITICAL ANNEALED / NORMALIZED',
+    ht_condition: 'SUB-CRITICAL ANNEAL (650°C - 700°C) / NORMALIZED',
+    ndt: 'UT / ET',
+    holding_time_sec: 5,
+    coating: 'BLACK VARNISH / RUST OIL',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
 };
 
 /**
@@ -345,7 +414,15 @@ export function getDeterministicProcessSpec(params: {
   let matchedLib = KNOWN_STANDARDS_LIBRARY['A106']; // default
   let refStd = 'ASTM A106 Gr B';
 
-  if (specText.includes('312') || gradeText.includes('316')) {
+  if (specText.includes('210') || gradeText.includes('210')) {
+    if (specText.includes('GR C') || specText.includes('GR.C') || gradeText.includes('GR C') || gradeText.includes('GR.C')) {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['A210_C'];
+      refStd = 'ASME SA210 Gr C (IBR)';
+    } else {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['A210'];
+      refStd = 'ASME SA210 Gr A-1 (IBR)';
+    }
+  } else if (specText.includes('312') || gradeText.includes('316')) {
     matchedLib = KNOWN_STANDARDS_LIBRARY['A312_316L'];
     refStd = 'ASTM A312 TP316L';
   } else if (specText.includes('304') || gradeText.includes('304')) {

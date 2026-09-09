@@ -34,6 +34,14 @@ Given the following pipe order parameters:
 - Customer: ${customer_name || 'Standard Industrial'}
 - Work Order: ${wo_no || 'DOM-BPCL-05000'}
 
+IMPORTANT METALLURGICAL RULES:
+- If standard or grade is ASTM A210 / ASME SA210 (Gr A-1 or Gr C), A192, A213, or specified as MIN WALL:
+  * WT is MINIMUM WALL (MW) governed by ASTM A450 / ASME SA450.
+  * Specified WT has MINUS TOLERANCE of 0% (wt_min = specified WT = ${wt} mm). Under NO circumstance can wt_min be less than ${wt}.
+  * Plus tolerance is +20% for CDS (wt_max = ${(wt * 1.20).toFixed(2)}) and +28% for HFS (wt_max = ${(wt * 1.28).toFixed(2)}).
+  * For ASME SA210 Gr A-1: YST Min = 255 MPa (37 ksi), UTS Min = 415 MPa (60 ksi), Elongation Min = 30%, Hardness Max = 79 HRB, Condition = "SUB-CRITICAL ANNEALED / NORMALIZED".
+  * For ASME SA210 Gr C: YST Min = 275 MPa (40 ksi), UTS Min = 485 MPa (70 ksi), Elongation Min = 30%, Hardness Max = 89 HRB.
+
 Extract and calculate the required technical parameters according to applicable ASTM/ASME/EN/IBR standards.
 Respond ONLY with a valid JSON object matching this structure:
 {
@@ -106,6 +114,42 @@ Respond ONLY with a valid JSON object matching this structure:
             const smys = Number(parsedData.mechanical?.yst_min_mpa) || 240;
             const hydroVerified = calculateHydroPressurePsi(od, wt, smys);
 
+            const allSpecText = `${specification || ''} ${grade || ''} ${parsedData.material_spec || ''}`.toUpperCase();
+            const isMinWallOrder =
+              allSpecText.includes('210') ||
+              allSpecText.includes('213') ||
+              allSpecText.includes('192') ||
+              allSpecText.includes('179') ||
+              allSpecText.includes('MIN') ||
+              allSpecText.includes('MW');
+
+            const parsedWtMin = Number(parsedData.tolerances?.wt_min);
+            const enforcedWtMin = isMinWallOrder
+              ? Number(wt.toFixed(2))
+              : (parsedWtMin || Number((wt * 0.875).toFixed(2)));
+
+            const parsedWtMax = Number(parsedData.tolerances?.wt_max);
+            const defaultWtMax = isMinWallOrder
+              ? Number((wt * (route.toUpperCase().includes('CDS') ? 1.20 : 1.28)).toFixed(2))
+              : Number((wt * 1.20).toFixed(2));
+            const enforcedWtMax = parsedWtMax && parsedWtMax >= wt ? parsedWtMax : defaultWtMax;
+
+            const tolerances: DimensionalTolerances = {
+              od_min: Number(parsedData.tolerances?.od_min) || (od - 0.8),
+              od_max: Number(parsedData.tolerances?.od_max) || (od + 0.8),
+              od_tol_str: parsedData.tolerances?.od_tol_str || (isMinWallOrder ? '±0.20 mm' : '±0.8 mm'),
+              wt_min: enforcedWtMin,
+              wt_max: enforcedWtMax,
+              wt_tol_str:
+                parsedData.tolerances?.wt_tol_str ||
+                (isMinWallOrder
+                  ? route.toUpperCase().includes('CDS')
+                    ? '+20% / -0% (MIN WALL)'
+                    : '+28% / -0% (MIN WALL)'
+                  : '+20% / -12.5%'),
+              cutting_tol: parsedData.tolerances?.cutting_tol || '+5/-0 MM',
+            };
+
             const result: ProcessSpecResult = {
               source: 'ai',
               reference_standard: parsedData.reference_standard || specification || 'ASTM Standard',
@@ -123,15 +167,7 @@ Respond ONLY with a valid JSON object matching this structure:
                 hardness_max: parsedData.mechanical?.hardness_max ?? '79 HRB MAX',
                 straightness: parsedData.mechanical?.straightness ?? '1:1000',
               },
-              tolerances: {
-                od_min: Number(parsedData.tolerances?.od_min) || (od - 0.8),
-                od_max: Number(parsedData.tolerances?.od_max) || (od + 0.8),
-                od_tol_str: parsedData.tolerances?.od_tol_str || '±0.8 mm',
-                wt_min: Number(parsedData.tolerances?.wt_min) || Number((wt * 0.875).toFixed(2)),
-                wt_max: Number(parsedData.tolerances?.wt_max) || Number((wt * 1.20).toFixed(2)),
-                wt_tol_str: parsedData.tolerances?.wt_tol_str || '+20% / -12.5%',
-                cutting_tol: parsedData.tolerances?.cutting_tol || '+5/-0 MM',
-              },
+              tolerances,
               testing: {
                 ndt: parsedData.testing?.ndt || 'UT',
                 hydro_pressure_psi: Number(parsedData.testing?.hydro_pressure_psi) || hydroVerified.pressurePsi,

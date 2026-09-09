@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { ProcessSpecResult } from '@/lib/metallurgy/specEngine';
+import { ProcessSpecResult, calculateStandardTolerances } from '@/lib/metallurgy/specEngine';
 
 interface RollingPlanRecord {
   id: string;
@@ -650,7 +650,11 @@ export default function ProcessSheetReportClient() {
       specUpper.includes('MIN') ||
       specUpper.includes('MW') ||
       specUpper.includes('MIN WALL') ||
-      specUpper.includes('NO NEG');
+      specUpper.includes('NO NEG') ||
+      specUpper.includes('210') ||
+      specUpper.includes('213') ||
+      specUpper.includes('192') ||
+      specUpper.includes('179');
 
     const calcProcessWt = isNoNegativeTol
       ? Number((targetWt * 1.05).toFixed(2))
@@ -708,6 +712,23 @@ export default function ProcessSheetReportClient() {
     setPlanQtyNos(nosCalc > 0 ? nosCalc.toString() : '');
     setPlanQtyMt(((kgMtr * Number(plannedMtr || 0)) / 1000).toFixed(2));
     setOrderQty(plan.ordered_qty_mtr ? `${plan.ordered_qty_mtr} MTR` : plannedMtr ? `${plannedMtr} MTR` : '');
+
+    // Immediate synchronous tolerance calculation using metallurgy engine
+    const initialTols = calculateStandardTolerances(
+      targetOd,
+      targetWt,
+      plan.specification || parsedSt.spec || 'ASTM A106 Gr B',
+      rCode
+    );
+    setFinalTolOdMin(initialTols.od_min.toFixed(2));
+    setFinalTolOdMax(initialTols.od_max.toFixed(2));
+    setFinalTolWtMin(initialTols.wt_min.toFixed(2));
+    setFinalTolWtMax(initialTols.wt_max.toFixed(2));
+
+    setMhTolOdMin((initialTols.od_min + 0.01).toFixed(2));
+    setMhTolOdMax((initialTols.od_max - 0.01).toFixed(2));
+    setMhTolWtMin(initialTols.wt_min.toFixed(2));
+    setMhTolWtMax((initialTols.wt_max - 0.28).toFixed(2));
 
     // Reset marking string for the newly selected Work Order based on active markingType
     setMarking(
@@ -1540,11 +1561,37 @@ export default function ProcessSheetReportClient() {
         {/* TOLERANCE (IN MM) FOR MOTHER HOLLOW & PLAN QTY */}
         <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
           <div className="col-span-2 font-bold p-1 bg-slate-50">TOLERANCE (IN MM):</div>
-          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800">
-            OD: {mhTolOdMin} - {mhTolOdMax}
+          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 flex items-center justify-center gap-0.5">
+            <span className="text-[8.5px] font-bold">OD:</span>
+            <input
+              type="text"
+              value={mhTolOdMin}
+              onChange={(e) => setMhTolOdMin(e.target.value)}
+              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+            />
+            <span>-</span>
+            <input
+              type="text"
+              value={mhTolOdMax}
+              onChange={(e) => setMhTolOdMax(e.target.value)}
+              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+            />
           </div>
-          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800">
-            WT: {mhTolWtMin} - {mhTolWtMax}
+          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 flex items-center justify-center gap-0.5">
+            <span className="text-[8.5px] font-bold">WT:</span>
+            <input
+              type="text"
+              value={mhTolWtMin}
+              onChange={(e) => setMhTolWtMin(e.target.value)}
+              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+            />
+            <span>-</span>
+            <input
+              type="text"
+              value={mhTolWtMax}
+              onChange={(e) => setMhTolWtMax(e.target.value)}
+              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+            />
           </div>
           <div className="col-span-2 font-bold p-1 bg-slate-50 text-center">PLAN QTY IN NOS:</div>
           <div className="col-span-1 p-1 font-bold text-center bg-slate-200 text-slate-800">{planQtyNos}</div>
@@ -1605,7 +1652,9 @@ export default function ProcessSheetReportClient() {
                     specUpper.includes('NO NEG') ||
                     specUpper.includes('A213') ||
                     specUpper.includes('A192') ||
-                    specUpper.includes('A210');
+                    specUpper.includes('A210') ||
+                    specUpper.includes('SA210') ||
+                    specUpper.includes('210');
                   const pWt = isNoNeg ? w * 1.05 : w * 0.97;
                   setProcessWt(pWt.toFixed(2));
                 }
@@ -1647,11 +1696,37 @@ export default function ProcessSheetReportClient() {
           <div className="col-span-2 font-bold p-1 bg-slate-50">
             FINAL {orderType} TOLERANCE (IN MM)
           </div>
-          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 print:text-black">
-            OD: {finalTolOdMin} - {finalTolOdMax}
+          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 print:text-black flex items-center justify-center gap-0.5">
+            <span className="text-[8.5px] font-bold">OD:</span>
+            <input
+              type="text"
+              value={finalTolOdMin}
+              onChange={(e) => setFinalTolOdMin(e.target.value)}
+              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+            />
+            <span>-</span>
+            <input
+              type="text"
+              value={finalTolOdMax}
+              onChange={(e) => setFinalTolOdMax(e.target.value)}
+              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+            />
           </div>
-          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 print:text-black">
-            WT: {finalTolWtMin} - {finalTolWtMax}
+          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 print:text-black flex items-center justify-center gap-0.5">
+            <span className="text-[8.5px] font-bold">WT:</span>
+            <input
+              type="text"
+              value={finalTolWtMin}
+              onChange={(e) => setFinalTolWtMin(e.target.value)}
+              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+            />
+            <span>-</span>
+            <input
+              type="text"
+              value={finalTolWtMax}
+              onChange={(e) => setFinalTolWtMax(e.target.value)}
+              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+            />
           </div>
           <div className="col-span-2 p-1 text-center font-bold flex items-center justify-center gap-1 bg-slate-100 text-slate-800 print:bg-transparent print:text-black">
             <span className="text-[8.5px] font-bold">LEN:</span>
