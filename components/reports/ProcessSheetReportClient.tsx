@@ -61,34 +61,40 @@ export default function ProcessSheetReportClient() {
   const [aiLoading, setAiLoading] = useState(false);
   const [specSource, setSpecSource] = useState<'ai' | 'engine' | 'manual'>('engine');
 
-  // Process Sheet Form State Fields
-  const [sheetNo, setSheetNo] = useState('250D05000');
+  // Process Sheet Form State Fields (Empty/Dynamic by default)
+  const [sheetNo, setSheetNo] = useState('');
   const [revNo, setRevNo] = useState('REV 01');
   const [orderType, setOrderType] = useState('HFS');
   const [routeType, setRouteType] = useState('HFS');
-  const [sheetDate, setSheetDate] = useState('04-06-2026');
+  const [sheetDate, setSheetDate] = useState(() => {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+  });
 
-  const [customer, setCustomer] = useState('Bharat Petroleum Corporation Ltd');
-  const [destination, setDestination] = useState('Administrative Building, Bharat Petroleum Corporation, Limited, ...');
-  const [poNo, setPoNo] = useState('GEMC-511687748165300');
-  const [poDate, setPoDate] = useState('10.12.2025');
-  const [woNo, setWoNo] = useState('DOM-BPCL - 05000');
-  const [woDate, setWoDate] = useState('04-06-2026');
-  const [orderQty, setOrderQty] = useState('77 MTR');
+  const [customer, setCustomer] = useState('');
+  const [destination, setDestination] = useState('');
+  const [poNo, setPoNo] = useState('');
+  const [poDate, setPoDate] = useState('');
+  const [woNo, setWoNo] = useState('');
+  const [woDate, setWoDate] = useState(() => {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+  });
+  const [orderQty, setOrderQty] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('IMMEDIATE');
-  const [materialCode, setMaterialCode] = useState('CFIDP0889005490020');
+  const [materialCode, setMaterialCode] = useState('');
   const [priority, setPriority] = useState('1');
-  const [materialSpec, setMaterialSpec] = useState('ASTM A106 Gr B (IBR)');
+  const [materialSpec, setMaterialSpec] = useState('');
   const [pipeColorCode, setPipeColorCode] = useState('WHITE');
   const [rmColorCode, setRmColorCode] = useState('YELLOW + WHITE');
-  const [steelGrade, setSteelGrade] = useState('SAE 1018 / 15C8 RS-03');
-  const [heatNo, setHeatNo] = useState('25D05457');
+  const [steelGrade, setSteelGrade] = useState('');
+  const [heatNo, setHeatNo] = useState('');
 
   // Billet Details
-  const [billetDia, setBilletDia] = useState('90.00');
-  const [billetSectWt, setBilletSectWt] = useState('49.95');
-  const [totalWeightMt, setTotalWeightMt] = useState('0.16');
-  const [billetLength, setBilletLength] = useState('1290');
+  const [billetDia, setBilletDia] = useState('');
+  const [billetSectWt, setBilletSectWt] = useState('');
+  const [totalWeightMt, setTotalWeightMt] = useState('');
+  const [billetLength, setBilletLength] = useState('');
   const [cuttingTol, setCuttingTol] = useState('+5/-0 MM');
   const [multiple, setMultiple] = useState('1');
 
@@ -98,45 +104,45 @@ export default function ProcessSheetReportClient() {
   const [sizingOutletTemp, setSizingOutletTemp] = useState('880° C TO 900° C');
 
   // Piercer & Mother Hollow
-  const [piercerOd, setPiercerOd] = useState('96.00');
-  const [piercerWt, setPiercerWt] = useState('5.74');
-  const [piercerShellLen, setPiercerShellLen] = useState('4.89');
-  const [shellWeight, setShellWeight] = useState('12.78');
+  const [piercerOd, setPiercerOd] = useState('');
+  const [piercerWt, setPiercerWt] = useState('');
+  const [piercerShellLen, setPiercerShellLen] = useState('');
+  const [shellWeight, setShellWeight] = useState('');
 
-  const [motherHollowOd, setMotherHollowOd] = useState('88.90');
-  const [motherHollowWt, setMotherHollowWt] = useState('5.49');
-  const [rollingWt, setRollingWt] = useState('5.49');
-  const [motherHollowKgMtr, setMotherHollowKgMtr] = useState('11.30');
-  const [smLength, setSmLength] = useState('5.533');
-  const [hfsFinalLength, setHfsFinalLength] = useState('5.533');
+  const [motherHollowOd, setMotherHollowOd] = useState('');
+  const [motherHollowWt, setMotherHollowWt] = useState('');
+  const [rollingWt, setRollingWt] = useState('');
+  const [motherHollowKgMtr, setMotherHollowKgMtr] = useState('');
+  const [smLength, setSmLength] = useState('');
+  const [hfsFinalLength, setHfsFinalLength] = useState('');
 
   // Tolerances
-  const [mhTolOdMin, setMhTolOdMin] = useState('88.11');
-  const [mhTolOdMax, setMhTolOdMax] = useState('89.69');
-  const [mhTolWtMin, setMhTolWtMin] = useState('4.80');
-  const [mhTolWtMax, setMhTolWtMax] = useState('6.31');
+  const [mhTolOdMin, setMhTolOdMin] = useState('');
+  const [mhTolOdMax, setMhTolOdMax] = useState('');
+  const [mhTolWtMin, setMhTolWtMin] = useState('');
+  const [mhTolWtMax, setMhTolWtMax] = useState('');
 
-  const [planQtyNos, setPlanQtyNos] = useState('14');
-  const [planQtyMtrs, setPlanQtyMtrs] = useState('77');
-  const [planQtyMt, setPlanQtyMt] = useState('0.87');
+  const [planQtyNos, setPlanQtyNos] = useState('');
+  const [planQtyMtrs, setPlanQtyMtrs] = useState('');
+  const [planQtyMt, setPlanQtyMt] = useState('');
   const [inspection, setInspection] = useState('IBR');
   const [processRouteStr, setProcessRouteStr] = useState(
-    'BILLET CUTTING # WHF 3# PIERCER LXC 60 # SIZING # STRA # CUTTING # UT # HYDRO # VDI # BLACK VARNISH # MARKING # BUNDLING'
+    'BILLET CUTTING # WHF # PIERCER # SIZING # STRA # CUTTING # UT # HYDRO # VDI # BLACK VARNISH # MARKING # BUNDLING'
   );
 
   // Cold Mill & Final
-  const [custOd, setCustOd] = useState('88.90');
-  const [custWt, setCustWt] = useState('5.49');
-  const [processWt, setProcessWt] = useState('5.49');
-  const [finalPipeWeight, setFinalPipeWeight] = useState('11.30');
-  const [finalLength, setFinalLength] = useState('5.51');
-  const [finalOrderLen1, setFinalOrderLen1] = useState('4.000');
-  const [finalOrderLen2, setFinalOrderLen2] = useState('7.000');
+  const [custOd, setCustOd] = useState('');
+  const [custWt, setCustWt] = useState('');
+  const [processWt, setProcessWt] = useState('');
+  const [finalPipeWeight, setFinalPipeWeight] = useState('');
+  const [finalLength, setFinalLength] = useState('');
+  const [finalOrderLen1, setFinalOrderLen1] = useState('');
+  const [finalOrderLen2, setFinalOrderLen2] = useState('');
 
-  const [finalTolOdMin, setFinalTolOdMin] = useState('88.10');
-  const [finalTolOdMax, setFinalTolOdMax] = useState('89.70');
-  const [finalTolWtMin, setFinalTolWtMin] = useState('4.80');
-  const [finalTolWtMax, setFinalTolWtMax] = useState('6.59');
+  const [finalTolOdMin, setFinalTolOdMin] = useState('');
+  const [finalTolOdMax, setFinalTolOdMax] = useState('');
+  const [finalTolWtMin, setFinalTolWtMin] = useState('');
+  const [finalTolWtMax, setFinalTolWtMax] = useState('');
 
   // Inter Pass
   const [p1Od, setP1Od] = useState('NA');
@@ -167,20 +173,21 @@ export default function ProcessSheetReportClient() {
 
   // Coating & Finishing
   const [coating, setCoating] = useState('BLACK VARNISH');
-  const [endCondition, setEndCondition] = useState('BEVEL END (30°-35°) ROOT FACE (0.8 2.4MM)');
+  const [endCondition, setEndCondition] = useState('BEVEL END (30°-35°) ROOT FACE (0.8 - 2.4MM)');
   const [bundling, setBundling] = useState('HEXAGONAL');
-  const [bundleQtyPcs, setBundleQtyPcs] = useState('69');
-  const [bundleWeightMt, setBundleWeightMt] = useState('2 MT');
+  const [bundleQtyPcs, setBundleQtyPcs] = useState('-');
+  const [bundleWeightMt, setBundleWeightMt] = useState('-');
   const [endCap, setEndCap] = useState('PLASTIC PROTECTOR');
 
   const [specialReq, setSpecialReq] = useState('');
-  const [marking, setMarking] = useState(
-    'RASHMI SMLS / LOGO / HFS / ASTM A106 GR.B /NACE MR0103 / MR0175/ OD 88.90 MM X WT 5.49 MM / HYDRO TESTED 2500 PSI / NDE / PO NO -4511422279 / ITEM CODE-6001909522 /00100 / EIL CODE : PI21917221118ZZZZ/ H.NO...... + LENGTH.......+BUNDLE NO.............'
-  );
+  const [marking, setMarking] = useState('');
 
   // Signatures
   const [preparedBy] = useState('PPC EXEC');
-  const [preparedDate] = useState('04-06-2026');
+  const [preparedDate] = useState(() => {
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+  });
 
   // Load Work Orders with Issued Rolling Plans
   const loadIssuedPlans = useCallback(async () => {
@@ -310,28 +317,38 @@ export default function ProcessSheetReportClient() {
   const selectPlan = (plan: RollingPlanRecord) => {
     setSelectedPlanId(plan.id);
 
-    const isCds = plan.route_code.toUpperCase().includes('CDS');
+    const isCds = (plan.route_code || '').toUpperCase().includes('CDS');
     const rCode = isCds ? 'CDS' : 'HFS';
     setOrderType(rCode);
     setRouteType(rCode);
 
-    setSheetNo(plan.plan_no.replace('RP-', 'PS-'));
-    setWoNo(plan.work_order_no);
-    setCustomer(plan.customer_name || 'Customer');
-    setSteelGrade(plan.grade || 'SAE 1018');
-    setMaterialSpec(plan.specification || 'ASTM A106 Gr B (IBR)');
+    const parsedSt = plan.status && typeof plan.status === 'object' ? plan.status : {};
+
+    // 1. Order & Header Details
+    setSheetNo(plan.plan_no ? plan.plan_no.replace('RP-', 'PS-') : `PS-${plan.work_order_no}`);
+    setWoNo(plan.work_order_no || '');
+    setCustomer(plan.customer_name || 'Standard Client');
+    setDestination(parsedSt.destination || '');
+    setPoNo(parsedSt.po_no || '');
+    setPoDate(parsedSt.po_date || '');
+    setMaterialCode(parsedSt.material_code || '');
+    setHeatNo(parsedSt.heat_no || '');
+    setSteelGrade(plan.grade || parsedSt.grade || '');
+    setMaterialSpec(plan.specification || parsedSt.spec || '');
+    setInspection(parsedSt.ibr_status || 'IBR');
 
     const targetOd = Number(plan.size_od) || 88.9;
     const targetWt = Number(plan.size_wt) || 5.49;
-    const l1Val = plan.l1 || 4.0;
-    const l2Val = plan.l2 || 7.0;
+    const l1Val = Number(plan.l1) || 4.0;
+    const l2Val = Number(plan.l2) || 7.0;
+    const avgLen = (l1Val + l2Val) / 2 || 6.0;
 
     setCustOd(targetOd.toFixed(2));
     setCustWt(targetWt.toFixed(2));
     setProcessWt(targetWt.toFixed(2));
     setFinalOrderLen1(l1Val.toFixed(3));
     setFinalOrderLen2(l2Val.toFixed(3));
-    setFinalLength(((l1Val + l2Val) / 2).toFixed(2));
+    setFinalLength(avgLen.toFixed(2));
 
     // Calculate pipe weight in kg/mtr: (OD - WT) * WT * 0.0246615
     const kgMtr = Math.max(targetOd - targetWt, 0) * Math.max(targetWt, 0) * 0.0246615;
@@ -339,46 +356,55 @@ export default function ProcessSheetReportClient() {
     setMotherHollowKgMtr(kgMtr.toFixed(2));
 
     // Rolling / Piercer Hollow values
-    const mhOd = Number(plan.mh_od) || targetOd;
-    const mhWt = Number(plan.mh_wt) || targetWt;
+    const mhOd = Number(parsedSt.sizing_mill?.cust_od || plan.mh_od || targetOd);
+    const mhWt = Number(parsedSt.sizing_mill?.rolling_wt || plan.mh_wt || targetWt);
     setMotherHollowOd(mhOd.toFixed(2));
     setMotherHollowWt(mhWt.toFixed(2));
     setRollingWt(mhWt.toFixed(2));
-    setSmLength((plan.mh_l1 || 5.533).toString());
+    setSmLength((parsedSt.sizing_mill?.sm_len || plan.mh_l1 || 5.533).toString());
     setHfsFinalLength((plan.mh_l2 || 5.533).toString());
 
-    // Piercer estimate
-    const piercOd = Number((mhOd * 1.08).toFixed(2));
-    const piercWt = Number((mhWt * 1.04).toFixed(2));
+    // Piercer values from plan metadata or computed dynamically
+    const piercOd = Number(parsedSt.piercer_mill?.pm_od || (mhOd * 1.08).toFixed(2));
+    const piercWt = Number(parsedSt.piercer_mill?.pm_wt || (mhWt * 1.04).toFixed(2));
     setPiercerOd(piercOd.toFixed(2));
     setPiercerWt(piercWt.toFixed(2));
-    setPiercerShellLen((5.533 * 0.88).toFixed(2));
-    setShellWeight((kgMtr * 1.13).toFixed(2));
+    setPiercerShellLen((parsedSt.piercer_mill?.pm_len || (avgLen * 0.88)).toFixed(2));
+    setShellWeight((parsedSt.piercer_mill?.pm_kg_mtr || (kgMtr * 1.13)).toFixed(2));
 
-    // Billet estimate
-    const bDia = mhOd > 75 ? 90.0 : 63.0;
+    // Billet values from plan metadata or computed dynamically
+    const bDia = Number(parsedSt.billet?.rm_od || (mhOd > 75 ? 90.0 : 63.0));
     setBilletDia(bDia.toFixed(2));
-    const bSect = ((bDia * bDia * 3.14159 * 0.007856) / 4);
+    const bSect = Number(parsedSt.billet?.weight_kg || (((bDia * bDia * 3.14159 * 0.007856) / 4).toFixed(2)));
     setBilletSectWt(bSect.toFixed(2));
-    setBilletLength('1290');
-    setTotalWeightMt((((bSect * 1.29) / 1000)).toFixed(2));
+    setBilletLength((parsedSt.billet?.rm_len_min || 1290).toString());
+    setTotalWeightMt((parsedSt.billet?.billet_wt_whf || ((bSect * 1.29) / 1000)).toFixed(2));
 
-    setMultiple(plan.multiple ? plan.multiple.toString() : '1');
-    setPlanQtyMtrs(plan.planned_qty ? plan.planned_qty.toString() : '77');
-    const nosCalc = Math.round(Number(plan.planned_qty || 77) / Number((l1Val + l2Val) / 2 || 5.5));
-    setPlanQtyNos(nosCalc.toString());
-    setPlanQtyMt(((kgMtr * (plan.planned_qty || 77)) / 1000).toFixed(2));
-    setOrderQty(`${plan.ordered_qty_mtr || plan.planned_qty || 77} MTR`);
+    setMultiple((plan.multiple || parsedSt.multiple || 1).toString());
+    const plannedMtr = plan.planned_qty || parsedSt.rolling_mtr || plan.ordered_qty_mtr || 0;
+    setPlanQtyMtrs(plannedMtr ? plannedMtr.toString() : '');
+    const nosCalc = Math.round(Number(plannedMtr || 0) / avgLen);
+    setPlanQtyNos(nosCalc > 0 ? nosCalc.toString() : '');
+    setPlanQtyMt(((kgMtr * Number(plannedMtr || 0)) / 1000).toFixed(2));
+    setOrderQty(plan.ordered_qty_mtr ? `${plan.ordered_qty_mtr} MTR` : plannedMtr ? `${plannedMtr} MTR` : '');
 
-    // Fetch mechanical & tolerances automatically
+    // Reset marking string for the newly selected Work Order
+    setMarking(
+      `RASHMI SMLS / LOGO / ${rCode} / ${plan.specification || 'ASTM SPEC'} / ${plan.grade || 'STEEL GRADE'} / OD ${targetOd.toFixed(2)} MM X WT ${targetWt.toFixed(2)} MM / NDE / WO NO -${plan.work_order_no}`
+    );
+
+    // Fetch mechanical & tolerances automatically specifically for this work order
     fetchAiSpecs({
-      grade: plan.grade,
-      specification: plan.specification,
+      planId: plan.id,
+      grade: plan.grade || parsedSt.grade,
+      specification: plan.specification || parsedSt.spec,
       size_od: targetOd,
       size_wt: targetWt,
       route_code: rCode,
       customer_name: plan.customer_name,
       wo_no: plan.work_order_no,
+      po_no: parsedSt.po_no || '',
+      heat_no: parsedSt.heat_no || '',
     });
   };
 
@@ -386,17 +412,27 @@ export default function ProcessSheetReportClient() {
   const fetchAiSpecs = async (customParams?: any) => {
     setAiLoading(true);
     try {
-      const activePlan = plans.find((p) => p.id === selectedPlanId);
+      const activePlan = plans.find((p) => p.id === (customParams?.planId || selectedPlanId));
+      const targetGrade = customParams?.grade || activePlan?.grade || 'SAE 1018';
+      const targetSpec = customParams?.specification || activePlan?.specification || 'ASTM A106 Gr B';
+      const targetOd = Number(customParams?.size_od || activePlan?.size_od || 88.9);
+      const targetWt = Number(customParams?.size_wt || activePlan?.size_wt || 5.49);
+      const targetRoute = customParams?.route_code || activePlan?.route_code || 'HFS';
+      const targetCustomer = customParams?.customer_name || activePlan?.customer_name || '';
+      const targetWoNo = customParams?.wo_no || activePlan?.work_order_no || '';
+      const targetPoNo = customParams?.po_no ?? poNo;
+      const targetHeatNo = customParams?.heat_no ?? heatNo;
+
       const payload = {
-        grade: customParams?.grade || steelGrade || activePlan?.grade,
-        specification: customParams?.specification || materialSpec || activePlan?.specification,
-        size_od: Number(customParams?.size_od || custOd || activePlan?.size_od || 88.9),
-        size_wt: Number(customParams?.size_wt || custWt || activePlan?.size_wt || 5.49),
-        route_code: customParams?.route_code || routeType || activePlan?.route_code || 'HFS',
-        customer_name: customParams?.customer_name || customer || activePlan?.customer_name,
-        wo_no: customParams?.wo_no || woNo || activePlan?.work_order_no,
-        po_no: poNo,
-        heat_no: heatNo,
+        grade: targetGrade,
+        specification: targetSpec,
+        size_od: targetOd,
+        size_wt: targetWt,
+        route_code: targetRoute,
+        customer_name: targetCustomer,
+        wo_no: targetWoNo,
+        po_no: targetPoNo,
+        heat_no: targetHeatNo,
       };
 
       const res = await fetch('/api/ai/process-spec', {
@@ -453,9 +489,10 @@ export default function ProcessSheetReportClient() {
       setBundling(d.bundling);
       setEndCap(d.end_cap);
 
-      if (d.suggested_marking) {
-        setMarking(d.suggested_marking);
-      }
+      // Update marking string with calculated hydro pressure & active order details
+      setMarking(
+        `RASHMI SMLS / LOGO / ${targetRoute} / ${targetSpec} / ${targetGrade} / OD ${targetOd.toFixed(2)} MM X WT ${targetWt.toFixed(2)} MM / HYDRO TESTED ${d.testing.hydro_pressure_psi} PSI / NDE / WO NO -${targetWoNo}${targetPoNo ? ` / PO NO -${targetPoNo}` : ''}${targetHeatNo ? ` / H.NO -${targetHeatNo}` : ''}`
+      );
 
       toast.success(
         d.source === 'ai'
