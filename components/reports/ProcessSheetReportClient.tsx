@@ -181,6 +181,7 @@ export default function ProcessSheetReportClient() {
   const [finalTolOdMax, setFinalTolOdMax] = useState('');
   const [finalTolWtMin, setFinalTolWtMin] = useState('');
   const [finalTolWtMax, setFinalTolWtMax] = useState('');
+  const [finalLenTol, setFinalLenTol] = useState('+10MM');
 
   // Inter Pass
   const [p1Od, setP1Od] = useState('NA');
@@ -659,6 +660,10 @@ export default function ProcessSheetReportClient() {
     setFinalOrderLen1(l1Val.toFixed(3));
     setFinalOrderLen2(l2Val.toFixed(3));
     setFinalLength(avgLen.toFixed(2));
+    const isFixedLength = Math.abs(l1Val - l2Val) < 0.05 || l1Val === l2Val;
+    if (isFixedLength) {
+      setFinalLenTol('+10MM');
+    }
 
     // Calculate pipe weight in kg/mtr: (OD - WT) * WT * 0.0246615
     const kgMtr = Math.max(targetOd - targetWt, 0) * Math.max(targetWt, 0) * 0.0246615;
@@ -1648,12 +1653,52 @@ export default function ProcessSheetReportClient() {
           <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 print:text-black">
             WT: {finalTolWtMin} - {finalTolWtMax}
           </div>
-          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800">-</div>
+          <div className="col-span-2 p-1 text-center font-bold flex items-center justify-center gap-1 bg-slate-100 text-slate-800 print:bg-transparent print:text-black">
+            <span className="text-[8.5px] font-bold">LEN:</span>
+            <input
+              type="text"
+              value={finalLenTol}
+              onChange={(e) => setFinalLenTol(e.target.value)}
+              className="w-16 bg-transparent border-none text-center font-bold focus:outline-none text-[9px] uppercase"
+            />
+          </div>
           <div className="col-span-2 font-bold p-1 bg-slate-50 text-center">
             FINAL ORDER LENGTH (MTR)
           </div>
-          <div className="col-span-1 p-1 text-center font-bold bg-slate-200 text-slate-800">L1: {finalOrderLen1}</div>
-          <div className="col-span-1 p-1 text-center font-bold bg-slate-200 text-slate-800">L2: {finalOrderLen2}</div>
+          <div className="col-span-1 p-1 text-center font-bold bg-slate-200 text-slate-800 flex items-center justify-center gap-0.5">
+            <span className="text-[8px] font-bold">L1:</span>
+            <input
+              type="text"
+              value={finalOrderLen1}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFinalOrderLen1(val);
+                const n1 = parseFloat(val);
+                const n2 = parseFloat(finalOrderLen2);
+                if (!isNaN(n1) && !isNaN(n2) && Math.abs(n1 - n2) < 0.05) {
+                  setFinalLenTol('+10MM');
+                }
+              }}
+              className="w-10 bg-transparent border-none focus:outline-none text-center font-bold text-[9px]"
+            />
+          </div>
+          <div className="col-span-1 p-1 text-center font-bold bg-slate-200 text-slate-800 flex items-center justify-center gap-0.5">
+            <span className="text-[8px] font-bold">L2:</span>
+            <input
+              type="text"
+              value={finalOrderLen2}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFinalOrderLen2(val);
+                const n1 = parseFloat(finalOrderLen1);
+                const n2 = parseFloat(val);
+                if (!isNaN(n1) && !isNaN(n2) && Math.abs(n1 - n2) < 0.05) {
+                  setFinalLenTol('+10MM');
+                }
+              }}
+              className="w-10 bg-transparent border-none focus:outline-none text-center font-bold text-[9px]"
+            />
+          </div>
         </div>
 
         {/* INTER PASS & BUNDLE QUANTITY TABLE */}
