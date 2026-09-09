@@ -1,3 +1,0 @@
-## 2025-02-20 - Adding Accessibility Labels to Icon-Only Buttons
-**Learning:** This application extensively uses icon-only buttons (like the `lucide-react` `<X />` icon for close/clear actions) across various grids and forms, which lacked `aria-label` and `title` attributes. Sighted users rely on visual cues, but screen readers require context.
-**Action:** Always proactively verify that icon-only buttons have descriptive `aria-label` attributes. Sighted users benefit from `title` tooltips as well. Ensure tests and linting check out after adding attributes, and remember to use `pnpm` exclusively.
