@@ -1,6 +1,12 @@
 // app/api/ai/process-spec/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getDeterministicProcessSpec, calculateHydroPressurePsi, calculateStandardTolerances, ProcessSpecResult } from '@/lib/metallurgy/specEngine';
+import {
+  getDeterministicProcessSpec,
+  calculateHydroPressurePsi,
+  calculateStandardTolerances,
+  ProcessSpecResult,
+  DimensionalTolerances,
+} from '@/lib/metallurgy/specEngine';
 
 export async function POST(req: NextRequest) {
   try {
