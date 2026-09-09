@@ -713,11 +713,14 @@ export default function ProcessSheetReportClient() {
     setPlanQtyMt(((kgMtr * Number(plannedMtr || 0)) / 1000).toFixed(2));
     setOrderQty(plan.ordered_qty_mtr ? `${plan.ordered_qty_mtr} MTR` : plannedMtr ? `${plannedMtr} MTR` : '');
 
+    // Combine spec & grade so minimum wall and standard matching (e.g. SA210, A210, A106) always match
+    const fullSpecGrade = `${plan.specification || parsedSt.spec || ''} ${plan.grade || parsedSt.grade || ''}`.trim() || 'ASTM A106 Gr B';
+
     // Immediate synchronous tolerance calculation using metallurgy engine
     const initialTols = calculateStandardTolerances(
       targetOd,
       targetWt,
-      plan.specification || parsedSt.spec || 'ASTM A106 Gr B',
+      fullSpecGrade,
       rCode
     );
     setFinalTolOdMin(initialTols.od_min.toFixed(2));
@@ -748,7 +751,7 @@ export default function ProcessSheetReportClient() {
     fetchAiSpecs({
       planId: plan.id,
       grade: plan.grade || parsedSt.grade,
-      specification: plan.specification || parsedSt.spec,
+      specification: fullSpecGrade,
       size_od: targetOd,
       size_wt: targetWt,
       route_code: rCode,
@@ -765,13 +768,43 @@ export default function ProcessSheetReportClient() {
     setAiLoading(true);
     try {
       const activePlan = plans.find((p) => p.id === (customParams?.planId || selectedPlanId));
-      const targetGrade = customParams?.grade || activePlan?.grade || 'SAE 1018';
-      const targetSpec = customParams?.specification || activePlan?.specification || 'ASTM A106 Gr B';
-      const targetOd = Number(customParams?.size_od || activePlan?.size_od || 88.9);
-      const targetWt = Number(customParams?.size_wt || activePlan?.size_wt || 5.49);
-      const targetRoute = customParams?.route_code || activePlan?.route_code || 'HFS';
-      const targetCustomer = customParams?.customer_name || activePlan?.customer_name || '';
-      const targetWoNo = customParams?.wo_no || activePlan?.work_order_no || '';
+      const targetGrade =
+        customParams?.grade ||
+        steelGrade ||
+        activePlan?.grade ||
+        'SAE 1018';
+      const targetSpec =
+        customParams?.specification ||
+        materialSpec ||
+        activePlan?.specification ||
+        'ASTM A106 Gr B';
+      const targetOd = Number(
+        customParams?.size_od ||
+        custOd ||
+        activePlan?.size_od ||
+        88.9
+      );
+      const targetWt = Number(
+        customParams?.size_wt ||
+        custWt ||
+        activePlan?.size_wt ||
+        5.49
+      );
+      const targetRoute =
+        customParams?.route_code ||
+        orderType ||
+        activePlan?.route_code ||
+        'HFS';
+      const targetCustomer =
+        customParams?.customer_name ||
+        customer ||
+        activePlan?.customer_name ||
+        '';
+      const targetWoNo =
+        customParams?.wo_no ||
+        woNo ||
+        activePlan?.work_order_no ||
+        '';
       const targetPoNo = customParams?.po_no ?? poNo;
       const targetHeatNo = customParams?.heat_no ?? heatNo;
 
