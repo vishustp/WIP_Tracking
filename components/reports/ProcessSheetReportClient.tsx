@@ -54,9 +54,12 @@ interface RollingPlanRecord {
   po_no?: string | null;
   po_date?: string | null;
   material_code?: string | null;
+  is_diversion?: boolean;
+  display_label?: string;
 }
 
 export default function ProcessSheetReportClient() {
+  const selectPlanRef = useRef<(plan: RollingPlanRecord) => void>(() => {});
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<RollingPlanRecord[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
@@ -192,7 +195,7 @@ export default function ProcessSheetReportClient() {
     return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
   });
 
-  // Load Work Orders with Issued Rolling Plans
+  // Load Work Orders with Issued Rolling Plans and Diversion Plans
   const loadIssuedPlans = useCallback(async () => {
     setLoading(true);
     try {
@@ -223,8 +226,39 @@ export default function ProcessSheetReportClient() {
         rawPlans = directRps || [];
       }
 
+      // 2. Fetch Diversion Plans (Diversion plan issued work orders)
+      let rawDivs: any[] = [];
+      try {
+        const { data: divRpcData, error: divRpcErr } = await s.rpc('get_diversion_plans', {
+          p_search: null,
+          p_route_code: null,
+          p_work_center: null,
+          p_from_date: null,
+          p_to_date: null,
+          p_limit: 1000,
+        });
+
+        if (!divRpcErr && divRpcData && Array.isArray(divRpcData)) {
+          rawDivs = divRpcData;
+        } else {
+          const { data: directDivs } = await s
+            .from('diversion_plans')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(500);
+          rawDivs = directDivs || [];
+        }
+      } catch (e) {
+        console.warn('Diversion plans query note:', e);
+      }
+
       // Fetch Work Orders & Routes for complete metadata including PO and material code
-      const woIds = Array.from(new Set(rawPlans.map((x) => x.work_order_id).filter(Boolean)));
+      const woIds = Array.from(
+        new Set([
+          ...rawPlans.map((x) => x.work_order_id).filter(Boolean),
+          ...rawDivs.map((x) => x.target_wo_id || x.source_wo_id).filter(Boolean),
+        ])
+      );
       const planIds = rawPlans.map((x) => x.id);
 
       const [woRes, routesRes, rpDetailsRes] = await Promise.all([
@@ -294,15 +328,72 @@ export default function ProcessSheetReportClient() {
           po_no: wo.po_no || wo.purchase_order_no || parsedSt.po_no || null,
           po_date: wo.po_date || wo.purchase_order_date || parsedSt.po_date || null,
           material_code: wo.material_code || wo.item_code || parsedSt.material_code || null,
+          is_diversion: false,
+          display_label: wo.work_order_no || r.work_order_no || 'WO-UNKNOWN',
         };
       });
 
-      setPlans(mappedPlans);
-      if (mappedPlans.length > 0) {
+      const mappedDivPlans: RollingPlanRecord[] = rawDivs.map((d: any) => {
+        const woId = d.target_wo_id || d.source_wo_id;
+        const wo = woMap.get(woId) || {};
+        const routeId = d.route_id || d.process_route_id;
+        const route = routeMap.get(routeId) || {};
+
+        const finalOd = Number(wo.size_od ?? (d.target_size ? parseFloat(d.target_size) : 88.9));
+        const finalWt = Number(
+          wo.size_wt ??
+            (d.target_size
+              ? parseFloat(d.target_size.split('×')[1] || d.target_size.split('x')[1] || '5.49')
+              : 5.49)
+        );
+        const finalL1 = Number(wo.l1 ?? 4.0);
+        const finalL2 = Number(wo.l2 ?? 7.0);
+        const baseWoNo = wo.work_order_no || d.target_wo_no || d.source_wo_no || 'WO-DIV';
+
+        return {
+          id: `div-${d.id}`,
+          plan_no: `DIV-${String(d.id).slice(0, 8)}`,
+          work_order_id: woId,
+          planned_rolling_date: d.diversion_date || d.created_at || new Date().toISOString().split('T')[0],
+          planned_qty: Number(d.diverted_qty || 0),
+          process_route_id: routeId,
+          target_mother_size: null,
+          multiple: Number(d.multiple ?? 1),
+          status: { is_diversion: true, diversion_reason: d.reason, work_center: d.work_center },
+          mh_od: finalOd,
+          mh_wt: finalWt,
+          mh_l1: 5.533,
+          mh_l2: 5.533,
+          pass_required: 1,
+          work_order_no: baseWoNo,
+          customer_name: wo.customer_name || d.target_customer || d.source_customer || 'Standard Customer',
+          grade: wo.grade || d.target_grade || d.source_grade || '',
+          specification: wo.specification || d.target_grade || '',
+          size_od: finalOd,
+          size_wt: finalWt,
+          l1: finalL1,
+          l2: finalL2,
+          ordered_qty: Number(wo.ordered_qty || d.diverted_qty || 0),
+          ordered_qty_pcs: Number(wo.ordered_qty_pcs || d.diverted_pcs || 0),
+          ordered_qty_mtr: Number(wo.ordered_qty_mtr || d.diverted_qty || 0),
+          route_code: route.route_code || d.route_code || 'HFS',
+          route_name: route.route_name || d.route_name || 'Diversion Route',
+          po_no: wo.po_no || wo.purchase_order_no || null,
+          po_date: wo.po_date || wo.purchase_order_date || null,
+          material_code: wo.material_code || wo.item_code || null,
+          is_diversion: true,
+          display_label: `${baseWoNo}-Div`,
+        };
+      });
+
+      const combinedPlans = [...mappedPlans, ...mappedDivPlans];
+      setPlans(combinedPlans);
+
+      if (combinedPlans.length > 0) {
         setSelectedPlanId((prev) => {
           if (!prev) {
-            selectPlan(mappedPlans[0]);
-            return mappedPlans[0].id;
+            selectPlanRef.current(combinedPlans[0]);
+            return combinedPlans[0].id;
           }
           // If already selected, do not force-switch
           return prev;
@@ -331,12 +422,15 @@ export default function ProcessSheetReportClient() {
 
     const parsedSt = plan.status && typeof plan.status === 'object' ? plan.status : {};
 
+    // Work Order with -Div indicator if issued from a diversion plan
+    const cleanWo = String(plan.work_order_no || '').trim();
+    const effectiveWoNo = plan.is_diversion ? `${cleanWo}-Div` : cleanWo;
+
     // 2. Process sheet No = Last 2 digits of the year + D + Work order no
     const yr2 = String(new Date().getFullYear()).slice(-2);
-    const cleanWo = String(plan.work_order_no || '').trim();
-    setSheetNo(`${yr2}D${cleanWo}`);
+    setSheetNo(`${yr2}D${effectiveWoNo}`);
 
-    setWoNo(plan.work_order_no || '');
+    setWoNo(effectiveWoNo);
     setCustomer(plan.customer_name || 'Standard Client');
     setDestination(parsedSt.destination || '');
 
@@ -439,6 +533,7 @@ export default function ProcessSheetReportClient() {
       heat_no: parsedSt.heat_no || '',
     });
   };
+  selectPlanRef.current = selectPlan;
 
   // Fetch Mechanical Properties, Tolerances & Hydro Pressure PSI via AI / Metallurgical Engine
   const fetchAiSpecs = async (customParams?: any) => {
@@ -510,7 +605,7 @@ export default function ProcessSheetReportClient() {
       // Rule 6: Process Wall for material without negative tolerance is Customer WT * 1.05, rest is Customer WT * 0.97
       const isNoNeg =
         d.tolerances.wt_min >= targetWt - 0.01 ||
-        d.tolerances.wt_tolerance.includes('-0') ||
+        (Boolean((d.tolerances as any).wt_tol_str) && String((d.tolerances as any).wt_tol_str).includes('-0')) ||
         targetSpec.toUpperCase().includes('MIN') ||
         targetSpec.toUpperCase().includes('MW') ||
         targetSpec.toUpperCase().includes('MIN WALL') ||
@@ -559,6 +654,8 @@ export default function ProcessSheetReportClient() {
     return plans.filter(
       (p) =>
         p.work_order_no.toLowerCase().includes(q) ||
+        (p.is_diversion && `${p.work_order_no}-div`.toLowerCase().includes(q)) ||
+        (p.is_diversion && 'diversion'.includes(q)) ||
         p.plan_no.toLowerCase().includes(q) ||
         (p.customer_name || '').toLowerCase().includes(q) ||
         (p.grade || '').toLowerCase().includes(q) ||
@@ -622,13 +719,15 @@ export default function ProcessSheetReportClient() {
           </div>
         </div>
 
-        {/* Work Order Selector Bar */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        {/* Work Order & Diversion Plan Selector Frame */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3.5 shadow-lg">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="text-xs font-medium text-slate-300 flex items-center gap-2">
               <Layers className="w-4 h-4 text-emerald-400" />
               <span>
-                Active Rolling Plan Orders: <strong className="text-white">{plans.length}</strong> available
+                Active Orders Available: <strong className="text-white">{plans.length}</strong> Total (
+                <span className="text-indigo-400 font-semibold">{plans.filter((p) => !p.is_diversion).length} Rolling Plans</span>,{' '}
+                <span className="text-amber-400 font-semibold">{plans.filter((p) => p.is_diversion).length} Diversion Plans</span>)
               </span>
             </div>
 
@@ -636,7 +735,7 @@ export default function ProcessSheetReportClient() {
               <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
               <input
                 type="text"
-                placeholder="Search Work Order, Plan No, Grade, Size..."
+                placeholder="Search Work Order, Plan, Grade, Size..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
@@ -644,9 +743,60 @@ export default function ProcessSheetReportClient() {
             </div>
           </div>
 
-          {/* Quick Selection Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
-            {filteredPlans.slice(0, 15).map((p) => {
+          {/* User Requested: Primary Dropdown list fetching Plan issued & Diversion plan issued orders */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                <span>Select Work Order / Diversion Plan ({filteredPlans.length} matching):</span>
+              </label>
+              {activePlan?.is_diversion && (
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  🔀 Diversion Plan Selected (-Div)
+                </span>
+              )}
+            </div>
+
+            <select
+              value={selectedPlanId}
+              onChange={(e) => {
+                const chosen = plans.find((p) => p.id === e.target.value);
+                if (chosen) selectPlan(chosen);
+              }}
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 hover:border-indigo-500 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500 font-medium cursor-pointer shadow-sm transition-colors"
+            >
+              <option value="" disabled>
+                -- Select Issued Work Order / Diversion Plan --
+              </option>
+
+              {filteredPlans.some((p) => !p.is_diversion) && (
+                <optgroup label="📋 Standard Rolling Plans Issued">
+                  {filteredPlans
+                    .filter((p) => !p.is_diversion)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.work_order_no} | Plan: {p.plan_no} | {p.grade} | OD {p.size_od} × {p.size_wt} mm — {p.customer_name}
+                      </option>
+                    ))}
+                </optgroup>
+              )}
+
+              {filteredPlans.some((p) => p.is_diversion) && (
+                <optgroup label="🔀 Diversion Plans Issued (-Div)">
+                  {filteredPlans
+                    .filter((p) => p.is_diversion)
+                    .map((p) => (
+                      <option key={p.id} value={p.id} className="text-amber-300">
+                        {p.work_order_no}-Div | Diversion Plan: {p.plan_no} | {p.grade} | OD {p.size_od} × {p.size_wt} mm — {p.customer_name}
+                      </option>
+                    ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+
+          {/* Quick Selection Buttons */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-thin pt-1">
+            {filteredPlans.slice(0, 20).map((p) => {
               const isSelected = p.id === selectedPlanId;
               return (
                 <button
@@ -654,13 +804,22 @@ export default function ProcessSheetReportClient() {
                   onClick={() => selectPlan(p)}
                   className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all border text-left cursor-pointer ${
                     isSelected
-                      ? 'bg-indigo-600/20 border-indigo-500 text-white font-medium shadow-sm'
+                      ? p.is_diversion
+                        ? 'bg-amber-600/20 border-amber-500 text-white font-medium shadow-sm'
+                        : 'bg-indigo-600/20 border-indigo-500 text-white font-medium shadow-sm'
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                   }`}
                 >
-                  <div className="font-semibold text-white">{p.work_order_no}</div>
+                  <div className="font-semibold text-white flex items-center gap-1.5">
+                    {p.work_order_no}{p.is_diversion ? '-Div' : ''}
+                    {p.is_diversion && (
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/30 text-amber-300 font-bold">
+                        DIV
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[10px] text-slate-400">
-                    {p.plan_no} • {p.grade} • OD {p.size_od} x {p.size_wt}
+                    {p.plan_no} • {p.grade} • OD {p.size_od} × {p.size_wt}
                   </div>
                 </button>
               );
@@ -669,9 +828,16 @@ export default function ProcessSheetReportClient() {
 
           {activePlan && (
             <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3 text-xs flex items-center justify-between flex-wrap gap-2 text-slate-300">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-slate-400">Selected Order:</span>
-                <span className="font-bold text-white">{activePlan.work_order_no}</span>
+                <span className="font-bold text-white flex items-center gap-1.5">
+                  {activePlan.work_order_no}{activePlan.is_diversion ? '-Div' : ''}
+                  {activePlan.is_diversion && (
+                    <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      DIVERSION PLAN
+                    </span>
+                  )}
+                </span>
                 <span className="text-slate-400">Customer:</span>
                 <span className="text-emerald-300 font-medium">{activePlan.customer_name}</span>
                 <span className="text-slate-400">Grade & Spec:</span>
