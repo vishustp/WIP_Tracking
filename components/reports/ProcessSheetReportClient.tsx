@@ -59,6 +59,43 @@ interface RollingPlanRecord {
   display_label?: string;
 }
 
+function buildMarkingString(
+  type: 'single' | 'triple',
+  params: {
+    routeCode?: string;
+    specification?: string;
+    grade?: string;
+    sizeOd?: number | string;
+    sizeWt?: number | string;
+    hydroPsi?: string;
+    woNo?: string;
+    poNo?: string;
+  }
+): string {
+  const rCode = (params.routeCode || 'HFS').toUpperCase().includes('CDS') ? 'CDS' : 'HFS';
+  const odVal = Number(params.sizeOd || 73.0);
+  const wtVal = Number(params.sizeWt || 7.01);
+  const odStr = (Number.isFinite(odVal) && odVal > 0 ? odVal : 73.0).toFixed(2);
+  const wtStr = (Number.isFinite(wtVal) && wtVal > 0 ? wtVal : 7.01).toFixed(2);
+  const hydroStr = params.hydroPsi
+    ? (params.hydroPsi.includes('PSI') ? params.hydroPsi : `${params.hydroPsi} PSI`)
+    : '2500 PSI';
+  const woNoClean = String(params.woNo || '').trim();
+  const poNoClean = String(params.poNo || '').trim();
+  const woPart = woNoClean ? `WO NO -${woNoClean}` : 'WO NO -';
+  const poPart = poNoClean ? ` / PO NO -${poNoClean}` : '';
+
+  if (type === 'triple') {
+    return `(IBR) RASHMI SMLS / LOGO / ${rCode} / ASTM A106 Gr B / ASTM A106 Gr B /ASME SA106 GR B/ASTM A53 GR B/ API 5L GR B/ NACE MR0103/MR0175 OD ${odStr} MM X WT ${wtStr} MM / HYDRO TESTED ${hydroStr} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
+  }
+
+  // Single Marking (existing format)
+  if (params.hydroPsi) {
+    return `RASHMI SMLS / LOGO / ${rCode} / ${params.specification || 'ASTM SPEC'} / ${params.grade || 'STEEL GRADE'} / OD ${odStr} MM X WT ${wtStr} MM / HYDRO TESTED ${hydroStr} / NDE / ${woPart}${poPart} + LENGTH......MM + H .NO____  + BUNDLE NO..............`;
+  }
+  return `RASHMI SMLS / LOGO / ${rCode} / ${params.specification || 'ASTM SPEC'} / ${params.grade || 'STEEL GRADE'} / OD ${odStr} MM X WT ${wtStr} MM / NDE / ${woPart}${poPart} + LENGTH......MM + H .NO____  + BUNDLE NO..............`;
+}
+
 export default function ProcessSheetReportClient() {
   const selectPlanRef = useRef<(plan: RollingPlanRecord) => void>(() => {});
   const [loading, setLoading] = useState(true);
@@ -187,6 +224,9 @@ export default function ProcessSheetReportClient() {
   const [endCap, setEndCap] = useState('PLASTIC PROTECTOR');
 
   const [specialReq, setSpecialReq] = useState('');
+  const [markingType, setMarkingType] = useState<'single' | 'triple'>('single');
+  const markingTypeRef = useRef<'single' | 'triple'>('single');
+  markingTypeRef.current = markingType;
   const [marking, setMarking] = useState('RASHMI SMLS / LOGO / HFS / ASTM SPEC / STEEL GRADE / OD 0.00 MM X WT 0.00 MM / NDE / WO NO - + LENGTH......MM + H .NO____  + BUNDLE NO..............');
 
   // Signatures
@@ -349,7 +389,7 @@ export default function ProcessSheetReportClient() {
           };
 
           mappedWoPlans.push({
-            id: associatedRps.length > 0 ? associatedRps[0].id : `child-wo-${wo.id}`,
+            id: associatedRps.length > 0 ? `child-rp-${associatedRps[0].id}-wo-${wo.id}` : `child-wo-${wo.id}`,
             plan_no: effPlanNo, // Same rolling plan as parent work order
             work_order_id: wo.id,
             planned_rolling_date: effRollingDate,
@@ -393,7 +433,7 @@ export default function ProcessSheetReportClient() {
             } catch { }
 
             mappedWoPlans.push({
-              id: r.id,
+              id: `rp-${r.id}-wo-${wo.id}`,
               plan_no: parsedSt.master_plan_no || r.plan_no || 'Standard Plan',
               work_order_id: wo.id,
               planned_rolling_date: r.planned_rolling_date || wo.target_date || new Date().toISOString().split('T')[0],
@@ -525,6 +565,7 @@ export default function ProcessSheetReportClient() {
           po_no: wo.po_no || wo.purchase_order_no || null,
           po_date: wo.po_date || wo.purchase_order_date || null,
           material_code: wo.material_code || wo.item_code || null,
+          destination: wo.destination || null,
           is_diversion: true,
           display_label: `${baseWoNo}-Div`,
         };
@@ -669,9 +710,18 @@ export default function ProcessSheetReportClient() {
     setPlanQtyMt(((kgMtr * Number(plannedMtr || 0)) / 1000).toFixed(2));
     setOrderQty(plan.ordered_qty_mtr ? `${plan.ordered_qty_mtr} MTR` : plannedMtr ? `${plannedMtr} MTR` : '');
 
-    // Reset marking string for the newly selected Work Order
+    // Reset marking string for the newly selected Work Order based on active markingType
     setMarking(
-      `RASHMI SMLS / LOGO / ${rCode} / ${plan.specification || 'ASTM SPEC'} / ${plan.grade || 'STEEL GRADE'} / OD ${targetOd.toFixed(2)} MM X WT ${targetWt.toFixed(2)} MM / NDE / WO NO -${plan.work_order_no} + LENGTH......MM + H .NO____  + BUNDLE NO..............`
+      buildMarkingString(markingTypeRef.current, {
+        routeCode: rCode,
+        specification: plan.specification || parsedSt.spec,
+        grade: plan.grade || parsedSt.grade,
+        sizeOd: targetOd,
+        sizeWt: targetWt,
+        hydroPsi: undefined,
+        woNo: plan.work_order_no,
+        poNo: plan.po_no || parsedSt.po_no || '',
+      })
     );
 
     // Fetch mechanical & tolerances automatically specifically for this work order
@@ -785,9 +835,18 @@ export default function ProcessSheetReportClient() {
       setBundling(d.bundling);
       setEndCap(d.end_cap);
 
-      // Update marking string with calculated hydro pressure & active order details
+      // Update marking string with calculated hydro pressure & active order details adhering to markingType
       setMarking(
-        `RASHMI SMLS / LOGO / ${targetRoute} / ${targetSpec} / ${targetGrade} / OD ${targetOd.toFixed(2)} MM X WT ${targetWt.toFixed(2)} MM / HYDRO TESTED ${d.testing.hydro_pressure_psi} PSI / NDE / WO NO -${targetWoNo}${targetPoNo ? ` / PO NO -${targetPoNo}` : ''} + LENGTH......MM + H .NO____  + BUNDLE NO..............`
+        buildMarkingString(markingTypeRef.current, {
+          routeCode: targetRoute,
+          specification: targetSpec,
+          grade: targetGrade,
+          sizeOd: targetOd,
+          sizeWt: targetWt,
+          hydroPsi: `${d.testing.hydro_pressure_psi} PSI`,
+          woNo: targetWoNo,
+          poNo: targetPoNo,
+        })
       );
 
       toast.success(
@@ -873,6 +932,36 @@ export default function ProcessSheetReportClient() {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Marking Type Dropdown (Single Marking vs Triple Marking) */}
+            <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 hover:border-indigo-500 rounded-lg px-3 py-1.5 shadow-sm transition-colors">
+              <span className="text-xs text-slate-400 font-semibold flex items-center gap-1">
+                Marking:
+              </span>
+              <select
+                value={markingType}
+                onChange={(e) => {
+                  const newType = e.target.value as 'single' | 'triple';
+                  setMarkingType(newType);
+                  const activePlan = plans.find((p) => p.id === selectedPlanId);
+                  setMarking(
+                    buildMarkingString(newType, {
+                      routeCode: routeType || activePlan?.route_code || 'HFS',
+                      specification: materialSpec || activePlan?.specification,
+                      grade: steelGrade || activePlan?.grade,
+                      sizeOd: custOd || activePlan?.size_od,
+                      sizeWt: custWt || activePlan?.size_wt,
+                      hydroPsi: hydroPressurePsi,
+                      woNo: woNo || activePlan?.work_order_no,
+                      poNo: poNo || activePlan?.po_no || undefined,
+                    })
+                  );
+                }}
+                className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
+              >
+                <option value="single" className="bg-slate-900 text-white font-medium">Single Marking</option>
+                <option value="triple" className="bg-slate-900 text-white font-medium">Triple Marking</option>
+              </select>
+            </div>
 
             <button
               onClick={() => fetchAiSpecs()}
@@ -1131,7 +1220,7 @@ export default function ProcessSheetReportClient() {
         {/* Customer & Destination */}
         <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
           <div className="col-span-2 font-bold p-1 bg-slate-50">CUSTOMER</div>
-          <div className="col-span-6 p-1 font-bold">
+          <div className="col-span-4 p-1 font-bold">
             <input
               type="text"
               value={customer}
@@ -1140,12 +1229,12 @@ export default function ProcessSheetReportClient() {
             />
           </div>
           <div className="col-span-2 font-bold p-1 bg-slate-50">DESTINATION:</div>
-          <div className="col-span-2 p-1 text-[8.5px]">
+          <div className="col-span-4 p-1 font-bold">
             <input
               type="text"
               value={destination}
               onChange={(e) => setDestination(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none text-[8.5px]"
+              className="w-full bg-transparent border-none focus:outline-none font-bold uppercase"
             />
           </div>
         </div>
