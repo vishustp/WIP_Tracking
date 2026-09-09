@@ -1969,13 +1969,13 @@ export default function ProcessSheetReportClient() {
 
         {/* Special Requirements */}
         <div className="border-x border-b border-black p-1 text-[9px] flex items-start gap-2">
-          <span className="font-bold whitespace-nowrap">SPECIAL REQUIREMENTS (IF ANY):</span>
-          <input
-            type="text"
+          <span className="font-bold whitespace-nowrap pt-0.5">SPECIAL REQUIREMENTS (IF ANY):</span>
+          <textarea
+            rows={2}
             placeholder="e.g. As per Client Approved Quality Plan (QAP) & Inspection by Third Party (EIL / TUV / BVQI)"
             value={specialReq}
             onChange={(e) => setSpecialReq(e.target.value)}
-            className="flex-1 bg-transparent border-none focus:outline-none text-[8.5px]"
+            className="flex-1 bg-transparent border-none focus:outline-none text-[8.5px] leading-tight resize-y min-h-[32px]"
           />
         </div>
 
