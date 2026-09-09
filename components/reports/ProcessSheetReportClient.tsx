@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Printer,
+  Save,
   Sparkles,
   RefreshCw,
   Search,
@@ -61,6 +62,7 @@ interface RollingPlanRecord {
 export default function ProcessSheetReportClient() {
   const selectPlanRef = useRef<(plan: RollingPlanRecord) => void>(() => {});
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [plans, setPlans] = useState<RollingPlanRecord[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -426,6 +428,105 @@ export default function ProcessSheetReportClient() {
     const cleanWo = String(plan.work_order_no || '').trim();
     const effectiveWoNo = plan.is_diversion ? `${cleanWo}-Div` : cleanWo;
 
+    // Check if saved process sheet data exists in local storage or plan status
+    let saved: any = null;
+    if (typeof window !== 'undefined') {
+      const cached =
+        localStorage.getItem(`process_sheet_${plan.id}`) ||
+        localStorage.getItem(`process_sheet_wo_${effectiveWoNo}`);
+      if (cached) {
+        try {
+          saved = JSON.parse(cached);
+        } catch { }
+      }
+    }
+    if (!saved && parsedSt.process_sheet_saved) {
+      saved = parsedSt.process_sheet_saved;
+    }
+
+    if (saved) {
+      if (saved.sheetNo) setSheetNo(saved.sheetNo);
+      if (saved.revNo) setRevNo(saved.revNo);
+      if (saved.orderType) setOrderType(saved.orderType);
+      if (saved.routeType) setRouteType(saved.routeType);
+      if (saved.sheetDate) setSheetDate(saved.sheetDate);
+      if (saved.customer) setCustomer(saved.customer);
+      if (saved.destination) setDestination(saved.destination);
+      if (saved.poNo !== undefined) setPoNo(saved.poNo);
+      if (saved.poDate !== undefined) setPoDate(saved.poDate);
+      if (saved.woNo) setWoNo(saved.woNo);
+      if (saved.woDate) setWoDate(saved.woDate);
+      if (saved.orderQty) setOrderQty(saved.orderQty);
+      if (saved.deliveryDate) setDeliveryDate(saved.deliveryDate);
+      if (saved.materialCode !== undefined) setMaterialCode(saved.materialCode);
+      if (saved.priority) setPriority(saved.priority);
+      if (saved.materialSpec) setMaterialSpec(saved.materialSpec);
+      if (saved.pipeColorCode) setPipeColorCode(saved.pipeColorCode);
+      if (saved.rmColorCode) setRmColorCode(saved.rmColorCode);
+      if (saved.steelGrade) setSteelGrade(saved.steelGrade);
+      if (saved.heatNo) setHeatNo(saved.heatNo);
+      if (saved.billetDia) setBilletDia(saved.billetDia);
+      if (saved.billetSectWt) setBilletSectWt(saved.billetSectWt);
+      if (saved.totalWeightMt) setTotalWeightMt(saved.totalWeightMt);
+      if (saved.billetLength) setBilletLength(saved.billetLength);
+      if (saved.cuttingTol) setCuttingTol(saved.cuttingTol);
+      if (saved.multiple) setMultiple(saved.multiple);
+      if (saved.whfTemp) setWhfTemp(saved.whfTemp);
+      if (saved.inductionTemp) setInductionTemp(saved.inductionTemp);
+      if (saved.sizingOutletTemp) setSizingOutletTemp(saved.sizingOutletTemp);
+      if (saved.piercerOd) setPiercerOd(saved.piercerOd);
+      if (saved.piercerWt) setPiercerWt(saved.piercerWt);
+      if (saved.piercerShellLen) setPiercerShellLen(saved.piercerShellLen);
+      if (saved.shellWeight) setShellWeight(saved.shellWeight);
+      if (saved.motherHollowOd) setMotherHollowOd(saved.motherHollowOd);
+      if (saved.motherHollowWt) setMotherHollowWt(saved.motherHollowWt);
+      if (saved.rollingWt) setRollingWt(saved.rollingWt);
+      if (saved.motherHollowKgMtr) setMotherHollowKgMtr(saved.motherHollowKgMtr);
+      if (saved.smLength) setSmLength(saved.smLength);
+      if (saved.hfsFinalLength) setHfsFinalLength(saved.hfsFinalLength);
+      if (saved.mhTolOdMin) setMhTolOdMin(saved.mhTolOdMin);
+      if (saved.mhTolOdMax) setMhTolOdMax(saved.mhTolOdMax);
+      if (saved.mhTolWtMin) setMhTolWtMin(saved.mhTolWtMin);
+      if (saved.mhTolWtMax) setMhTolWtMax(saved.mhTolWtMax);
+      if (saved.planQtyNos) setPlanQtyNos(saved.planQtyNos);
+      if (saved.planQtyMtrs) setPlanQtyMtrs(saved.planQtyMtrs);
+      if (saved.planQtyMt) setPlanQtyMt(saved.planQtyMt);
+      if (saved.inspection) setInspection(saved.inspection);
+      if (saved.processRouteStr) setProcessRouteStr(saved.processRouteStr);
+      if (saved.custOd) setCustOd(saved.custOd);
+      if (saved.custWt) setCustWt(saved.custWt);
+      if (saved.processWt) setProcessWt(saved.processWt);
+      if (saved.finalPipeWeight) setFinalPipeWeight(saved.finalPipeWeight);
+      if (saved.finalLength) setFinalLength(saved.finalLength);
+      if (saved.finalOrderLen1) setFinalOrderLen1(saved.finalOrderLen1);
+      if (saved.finalOrderLen2) setFinalOrderLen2(saved.finalOrderLen2);
+      if (saved.finalTolOdMin) setFinalTolOdMin(saved.finalTolOdMin);
+      if (saved.finalTolOdMax) setFinalTolOdMax(saved.finalTolOdMax);
+      if (saved.finalTolWtMin) setFinalTolWtMin(saved.finalTolWtMin);
+      if (saved.finalTolWtMax) setFinalTolWtMax(saved.finalTolWtMax);
+      if (saved.htCycle) setHtCycle(saved.htCycle);
+      if (saved.htCondition) setHtCondition(saved.htCondition);
+      if (saved.straightness) setStraightness(saved.straightness);
+      if (saved.hardness) setHardness(saved.hardness);
+      if (saved.ystMin) setYstMin(saved.ystMin);
+      if (saved.ystMax) setYstMax(saved.ystMax);
+      if (saved.utsMin) setUtsMin(saved.utsMin);
+      if (saved.utsMax) setUtsMax(saved.utsMax);
+      if (saved.elongationMin) setElongationMin(saved.elongationMin);
+      if (saved.elongationMax) setElongationMax(saved.elongationMax);
+      if (saved.ndt) setNdt(saved.ndt);
+      if (saved.hydroPressurePsi) setHydroPressurePsi(saved.hydroPressurePsi);
+      if (saved.holdingTime) setHoldingTime(saved.holdingTime);
+      if (saved.coating) setCoating(saved.coating);
+      if (saved.endCondition) setEndCondition(saved.endCondition);
+      if (saved.bundling) setBundling(saved.bundling);
+      if (saved.bundleQtyPcs) setBundleQtyPcs(saved.bundleQtyPcs);
+      if (saved.bundleWeightMt) setBundleWeightMt(saved.bundleWeightMt);
+      if (saved.specialReq !== undefined) setSpecialReq(saved.specialReq);
+      if (saved.marking) setMarking(saved.marking);
+      return;
+    }
+
     // 2. Process sheet No = Last 2 digits of the year + D + Work order no
     const yr2 = String(new Date().getFullYear()).slice(-2);
     setSheetNo(`${yr2}D${effectiveWoNo}`);
@@ -534,6 +635,158 @@ export default function ProcessSheetReportClient() {
     });
   };
   selectPlanRef.current = selectPlan;
+
+  // Save current Process Sheet specifications
+  const saveProcessSheet = async () => {
+    if (!selectedPlanId) {
+      toast.error('Please select a Work Order or Diversion Plan first.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        planId: selectedPlanId,
+        sheetNo,
+        revNo,
+        orderType,
+        routeType,
+        sheetDate,
+        customer,
+        destination,
+        poNo,
+        poDate,
+        woNo,
+        woDate,
+        orderQty,
+        deliveryDate,
+        materialCode,
+        priority,
+        materialSpec,
+        pipeColorCode,
+        rmColorCode,
+        steelGrade,
+        heatNo,
+        billetDia,
+        billetSectWt,
+        totalWeightMt,
+        billetLength,
+        cuttingTol,
+        multiple,
+        whfTemp,
+        inductionTemp,
+        sizingOutletTemp,
+        piercerOd,
+        piercerWt,
+        piercerShellLen,
+        shellWeight,
+        motherHollowOd,
+        motherHollowWt,
+        rollingWt,
+        motherHollowKgMtr,
+        smLength,
+        hfsFinalLength,
+        mhTolOdMin,
+        mhTolOdMax,
+        mhTolWtMin,
+        mhTolWtMax,
+        planQtyNos,
+        planQtyMtrs,
+        planQtyMt,
+        inspection,
+        processRouteStr,
+        custOd,
+        custWt,
+        processWt,
+        finalPipeWeight,
+        finalLength,
+        finalOrderLen1,
+        finalOrderLen2,
+        finalTolOdMin,
+        finalTolOdMax,
+        finalTolWtMin,
+        finalTolWtMax,
+        p1Od,
+        p1Wt,
+        p2Od,
+        p2Wt,
+        p3Od,
+        p3Wt,
+        htCycle,
+        htCondition,
+        straightness,
+        hardness,
+        ystMin,
+        ystMax,
+        utsMin,
+        utsMax,
+        elongationMin,
+        elongationMax,
+        ndt,
+        hydroPressurePsi,
+        holdingTime,
+        coating,
+        endCondition,
+        bundling,
+        bundleQtyPcs,
+        bundleWeightMt,
+        endCap,
+        specialReq,
+        marking,
+        preparedBy,
+        preparedDate,
+        savedAt: new Date().toISOString(),
+      };
+
+      // 1. Instant local persistence
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`process_sheet_${selectedPlanId}`, JSON.stringify(payload));
+        localStorage.setItem(`process_sheet_wo_${woNo}`, JSON.stringify(payload));
+      }
+
+      // 2. Persist in database process_sheets table
+      const s = createClient();
+      try {
+        await s.from('process_sheets').upsert(
+          {
+            plan_id: selectedPlanId,
+            work_order_no: woNo,
+            sheet_no: sheetNo,
+            sheet_data: payload,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'sheet_no' }
+        );
+      } catch (dbErr) {
+        console.warn('Database note (process_sheets):', dbErr);
+      }
+
+      // 3. If standard rolling plan, also update rolling_plans status
+      if (!selectedPlanId.startsWith('div-')) {
+        try {
+          const activePlan = plans.find((p) => p.id === selectedPlanId);
+          const currentSt = activePlan?.status && typeof activePlan.status === 'object' ? activePlan.status : {};
+          await s
+            .from('rolling_plans')
+            .update({
+              status: {
+                ...currentSt,
+                process_sheet_saved: payload,
+              },
+            })
+            .eq('id', selectedPlanId);
+        } catch (rpErr) {
+          console.warn('Rolling plan status note:', rpErr);
+        }
+      }
+
+      toast.success(`✓ Process Sheet (${sheetNo}) saved successfully!`);
+    } catch (err: any) {
+      console.error('Error saving process sheet:', err);
+      toast.error(err.message || 'Failed to save process sheet.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Fetch Mechanical Properties, Tolerances & Hydro Pressure PSI via AI / Metallurgical Engine
   const fetchAiSpecs = async (customParams?: any) => {
@@ -696,6 +949,16 @@ export default function ProcessSheetReportClient() {
 
           <div className="flex items-center gap-2.5 flex-wrap">
             <button
+              onClick={saveProcessSheet}
+              disabled={saving || !selectedPlanId}
+              className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm shadow-blue-500/20 transition-all disabled:opacity-50 cursor-pointer"
+              title="Save current Process Sheet specifications"
+            >
+              {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {saving ? 'Saving...' : 'Save Sheet'}
+            </button>
+
+            <button
               onClick={() => fetchAiSpecs()}
               disabled={aiLoading || !selectedPlanId}
               className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm shadow-indigo-500/20 transition-all disabled:opacity-50 cursor-pointer"
@@ -794,38 +1057,6 @@ export default function ProcessSheetReportClient() {
             </select>
           </div>
 
-          {/* Quick Selection Buttons */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-thin pt-1">
-            {filteredPlans.slice(0, 20).map((p) => {
-              const isSelected = p.id === selectedPlanId;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => selectPlan(p)}
-                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all border text-left cursor-pointer ${
-                    isSelected
-                      ? p.is_diversion
-                        ? 'bg-amber-600/20 border-amber-500 text-white font-medium shadow-sm'
-                        : 'bg-indigo-600/20 border-indigo-500 text-white font-medium shadow-sm'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="font-semibold text-white flex items-center gap-1.5">
-                    {p.work_order_no}{p.is_diversion ? '-Div' : ''}
-                    {p.is_diversion && (
-                      <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/30 text-amber-300 font-bold">
-                        DIV
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[10px] text-slate-400">
-                    {p.plan_no} • {p.grade} • OD {p.size_od} × {p.size_wt}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
           {activePlan && (
             <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3 text-xs flex items-center justify-between flex-wrap gap-2 text-slate-300">
               <div className="flex items-center gap-3 flex-wrap">
@@ -875,6 +1106,21 @@ export default function ProcessSheetReportClient() {
         Styled for direct high-fidelity visual fidelity on screen & physical A4 print
         ========================================================================
       */}
+      {/* Legend Banner */}
+      <div className="max-w-[1100px] mx-auto mb-2 flex items-center justify-between text-xs px-2 py-1 print:hidden">
+        <div className="flex items-center gap-4 text-slate-300">
+          <span className="flex items-center gap-1.5">
+            <span className="w-3.5 h-3.5 rounded border border-slate-300 bg-white inline-block shadow-sm"></span>
+            <span className="font-medium text-slate-200">White Cells: Editable User Inputs</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3.5 h-3.5 rounded border border-slate-400 bg-slate-200 inline-block shadow-sm"></span>
+            <span className="font-semibold text-amber-300">Grey Cells: Non-Editable / System Calculated</span>
+          </span>
+        </div>
+        <span className="text-[10px] text-slate-400 font-mono">Format: F-PROD-11</span>
+      </div>
+
       <div className="bg-white text-black p-4 sm:p-6 rounded-xl shadow-2xl border border-slate-300 print:border-none print:shadow-none print:p-0 max-w-[1100px] mx-auto text-[11px] leading-tight font-sans">
         {/* Company Header */}
         <div className="border border-black flex items-stretch">
@@ -931,9 +1177,9 @@ export default function ProcessSheetReportClient() {
             />
           </div>
           <div className="col-span-1 font-bold p-1 bg-slate-50">ORDER</div>
-          <div className="col-span-1 p-1 font-bold">{orderType}</div>
+          <div className="col-span-1 p-1 font-bold bg-slate-200 text-slate-800 text-center">{orderType}</div>
           <div className="col-span-1 font-bold p-1 bg-slate-50">ROUTE</div>
-          <div className="col-span-1 p-1 font-bold">{routeType}</div>
+          <div className="col-span-1 p-1 font-bold bg-slate-200 text-slate-800 text-center">{routeType}</div>
           <div className="col-span-1 font-bold p-1 bg-slate-50">Date :</div>
           <div className="col-span-1 p-1 font-bold">
             <input
@@ -1204,29 +1450,29 @@ export default function ProcessSheetReportClient() {
         {/* PIERCER & ACCU MANDREL MILL HOLLOW */}
         <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
           <div className="col-span-2 font-bold p-1 bg-slate-50 flex items-center">PIERCER SIZE</div>
-          <div className="col-span-10 grid grid-cols-6 divide-x divide-black text-center">
+          <div className="col-span-10 grid grid-cols-6 divide-x divide-black text-center bg-slate-200 text-slate-800">
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">OD (MM) in Hot</div>
+              <div className="text-[8px] text-slate-600">OD (MM) in Hot</div>
               <div className="font-bold">{piercerOd}</div>
             </div>
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">WT(MM) in Hot</div>
+              <div className="text-[8px] text-slate-600">WT(MM) in Hot</div>
               <div className="font-bold">{piercerWt}</div>
             </div>
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">PIERCER SHELL LENGTH</div>
+              <div className="text-[8px] text-slate-600">PIERCER SHELL LENGTH</div>
               <div className="font-bold">{piercerShellLen}</div>
             </div>
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">SHELL WEIGHT KG/MTR</div>
+              <div className="text-[8px] text-slate-600">SHELL WEIGHT KG/MTR</div>
               <div className="font-bold">{shellWeight}</div>
             </div>
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">OD (MM) AIM</div>
+              <div className="text-[8px] text-slate-600">OD (MM) AIM</div>
               <div className="font-bold">NA</div>
             </div>
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">WT(MM) AIM</div>
+              <div className="text-[8px] text-slate-600">WT(MM) AIM</div>
               <div className="font-bold">NA</div>
             </div>
           </div>
@@ -1237,29 +1483,29 @@ export default function ProcessSheetReportClient() {
           <div className="col-span-2 font-bold p-1 bg-slate-50 flex items-center">
             MOTHER HOLLOW SIZE : SIZING MILL
           </div>
-          <div className="col-span-10 grid grid-cols-6 divide-x divide-black text-center">
+          <div className="col-span-10 grid grid-cols-6 divide-x divide-black text-center bg-slate-200 text-slate-800">
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">MOTHER HOLLOW OD (MM)</div>
+              <div className="text-[8px] text-slate-600">MOTHER HOLLOW OD (MM)</div>
               <div className="font-bold font-mono">{motherHollowOd}</div>
             </div>
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">MOTHER HOLLOW WT(MM)</div>
+              <div className="text-[8px] text-slate-600">MOTHER HOLLOW WT(MM)</div>
               <div className="font-bold font-mono">{motherHollowWt}</div>
             </div>
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">ROLLING WT(MM)</div>
+              <div className="text-[8px] text-slate-600">ROLLING WT(MM)</div>
               <div className="font-bold font-mono">{rollingWt}</div>
             </div>
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">MOTHER HOLLOW KG/MTR</div>
+              <div className="text-[8px] text-slate-600">MOTHER HOLLOW KG/MTR</div>
               <div className="font-bold font-mono">{motherHollowKgMtr}</div>
             </div>
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">SM LENGTH (MTR)</div>
+              <div className="text-[8px] text-slate-600">SM LENGTH (MTR)</div>
               <div className="font-bold">{smLength}</div>
             </div>
             <div className="p-0.5">
-              <div className="text-[8px] text-slate-500">HFS FINAL LENGTH (MTR)</div>
+              <div className="text-[8px] text-slate-600">HFS FINAL LENGTH (MTR)</div>
               <div className="font-bold">{hfsFinalLength}</div>
             </div>
           </div>
@@ -1268,17 +1514,17 @@ export default function ProcessSheetReportClient() {
         {/* TOLERANCE (IN MM) FOR MOTHER HOLLOW & PLAN QTY */}
         <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
           <div className="col-span-2 font-bold p-1 bg-slate-50">TOLERANCE (IN MM):</div>
-          <div className="col-span-2 p-1 text-center font-bold">
+          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800">
             OD: {mhTolOdMin} - {mhTolOdMax}
           </div>
-          <div className="col-span-2 p-1 text-center font-bold">
+          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800">
             WT: {mhTolWtMin} - {mhTolWtMax}
           </div>
           <div className="col-span-2 font-bold p-1 bg-slate-50 text-center">PLAN QTY IN NOS:</div>
-          <div className="col-span-1 p-1 font-bold text-center">{planQtyNos}</div>
-          <div className="col-span-1 font-bold p-1 text-center">MTRS: {planQtyMtrs}</div>
-          <div className="col-span-1 font-bold p-1 text-center">MT: {planQtyMt}</div>
-          <div className="col-span-1 font-bold p-1 bg-indigo-50 text-center text-indigo-900 print:text-black">
+          <div className="col-span-1 p-1 font-bold text-center bg-slate-200 text-slate-800">{planQtyNos}</div>
+          <div className="col-span-1 font-bold p-1 text-center bg-slate-200 text-slate-800">MTRS: {planQtyMtrs}</div>
+          <div className="col-span-1 font-bold p-1 text-center bg-slate-200 text-slate-800">MT: {planQtyMt}</div>
+          <div className="col-span-1 font-bold p-1 bg-slate-200 text-center text-slate-800 print:text-black">
             {inspection}
           </div>
         </div>
@@ -1375,18 +1621,18 @@ export default function ProcessSheetReportClient() {
           <div className="col-span-2 font-bold p-1 bg-slate-50">
             FINAL {orderType} TOLERANCE (IN MM)
           </div>
-          <div className="col-span-2 p-1 text-center font-bold text-indigo-950 print:text-black">
+          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 print:text-black">
             OD: {finalTolOdMin} - {finalTolOdMax}
           </div>
-          <div className="col-span-2 p-1 text-center font-bold text-indigo-950 print:text-black">
+          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 print:text-black">
             WT: {finalTolWtMin} - {finalTolWtMax}
           </div>
-          <div className="col-span-2 p-1 text-center font-bold">-</div>
+          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800">-</div>
           <div className="col-span-2 font-bold p-1 bg-slate-50 text-center">
             FINAL ORDER LENGTH (MTR)
           </div>
-          <div className="col-span-1 p-1 text-center font-bold">L1: {finalOrderLen1}</div>
-          <div className="col-span-1 p-1 text-center font-bold">L2: {finalOrderLen2}</div>
+          <div className="col-span-1 p-1 text-center font-bold bg-slate-200 text-slate-800">L1: {finalOrderLen1}</div>
+          <div className="col-span-1 p-1 text-center font-bold bg-slate-200 text-slate-800">L2: {finalOrderLen2}</div>
         </div>
 
         {/* INTER PASS & BUNDLE QUANTITY TABLE */}
@@ -1399,8 +1645,8 @@ export default function ProcessSheetReportClient() {
               <div className="col-span-2 p-1">2 ND PASS</div>
               <div className="col-span-2 p-1">3 RD PASS</div>
             </div>
-            <div className="grid grid-cols-8 divide-x divide-black text-center text-[8.5px]">
-              <div className="col-span-2 p-1 font-semibold text-left pl-2">OD & WT (MM)</div>
+            <div className="grid grid-cols-8 divide-x divide-black text-center text-[8.5px] bg-slate-200 text-slate-800">
+              <div className="col-span-2 p-1 font-semibold text-left pl-2 bg-slate-50 text-black">OD & WT (MM)</div>
               <div className="col-span-2 p-1 font-mono">
                 {p1Od} / {p1Wt}
               </div>
