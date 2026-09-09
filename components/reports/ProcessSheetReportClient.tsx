@@ -568,6 +568,16 @@ export default function ProcessSheetReportClient() {
     setSheetNo(`${yr2}D${effectiveWoNo}`);
 
     setWoNo(effectiveWoNo);
+    if (parsedSt.wo_date) {
+      setWoDate(parsedSt.wo_date);
+    } else if (plan.planned_rolling_date) {
+      const parts = plan.planned_rolling_date.split('-');
+      if (parts.length === 3 && parts[0].length === 4) {
+        setWoDate(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      } else {
+        setWoDate(plan.planned_rolling_date);
+      }
+    }
     setCustomer(plan.customer_name || 'Standard Client');
     setDestination(parsedSt.destination || '');
 
@@ -1243,9 +1253,23 @@ export default function ProcessSheetReportClient() {
             />
           </div>
           <div className="col-span-1 font-bold p-1 bg-slate-50">ORDER</div>
-          <div className="col-span-1 p-1 font-bold bg-slate-200 text-slate-800 text-center">{orderType}</div>
+          <div className="col-span-1 p-1 font-bold text-center">
+            <input
+              type="text"
+              value={orderType}
+              onChange={(e) => setOrderType(e.target.value)}
+              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+            />
+          </div>
           <div className="col-span-1 font-bold p-1 bg-slate-50">ROUTE</div>
-          <div className="col-span-1 p-1 font-bold bg-slate-200 text-slate-800 text-center">{routeType}</div>
+          <div className="col-span-1 p-1 font-bold text-center">
+            <input
+              type="text"
+              value={routeType}
+              onChange={(e) => setRouteType(e.target.value)}
+              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
+            />
+          </div>
           <div className="col-span-1 font-bold p-1 bg-slate-50">Date :</div>
           <div className="col-span-1 p-1 font-bold">
             <input
@@ -1313,12 +1337,13 @@ export default function ProcessSheetReportClient() {
             />
           </div>
           <div className="col-span-2 font-bold p-1 bg-slate-50">WORK ORDER DATE:</div>
-          <div className="col-span-2 p-1">
+          <div className="col-span-2 p-1 font-bold">
             <input
               type="text"
               value={woDate}
               onChange={(e) => setWoDate(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none"
+              className="w-full bg-transparent border-none focus:outline-none font-bold"
+              placeholder="DD-MM-YYYY"
             />
           </div>
         </div>
