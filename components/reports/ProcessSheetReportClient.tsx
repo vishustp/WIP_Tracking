@@ -62,14 +62,14 @@ interface RollingPlanRecord {
 function buildMarkingString(
   type: 'single' | 'triple',
   params: {
-    routeCode?: string;
-    specification?: string;
-    grade?: string;
-    sizeOd?: number | string;
-    sizeWt?: number | string;
-    hydroPsi?: string;
-    woNo?: string;
-    poNo?: string;
+    routeCode?: string | null;
+    specification?: string | null;
+    grade?: string | null;
+    sizeOd?: number | string | null;
+    sizeWt?: number | string | null;
+    hydroPsi?: string | null;
+    woNo?: string | null;
+    poNo?: string | null;
   }
 ): string {
   const rCode = (params.routeCode || 'HFS').toUpperCase().includes('CDS') ? 'CDS' : 'HFS';
