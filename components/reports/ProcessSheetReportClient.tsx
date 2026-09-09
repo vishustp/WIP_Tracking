@@ -654,17 +654,18 @@ export default function ProcessSheetReportClient() {
       specUpper.includes('210') ||
       specUpper.includes('213') ||
       specUpper.includes('192') ||
-      specUpper.includes('179');
+      specUpper.includes('179') ||
+      specUpper.includes('3059');
 
     const calcProcessWt = isNoNegativeTol
       ? Number((targetWt * 1.05).toFixed(2))
       : Number((targetWt * 0.97).toFixed(2));
     setProcessWt(calcProcessWt.toFixed(2));
 
-    setFinalOrderLen1(l1Val.toFixed(3));
-    setFinalOrderLen2(l2Val.toFixed(3));
-    setFinalLength(avgLen.toFixed(2));
     const isFixedLength = Math.abs(l1Val - l2Val) < 0.05 || l1Val === l2Val;
+    setFinalOrderLen1(l1Val.toFixed(3));
+    setFinalOrderLen2(isFixedLength ? `${l2Val.toFixed(3)} +10MM` : l2Val.toFixed(3));
+    setFinalLength(avgLen.toFixed(2));
     if (isFixedLength) {
       setFinalLenTol('+10MM');
     }
@@ -1594,36 +1595,40 @@ export default function ProcessSheetReportClient() {
         {/* TOLERANCE (IN MM) FOR MOTHER HOLLOW & PLAN QTY */}
         <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
           <div className="col-span-2 font-bold p-1 bg-slate-50">TOLERANCE (IN MM):</div>
-          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 flex items-center justify-center gap-0.5">
-            <span className="text-[8.5px] font-bold">OD:</span>
+          <div className="col-span-2 p-1 text-center font-bold bg-white text-black flex items-center justify-center gap-1">
+            <span className="text-[8.5px] font-bold text-slate-500">OD:</span>
             <input
               type="text"
               value={mhTolOdMin}
               onChange={(e) => setMhTolOdMin(e.target.value)}
-              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
+              title="Mother Hollow Minimum OD"
             />
             <span>-</span>
             <input
               type="text"
               value={mhTolOdMax}
               onChange={(e) => setMhTolOdMax(e.target.value)}
-              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
+              title="Mother Hollow Maximum OD"
             />
           </div>
-          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 flex items-center justify-center gap-0.5">
-            <span className="text-[8.5px] font-bold">WT:</span>
+          <div className="col-span-2 p-1 text-center font-bold bg-white text-black flex items-center justify-center gap-1">
+            <span className="text-[8.5px] font-bold text-slate-500">WT:</span>
             <input
               type="text"
               value={mhTolWtMin}
               onChange={(e) => setMhTolWtMin(e.target.value)}
-              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
+              title="Mother Hollow Minimum WT"
             />
             <span>-</span>
             <input
               type="text"
               value={mhTolWtMax}
               onChange={(e) => setMhTolWtMax(e.target.value)}
-              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
+              title="Mother Hollow Maximum WT"
             />
           </div>
           <div className="col-span-2 font-bold p-1 bg-slate-50 text-center">PLAN QTY IN NOS:</div>
@@ -1687,7 +1692,8 @@ export default function ProcessSheetReportClient() {
                     specUpper.includes('A192') ||
                     specUpper.includes('A210') ||
                     specUpper.includes('SA210') ||
-                    specUpper.includes('210');
+                    specUpper.includes('210') ||
+                    specUpper.includes('3059');
                   const pWt = isNoNeg ? w * 1.05 : w * 0.97;
                   setProcessWt(pWt.toFixed(2));
                 }
@@ -1729,45 +1735,49 @@ export default function ProcessSheetReportClient() {
           <div className="col-span-2 font-bold p-1 bg-slate-50">
             FINAL {orderType} TOLERANCE (IN MM)
           </div>
-          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 print:text-black flex items-center justify-center gap-0.5">
-            <span className="text-[8.5px] font-bold">OD:</span>
+          <div className="col-span-2 p-1 text-center font-bold bg-white text-black flex items-center justify-center gap-1">
+            <span className="text-[8.5px] font-bold text-slate-500">OD:</span>
             <input
               type="text"
               value={finalTolOdMin}
               onChange={(e) => setFinalTolOdMin(e.target.value)}
-              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
+              title="Final Minimum OD"
             />
             <span>-</span>
             <input
               type="text"
               value={finalTolOdMax}
               onChange={(e) => setFinalTolOdMax(e.target.value)}
-              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
+              title="Final Maximum OD"
             />
           </div>
-          <div className="col-span-2 p-1 text-center font-bold bg-slate-200 text-slate-800 print:text-black flex items-center justify-center gap-0.5">
-            <span className="text-[8.5px] font-bold">WT:</span>
+          <div className="col-span-2 p-1 text-center font-bold bg-white text-black flex items-center justify-center gap-1">
+            <span className="text-[8.5px] font-bold text-slate-500">WT:</span>
             <input
               type="text"
               value={finalTolWtMin}
               onChange={(e) => setFinalTolWtMin(e.target.value)}
-              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
+              title="Final Minimum WT"
             />
             <span>-</span>
             <input
               type="text"
               value={finalTolWtMax}
               onChange={(e) => setFinalTolWtMax(e.target.value)}
-              className="w-10 bg-transparent border-none text-center font-bold focus:outline-none text-[9px]"
+              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
+              title="Final Maximum WT"
             />
           </div>
-          <div className="col-span-2 p-1 text-center font-bold flex items-center justify-center gap-1 bg-slate-100 text-slate-800 print:bg-transparent print:text-black">
+          <div className="col-span-2 p-1 text-center font-bold flex items-center justify-center gap-1 bg-white text-slate-800 print:bg-transparent print:text-black">
             <span className="text-[8.5px] font-bold">LEN:</span>
             <input
               type="text"
               value={finalLenTol}
               onChange={(e) => setFinalLenTol(e.target.value)}
-              className="w-16 bg-transparent border-none text-center font-bold focus:outline-none text-[9px] uppercase"
+              className="w-16 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px] uppercase"
             />
           </div>
           <div className="col-span-2 font-bold p-1 bg-slate-50 text-center">
@@ -1783,8 +1793,13 @@ export default function ProcessSheetReportClient() {
                 setFinalOrderLen1(val);
                 const n1 = parseFloat(val);
                 const n2 = parseFloat(finalOrderLen2);
-                if (!isNaN(n1) && !isNaN(n2) && Math.abs(n1 - n2) < 0.05) {
-                  setFinalLenTol('+10MM');
+                if (!isNaN(n1) && !isNaN(n2)) {
+                  if (Math.abs(n1 - n2) < 0.05) {
+                    setFinalLenTol('+10MM');
+                    if (!finalOrderLen2.includes('+10MM')) {
+                      setFinalOrderLen2(`${n2.toFixed(3)} +10MM`);
+                    }
+                  }
                 }
               }}
               className="w-10 bg-transparent border-none focus:outline-none text-center font-bold text-[9px]"
@@ -1800,11 +1815,13 @@ export default function ProcessSheetReportClient() {
                 setFinalOrderLen2(val);
                 const n1 = parseFloat(finalOrderLen1);
                 const n2 = parseFloat(val);
-                if (!isNaN(n1) && !isNaN(n2) && Math.abs(n1 - n2) < 0.05) {
-                  setFinalLenTol('+10MM');
+                if (!isNaN(n1) && !isNaN(n2)) {
+                  if (Math.abs(n1 - n2) < 0.05) {
+                    setFinalLenTol('+10MM');
+                  }
                 }
               }}
-              className="w-10 bg-transparent border-none focus:outline-none text-center font-bold text-[9px]"
+              className="w-16 bg-transparent border-none focus:outline-none text-center font-bold text-[9px]"
             />
           </div>
         </div>

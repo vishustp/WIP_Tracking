@@ -46,7 +46,13 @@ IMPORTANT METALLURGICAL RULES:
   * Specified WT has MINUS TOLERANCE of 0% (wt_min = specified WT = ${wt} mm). Under NO circumstance can wt_min be less than ${wt}.
   * Plus tolerance is +20% for CDS (wt_max = ${(wt * 1.20).toFixed(2)}) and +28% for HFS (wt_max = ${(wt * 1.28).toFixed(2)}).
   * For ASME SA210 Gr A-1: YST Min = 255 MPa (37 ksi), UTS Min = 415 MPa (60 ksi), Elongation Min = 30%, Hardness Max = 79 HRB, Condition = "SUB-CRITICAL ANNEALED / NORMALIZED".
-  * For ASME SA210 Gr C: YST Min = 275 MPa (40 ksi), UTS Min = 485 MPa (70 ksi), Elongation Min = 30%, Hardness Max = 89 HRB.
+- If standard or grade is BS 3059 (e.g. BS 3059 Part 1 Gr 320, Part 2 Gr 360, Gr 440, Gr 620):
+  * For BS 3059 Gr 320: YST Min = 195 MPa, UTS Min = 320 MPa, Elongation Min = 25%, Hardness Max = 75 HRB.
+  * For BS 3059 Gr 360: YST Min = 215 MPa, UTS Min = 360 MPa, Elongation Min = 24%, Hardness Max = 77 HRB.
+  * For BS 3059 Gr 440: YST Min = 255 MPa, UTS Min = 440 MPa, Elongation Min = 21%, Hardness Max = 82 HRB.
+  * For BS 3059 Gr 620/622: YST Min = 310 MPa, UTS Min = 580 MPa, Elongation Min = 18%, Hardness Max = 88 HRB.
+  * Heat treatment: NORMALIZED / SUB-CRITICAL ANNEALED.
+  * Wall thickness: BS 3059 is a boiler/superheater tube standard with Minimum Wall (-0% minus tolerance, +20% max for CDS, +28% for HFS).
 
 Extract and calculate the required technical parameters according to applicable ASTM/ASME/EN/IBR standards.
 Respond ONLY with a valid JSON object matching this structure:
@@ -126,6 +132,7 @@ Respond ONLY with a valid JSON object matching this structure:
               allSpecText.includes('213') ||
               allSpecText.includes('192') ||
               allSpecText.includes('179') ||
+              allSpecText.includes('3059') ||
               allSpecText.includes('MIN') ||
               allSpecText.includes('MW');
 

@@ -118,6 +118,7 @@ export function calculateStandardTolerances(
     stdUpper.includes('213') ||
     stdUpper.includes('192') ||
     stdUpper.includes('179') ||
+    stdUpper.includes('3059') ||
     stdUpper.includes('MIN') ||
     stdUpper.includes('MW');
 
@@ -392,6 +393,94 @@ export const KNOWN_STANDARDS_LIBRARY: Record<string, any> = {
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
   },
+  'BS3059_320': {
+    spec_full: 'BS 3059 Part 1 Gr 320 (IBR)',
+    steel_grade: 'CARBON STEEL (BS 3059 Gr.320)',
+    smys_mpa: 195,
+    uts_mpa: 320,
+    elongation_pct: 25,
+    hardness: '75 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'WHITE + YELLOW',
+    rm_color: 'YELLOW + WHITE',
+    whf_temp: '1200° C - 1240° C',
+    induction_temp: '860 °C - 890° C',
+    sizing_outlet_temp: '880° C TO 920° C',
+    ht_cycle: 'NORMALIZED / SUB-CRITICAL ANNEALED',
+    ht_condition: 'NORMALIZED 880-920°C / SUB-CRITICAL ANNEAL 650-700°C',
+    ndt: 'UT / ET',
+    holding_time_sec: 5,
+    coating: 'BLACK VARNISH / RUST OIL',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
+  'BS3059_360': {
+    spec_full: 'BS 3059 Part 2 Gr 360 (IBR)',
+    steel_grade: 'CARBON STEEL (BS 3059 Gr.360)',
+    smys_mpa: 215,
+    uts_mpa: 360,
+    elongation_pct: 24,
+    hardness: '77 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'WHITE + BLUE',
+    rm_color: 'YELLOW + BLUE',
+    whf_temp: '1200° C - 1240° C',
+    induction_temp: '860 °C - 890° C',
+    sizing_outlet_temp: '880° C TO 920° C',
+    ht_cycle: 'NORMALIZED / SUB-CRITICAL ANNEALED',
+    ht_condition: 'NORMALIZED 880-920°C / SUB-CRITICAL ANNEAL 650-700°C',
+    ndt: 'UT / ET',
+    holding_time_sec: 5,
+    coating: 'BLACK VARNISH / RUST OIL',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
+  'BS3059_440': {
+    spec_full: 'BS 3059 Part 2 Gr 440 (IBR)',
+    steel_grade: 'CARBON STEEL (BS 3059 Gr.440)',
+    smys_mpa: 255,
+    uts_mpa: 440,
+    elongation_pct: 21,
+    hardness: '82 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'WHITE + GREEN',
+    rm_color: 'YELLOW + GREEN',
+    whf_temp: '1200° C - 1240° C',
+    induction_temp: '860 °C - 890° C',
+    sizing_outlet_temp: '880° C TO 920° C',
+    ht_cycle: 'NORMALIZED / SUB-CRITICAL ANNEALED',
+    ht_condition: 'NORMALIZED 880-920°C / SUB-CRITICAL ANNEAL 650-700°C',
+    ndt: 'UT / ET',
+    holding_time_sec: 5,
+    coating: 'BLACK VARNISH / RUST OIL',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
+  'BS3059_620': {
+    spec_full: 'BS 3059 Part 2 Gr 620 / 622 (IBR)',
+    steel_grade: 'ALLOY STEEL (BS 3059 Gr.620/622)',
+    smys_mpa: 310,
+    uts_mpa: 580,
+    elongation_pct: 18,
+    hardness: '88 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'WHITE + ORANGE',
+    rm_color: 'YELLOW + ORANGE',
+    whf_temp: '1200° C - 1250° C',
+    induction_temp: '900 °C - 950° C',
+    sizing_outlet_temp: '900° C',
+    ht_cycle: 'NORMALIZED & TEMPERED',
+    ht_condition: 'NORMALIZE 930-970°C, TEMPER 650-720°C',
+    ndt: 'UT + MT',
+    holding_time_sec: 5,
+    coating: 'BLACK VARNISH / RUST OIL',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
 };
 
 /**
@@ -418,7 +507,22 @@ export function getDeterministicProcessSpec(params: {
   let matchedLib = KNOWN_STANDARDS_LIBRARY['A106']; // default
   let refStd = 'ASTM A106 Gr B';
 
-  if (specText.includes('210') || gradeText.includes('210')) {
+  if (specText.includes('3059') || gradeText.includes('3059')) {
+    if (specText.includes('620') || specText.includes('622') || gradeText.includes('620') || gradeText.includes('622')) {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['BS3059_620'];
+      refStd = 'BS 3059 Part 2 Gr 620/622 (IBR)';
+    } else if (specText.includes('440') || gradeText.includes('440')) {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['BS3059_440'];
+      refStd = 'BS 3059 Part 2 Gr 440 (IBR)';
+    } else if (specText.includes('320') || gradeText.includes('320')) {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['BS3059_320'];
+      refStd = 'BS 3059 Part 1 Gr 320 (IBR)';
+    } else {
+      // Default BS 3059 Part 2 Gr 360
+      matchedLib = KNOWN_STANDARDS_LIBRARY['BS3059_360'];
+      refStd = 'BS 3059 Part 2 Gr 360 (IBR)';
+    }
+  } else if (specText.includes('210') || gradeText.includes('210')) {
     if (specText.includes('GR C') || specText.includes('GR.C') || gradeText.includes('GR C') || gradeText.includes('GR.C')) {
       matchedLib = KNOWN_STANDARDS_LIBRARY['A210_C'];
       refStd = 'ASME SA210 Gr C (IBR)';
