@@ -644,8 +644,24 @@ export default function RollingPlanForm() {
         const mult = detail?.multiple ?? p.multiple ?? 1;
 
         // User-entered Planned PCS
+        // RULE 2: For Child Plan Rolling plan Qty separately will Not be issued. Child plan will use Master Plan's Rolling Qty where required.
         let pcs = 0;
-        if (parsedSt?.is_master && Number(parsedSt?.master_planned_pcs) > 0) {
+        let isChildPlan = Boolean(parsedSt?.is_child);
+        const linkedMasterPlan = isChildPlan
+          ? rawPlans.find(
+              (rp) => rp.id === parsedSt.master_plan_id || (parsedSt.master_plan_no && rp.plan_no === parsedSt.master_plan_no)
+            )
+          : null;
+        let linkedMasterSt: any = {};
+        if (linkedMasterPlan) {
+          try {
+            linkedMasterSt = typeof linkedMasterPlan.status === 'string' ? JSON.parse(linkedMasterPlan.status) : linkedMasterPlan.status || {};
+          } catch {}
+        }
+
+        if (isChildPlan && linkedMasterPlan) {
+          pcs = Number(linkedMasterSt?.master_planned_pcs || linkedMasterSt?.planned_pcs || linkedMasterPlan.planned_pcs || 0);
+        } else if (parsedSt?.is_master && Number(parsedSt?.master_planned_pcs) > 0) {
           pcs = Number(parsedSt.master_planned_pcs);
         } else if (Number(parsedSt?.planned_pcs) > 0) {
           pcs = Number(parsedSt.planned_pcs);
@@ -666,9 +682,18 @@ export default function RollingPlanForm() {
         }
 
         // Planned MTR = Planned PCS * Average Hollow Length
-        const mtr = pcs > 0
-          ? Number((pcs * mhAvgLen).toFixed(2))
-          : (Number(parsedSt?.master_planned_mtr || parsedSt?.planned_mtr || rawMtr) || 0);
+        // Child plans use Master Plan's Rolling Qty where required:
+        let mtr = 0;
+        if (isChildPlan && linkedMasterPlan) {
+          mtr = Number(linkedMasterSt?.master_planned_mtr || linkedMasterPlan.planned_qty || rawMtr);
+          if (pcs === 0 && mtr > 0 && mhAvgLen > 0) {
+            pcs = Math.round(mtr / mhAvgLen);
+          }
+        } else {
+          mtr = pcs > 0
+            ? Number((pcs * mhAvgLen).toFixed(2))
+            : (Number(parsedSt?.master_planned_mtr || parsedSt?.planned_mtr || rawMtr) || 0);
+        }
 
         // Planned MT = Planned PCS * (MH OD - MH WT) * MH WT * 0.0246615 * 0.001 * Average Hollow Length
         //            = (MH OD - MH WT) * MH WT * 0.0246615 * 0.001 * Planned MTR
@@ -943,27 +968,21 @@ export default function RollingPlanForm() {
       const parentMtr = calcMtr(parentPcs);
       const parentMt = calcMt(parentMtr);
 
+      // RULE 2: For Child Plan Rolling plan Qty separately will Not be issued. Child plan will use Master Plan's Rolling Qty where required.
       const childSummaries = g.children.map((c) => {
-        const cPcs = Number(c.plannedPcs || 0);
-        const cMtr = calcMtr(cPcs);
-        const cMt = calcMt(cMtr);
         return {
           id: c.id,
           wo: c.wo,
-          pcs: cPcs,
-          mtr: cMtr,
-          mt: cMt,
+          pcs: parentPcs,
+          mtr: parentMtr,
+          mt: parentMt,
           availableMtr: c.availableMtr,
         };
       });
 
-      const totalGroupChildPcs = childSummaries.reduce((sum, c) => sum + c.pcs, 0);
-      const totalGroupChildMtr = childSummaries.reduce((sum, c) => sum + c.mtr, 0);
-      const totalGroupChildMt = childSummaries.reduce((sum, c) => sum + c.mt, 0);
-
-      const totalGroupPcs = parentPcs + totalGroupChildPcs;
-      const totalGroupMtr = Number((parentMtr + totalGroupChildMtr).toFixed(2));
-      const totalGroupMt = Number((parentMt + totalGroupChildMt).toFixed(3));
+      const totalGroupPcs = parentPcs;
+      const totalGroupMtr = parentMtr;
+      const totalGroupMt = parentMt;
 
       // Final specs with total group rolling mtr and total pcs
       const specs = computeGroupSpecs(g, totalGroupMtr, gIdx + 1, totalGroupPcs);
@@ -1875,17 +1894,12 @@ export default function RollingPlanForm() {
                                   <th className="px-3 py-1.5 font-bold">Size (OD × WT)</th>
                                   <th className="px-3 py-1.5 font-bold">Length</th>
                                   <th className="px-3 py-1.5 font-bold text-right">Available Balance</th>
-                                  <th className="px-3 py-1.5 font-bold text-center w-32">Planned PCS *</th>
-                                  <th className="px-3 py-1.5 font-bold text-right">Planned MTR</th>
-                                  <th className="px-3 py-1.5 font-bold text-right">Planned MT</th>
+                                  <th className="px-3 py-1.5 font-bold text-center" colSpan={3}>Rolling Plan Allocation</th>
                                   <th className="px-3 py-1.5 text-center">Action</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-emerald-100">
                                 {group.children.map((child) => {
-                                  const cSumEntry = gSummary?.childSummaries.find((c) => c.id === child.id);
-                                  const cMetrics = { pcs: cSumEntry?.pcs || 0, mtr: cSumEntry?.mtr || 0, mt: cSumEntry?.mt || 0, avg: gSummary?.avgLen || 0 };
-
                                   return (
                                     <tr key={child.id} className="hover:bg-emerald-50/30">
                                       <td className="px-3 py-2 whitespace-nowrap">
@@ -1908,9 +1922,6 @@ export default function RollingPlanForm() {
                                       </td>
                                       <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-500">
                                         <div>{child.wo.l1}–{child.wo.l2} m (WO)</div>
-                                        <div className="text-[10px] text-emerald-700 font-semibold">
-                                          Hollow: {fmt(cMetrics.avg)} m avg
-                                        </div>
                                       </td>
                                       <td className="px-3 py-2 text-right font-mono whitespace-nowrap text-slate-600">
                                         <span className="font-bold text-slate-700">
@@ -1918,25 +1929,12 @@ export default function RollingPlanForm() {
                                         </span>{' '}
                                         MTR
                                       </td>
-                                      <td className="px-3 py-2 text-center">
-                                        <Input
-                                          type="number"
-                                          min="1"
-                                          step="1"
-                                          value={child.plannedPcs}
-                                          onChange={(e) =>
-                                            handleUpdateChildPcs(group.id, child.id, e.target.value)
-                                          }
-                                          disabled={!canManagePlans}
-                                          className="h-8 w-28 text-center font-mono font-bold bg-white text-slate-900 border-emerald-300"
-                                          required
-                                        />
-                                      </td>
-                                      <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
-                                        {fmt(cMetrics.mtr)} m
-                                      </td>
-                                      <td className="px-3 py-2 text-right font-mono text-slate-700 whitespace-nowrap">
-                                        {fmt(cMetrics.mt)} MT
+                                      <td className="px-3 py-2 text-center" colSpan={3}>
+                                        <div className="inline-flex items-center gap-1.5 rounded-md bg-teal-50 border border-teal-200 px-2.5 py-1 text-xs font-semibold text-teal-800">
+                                          <CheckCircle2 className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                                          <span>Uses Master Plan&apos;s Rolling Qty (<strong className="font-mono">{fmt(gSummary?.parentPcs || 0)} PCS</strong> · <strong className="font-mono">{fmt(gSummary?.parentMtr || 0)} m</strong>)</span>
+                                          <span className="text-[10px] text-teal-600/80 font-normal">(Not issued separately)</span>
+                                        </div>
                                       </td>
                                       <td className="px-3 py-2 text-center">
                                         <button
@@ -2503,7 +2501,7 @@ export default function RollingPlanForm() {
                           className="bg-emerald-50/70 border border-emerald-200 rounded px-2.5 py-1 text-slate-800 ml-4 shadow-2xs"
                         >
                           <span className="font-bold text-emerald-800 mr-1.5">↳ Child of #{g.wo.work_order_no}:</span>
-                          <span className="font-bold">{g.catg}</span>(finish size-{cfs})(Final len - {cfl})(OA-{c.wo.work_order_no})(Cust.- {c.wo.customer_name || '—'})(HTC mtr-{fmt(cMtr, 0)})
+                          <span className="font-bold">{g.catg}</span>(finish size-{cfs})(Final len - {cfl})(OA-{c.wo.work_order_no})(Cust.- {c.wo.customer_name || '—'})(Uses Master Rolling Qty: {fmt(pMtr, 0)}m)
                         </div>
                       );
                     });
@@ -2780,12 +2778,21 @@ export default function RollingPlanForm() {
                             <>
                               <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
                                 {pcs > 0 ? fmt(pcs) : '—'}
+                                {isChild && (
+                                  <div className="text-[10px] font-semibold text-teal-700">Uses Master</div>
+                                )}
                               </td>
                               <td className="px-3 py-2 text-right font-mono font-bold text-indigo-900">
                                 {mtr > 0 ? `${fmt(mtr)} m` : '—'}
+                                {isChild && (
+                                  <div className="text-[10px] font-semibold text-teal-700">Uses Master</div>
+                                )}
                               </td>
                               <td className="px-3 py-2 text-right font-mono font-bold text-emerald-900">
                                 {mt > 0 ? `${fmt(mt)} MT` : '—'}
+                                {isChild && (
+                                  <div className="text-[10px] font-semibold text-teal-700">Uses Master</div>
+                                )}
                               </td>
                             </>
                           );

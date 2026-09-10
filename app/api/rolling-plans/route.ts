@@ -318,15 +318,25 @@ export async function POST(req: NextRequest) {
         .eq('status', 'Pending Plan');
 
       // Create Child Rolling Plans
+      // RULE 2: For Child Plan Rolling plan Qty separately will Not be issued. Child plan will use Master Plan's Rolling Qty where required.
       const childMetadataList: any[] = [];
       for (let cIdx = 0; cIdx < processedChildren.length; cIdx++) {
         const c = processedChildren[cIdx];
         const childWo = woMap.get(c.id);
 
-        // The Rolling Plan for a Child Work Order will be the SAME as the Parent Work Order:
+        const childRollingMtr = createdMasterPlan.planned_qty;
+        const childRollingPcs = mPcs > 0 ? mPcs : gTotalPcs;
+        const childRollingMt = mMt > 0 ? mMt : gTotalMt;
+
+        // The Rolling Plan for a Child Work Order uses the Master Plan's Rolling Qty:
         const childStatusMetadata = JSON.stringify({
           type: 'MULTI_WO',
           is_child: true,
+          separate_rolling_qty_issued: false,
+          uses_master_rolling_qty: true,
+          master_rolling_qty: createdMasterPlan.planned_qty,
+          master_rolling_pcs: childRollingPcs,
+          master_rolling_mt: childRollingMt,
           lifecycle_status: 'DRAFT',
           revision_no: 0,
           campaign_plan_no: basePlanNo,
@@ -334,14 +344,14 @@ export async function POST(req: NextRequest) {
           master_plan_no: masterPlanNo,
           master_wo_id: masterWo.id,
           master_wo_no: masterWo.work_order_no,
-          planned_pcs: c.planned_pcs,
-          planned_mtr: c.planned_mtr,
-          planned_mt: c.planned_mt,
+          planned_pcs: childRollingPcs,
+          planned_mtr: childRollingMtr,
+          planned_mt: childRollingMt,
           catg: c.catg || g.catg || 'CDS',
           finish_size: c.finish_size || `${childWo?.size_od || 0}x${childWo?.size_wt || 0}`,
           final_len: c.final_len || `${childWo?.l1 || 0}-${childWo?.l2 || 0}`,
           hollow_len: c.hollow_len || `${grpSmLen}-${grpSmLen}`,
-          htc_mtr: c.planned_mtr,
+          htc_mtr: childRollingMtr,
           alloc_tag: c.alloc_tag || `${cIdx + 1}`,
         });
 
@@ -355,7 +365,7 @@ export async function POST(req: NextRequest) {
             plan_no: masterPlanNo,
             work_order_id: c.id,
             planned_rolling_date: rolling_date,
-            planned_qty: c.planned_mtr,
+            planned_qty: childRollingMtr,
             process_route_id: g.route_id || route_id,
             multiple: Number(g.multiple || multiple || 1),
             mh_od: grpCustOd,
@@ -384,7 +394,7 @@ export async function POST(req: NextRequest) {
               plan_no: fallbackChildPlanNo,
               work_order_id: c.id,
               planned_rolling_date: rolling_date,
-              planned_qty: c.planned_mtr,
+              planned_qty: childRollingMtr,
               process_route_id: g.route_id || route_id,
               multiple: Number(g.multiple || multiple || 1),
               mh_od: grpCustOd,
@@ -1210,8 +1220,9 @@ export async function PUT(req: NextRequest) {
           (Math.max(effCustOd - effRollingWt, 0) * Math.max(effRollingWt, 0) * 0.0246615 * 0.001 * childMtr).toFixed(3)
         );
 
+        // RULE 2: For Child Plan Rolling plan Qty separately will Not be issued. Child plan will use Master Plan's Rolling Qty where required.
         const childUpdateObj: any = {
-          planned_qty: childMtr,
+          planned_qty: targetMtr, // Uses master plan rolling qty
           planned_rolling_date,
           process_route_id: route_id,
           multiple: Number(multiple) || 1,
@@ -1225,15 +1236,21 @@ export async function PUT(req: NextRequest) {
 
         cpStatus.type = 'MULTI_WO';
         cpStatus.is_child = true;
+        cpStatus.separate_rolling_qty_issued = false;
+        cpStatus.uses_master_rolling_qty = true;
+        cpStatus.master_rolling_qty = targetMtr;
+        cpStatus.master_rolling_pcs = planned_pcs;
+        cpStatus.master_rolling_mt = targetMt;
         cpStatus.master_plan_id = targetPlan.id;
         cpStatus.master_plan_no = targetPlan.plan_no;
         cpStatus.master_wo_id = targetPlan.work_order_id;
         cpStatus.master_wo_no = targetWo?.work_order_no;
-        cpStatus.planned_pcs = childPcs;
-        cpStatus.planned_mtr = childMtr;
-        cpStatus.planned_mt = childMt;
+        cpStatus.planned_pcs = planned_pcs;
+        cpStatus.planned_mtr = targetMtr;
+        cpStatus.planned_mt = targetMt;
         cpStatus.catg = effCatg;
         cpStatus.hollow_len = `${effMinLen}-${effMaxLen}`;
+        cpStatus.htc_mtr = targetMtr;
         if (isRevision) {
           cpStatus.lifecycle_status = 'REVISED';
           cpStatus.revision_no = revisionNo;

@@ -73,18 +73,20 @@ export function validateProductionEntry(
   }
 
   // 5. Maximum Allowed Quantity Checks based on Nos (PCS)
+  // RULE 1: Rolling Production can be more than 10% of the Rolling Plan.
+  // There is NO hard 110% cap on Rolling production; rolling may exceed the plan as required by shop floor operations.
   const allowedPcs =
-    n(row.max_allowed_pcs) > 0
+    stage === "ROLLING"
+      ? 0 // No maximum ceiling for Rolling
+      : n(row.max_allowed_pcs) > 0
       ? n(row.max_allowed_pcs)
-      : stage === "ROLLING"
-      ? (n(row.balance_to_make_pcs) > 0 ? Math.round(n(row.balance_to_make_pcs) * 1.1) : 0)
       : n(row.balance_to_make_pcs);
 
   const allowedMtr =
-    n(row.max_allowed_mtr) > 0
+    stage === "ROLLING"
+      ? 0 // No maximum ceiling for Rolling
+      : n(row.max_allowed_mtr) > 0
       ? n(row.max_allowed_mtr)
-      : stage === "ROLLING"
-      ? n(row.balance_to_make_mtr) * 1.1
       : n(row.balance_to_make_mtr);
 
   const route = row.route_code || "HFS";
@@ -111,17 +113,8 @@ export function validateProductionEntry(
       workOrder: row.work_order_no,
       message: `No available WIP for ${stage}. Please record ${feederName} first.`,
     });
-  } else if (d.pcs > 0 && allowedPcs > 0 && d.pcs > allowedPcs) {
-    if (stage === "ROLLING") {
-      const planDesc =
-        row.is_master && (row.campaign_total_pcs || 0) > 0
-          ? `Total Campaign Plan for Master + Child Orders (${fmt(row.campaign_total_pcs)} PCS)`
-          : `Plan (${fmt(row.balance_to_make_pcs || 0)} PCS)`;
-      errors.push({
-        workOrder: row.work_order_no,
-        message: `Rolling Production (${d.pcs} PCS) exceeds maximum allowed 110% of Plan (${planDesc}), max capping is ${fmt(allowedPcs)} PCS.`,
-      });
-    } else if (stage === "HOLLOW_HEAT_TREATMENT") {
+  } else if (stage !== "ROLLING" && d.pcs > 0 && allowedPcs > 0 && d.pcs > allowedPcs) {
+    if (stage === "HOLLOW_HEAT_TREATMENT") {
       errors.push({
         workOrder: row.work_order_no,
         message: `Hollow Heat Treatment (${d.pcs} PCS) exceeds available Rolling HTC OK (${fmt(allowedPcs)} PCS).`,
@@ -166,7 +159,7 @@ export function validateProductionEntry(
         message: `Production (${d.pcs} PCS) exceeds maximum allowed (${fmt(allowedPcs)} PCS).`,
       });
     }
-  } else if (stage !== "FINISHING" && d.pcs <= 0 && d.mtr > 0 && allowedMtr > 0 && d.mtr > allowedMtr + 0.001) {
+  } else if (stage !== "FINISHING" && stage !== "ROLLING" && d.pcs <= 0 && d.mtr > 0 && allowedMtr > 0 && d.mtr > allowedMtr + 0.001) {
     errors.push({
       workOrder: row.work_order_no,
       message: `Production (${fmt(d.mtr, " MTR")}) exceeds maximum allowed (${fmt(allowedMtr, " MTR")}).`,

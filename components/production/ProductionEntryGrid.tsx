@@ -1234,14 +1234,19 @@ export default function ProductionEntryGrid() {
                     : (n(r.balance_to_make_pcs) > 0 ? Math.round(n(r.balance_to_make_pcs)) : (effAvg > 0 ? Math.round(availMtr / effAvg) : 0));
                   const availMt = n(r.balance_to_make_mt) > 0 ? n(r.balance_to_make_mt) : mtFromMtr(availMtr, stageOd, stageWt);
 
-                  const maxAllowed =
-                    n(r.max_allowed_mtr) > 0 ? n(r.max_allowed_mtr) : (isRollingStage ? availMtr * 1.1 : availMtr);
-                  const maxAllowedPcs =
-                    n(r.max_allowed_pcs) > 0
-                      ? n(r.max_allowed_pcs)
-                      : effAvg > 0
-                      ? Math.round(maxAllowed / effAvg)
-                      : 0;
+                  // RULE 1: Rolling production can exceed 10% of the Rolling Plan (no hard ceiling)
+                  const maxAllowed = isRollingStage
+                    ? 0
+                    : n(r.max_allowed_mtr) > 0
+                    ? n(r.max_allowed_mtr)
+                    : availMtr;
+                  const maxAllowedPcs = isRollingStage
+                    ? 0
+                    : n(r.max_allowed_pcs) > 0
+                    ? n(r.max_allowed_pcs)
+                    : effAvg > 0
+                    ? Math.round(maxAllowed / effAvg)
+                    : 0;
 
                   return (
                     <tr key={key} className="hover:bg-slate-50/50 transition-colors group">

@@ -169,29 +169,9 @@ begin
   end if;
 
   if stage_code_value = 'ROLLING' then
-    select
-      coalesce((select sum(rp.planned_qty)
-                from public.rolling_plans rp
-                where rp.work_order_id = oldrec.work_order_id
-                  and rp.process_route_id = oldrec.process_route_id),0)
-      + coalesce((select sum(dp.diverted_qty)
-                  from public.diversion_plans dp
-                  where dp.target_wo_id = oldrec.work_order_id
-                    and dp.process_route_id = oldrec.process_route_id),0)
-    into planned_mtr;
-
-    select coalesce(sum(pl.input_qty),0)
-    into produced_other_mtr
-    from public.production_logs pl
-    where pl.work_order_id = oldrec.work_order_id
-      and pl.process_route_id = oldrec.process_route_id
-      and pl.stage_id = oldrec.stage_id
-      and pl.id <> oldrec.id;
-
-    max_allowed_mtr := planned_mtr * 1.10;
-    if produced_other_mtr + p_output_qty > max_allowed_mtr + 0.000001 then
-      raise exception 'Corrected Rolling production exceeds 110%% allowance. Maximum: % MTR', max_allowed_mtr;
-    end if;
+    -- RULE 1: Rolling Production can be more than 10% of the Rolling Plan.
+    -- No hard 110% restriction is enforced on Rolling stage.
+    null;
   else
     select q.balance_to_make_mtr + oldrec.input_qty
     into available_mtr

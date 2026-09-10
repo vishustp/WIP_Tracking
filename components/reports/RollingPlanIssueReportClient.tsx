@@ -254,8 +254,25 @@ export default function RollingPlanIssueReportClient() {
         const passReq = detail?.pass_required ?? p.pass_required ?? 1;
         const mult = detail?.multiple ?? p.multiple ?? 1;
 
+        // User-entered Planned PCS
+        // RULE 2: For Child Plan Rolling plan Qty separately will Not be issued. Child plan will use Master Plan's Rolling Qty where required.
         let pcs = 0;
-        if (parsedSt?.is_master && Number(parsedSt?.master_planned_pcs) > 0) {
+        const isChildPlan = Boolean(parsedSt?.is_child);
+        const linkedMasterPlan = isChildPlan
+          ? rawPlans.find(
+              (rp) => rp.id === parsedSt.master_plan_id || (parsedSt.master_plan_no && rp.plan_no === parsedSt.master_plan_no)
+            )
+          : null;
+        let linkedMasterSt: any = {};
+        if (linkedMasterPlan) {
+          try {
+            linkedMasterSt = typeof linkedMasterPlan.status === 'string' ? JSON.parse(linkedMasterPlan.status) : linkedMasterPlan.status || {};
+          } catch {}
+        }
+
+        if (isChildPlan && linkedMasterPlan) {
+          pcs = Number(linkedMasterSt?.master_planned_pcs || linkedMasterSt?.planned_pcs || linkedMasterPlan.planned_pcs || 0);
+        } else if (parsedSt?.is_master && Number(parsedSt?.master_planned_pcs) > 0) {
           pcs = Number(parsedSt.master_planned_pcs);
         } else if (Number(parsedSt?.planned_pcs) > 0) {
           pcs = Number(parsedSt.planned_pcs);
@@ -274,9 +291,18 @@ export default function RollingPlanIssueReportClient() {
           pcs = Math.round(rawMtr / mhAvgLen);
         }
 
-        const mtr = pcs > 0
-          ? Number((pcs * mhAvgLen).toFixed(2))
-          : (Number(parsedSt?.master_planned_mtr || parsedSt?.planned_mtr || rawMtr) || 0);
+        // Child plans use Master Plan's Rolling Qty where required
+        let mtr = 0;
+        if (isChildPlan && linkedMasterPlan) {
+          mtr = Number(linkedMasterSt?.master_planned_mtr || linkedMasterPlan.planned_qty || rawMtr);
+          if (pcs === 0 && mtr > 0 && mhAvgLen > 0) {
+            pcs = Math.round(mtr / mhAvgLen);
+          }
+        } else {
+          mtr = pcs > 0
+            ? Number((pcs * mhAvgLen).toFixed(2))
+            : (Number(parsedSt?.master_planned_mtr || parsedSt?.planned_mtr || rawMtr) || 0);
+        }
 
         const hod = Number(mhOd || 0) > 0 ? Number(mhOd) : Number(finalOd || 0);
         const hwt = Number(mhWt || 0) > 0 ? Number(mhWt) : Number(finalWt || 0);

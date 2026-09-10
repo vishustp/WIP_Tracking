@@ -218,13 +218,22 @@ export async function GET(req: NextRequest) {
             }
           }
         } else if (parsed?.is_child) {
+          const masterPlan = plans.find(
+            (pl) => pl.id === parsed.master_plan_id || (parsed.master_plan_no && pl.plan_no === parsed.master_plan_no)
+          );
+          let mParsed: any = {};
+          try {
+            mParsed = typeof masterPlan?.status === 'string' ? JSON.parse(masterPlan.status) : masterPlan?.status || {};
+          } catch {}
+
           childWoMap.set(p.work_order_id, {
             work_order_id: p.work_order_id,
             master_wo_id: parsed.master_wo_id,
             master_wo_no: parsed.master_wo_no,
             master_plan_no: parsed.master_plan_no,
-            planned_mtr: parsed.planned_mtr || p.planned_qty,
-            planned_pcs: parsed.planned_pcs,
+            // RULE 2: For Child Plan Rolling plan Qty separately will Not be issued. Child plan will use Master Plan's Rolling Qty where required.
+            planned_mtr: Number(mParsed?.total_campaign_mtr || masterPlan?.planned_qty || p.planned_qty || 0),
+            planned_pcs: Number(mParsed?.total_campaign_pcs || (masterPlan as any)?.planned_pcs || 0),
           });
         }
       } catch {
@@ -311,16 +320,13 @@ export async function GET(req: NextRequest) {
         ? Number(campaign.total_campaign_pcs || 0)
         : (mhAvgLength > 0 ? Math.round(totalCampaignMtr / mhAvgLength) : 0);
 
-      // 1. Rolling Available WIP & 110% Capping (adjusted for Rolling Diversions)
+      // 1. Rolling Available WIP & Target Tracking
+      // RULE 1: Rolling Production can be more than 10% of the Rolling Plan (no hard 110% ceiling).
       const rollDivIn = getStageDivIn(woId, "ROLLING");
       const rollDivOut = getStageDivOut(woId, "ROLLING");
       const rollAvailMtr = Math.max(0, totalCampaignMtr + rollDivIn - rollTotalLogged - rollDivOut);
       const rollAvailPcs = mhAvgLength > 0 ? Math.round(rollAvailMtr / mhAvgLength) : 0;
       const rollAvailMt = mtFromMtr(rollAvailMtr, mhOd, mhWt);
-
-      const rollMaxCappingMtr = Number((totalCampaignMtr * 1.1).toFixed(3));
-      const rollCappingMtr = Math.max(0, rollMaxCappingMtr - rollTotalLogged);
-      const rollCappingPcs = mhAvgLength > 0 ? Math.round(rollCappingMtr / mhAvgLength) : 0;
 
       // 2. Hollow Heat Treatment Stage Metrics (adjusted for HHT Diversions)
       const rollHtcOkPcs = mhAvgLength > 0 ? Math.round(rollHtcOkMtr / mhAvgLength) : 0;
@@ -675,15 +681,15 @@ export async function GET(req: NextRequest) {
 
       const queueRows: Record<StageCode, Row | null> = {
         ROLLING:
-          isRollingPlanIssued && rollAvailMtr > 0
+          isRollingPlanIssued
             ? {
                 ...baseRowData,
                 stage_code: "ROLLING",
                 balance_to_make_mtr: rollAvailMtr,
                 balance_to_make_pcs: rollAvailPcs,
                 balance_to_make_mt: rollAvailMt,
-                max_allowed_mtr: rollCappingMtr,
-                max_allowed_pcs: rollCappingPcs,
+                max_allowed_mtr: null,
+                max_allowed_pcs: null,
               }
             : null,
         HOLLOW_HEAT_TREATMENT:
