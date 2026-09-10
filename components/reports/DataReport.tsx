@@ -144,6 +144,8 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
                 setPage(1);
               }}
               className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+              aria-label="Clear search"
+              title="Clear search"
             >
               <X size={14} />
             </button>
@@ -264,6 +266,8 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
                     disabled={page === 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     className="min-h-[2.75rem] min-w-[2.75rem] flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 disabled:opacity-30"
+                    aria-label="Previous page"
+                    title="Previous page"
                   >
                     <ChevronLeft size={18} />
                   </button>
@@ -275,6 +279,8 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
                     disabled={page === totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     className="min-h-[2.75rem] min-w-[2.75rem] flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 disabled:opacity-30"
+                    aria-label="Next page"
+                    title="Next page"
                   >
                     <ChevronRight size={18} />
                   </button>

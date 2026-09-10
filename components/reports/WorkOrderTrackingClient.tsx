@@ -1985,6 +1985,8 @@ function FinishingQcModal({ data, onClose }: FinishingQcModalProps) {
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+            aria-label="Close tracking details"
+            title="Close tracking details"
           >
             <X size={20} />
           </button>
