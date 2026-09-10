@@ -10,7 +10,7 @@ import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
   User, ShieldCheck, ChevronDown, Check, Sparkles, Lock, Activity, Clock,
-  ClipboardCheck, BookOpen, FileText
+  ClipboardCheck, BookOpen, FileText, Beaker
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
@@ -55,6 +55,7 @@ const groups = [
     items: [
       { href: '/profile', label: 'User Profile', icon: User },
       { href: '/admin', label: 'Admin Control Panel', icon: ShieldCheck },
+      { href: '/admin/spec-master', label: 'Material Spec Master', icon: Beaker },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },
