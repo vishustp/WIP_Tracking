@@ -135,6 +135,8 @@ export default function QcInspectionClient() {
     const htStage = stages.find((s) => s.stage_code === 'HEAT_TREATMENT');
     const hollowHtStage = stages.find((s) => s.stage_code === 'HOLLOW_HEAT_TREATMENT');
     const drawStage = stages.find((s) => s.stage_code === 'DRAW');
+    // HFS route: ROLLING → VDI (no separate HT stage). htc_ok is recorded at ROLLING.
+    const rollingStage = stages.find((s) => s.stage_code === 'ROLLING');
 
     const items: QcQueueItem[] = [];
 
@@ -149,13 +151,21 @@ export default function QcInspectionClient() {
       // Logs for this work order
       const woLogs = productionLogs.filter((l) => l.work_order_id === wo.id);
 
-      // HT stage logs (primary source of HT OK). If route has no HT, check Hollow HT or Draw
+      // Priority order: HEAT_TREATMENT → HOLLOW_HEAT_TREATMENT → DRAW → ROLLING (HFS fallback)
       let relevantLogs = woLogs.filter((l) => htStage && l.stage_id === htStage.id);
       if (relevantLogs.length === 0 && hollowHtStage) {
         relevantLogs = woLogs.filter((l) => l.stage_id === hollowHtStage.id);
       }
       if (relevantLogs.length === 0 && drawStage) {
         relevantLogs = woLogs.filter((l) => l.stage_id === drawStage.id);
+      }
+      // HFS fallback: use ROLLING logs only when they have htc_ok > 0 logged
+      // (htc_ok at ROLLING stage is the "HFS OK after sizing" quantity)
+      if (relevantLogs.length === 0 && rollingStage) {
+        const rollingLogs = woLogs.filter(
+          (l) => l.stage_id === rollingStage.id && Number(l.htc_ok || 0) > 0
+        );
+        if (rollingLogs.length > 0) relevantLogs = rollingLogs;
       }
 
       if (relevantLogs.length === 0) return;
