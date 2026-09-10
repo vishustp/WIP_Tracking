@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { ProcessSpecResult, calculateStandardTolerances } from '@/lib/metallurgy/specEngine';
+import { ProcessSpecResult, calculateStandardTolerances, calculateHydroPressurePsi } from '@/lib/metallurgy/specEngine';
 
 interface RollingPlanRecord {
   id: string;
@@ -70,6 +70,33 @@ interface RollingPlanRecord {
   destination?: string | null;
   is_diversion?: boolean;
   display_label?: string;
+}
+
+interface SpecMasterRecord {
+  id: string;
+  spec_key: string;
+  spec_full: string;
+  steel_grade: string | null;
+  smys_mpa: number | null;
+  uts_mpa: number | null;
+  elongation_pct: number | null;
+  hardness: string | null;
+  straightness: string | null;
+  color_spec: string | null;
+  rm_color: string | null;
+  whf_temp: string | null;
+  induction_temp: string | null;
+  sizing_outlet_temp: string | null;
+  ht_cycle: string | null;
+  ht_condition: string | null;
+  ndt: string | null;
+  holding_time_sec: number | null;
+  coating: string | null;
+  end_condition: string | null;
+  bundling: string | null;
+  end_cap: string | null;
+  is_min_wall: boolean;
+  is_active: boolean;
 }
 
 function buildMarkingString(
@@ -196,6 +223,10 @@ export default function ProcessSheetReportClient() {
   const [formFilterTab, setFormFilterTab] = useState<
     'all' | 'order' | 'billet' | 'piercer' | 'final' | 'metallurgy' | 'testing' | 'marking' | 'signatures'
   >('all');
+
+  // Material Specification Master Dropdown
+  const [specMasterList, setSpecMasterList] = useState<SpecMasterRecord[]>([]);
+  const [specMasterCustom, setSpecMasterCustom] = useState(false);
 
   // Process Sheet Form State Fields (Empty/Dynamic by default)
   const [sheetNo, setSheetNo] = useState('');
@@ -937,6 +968,27 @@ export default function ProcessSheetReportClient() {
     loadIssuedPlans();
   }, [loadIssuedPlans]);
 
+  // Load Material Specification Master from Supabase
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = createClient();
+        const { data, error } = await s
+          .from('material_spec_master')
+          .select('*')
+          .eq('is_active', true)
+          .order('spec_full', { ascending: true });
+        if (!error && data) {
+          setSpecMasterList(data as SpecMasterRecord[]);
+        } else {
+          console.warn('Could not load material_spec_master:', error?.message);
+        }
+      } catch (e) {
+        console.warn('material_spec_master fetch error:', e);
+      }
+    })();
+  }, []);
+
   // When a Work Order / Rolling Plan is selected
   const selectPlan = (plan: RollingPlanRecord) => {
     setSelectedPlanId(plan.id);
@@ -1133,6 +1185,91 @@ export default function ProcessSheetReportClient() {
     })();
   };
   selectPlanRef.current = selectPlan;
+
+  // When user selects a Material Specification from the Master dropdown
+  const handleSpecMasterSelect = (specKey: string) => {
+    if (specKey === '__custom__') {
+      setSpecMasterCustom(true);
+      setMaterialSpec('');
+      return;
+    }
+    setSpecMasterCustom(false);
+    const rec = specMasterList.find((r) => r.spec_key === specKey);
+    if (!rec) return;
+
+    // Auto-populate Material Specification & Steel Grade
+    setMaterialSpec(rec.spec_full);
+    setSteelGrade(rec.steel_grade || '');
+    setPipeColorCode(rec.color_spec || 'WHITE');
+    setRmColorCode(rec.rm_color || 'YELLOW + WHITE');
+
+    // Mechanical Properties
+    setYstMin(String(rec.smys_mpa ?? 240));
+    setYstMax('NOT SPECIFIED');
+    setUtsMin(String(rec.uts_mpa ?? 415));
+    setUtsMax('NOT SPECIFIED');
+    setElongationMin(String(rec.elongation_pct ?? 21));
+    setElongationMax('NOT SPECIFIED');
+    setHardness(rec.hardness || '79 HRB MAX');
+    setStraightness(rec.straightness || '1:1000');
+
+    // Thermal Parameters
+    setWhfTemp(rec.whf_temp || '1220° C (+/- 40° C)');
+    setInductionTemp(rec.induction_temp || '850 °C - 880° C');
+    setSizingOutletTemp(rec.sizing_outlet_temp || '880° C TO 900° C');
+    setHtCycle(rec.ht_cycle || 'NA');
+    setHtCondition(rec.ht_condition || 'AS ROLLED / HFS');
+
+    // Testing
+    setNdt(rec.ndt || 'UT');
+    setHoldingTime(`${rec.holding_time_sec || 5} SEC`);
+
+    // Coating & Finishing
+    setCoating(rec.coating || 'BLACK VARNISH');
+    setEndCondition(rec.end_condition || 'BEVEL END (30°-35°)');
+    setBundling(rec.bundling || 'HEXAGONAL');
+    setEndCap(rec.end_cap || 'PLASTIC PROTECTOR');
+
+    // Calculate Dimensional Tolerances using current OD/WT
+    const od = Number(custOd) || 88.9;
+    const wt = Number(custWt) || 5.49;
+    const route = (routeType || orderType || 'HFS').toUpperCase();
+    const tols = calculateStandardTolerances(od, wt, rec.spec_full, route);
+    setFinalTolOdMin(tols.od_min.toFixed(2));
+    setFinalTolOdMax(tols.od_max.toFixed(2));
+    setFinalTolWtMin(tols.wt_min.toFixed(2));
+    setFinalTolWtMax(tols.wt_max.toFixed(2));
+    setMhTolOdMin((tols.od_min + 0.01).toFixed(2));
+    setMhTolOdMax((tols.od_max - 0.01).toFixed(2));
+    setMhTolWtMin(tols.wt_min.toFixed(2));
+    setMhTolWtMax((tols.wt_max - 0.28).toFixed(2));
+
+    // Process Wall
+    const isNoNeg = rec.is_min_wall || tols.wt_min >= wt - 0.01;
+    const calcProcWt = isNoNeg ? Number((wt * 1.05).toFixed(2)) : Number((wt * 0.97).toFixed(2));
+    setProcessWt(calcProcWt.toFixed(2));
+
+    // Hydro Pressure
+    const hydroRes = calculateHydroPressurePsi(od, wt, rec.smys_mpa || 240);
+    setHydroPressurePsi(`${hydroRes.pressurePsi} PSI`);
+
+    // Update Marking
+    setMarking(
+      buildMarkingString(markingTypeRef.current, {
+        routeCode: route,
+        specification: rec.spec_full,
+        grade: rec.steel_grade,
+        sizeOd: od,
+        sizeWt: wt,
+        hydroPsi: `${hydroRes.pressurePsi} PSI`,
+        woNo,
+        poNo,
+      })
+    );
+
+    setSpecSource('engine');
+    toast.success(`Loaded specs for ${rec.spec_full} from Master Table`);
+  };
 
   // Fetch Mechanical Properties, Tolerances & Hydro Pressure PSI via AI / Metallurgical Engine
   const fetchAiSpecs = async (customParams?: any) => {
@@ -1644,12 +1781,47 @@ export default function ProcessSheetReportClient() {
                 value={priority}
                 onChange={setPriority}
               />
-              <FormInput
-                label="Material Specification"
-                value={materialSpec}
-                onChange={setMaterialSpec}
-                highlight
-              />
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <label className="font-bold text-slate-700">Material Specification</label>
+                  <span className="text-[10px] font-bold font-mono text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                    Master
+                  </span>
+                </div>
+                {specMasterCustom ? (
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      value={materialSpec}
+                      onChange={(e) => setMaterialSpec(e.target.value)}
+                      placeholder="Enter custom specification..."
+                      className="flex-1 px-3 py-1.5 font-bold text-xs rounded-lg bg-amber-50 text-slate-950 border-2 border-amber-500 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none shadow-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSpecMasterCustom(false)}
+                      className="px-2 py-1 text-[10px] font-bold bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                      title="Switch back to dropdown"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={specMasterList.find((r) => r.spec_full === materialSpec)?.spec_key || ''}
+                    onChange={(e) => handleSpecMasterSelect(e.target.value)}
+                    className="w-full px-3 py-1.5 font-bold text-xs rounded-lg bg-amber-50 text-slate-950 border-2 border-amber-500 hover:border-amber-600 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none shadow-xs cursor-pointer"
+                  >
+                    <option value="">— Select Specification —</option>
+                    {specMasterList.map((spec) => (
+                      <option key={spec.spec_key} value={spec.spec_key}>
+                        {spec.spec_full}
+                      </option>
+                    ))}
+                    <option value="__custom__">✏️ Other (Custom Entry)</option>
+                  </select>
+                )}
+              </div>
 
               <FormInput
                 label="Steel Grade"
