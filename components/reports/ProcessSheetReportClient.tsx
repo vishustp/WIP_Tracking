@@ -116,14 +116,14 @@ function FormSectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-xl">
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       <div className={`px-4 py-2.5 ${headerBg} text-white flex items-center gap-2.5 shadow-sm`}>
-        <div className="p-1 rounded bg-black/25 text-white">
+        <div className="p-1 rounded bg-black/20 text-white">
           <Icon className="w-4 h-4" />
         </div>
         <h3 className="text-xs sm:text-sm font-black tracking-wide uppercase">{title}</h3>
       </div>
-      <div className="p-4 sm:p-5">{children}</div>
+      <div className="p-4 sm:p-5 bg-white">{children}</div>
     </div>
   );
 }
@@ -152,11 +152,11 @@ function FormInput({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
-        <label className="font-bold text-slate-100 truncate" title={title || label}>
+        <label className="font-bold text-slate-700 truncate" title={title || label}>
           {label}
         </label>
         {unit && (
-          <span className="text-[10px] font-bold font-mono text-indigo-950 bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-300">
+          <span className="text-[10px] font-bold font-mono text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
             {unit}
           </span>
         )}
@@ -168,12 +168,12 @@ function FormInput({
         placeholder={placeholder}
         disabled={disabled}
         title={title}
-        className={`w-full px-3 py-1.5 font-bold text-xs rounded-lg focus:outline-none transition-colors shadow-sm ${
+        className={`w-full px-3 py-1.5 font-bold text-xs rounded-lg focus:outline-none transition-colors shadow-xs ${
           disabled
-            ? 'bg-slate-200 text-slate-600 border-2 border-slate-300'
+            ? 'bg-slate-100 text-slate-500 border-2 border-slate-200'
             : highlight
-            ? 'bg-amber-50 text-slate-950 border-2 border-amber-500 focus:border-amber-600 focus:ring-2 focus:ring-amber-400'
-            : 'bg-white text-slate-950 border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-400'
+            ? 'bg-amber-50 text-slate-950 border-2 border-amber-500 focus:border-amber-600 focus:ring-2 focus:ring-amber-200'
+            : 'bg-white text-slate-950 border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200'
         }`}
       />
     </div>
@@ -1337,37 +1337,37 @@ export default function ProcessSheetReportClient() {
       {/* Action Header & WO Selector (Hidden on Print) */}
       <div className="print:hidden space-y-4">
         {/* Streamlined Action Header */}
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-slate-900 border border-slate-700/80 rounded-xl p-3.5 shadow-lg">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-lg font-black text-white tracking-wide flex items-center gap-2">
-              <FileText className="w-5 h-5 text-indigo-400" />
+            <h1 className="text-lg font-black text-slate-900 tracking-wide flex items-center gap-2">
+              <FileText className="w-5 h-5 text-indigo-600" />
               Process Sheet Form
-              <span className="text-xs font-semibold text-slate-400 font-mono bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+              <span className="text-xs font-semibold text-slate-700 font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
                 F-PROD-11
               </span>
             </h1>
 
             {savedRecord ? (
-              <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Saved in Database ({savedRecord.sheet_no})
+              <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-300 flex items-center gap-1.5 shadow-xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Saved in Database ({savedRecord.sheet_no})
               </span>
             ) : (
-              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 shadow-sm">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-400" /> Draft / Unsaved
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1.5 shadow-xs">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600" /> Draft / Unsaved
               </span>
             )}
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
             {/* View Mode Switcher */}
-            <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-700 shadow-inner">
+            <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
               <button
                 type="button"
                 onClick={() => setViewMode('form')}
                 className={`px-3 py-1.5 rounded-md text-xs font-black flex items-center gap-1.5 transition-all ${
                   viewMode === 'form'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <FileText className="w-3.5 h-3.5" />
@@ -1378,8 +1378,8 @@ export default function ProcessSheetReportClient() {
                 onClick={() => setViewMode('preview')}
                 className={`px-3 py-1.5 rounded-md text-xs font-black flex items-center gap-1.5 transition-all ${
                   viewMode === 'preview'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <Printer className="w-3.5 h-3.5" />
@@ -1388,8 +1388,8 @@ export default function ProcessSheetReportClient() {
             </div>
 
             {/* Marking Type Dropdown */}
-            <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 shadow-sm">
-              <span className="text-xs text-slate-300 font-bold">Marking:</span>
+            <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-xs">
+              <span className="text-xs text-slate-700 font-bold">Marking:</span>
               <select
                 value={markingType}
                 onChange={(e) => {
@@ -1409,7 +1409,7 @@ export default function ProcessSheetReportClient() {
                     })
                   );
                 }}
-                className="bg-white text-slate-950 font-black text-xs px-2 py-0.5 rounded border border-slate-300 focus:outline-none cursor-pointer"
+                className="bg-white text-slate-900 font-black text-xs px-2 py-0.5 rounded border border-slate-300 focus:outline-none cursor-pointer"
               >
                 <option value="single">Single Marking</option>
                 <option value="triple">Triple Marking</option>
@@ -1442,16 +1442,16 @@ export default function ProcessSheetReportClient() {
             <button
               type="button"
               onClick={handlePrint}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 border border-slate-600 transition-all cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center gap-1.5 border border-slate-300 transition-all cursor-pointer shadow-xs"
             >
-              <Printer className="w-3.5 h-3.5 text-emerald-400" />
+              <Printer className="w-3.5 h-3.5 text-emerald-600" />
               Print / Save PDF
             </button>
           </div>
         </div>
 
         {/* Compact Work Order Selector Frame */}
-        <div className="bg-slate-900 border border-slate-700/80 rounded-xl p-3 shadow-lg space-y-2.5">
+        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-2.5">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
             <div className="md:col-span-4 relative">
               <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
@@ -1460,7 +1460,7 @@ export default function ProcessSheetReportClient() {
                 placeholder="Search Work Order, Grade, Size..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm"
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-white focus:bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 shadow-xs"
               />
             </div>
 
@@ -1471,7 +1471,7 @@ export default function ProcessSheetReportClient() {
                   const chosen = plans.find((p) => p.id === e.target.value);
                   if (chosen) selectPlan(chosen);
                 }}
-                className="w-full px-3 py-2 bg-white text-slate-950 font-black border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer shadow-sm"
+                className="w-full px-3 py-2 bg-slate-50 hover:bg-white focus:bg-white text-slate-950 font-black border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer shadow-xs"
               >
                 <option value="" disabled>
                   -- Select Work Order ({filteredPlans.length} available) --
@@ -1509,20 +1509,20 @@ export default function ProcessSheetReportClient() {
           </div>
 
           {activePlan && (
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs flex items-center justify-between flex-wrap gap-2 text-slate-300">
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs flex items-center justify-between flex-wrap gap-2 text-slate-700">
               <div className="flex items-center gap-2.5 flex-wrap font-bold">
-                <span className="text-white flex items-center gap-1">
-                  WO: <span className="text-amber-300 font-extrabold">{activePlan.work_order_no}{activePlan.is_diversion ? '-Div' : ''}</span>
+                <span className="text-slate-900 flex items-center gap-1">
+                  WO: <span className="text-indigo-700 font-extrabold">{activePlan.work_order_no}{activePlan.is_diversion ? '-Div' : ''}</span>
                 </span>
-                <span className="text-slate-600">|</span>
-                <span className="text-emerald-300">{activePlan.customer_name}</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-sky-300">{activePlan.grade} ({activePlan.specification})</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-white">OD {activePlan.size_od} × WT {activePlan.size_wt} mm</span>
+                <span className="text-slate-300">|</span>
+                <span className="text-emerald-700">{activePlan.customer_name}</span>
+                <span className="text-slate-300">|</span>
+                <span className="text-sky-800 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200">{activePlan.grade} ({activePlan.specification})</span>
+                <span className="text-slate-300">|</span>
+                <span className="text-slate-900">OD {activePlan.size_od} × WT {activePlan.size_wt} mm</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-mono font-bold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
+                <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300">
                   Hydro: {hydroPressurePsi}
                 </span>
               </div>
@@ -1561,15 +1561,15 @@ export default function ProcessSheetReportClient() {
               />
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
-                  <label className="font-bold text-slate-100">Order Category</label>
-                  <span className="text-[10px] font-bold font-mono text-indigo-950 bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-300">
+                  <label className="font-bold text-slate-700">Order Category</label>
+                  <span className="text-[10px] font-bold font-mono text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
                     Type
                   </span>
                 </div>
                 <select
                   value={orderType}
                   onChange={(e) => setOrderType(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm"
+                  className="w-full px-3 py-1.5 bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200 shadow-xs"
                 >
                   <option value="HFS">HFS (Hot Finished Seamless)</option>
                   <option value="CDS">CDS (Cold Drawn Seamless)</option>
@@ -1664,15 +1664,15 @@ export default function ProcessSheetReportClient() {
               />
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
-                  <label className="font-bold text-slate-100">Inspection Authority</label>
-                  <span className="text-[10px] font-bold font-mono text-indigo-950 bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-300">
+                  <label className="font-bold text-slate-700">Inspection Authority</label>
+                  <span className="text-[10px] font-bold font-mono text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
                     Standard
                   </span>
                 </div>
                 <select
                   value={inspection}
                   onChange={(e) => setInspection(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm"
+                  className="w-full px-3 py-1.5 bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200 shadow-xs"
                 >
                   <option value="IBR">IBR (Indian Boiler Regulations)</option>
                   <option value="NON-IBR">NON-IBR (Commercial / General)</option>
@@ -1994,13 +1994,13 @@ export default function ProcessSheetReportClient() {
             </div>
 
             {/* Inter-Pass Reductions Sub-Block */}
-            <div className="mt-4 pt-3 border-t border-slate-800">
-              <h4 className="text-xs font-black text-slate-200 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                <Sliders className="w-3.5 h-3.5 text-emerald-400" /> Cold Mill Inter-Pass Reductions (P1 / P2 / P3)
+            <div className="mt-4 pt-3 border-t border-slate-200">
+              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-emerald-600" /> Cold Mill Inter-Pass Reductions (P1 / P2 / P3)
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-700 space-y-2 shadow-md">
-                  <div className="text-xs font-black text-indigo-300 border-b border-slate-700 pb-1">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 shadow-xs">
+                  <div className="text-xs font-black text-indigo-700 border-b border-slate-200 pb-1">
                     PASS 1 (P1)
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -2008,8 +2008,8 @@ export default function ProcessSheetReportClient() {
                     <FormInput label="WT" value={p1Wt} onChange={setP1Wt} unit="mm" />
                   </div>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-700 space-y-2 shadow-md">
-                  <div className="text-xs font-black text-indigo-300 border-b border-slate-700 pb-1">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 shadow-xs">
+                  <div className="text-xs font-black text-indigo-700 border-b border-slate-200 pb-1">
                     PASS 2 (P2)
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -2017,8 +2017,8 @@ export default function ProcessSheetReportClient() {
                     <FormInput label="WT" value={p2Wt} onChange={setP2Wt} unit="mm" />
                   </div>
                 </div>
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-700 space-y-2 shadow-md">
-                  <div className="text-xs font-black text-indigo-300 border-b border-slate-700 pb-1">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 shadow-xs">
+                  <div className="text-xs font-black text-indigo-700 border-b border-slate-200 pb-1">
                     PASS 3 (P3)
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -2185,8 +2185,8 @@ export default function ProcessSheetReportClient() {
             <div className="space-y-3.5">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-100">Marking Format:</span>
-                  <div className="inline-flex rounded-lg border-2 border-slate-600 bg-slate-950 p-0.5">
+                  <span className="text-xs font-bold text-slate-700">Marking Format:</span>
+                  <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 shadow-xs">
                     <button
                       type="button"
                       onClick={() => {
@@ -2208,8 +2208,8 @@ export default function ProcessSheetReportClient() {
                       }}
                       className={`px-3 py-1 rounded-md text-xs font-black transition-colors ${
                         markingType === 'single'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-white'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       Single Marking
@@ -2235,8 +2235,8 @@ export default function ProcessSheetReportClient() {
                       }}
                       className={`px-3 py-1 rounded-md text-xs font-black transition-colors ${
                         markingType === 'triple'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-white'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       Triple Marking
@@ -2250,26 +2250,26 @@ export default function ProcessSheetReportClient() {
                     navigator.clipboard.writeText(marking);
                     toast.success('Marking specification copied to clipboard!');
                   }}
-                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors border border-slate-600"
+                  className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors border border-slate-300 shadow-xs"
                 >
-                  <Copy className="w-3.5 h-3.5" /> Copy Marking Text
+                  <Copy className="w-3.5 h-3.5 text-indigo-600" /> Copy Marking Text
                 </button>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-100">
+                <label className="text-xs font-bold text-slate-700">
                   Pipe Body Stenciling / Marking Text
                 </label>
                 <textarea
                   rows={3}
                   value={marking}
                   onChange={(e) => setMarking(e.target.value)}
-                  className="w-full p-3 bg-white text-slate-950 font-black border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors shadow-sm"
+                  className="w-full p-3 bg-white text-slate-950 font-black border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 transition-colors shadow-xs"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-100">
+                <label className="text-xs font-bold text-slate-700">
                   Special Customer Requirements (If Any)
                 </label>
                 <textarea
@@ -2277,7 +2277,7 @@ export default function ProcessSheetReportClient() {
                   value={specialReq}
                   onChange={(e) => setSpecialReq(e.target.value)}
                   placeholder="Enter any customer specific inspection, third-party stamping, or packaging instructions..."
-                  className="w-full p-3 bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-colors shadow-sm"
+                  className="w-full p-3 bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200 transition-colors shadow-xs"
                 />
               </div>
             </div>
@@ -2287,46 +2287,46 @@ export default function ProcessSheetReportClient() {
           <FormSectionCard
             title="8. Signatures & Document Control"
             icon={UserCheck}
-            headerBg="bg-slate-700"
+            headerBg="bg-slate-800"
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-700 space-y-1 text-center shadow-md">
-                <div className="text-xs font-black text-slate-200">PREPARED BY</div>
-                <div className="text-sm font-black text-emerald-400 mt-2">{preparedBy}</div>
-                <div className="text-[10px] text-slate-400 font-bold">{preparedDate}</div>
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 text-center shadow-xs">
+                <div className="text-xs font-black text-slate-700">PREPARED BY</div>
+                <div className="text-sm font-black text-emerald-700 mt-2">{preparedBy}</div>
+                <div className="text-[10px] text-slate-500 font-bold">{preparedDate}</div>
               </div>
-              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-700 space-y-1 text-center shadow-md">
-                <div className="text-xs font-black text-slate-200">PPC SEC. IN-CHARGE</div>
-                <div className="text-xs text-slate-400 font-bold mt-3">APPROVED & VERIFIED</div>
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 text-center shadow-xs">
+                <div className="text-xs font-black text-slate-700">PPC SEC. IN-CHARGE</div>
+                <div className="text-xs text-slate-500 font-bold mt-3">APPROVED & VERIFIED</div>
               </div>
-              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-700 space-y-1 text-center shadow-md">
-                <div className="text-xs font-black text-slate-200">HOT MILL SEC IN-CHARGE</div>
-                <div className="text-xs text-slate-400 font-bold mt-3">HOT ROLLING READY</div>
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 text-center shadow-xs">
+                <div className="text-xs font-black text-slate-700">HOT MILL SEC IN-CHARGE</div>
+                <div className="text-xs text-slate-500 font-bold mt-3">HOT ROLLING READY</div>
               </div>
-              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-700 space-y-1 text-center shadow-md">
-                <div className="text-xs font-black text-slate-200">COLD MILL SEC IN-CHARGE</div>
-                <div className="text-xs text-slate-400 font-bold mt-3">PASS REDUCTIONS READY</div>
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 text-center shadow-xs">
+                <div className="text-xs font-black text-slate-700">COLD MILL SEC IN-CHARGE</div>
+                <div className="text-xs text-slate-500 font-bold mt-3">PASS REDUCTIONS READY</div>
               </div>
-              <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-700 space-y-1 text-center shadow-md">
-                <div className="text-xs font-black text-slate-200">APPROVED BY QC</div>
-                <div className="text-xs text-emerald-400 font-bold mt-3">QUALITY ASSURED</div>
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 text-center shadow-xs">
+                <div className="text-xs font-black text-slate-700">APPROVED BY QC</div>
+                <div className="text-xs text-emerald-700 font-bold mt-3">QUALITY ASSURED</div>
               </div>
             </div>
           </FormSectionCard>
 
           {/* Sticky / Floating Bottom Form Action Bar */}
-          <div className="sticky bottom-4 z-20 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl p-3 shadow-2xl flex items-center justify-between flex-wrap gap-3">
+          <div className="sticky bottom-4 z-20 bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl p-3 shadow-xl flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
-              <span className="text-xs font-bold text-slate-200">
-                Work Order: <strong className="text-amber-300 font-black">{woNo || 'None Selected'}</strong>
+              <span className="text-xs font-bold text-slate-700">
+                Work Order: <strong className="text-indigo-900 font-black">{woNo || 'None Selected'}</strong>
               </span>
               {savedRecord ? (
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Saved in Database ({savedRecord.sheet_no})
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-700 border border-emerald-300 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Saved in Database ({savedRecord.sheet_no})
                 </span>
               ) : (
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-400" /> Unsaved Changes
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" /> Unsaved Changes
                 </span>
               )}
             </div>
@@ -2336,9 +2336,9 @@ export default function ProcessSheetReportClient() {
                 <button
                   type="button"
                   onClick={resetToCalculatedDefaults}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 border border-slate-600 transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 border border-slate-300 transition-colors shadow-xs"
                 >
-                  <Undo2 className="w-3.5 h-3.5 text-amber-400" /> Reset Defaults
+                  <Undo2 className="w-3.5 h-3.5 text-amber-600" /> Reset Defaults
                 </button>
               )}
 
@@ -2355,9 +2355,9 @@ export default function ProcessSheetReportClient() {
               <button
                 type="button"
                 onClick={() => setViewMode('preview')}
-                className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 border border-slate-600 transition-colors"
+                className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center gap-1.5 border border-slate-300 transition-colors shadow-xs"
               >
-                <Printer className="w-3.5 h-3.5 text-emerald-400" /> Preview Sheet
+                <Printer className="w-3.5 h-3.5 text-emerald-600" /> Preview Sheet
               </button>
 
               <button
@@ -2383,17 +2383,17 @@ export default function ProcessSheetReportClient() {
       <div className={viewMode === 'preview' ? 'block' : 'hidden print:block'}>
       {/* Legend Banner */}
       <div className="max-w-[1100px] mx-auto mb-2 flex items-center justify-between text-xs px-2 py-1 print:hidden">
-        <div className="flex items-center gap-4 text-slate-300">
+        <div className="flex items-center gap-4 text-slate-600">
           <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded border border-slate-300 bg-white inline-block shadow-sm"></span>
-            <span className="font-medium text-slate-200">White Cells: Editable User Inputs</span>
+            <span className="w-3.5 h-3.5 rounded border border-slate-300 bg-white inline-block shadow-xs"></span>
+            <span className="font-semibold text-slate-700">White Cells: Editable User Inputs</span>
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded border border-slate-400 bg-slate-200 inline-block shadow-sm"></span>
-            <span className="font-semibold text-amber-300">Grey Cells: Non-Editable / System Calculated</span>
+            <span className="w-3.5 h-3.5 rounded border border-slate-400 bg-slate-200 inline-block shadow-xs"></span>
+            <span className="font-semibold text-amber-800">Grey Cells: Non-Editable / System Calculated</span>
           </span>
         </div>
-        <span className="text-[10px] text-slate-400 font-mono">Format: F-PROD-11</span>
+        <span className="text-[10px] text-slate-500 font-mono font-bold">Format: F-PROD-11</span>
       </div>
 
       <div className="bg-white text-black p-4 sm:p-6 rounded-xl shadow-2xl border border-slate-300 print:border-none print:shadow-none print:p-0 max-w-[1100px] mx-auto text-[11px] leading-tight font-sans">
