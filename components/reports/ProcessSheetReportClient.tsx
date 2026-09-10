@@ -17,6 +17,19 @@ import {
   Activity,
   Gauge,
   Info,
+  Save,
+  FileText,
+  Check,
+  Copy,
+  Undo2,
+  Sliders,
+  Thermometer,
+  Ruler,
+  FlaskConical,
+  Award,
+  PackageCheck,
+  Calendar,
+  UserCheck,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -90,6 +103,109 @@ function buildMarkingString(
   return `(IBR) RASHMI SMLS / LOGO / ${rCode} / ${specGrade} / OD ${odStr} MM X WT ${wtStr} MM / HYDRO TESTED ${hydroStr} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
 }
 
+// Reusable Form UI Components
+function FormSectionCard({
+  title,
+  subtitle,
+  icon: Icon,
+  badge,
+  badgeColor = 'indigo',
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  icon: React.ElementType;
+  badge?: string;
+  badgeColor?: 'indigo' | 'emerald' | 'amber' | 'blue' | 'purple' | 'rose' | 'slate';
+  children: React.ReactNode;
+}) {
+  const colorClasses: Record<string, string> = {
+    indigo: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30',
+    emerald: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30',
+    amber: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+    blue: 'bg-blue-500/10 text-blue-300 border-blue-500/30',
+    purple: 'bg-purple-500/10 text-purple-300 border-purple-500/30',
+    rose: 'bg-rose-500/10 text-rose-300 border-rose-500/30',
+    slate: 'bg-slate-800 text-slate-300 border-slate-700',
+  };
+
+  return (
+    <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-xl hover:border-slate-700/80 transition-all duration-200">
+      <div className="px-4 py-3 bg-slate-850/80 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-lg bg-slate-950 border border-slate-700/80 text-indigo-400 shadow-inner">
+            <Icon className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide">{title}</h3>
+            {subtitle && <p className="text-[10px] text-slate-400">{subtitle}</p>}
+          </div>
+        </div>
+        {badge && (
+          <span
+            className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border ${
+              colorClasses[badgeColor] || colorClasses.indigo
+            }`}
+          >
+            {badge}
+          </span>
+        )}
+      </div>
+      <div className="p-4 sm:p-5">{children}</div>
+    </div>
+  );
+}
+
+function FormInput({
+  label,
+  value,
+  onChange,
+  unit,
+  type = 'text',
+  placeholder,
+  disabled = false,
+  highlight = false,
+  title,
+}: {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  unit?: string;
+  type?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  highlight?: boolean;
+  title?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[11px]">
+        <label className="font-semibold text-slate-300 truncate" title={title || label}>
+          {label}
+        </label>
+        {unit && (
+          <span className="text-[9.5px] font-mono text-slate-400 bg-slate-950 px-1.5 py-0.2 rounded border border-slate-800">
+            {unit}
+          </span>
+        )}
+      </div>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        title={title}
+        className={`w-full px-3 py-1.5 bg-slate-950 border ${
+          highlight
+            ? 'border-indigo-500 text-indigo-200 shadow-sm shadow-indigo-500/10'
+            : 'border-slate-700/80 text-white hover:border-slate-500 focus:border-indigo-500'
+        } rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors placeholder:text-slate-600 disabled:opacity-50`}
+      />
+    </div>
+  );
+}
+
 export default function ProcessSheetReportClient() {
   const selectPlanRef = useRef<(plan: RollingPlanRecord) => void>(() => {});
   const [loading, setLoading] = useState(true);
@@ -98,6 +214,12 @@ export default function ProcessSheetReportClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [specSource, setSpecSource] = useState<'ai' | 'engine' | 'manual'>('engine');
+
+  // Form View Mode & Database Persistence States
+  const [viewMode, setViewMode] = useState<'form' | 'preview'>('form');
+  const [saving, setSaving] = useState(false);
+  const [savedRecord, setSavedRecord] = useState<any | null>(null);
+  const [formFilterTab, setFormFilterTab] = useState<'all' | 'order' | 'mill' | 'metallurgy' | 'testing' | 'marking'>('all');
 
   // Process Sheet Form State Fields (Empty/Dynamic by default)
   const [sheetNo, setSheetNo] = useState('');
@@ -230,6 +352,254 @@ export default function ProcessSheetReportClient() {
     const d = new Date();
     return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
   });
+
+  // Hydrate all state variables from saved sheet JSON
+  const applySavedSheetData = (d: any) => {
+    if (!d || typeof d !== 'object') return;
+    if (d.sheetNo !== undefined) setSheetNo(String(d.sheetNo));
+    if (d.revNo !== undefined) setRevNo(String(d.revNo));
+    if (d.orderType !== undefined) setOrderType(String(d.orderType));
+    if (d.routeType !== undefined) setRouteType(String(d.routeType));
+    if (d.sheetDate !== undefined) setSheetDate(String(d.sheetDate));
+    if (d.customer !== undefined) setCustomer(String(d.customer));
+    if (d.destination !== undefined) setDestination(String(d.destination));
+    if (d.poNo !== undefined) setPoNo(String(d.poNo));
+    if (d.poDate !== undefined) setPoDate(String(d.poDate));
+    if (d.woNo !== undefined) setWoNo(String(d.woNo));
+    if (d.woDate !== undefined) setWoDate(String(d.woDate));
+    if (d.orderQty !== undefined) setOrderQty(String(d.orderQty));
+    if (d.deliveryDate !== undefined) setDeliveryDate(String(d.deliveryDate));
+    if (d.materialCode !== undefined) setMaterialCode(String(d.materialCode));
+    if (d.priority !== undefined) setPriority(String(d.priority));
+    if (d.materialSpec !== undefined) setMaterialSpec(String(d.materialSpec));
+    if (d.pipeColorCode !== undefined) setPipeColorCode(String(d.pipeColorCode));
+    if (d.rmColorCode !== undefined) setRmColorCode(String(d.rmColorCode));
+    if (d.steelGrade !== undefined) setSteelGrade(String(d.steelGrade));
+    if (d.heatNo !== undefined) setHeatNo(String(d.heatNo));
+
+    if (d.billetDia !== undefined) setBilletDia(String(d.billetDia));
+    if (d.billetSectWt !== undefined) setBilletSectWt(String(d.billetSectWt));
+    if (d.totalWeightMt !== undefined) setTotalWeightMt(String(d.totalWeightMt));
+    if (d.billetLength !== undefined) setBilletLength(String(d.billetLength));
+    if (d.cuttingTol !== undefined) setCuttingTol(String(d.cuttingTol));
+    if (d.multiple !== undefined) setMultiple(String(d.multiple));
+
+    if (d.whfTemp !== undefined) setWhfTemp(String(d.whfTemp));
+    if (d.inductionTemp !== undefined) setInductionTemp(String(d.inductionTemp));
+    if (d.sizingOutletTemp !== undefined) setSizingOutletTemp(String(d.sizingOutletTemp));
+
+    if (d.piercerOd !== undefined) setPiercerOd(String(d.piercerOd));
+    if (d.piercerWt !== undefined) setPiercerWt(String(d.piercerWt));
+    if (d.piercerShellLen !== undefined) setPiercerShellLen(String(d.piercerShellLen));
+    if (d.shellWeight !== undefined) setShellWeight(String(d.shellWeight));
+
+    if (d.motherHollowOd !== undefined) setMotherHollowOd(String(d.motherHollowOd));
+    if (d.motherHollowWt !== undefined) setMotherHollowWt(String(d.motherHollowWt));
+    if (d.rollingWt !== undefined) setRollingWt(String(d.rollingWt));
+    if (d.motherHollowKgMtr !== undefined) setMotherHollowKgMtr(String(d.motherHollowKgMtr));
+    if (d.smLength !== undefined) setSmLength(String(d.smLength));
+    if (d.hfsFinalLength !== undefined) setHfsFinalLength(String(d.hfsFinalLength));
+
+    if (d.mhTolOdMin !== undefined) setMhTolOdMin(String(d.mhTolOdMin));
+    if (d.mhTolOdMax !== undefined) setMhTolOdMax(String(d.mhTolOdMax));
+    if (d.mhTolWtMin !== undefined) setMhTolWtMin(String(d.mhTolWtMin));
+    if (d.mhTolWtMax !== undefined) setMhTolWtMax(String(d.mhTolWtMax));
+
+    if (d.planQtyNos !== undefined) setPlanQtyNos(String(d.planQtyNos));
+    if (d.planQtyMtrs !== undefined) setPlanQtyMtrs(String(d.planQtyMtrs));
+    if (d.planQtyMt !== undefined) setPlanQtyMt(String(d.planQtyMt));
+    if (d.inspection !== undefined) setInspection(String(d.inspection));
+    if (d.processRouteStr !== undefined) setProcessRouteStr(String(d.processRouteStr));
+
+    if (d.custOd !== undefined) setCustOd(String(d.custOd));
+    if (d.custWt !== undefined) setCustWt(String(d.custWt));
+    if (d.processWt !== undefined) setProcessWt(String(d.processWt));
+    if (d.finalPipeWeight !== undefined) setFinalPipeWeight(String(d.finalPipeWeight));
+    if (d.finalLength !== undefined) setFinalLength(String(d.finalLength));
+    if (d.finalOrderLen1 !== undefined) setFinalOrderLen1(String(d.finalOrderLen1));
+    if (d.finalOrderLen2 !== undefined) setFinalOrderLen2(String(d.finalOrderLen2));
+
+    if (d.finalTolOdMin !== undefined) setFinalTolOdMin(String(d.finalTolOdMin));
+    if (d.finalTolOdMax !== undefined) setFinalTolOdMax(String(d.finalTolOdMax));
+    if (d.finalTolWtMin !== undefined) setFinalTolWtMin(String(d.finalTolWtMin));
+    if (d.finalTolWtMax !== undefined) setFinalTolWtMax(String(d.finalTolWtMax));
+    if (d.finalLenTol !== undefined) setFinalLenTol(String(d.finalLenTol));
+
+    if (d.p1Od !== undefined) setP1Od(String(d.p1Od));
+    if (d.p1Wt !== undefined) setP1Wt(String(d.p1Wt));
+    if (d.p2Od !== undefined) setP2Od(String(d.p2Od));
+    if (d.p2Wt !== undefined) setP2Wt(String(d.p2Wt));
+    if (d.p3Od !== undefined) setP3Od(String(d.p3Od));
+    if (d.p3Wt !== undefined) setP3Wt(String(d.p3Wt));
+
+    if (d.htCycle !== undefined) setHtCycle(String(d.htCycle));
+    if (d.htCondition !== undefined) setHtCondition(String(d.htCondition));
+    if (d.straightness !== undefined) setStraightness(String(d.straightness));
+    if (d.hardness !== undefined) setHardness(String(d.hardness));
+
+    if (d.ystMin !== undefined) setYstMin(String(d.ystMin));
+    if (d.ystMax !== undefined) setYstMax(String(d.ystMax));
+    if (d.utsMin !== undefined) setUtsMin(String(d.utsMin));
+    if (d.utsMax !== undefined) setUtsMax(String(d.utsMax));
+    if (d.elongationMin !== undefined) setElongationMin(String(d.elongationMin));
+    if (d.elongationMax !== undefined) setElongationMax(String(d.elongationMax));
+
+    if (d.ndt !== undefined) setNdt(String(d.ndt));
+    if (d.hydroPressurePsi !== undefined) setHydroPressurePsi(String(d.hydroPressurePsi));
+    if (d.holdingTime !== undefined) setHoldingTime(String(d.holdingTime));
+
+    if (d.coating !== undefined) setCoating(String(d.coating));
+    if (d.endCondition !== undefined) setEndCondition(String(d.endCondition));
+    if (d.bundling !== undefined) setBundling(String(d.bundling));
+    if (d.bundleQtyPcs !== undefined) setBundleQtyPcs(String(d.bundleQtyPcs));
+    if (d.bundleWeightMt !== undefined) setBundleWeightMt(String(d.bundleWeightMt));
+    if (d.endCap !== undefined) setEndCap(String(d.endCap));
+
+    if (d.specialReq !== undefined) setSpecialReq(String(d.specialReq));
+    if (d.markingType !== undefined) {
+      setMarkingType(d.markingType as 'single' | 'triple');
+      markingTypeRef.current = d.markingType as 'single' | 'triple';
+    }
+    if (d.marking !== undefined) setMarking(String(d.marking));
+  };
+
+  // Save current Process Sheet to Supabase process_sheets table
+  const handleSaveProcessSheet = async () => {
+    const activePlan = plans.find((p) => p.id === selectedPlanId);
+    if (!activePlan && !woNo) {
+      toast.error('Please select a Work Order before saving.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const s = createClient();
+      const effectiveSheetNo = sheetNo.trim() || `PS-${woNo || 'UNKNOWN'}`;
+      const payload = {
+        plan_id: activePlan?.id || selectedPlanId || 'manual',
+        work_order_no: woNo || activePlan?.work_order_no || 'WO-MANUAL',
+        sheet_no: effectiveSheetNo,
+        saved_by: preparedBy || 'PPC EXEC',
+        sheet_data: {
+          sheetNo: effectiveSheetNo,
+          revNo,
+          orderType,
+          routeType,
+          sheetDate,
+          customer,
+          destination,
+          poNo,
+          poDate,
+          woNo,
+          woDate,
+          orderQty,
+          deliveryDate,
+          materialCode,
+          priority,
+          materialSpec,
+          pipeColorCode,
+          rmColorCode,
+          steelGrade,
+          heatNo,
+          billetDia,
+          billetSectWt,
+          totalWeightMt,
+          billetLength,
+          cuttingTol,
+          multiple,
+          whfTemp,
+          inductionTemp,
+          sizingOutletTemp,
+          piercerOd,
+          piercerWt,
+          piercerShellLen,
+          shellWeight,
+          motherHollowOd,
+          motherHollowWt,
+          rollingWt,
+          motherHollowKgMtr,
+          smLength,
+          hfsFinalLength,
+          mhTolOdMin,
+          mhTolOdMax,
+          mhTolWtMin,
+          mhTolWtMax,
+          planQtyNos,
+          planQtyMtrs,
+          planQtyMt,
+          inspection,
+          processRouteStr,
+          custOd,
+          custWt,
+          processWt,
+          finalPipeWeight,
+          finalLength,
+          finalOrderLen1,
+          finalOrderLen2,
+          finalTolOdMin,
+          finalTolOdMax,
+          finalTolWtMin,
+          finalTolWtMax,
+          finalLenTol,
+          p1Od,
+          p1Wt,
+          p2Od,
+          p2Wt,
+          p3Od,
+          p3Wt,
+          htCycle,
+          htCondition,
+          straightness,
+          hardness,
+          ystMin,
+          ystMax,
+          utsMin,
+          utsMax,
+          elongationMin,
+          elongationMax,
+          ndt,
+          hydroPressurePsi,
+          holdingTime,
+          coating,
+          endCondition,
+          bundling,
+          bundleQtyPcs,
+          bundleWeightMt,
+          endCap,
+          specialReq,
+          markingType,
+          marking,
+          preparedBy,
+          preparedDate,
+        },
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await s
+        .from('process_sheets')
+        .upsert(payload, { onConflict: 'sheet_no' })
+        .select()
+        .single();
+
+      if (error) throw error;
+      setSavedRecord(data);
+      toast.success(`Process Sheet (${effectiveSheetNo}) saved to database!`);
+    } catch (err: any) {
+      console.error('Error saving process sheet:', err);
+      toast.error(`Save failed: ${err.message || err}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Revert back to formula-calculated plan defaults
+  const resetToCalculatedDefaults = () => {
+    const activePlan = plans.find((p) => p.id === selectedPlanId);
+    if (activePlan) {
+      selectPlanRef.current(activePlan);
+      setSavedRecord(null);
+      toast.info('Reset form parameters to auto-calculated metallurgical defaults.');
+    }
+  };
 
   // Load ALL Work Orders (User requested: remove Plan issued condition, all work orders available)
   const loadIssuedPlans = useCallback(async () => {
@@ -761,6 +1131,30 @@ export default function ProcessSheetReportClient() {
       po_no: plan.po_no || parsedSt.po_no || '',
       heat_no: parsedSt.heat_no || '',
     });
+
+    // Check if custom Process Sheet has been saved for this Work Order in database
+    (async () => {
+      try {
+        const s = createClient();
+        const { data, error } = await s
+          .from('process_sheets')
+          .select('*')
+          .or(`work_order_no.eq.${effectiveWoNo},plan_id.eq.${plan.id}`)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!error && data && data.sheet_data) {
+          applySavedSheetData(data.sheet_data);
+          setSavedRecord(data);
+          toast.info(`Loaded saved Process Sheet (${data.sheet_no}) from database.`);
+          return;
+        }
+      } catch (e) {
+        console.warn('Note checking saved process sheet:', e);
+      }
+      setSavedRecord(null);
+    })();
   };
   selectPlanRef.current = selectPlan;
 
@@ -966,27 +1360,63 @@ export default function ProcessSheetReportClient() {
 
       {/* Action Header & WO Selector (Hidden on Print) */}
       <div className="print:hidden space-y-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-lg">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-lg">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" /> Rolling Plan Issued Orders Only
+                <ShieldCheck className="w-3.5 h-3.5" /> Rolling Plan Orders
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center gap-1">
-                <Cpu className="w-3.5 h-3.5" /> AI Metallurgical Engine Active
+                <Cpu className="w-3.5 h-3.5" /> AI Metallurgy Active
               </span>
+              {savedRecord ? (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Saved in DB ({savedRecord.sheet_no})
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> Draft / Unsaved
+                </span>
+              )}
             </div>
             <h1 className="text-xl font-bold text-white mt-1">
-              Process Sheet Report (Format No. F-PROD-11)
+              Process Sheet Form (Format No. F-PROD-11)
             </h1>
             <p className="text-xs text-slate-400">
-              Select any Work Order scheduled in Rolling Planning to auto-fetch Mechanical Properties,
-              Dimensional Tolerances & Hydro Pressure (PSI).
+              Interactive process sheet form with metallurgical calculations, database persistence, and certified print output.
             </p>
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Marking Type Dropdown (Single Marking vs Triple Marking) */}
+            {/* View Mode Switcher */}
+            <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 shadow-inner">
+              <button
+                type="button"
+                onClick={() => setViewMode('form')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all ${
+                  viewMode === 'form'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Form View
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('preview')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all ${
+                  viewMode === 'preview'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Print Preview (F-11)
+              </button>
+            </div>
+
+            {/* Marking Type Dropdown */}
             <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 hover:border-indigo-500 rounded-lg px-3 py-1.5 shadow-sm transition-colors">
               <span className="text-xs text-slate-400 font-semibold flex items-center gap-1">
                 Marking:
@@ -996,17 +1426,17 @@ export default function ProcessSheetReportClient() {
                 onChange={(e) => {
                   const newType = e.target.value as 'single' | 'triple';
                   setMarkingType(newType);
-                  const activePlan = plans.find((p) => p.id === selectedPlanId);
+                  const active = plans.find((p) => p.id === selectedPlanId);
                   setMarking(
                     buildMarkingString(newType, {
-                      routeCode: routeType || activePlan?.route_code || 'HFS',
-                      specification: materialSpec || activePlan?.specification,
-                      grade: steelGrade || activePlan?.grade,
-                      sizeOd: custOd || activePlan?.size_od,
-                      sizeWt: custWt || activePlan?.size_wt,
+                      routeCode: routeType || active?.route_code || 'HFS',
+                      specification: materialSpec || active?.specification,
+                      grade: steelGrade || active?.grade,
+                      sizeOd: custOd || active?.size_od,
+                      sizeWt: custWt || active?.size_wt,
                       hydroPsi: hydroPressurePsi,
-                      woNo: woNo || activePlan?.work_order_no,
-                      poNo: poNo || activePlan?.po_no || undefined,
+                      woNo: woNo || active?.work_order_no,
+                      poNo: poNo || active?.po_no || undefined,
                     })
                   );
                 }}
@@ -1017,7 +1447,9 @@ export default function ProcessSheetReportClient() {
               </select>
             </div>
 
+            {/* AI Spec Engine Button */}
             <button
+              type="button"
               onClick={() => fetchAiSpecs()}
               disabled={aiLoading || !selectedPlanId}
               className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm shadow-indigo-500/20 transition-all disabled:opacity-50 cursor-pointer"
@@ -1028,14 +1460,33 @@ export default function ProcessSheetReportClient() {
               ) : (
                 <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               )}
-              {aiLoading ? 'Analyzing Specs...' : 'Fetch with AI'}
+              {aiLoading ? 'Analyzing...' : 'Fetch with AI'}
             </button>
 
+            {/* Save Process Sheet Button */}
             <button
-              onClick={handlePrint}
-              className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm shadow-emerald-500/20 transition-all cursor-pointer"
+              type="button"
+              onClick={handleSaveProcessSheet}
+              disabled={saving || !selectedPlanId}
+              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-500/20 transition-all disabled:opacity-50 cursor-pointer"
+              title="Save customized Process Sheet specifications to database"
             >
-              <Printer className="w-3.5 h-3.5" />
+              {saving ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              {saving ? 'Saving...' : 'Save Sheet'}
+            </button>
+
+            {/* Print / Save PDF Button */}
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium flex items-center gap-1.5 border border-slate-700 transition-all cursor-pointer"
+              title="Print certified A4 Process Sheet or save as PDF"
+            >
+              <Printer className="w-3.5 h-3.5 text-emerald-400" />
               Print / Save PDF
             </button>
           </div>
@@ -1168,10 +1619,938 @@ export default function ProcessSheetReportClient() {
 
       {/* 
         ========================================================================
+        PROCESS SHEET INTERACTIVE FORM VIEW
+        Clean, structured cards for fast editing, validation and saving
+        ========================================================================
+      */}
+      {viewMode === 'form' && (
+        <div className="space-y-6 print:hidden">
+          {/* Quick Section Filter Bar */}
+          <div className="flex items-center justify-between flex-wrap gap-2 bg-slate-900 border border-slate-800 rounded-xl p-2.5 shadow-md">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-semibold text-slate-400 px-2 flex items-center gap-1">
+                <Sliders className="w-3.5 h-3.5 text-indigo-400" /> Filter Sections:
+              </span>
+              {[
+                { id: 'all', label: 'All Sections' },
+                { id: 'order', label: '1. Order & Customer' },
+                { id: 'billet', label: '2. Billet & WHF' },
+                { id: 'piercer', label: '3. Piercer & Mother Hollow' },
+                { id: 'final', label: '4. Cold Mill & Tolerances' },
+                { id: 'metallurgy', label: '5. Heat Treatment & Mechanical' },
+                { id: 'testing', label: '6. Testing & QC' },
+                { id: 'marking', label: '7. Marking & Reqs' },
+                { id: 'signatures', label: '8. Signatures' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setFormFilterTab(tab.id as any)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    formFilterTab === tab.id
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setViewMode('preview')}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5 text-emerald-400" /> Preview Print Sheet
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveProcessSheet}
+                disabled={saving || !selectedPlanId}
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm shadow-emerald-500/20 disabled:opacity-50 transition-colors"
+              >
+                {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {saving ? 'Saving...' : 'Save Sheet'}
+              </button>
+            </div>
+          </div>
+
+          {/* Section 1: Order & Master Identification */}
+          {(formFilterTab === 'all' || formFilterTab === 'order') && (
+            <FormSectionCard
+              title="1. Order & Master Identification"
+              subtitle="Work order metadata, customer specs, order quantities, and document numbering"
+              icon={FileText}
+              badge="Order Specs"
+              badgeColor="indigo"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <FormInput
+                  label="Process Sheet No."
+                  value={sheetNo}
+                  onChange={setSheetNo}
+                  unit="Doc ID"
+                  highlight
+                />
+                <FormInput
+                  label="Revision No."
+                  value={revNo}
+                  onChange={setRevNo}
+                  placeholder="REV 01"
+                />
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <label className="font-semibold text-slate-300">Order Category</label>
+                    <span className="text-[9.5px] font-mono text-slate-400 bg-slate-950 px-1.5 py-0.2 rounded border border-slate-800">
+                      Type
+                    </span>
+                  </div>
+                  <select
+                    value={orderType}
+                    onChange={(e) => setOrderType(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700/80 hover:border-slate-500 focus:border-indigo-500 text-white rounded-lg text-xs font-semibold focus:outline-none"
+                  >
+                    <option value="HFS">HFS (Hot Finished Seamless)</option>
+                    <option value="CDS">CDS (Cold Drawn Seamless)</option>
+                  </select>
+                </div>
+                <FormInput
+                  label="Process Route"
+                  value={routeType}
+                  onChange={setRouteType}
+                />
+
+                <FormInput
+                  label="Sheet Issue Date"
+                  value={sheetDate}
+                  onChange={setSheetDate}
+                  placeholder="DD-MM-YYYY"
+                />
+                <FormInput
+                  label="Customer Name"
+                  value={customer}
+                  onChange={setCustomer}
+                  highlight
+                />
+                <FormInput
+                  label="Destination / Consignee"
+                  value={destination}
+                  onChange={setDestination}
+                />
+                <FormInput
+                  label="Purchase Order No."
+                  value={poNo}
+                  onChange={setPoNo}
+                />
+
+                <FormInput
+                  label="Purchase Order Date"
+                  value={poDate}
+                  onChange={setPoDate}
+                  placeholder="DD-MM-YYYY"
+                />
+                <FormInput
+                  label="Work Order No."
+                  value={woNo}
+                  onChange={setWoNo}
+                  highlight
+                />
+                <FormInput
+                  label="Work Order Date"
+                  value={woDate}
+                  onChange={setWoDate}
+                  placeholder="DD-MM-YYYY"
+                />
+                <FormInput
+                  label="Order Quantity"
+                  value={orderQty}
+                  onChange={setOrderQty}
+                  unit="Mtr / Pcs"
+                />
+
+                <FormInput
+                  label="Delivery Date"
+                  value={deliveryDate}
+                  onChange={setDeliveryDate}
+                />
+                <FormInput
+                  label="Material Item Code"
+                  value={materialCode}
+                  onChange={setMaterialCode}
+                />
+                <FormInput
+                  label="Rolling Priority"
+                  value={priority}
+                  onChange={setPriority}
+                />
+                <FormInput
+                  label="Material Specification"
+                  value={materialSpec}
+                  onChange={setMaterialSpec}
+                  highlight
+                />
+
+                <FormInput
+                  label="Steel Grade"
+                  value={steelGrade}
+                  onChange={setSteelGrade}
+                  highlight
+                />
+                <FormInput
+                  label="Raw Material Heat No."
+                  value={heatNo}
+                  onChange={setHeatNo}
+                />
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <label className="font-semibold text-slate-300">Inspection Authority</label>
+                    <span className="text-[9.5px] font-mono text-slate-400 bg-slate-950 px-1.5 py-0.2 rounded border border-slate-800">
+                      Standard
+                    </span>
+                  </div>
+                  <select
+                    value={inspection}
+                    onChange={(e) => setInspection(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700/80 hover:border-slate-500 focus:border-indigo-500 text-white rounded-lg text-xs font-semibold focus:outline-none"
+                  >
+                    <option value="IBR">IBR (Indian Boiler Regulations)</option>
+                    <option value="NON-IBR">NON-IBR (Commercial / General)</option>
+                  </select>
+                </div>
+                <FormInput
+                  label="Pipe Colour Code"
+                  value={pipeColorCode}
+                  onChange={setPipeColorCode}
+                />
+                <FormInput
+                  label="RM Billet Colour Code"
+                  value={rmColorCode}
+                  onChange={setRmColorCode}
+                />
+              </div>
+            </FormSectionCard>
+          )}
+
+          {/* Section 2: Billet & Heating Parameters */}
+          {(formFilterTab === 'all' || formFilterTab === 'billet') && (
+            <FormSectionCard
+              title="2. Billet Cutting & Furnace Heating Parameters"
+              subtitle="Billet diameter, cutting length, furnace thermal controls and multiple"
+              icon={Flame}
+              badge="Thermal & Raw Material"
+              badgeColor="amber"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <FormInput
+                  label="Billet Diameter"
+                  value={billetDia}
+                  onChange={setBilletDia}
+                  unit="mm"
+                />
+                <FormInput
+                  label="Billet Section Weight"
+                  value={billetSectWt}
+                  onChange={setBilletSectWt}
+                  unit="kg/m"
+                />
+                <FormInput
+                  label="Total Planned Billet Wt"
+                  value={totalWeightMt}
+                  onChange={setTotalWeightMt}
+                  unit="MT"
+                />
+                <FormInput
+                  label="Billet Cutting Length"
+                  value={billetLength}
+                  onChange={setBilletLength}
+                  unit="m"
+                />
+                <FormInput
+                  label="Billet Cutting Tolerance"
+                  value={cuttingTol}
+                  onChange={setCuttingTol}
+                  placeholder="+5/-0 MM"
+                />
+                <FormInput
+                  label="Rolling Multiple"
+                  value={multiple}
+                  onChange={setMultiple}
+                  placeholder="1 or 2"
+                />
+                <FormInput
+                  label="WHF Heating Temperature"
+                  value={whfTemp}
+                  onChange={setWhfTemp}
+                  unit="°C"
+                />
+                <FormInput
+                  label="Induction Furnace Temp"
+                  value={inductionTemp}
+                  onChange={setInductionTemp}
+                  unit="°C"
+                />
+                <FormInput
+                  label="Sizing Mill Outlet Temp"
+                  value={sizingOutletTemp}
+                  onChange={setSizingOutletTemp}
+                  unit="°C"
+                />
+              </div>
+            </FormSectionCard>
+          )}
+
+          {/* Section 3: Piercer & Mother Hollow Specs */}
+          {(formFilterTab === 'all' || formFilterTab === 'piercer') && (
+            <FormSectionCard
+              title="3. Piercer Mill & Mother Hollow Specifications"
+              subtitle="Shell dimensions, Mother Hollow sizing, and hot mill rolling tolerances"
+              icon={Cpu}
+              badge="Hot Rolling"
+              badgeColor="blue"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <FormInput
+                  label="Piercer Shell OD"
+                  value={piercerOd}
+                  onChange={setPiercerOd}
+                  unit="mm"
+                />
+                <FormInput
+                  label="Piercer Shell WT"
+                  value={piercerWt}
+                  onChange={setPiercerWt}
+                  unit="mm"
+                />
+                <FormInput
+                  label="Piercer Shell Length"
+                  value={piercerShellLen}
+                  onChange={setPiercerShellLen}
+                  unit="m"
+                />
+                <FormInput
+                  label="Piercer Shell Weight"
+                  value={shellWeight}
+                  onChange={setShellWeight}
+                  unit="kg"
+                />
+
+                <FormInput
+                  label="Mother Hollow OD"
+                  value={motherHollowOd}
+                  onChange={setMotherHollowOd}
+                  unit="mm"
+                  highlight
+                />
+                <FormInput
+                  label="Mother Hollow WT"
+                  value={motherHollowWt}
+                  onChange={setMotherHollowWt}
+                  unit="mm"
+                  highlight
+                />
+                <FormInput
+                  label="Rolling Wall Thickness"
+                  value={rollingWt}
+                  onChange={setRollingWt}
+                  unit="mm"
+                />
+                <FormInput
+                  label="Mother Hollow Wt/Mtr"
+                  value={motherHollowKgMtr}
+                  onChange={setMotherHollowKgMtr}
+                  unit="kg/m"
+                />
+
+                <FormInput
+                  label="Sizing Mill Length (SM)"
+                  value={smLength}
+                  onChange={setSmLength}
+                  unit="m"
+                />
+                <FormInput
+                  label="HFS Final Length"
+                  value={hfsFinalLength}
+                  onChange={setHfsFinalLength}
+                  unit="m"
+                />
+                <FormInput
+                  label="MH Tol: OD Min"
+                  value={mhTolOdMin}
+                  onChange={setMhTolOdMin}
+                  unit="mm"
+                />
+                <FormInput
+                  label="MH Tol: OD Max"
+                  value={mhTolOdMax}
+                  onChange={setMhTolOdMax}
+                  unit="mm"
+                />
+
+                <FormInput
+                  label="MH Tol: WT Min"
+                  value={mhTolWtMin}
+                  onChange={setMhTolWtMin}
+                  unit="mm"
+                />
+                <FormInput
+                  label="MH Tol: WT Max"
+                  value={mhTolWtMax}
+                  onChange={setMhTolWtMax}
+                  unit="mm"
+                />
+                <FormInput
+                  label="Planned Quantity (Nos)"
+                  value={planQtyNos}
+                  onChange={setPlanQtyNos}
+                  unit="pcs"
+                />
+                <FormInput
+                  label="Planned Quantity (Mtrs)"
+                  value={planQtyMtrs}
+                  onChange={setPlanQtyMtrs}
+                  unit="m"
+                />
+
+                <FormInput
+                  label="Planned Quantity (MT)"
+                  value={planQtyMt}
+                  onChange={setPlanQtyMt}
+                  unit="MT"
+                />
+                <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+                  <FormInput
+                    label="Process Route Sequence Flow"
+                    value={processRouteStr}
+                    onChange={setProcessRouteStr}
+                    placeholder="BILLET CUTTING # WHF # PIERCER # SIZING # STRA # CUTTING # UT # HYDRO # VDI # BLACK VARNISH # MARKING # BUNDLING"
+                  />
+                </div>
+              </div>
+            </FormSectionCard>
+          )}
+
+          {/* Section 4: Cold Mill & Final Sizing Dimensions & Tolerances */}
+          {(formFilterTab === 'all' || formFilterTab === 'final') && (
+            <FormSectionCard
+              title="4. Cold Mill & Final Sizing Dimensions & Tolerances"
+              subtitle="Customer finished size, process wall, length tolerances (+10MM), and cold drawing passes"
+              icon={Layers}
+              badge="Finishing Tolerances"
+              badgeColor="emerald"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <FormInput
+                  label="Customer Finished OD"
+                  value={custOd}
+                  onChange={setCustOd}
+                  unit="mm"
+                  highlight
+                />
+                <FormInput
+                  label="Customer Finished WT"
+                  value={custWt}
+                  onChange={setCustWt}
+                  unit="mm"
+                  highlight
+                />
+                <FormInput
+                  label="Process Wall Thickness"
+                  value={processWt}
+                  onChange={setProcessWt}
+                  unit="mm"
+                  title="Calculated with standard expansion margin"
+                />
+                <FormInput
+                  label="Final Pipe Weight"
+                  value={finalPipeWeight}
+                  onChange={setFinalPipeWeight}
+                  unit="kg/m"
+                />
+
+                <FormInput
+                  label="Final Calculated Length"
+                  value={finalLength}
+                  onChange={setFinalLength}
+                  unit="m"
+                />
+                <FormInput
+                  label="Order Length (L1)"
+                  value={finalOrderLen1}
+                  unit="m"
+                  onChange={(val) => {
+                    setFinalOrderLen1(val);
+                    const n1 = parseFloat(val);
+                    const n2 = parseFloat(finalOrderLen2);
+                    if (!isNaN(n1) && !isNaN(n2)) {
+                      if (Math.abs(n1 - n2) < 0.05) {
+                        setFinalLenTol('+10MM');
+                        if (!finalOrderLen2.includes('+10MM')) {
+                          setFinalOrderLen2(`${n2.toFixed(3)} +10MM`);
+                        }
+                      }
+                    }
+                  }}
+                />
+                <FormInput
+                  label="Order Length (L2) (+10MM Fixed)"
+                  value={finalOrderLen2}
+                  unit="m"
+                  onChange={(val) => {
+                    setFinalOrderLen2(val);
+                    const n1 = parseFloat(finalOrderLen1);
+                    const n2 = parseFloat(val);
+                    if (!isNaN(n1) && !isNaN(n2)) {
+                      if (Math.abs(n1 - n2) < 0.05) {
+                        setFinalLenTol('+10MM');
+                      }
+                    }
+                  }}
+                  highlight
+                />
+                <FormInput
+                  label="Length Tolerance"
+                  value={finalLenTol}
+                  onChange={setFinalLenTol}
+                  placeholder="+10MM"
+                />
+
+                <FormInput
+                  label="Final Tol: OD Min"
+                  value={finalTolOdMin}
+                  onChange={setFinalTolOdMin}
+                  unit="mm"
+                  highlight
+                />
+                <FormInput
+                  label="Final Tol: OD Max"
+                  value={finalTolOdMax}
+                  onChange={setFinalTolOdMax}
+                  unit="mm"
+                  highlight
+                />
+                <FormInput
+                  label="Final Tol: WT Min"
+                  value={finalTolWtMin}
+                  onChange={setFinalTolWtMin}
+                  unit="mm"
+                  highlight
+                />
+                <FormInput
+                  label="Final Tol: WT Max"
+                  value={finalTolWtMax}
+                  onChange={setFinalTolWtMax}
+                  unit="mm"
+                  highlight
+                />
+              </div>
+
+              {/* Inter-Pass Reductions Sub-Block */}
+              <div className="mt-5 pt-4 border-t border-slate-800">
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-emerald-400" /> Cold Mill Inter-Pass Reductions (P1 / P2 / P3)
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2.5">
+                    <div className="text-[11px] font-bold text-indigo-300 border-b border-slate-800 pb-1">
+                      PASS 1 (P1)
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <FormInput label="OD" value={p1Od} onChange={setP1Od} unit="mm" />
+                      <FormInput label="WT" value={p1Wt} onChange={setP1Wt} unit="mm" />
+                    </div>
+                  </div>
+                  <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2.5">
+                    <div className="text-[11px] font-bold text-indigo-300 border-b border-slate-800 pb-1">
+                      PASS 2 (P2)
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <FormInput label="OD" value={p2Od} onChange={setP2Od} unit="mm" />
+                      <FormInput label="WT" value={p2Wt} onChange={setP2Wt} unit="mm" />
+                    </div>
+                  </div>
+                  <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2.5">
+                    <div className="text-[11px] font-bold text-indigo-300 border-b border-slate-800 pb-1">
+                      PASS 3 (P3)
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <FormInput label="OD" value={p3Od} onChange={setP3Od} unit="mm" />
+                      <FormInput label="WT" value={p3Wt} onChange={setP3Wt} unit="mm" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </FormSectionCard>
+          )}
+
+          {/* Section 5: Heat Treatment & Mechanical Properties */}
+          {(formFilterTab === 'all' || formFilterTab === 'metallurgy') && (
+            <FormSectionCard
+              title="5. Heat Treatment & Mechanical Properties"
+              subtitle="Furnace heat treat conditions, straightness, hardness, YST, UTS, and elongation"
+              icon={Activity}
+              badge="Metallurgical QA"
+              badgeColor="purple"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <FormInput
+                  label="Heat Treatment Cycle"
+                  value={htCycle}
+                  onChange={setHtCycle}
+                  placeholder="NORMALIZED / SUB-CRITICAL ANNEAL"
+                />
+                <FormInput
+                  label="Heat Treatment Condition"
+                  value={htCondition}
+                  onChange={setHtCondition}
+                />
+                <FormInput
+                  label="Straightness Requirement"
+                  value={straightness}
+                  onChange={setStraightness}
+                  placeholder="1:1000"
+                />
+                <FormInput
+                  label="Hardness Limit"
+                  value={hardness}
+                  onChange={setHardness}
+                  placeholder="79 HRB MAX"
+                  highlight
+                />
+
+                <FormInput
+                  label="Yield Strength (YST) Min"
+                  value={ystMin}
+                  onChange={setYstMin}
+                  unit="MPa"
+                  highlight
+                />
+                <FormInput
+                  label="Yield Strength (YST) Max"
+                  value={ystMax}
+                  onChange={setYstMax}
+                  unit="MPa"
+                  placeholder="NOT SPECIFIED"
+                />
+                <FormInput
+                  label="Tensile Strength (UTS) Min"
+                  value={utsMin}
+                  onChange={setUtsMin}
+                  unit="MPa"
+                  highlight
+                />
+                <FormInput
+                  label="Tensile Strength (UTS) Max"
+                  value={utsMax}
+                  onChange={setUtsMax}
+                  unit="MPa"
+                  placeholder="NOT SPECIFIED"
+                />
+
+                <FormInput
+                  label="Elongation Min"
+                  value={elongationMin}
+                  onChange={setElongationMin}
+                  unit="%"
+                  highlight
+                />
+                <FormInput
+                  label="Elongation Max"
+                  value={elongationMax}
+                  onChange={setElongationMax}
+                  unit="%"
+                  placeholder="NOT SPECIFIED"
+                />
+              </div>
+            </FormSectionCard>
+          )}
+
+          {/* Section 6: Testing, Quality & Surface Protection */}
+          {(formFilterTab === 'all' || formFilterTab === 'testing') && (
+            <FormSectionCard
+              title="6. Testing, Quality & Surface Protection"
+              subtitle="Hydrostatic test pressure, NDT inspection method, pipe coatings, and packaging"
+              icon={ShieldCheck}
+              badge="NDT & Packing"
+              badgeColor="rose"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <FormInput
+                  label="Non-Destructive Testing (NDT)"
+                  value={ndt}
+                  onChange={setNdt}
+                  placeholder="UT / ET"
+                  highlight
+                />
+                <FormInput
+                  label="Hydrostatic Test Pressure"
+                  value={hydroPressurePsi}
+                  onChange={setHydroPressurePsi}
+                  unit="PSI"
+                  highlight
+                />
+                <FormInput
+                  label="Hydro Holding Time"
+                  value={holdingTime}
+                  onChange={setHoldingTime}
+                  unit="Sec"
+                />
+
+                <FormInput
+                  label="Surface Coating"
+                  value={coating}
+                  onChange={setCoating}
+                  placeholder="BLACK VARNISH"
+                />
+                <FormInput
+                  label="Pipe End Condition"
+                  value={endCondition}
+                  onChange={setEndCondition}
+                  placeholder="BEVEL END (30°-35°)"
+                />
+                <FormInput
+                  label="Bundling Shape / Type"
+                  value={bundling}
+                  onChange={setBundling}
+                  placeholder="HEXAGONAL"
+                />
+
+                <FormInput
+                  label="Bundle Quantity (Pcs)"
+                  value={bundleQtyPcs}
+                  onChange={setBundleQtyPcs}
+                  unit="pcs"
+                />
+                <FormInput
+                  label="Bundle Weight (MT)"
+                  value={bundleWeightMt}
+                  onChange={setBundleWeightMt}
+                  unit="MT"
+                />
+                <FormInput
+                  label="End Protection Cap"
+                  value={endCap}
+                  onChange={setEndCap}
+                  placeholder="PLASTIC PROTECTOR"
+                />
+              </div>
+            </FormSectionCard>
+          )}
+
+          {/* Section 7: Marking Specification & Special Requirements */}
+          {(formFilterTab === 'all' || formFilterTab === 'marking') && (
+            <FormSectionCard
+              title="7. Marking Specification & Special Requirements"
+              subtitle="Stenciling standard, single/triple marking toggle, and custom client requirements"
+              icon={FileSpreadsheet}
+              badge="Marking & Specs"
+              badgeColor="amber"
+            >
+              <div className="space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-300">Marking Format:</span>
+                    <div className="inline-flex rounded-lg border border-slate-700 bg-slate-950 p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMarkingType('single');
+                          markingTypeRef.current = 'single';
+                          const active = plans.find((p) => p.id === selectedPlanId);
+                          setMarking(
+                            buildMarkingString('single', {
+                              routeCode: routeType || active?.route_code || 'HFS',
+                              specification: materialSpec || active?.specification,
+                              grade: steelGrade || active?.grade,
+                              sizeOd: custOd || active?.size_od,
+                              sizeWt: custWt || active?.size_wt,
+                              hydroPsi: hydroPressurePsi,
+                              woNo: woNo || active?.work_order_no,
+                              poNo: poNo || active?.po_no || undefined,
+                            })
+                          );
+                        }}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${
+                          markingType === 'single'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Single Marking
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMarkingType('triple');
+                          markingTypeRef.current = 'triple';
+                          const active = plans.find((p) => p.id === selectedPlanId);
+                          setMarking(
+                            buildMarkingString('triple', {
+                              routeCode: routeType || active?.route_code || 'HFS',
+                              specification: materialSpec || active?.specification,
+                              grade: steelGrade || active?.grade,
+                              sizeOd: custOd || active?.size_od,
+                              sizeWt: custWt || active?.size_wt,
+                              hydroPsi: hydroPressurePsi,
+                              woNo: woNo || active?.work_order_no,
+                              poNo: poNo || active?.po_no || undefined,
+                            })
+                          );
+                        }}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${
+                          markingType === 'triple'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Triple Marking
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(marking);
+                      toast.success('Marking specification copied to clipboard!');
+                    }}
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg flex items-center gap-1 transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Copy Marking Text
+                  </button>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">
+                    Pipe Body Stenciling / Marking Text
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={marking}
+                    onChange={(e) => setMarking(e.target.value)}
+                    className="w-full p-3 bg-slate-950 border border-slate-700 hover:border-slate-500 focus:border-indigo-500 text-white rounded-lg text-xs font-mono focus:outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">
+                    Special Customer Requirements (If Any)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={specialReq}
+                    onChange={(e) => setSpecialReq(e.target.value)}
+                    placeholder="Enter any customer specific inspection, third-party stamping, or packaging instructions..."
+                    className="w-full p-3 bg-slate-950 border border-slate-700 hover:border-slate-500 focus:border-indigo-500 text-white rounded-lg text-xs font-semibold focus:outline-none transition-colors"
+                  />
+                </div>
+              </div>
+            </FormSectionCard>
+          )}
+
+          {/* Section 8: Signatures & Document Control */}
+          {(formFilterTab === 'all' || formFilterTab === 'signatures') && (
+            <FormSectionCard
+              title="8. Signatures & Document Control"
+              subtitle="Departmental approvals, prepared by sign-off, and quality management authorization"
+              icon={UserCheck}
+              badge="Signatures"
+              badgeColor="slate"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-1 text-center">
+                  <div className="text-[11px] font-bold text-slate-300">PREPARED BY</div>
+                  <div className="text-xs font-bold text-emerald-400 mt-2">{preparedBy}</div>
+                  <div className="text-[10px] text-slate-500">{preparedDate}</div>
+                </div>
+                <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-1 text-center">
+                  <div className="text-[11px] font-bold text-slate-300">PPC SEC. IN-CHARGE</div>
+                  <div className="text-xs text-slate-400 mt-3">APPROVED & VERIFIED</div>
+                </div>
+                <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-1 text-center">
+                  <div className="text-[11px] font-bold text-slate-300">HOT MILL SEC IN-CHARGE</div>
+                  <div className="text-xs text-slate-400 mt-3">HOT ROLLING READY</div>
+                </div>
+                <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-1 text-center">
+                  <div className="text-[11px] font-bold text-slate-300">COLD MILL SEC IN-CHARGE</div>
+                  <div className="text-xs text-slate-400 mt-3">PASS REDUCTIONS READY</div>
+                </div>
+                <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-1 text-center">
+                  <div className="text-[11px] font-bold text-slate-300">APPROVED BY QC</div>
+                  <div className="text-xs text-emerald-400 mt-3">QUALITY ASSURED</div>
+                </div>
+              </div>
+            </FormSectionCard>
+          )}
+
+          {/* Sticky / Floating Bottom Form Action Bar */}
+          <div className="sticky bottom-4 z-20 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-xl p-3.5 shadow-2xl flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-medium text-slate-300">
+                Work Order: <strong className="text-white">{woNo || 'No Order Selected'}</strong>
+              </span>
+              {savedRecord ? (
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Saved in Database ({savedRecord.sheet_no})
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> Unsaved Changes
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              {savedRecord && (
+                <button
+                  type="button"
+                  onClick={resetToCalculatedDefaults}
+                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors"
+                >
+                  <Undo2 className="w-3.5 h-3.5 text-amber-400" /> Reset Defaults
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => fetchAiSpecs()}
+                disabled={aiLoading || !selectedPlanId}
+                className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm shadow-indigo-500/20 transition-all disabled:opacity-50"
+              >
+                {aiLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-300" />}
+                {aiLoading ? 'Analyzing...' : 'Fetch with AI'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('preview')}
+                className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5 text-emerald-400" /> Preview Sheet
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveProcessSheet}
+                disabled={saving || !selectedPlanId}
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all disabled:opacity-50"
+              >
+                {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {saving ? 'Saving...' : 'Save Process Sheet'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 
+        ========================================================================
         AUTHENTIC RASHMI SEAMLESS DIVISION PROCESS SHEET (FORMAT NO. F-PROD-11)
         Styled for direct high-fidelity visual fidelity on screen & physical A4 print
         ========================================================================
       */}
+      <div className={viewMode === 'preview' ? 'block' : 'hidden print:block'}>
       {/* Legend Banner */}
       <div className="max-w-[1100px] mx-auto mb-2 flex items-center justify-between text-xs px-2 py-1 print:hidden">
         <div className="flex items-center gap-4 text-slate-300">
@@ -2148,6 +3527,7 @@ export default function ProcessSheetReportClient() {
           <span>RASHMI SEAMLESS DIVISION • QUALITY MANAGEMENT SYSTEM</span>
           <span>PAGE 1 OF 1</span>
         </div>
+      </div>
       </div>
     </div>
   );
