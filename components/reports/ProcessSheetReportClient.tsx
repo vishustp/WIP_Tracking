@@ -219,7 +219,9 @@ export default function ProcessSheetReportClient() {
   const [viewMode, setViewMode] = useState<'form' | 'preview'>('form');
   const [saving, setSaving] = useState(false);
   const [savedRecord, setSavedRecord] = useState<any | null>(null);
-  const [formFilterTab, setFormFilterTab] = useState<'all' | 'order' | 'mill' | 'metallurgy' | 'testing' | 'marking'>('all');
+  const [formFilterTab, setFormFilterTab] = useState<
+    'all' | 'order' | 'billet' | 'piercer' | 'final' | 'metallurgy' | 'testing' | 'marking' | 'signatures'
+  >('all');
 
   // Process Sheet Form State Fields (Empty/Dynamic by default)
   const [sheetNo, setSheetNo] = useState('');
