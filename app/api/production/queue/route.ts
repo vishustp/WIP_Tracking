@@ -773,11 +773,12 @@ export async function GET(req: NextRequest) {
       // Available WIP is bounded by upstream finishing available stock
       const childAvailMtr = Math.min(remainingTargetMtr, masterFinishingAvail);
 
+      const l1 = Number(child.l1 || childWo?.l1 || 6);
+      const l2 = Number(child.l2 || childWo?.l2 || 6.5);
+      const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6.25;
+      const childAvailPcs = avgLength > 0 ? Math.round(childAvailMtr / avgLength) : 0;
+
       if (childAvailPcs >= 1 || childAvailMtr >= 1.0) {
-        const l1 = Number(child.l1 || childWo?.l1 || 6);
-        const l2 = Number(child.l2 || childWo?.l2 || 6.5);
-        const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6.25;
-        const childAvailPcs = avgLength > 0 ? Math.round(childAvailMtr / avgLength) : 0;
         const od = Number(child.size_od || childWo?.size_od || 0);
         const wt = Number(child.size_wt || childWo?.size_wt || 0);
         const childAvailMt = mtFromMtr(childAvailMtr, od, wt);
