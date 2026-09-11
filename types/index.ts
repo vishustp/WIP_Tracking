@@ -238,6 +238,8 @@ export interface ProductionLog {
   stage_id?: string;
   stage_code?: string;
   stage_name?: string;
+  route_id?: string | null;
+  process_route_id?: string | null;
   shift_date?: string;
   process_date?: string;
   shift?: string | null;
