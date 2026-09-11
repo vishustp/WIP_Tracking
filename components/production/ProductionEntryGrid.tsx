@@ -238,17 +238,47 @@ export default function ProductionEntryGrid() {
 
         if (field === "pcs") {
           const mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
-          return { ...r, pcs: value, mtr };
+          const extra: Record<string, string> = {};
+          if (stage === "ROLLING") {
+            const newPcs = n(value);
+            const rejPcs = n(r.rejection_pcs);
+            const autoHtcPcs = Math.max(0, newPcs - rejPcs);
+            extra.htc_ok_pcs = autoHtcPcs > 0 ? String(autoHtcPcs) : (newPcs > 0 ? "0" : "");
+            extra.htc_ok_mtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(3).replace(/\.?0+$/, "")) : (newPcs > 0 ? "0" : "");
+          }
+          return { ...r, pcs: value, mtr, ...extra };
         }
         if (field === "mtr") {
-          return { ...r, mtr: value };
+          const extra: Record<string, string> = {};
+          if (stage === "ROLLING" && n(r.pcs) <= 0) {
+            const newMtr = n(value);
+            const rejMtr = n(r.rejection_mtr);
+            const autoHtcMtr = Math.max(0, newMtr - rejMtr);
+            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(3).replace(/\.?0+$/, "")) : (newMtr > 0 ? "0" : "");
+          }
+          return { ...r, mtr: value, ...extra };
         }
         if (field === "rejection_pcs") {
           const rejection_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
-          return { ...r, rejection_pcs: value, rejection_mtr };
+          const extra: Record<string, string> = {};
+          if (stage === "ROLLING") {
+            const prodPcs = n(r.pcs);
+            const rejPcs = n(value);
+            const autoHtcPcs = Math.max(0, prodPcs - rejPcs);
+            extra.htc_ok_pcs = autoHtcPcs > 0 ? String(autoHtcPcs) : (prodPcs > 0 ? "0" : "");
+            extra.htc_ok_mtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(3).replace(/\.?0+$/, "")) : (prodPcs > 0 ? "0" : "");
+          }
+          return { ...r, rejection_pcs: value, rejection_mtr, ...extra };
         }
         if (field === "rejection_mtr") {
-          return { ...r, rejection_mtr: value };
+          const extra: Record<string, string> = {};
+          if (stage === "ROLLING" && n(r.pcs) <= 0) {
+            const prodMtr = n(r.mtr);
+            const rejMtr = n(value);
+            const autoHtcMtr = Math.max(0, prodMtr - rejMtr);
+            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(3).replace(/\.?0+$/, "")) : (prodMtr > 0 ? "0" : "");
+          }
+          return { ...r, rejection_mtr: value, ...extra };
         }
         if (field === "htc_ok_pcs") {
           const htc_ok_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
@@ -1372,6 +1402,13 @@ export default function ProductionEntryGrid() {
                         <div className="text-xs text-slate-500 mt-1">
                           Mult: ×{fmt(r.multiple || 1)}
                         </div>
+                        {r.feeder_source_label && (
+                          <div className="mt-1.5">
+                            <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold">
+                              Feeder: {r.feeder_source_label}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Available WIP & Capping */}
@@ -1458,7 +1495,7 @@ export default function ProductionEntryGrid() {
                             {/* 3. Available WIP from Preceding Stage */}
                             <div className="bg-emerald-50/50 border border-emerald-100 rounded px-2 py-1 text-xs">
                               <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center justify-between">
-                                <span>{stage === "FINISHING" ? "Available WIP (VDI OK)" : "Available WIP (HT)"}</span>
+                                <span>Available WIP (VDI OK)</span>
                                 <span className="text-[10px] font-medium text-emerald-600">Stock</span>
                               </div>
                               <div className="flex items-baseline gap-1 flex-wrap mt-0.5 font-mono">
@@ -1531,6 +1568,33 @@ export default function ProductionEntryGrid() {
                             </span>
                           </div>
                         </div>
+
+                        {/* Standard 4-Meter Scrap Rule Live Feedback */}
+                        {(() => {
+                          const pPcs = n(r.pcs);
+                          const pMtr = n(r.mtr);
+                          if (pPcs > 0 && pMtr > 0) {
+                            const pLen = pMtr / pPcs;
+                            if (pLen < 3.999) {
+                              return (
+                                <div className="mt-1 text-center">
+                                  <span className="inline-flex items-center gap-1 rounded bg-rose-100 border border-rose-200 px-1.5 py-0.5 text-[10px] font-bold text-rose-800">
+                                    ⚠️ &lt; 4.0m scrap ({pLen.toFixed(2)}m/pc)
+                                  </span>
+                                </div>
+                              );
+                            }
+                          } else if (pPcs <= 0 && pMtr > 0 && pMtr < 3.999) {
+                            return (
+                              <div className="mt-1 text-center">
+                                <span className="inline-flex items-center gap-1 rounded bg-rose-100 border border-rose-200 px-1.5 py-0.5 text-[10px] font-bold text-rose-800">
+                                  ⚠️ &lt; 4.0m scrap length
+                                </span>
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </td>
 
                       {/* Rejection Inputs (PCS & MTR) */}

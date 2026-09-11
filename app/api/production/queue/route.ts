@@ -444,23 +444,10 @@ export async function GET(req: NextRequest) {
         // Strictly from VDI OK Nos * Multiple (accepted good material released to Finishing Line)
         finIncomingPcs = Math.round(qcOkPcs * multiple);
         finIncomingMtr = qcOkMtr > 0 ? qcOkMtr * multiple : (avgLength > 0 ? qcOkPcs * avgLength * multiple : 0);
-      } else if (hasQcTable) {
-        // QC table exists, but no QC inspection has been done yet for this order.
-        // It must be inspected in QC first!
+      } else {
+        // Feeder source is strictly derived from VDI OK Nos. Uninspected or pending QC material cannot proceed to finishing.
         finIncomingMtr = 0;
         finIncomingPcs = 0;
-      } else {
-        // Fallback for when migration 040 is not yet applied
-        if (routeCode === "HFS") {
-          finIncomingMtr = rollHtcOkMtr * multiple;
-          finIncomingPcs = Math.round(rollHtcOkPcs * multiple);
-        } else if (routeCode === "ALLOY_HFS") {
-          finIncomingMtr = hollowHtNetMtr * multiple;
-          finIncomingPcs = Math.round(hollowHtNetPcs * multiple);
-        } else {
-          finIncomingMtr = htNetMtr * multiple;
-          finIncomingPcs = Math.round(htNetPcs * multiple);
-        }
       }
 
       const finDivInPcs = avgLength > 0 ? Math.round(finDivIn / avgLength) : 0;
@@ -573,32 +560,32 @@ export async function GET(req: NextRequest) {
       });
 
       // Update workCenterSummary for the 5 stages
-      // (Pre-finishing: only Master orders; Finishing: Master and Child orders)
-      if (isRollingPlanIssued && rollAvailMtr > 0) {
+      // (Universal Rule: Work orders with zero or sub-single balance < 1 Pc and < 1.0 Mtr must not appear in queues)
+      if (isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)) {
         workCenterSummary.ROLLING.availMtr += rollAvailMtr;
         workCenterSummary.ROLLING.availPcs += rollAvailPcs;
         workCenterSummary.ROLLING.availMt += rollAvailMt;
         workCenterSummary.ROLLING.count += 1;
       }
-      if (hollowHtAvailMtr > 0) {
+      if (isAlloy && (hollowHtAvailMtr >= 1.0 || hollowHtAvailPcs >= 1)) {
         workCenterSummary.HOLLOW_HEAT_TREATMENT.availMtr += hollowHtAvailMtr;
         workCenterSummary.HOLLOW_HEAT_TREATMENT.availPcs += hollowHtAvailPcs;
         workCenterSummary.HOLLOW_HEAT_TREATMENT.availMt += hollowHtAvailMt;
         workCenterSummary.HOLLOW_HEAT_TREATMENT.count += 1;
       }
-      if (drawAvailMtr > 0) {
+      if (isCds && (drawAvailMtr >= 1.0 || drawAvailPcs >= 1)) {
         workCenterSummary.DRAW.availMtr += drawAvailMtr;
         workCenterSummary.DRAW.availPcs += drawAvailPcs;
         workCenterSummary.DRAW.availMt += drawAvailMt;
         workCenterSummary.DRAW.count += 1;
       }
-      if (htAvailMtr > 0) {
+      if (isCds && (htAvailMtr >= 1.0 || htAvailPcs >= 1)) {
         workCenterSummary.HEAT_TREATMENT.availMtr += htAvailMtr;
         workCenterSummary.HEAT_TREATMENT.availPcs += htAvailPcs;
         workCenterSummary.HEAT_TREATMENT.availMt += htAvailMt;
         workCenterSummary.HEAT_TREATMENT.count += 1;
       }
-      if (finAvailMtr > 0 || finAvailPcs > 0) {
+      if (finAvailMtr >= 1.0 || finAvailPcs >= 1) {
         workCenterSummary.FINISHING.availMtr += finAvailMtr;
         workCenterSummary.FINISHING.availPcs += finAvailPcs;
         workCenterSummary.FINISHING.availMt += finAvailMt;
@@ -681,7 +668,7 @@ export async function GET(req: NextRequest) {
 
       const queueRows: Record<StageCode, Row | null> = {
         ROLLING:
-          isRollingPlanIssued
+          isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)
             ? {
                 ...baseRowData,
                 stage_code: "ROLLING",
@@ -690,10 +677,12 @@ export async function GET(req: NextRequest) {
                 balance_to_make_mt: rollAvailMt,
                 max_allowed_mtr: null,
                 max_allowed_pcs: null,
+                feeder_source_label: "Active Rolling Plan",
+                feeder_stage_code: "ROLLING_PLAN",
               }
             : null,
         HOLLOW_HEAT_TREATMENT:
-          isAlloy && hollowHtAvailMtr > 0
+          isAlloy && (hollowHtAvailMtr >= 1.0 || hollowHtAvailPcs >= 1)
             ? {
                 ...baseRowData,
                 stage_code: "HOLLOW_HEAT_TREATMENT",
@@ -704,10 +693,12 @@ export async function GET(req: NextRequest) {
                 max_allowed_pcs: hollowHtAvailPcs,
                 prev_stage_code: "ROLLING",
                 prev_htc_ok: rollHtcOkMtr,
+                feeder_source_label: "Rolling HTC OK",
+                feeder_stage_code: "ROLLING",
               }
             : null,
         DRAW:
-          isCds && drawAvailMtr > 0
+          isCds && (drawAvailMtr >= 1.0 || drawAvailPcs >= 1)
             ? {
                 ...baseRowData,
                 stage_code: "DRAW",
@@ -717,11 +708,14 @@ export async function GET(req: NextRequest) {
                 max_allowed_mtr: drawAvailMtr,
                 max_allowed_pcs: drawAvailPcs,
                 prev_stage_code: isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING",
-                prev_htc_ok: rollHtcOkMtr,
+                prev_htc_ok: isAlloy ? undefined : rollHtcOkMtr,
+                prev_net_output: isAlloy ? hollowHtNetMtr : undefined,
+                feeder_source_label: isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK",
+                feeder_stage_code: isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING",
               }
             : null,
         HEAT_TREATMENT:
-          isCds && htAvailMtr > 0
+          isCds && (htAvailMtr >= 1.0 || htAvailPcs >= 1)
             ? {
                 ...baseRowData,
                 stage_code: "HEAT_TREATMENT",
@@ -732,10 +726,12 @@ export async function GET(req: NextRequest) {
                 max_allowed_pcs: htAvailPcs,
                 prev_stage_code: "DRAW",
                 prev_net_output: drawNetMtr,
+                feeder_source_label: "Draw Bench Net OK",
+                feeder_stage_code: "DRAW",
               }
             : null,
         FINISHING:
-          finAvailMtr > 0 || finAvailPcs > 0
+          (finAvailMtr >= 1.0 || finAvailPcs >= 1)
             ? {
                 ...baseRowData,
                 stage_code: "FINISHING",
@@ -744,12 +740,10 @@ export async function GET(req: NextRequest) {
                 balance_to_make_mt: finAvailMt,
                 max_allowed_mtr: Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)),
                 max_allowed_pcs: avgLength > 0 ? Math.round(Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)) / avgLength) : finAvailPcs,
-                prev_stage_code: isCds
-                  ? "HEAT_TREATMENT"
-                  : isAlloy
-                  ? "HOLLOW_HEAT_TREATMENT"
-                  : "ROLLING",
-                prev_htc_ok: rollHtcOkMtr,
+                prev_stage_code: "VDI",
+                prev_net_output: qcOkMtr,
+                feeder_source_label: "VDI QC Passed",
+                feeder_stage_code: "VDI",
               }
             : null,
       };
@@ -779,7 +773,7 @@ export async function GET(req: NextRequest) {
       // Available WIP is bounded by upstream finishing available stock
       const childAvailMtr = Math.min(remainingTargetMtr, masterFinishingAvail);
 
-      if (childAvailMtr > 0) {
+      if (childAvailPcs >= 1 || childAvailMtr >= 1.0) {
         const l1 = Number(child.l1 || childWo?.l1 || 6);
         const l2 = Number(child.l2 || childWo?.l2 || 6.5);
         const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6.25;
@@ -843,6 +837,8 @@ export async function GET(req: NextRequest) {
           balance_to_make_mt: childAvailMt,
           max_allowed_mtr: childMaxAllowedMtr,
           max_allowed_pcs: childMaxAllowedPcs,
+          feeder_source_label: "VDI QC Passed",
+          feeder_stage_code: "VDI",
           multiple: 1,
           ht_nos: null,
           is_child: true,
@@ -873,17 +869,22 @@ export async function GET(req: NextRequest) {
     }
 
     // Select the appropriate rows for the requested stage
+    // (Universal Rule: Filter out any work order whose available balance is less than 1 (Qty < 1 Pc or < 1.0 Mtr))
     const selectedRows: Row[] = [];
     for (const { queueRows } of allCalculatedRows.values()) {
       const row = queueRows[targetStage];
-      if (row) {
+      if (row && (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0)) {
         selectedRows.push(row);
       }
     }
 
-    // For finishing stage, also append child orders
+    // For finishing stage, also append child orders with balance >= 1
     if (targetStage === "FINISHING") {
-      selectedRows.push(...childFinishingRows);
+      selectedRows.push(
+        ...childFinishingRows.filter(
+          (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+        )
+      );
     }
 
     // Format workCenterSummary values nicely

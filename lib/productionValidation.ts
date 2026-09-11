@@ -45,9 +45,32 @@ export function validateProductionEntry(
     });
   }
 
-  // 4. HTC OK stage-specific checks (Only applicable at Rolling)
+  // 4. Standard 4-Meter Scrap Rule (Universal Mill Rule)
+  // Any output quantity yielding an average piece length under 4.0 meters (< 4.0 Mtr/pc or gross length < 4.0 Mtr)
+  // must be rejected as off-cut scrap and cannot be recorded as prime production.
+  if (d.pcs > 0 && d.mtr > 0) {
+    const avgPieceLen = d.mtr / d.pcs;
+    if (avgPieceLen < 3.999) {
+      errors.push({
+        workOrder: row.work_order_no,
+        message: `Standard 4-Meter Scrap Rule: Output piece length (${avgPieceLen.toFixed(2)} Mtr/pc) is under 4.0 meters. Material below 4.0m is off-cut scrap and cannot be recorded as prime production. Please record this quantity under Rejection.`,
+      });
+    }
+  } else if (d.pcs <= 0 && d.mtr > 0 && d.mtr < 3.999) {
+    errors.push({
+      workOrder: row.work_order_no,
+      message: `Standard 4-Meter Scrap Rule: Output length (${fmt(d.mtr, " MTR")}) is under 4.0 meters. Material below 4.0m is off-cut scrap and cannot be recorded as prime production. Please record this quantity under Rejection.`,
+    });
+  }
+
+  // 5. HTC OK stage-specific checks (Strictly required at Rolling)
   if (stage === "ROLLING") {
-    if (d.htcPcs < 0 || d.htc < 0) {
+    if ((d.pcs > 0 || d.mtr > 0) && d.htcPcs <= 0 && d.htc <= 0) {
+      errors.push({
+        workOrder: row.work_order_no,
+        message: "Rolling output recording strictly requires entering HTC OK Quantity (Pieces or Meters ≥ 1).",
+      });
+    } else if (d.htcPcs < 0 || d.htc < 0) {
       errors.push({
         workOrder: row.work_order_no,
         message: "HTC OK quantity cannot be negative.",
@@ -55,12 +78,12 @@ export function validateProductionEntry(
     } else if (d.pcs > 0 && d.htcPcs > (d.pcs - d.rejectionPcs)) {
       errors.push({
         workOrder: row.work_order_no,
-        message: `HTC OK (${d.htcPcs} PCS) cannot exceed Net Rolling Output (${d.pcs - d.rejectionPcs} PCS).`,
+        message: `HTC OK (${d.htcPcs} PCS) cannot exceed Net Rolling Output (${Math.max(0, d.pcs - d.rejectionPcs)} PCS).`,
       });
     } else if (d.pcs <= 0 && d.htc > (d.mtr - d.rejection) + 0.001) {
       errors.push({
         workOrder: row.work_order_no,
-        message: `HTC OK (${fmt(d.htc, " MTR")}) cannot exceed Net Rolling Output (${fmt(d.mtr - d.rejection, " MTR")}).`,
+        message: `HTC OK (${fmt(d.htc, " MTR")}) cannot exceed Net Rolling Output (${fmt(Math.max(0, d.mtr - d.rejection), " MTR")}).`,
       });
     }
   } else {
@@ -72,7 +95,7 @@ export function validateProductionEntry(
     }
   }
 
-  // 5. Maximum Allowed Quantity Checks based on Nos (PCS)
+  // 6. Maximum Allowed Quantity Checks based on Nos (PCS) & Preceding Feeder WIP
   // RULE 1: Rolling Production can be more than 10% of the Rolling Plan.
   // There is NO hard 110% cap on Rolling production; rolling may exceed the plan as required by shop floor operations.
   const allowedPcs =
@@ -93,76 +116,53 @@ export function validateProductionEntry(
 
   if (allowedPcs <= 0 && allowedMtr <= 0 && stage !== "ROLLING") {
     let feederName = "preceding stage production";
-    if (route === "CDS") {
-      if (stage === "DRAW") feederName = "Rolling HTC OK";
-      else if (stage === "HEAT_TREATMENT") feederName = "Draw Bench production";
-      else if (stage === "FINISHING") feederName = "Heat Treatment production";
-    } else if (route === "ALLOY_CDS") {
-      if (stage === "HOLLOW_HEAT_TREATMENT") feederName = "Rolling HTC OK";
-      else if (stage === "DRAW") feederName = "Hollow Heat Treatment production";
-      else if (stage === "HEAT_TREATMENT") feederName = "Draw Bench production";
-      else if (stage === "FINISHING") feederName = "Heat Treatment production";
-    } else if (route === "HFS") {
-      if (stage === "FINISHING") feederName = "Rolling HTC OK";
-    } else if (route === "ALLOY_HFS") {
-      if (stage === "HOLLOW_HEAT_TREATMENT") feederName = "Rolling HTC OK";
-      else if (stage === "FINISHING") feederName = "Hollow Heat Treatment production";
-    }
+    if (stage === "HOLLOW_HEAT_TREATMENT") feederName = "Rolling HTC OK";
+    else if (stage === "DRAW") feederName = route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK";
+    else if (stage === "HEAT_TREATMENT") feederName = "Draw Bench Net OK";
+    else if (stage === "FINISHING") feederName = "VDI Inspection (QC Passed)";
 
     errors.push({
       workOrder: row.work_order_no,
-      message: `No available WIP for ${stage}. Please record ${feederName} first.`,
+      message: `No available feeder WIP for ${stage}. Please record and pass ${feederName} first.`,
     });
   } else if (stage !== "ROLLING" && d.pcs > 0 && allowedPcs > 0 && d.pcs > allowedPcs) {
     if (stage === "HOLLOW_HEAT_TREATMENT") {
       errors.push({
         workOrder: row.work_order_no,
-        message: `Hollow Heat Treatment (${d.pcs} PCS) exceeds available Rolling HTC OK (${fmt(allowedPcs)} PCS).`,
+        message: `Hollow Heat Treatment (${d.pcs} PCS) exceeds available Rolling HTC OK feeder balance (${fmt(allowedPcs)} PCS).`,
       });
     } else if (stage === "DRAW") {
-      if (route === "ALLOY_CDS") {
+      if (route.includes("ALLOY")) {
         errors.push({
           workOrder: row.work_order_no,
-          message: `Draw Production (${d.pcs} PCS) exceeds available Hollow Heat Treatment (${fmt(allowedPcs)} PCS).`,
+          message: `Draw Production (${d.pcs} PCS) exceeds available Hollow Heat Treatment Net OK (${fmt(allowedPcs)} PCS).`,
         });
       } else {
         errors.push({
           workOrder: row.work_order_no,
-          message: `Draw Production (${d.pcs} PCS) exceeds available Rolling HTC OK (${fmt(allowedPcs)} PCS).`,
+          message: `Draw Production (${d.pcs} PCS) exceeds available Rolling HTC OK feeder balance (${fmt(allowedPcs)} PCS).`,
         });
       }
     } else if (stage === "HEAT_TREATMENT") {
       errors.push({
         workOrder: row.work_order_no,
-        message: `Heat Treatment Production (${d.pcs} PCS) exceeds available Draw bench Production (${fmt(allowedPcs)} PCS).`,
+        message: `Heat Treatment Production (${d.pcs} PCS) exceeds available Draw Bench Net OK feeder balance (${fmt(allowedPcs)} PCS).`,
       });
     } else if (stage === "FINISHING") {
-      if (route === "HFS") {
-        errors.push({
-          workOrder: row.work_order_no,
-          message: `Finishing Production (${d.pcs} PCS) exceeds available Rolling HTC OK (${fmt(allowedPcs)} PCS).`,
-        });
-      } else if (route === "ALLOY_HFS") {
-        errors.push({
-          workOrder: row.work_order_no,
-          message: `Finishing Production (${d.pcs} PCS) exceeds available Hollow Heat Treatment (${fmt(allowedPcs)} PCS).`,
-        });
-      } else {
-        errors.push({
-          workOrder: row.work_order_no,
-          message: `Finishing Production (${d.pcs} PCS) exceeds available Heat Treatment (${fmt(allowedPcs)} PCS).`,
-        });
-      }
+      errors.push({
+        workOrder: row.work_order_no,
+        message: `Finishing Production (${d.pcs} PCS) exceeds available VDI QC Passed material (${fmt(allowedPcs)} PCS).`,
+      });
     } else {
       errors.push({
         workOrder: row.work_order_no,
-        message: `Production (${d.pcs} PCS) exceeds maximum allowed (${fmt(allowedPcs)} PCS).`,
+        message: `Production (${d.pcs} PCS) exceeds maximum allowed feeder stock (${fmt(allowedPcs)} PCS).`,
       });
     }
   } else if (stage !== "FINISHING" && stage !== "ROLLING" && d.pcs <= 0 && d.mtr > 0 && allowedMtr > 0 && d.mtr > allowedMtr + 0.001) {
     errors.push({
       workOrder: row.work_order_no,
-      message: `Production (${fmt(d.mtr, " MTR")}) exceeds maximum allowed (${fmt(allowedMtr, " MTR")}).`,
+      message: `Production (${fmt(d.mtr, " MTR")}) exceeds maximum allowed feeder stock (${fmt(allowedMtr, " MTR")}).`,
     });
   }
 

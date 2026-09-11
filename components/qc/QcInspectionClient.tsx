@@ -37,6 +37,7 @@ export default function QcInspectionClient() {
   const [productionLogs, setProductionLogs] = useState<ProductionLog[]>([]);
   const [qcInspections, setQcInspections] = useState<QcInspection[]>([]);
   const [stages, setStages] = useState<{ id: string; stage_code: string; stage_name: string }[]>([]);
+  const [routes, setRoutes] = useState<{ id: string; route_code: string; route_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Search & Filter
@@ -100,16 +101,18 @@ export default function QcInspectionClient() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [woRes, logsRes, qcRes, stagesRes] = await Promise.all([
+      const [woRes, logsRes, qcRes, stagesRes, routesRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('production_logs').select('*'),
         supabase.from('qc_inspections').select('*').order('created_at', { ascending: false }),
         supabase.from('process_stages').select('*'),
+        supabase.from('process_routes').select('id, route_code, route_name'),
       ]);
 
       if (woRes.data) setWorkOrders(woRes.data as WorkOrder[]);
       if (logsRes.data) setProductionLogs(logsRes.data as ProductionLog[]);
       if (stagesRes.data) setStages(stagesRes.data);
+      if (routesRes.data) setRoutes(routesRes.data);
 
       // Handle qc_inspections gracefully even if table was just created
       if (qcRes.data) {
@@ -130,13 +133,12 @@ export default function QcInspectionClient() {
     loadData();
   }, [loadData]);
 
-  // Build QC Queue Items: Work orders with available Heat Treatment OK WIP
+  // Build QC Queue Items: Work orders with available Heat Treatment OK or Rolling HTC OK WIP
   const queueItems = useMemo(() => {
     const htStage = stages.find((s) => s.stage_code === 'HEAT_TREATMENT');
-    const hollowHtStage = stages.find((s) => s.stage_code === 'HOLLOW_HEAT_TREATMENT');
-    const drawStage = stages.find((s) => s.stage_code === 'DRAW');
-    // HFS route: ROLLING → VDI (no separate HT stage). htc_ok is recorded at ROLLING.
     const rollingStage = stages.find((s) => s.stage_code === 'ROLLING');
+    const routeMap = new Map<string, any>();
+    routes.forEach((r) => routeMap.set(r.id, r));
 
     const items: QcQueueItem[] = [];
 
@@ -150,22 +152,30 @@ export default function QcInspectionClient() {
 
       // Logs for this work order
       const woLogs = productionLogs.filter((l) => l.work_order_id === wo.id);
+      if (woLogs.length === 0) return;
 
-      // Priority order: HEAT_TREATMENT → HOLLOW_HEAT_TREATMENT → DRAW → ROLLING (HFS fallback)
-      let relevantLogs = woLogs.filter((l) => htStage && l.stage_id === htStage.id);
-      if (relevantLogs.length === 0 && hollowHtStage) {
-        relevantLogs = woLogs.filter((l) => l.stage_id === hollowHtStage.id);
-      }
-      if (relevantLogs.length === 0 && drawStage) {
-        relevantLogs = woLogs.filter((l) => l.stage_id === drawStage.id);
-      }
-      // HFS fallback: use ROLLING logs only when they have htc_ok > 0 logged
-      // (htc_ok at ROLLING stage is the "HFS OK after sizing" quantity)
-      if (relevantLogs.length === 0 && rollingStage) {
-        const rollingLogs = woLogs.filter(
-          (l) => l.stage_id === rollingStage.id && Number(l.htc_ok || 0) > 0
+      // Determine route: HFS vs CDS
+      const routeId = wo.process_route_id || woLogs.find((l) => l.process_route_id)?.process_route_id;
+      const matchedRoute = routeId ? routeMap.get(routeId) : null;
+      const routeCode = matchedRoute?.route_code || (wo.grade?.toUpperCase().includes('HFS') ? 'HFS' : 'CDS');
+      const isHfs = routeCode === 'HFS' || routeCode === 'ALLOY_HFS';
+
+      let relevantLogs: ProductionLog[] = [];
+      let feederLabel = 'Heat Treatment OK';
+      let feederStageCode = 'HEAT_TREATMENT';
+
+      if (isHfs) {
+        // Case HFS (Hot Finished Seamless) Route: Feeder source is strictly Rolling HTC OK Nos
+        relevantLogs = woLogs.filter(
+          (l) => rollingStage && l.stage_id === rollingStage.id && Number(l.htc_ok || 0) > 0
         );
-        if (rollingLogs.length > 0) relevantLogs = rollingLogs;
+        feederLabel = 'Rolling HTC OK';
+        feederStageCode = 'ROLLING';
+      } else {
+        // Case CDS (Standard & Alloy Steel) Routes: Feeder source is strictly Heat Treatment OK Nos
+        relevantLogs = woLogs.filter((l) => htStage && l.stage_id === htStage.id);
+        feederLabel = 'Heat Treatment OK';
+        feederStageCode = 'HEAT_TREATMENT';
       }
 
       if (relevantLogs.length === 0) return;
@@ -174,8 +184,11 @@ export default function QcInspectionClient() {
       const rejMtr = relevantLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
       const htcOkMtr = relevantLogs.reduce((sum, l) => sum + Number(l.htc_ok || 0), 0);
 
-      // Effective HT OK Mtr: uses htc_ok if logged, otherwise net output (output - rejection)
-      const effectiveHtOkMtr = htcOkMtr > 0 ? htcOkMtr : Math.max(0, outMtr - rejMtr);
+      // Effective HT OK Mtr: uses htc_ok if HFS/logged, otherwise net output (output - rejection)
+      const effectiveHtOkMtr = isHfs
+        ? htcOkMtr
+        : (htcOkMtr > 0 ? htcOkMtr : Math.max(0, outMtr - rejMtr));
+
       if (effectiveHtOkMtr <= 0) return;
 
       const effectiveHtOkPcs = avgLen > 0 ? Math.round(effectiveHtOkMtr / avgLen) : 0;
@@ -190,8 +203,8 @@ export default function QcInspectionClient() {
       const availableMtr = Math.max(0, effectiveHtOkMtr - alreadyInspectedMtr);
       const availableMt = mtFromMtr(availableMtr, od, wt);
 
-      // Include in queue if there is available stock or if it was partially inspected
-      if (availablePcs > 0 || availableMtr > 0) {
+      // Universal Mill Rule: Minimum Queue Quantity >= 1 (filter out zero or sub-single balance)
+      if (availablePcs >= 1 || availableMtr >= 1.0) {
         items.push({
           work_order_id: wo.id,
           work_order_no: wo.work_order_no,
@@ -202,7 +215,10 @@ export default function QcInspectionClient() {
           l1,
           l2,
           avg_length: avgLen,
-          process_route_id: wo.process_route_id || null,
+          process_route_id: routeId || null,
+          route_code: routeCode,
+          feeder_source_label: feederLabel,
+          feeder_stage_code: feederStageCode,
           ht_ok_pcs: effectiveHtOkPcs,
           ht_ok_mtr: effectiveHtOkMtr,
           ht_ok_mt: effectiveHtOkMt,
@@ -215,7 +231,7 @@ export default function QcInspectionClient() {
     });
 
     return items;
-  }, [workOrders, productionLogs, qcInspections, stages]);
+  }, [workOrders, productionLogs, qcInspections, stages, routes]);
 
   // Filtered Queue
   const filteredQueue = useMemo(() => {
@@ -988,7 +1004,7 @@ export default function QcInspectionClient() {
                       <th className="py-3 px-3">Specification</th>
                       <th className="py-3 px-3 text-right">OD x WT</th>
                       <th className="py-3 px-3 text-right">Length</th>
-                      <th className="py-3 px-3 text-right bg-orange-50/50">Total HT OK</th>
+                      <th className="py-3 px-3 text-right bg-orange-50/50">Total Feeder OK</th>
                       <th className="py-3 px-3 text-right">Already Inspected</th>
                       <th className="py-3 px-3 text-right bg-blue-50/50 font-bold text-blue-950">
                         Available for Inspection
@@ -1000,7 +1016,14 @@ export default function QcInspectionClient() {
                     {filteredQueue.map((item) => (
                       <tr key={item.work_order_id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="py-3 px-3.5 font-bold font-mono text-slate-900 text-sm">
-                          {item.work_order_no}
+                          <div>{item.work_order_no}</div>
+                          {item.feeder_source_label && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold">
+                                Feeder: {item.feeder_source_label}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-3 text-slate-700 max-w-[150px] truncate">
                           {item.customer_name || '—'}
@@ -1374,7 +1397,7 @@ export default function QcInspectionClient() {
                   <span className="font-bold font-mono text-slate-800">{selectedQueueItem.avg_length} m</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Available HT OK:</span>
+                  <span className="text-slate-500 block">Available {selectedQueueItem.feeder_source_label || 'Feeder OK'}:</span>
                   <span className="font-black font-mono text-blue-900 text-sm">
                     {selectedQueueItem.available_ht_ok_pcs} Nos
                   </span>

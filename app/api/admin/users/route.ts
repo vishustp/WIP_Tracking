@@ -421,10 +421,10 @@ export async function PUT(request: NextRequest) {
   }
 
   const adminClient = auth.admin || createAdminClient();
-  const dbClient = adminClient || auth.client;
-  if (!dbClient) {
-    return bad('Database client or administrative credentials required to update users.', 500);
+  if (!adminClient) {
+    return bad('SUPABASE_SERVICE_ROLE_KEY is required to update users and credentials. Please configure it in your Vercel or environment settings.', 500);
   }
+  const dbClient = adminClient;
 
   try {
     const body = await request.json();
@@ -605,10 +605,10 @@ export async function PATCH(request: NextRequest) {
   }
 
   const adminClient = auth.admin || createAdminClient();
-  const dbClient = adminClient || auth.client;
-  if (!dbClient) {
-    return bad('Database client or administrative credentials required to update status', 500);
+  if (!adminClient) {
+    return bad('SUPABASE_SERVICE_ROLE_KEY is required to update status. Please configure it in your Vercel or environment settings.', 500);
   }
+  const dbClient = adminClient;
 
   try {
     const body = await request.json();
@@ -636,10 +636,10 @@ export async function DELETE(request: NextRequest) {
   }
 
   const adminClient = auth.admin || createAdminClient();
-  const dbClient = adminClient || auth.client;
-  if (!dbClient) {
-    return bad('Database client or administrative credentials required to deactivate user', 500);
+  if (!adminClient) {
+    return bad('SUPABASE_SERVICE_ROLE_KEY is required to deactivate users. Please configure it in your Vercel or environment settings.', 500);
   }
+  const dbClient = adminClient;
 
   try {
     const body = await request.json();

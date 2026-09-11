@@ -58,6 +58,8 @@ export interface Row {
   prev_rejection?: number;
   prev_net_output?: number;
   prev_htc_ok?: number;
+  feeder_source_label?: string;
+  feeder_stage_code?: string;
   planned_rolling_total?: number;
   max_allowed_mtr?: number | null;
   max_allowed_pcs?: number | null;
@@ -318,6 +320,8 @@ export interface QcQueueItem {
   avg_length: number;
   process_route_id?: string | null;
   route_code?: string;
+  feeder_source_label?: string;
+  feeder_stage_code?: string;
   ht_ok_pcs: number;
   ht_ok_mtr: number;
   ht_ok_mt: number;
