@@ -56,6 +56,8 @@ export async function POST(req: NextRequest) {
           remarks: finalRemarks || null,
         };
       })
+    );
+
     // Validate server-side business rules
     for (const item of sanitizedEntries) {
       const outMtr = Number(item.output_qty || 0);
