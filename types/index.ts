@@ -107,6 +107,8 @@ export interface Row {
   revision_no?: number;
   campaign_total_mtr?: number;
   campaign_total_pcs?: number;
+  planned_pcs?: number | null;
+  planned_mtr?: number | null;
   child_work_orders?: Array<{
     id?: string;
     work_order_id?: string;
