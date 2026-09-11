@@ -10,7 +10,7 @@ import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
   User, ShieldCheck, ChevronDown, Check, Sparkles, Lock, Activity, Clock,
-  ClipboardCheck, BookOpen, FileText, Beaker
+  ClipboardCheck, BookOpen, FileText, Beaker, Search, Layers
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
