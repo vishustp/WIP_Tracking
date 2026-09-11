@@ -17,7 +17,7 @@ import AgingNotificationBell from '@/components/common/AgingNotificationBell';
 
 const groups = [
   {
-    label: 'PPC',
+    label: 'NAVIGATOR',
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/work-orders', label: 'Work Orders', icon: ClipboardList },
@@ -27,35 +27,28 @@ const groups = [
     ],
   },
   {
-    label: 'Quality & QC',
+    label: 'QUALITY',
     items: [
-      { href: '/qc/vdi', label: 'Visual & Dimensional (VDI)', icon: ClipboardCheck },
+      { href: '/qc/vdi', label: 'VDI Entries', icon: ClipboardCheck },
     ],
   },
   {
-    label: 'Production',
+    label: 'PRODUCTION',
     items: [{ href: '/production', label: 'Production Entry', icon: Factory }],
   },
   {
-    label: 'Reports',
+    label: 'REPORTS',
     items: [
-      { href: '/reports/process-sheet', label: 'Process Sheet (F-11)', icon: FileText },
-      { href: '/reports/tracking', label: 'WO Tracking Sheet', icon: Activity },
-      { href: '/reports/aging', label: 'WIP Aging & Bottlenecks', icon: Clock },
-      { href: '/reports/pending-orders', label: 'Pending Orders', icon: BarChart3 },
-      { href: '/reports/wip', label: 'WIP', icon: Gauge },
-      { href: '/reports/production', label: 'Production', icon: Factory },
-      { href: '/reports/rolling-plans', label: 'Rolling Plans', icon: CalendarClock },
-      { href: '/reports/diversions', label: 'Diversions', icon: Shuffle },
-      { href: '/reports/training', label: 'Training Manual (PDF)', icon: BookOpen },
+      { href: '/reports/process-sheet', label: 'Process Sheets', icon: FileText },
+      { href: '/reports/tracking', label: 'WO Tracking', icon: Activity },
+      { href: '/reports/aging', label: 'WIP Aging', icon: Clock },
     ],
   },
   {
-    label: 'System & Admin',
+    label: 'SYSTEM & ADMIN',
     items: [
       { href: '/profile', label: 'User Profile', icon: User },
       { href: '/admin', label: 'Admin Control Panel', icon: ShieldCheck },
-      { href: '/admin/spec-master', label: 'Material Spec Master', icon: Beaker },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },
@@ -113,19 +106,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }))
     .filter((group) => group.items.length > 0);
 
-  const pageTitle =
-    pathname === '/dashboard'
-      ? 'Dashboard'
-      : pathname === '/profile'
-      ? 'User Profile'
-      : pathname === '/admin'
-      ? 'Admin Control Panel'
-      : pathname === '/qc/vdi' || pathname === '/vdi' || pathname === '/qc'
-      ? 'Visual & Dimensional (VDI)'
-      : pathname.split('/').filter(Boolean).slice(-1)[0]?.replace(/-/g, ' ');
-
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       {/* Mobile overlay */}
       {open && (
         <div
@@ -135,40 +117,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200 ease-out lg:translate-x-0 print:hidden ${open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-slate-200 bg-white transition-transform duration-200 ease-out lg:translate-x-0 print:hidden ${open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
+        {/* Brand Block */}
+        <div className="flex h-14 shrink-0 items-center justify-between bg-[#004f84] px-4 text-white">
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-500 text-white flex items-center justify-center font-bold text-sm shadow-sm shadow-blue-600/30">
+            <div className="h-7 w-7 rounded-md bg-white text-[#004f84] flex items-center justify-center font-extrabold text-xs shadow-xs">
               SW
             </div>
-            <div className="flex flex-col leading-none">
-              <span className="font-bold tracking-tight text-[15px]">Seamless WIP</span>
-              <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Planning Suite</span>
+            <div className="flex flex-col leading-tight">
+              <span className="font-bold tracking-tight text-sm text-white">Seamless WIP</span>
+              <span className="text-[8px] font-semibold tracking-wider text-sky-200 uppercase">Supply Chain Execution</span>
             </div>
           </div>
-          <button className="lg:hidden rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={() => setOpen(false)} aria-label="Close menu"><X size={18} /></button>
+          <button className="lg:hidden rounded-lg p-1.5 text-sky-200 hover:bg-sky-800" onClick={() => setOpen(false)} aria-label="Close menu"><X size={16} /></button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <nav className="flex-1 overflow-y-auto px-2 py-4">
           {visibleGroups.map((group) => (
-            <div key={group.label} className="mb-5 last:mb-0">
-              <div className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{group.label}</div>
+            <div key={group.label} className="mb-4 last:mb-0">
+              <div className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.label}</div>
               <div className="space-y-0.5">
                 {group.items.map((item) => {
-                  const Icon = item.icon;
                   const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
                   return (
                     <button
                       key={item.href}
                       onClick={() => { router.push(item.href); setOpen(false); }}
-                      className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors cursor-pointer ${
+                      className={`group relative flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-left text-xs font-semibold transition-colors cursor-pointer ${
                         active
-                          ? 'bg-blue-50 text-blue-700'
+                          ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 rounded-l-none'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                       }`}
                     >
-                      {active && <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-blue-600" aria-hidden="true" />}
-                      <Icon size={18} className={active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'} />
                       <span>{item.label}</span>
                     </button>
                   );
@@ -180,19 +160,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Sidebar Footer User Card */}
         {currentUser && (
-          <div className="shrink-0 border-t border-slate-200 p-3">
+          <div className="shrink-0 border-t border-slate-200 p-2.5">
             <div
               onClick={() => { router.push('/profile'); setOpen(false); }}
-              className="flex items-center gap-3 rounded-lg p-2 hover:bg-slate-100 transition cursor-pointer group"
+              className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-slate-100 transition cursor-pointer group"
             >
-              <div className={`h-9 w-9 rounded-lg flex items-center justify-center text-xs font-bold ${currentUser.avatar_color || 'bg-blue-600 text-white'}`}>
+              <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${currentUser.avatar_color || 'bg-[#004f84] text-white'}`}>
                 {String(currentUser.name || currentUser.email || 'U').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-semibold text-slate-900 truncate group-hover:text-blue-600">{currentUser.name || currentUser.email || 'User'}</div>
-                <div className="text-[11px] text-slate-500 truncate flex items-center gap-1">
-                  <span>{currentUser.role_title || 'Operator'}</span>
-                  {isAdmin && <span className="text-[9px] font-bold text-blue-600">[Admin]</span>}
+                <div className="text-xs font-bold text-slate-800 truncate group-hover:text-sky-600">{currentUser.name || currentUser.email || 'User'}</div>
+                <div className="text-[10px] text-slate-400 truncate">
+                  {currentUser.role_title || 'Operator'}
                 </div>
               </div>
             </div>
@@ -200,42 +179,62 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         )}
       </aside>
 
-      <div className="lg:pl-64 print:pl-0">
-        <header className="sticky top-0 z-20 flex h-16 items-center border-b border-slate-200 bg-white/80 backdrop-blur-md print:hidden">
-          <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2">
-            <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu size={22} /></button>
-            <div className="text-[15px] font-semibold capitalize tracking-tight text-slate-900">{pageTitle}</div>
-          </div>
+      <div className="lg:pl-60 print:pl-0">
+        {/* Top Header Bar matching Design Variation 5 */}
+        <header className="sticky top-0 z-20 flex h-14 items-center border-b border-slate-200 bg-white px-4 sm:px-6 print:hidden">
+          <div className="flex flex-1 items-center justify-between gap-4">
+            {/* Left Mobile Menu Toggle & Global Search */}
+            <div className="flex items-center gap-3 flex-1 max-w-lg">
+              <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
+                <Menu size={20} />
+              </button>
+              <div className="relative w-full">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search orders, customers, items..."
+                  className="h-8 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+            </div>
 
-          {/* Header Right User & Notification Widget */}
-          <div className="flex items-center gap-2.5">
-            <AgingNotificationBell currentUser={currentUser} />
-            {currentUser && (
+            {/* Header Right */}
+            <div className="flex items-center gap-3">
+              {/* Design Tab Pill */}
+              <div className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-sky-500/90 hover:bg-sky-500 px-3 py-1 text-xs font-semibold text-white shadow-2xs transition">
+                <Layers size={13} className="text-white" />
+                <span>Design: Variation 5</span>
+                <button type="button" className="ml-1 text-white/80 hover:text-white cursor-pointer">
+                  <X size={12} />
+                </button>
+              </div>
+
+              <div className="text-slate-500 hover:text-slate-800 transition cursor-pointer p-1">
+                <AgingNotificationBell currentUser={currentUser} />
+              </div>
+
+              <button type="button" className="p-1 text-slate-500 hover:text-slate-800 transition cursor-pointer" title="Layers">
+                <Layers size={17} />
+              </button>
+
+              {/* User Avatar Circle 'V' */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   type="button"
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                  className="flex items-center gap-2.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-3 text-sm font-medium text-slate-700 shadow-2xs hover:border-slate-300 hover:bg-slate-50 transition cursor-pointer"
+                  className="h-8 w-8 rounded-full bg-[#004f84] text-white flex items-center justify-center text-xs font-extrabold shadow-xs hover:opacity-90 transition cursor-pointer"
                 >
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold ${currentUser.avatar_color || 'bg-blue-600 text-white'}`}>
-                    {String(currentUser.name || currentUser.email || 'U').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                  <span className="hidden sm:inline-block font-semibold text-slate-800">{String(currentUser.name || currentUser.email || 'User').split(' ')[0]}</span>
-                  <span className="hidden md:inline-block text-xs px-2 py-1 rounded-md bg-slate-100 text-slate-600 font-mono">
-                    {String(currentUser.role_title || 'Operator').split(' ')[0]}
-                  </span>
-                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                  {currentUser?.name?.[0]?.toUpperCase() || 'V'}
                 </button>
 
                 {/* Dropdown Menu */}
                 {userDropdownOpen && (
                   <div className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl z-50 animate-in fade-in zoom-in-95 text-xs">
                     <div className="px-2.5 py-2 border-b border-slate-100">
-                      <div className="font-bold text-slate-900">{currentUser.name || currentUser.email || 'User'}</div>
-                      <div className="text-[11px] text-slate-500 font-mono">{currentUser.email}</div>
-                      <div className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                        {currentUser.role_title || 'Operator'} ({userGroup.toUpperCase()})
+                      <div className="font-bold text-slate-900">{currentUser?.name || currentUser?.email || 'User'}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">{currentUser?.email}</div>
+                      <div className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-medium bg-sky-50 text-sky-700 border border-sky-100">
+                        {currentUser?.role_title || 'Operator'} ({userGroup.toUpperCase()})
                       </div>
                     </div>
 
@@ -245,7 +244,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         onClick={() => { router.push('/profile'); setUserDropdownOpen(false); }}
                         className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                       >
-                        <User className="h-4 w-4 text-blue-600" />
+                        <User className="h-4 w-4 text-sky-600" />
                         <span>User Profile & Security</span>
                       </button>
 
@@ -274,8 +273,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                 )}
               </div>
-            )}
-          </div>
+            </div>
           </div>
         </header>
 

@@ -29,6 +29,7 @@ import { calc, fmt, n, mtrFromPcs, pcsFromMtr, mtFromMtr, attachPcsToRemarks, ex
 import { StageCode, STAGES, Row, ProductionEntry } from "@/types";
 import { usePermissions, getGroupConfig, getFormAccess } from "@/lib/permissions";
 import FormAccessBanner from "@/components/common/FormAccessBanner";
+import { WipSummaryCards } from "@/components/production/WipSummaryCards";
 
 export default function ProductionEntryGrid() {
   const supabase = useMemo(() => createClient(), []);
@@ -1014,37 +1015,44 @@ export default function ProductionEntryGrid() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Top Header & Stage Selector */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+    <div className="space-y-4">
+      {/* Breadcrumb & Top Header */}
+      <div className="space-y-1">
+        <div className="text-xs text-slate-500 font-medium">
+          <span>Production Management</span>
+          <span className="mx-1.5 text-slate-400">&gt;</span>
+          <span>Supply Chain</span>
+          <span className="mx-1.5 text-slate-400">&gt;</span>
+          <span className="font-bold text-slate-700">Work Center Execution</span>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-1">
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
             Production Entry & WIP Tracking
           </h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center rounded-xl border border-slate-200/90 bg-white p-1 shadow-2xs">
-            <select
-              value={stage}
-              onChange={(e) => setStage(e.target.value as StageCode)}
-              className="h-9 rounded-lg border-0 bg-transparent px-3 text-sm font-semibold text-slate-800 focus:ring-0 cursor-pointer"
-            >
-              {STAGES.map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center rounded-lg border border-slate-300 bg-white shadow-2xs">
+              <select
+                value={stage}
+                onChange={(e) => setStage(e.target.value as StageCode)}
+                className="h-9 rounded-lg border-0 bg-transparent px-3 text-sm font-semibold text-slate-800 focus:ring-0 cursor-pointer"
+              >
+                {STAGES.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()])}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-3 text-sm font-medium text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
-          >
-            <RefreshCw size={14} className={queueLoading || historyLoading ? "animate-spin text-blue-600" : "text-slate-500"} />
-            <span>Refresh</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()])}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            >
+              <RefreshCw size={14} className={queueLoading || historyLoading ? "animate-spin text-sky-600" : "text-slate-500"} />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1062,70 +1070,21 @@ export default function ProductionEntryGrid() {
         </div>
       )}
 
-      {/* Work Centers WIP Overview */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Factory className="h-4 w-4 text-blue-600" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Work Center WIP Summary
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowWipSummary(!showWipSummary)}
-            className="text-xs font-medium text-slate-500 hover:text-slate-800 transition cursor-pointer"
-          >
-            {showWipSummary ? "Hide Summary" : "Show Summary"}
-          </button>
-        </div>
-
-        {showWipSummary && (
-          <div className="grid grid-cols-2 gap-3 p-3.5 sm:grid-cols-3 lg:grid-cols-5 bg-slate-50/20">
-            {workCenterSummary.map((wc) => {
-              const isSelected = wc.stage_code === stage;
-              return (
-                <div
-                  key={wc.stage_code}
-                  onClick={() => setStage(wc.stage_code)}
-                  className={`cursor-pointer rounded-xl border p-3 transition-all ${
-                    isSelected
-                      ? "border-blue-500/80 bg-gradient-to-br from-blue-50/80 to-indigo-50/50 shadow-xs ring-1 ring-blue-500/30"
-                      : "border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/80"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-semibold text-slate-700 truncate">{wc.label}</span>
-                    {isSelected && (
-                      <span className="rounded-full bg-blue-600 px-1.5 py-0.2 text-[10px] font-bold text-white shrink-0">
-                        Active
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-2 flex items-baseline gap-1">
-                    <span className="text-base font-bold font-mono text-slate-900 tracking-tight">
-                      {fmt(wc.availPcs)}
-                    </span>
-                    <span className="text-[11px] font-semibold text-slate-400">PCS</span>
-                  </div>
-                  <div className="text-xs text-slate-500 font-mono mt-0.5">
-                    {fmt(wc.availMtr, " MTR")} · <span className="text-blue-700 font-semibold">{fmt(wc.availMt, " MT")}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* Work Center WIP Summary Strip */}
+      <WipSummaryCards
+        workCenterSummary={workCenterSummary}
+        stage={stage}
+        setStage={setStage}
+      />
 
       {/* Form Access & Permissions Banner */}
       <FormAccessBanner access={stageFormAccess} className="mb-2" />
 
-      {/* Production Date & Entry Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
-        <div className="flex flex-wrap items-center gap-3">
+      {/* Shift Process Date & Queue Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-8">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
               Shift Process Date
             </label>
             <input
@@ -1133,17 +1092,15 @@ export default function ProductionEntryGrid() {
               value={date}
               disabled={!isAllowed}
               onChange={(e) => setDate(e.target.value)}
-              className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-2xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-2xs focus:border-sky-500 focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
             />
           </div>
-          <div className="border-l border-slate-200 pl-3">
-            <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Queue Status
+          <div className="border-l border-slate-200 pl-8">
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Orders in Queue
             </span>
-            <span className="mt-1 inline-flex items-center rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-bold text-slate-800">
-              {woFilter.trim()
-                ? `${filteredRows.length} of ${rows.length} ${rows.length === 1 ? 'Order' : 'Orders'}`
-                : `${rows.length} ${rows.length === 1 ? 'Order' : 'Orders'} in Queue`}
+            <span className="text-sm font-bold text-sky-600">
+              {filteredRows.length} Records
             </span>
           </div>
         </div>
@@ -1152,38 +1109,33 @@ export default function ProductionEntryGrid() {
           <button
             type="button"
             onClick={toggleAllRows}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-800 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
           >
-            <Layers size={13} className="text-slate-500" />
             {rows.every((r) => expandedRows[`${r.work_order_id}|${r.route_id}`])
-              ? "Collapse All WIP Flows"
-              : "Expand All WIP Flows"}
+              ? "Collapse WIP Flows"
+              : "Expand WIP Flows"}
           </button>
         </div>
       </div>
 
       {/* Queue Entry Grid Table */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-white px-5 py-3.5">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-slate-900">
+            <h2 className="text-base font-bold text-slate-900 tracking-tight">
               {STAGES.find((x) => x.code === stage)?.label || stage} Queue
             </h2>
-            <span className="rounded-full bg-slate-200/70 px-2 py-0.2 text-[11px] font-semibold text-slate-700 font-mono">
-              {woFilter.trim() ? `${filteredRows.length} of ${rows.length}` : rows.length}
-            </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Work Order No. Filter Search Input */}
+            {/* Quick Filter Search Input */}
             <div className="relative">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={woFilter}
                 onChange={(e) => setWoFilter(e.target.value)}
-                placeholder="Filter by WO No, Customer, Grade..."
-                className="h-8 w-48 sm:w-64 rounded-lg border border-slate-300 bg-white pl-8 pr-7 text-xs font-medium text-slate-800 placeholder-slate-400 shadow-2xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                placeholder="Quick filter..."
+                className="h-8 w-48 sm:w-60 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 placeholder-slate-400 shadow-2xs focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
               />
               {woFilter && (
                 <button
@@ -1199,12 +1151,12 @@ export default function ProductionEntryGrid() {
 
             {(stage === "DRAW" || stage === "HOLLOW_HEAT_TREATMENT" || stage === "HEAT_TREATMENT") && (
               <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
-                <Crown size={12} /> Master Orders Consolidated
+                <Crown size={12} /> Master Consolidated
               </span>
             )}
             {stage === "FINISHING" && (
               <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-200/80 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
-                <Package size={12} /> Finishing & Bundling Station
+                <Package size={12} /> Finishing & Bundling
               </span>
             )}
           </div>
@@ -1224,28 +1176,28 @@ export default function ProductionEntryGrid() {
             <button
               type="button"
               onClick={() => setWoFilter("")}
-              className="mt-2 text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+              className="mt-2 text-xs font-semibold text-sky-600 hover:underline cursor-pointer"
             >
               Clear filter
             </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-slate-200 bg-slate-100/70 text-slate-700">
+            <table className="min-w-full text-xs">
+              <thead className="border-b border-slate-200 bg-slate-50 text-slate-700 font-semibold">
                 <tr>
-                  <th className="py-2.5 px-3 text-left font-semibold">Work Order & Specs</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">Route</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">{stage === "ROLLING" ? "Plan Balance" : "Available WIP"}</th>
-                  <th className="py-2.5 px-3 text-center font-semibold bg-blue-50/50">Production *</th>
-                  <th className="py-2.5 px-3 text-center font-semibold bg-rose-50/40">Rejection</th>
+                  <th className="py-2.5 px-4 text-left font-bold text-slate-700">Order Information</th>
+                  <th className="py-2.5 px-3 text-center font-bold text-slate-700">Route</th>
+                  <th className="py-2.5 px-4 text-left font-bold text-slate-700">Balance</th>
+                  <th className="py-2.5 px-4 text-center font-bold text-slate-800 bg-[#e0f2fe] border-x border-sky-100">Production*</th>
+                  <th className="py-2.5 px-4 text-center font-bold text-slate-800 bg-[#ffe4e6] border-r border-rose-100">Rejection</th>
                   {stage === "ROLLING" && (
-                    <th className="py-2.5 px-3 text-center font-semibold bg-emerald-50/40">HTC OK</th>
+                    <th className="py-2.5 px-4 text-center font-bold text-slate-800 bg-[#d1fae5] border-r border-emerald-100">HTC OK</th>
                   )}
                   {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
-                    <th className="py-2.5 px-3 text-left font-semibold">Heat Lot No.</th>
+                    <th className="py-2.5 px-3 text-left font-bold text-slate-700">Heat Lot No.</th>
                   )}
-                  <th className="py-2.5 px-3 text-left font-semibold">Remarks</th>
+                  <th className="py-2.5 px-4 text-center font-bold text-slate-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1264,7 +1216,6 @@ export default function ProductionEntryGrid() {
                     : (n(r.balance_to_make_pcs) > 0 ? Math.round(n(r.balance_to_make_pcs)) : (effAvg > 0 ? Math.round(availMtr / effAvg) : 0));
                   const availMt = n(r.balance_to_make_mt) > 0 ? n(r.balance_to_make_mt) : mtFromMtr(availMtr, stageOd, stageWt);
 
-                  // RULE 1: Rolling production can exceed 10% of the Rolling Plan (no hard ceiling)
                   const maxAllowed = isRollingStage
                     ? 0
                     : n(r.max_allowed_mtr) > 0
@@ -1279,420 +1230,144 @@ export default function ProductionEntryGrid() {
                     : 0;
 
                   return (
-                    <tr key={key} className="hover:bg-slate-50/50 transition-colors group">
-                      {/* Work Order Info */}
-                      <td className="py-3 px-3 align-top">
+                    <tr key={key} className="hover:bg-slate-50/50 transition-colors">
+                      {/* Order Information */}
+                      <td className="py-3 px-4 align-middle">
                         <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
-                          <span>{r.work_order_no}</span>
+                          <span className="text-sm font-extrabold">{r.work_order_no}</span>
                           {isRollingStage && (r.master_plan_no || r.plan_no) && (
-                            <span className="inline-flex items-center gap-1 rounded bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700">
-                              <FileText size={10} />
-                              Plan: {r.master_plan_no || r.plan_no}
-                              {Number(r.revision_no || 0) > 0 ? ` (Rev.${String(r.revision_no).padStart(2, '0')})` : ''}
+                            <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 text-sky-800 px-1.5 py-0.5 text-[10px] font-bold uppercase">
+                              PLAN: {r.master_plan_no || r.plan_no}
+                              {Number(r.revision_no || 0) > 0 ? ` (R${String(r.revision_no)})` : ''}
                             </span>
                           )}
                           {isRollingStage && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
-                              <CheckCircle2 size={10} />
-                              Issued
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.2 text-[9px] font-bold uppercase">
+                              ISSUED
                             </span>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => toggleRowExpansion(key)}
-                            title="Toggle Work Center WIP Pipeline"
-                            className={`inline-flex items-center gap-0.5 rounded px-2 py-1 text-xs font-semibold border transition-colors ${
-                              isExpanded
-                                ? "bg-blue-600 text-white border-blue-600"
-                                : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
-                            }`}
-                          >
-                            <Layers size={10} />
-                            WIP Flow
-                            {isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                          </button>
                         </div>
 
-                        {/* Master / Child Badges & Quick Action (Rule 1 & Rule 2) */}
-                        {r.is_master && (
-                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 text-indigo-800 px-2 py-0.5 text-[11px] font-bold">
-                              <Crown size={11} /> Master Order
-                            </span>
-                            {stage === "FINISHING" && (
-                              <button
-                                type="button"
-                                onClick={() => openCampaignBundling(r)}
-                                className="inline-flex items-center gap-1 rounded-md bg-teal-600 hover:bg-teal-700 text-white px-2 py-0.5 text-[11px] font-bold shadow-xs cursor-pointer transition-colors"
-                                title="Bundle finished tubes across master and child orders"
-                              >
-                                <Package size={11} />
-                                Multi-WO Bundler {r.child_work_orders?.length ? `(${r.child_work_orders.length} Children)` : ''}
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {r.is_child && (
-                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-teal-100 text-teal-800 px-2 py-0.5 text-[11px] font-semibold">
-                              <Link2 size={11} /> Child Order (Master: {r.master_wo_no || 'Linked'})
-                            </span>
-                            {stage === "FINISHING" && (
-                              <button
-                                type="button"
-                                onClick={() => openCampaignBundling(r)}
-                                className="inline-flex items-center gap-1 rounded-md bg-teal-600 hover:bg-teal-700 text-white px-2 py-0.5 text-[11px] font-bold shadow-xs cursor-pointer transition-colors"
-                                title="Open Multi-WO Bundler"
-                              >
-                                <Package size={11} />
-                                Multi-WO Bundler
-                              </button>
-                            )}
-                          </div>
-                        )}
-
-                        {!r.is_master && !r.is_child && stage === "FINISHING" && (
-                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={() => openCampaignBundling(r)}
-                              className="inline-flex items-center gap-1 rounded-md bg-teal-600 hover:bg-teal-700 text-white px-2 py-0.5 text-[11px] font-bold shadow-xs cursor-pointer transition-colors"
-                              title="Open Multi-WO Bundler"
-                            >
-                              <Package size={11} />
-                              Multi-WO Bundler
-                            </button>
-                          </div>
-                        )}
-
-                        {(() => {
-                          const enteredForThisWo = campaignBundles.filter((b) => b.wo_id === r.work_order_id && (n(b.pcs) > 0 || n(b.mtr) > 0));
-                          if (enteredForThisWo.length > 1) {
-                            const totalPcs = enteredForThisWo.reduce((s, b) => s + n(b.pcs), 0);
-                            return (
-                              <div className="mt-1">
-                                <span className="inline-flex items-center gap-1 rounded bg-teal-50 border border-teal-200 text-teal-800 px-1.5 py-0.5 text-[10px] font-bold">
-                                  <Package size={10} /> {enteredForThisWo.length} Bundles ({totalPcs} PCS)
-                                </span>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
-
-                        <div className="text-sm text-slate-600 mt-1 truncate max-w-[170px]">
+                        <div className="text-xs text-slate-600 font-medium mt-0.5 truncate max-w-[220px]">
                           {r.customer_name || "—"}
                         </div>
-                        <div className="text-[12px] text-slate-500 font-mono mt-0.5">
-                          {r.od ? `${r.od} × ${r.wl ?? "—"} mm` : "—"} · Avg: {fmt(d.avg, "m")}
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                          {r.od ? `${r.od} × ${r.wl ?? "—"} mm` : "—"} | Avg: {fmt(d.avg, "m")}
                         </div>
-                        {stage === "ROLLING" && r.mh_od && (
-                          <div className="text-xs text-indigo-700 font-mono bg-indigo-50/80 rounded px-1.5 py-0.2 mt-0.5 inline-block">
-                            MH: {r.mh_od} × {r.mh_wt} mm ({fmt(r.mh_avg_length, "m")})
-                          </div>
-                        )}
                       </td>
 
                       {/* Route */}
-                      <td className="py-3 px-3 align-top">
-                        <span className="inline-flex rounded border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-800">
+                      <td className="py-3 px-3 align-middle text-center">
+                        <span className="inline-flex rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold font-mono text-slate-700">
                           {r.route_code}
                         </span>
-                        <div className="text-xs text-slate-500 mt-1">
-                          Mult: ×{fmt(r.multiple || 1)}
-                        </div>
-                        {r.feeder_source_label && (
-                          <div className="mt-1.5">
-                            <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold">
-                              Feeder: {r.feeder_source_label}
-                            </span>
-                          </div>
-                        )}
                       </td>
 
-                      {/* Available WIP & Capping */}
-                      <td className="py-3 px-3 align-top">
-                        {isRollingStage ? (
-                          <div className="space-y-2 min-w-[210px]">
-                            {/* Remaining to Roll (Plan - Production) */}
-                            <div className="bg-emerald-50/80 border border-emerald-200/80 rounded px-2.5 py-1.5 shadow-xs">
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center justify-between">
-                                <span>Remaining to Roll</span>
-                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 rounded px-1 normal-case">(Plan − Prod)</span>
-                              </div>
-                              <div className="flex items-baseline gap-1 flex-wrap mt-0.5">
-                                <span className="font-extrabold text-emerald-950 font-mono text-base">
-                                  {fmt(availPcs)}
-                                </span>
-                                <span className="text-xs font-bold text-emerald-700">PCS</span>
-                                <span className="text-emerald-400">/</span>
-                                <span className="font-bold text-emerald-900 font-mono text-sm">
-                                  {fmt(availMtr, " MTR")}
-                                </span>
-                                <span className="text-emerald-400">/</span>
-                                <span className="font-semibold text-emerald-700 font-mono text-xs">
-                                  {fmt(availMt, " MT")}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Plan Issued Reference */}
-                            {r.is_master && (r.campaign_total_mtr || 0) > 0 && (
-                              <div className="text-[11px] text-indigo-950 bg-indigo-50/90 border border-indigo-200 rounded px-2 py-1 font-medium">
-                                <div className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1">
-                                  <Crown size={11} className="text-indigo-600" />
-                                  <span>Plan Issued ({r.child_work_orders?.length ? `Master + ${r.child_work_orders.length} Child` : "Master Plan"})</span>
-                                </div>
-                                <div className="font-mono font-bold text-indigo-900 mt-0.5">
-                                  {fmt(r.campaign_total_pcs || 0)} PCS · {fmt(r.campaign_total_mtr, " MTR")}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ) : stage === "FINISHING" ? (
-                          <div className="space-y-1.5 min-w-[220px]">
-                            {/* 1. Total Order */}
-                            <div className="bg-slate-50 border border-slate-200/90 rounded px-2 py-1 text-xs">
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
-                                <span>Total Order</span>
-                                <span className="text-[10px] font-medium text-slate-400">Target</span>
-                              </div>
-                              <div className="flex items-baseline gap-1 flex-wrap mt-0.5 font-mono">
-                                <span className="font-bold text-slate-800">{fmt(r.total_order_pcs || 0)}</span>
-                                <span className="text-[10px] font-semibold text-slate-500">PCS</span>
-                                <span className="text-slate-300">/</span>
-                                <span className="font-bold text-slate-800">{fmt(r.total_order_mtr || 0, " MTR")}</span>
-                                <span className="text-slate-300">/</span>
-                                <span className="font-semibold text-blue-700 text-[11px]">
-                                  {fmt(r.total_order_mt || 0, " MT")}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* 2. Balance to Make */}
-                            <div className="bg-indigo-50/60 border border-indigo-100 rounded px-2 py-1 text-xs">
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 flex items-center justify-between">
-                                <span>Balance to Make</span>
-                                <span className="text-[10px] font-medium text-indigo-500">Order Bal</span>
-                              </div>
-                              <div className="flex items-baseline gap-1 flex-wrap mt-0.5 font-mono">
-                                <span className="font-bold text-indigo-900">
-                                  {fmt(r.balance_to_make_order_pcs ?? r.balance_to_make_pcs ?? 0)}
-                                </span>
-                                <span className="text-[10px] font-semibold text-indigo-500">PCS</span>
-                                <span className="text-indigo-200">/</span>
-                                <span className="font-bold text-indigo-900">
-                                  {fmt(r.balance_to_make_order_mtr ?? r.balance_to_make_mtr ?? 0, " MTR")}
-                                </span>
-                                <span className="text-indigo-200">/</span>
-                                <span className="font-semibold text-indigo-700 text-[11px]">
-                                  {fmt(r.balance_to_make_order_mt ?? r.balance_to_make_mt ?? 0, " MT")}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* 3. Available WIP from Preceding Stage */}
-                            <div className="bg-emerald-50/50 border border-emerald-100 rounded px-2 py-1 text-xs">
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center justify-between">
-                                <span>Available WIP (VDI OK)</span>
-                                <span className="text-[10px] font-medium text-emerald-600">Stock</span>
-                              </div>
-                              <div className="flex items-baseline gap-1 flex-wrap mt-0.5 font-mono">
-                                <span className="font-bold text-emerald-950">{fmt(availPcs)}</span>
-                                <span className="text-[10px] font-semibold text-emerald-600">PCS</span>
-                                <span className="text-emerald-300">/</span>
-                                <span className="font-bold text-emerald-950">{fmt(availMtr, " MTR")}</span>
-                                <span className="text-emerald-300">/</span>
-                                <span className="font-semibold text-emerald-700 text-[11px]">
-                                  {fmt(availMt, " MT")}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-baseline gap-1 flex-wrap">
-                            <span className="font-bold text-slate-900 font-mono text-sm">
-                              {fmt(maxAllowedPcs)}
-                            </span>
-                            <span className="text-xs font-bold text-slate-500">PCS</span>
-                            <span className="text-slate-400">/</span>
-                            <span className="font-semibold text-slate-700 font-mono text-sm">
-                              {fmt(maxAllowed, " MTR")}
-                            </span>
-                            <span className="text-slate-400">/</span>
-                            <span className="font-semibold text-blue-700 font-mono text-sm">
-                              {fmt(
-                                mtFromMtr(
-                                  maxAllowed,
-                                  r.od || 0,
-                                  r.wl || 0
-                                ),
-                                " MT"
-                              )}
-                            </span>
-                          </div>
-                        )}
+                      {/* Balance */}
+                      <td className="py-3 px-4 align-middle">
+                        <div className="font-extrabold text-emerald-700 font-mono text-xs">
+                          {fmt(availPcs)} PCS / {fmt(availMtr, " MTR")}
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          {isRollingStage
+                            ? `Plan: ${fmt(r.planned_pcs || r.campaign_total_pcs || 0)} PCS`
+                            : `Avail: ${fmt(availPcs)} PCS`}
+                        </div>
                       </td>
 
                       {/* Production Inputs (PCS & MTR) */}
-                      <td className="py-3 px-3 align-top bg-blue-50/20">
-                        <div className="flex items-center gap-1.5 justify-center">
-                          <div className="flex flex-col">
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              placeholder="PCS"
-                              disabled={!isAllowed}
-                              value={r.pcs}
-                              onChange={(e) => updateRow(key, "pcs", e.target.value)}
-                              className="w-24 rounded-lg border-2 border-slate-300 bg-white px-3 py-2.5 text-right font-mono text-base font-bold text-slate-900 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                            />
-                            <span className="text-[11px] text-center font-semibold text-slate-400 mt-0.5">PCS</span>
-                          </div>
-                          <span className="text-slate-400 font-bold mb-3">=</span>
-                          <div className="flex flex-col">
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              placeholder="MTR"
-                              disabled={!isAllowed}
-                              value={r.mtr}
-                              onChange={(e) => updateRow(key, "mtr", e.target.value)}
-                              className="w-28 rounded-lg border-2 border-slate-300 bg-white px-3 py-2.5 text-right font-mono text-base font-bold text-slate-900 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                            />
-                            <span className="text-[11px] text-center font-semibold text-slate-400 mt-0.5">
-                              {d.mt > 0 ? fmt(d.mt, " MT") : "MTR"}
-                            </span>
-                          </div>
+                      <td className="py-3 px-4 align-middle bg-[#f0f9ff]/50 border-x border-sky-100">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            placeholder="PCS"
+                            disabled={!isAllowed}
+                            value={r.pcs}
+                            onChange={(e) => updateRow(key, "pcs", e.target.value)}
+                            className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-sky-500 focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            placeholder="MTR"
+                            disabled={!isAllowed}
+                            value={r.mtr}
+                            onChange={(e) => updateRow(key, "mtr", e.target.value)}
+                            className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-sky-500 focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-400"
+                          />
                         </div>
-
-                        {/* Standard 4-Meter Scrap Rule Live Feedback */}
-                        {(() => {
-                          const pPcs = n(r.pcs);
-                          const pMtr = n(r.mtr);
-                          if (pPcs > 0 && pMtr > 0) {
-                            const pLen = pMtr / pPcs;
-                            if (pLen < 3.999) {
-                              return (
-                                <div className="mt-1 text-center">
-                                  <span className="inline-flex items-center gap-1 rounded bg-rose-100 border border-rose-200 px-1.5 py-0.5 text-[10px] font-bold text-rose-800">
-                                    ⚠️ &lt; 4.0m scrap ({pLen.toFixed(2)}m/pc)
-                                  </span>
-                                </div>
-                              );
-                            }
-                          } else if (pPcs <= 0 && pMtr > 0 && pMtr < 3.999) {
-                            return (
-                              <div className="mt-1 text-center">
-                                <span className="inline-flex items-center gap-1 rounded bg-rose-100 border border-rose-200 px-1.5 py-0.5 text-[10px] font-bold text-rose-800">
-                                  ⚠️ &lt; 4.0m scrap length
-                                </span>
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
                       </td>
 
                       {/* Rejection Inputs (PCS & MTR) */}
-                      <td className="py-3 px-3 align-top bg-rose-50/20">
-                        <div className="flex items-center gap-1.5 justify-center">
-                          <div className="flex flex-col">
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              placeholder="PCS"
-                              disabled={!isAllowed}
-                              value={r.rejection_pcs}
-                              onChange={(e) => updateRow(key, "rejection_pcs", e.target.value)}
-                              className="w-24 rounded-lg border-2 border-slate-300 bg-white px-3 py-2.5 text-right font-mono text-base font-semibold text-rose-700 shadow-sm focus:border-rose-500 focus:ring-2 focus:ring-rose-500/25 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                            />
-                            <span className="text-[11px] text-center font-semibold text-slate-400 mt-0.5">PCS</span>
-                          </div>
-                          <span className="text-slate-400 font-bold mb-3">=</span>
-                          <div className="flex flex-col">
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              placeholder="MTR"
-                              disabled={!isAllowed}
-                              value={r.rejection_mtr}
-                              onChange={(e) => updateRow(key, "rejection_mtr", e.target.value)}
-                              className="w-28 rounded-lg border-2 border-slate-300 bg-white px-3 py-2.5 text-right font-mono text-base font-semibold text-rose-700 shadow-sm focus:border-rose-500 focus:ring-2 focus:ring-rose-500/25 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                            />
-                            <span className="text-[11px] text-center font-semibold text-slate-400 mt-0.5">
-                              {d.rejectionMt > 0 ? fmt(d.rejectionMt, " MT") : "MTR"}
-                            </span>
-                          </div>
+                      <td className="py-3 px-4 align-middle bg-[#fff1f2]/50 border-r border-rose-100">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            placeholder="PCS"
+                            disabled={!isAllowed}
+                            value={r.rejection_pcs}
+                            onChange={(e) => updateRow(key, "rejection_pcs", e.target.value)}
+                            className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            placeholder="MTR"
+                            disabled={!isAllowed}
+                            value={r.rejection_mtr}
+                            onChange={(e) => updateRow(key, "rejection_mtr", e.target.value)}
+                            className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-slate-100 disabled:text-slate-400"
+                          />
                         </div>
                       </td>
 
                       {/* HTC OK Inputs (Rolling Stage only) */}
                       {stage === "ROLLING" && (
-                        <td className="py-3 px-3 align-top bg-emerald-50/20">
-                          <div className="flex items-center gap-1.5 justify-center">
-                            <div className="flex flex-col">
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                placeholder="PCS"
-                                disabled={!isAllowed}
-                                value={r.htc_ok_pcs}
-                                onChange={(e) => updateRow(key, "htc_ok_pcs", e.target.value)}
-                                className="w-24 rounded-lg border-2 border-slate-300 bg-white px-3 py-2.5 text-right font-mono text-base font-bold text-emerald-700 shadow-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                              />
-                              <span className="text-[11px] text-center font-semibold text-slate-400 mt-0.5">PCS</span>
-                            </div>
-                            <span className="text-slate-400 font-bold mb-3">=</span>
-                            <div className="flex flex-col">
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                placeholder="MTR"
-                                disabled={!isAllowed}
-                                value={r.htc_ok_mtr}
-                                onChange={(e) => updateRow(key, "htc_ok_mtr", e.target.value)}
-                                className="w-28 rounded-lg border-2 border-slate-300 bg-white px-3 py-2.5 text-right font-mono text-base font-bold text-emerald-700 shadow-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                              />
-                              <span className="text-[11px] text-center font-semibold text-slate-400 mt-0.5">
-                                {d.htcMt > 0 ? fmt(d.htcMt, " MT") : "MTR"}
-                              </span>
-                            </div>
+                        <td className="py-3 px-4 align-middle bg-[#ecfdf5]/50 border-r border-emerald-100">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              placeholder="PCS"
+                              disabled={!isAllowed}
+                              value={r.htc_ok_pcs}
+                              onChange={(e) => updateRow(key, "htc_ok_pcs", e.target.value)}
+                              className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400"
+                            />
                           </div>
                         </td>
                       )}
 
                       {/* Heat Lot No. (Heat Treatment only) */}
                       {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
-                        <td className="py-3 px-3 align-top">
+                        <td className="py-3 px-3 align-middle">
                           <input
                             type="text"
                             placeholder="e.g. HT-8842"
                             disabled={!isAllowed}
                             value={r.heat_lot_no}
                             onChange={(e) => updateRow(key, "heat_lot_no", e.target.value)}
-                            className="w-28 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-900 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                            className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-900 shadow-2xs focus:border-sky-500 focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-400"
                           />
                         </td>
                       )}
 
-                      {/* Remarks */}
-                      <td className="py-3 px-3 align-top">
-                        <input
-                          type="text"
-                          placeholder="Shift notes..."
-                          disabled={!isAllowed}
-                          value={r.remarks}
-                          onChange={(e) => updateRow(key, "remarks", e.target.value)}
-                          className="w-36 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                        />
+                      {/* Actions */}
+                      <td className="py-3 px-4 align-middle text-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleRowExpansion(key)}
+                          className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-800 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+                        >
+                          Notes
+                        </button>
                       </td>
                     </tr>
                   );
