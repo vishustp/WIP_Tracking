@@ -1143,9 +1143,9 @@ export async function PUT(req: NextRequest) {
     const effMaxLen = req_len_max != null ? Number(req_len_max) : (mh_l2 != null && Number(mh_l2) > 0 ? Number(mh_l2) : (parsedStatus.req_len_max || effMinLen));
     const effErStatus = req_len_er || (effMinLen === effMaxLen ? 'EL' : 'RL');
 
-    const effCatg = catg || parsedStatus.catg || 'CDS';
-    const effSpec = spec || parsedStatus.spec || targetWo?.specification || 'ASME SA210 Gr.A1';
-    const effGrade = grade || parsedStatus.grade || targetWo?.grade || 'SAE-1018';
+    const effCatg = catg || parsedStatus.catg || (targetWo?.grade?.toUpperCase().includes('HFS') ? 'HFS' : 'CDS');
+    const effSpec = spec || parsedStatus.spec || targetWo?.specification || '';
+    const effGrade = grade || parsedStatus.grade || targetWo?.grade || '';
     const effIbr = ibr_status || parsedStatus.ibr_status || 'IBR';
 
     const effTolOdMin = tol_od_min != null ? Number(tol_od_min) : (parsedStatus.tolerances?.od_min ?? (effCustOd - 0.4));

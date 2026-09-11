@@ -351,54 +351,54 @@ export function createDefaultGroup(
   defaultRoute?: Route
 ): WorkOrderGroup {
   const lAvg = wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : wo.l1 || 6;
-  const initPcs = availMtr > 0 ? Math.max(1, Math.floor(availMtr / lAvg)) : 100;
-  const custOdNum = Number(wo.size_od || 47.0);
-  const custWtNum = Number(wo.size_wt || 5.75);
-  const smLenNum = Number(wo.l1 || 7.67);
+  const initPcs = availMtr > 0 ? Math.max(1, Math.floor(availMtr / lAvg)) : 0;
+  const custOdNum = Number(wo.size_od || 0);
+  const custWtNum = Number(wo.size_wt || 0);
+  const smLenNum = Number(wo.l1 || 0);
 
-  const pmOdNum = Number((custOdNum * 1.4).toFixed(1));
-  const pmWtNum = Number((custWtNum * 0.95).toFixed(2));
+  const pmOdNum = custOdNum > 0 ? Number((custOdNum * 1.4).toFixed(1)) : 0;
+  const pmWtNum = custWtNum > 0 ? Number((custWtNum * 0.95).toFixed(2)) : 0;
 
   // Determine IBR status: auto-detect from spec or grade
   const specText = `${wo.specification || ''} ${wo.grade || ''}`.toUpperCase();
   const autoIbr = specText.includes('IBR') ? 'IBR' : 'NIBR';
 
-  const catgFromRoute = defaultRoute?.material_category || 'CDS';
+  const catgFromRoute = defaultRoute?.material_category || (wo.grade?.toUpperCase().includes('HFS') ? 'HFS' : 'CDS');
 
   return {
     id: `grp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     wo,
-    plannedPcs: String(initPcs),
+    plannedPcs: initPcs > 0 ? String(initPcs) : '',
     availableMtr: availMtr,
     children: [],
 
     routeId: defaultRouteId,
     catg: catgFromRoute,
-    spec: wo.specification || wo.grade || 'ASME SA210 Gr.A1',
-    grade: wo.grade || 'SAE 1018',
+    spec: wo.specification || wo.grade || '',
+    grade: wo.grade || '',
     ibrStatus: autoIbr,
-    rmOd: '63.00',
-    rmLenMin: '1.890',
-    rmLenMax: '1.895',
-    pmOd: String(pmOdNum > 0 ? pmOdNum : '66.0'),
-    pmWt: String(pmWtNum > 0 ? pmWtNum : '5.50'),
-    pmLen: '5.41',
-    custOd: String(custOdNum.toFixed(2)),
-    custWt: String(custWtNum.toFixed(2)),
-    rollingWt: String(custWtNum.toFixed(2)),
-    smLen: String(smLenNum.toFixed(2)),
+    rmOd: '',
+    rmLenMin: '',
+    rmLenMax: '',
+    pmOd: pmOdNum > 0 ? String(pmOdNum) : '',
+    pmWt: pmWtNum > 0 ? String(pmWtNum) : '',
+    pmLen: '',
+    custOd: custOdNum > 0 ? String(custOdNum.toFixed(2)) : '',
+    custWt: custWtNum > 0 ? String(custWtNum.toFixed(2)) : '',
+    rollingWt: custWtNum > 0 ? String(custWtNum.toFixed(2)) : '',
+    smLen: smLenNum > 0 ? String(smLenNum.toFixed(2)) : '',
     feLen: '0.000',
     beLen: '0.000',
-    effLen: String(smLenNum.toFixed(2)),
+    effLen: smLenNum > 0 ? String(smLenNum.toFixed(2)) : '',
     reqLenEr: wo.l1 && wo.l2 && wo.l1 === wo.l2 ? 'EL' : 'RL',
-    reqLenMin: wo.l1 ? String(Number(wo.l1).toFixed(2)) : '7.55',
-    reqLenMax: wo.l2 ? String(Number(wo.l2).toFixed(2)) : '7.55',
+    reqLenMin: wo.l1 ? String(Number(wo.l1).toFixed(2)) : '',
+    reqLenMax: wo.l2 ? String(Number(wo.l2).toFixed(2)) : (wo.l1 ? String(Number(wo.l1).toFixed(2)) : ''),
     multipleStr: '1',
-    tolOdMin: String((custOdNum - 0.4).toFixed(2)),
-    tolOdMax: String((custOdNum + 0.4).toFixed(2)),
-    tolWtMin: String((custWtNum * 0.92).toFixed(2)),
-    tolWtMax: String((custWtNum * 1.1).toFixed(2)),
-    processYieldPct: '95.50',
+    tolOdMin: custOdNum > 0 ? String((custOdNum - 0.4).toFixed(2)) : '',
+    tolOdMax: custOdNum > 0 ? String((custOdNum + 0.4).toFixed(2)) : '',
+    tolWtMin: custWtNum > 0 ? String((custWtNum * 0.92).toFixed(2)) : '',
+    tolWtMax: custWtNum > 0 ? String((custWtNum * 1.1).toFixed(2)) : '',
+    processYieldPct: '',
     isSpecsExpanded: false,
   };
 }
@@ -514,27 +514,27 @@ export default function RollingPlanForm() {
 
   // Setup Specifications (35-Column Standards) for Editing Modal
   const [editCatg, setEditCatg] = useState('CDS');
-  const [editSpec, setEditSpec] = useState('ASME SA210 Gr.A1');
-  const [editGrade, setEditGrade] = useState('SAE-1018');
+  const [editSpec, setEditSpec] = useState('');
+  const [editGrade, setEditGrade] = useState('');
   const [editIbrStatus, setEditIbrStatus] = useState('IBR');
-  const [editRmOd, setEditRmOd] = useState('63.00');
-  const [editRmLenMin, setEditRmLenMin] = useState('2.030');
-  const [editRmLenMax, setEditRmLenMax] = useState('2.035');
-  const [editPmOd, setEditPmOd] = useState('66.0');
-  const [editPmWt, setEditPmWt] = useState('6.00');
-  const [editCustOd, setEditCustOd] = useState('47.00');
-  const [editCustWt, setEditCustWt] = useState('6.25');
-  const [editRollingWt, setEditRollingWt] = useState('6.25');
+  const [editRmOd, setEditRmOd] = useState('');
+  const [editRmLenMin, setEditRmLenMin] = useState('');
+  const [editRmLenMax, setEditRmLenMax] = useState('');
+  const [editPmOd, setEditPmOd] = useState('');
+  const [editPmWt, setEditPmWt] = useState('');
+  const [editCustOd, setEditCustOd] = useState('');
+  const [editCustWt, setEditCustWt] = useState('');
+  const [editRollingWt, setEditRollingWt] = useState('');
   const [editFeLen, setEditFeLen] = useState('0.000');
   const [editBeLen, setEditBeLen] = useState('0.000');
   const [editReqLenEr, setEditReqLenEr] = useState('EL');
-  const [editReqLenMin, setEditReqLenMin] = useState('7.53');
-  const [editReqLenMax, setEditReqLenMax] = useState('7.53');
-  const [editTolOdMin, setEditTolOdMin] = useState('46.50');
-  const [editTolOdMax, setEditTolOdMax] = useState('47.40');
-  const [editTolWtMin, setEditTolWtMin] = useState('5.78');
-  const [editTolWtMax, setEditTolWtMax] = useState('6.88');
-  const [editProcessYieldPct, setEditProcessYieldPct] = useState('95.22');
+  const [editReqLenMin, setEditReqLenMin] = useState('');
+  const [editReqLenMax, setEditReqLenMax] = useState('');
+  const [editTolOdMin, setEditTolOdMin] = useState('');
+  const [editTolOdMax, setEditTolOdMax] = useState('');
+  const [editTolWtMin, setEditTolWtMin] = useState('');
+  const [editTolWtMax, setEditTolWtMax] = useState('');
+  const [editProcessYieldPct, setEditProcessYieldPct] = useState('');
 
   const [editChildOrders, setEditChildOrders] = useState<
     Array<{
