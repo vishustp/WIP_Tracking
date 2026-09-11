@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { STANDARD_RM_GRADES, normalizeSpecification } from '@/lib/productionUtils';
 
 export type Plan = {
   id: string;
@@ -355,19 +356,19 @@ export default function RollingPlanIssueReportClient() {
     } catch {}
 
     setEditCatg(st.catg || 'CDS');
-    setEditSpec(st.spec || 'ASME SA210 Gr.A1');
-    setEditGrade(st.grade || p.grade || 'SAE-1018');
+    setEditSpec(normalizeSpecification(st.spec || p.grade || ''));
+    setEditGrade(st.grade || p.grade || '');
     setEditIbrStatus(st.ibr_status || 'IBR');
-    setEditRmOd(String(st.rm_od || st.billet?.rm_od || 63.0));
+    setEditRmOd(st.rm_od || st.billet?.rm_od ? String(st.rm_od || st.billet?.rm_od) : '');
 
-    const rawRMin = st.rm_len_min != null ? Number(st.rm_len_min) : (st.billet?.rm_len_min != null ? Number(st.billet.rm_len_min) : 2.030);
-    setEditRmLenMin(String(rawRMin > 20 ? (rawRMin / 1000).toFixed(3) : rawRMin));
+    const rawRMin = st.rm_len_min != null ? Number(st.rm_len_min) : (st.billet?.rm_len_min != null ? Number(st.billet.rm_len_min) : null);
+    setEditRmLenMin(rawRMin != null ? String(rawRMin > 20 ? (rawRMin / 1000).toFixed(3) : rawRMin) : '');
 
-    const rawRMax = st.rm_len_max != null ? Number(st.rm_len_max) : (st.billet?.rm_len_max != null ? Number(st.billet.rm_len_max) : 2.035);
-    setEditRmLenMax(String(rawRMax > 20 ? (rawRMax / 1000).toFixed(3) : rawRMax));
+    const rawRMax = st.rm_len_max != null ? Number(st.rm_len_max) : (st.billet?.rm_len_max != null ? Number(st.billet.rm_len_max) : null);
+    setEditRmLenMax(rawRMax != null ? String(rawRMax > 20 ? (rawRMax / 1000).toFixed(3) : rawRMax) : '');
 
-    setEditPmOd(String(st.pm_od || st.piercer_mill?.pm_od || 66.0));
-    setEditPmWt(String(st.pm_wt || st.piercer_mill?.pm_wt || 6.00));
+    setEditPmOd(st.pm_od || st.piercer_mill?.pm_od ? String(st.pm_od || st.piercer_mill?.pm_od) : '');
+    setEditPmWt(st.pm_wt || st.piercer_mill?.pm_wt ? String(st.pm_wt || st.piercer_mill?.pm_wt) : '');
     setEditCustOd(String(st.cust_od || st.sm?.cust_od || p.mh_od || p.od || 47.00));
     setEditCustWt(String(st.cust_wt || st.sm?.cust_wt || p.mh_wt || p.wt || 6.25));
     setEditRollingWt(String(st.rolling_wt || st.sm?.rolling_wt || st.cust_wt || 6.25));
@@ -2046,13 +2047,20 @@ export default function RollingPlanIssueReportClient() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Grade</label>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">RM Grade</label>
                         <input
                           type="text"
+                          list="edit-modal-rm-grade-list"
                           value={editGrade}
                           onChange={(e) => setEditGrade(e.target.value)}
+                          placeholder="Select or enter RM Grade..."
                           className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono font-medium focus:border-indigo-500 focus:outline-hidden"
                         />
+                        <datalist id="edit-modal-rm-grade-list">
+                          {STANDARD_RM_GRADES.map((g) => (
+                            <option key={g} value={g} />
+                          ))}
+                        </datalist>
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 mb-1">IBR / NIBR</label>

@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
+import { STANDARD_RM_GRADES, normalizeSpecification } from '@/lib/productionUtils';
 
 export type WO = {
   id: string;
@@ -374,7 +375,7 @@ export function createDefaultGroup(
 
     routeId: defaultRouteId,
     catg: catgFromRoute,
-    spec: wo.specification || wo.grade || '',
+    spec: normalizeSpecification(wo.specification || wo.grade || '') || wo.specification || '',
     grade: wo.grade || '',
     ibrStatus: autoIbr,
     rmOd: '',
@@ -1271,8 +1272,8 @@ export default function RollingPlanForm() {
 
     // Setup Specifications
     setEditCatg(parsed.catg || 'CDS');
-    setEditSpec(parsed.spec || 'ASME SA210 Gr.A1');
-    setEditGrade(parsed.grade || p.grade || 'SAE-1018');
+    setEditSpec(normalizeSpecification(parsed.spec || '') || parsed.spec || '');
+    setEditGrade(parsed.grade || p.grade || '');
     setEditIbrStatus(parsed.ibr_status || 'IBR');
     setEditRmOd(String(parsed.rm_od || parsed.billet?.rm_od || 63.0));
 
@@ -2042,26 +2043,36 @@ export default function RollingPlanForm() {
                                 </div>
                               </div>
                               <div>
-                                <label className="text-[10px] text-slate-500 block">Spec</label>
+                                <label className="text-[10px] text-slate-500 font-semibold block">Spec</label>
                                 <input
                                   type="text"
                                   value={group.spec}
+                                  placeholder="e.g. ASTM A106 Gr.B"
                                   onChange={(e) =>
                                     handleUpdateGroupField(group.id, 'spec', e.target.value)
                                   }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
+                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono bg-white focus:border-indigo-500"
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] text-slate-500 block">Grade</label>
-                                <input
-                                  type="text"
-                                  value={group.grade}
-                                  onChange={(e) =>
-                                    handleUpdateGroupField(group.id, 'grade', e.target.value)
-                                  }
-                                  className="w-full rounded border border-slate-300 p-1 text-xs font-mono"
-                                />
+                                <label className="text-[10px] text-slate-500 font-semibold block">RM Grade</label>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    list={`rm-grade-list-${group.id}`}
+                                    value={group.grade}
+                                    placeholder="Select or enter RM Grade..."
+                                    onChange={(e) =>
+                                      handleUpdateGroupField(group.id, 'grade', e.target.value)
+                                    }
+                                    className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold bg-white focus:border-indigo-500"
+                                  />
+                                  <datalist id={`rm-grade-list-${group.id}`}>
+                                    {STANDARD_RM_GRADES.map((g) => (
+                                      <option key={g} value={g} />
+                                    ))}
+                                  </datalist>
+                                </div>
                               </div>
                             </div>
 
@@ -3438,11 +3449,22 @@ export default function RollingPlanForm() {
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 mb-1">Spec</label>
-                        <Input value={editSpec} onChange={(e) => setEditSpec(e.target.value)} />
+                        <Input value={editSpec} placeholder="e.g. ASTM A106 Gr.B" onChange={(e) => setEditSpec(e.target.value)} />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Grade</label>
-                        <Input value={editGrade} onChange={(e) => setEditGrade(e.target.value)} />
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">RM Grade</label>
+                        <input
+                          list="edit-modal-rm-grade-list"
+                          value={editGrade}
+                          placeholder="Select or enter RM Grade..."
+                          onChange={(e) => setEditGrade(e.target.value)}
+                          className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs font-mono font-bold focus:border-indigo-500 focus:outline-hidden"
+                        />
+                        <datalist id="edit-modal-rm-grade-list">
+                          {STANDARD_RM_GRADES.map((g) => (
+                            <option key={g} value={g} />
+                          ))}
+                        </datalist>
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 mb-1">IBR / NIBR</label>

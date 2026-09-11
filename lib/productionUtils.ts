@@ -181,4 +181,101 @@ export function extractPcsFromRemarks(remarks: string | null | undefined): {
   return { pcs, rejPcs, cleanRemarks };
 }
 
+export const STANDARD_RM_GRADES = [
+  'SAE-1018',
+  'SAE-1019',
+  'SAE-1524',
+  'SAE-1010',
+  'SAE-1020',
+  'SAE-1022',
+  'SAE-1026',
+  'SAE-1045',
+  'P11',
+  'P22',
+  'P9',
+  'P91',
+  '20MnV6',
+  '16MnCr5',
+  'ST52',
+  'A106-B',
+  'A333-Gr6',
+  'A210-A1',
+  'A210-C',
+  'A192',
+  'A179',
+];
+
+/**
+ * Normalizes similar written specifications into clean canonical standard formats
+ * Examples:
+ *   "A106 Gr.B", "A106 GR b", "a 106 gr b", "ASTM A106 Gr B", "SA 106 Gr.B" -> "ASTM A106 Gr.B"
+ *   "SA210 Gr.A1", "A210 GR. A-1", "ASME SA210 Gr A1" -> "ASME SA210 Gr.A1"
+ *   "SA210 Gr.C", "A210 Gr C", "ASME SA210 Gr C" -> "ASME SA210 Gr.C"
+ *   "SA192", "ASTM A192" -> "ASTM A192"
+ *   "SA179", "ASTM A179" -> "ASTM A179"
+ *   "SA335 P11", "A335 Gr.P11", "P11" -> "ASTM A335 Gr.P11"
+ *   "SA335 P22", "A335 Gr.P22", "P22" -> "ASTM A335 Gr.P22"
+ *   "SA335 P91", "A335 Gr.P91", "P91" -> "ASTM A335 Gr.P91"
+ *   "ST52", "DIN 2391 ST52" -> "DIN 2391 ST52"
+ */
+export function normalizeSpecification(raw: string | null | undefined): string {
+  if (!raw || !raw.trim()) return '';
+  const s = raw.trim().toUpperCase().replace(/[\s_\-]+/g, ' ');
+
+  // A106 variants (A106 Gr.B, A106 Gr.C, A106 Gr.A)
+  if (s.includes('106')) {
+    if (s.includes('GR C') || s.includes('GR.C') || s.includes('GRADE C')) return 'ASTM A106 Gr.C';
+    if (s.includes('GR A') || s.includes('GR.A') || s.includes('GRADE A')) return 'ASTM A106 Gr.A';
+    return 'ASTM A106 Gr.B';
+  }
+
+  // SA210 / A210 variants (A-1 vs C)
+  if (s.includes('210')) {
+    if (s.includes('GR C') || s.includes('GR.C') || s.includes('GRADE C')) return 'ASME SA210 Gr.C';
+    return 'ASME SA210 Gr.A1';
+  }
+
+  // SA335 / A335 alloy variants (P11, P22, P9, P91, P5, P12)
+  if (s.includes('335') || s.includes('P11') || s.includes('P22') || s.includes('P91') || s.includes('P9')) {
+    if (s.includes('P91')) return 'ASTM A335 Gr.P91';
+    if (s.includes('P22')) return 'ASTM A335 Gr.P22';
+    if (s.includes('P11')) return 'ASTM A335 Gr.P11';
+    if (s.includes('P9')) return 'ASTM A335 Gr.P9';
+    if (s.includes('P12')) return 'ASTM A335 Gr.P12';
+    if (s.includes('P5')) return 'ASTM A335 Gr.P5';
+    return 'ASTM A335 Gr.P11';
+  }
+
+  // A333 variants (Low Temp Gr.6)
+  if (s.includes('333')) {
+    return 'ASTM A333 Gr.6';
+  }
+
+  // SA192 / A192 (Carbon Boiler)
+  if (s.includes('192')) {
+    return 'ASTM A192';
+  }
+
+  // SA179 / A179 (Heat Exchanger)
+  if (s.includes('179')) {
+    return 'ASTM A179';
+  }
+
+  // EN 10305 / DIN 2391 / ST52
+  if (s.includes('ST52') || s.includes('ST 52') || s.includes('E355')) {
+    return 'EN 10305-1 E355 (ST52)';
+  }
+  if (s.includes('ST35') || s.includes('ST 35') || s.includes('E235')) {
+    return 'EN 10305-1 E235 (ST35)';
+  }
+
+  // IS 1239 / IS 3589 / IS 1161
+  if (s.includes('1239')) return 'IS 1239';
+  if (s.includes('3589')) return 'IS 3589';
+  if (s.includes('1161')) return 'IS 1161';
+
+  // Return cleaned original text
+  return raw.trim().replace(/\s+/g, ' ');
+}
+
 

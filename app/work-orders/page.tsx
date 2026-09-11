@@ -8,7 +8,7 @@ import { Select } from '@/components/ui/select';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
-import { mtFromMtr, fmt } from '@/lib/productionUtils';
+import { mtFromMtr, fmt, normalizeSpecification } from '@/lib/productionUtils';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import RouteAccessGuard from '@/components/common/RouteAccessGuard';
@@ -874,8 +874,8 @@ export default function WorkOrders() {
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-slate-700 max-w-[150px] truncate">{w.customer_name || '—'}</td>
-                        <td className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate" title={w.specification || w.grade || '—'}>
-                          {w.specification || w.grade || '—'}
+                        <td className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate" title={normalizeSpecification(w.specification || w.grade || '') || w.specification || w.grade || '—'}>
+                          {normalizeSpecification(w.specification || w.grade || '') || w.specification || w.grade || '—'}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono text-slate-800">
                           {w.size_od ?? '—'}
