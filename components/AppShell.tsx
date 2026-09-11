@@ -39,9 +39,14 @@ const groups = [
   {
     label: 'REPORTS',
     items: [
-      { href: '/reports/process-sheet', label: 'Process Sheets', icon: FileText },
-      { href: '/reports/tracking', label: 'WO Tracking', icon: Activity },
+      { href: '/reports/production', label: 'Production Report', icon: Factory },
+      { href: '/reports/wip', label: 'WIP Report', icon: Layers },
       { href: '/reports/aging', label: 'WIP Aging', icon: Clock },
+      { href: '/reports/tracking', label: 'WO Tracking', icon: Activity },
+      { href: '/reports/process-sheet', label: 'Process Sheets', icon: FileText },
+      { href: '/reports/rolling-plans', label: 'Rolling Plans Report', icon: CalendarClock },
+      { href: '/reports/diversions', label: 'Diversion Report', icon: Shuffle },
+      { href: '/reports/pending-orders', label: 'Pending Orders', icon: ClipboardList },
     ],
   },
   {
