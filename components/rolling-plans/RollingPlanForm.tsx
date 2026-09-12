@@ -251,13 +251,17 @@ export function computeGroupSpecs(
   // 15. Billet Wt. After WHF = Weight (Kgs) * 0.97
   const billetWtWhf = Number((weightKg * 0.97).toFixed(3));
 
-  // 16. PM OD: Use user input if provided, otherwise default to 66.0 (for 63mm RM OD) or rmOd + 3
+  // 16. PM OD: Use user input if provided, otherwise calculate from formula (RM OD + 3 or Cust OD * 1.4)
   const userPmOd = Number(group.pmOd) || 0;
-  const pmOd = userPmOd > 0 ? userPmOd : (rmOd === 63 ? 66.0 : (rmOd > 0 ? Number((rmOd + 3).toFixed(2)) : 66.0));
+  const pmOd = userPmOd > 0
+    ? userPmOd
+    : (rmOd === 63 ? 66.0 : (rmOd > 0 ? Number((rmOd + 3).toFixed(2)) : (custOd > 0 ? Number((custOd * 1.4).toFixed(1)) : 0)));
 
-  // 17. PM Wt: Use user input if provided, otherwise default to Rolling WT - 0.25
+  // 17. PM Wt: Use user input if provided, otherwise calculate from formula (Rolling WT - 0.25 or Cust WT * 0.95)
   const userPmWt = Number(group.pmWt) || 0;
-  const pmWt = userPmWt > 0 ? userPmWt : (rollingWt > 0.25 ? Number((rollingWt - 0.25).toFixed(2)) : 6.00);
+  const pmWt = userPmWt > 0
+    ? userPmWt
+    : (rollingWt > 0.25 ? Number((rollingWt - 0.25).toFixed(2)) : (custWt > 0 ? Number((custWt * 0.95).toFixed(2)) : 0));
 
   // 18. PM Kg/Mtr = (PM OD - PM WT) * PM WT * 0.02467
   const pmKgMtr =
@@ -376,13 +380,13 @@ export function createDefaultGroup(
     routeId: defaultRouteId,
     catg: catgFromRoute,
     spec: normalizeSpecification(wo.specification || wo.grade || '') || wo.specification || '',
-    grade: wo.grade || '',
+    grade: '',
     ibrStatus: autoIbr,
     rmOd: '',
     rmLenMin: '',
     rmLenMax: '',
-    pmOd: pmOdNum > 0 ? String(pmOdNum) : '',
-    pmWt: pmWtNum > 0 ? String(pmWtNum) : '',
+    pmOd: '',
+    pmWt: '',
     pmLen: '',
     custOd: custOdNum > 0 ? String(custOdNum.toFixed(2)) : '',
     custWt: custWtNum > 0 ? String(custWtNum.toFixed(2)) : '',
@@ -2151,7 +2155,7 @@ export default function RollingPlanForm() {
                                     type="number"
                                     step="0.1"
                                     value={group.pmOd}
-                                    placeholder={String(specs.pmOd)}
+                                    placeholder={specs.pmOd > 0 ? String(specs.pmOd) : 'Auto (Formula)'}
                                     onChange={(e) => handleUpdateGroupField(group.id, 'pmOd', e.target.value)}
                                     className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs font-mono font-bold text-slate-900 focus:border-indigo-500 focus:outline-hidden"
                                   />
@@ -2162,7 +2166,7 @@ export default function RollingPlanForm() {
                                     type="number"
                                     step="0.01"
                                     value={group.pmWt}
-                                    placeholder={String(specs.pmWt)}
+                                    placeholder={specs.pmWt > 0 ? String(specs.pmWt) : 'Auto (Formula)'}
                                     onChange={(e) => handleUpdateGroupField(group.id, 'pmWt', e.target.value)}
                                     className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs font-mono font-bold text-slate-900 focus:border-indigo-500 focus:outline-hidden"
                                   />
