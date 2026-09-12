@@ -1,4 +1,4 @@
--- Migration 045: Allow Rolling Production to be more than 10% of Rolling Plan
+-- Migration 046: Allow Rolling Production to be more than 10% of Rolling Plan
 -- Business Rule Update:
 -- 1. Rolling production can exceed 10% of the Rolling Plan (removes hard 110% ceiling on rolling).
 -- 2. For child plans, rolling plan quantity is not issued separately; child plan uses master plan's rolling quantity.
@@ -97,14 +97,13 @@ begin
 
   update public.production_logs
   set
-    shift_date = p_process_date,
+    process_date = p_process_date,
     input_qty = p_output_qty,
     output_qty = p_output_qty,
     rejection_qty = coalesce(p_rejection_qty, 0),
-    htc_ok_qty = case when stage_code_value = 'ROLLING' then coalesce(p_htc_ok, 0) else null end,
-    heat_lot_no = p_heat_lot_no,
-    remarks = p_remarks,
-    updated_at = now()
+    htc_ok = case when stage_code_value = 'ROLLING' then coalesce(p_htc_ok, 0) else 0 end,
+    heat_lot_no = nullif(trim(coalesce(p_heat_lot_no, '')), ''),
+    remarks = nullif(trim(coalesce(p_remarks, '')), '')
   where id = p_production_id;
 end;
 $function$;

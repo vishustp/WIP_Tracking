@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAuth } from '@/lib/supabase/authGuard';
 
 export interface ChildWoPayload {
   id: string;
@@ -122,6 +123,11 @@ export interface CreateMultiWoRollingPlanPayload {
 
 export async function POST(req: NextRequest) {
   try {
+    const authCheck = await requireAuth(req);
+    if ('errorResponse' in authCheck && authCheck.errorResponse) {
+      return authCheck.errorResponse;
+    }
+
     const admin = createAdminClient();
     if (!admin) {
       return NextResponse.json(
@@ -596,6 +602,11 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const authCheck = await requireAuth(req);
+    if ('errorResponse' in authCheck && authCheck.errorResponse) {
+      return authCheck.errorResponse;
+    }
+
     const admin = createAdminClient();
     if (!admin) {
       return NextResponse.json(
@@ -848,6 +859,11 @@ export interface UpdateRollingPlanPayload {
 
 export async function PUT(req: NextRequest) {
   try {
+    const authCheck = await requireAuth(req);
+    if ('errorResponse' in authCheck && authCheck.errorResponse) {
+      return authCheck.errorResponse;
+    }
+
     const admin = createAdminClient();
     if (!admin) {
       return NextResponse.json(

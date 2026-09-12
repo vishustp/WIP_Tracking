@@ -1,103 +1,74 @@
-"use client";
+'use client';
 
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect } from 'react';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { useQueue } from '@/hooks/useQueue';
+import { useHistory } from '@/hooks/useHistory';
+import { validateProductionEntry } from '@/lib/productionValidation';
 import {
-  AlertTriangle,
-  CheckCircle2,
-  RefreshCw,
-  Search,
-  Edit2,
-  Trash2,
-  X,
-  Layers,
-  ChevronDown,
-  ChevronRight,
-  Factory,
-  Lock,
-  ShieldAlert,
-  Crown,
-  Link2,
-  Package,
-  Plus,
-  FileText,
-} from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import { useQueue } from "@/hooks/useQueue";
-import { useHistory } from "@/hooks/useHistory";
-import { validateProductionEntry } from "@/lib/productionValidation";
-import { calc, fmt, n, mtrFromPcs, pcsFromMtr, mtFromMtr, attachPcsToRemarks, extractPcsFromRemarks } from "@/lib/productionUtils";
-import { StageCode, STAGES, Row, ProductionEntry } from "@/types";
-import { usePermissions, getGroupConfig, getFormAccess } from "@/lib/permissions";
-import FormAccessBanner from "@/components/common/FormAccessBanner";
-import { WipSummaryCards } from "@/components/production/WipSummaryCards";
+  calc,
+  fmt,
+  n,
+  mtrFromPcs,
+  mtFromMtr,
+  attachPcsToRemarks,
+  extractPcsFromRemarks,
+} from '@/lib/productionUtils';
+import { StageCode, STAGES, Row, ProductionEntry } from '@/types';
+import { usePermissions, getFormAccess } from '@/lib/permissions';
+import FormAccessBanner from '@/components/common/FormAccessBanner';
+import { WipSummaryCards } from '@/components/production/WipSummaryCards';
+
+// Modular Subcomponents
+import ProductionToolbar from '@/components/production/ProductionToolbar';
+import ProductionQueueTable from '@/components/production/ProductionQueueTable';
+import ProductionHistoryTable from '@/components/production/ProductionHistoryTable';
+import EditEntryModal from '@/components/production/modals/EditEntryModal';
+import DeleteEntryModal from '@/components/production/modals/DeleteEntryModal';
+import BundlingCampaignModal, { CampaignBundle } from '@/components/production/modals/BundlingCampaignModal';
 
 export default function ProductionEntryGrid() {
   const supabase = useMemo(() => createClient(), []);
   const {
     user,
-    group,
     groupConfig,
     roleTitle,
-    department,
     workCenter,
     workCenterLabel,
     isStageAllowed,
     canDeleteForStage,
     canEditForStage,
-    canCreateForStage,
     isAdmin,
     isSuperUser,
-    isUserGroup,
   } = usePermissions();
 
   // --- State ---
-  const [stage, setStage] = useState<StageCode>("ROLLING");
+  const [stage, setStage] = useState<StageCode>('ROLLING');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
 
-  const [search, setSearch] = useState("");
-  const [woFilter, setWoFilter] = useState("");
-  const [entryStage, setEntryStage] = useState("");
-  const [entryRoute, setEntryRoute] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [search, setSearch] = useState('');
+  const [woFilter, setWoFilter] = useState('');
+  const [entryStage, setEntryStage] = useState('');
+  const [entryRoute, setEntryRoute] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   // Expandable work center WIP breakdown per row
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-  const [showWipSummary, setShowWipSummary] = useState(true);
 
-  // Edit modal state
+  // Modals state
   const [editing, setEditing] = useState<ProductionEntry | null>(null);
-  const [editMtr, setEditMtr] = useState("");
-  const [editPcs, setEditPcs] = useState("");
-  const [editDate, setEditDate] = useState("");
-  const [editRejectionMtr, setEditRejectionMtr] = useState("");
-  const [editRejectionPcs, setEditRejectionPcs] = useState("");
-  const [editHtcMtr, setEditHtcMtr] = useState("");
-  const [editHtcPcs, setEditHtcPcs] = useState("");
-  const [editHeatLot, setEditHeatLot] = useState("");
-  const [editRemarks, setEditRemarks] = useState("");
-  const [editSaving, setEditSaving] = useState(false);
-
-  // Delete modal state
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   // Campaign multi-work order bundling modal state (Rule 2)
   const [bundlingCampaign, setBundlingCampaign] = useState<Row | null>(null);
-  const [campaignBundles, setCampaignBundles] = useState<
-    Array<{
-      id: string;
-      wo_id: string;
-      bundle_no: string;
-      pcs: string;
-      mtr: string;
-      remarks: string;
-    }>
-  >([]);
+  const [campaignBundles, setCampaignBundles] = useState<CampaignBundle[]>([]);
   const [bundlingSaving, setBundlingSaving] = useState(false);
 
   // --- Data fetching ---
@@ -118,8 +89,8 @@ export default function ProductionEntryGrid() {
     try {
       try {
         const qRes = await fetch(`/api/production/queue?stage=${stage}&_t=${Date.now()}`, {
-          cache: "no-store",
-          headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+          cache: 'no-store',
+          headers: { Pragma: 'no-cache', 'Cache-Control': 'no-cache' },
         });
         if (qRes.ok) {
           const json = await qRes.json();
@@ -132,15 +103,15 @@ export default function ProductionEntryGrid() {
       }
 
       const [wipRes, plansRes] = await Promise.all([
-        supabase.from("vw_route_stage_wip").select("*"),
-        supabase.from("rolling_plans").select("status, work_order_id").not("status", "is", null),
+        supabase.from('vw_route_stage_wip').select('*'),
+        supabase.from('rolling_plans').select('status, work_order_id').not('status', 'is', null),
       ]);
       if (wipRes.data) setFactoryWip(wipRes.data);
       if (plansRes.data) {
         const cIds = new Set<string>();
         for (const p of plansRes.data) {
           try {
-            const parsed = typeof p.status === "string" ? JSON.parse(p.status) : p.status;
+            const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
             if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
               for (const c of parsed.child_work_orders) {
                 if (c.work_order_id) cIds.add(c.work_order_id);
@@ -161,7 +132,7 @@ export default function ProductionEntryGrid() {
   }, [supabase, stage]);
 
   useEffect(() => {
-    loadFactoryWip();
+    void loadFactoryWip();
   }, [loadFactoryWip, stage]);
 
   const routes = useMemo(
@@ -186,15 +157,18 @@ export default function ProductionEntryGrid() {
   const filteredRows = useMemo(() => {
     if (!woFilter.trim()) return rows;
     const q = woFilter.toLowerCase().trim();
-    return rows.filter((r) =>
-      (r.work_order_no || "").toLowerCase().includes(q) ||
-      (r.customer_name || "").toLowerCase().includes(q) ||
-      (r.specification || "").toLowerCase().includes(q) ||
-      (r.master_plan_no || "").toLowerCase().includes(q) ||
-      (r.child_work_orders && r.child_work_orders.some((c: any) =>
-        (c.work_order_no || "").toLowerCase().includes(q) ||
-        (c.customer_name || "").toLowerCase().includes(q)
-      ))
+    return rows.filter(
+      (r) =>
+        (r.work_order_no || '').toLowerCase().includes(q) ||
+        (r.customer_name || '').toLowerCase().includes(q) ||
+        (r.specification || '').toLowerCase().includes(q) ||
+        (r.master_plan_no || '').toLowerCase().includes(q) ||
+        (r.child_work_orders &&
+          r.child_work_orders.some(
+            (c: any) =>
+              (c.work_order_no || '').toLowerCase().includes(q) ||
+              (c.customer_name || '').toLowerCase().includes(q)
+          ))
     );
   }, [rows, woFilter]);
 
@@ -209,12 +183,12 @@ export default function ProductionEntryGrid() {
     setExpandedRows(newState);
   };
 
-  // --- Row update helper with bidirectional PCS <-> MTR conversion ---
+  // Row update helper with bidirectional PCS <-> MTR conversion
   const updateRow = (
     key: string,
     field: keyof Pick<
       Row,
-      "pcs" | "mtr" | "rejection_pcs" | "rejection_mtr" | "htc_ok_pcs" | "htc_ok_mtr" | "heat_lot_no" | "remarks"
+      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks'
     >,
     value: string
   ) => {
@@ -225,67 +199,69 @@ export default function ProductionEntryGrid() {
         // Rule 5: Rolling Mtr and MT calculated based on MH dimensions if applicable
         const mhL1 = Number(r.mh_l1 || 0);
         const mhL2 = Number(r.mh_l2 || 0);
-        const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || 0);
+        const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || 0;
         const effectiveMhAvg = Number(r.mh_avg_length || 0) > 0 ? Number(r.mh_avg_length) : computedMhAvg;
         const effectiveAvg =
-          stage === "ROLLING" && effectiveMhAvg > 0
-            ? effectiveMhAvg
-            : n(r.avg_length);
+          stage === 'ROLLING' && effectiveMhAvg > 0 ? effectiveMhAvg : n(r.avg_length);
 
-        // For Finishing: Do NOT calculate PCS based on MTR or MTR based on PCS. Both are entered independently.
-        if (stage === "FINISHING") {
+        // For Finishing: Do NOT calculate PCS based on MTR or MTR based on PCS.
+        if (stage === 'FINISHING') {
           return { ...r, [field]: value };
         }
 
-        if (field === "pcs") {
-          const mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
+        if (field === 'pcs') {
+          const mtr = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ''));
           const extra: Record<string, string> = {};
-          if (stage === "ROLLING") {
+          if (stage === 'ROLLING') {
             const newPcs = n(value);
             const rejPcs = n(r.rejection_pcs);
             const autoHtcPcs = Math.max(0, newPcs - rejPcs);
-            extra.htc_ok_pcs = autoHtcPcs > 0 ? String(autoHtcPcs) : (newPcs > 0 ? "0" : "");
-            extra.htc_ok_mtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(3).replace(/\.?0+$/, "")) : (newPcs > 0 ? "0" : "");
+            extra.htc_ok_pcs = autoHtcPcs > 0 ? String(autoHtcPcs) : newPcs > 0 ? '0' : '';
+            extra.htc_ok_mtr =
+              autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(3).replace(/\.?0+$/, '')) : newPcs > 0 ? '0' : '';
           }
           return { ...r, pcs: value, mtr, ...extra };
         }
-        if (field === "mtr") {
+        if (field === 'mtr') {
           const extra: Record<string, string> = {};
-          if (stage === "ROLLING" && n(r.pcs) <= 0) {
+          if (stage === 'ROLLING' && n(r.pcs) <= 0) {
             const newMtr = n(value);
             const rejMtr = n(r.rejection_mtr);
             const autoHtcMtr = Math.max(0, newMtr - rejMtr);
-            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(3).replace(/\.?0+$/, "")) : (newMtr > 0 ? "0" : "");
+            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(3).replace(/\.?0+$/, '')) : newMtr > 0 ? '0' : '';
           }
           return { ...r, mtr: value, ...extra };
         }
-        if (field === "rejection_pcs") {
-          const rejection_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
+        if (field === 'rejection_pcs') {
+          const rejection_mtr =
+            value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ''));
           const extra: Record<string, string> = {};
-          if (stage === "ROLLING") {
+          if (stage === 'ROLLING') {
             const prodPcs = n(r.pcs);
             const rejPcs = n(value);
             const autoHtcPcs = Math.max(0, prodPcs - rejPcs);
-            extra.htc_ok_pcs = autoHtcPcs > 0 ? String(autoHtcPcs) : (prodPcs > 0 ? "0" : "");
-            extra.htc_ok_mtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(3).replace(/\.?0+$/, "")) : (prodPcs > 0 ? "0" : "");
+            extra.htc_ok_pcs = autoHtcPcs > 0 ? String(autoHtcPcs) : prodPcs > 0 ? '0' : '';
+            extra.htc_ok_mtr =
+              autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(3).replace(/\.?0+$/, '')) : prodPcs > 0 ? '0' : '';
           }
           return { ...r, rejection_pcs: value, rejection_mtr, ...extra };
         }
-        if (field === "rejection_mtr") {
+        if (field === 'rejection_mtr') {
           const extra: Record<string, string> = {};
-          if (stage === "ROLLING" && n(r.pcs) <= 0) {
+          if (stage === 'ROLLING' && n(r.pcs) <= 0) {
             const prodMtr = n(r.mtr);
             const rejMtr = n(value);
             const autoHtcMtr = Math.max(0, prodMtr - rejMtr);
-            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(3).replace(/\.?0+$/, "")) : (prodMtr > 0 ? "0" : "");
+            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(3).replace(/\.?0+$/, '')) : prodMtr > 0 ? '0' : '';
           }
           return { ...r, rejection_mtr: value, ...extra };
         }
-        if (field === "htc_ok_pcs") {
-          const htc_ok_mtr = value === "" ? "" : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ""));
+        if (field === 'htc_ok_pcs') {
+          const htc_ok_mtr =
+            value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ''));
           return { ...r, htc_ok_pcs: value, htc_ok_mtr };
         }
-        if (field === "htc_ok_mtr") {
+        if (field === 'htc_ok_mtr') {
           return { ...r, htc_ok_mtr: value };
         }
         return { ...r, [field]: value };
@@ -293,16 +269,22 @@ export default function ProductionEntryGrid() {
     );
   };
 
-  // --- Aggregate WIP across all work orders in current queue & factory-wide ---
+  // Aggregate WIP across all work orders in current queue & factory-wide
   const workCenterSummary = useMemo(() => {
     if (serverSummary && serverSummary.length > 0) {
       const baseList = serverSummary.map((s) => ({ ...s }));
       const activeItem = baseList.find((x) => x.stage_code === stage);
       if (activeItem) {
-        activeItem.availMtr = rows.reduce((sum, r) => sum + Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0), 0);
-        activeItem.availPcs = rows.reduce((sum, r) => sum + Number(r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0), 0);
+        activeItem.availMtr = rows.reduce(
+          (sum, r) => sum + Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0),
+          0
+        );
+        activeItem.availPcs = rows.reduce(
+          (sum, r) => sum + Number(r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0),
+          0
+        );
         activeItem.availMt = rows.reduce((sum, r) => {
-          const isRoll = stage === "ROLLING";
+          const isRoll = stage === 'ROLLING';
           const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
           const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
           const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
@@ -313,46 +295,53 @@ export default function ProductionEntryGrid() {
       return baseList;
     }
 
-    const summary: Record<string, { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }> = {
-      ROLLING: { label: "Rolling Mill", stage_code: "ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+    const summary: Record<
+      string,
+      { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }
+    > = {
+      ROLLING: { label: 'Rolling Mill', stage_code: 'ROLLING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HOLLOW_HEAT_TREATMENT: {
+        label: 'Hollow Heat Treatment',
+        stage_code: 'HOLLOW_HEAT_TREATMENT',
+        availMtr: 0,
+        availPcs: 0,
+        availMt: 0,
+        count: 0,
+      },
+      DRAW: { label: 'Draw Bench', stage_code: 'DRAW', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HEAT_TREATMENT: { label: 'Heat Treatment', stage_code: 'HEAT_TREATMENT', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      FINISHING: { label: 'Finishing Line', stage_code: 'FINISHING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
     };
 
     const resolveStageCode = (w: any): StageCode | null => {
       if (!w) return null;
-      const raw = String(w.stage_code || w.stage_name || w.stage_id || "").toUpperCase().trim();
-      if (raw === "HOLLOW_HEAT_TREATMENT" || raw.includes("HOLLOW")) return "HOLLOW_HEAT_TREATMENT";
-      if (raw === "ROLLING" || raw.includes("ROLL")) return "ROLLING";
-      if (raw === "DRAW" || raw.includes("DRAW")) return "DRAW";
-      if (raw === "HEAT_TREATMENT" || raw.includes("HEAT")) return "HEAT_TREATMENT";
-      if (raw === "FINISHING" || raw.includes("FINISH")) return "FINISHING";
+      const raw = String(w.stage_code || w.stage_name || w.stage_id || '').toUpperCase().trim();
+      if (raw === 'HOLLOW_HEAT_TREATMENT' || raw.includes('HOLLOW')) return 'HOLLOW_HEAT_TREATMENT';
+      if (raw === 'ROLLING' || raw.includes('ROLL')) return 'ROLLING';
+      if (raw === 'DRAW' || raw.includes('DRAW')) return 'DRAW';
+      if (raw === 'HEAT_TREATMENT' || raw.includes('HEAT')) return 'HEAT_TREATMENT';
+      if (raw === 'FINISHING' || raw.includes('FINISH')) return 'FINISHING';
       return null;
     };
 
-    // 1. Process factoryWip if available
     let hasFactoryData = false;
     if (factoryWip && factoryWip.length > 0) {
       factoryWip.forEach((w) => {
         const sc = resolveStageCode(w);
         if (sc && summary[sc]) {
-          // Rule 2: In pre-finishing stages (ROLLING, HOLLOW_HEAT_TREATMENT, DRAW, HEAT_TREATMENT),
-          // child work orders are bundled under the master campaign. Do not double count them!
-          if (sc !== "FINISHING" && childWoIds.has(w.work_order_id)) {
+          if (sc !== 'FINISHING' && childWoIds.has(w.work_order_id)) {
             return;
           }
 
           const mtr = Number(w.current_wip ?? w.available_mtr ?? 0);
           let pcs = Number(w.current_wip_pcs ?? w.available_pcs ?? 0);
-          const isMhStage = sc === "ROLLING" || sc === "HOLLOW_HEAT_TREATMENT" || sc === "DRAW";
+          const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW';
           const mhAvgLen = Number(w.mh_avg_length || w.mh_l1 || 0);
-          const avgLen = (isMhStage && mhAvgLen > 0) ? mhAvgLen : Number(w.avg_length || 6.0);
+          const avgLen = isMhStage && mhAvgLen > 0 ? mhAvgLen : Number(w.avg_length || 6.0);
           if (pcs === 0 && mtr > 0 && avgLen > 0) {
             pcs = Number((mtr / avgLen).toFixed(2));
           }
-          const isMhDim = sc === "ROLLING" || sc === "HOLLOW_HEAT_TREATMENT" || sc === "DRAW";
+          const isMhDim = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW';
           const od = isMhDim && w.mh_od ? Number(w.mh_od) : Number(w.od || w.size_od || 0);
           const wt = isMhDim && w.mh_wt ? Number(w.mh_wt) : Number(w.wl || w.wt || w.size_wt || 0);
           const mt = Number(w.available_mt ?? w.current_wip_mt ?? mtFromMtr(mtr, od, wt));
@@ -368,19 +357,18 @@ export default function ProductionEntryGrid() {
       });
     }
 
-    // 2. Also ensure rows in active queue contribute if factoryWip was empty or incomplete
     if (rows && rows.length > 0) {
       rows.forEach((r) => {
         if (r.work_centers_wip && r.work_centers_wip.length > 0) {
           r.work_centers_wip.forEach((w) => {
             const sc = resolveStageCode(w);
             if (sc && summary[sc]) {
-              if (sc !== "FINISHING" && childWoIds.has(r.work_order_id)) {
+              if (sc !== 'FINISHING' && childWoIds.has(r.work_order_id)) {
                 return;
               }
               const mtr = Number(w.available_mtr || 0);
               const pcs = Number(w.available_pcs || 0);
-              const isRoll = sc === "ROLLING";
+              const isRoll = sc === 'ROLLING';
               const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
               const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
               const mt = Number(w.available_mt ?? mtFromMtr(mtr, od, wt));
@@ -392,27 +380,9 @@ export default function ProductionEntryGrid() {
               }
             }
           });
-        } else {
-          const sc = resolveStageCode({ stage_code: r.stage_code || stage });
-          if (sc && summary[sc] && !hasFactoryData) {
-            if (sc !== "FINISHING" && childWoIds.has(r.work_order_id)) {
-              return;
-            }
-            const mtr = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
-            const pcs = Number(r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0);
-            const isRoll = sc === "ROLLING";
-            const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
-            const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
-            const mt = mtFromMtr(mtr, od, wt);
-            summary[sc].availMtr += mtr;
-            summary[sc].availPcs += pcs;
-            summary[sc].availMt += mt;
-            if (mtr > 0 || pcs > 0) summary[sc].count += 1;
-          }
         }
       });
 
-      // Guarantee the active selected stage card matches the active queue table exactly
       const activeSc = resolveStageCode({ stage_code: stage });
       if (activeSc && summary[activeSc]) {
         const queueTotalMtr = rows.reduce((sum, r) => {
@@ -425,7 +395,7 @@ export default function ProductionEntryGrid() {
         }, 0);
         const queueTotalMt = rows.reduce((sum, r) => {
           if (r.is_child && r.master_wo_id) return sum;
-          const isRoll = activeSc === "ROLLING";
+          const isRoll = activeSc === 'ROLLING';
           const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
           const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
           const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
@@ -442,26 +412,27 @@ export default function ProductionEntryGrid() {
     return Object.values(summary);
   }, [factoryWip, rows, stage, childWoIds, serverSummary]);
 
-  // --- Batch save (atomic) ---
+  // Batch save (atomic)
   async function save() {
-    setMessage("");
-    setError("");
+    setMessage('');
+    setError('');
 
     if (!isStageAllowed(stage)) {
-      setError(`Permission Denied: Your account (${groupConfig.name}) is assigned to ${workCenterLabel}. You can only record data for your assigned work center.`);
+      setError(
+        `Permission Denied: Your account (${groupConfig.name}) is assigned to ${workCenterLabel}. You can only record data for your assigned work center.`
+      );
       return;
     }
 
     const selected = rows.filter((r) => n(r.mtr) > 0 || n(r.pcs) > 0);
     if (!selected.length) {
-      setError("Enter Production PCS/MTR for at least one row.");
+      setError('Enter Production PCS/MTR for at least one row.');
       return;
     }
 
-    // Validate all rows
     const allErrors = selected.flatMap((r) => validateProductionEntry(r, stage));
     if (allErrors.length) {
-      setError(allErrors.map((e) => `${e.workOrder}: ${e.message}`).join(" | "));
+      setError(allErrors.map((e) => `${e.workOrder}: ${e.message}`).join(' | '));
       return;
     }
 
@@ -476,19 +447,18 @@ export default function ProductionEntryGrid() {
           input_qty: d.mtr,
           output_qty: d.mtr,
           rejection_qty: d.rejectionMtr,
-          htc_ok: stage === "ROLLING" ? d.htcMtr : 0,
+          htc_ok: stage === 'ROLLING' ? d.htcMtr : 0,
           output_pcs: d.pcs || null,
           rejection_pcs: d.rejectionPcs || null,
-          htc_ok_pcs: stage === "ROLLING" ? (d.htcPcs || null) : null,
+          htc_ok_pcs: stage === 'ROLLING' ? d.htcPcs || null : null,
           heat_lot_no: r.heat_lot_no || null,
           remarks: attachPcsToRemarks(r.remarks, d.pcs, d.rejectionPcs) || null,
         };
       });
 
-      // Use the unified production record API (supports standard & multi-WO bundling seamlessly)
-      const res = await fetch("/api/production/record", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/production/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           entries: payload,
           p_process_date: date,
@@ -497,22 +467,21 @@ export default function ProductionEntryGrid() {
 
       const resData = await res.json();
       if (!res.ok || !resData.success) {
-        throw new Error(resData.error || "Failed to save production.");
+        throw new Error(resData.error || 'Failed to save production.');
       }
 
-      setMessage("All production entries saved successfully.");
+      setMessage('All production entries saved successfully.');
       await Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()]);
     } catch (e: unknown) {
-      console.error("Full error:", e);
-      setError(e instanceof Error ? e.message : "Failed to save production.");
+      console.error('Full error:', e);
+      setError(e instanceof Error ? e.message : 'Failed to save production.');
     } finally {
       setSaving(false);
     }
   }
 
-  // --- Multi-Work Order Campaign Bundling Handlers (Rule 2) ---
+  // Multi-Work Order Campaign Bundling Handlers (Rule 2)
   const openCampaignBundling = (r: Row) => {
-    // If clicked on a child row that has a master, find the master row
     let targetRow = r;
     if (r.is_child && r.master_wo_id) {
       const foundMaster = rows.find((x) => x.work_order_id === r.master_wo_id);
@@ -521,7 +490,6 @@ export default function ProductionEntryGrid() {
 
     setBundlingCampaign(targetRow);
 
-    // If we already have bundles created in campaignBundles for this campaign, preserve them!
     const targetWoIds = new Set<string>();
     targetWoIds.add(targetRow.work_order_id);
     if (targetRow.child_work_orders && targetRow.child_work_orders.length > 0) {
@@ -532,31 +500,18 @@ export default function ProductionEntryGrid() {
     }
 
     const existingForTarget = campaignBundles.filter((b) => targetWoIds.has(b.wo_id));
-    if (existingForTarget.length > 0) {
-      return;
-    }
+    if (existingForTarget.length > 0) return;
 
-    // Initialize 1 default bundle for each work order in the campaign
-    const initial: Array<{
-      id: string;
-      wo_id: string;
-      bundle_no: string;
-      pcs: string;
-      mtr: string;
-      remarks: string;
-    }> = [];
-
-    // Master initial bundle
+    const initial: CampaignBundle[] = [];
     initial.push({
       id: `b_${Date.now()}_m`,
       wo_id: targetRow.work_order_id,
-      bundle_no: targetRow.heat_lot_no || "BDL-01",
-      pcs: targetRow.pcs || "",
-      mtr: targetRow.mtr || "",
-      remarks: "",
+      bundle_no: targetRow.heat_lot_no || 'BDL-01',
+      pcs: targetRow.pcs || '',
+      mtr: targetRow.mtr || '',
+      remarks: '',
     });
 
-    // Child initial bundles
     if (targetRow.child_work_orders && targetRow.child_work_orders.length > 0) {
       targetRow.child_work_orders.forEach((c: any, idx: number) => {
         const cId = c.work_order_id || c.id;
@@ -565,10 +520,10 @@ export default function ProductionEntryGrid() {
           initial.push({
             id: `b_${Date.now()}_c_${idx}`,
             wo_id: cId,
-            bundle_no: childInRows?.heat_lot_no || `BDL-${String(idx + 2).padStart(2, "0")}`,
-            pcs: childInRows?.pcs || "",
-            mtr: childInRows?.mtr || "",
-            remarks: "",
+            bundle_no: childInRows?.heat_lot_no || `BDL-${String(idx + 2).padStart(2, '0')}`,
+            pcs: childInRows?.pcs || '',
+            mtr: childInRows?.mtr || '',
+            remarks: '',
           });
         }
       });
@@ -583,16 +538,16 @@ export default function ProductionEntryGrid() {
       const nextNum = existingForWo.length + 1;
       const proposedNo = defaultPrefix
         ? `${defaultPrefix}/${nextNum}`
-        : `BDL-${String(prev.length + 1).padStart(2, "0")}`;
+        : `BDL-${String(prev.length + 1).padStart(2, '0')}`;
       return [
         ...prev,
         {
           id: `b_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           wo_id: woId,
           bundle_no: proposedNo,
-          pcs: "",
-          mtr: "",
-          remarks: "",
+          pcs: '',
+          mtr: '',
+          remarks: '',
         },
       ];
     });
@@ -604,9 +559,8 @@ export default function ProductionEntryGrid() {
 
   const updateBundleField = (
     bundleId: string,
-    field: "bundle_no" | "pcs" | "mtr" | "remarks",
-    val: string,
-    _avgLen?: number
+    field: 'bundle_no' | 'pcs' | 'mtr' | 'remarks',
+    val: string
   ) => {
     setCampaignBundles((prev) =>
       prev.map((b) => {
@@ -621,25 +575,21 @@ export default function ProductionEntryGrid() {
 
   const applyBundlesToGrid = () => {
     if (!bundlingCampaign) return;
-
     const validBundles = campaignBundles.filter((b) => n(b.pcs) > 0 || n(b.mtr) > 0);
     if (!validBundles.length) {
-      setError("Please enter bundling PCS or MTR for at least one bundle.");
+      setError('Please enter bundling PCS or MTR for at least one bundle.');
       return;
     }
 
-    // Update main rows in the grid with sum of bundles for each work order
     setRows((prevRows) =>
       prevRows.map((r) => {
         const bundlesForWo = validBundles.filter((b) => b.wo_id === r.work_order_id);
         if (!bundlesForWo.length) return r;
         const sumPcs = bundlesForWo.reduce((s, b) => s + n(b.pcs), 0);
         const sumMtr = bundlesForWo.reduce((s, b) => s + n(b.mtr), 0);
-        const bundleNos = bundlesForWo.map((b) => b.bundle_no).filter(Boolean).join(", ");
+        const bundleNos = bundlesForWo.map((b) => b.bundle_no).filter(Boolean).join(', ');
         const baseRemarks =
-          bundlesForWo.length > 1
-            ? `Multi-Bundle (${bundlesForWo.length} bundles: ${sumPcs} PCS)`
-            : r.remarks;
+          bundlesForWo.length > 1 ? `Multi-Bundle (${bundlesForWo.length} bundles: ${sumPcs} PCS)` : r.remarks;
         return {
           ...r,
           pcs: String(sumPcs),
@@ -650,21 +600,15 @@ export default function ProductionEntryGrid() {
       })
     );
 
-    setMessage(
-      `Bundles applied! Finishing production for each work order is now the sum of its bundles.`
-    );
+    setMessage('Bundles applied! Finishing production for each work order is now the sum of its bundles.');
     setBundlingCampaign(null);
   };
 
   const saveCampaignBundling = async () => {
     if (!bundlingCampaign) return;
-
-    const validBundles = campaignBundles.filter(
-      (b) => n(b.pcs) > 0 || n(b.mtr) > 0
-    );
-
+    const validBundles = campaignBundles.filter((b) => n(b.pcs) > 0 || n(b.mtr) > 0);
     if (!validBundles.length) {
-      setError("Please enter bundling PCS or MTR for at least one bundle.");
+      setError('Please enter bundling PCS or MTR for at least one bundle.');
       return;
     }
 
@@ -678,47 +622,9 @@ export default function ProductionEntryGrid() {
 
     if (maxAvailPcs > 0 && totalBundledPcs > maxAvailPcs) {
       setError(
-        `Total bundled pieces (${fmt(totalBundledPcs)} PCS) exceeds available finishing WIP (${fmt(
-          maxAvailPcs
-        )} PCS).`
+        `Total bundled pieces (${fmt(totalBundledPcs)} PCS) exceeds available finishing WIP (${fmt(maxAvailPcs)} PCS).`
       );
       return;
-    }
-
-    // Validate that bundling for each work order does not exceed 110% of its total order PCS (strictly Nos, not MTR)
-    const masterTotalPcs = Number(bundlingCampaign.total_order_pcs || 0);
-    const masterCapPcs = Math.round(masterTotalPcs * 1.10);
-    const masterFinishedPcs = Number(bundlingCampaign.finished_output_pcs || 0);
-
-    const sumPcsByWo = new Map<string, number>();
-    validBundles.forEach((b) => {
-      sumPcsByWo.set(b.wo_id, (sumPcsByWo.get(b.wo_id) || 0) + n(b.pcs));
-    });
-
-    for (const [woId, enteredPcs] of sumPcsByWo.entries()) {
-      if (woId === bundlingCampaign.work_order_id) {
-        if (masterTotalPcs > 0 && enteredPcs + masterFinishedPcs > masterCapPcs) {
-          setError(
-            `Work Order ${bundlingCampaign.work_order_no}: Total bundled pieces (${fmt(enteredPcs)} PCS${masterFinishedPcs > 0 ? ` + already finished ${fmt(masterFinishedPcs)} PCS` : ""}) exceeds maximum allowed 110% of Total Order Quantity (${fmt(masterTotalPcs)} PCS, max capping: ${fmt(masterCapPcs)} PCS).`
-          );
-          return;
-        }
-      } else {
-        const child = (bundlingCampaign.child_work_orders || []).find(
-          (c: any) => (c.work_order_id || c.id) === woId
-        );
-        if (child) {
-          const cTotalPcs = Number(child.total_order_pcs || child.planned_pcs || 0);
-          const cCapPcs = Math.round(cTotalPcs * 1.10);
-          const cFinishedPcs = Number(child.finished_output_pcs || 0);
-          if (cTotalPcs > 0 && enteredPcs + cFinishedPcs > cCapPcs) {
-            setError(
-              `Work Order ${child.work_order_no}: Total bundled pieces (${fmt(enteredPcs)} PCS${cFinishedPcs > 0 ? ` + already finished ${fmt(cFinishedPcs)} PCS` : ""}) exceeds maximum allowed 110% of Total Order Quantity (${fmt(cTotalPcs)} PCS, max capping: ${fmt(cCapPcs)} PCS).`
-            );
-            return;
-          }
-        }
-      }
     }
 
     setBundlingSaving(true);
@@ -728,11 +634,11 @@ export default function ProductionEntryGrid() {
           ? `Bundle ${b.bundle_no}: ${b.remarks}`
           : b.bundle_no
           ? `Bundle: ${b.bundle_no}`
-          : "Campaign Bundling";
+          : 'Campaign Bundling';
         return {
           work_order_id: b.wo_id,
           route_id: bundlingCampaign.route_id,
-          stage_code: "FINISHING",
+          stage_code: 'FINISHING',
           input_qty: n(b.mtr),
           output_qty: n(b.mtr),
           rejection_qty: 0,
@@ -743,9 +649,9 @@ export default function ProductionEntryGrid() {
         };
       });
 
-      const res = await fetch("/api/production/record", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/production/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           entries: payload,
           p_process_date: date,
@@ -754,17 +660,16 @@ export default function ProductionEntryGrid() {
 
       const resData = await res.json();
       if (!res.ok || !resData.success) {
-        throw new Error(resData.error || "Failed to record campaign bundling.");
+        throw new Error(resData.error || 'Failed to record campaign bundling.');
       }
 
-      // Also update main grid rows with the sum of all bundles
       setRows((prevRows) =>
         prevRows.map((r) => {
           const bundlesForWo = validBundles.filter((b) => b.wo_id === r.work_order_id);
           if (!bundlesForWo.length) return r;
           const sumPcs = bundlesForWo.reduce((s, b) => s + n(b.pcs), 0);
           const sumMtr = bundlesForWo.reduce((s, b) => s + n(b.mtr), 0);
-          const bundleNos = bundlesForWo.map((b) => b.bundle_no).filter(Boolean).join(", ");
+          const bundleNos = bundlesForWo.map((b) => b.bundle_no).filter(Boolean).join(', ');
           return {
             ...r,
             pcs: String(sumPcs),
@@ -779,8 +684,8 @@ export default function ProductionEntryGrid() {
       setBundlingCampaign(null);
       await Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()]);
     } catch (e: unknown) {
-      console.error("Bundling error:", e);
-      setError(e instanceof Error ? e.message : "Failed to record campaign bundling.");
+      console.error('Bundling error:', e);
+      setError(e instanceof Error ? e.message : 'Failed to record campaign bundling.');
     } finally {
       setBundlingSaving(false);
     }
@@ -788,1583 +693,238 @@ export default function ProductionEntryGrid() {
 
   const getEntryAvgLength = (entry: ProductionEntry | null) => {
     if (!entry) return 6.0;
-    const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
+    const isMhStage = entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
     const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no || r.work_order_id === entry.work_order_id);
     const mhL1 = Number(entry.mh_l1 || rowMatch?.mh_l1 || 0);
     const mhL2 = Number(entry.mh_l2 || rowMatch?.mh_l2 || 0);
-    const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || 0);
+    const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || 0;
     const mhLen = Number(entry.mh_avg_length || rowMatch?.mh_avg_length || computedMhAvg || 0);
     const woLen = Number(
       entry.avg_length ||
-      rowMatch?.avg_length ||
-      (Number(rowMatch?.total_order_mtr || 0) > 0 && Number(rowMatch?.total_order_pcs || 0) > 0
-        ? Number(rowMatch?.total_order_mtr) / Number(rowMatch?.total_order_pcs)
-        : 6.0)
+        rowMatch?.avg_length ||
+        (Number(rowMatch?.total_order_mtr || 0) > 0 && Number(rowMatch?.total_order_pcs || 0) > 0
+          ? Number(rowMatch?.total_order_mtr) / Number(rowMatch?.total_order_pcs)
+          : 6.0)
     );
     return isMhStage && mhLen > 0 ? mhLen : woLen > 0 ? woLen : 6.0;
   };
 
-  // --- Edit handlers with bidirectional PCS <-> MTR ---
-  function openEdit(entry: ProductionEntry) {
-    setEditing(entry);
-    const avg = getEntryAvgLength(entry);
-    const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
-    const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(entry.remarks);
-    const effOutPcs = parsedPcs != null
-      ? parsedPcs
-      : isMhStage && avg > 0
-      ? Math.round(Number(entry.output_mtr || 0) / avg)
-      : (Number(entry.output_pcs || 0) > 0 ? Math.round(Number(entry.output_pcs)) : (avg > 0 && Number(entry.output_mtr || 0) > 0 ? Math.round(Number(entry.output_mtr) / avg) : ""));
-    const effRejPcs = parsedRejPcs != null
-      ? parsedRejPcs
-      : isMhStage && avg > 0
-      ? Math.round(Number(entry.rejection_mtr || 0) / avg)
-      : (Number(entry.rejection_pcs || 0) > 0 ? Math.round(Number(entry.rejection_pcs)) : (avg > 0 && Number(entry.rejection_mtr || 0) > 0 ? Math.round(Number(entry.rejection_mtr) / avg) : ""));
-    const effHtcPcs = isMhStage && avg > 0
-      ? Math.round(Number(entry.htc_ok_mtr || 0) / avg)
-      : (Number(entry.htc_ok_pcs || 0) > 0 ? Math.round(Number(entry.htc_ok_pcs)) : (avg > 0 && Number(entry.htc_ok_mtr || 0) > 0 ? Math.round(Number(entry.htc_ok_mtr) / avg) : ""));
-
-    setEditDate(entry.process_date.slice(0, 10));
-    setEditMtr(String(entry.output_mtr || ""));
-    setEditPcs(String(effOutPcs));
-    setEditRejectionMtr(String(entry.rejection_mtr || ""));
-    setEditRejectionPcs(String(effRejPcs));
-    setEditHtcMtr(String(entry.htc_ok_mtr || ""));
-    setEditHtcPcs(String(effHtcPcs));
-    setEditHeatLot(entry.heat_lot_no || "");
-    setEditRemarks(cleanRemarks || entry.remarks || "");
-  }
-
-  function changeEditPcs(value: string) {
-    setEditPcs(value);
-    if (editing?.stage_code === "FINISHING") return;
-    const avg = getEntryAvgLength(editing);
-    if (value === "") {
-      setEditMtr("");
-    } else {
-      setEditMtr(String(mtrFromPcs(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
-    }
-  }
-
-  function changeEditMtr(value: string) {
-    setEditMtr(value);
-  }
-
-  function changeEditRejectionPcs(value: string) {
-    setEditRejectionPcs(value);
-    if (editing?.stage_code === "FINISHING") return;
-    const avg = getEntryAvgLength(editing);
-    if (value === "") {
-      setEditRejectionMtr("");
-    } else {
-      setEditRejectionMtr(String(mtrFromPcs(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
-    }
-  }
-
-  function changeEditRejectionMtr(value: string) {
-    setEditRejectionMtr(value);
-  }
-
-  function changeEditHtcPcs(value: string) {
-    setEditHtcPcs(value);
-    const avg = getEntryAvgLength(editing);
-    if (value === "") {
-      setEditHtcMtr("");
-    } else {
-      setEditHtcMtr(String(mtrFromPcs(n(value), avg).toFixed(3).replace(/\.?0+$/, "")));
-    }
-  }
-
-  function changeEditHtcMtr(value: string) {
-    setEditHtcMtr(value);
-  }
-
-  async function updateEntry() {
+  // Edit handler execution
+  async function handleUpdateEntry(payload: {
+    editDate: string;
+    editMtr: number;
+    editPcs: string;
+    editRejectionMtr: number;
+    editRejectionPcs: string;
+    editHtcMtr: number;
+    editHtcPcs: string;
+    editHeatLot: string;
+    editRemarks: string;
+  }) {
     if (!editing) return;
-    setEditSaving(true);
-    setError("");
-    setMessage("");
+    const finalRemarks = attachPcsToRemarks(payload.editRemarks, n(payload.editPcs), n(payload.editRejectionPcs));
 
-    const editCheck = canEditForStage(editing.stage_code);
-    if (!editCheck.allowed) {
-      setError(editCheck.reason || `Permission Denied: Your user group cannot modify entries for stage ${editing.stage_code}.`);
-      setEditSaving(false);
-      return;
-    }
+    const { error: rpcError } = await supabase.rpc('update_production_entry', {
+      p_production_id: editing.id,
+      p_process_date: payload.editDate,
+      p_output_qty: payload.editMtr,
+      p_rejection_qty: payload.editRejectionMtr,
+      p_htc_ok: editing.stage_code === 'ROLLING' ? payload.editHtcMtr : 0,
+      p_heat_lot_no: payload.editHeatLot.trim() || null,
+      p_remarks: finalRemarks.trim() || null,
+    });
+    if (rpcError) throw rpcError;
 
-    const avg = getEntryAvgLength(editing);
-    const isFinishing = editing.stage_code === "FINISHING";
-    const mtr = isFinishing ? n(editMtr) : (editPcs.trim() !== "" ? mtrFromPcs(n(editPcs), avg) : n(editMtr));
-    const rejection = isFinishing ? n(editRejectionMtr) : (editRejectionPcs.trim() !== "" ? mtrFromPcs(n(editRejectionPcs), avg) : n(editRejectionMtr));
-    const htc = editHtcPcs.trim() !== "" ? mtrFromPcs(n(editHtcPcs), avg) : n(editHtcMtr);
-    const finalRemarks = attachPcsToRemarks(editRemarks, n(editPcs), n(editRejectionPcs));
-
-    if (!editDate) {
-      setError("Production date is required.");
-      setEditSaving(false);
-      return;
-    }
-    if (mtr <= 0) {
-      setError("Production quantity (PCS / MTR) must be greater than zero.");
-      setEditSaving(false);
-      return;
-    }
-    if (rejection < 0 || rejection > mtr + 0.001) {
-      setError("Rejection cannot exceed production quantity.");
-      setEditSaving(false);
-      return;
-    }
-    // Heat Lot No is optional / can be null
-    if (editing.stage_code === "ROLLING" && htc > (mtr - rejection) + 0.001) {
-      setError("HTC OK cannot exceed Net Rolling output (Production - Rejection).");
-      setEditSaving(false);
-      return;
-    }
-    if (editing.stage_code !== "ROLLING" && htc !== 0) {
-      setError("HTC OK can only be entered at Rolling.");
-      setEditSaving(false);
-      return;
-    }
-
-    try {
-      const { error: rpcError } = await supabase.rpc("update_production_entry", {
-        p_production_id: editing.id,
-        p_process_date: editDate,
-        p_output_qty: mtr,
-        p_rejection_qty: rejection,
-        p_htc_ok: editing.stage_code === "ROLLING" ? htc : 0,
-        p_heat_lot_no: editHeatLot.trim() || null,
-        p_remarks: finalRemarks.trim() || null,
-      });
-      if (rpcError) throw rpcError;
-
-      setMessage("Production entry updated successfully.");
-      setEditing(null);
-      await Promise.all([reloadQueue(), reloadHistory()]);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to update.");
-    } finally {
-      setEditSaving(false);
-    }
+    setMessage('Production entry updated successfully.');
+    setEditing(null);
+    await Promise.all([reloadQueue(), reloadHistory()]);
   }
 
-  // --- Delete handler ---
-  async function deleteEntry() {
+  // Delete handler execution
+  async function handleDeleteEntry() {
     if (!deleteId) return;
     setDeleteBusy(true);
-    setError("");
-    setMessage("");
+    setError('');
+    setMessage('');
 
     const targetEntry = entries.find((e) => e.id === deleteId);
     if (targetEntry) {
       const delCheck = canDeleteForStage(targetEntry.stage_code);
       if (!delCheck.allowed) {
-        setError(delCheck.reason || "Permission Denied: Unauthorized to delete this entry.");
+        setError(delCheck.reason || 'Permission Denied: Unauthorized to delete this entry.');
         setDeleteBusy(false);
         return;
       }
     }
 
     try {
-      const { error: rpcError } = await supabase.rpc("delete_production_entry", {
+      const { error: rpcError } = await supabase.rpc('delete_production_entry', {
         p_production_id: deleteId,
       });
       if (rpcError) throw rpcError;
 
-      // Reconcile work order status if no remaining production logs exist for this order
       const targetWoNo = targetEntry?.work_order_no;
       if (targetWoNo) {
         const { data: woData } = await supabase
-          .from("work_orders")
-          .select("id")
-          .eq("work_order_no", targetWoNo)
+          .from('work_orders')
+          .select('id')
+          .eq('work_order_no', targetWoNo)
           .maybeSingle();
 
         const woId = targetEntry?.work_order_id || woData?.id;
         if (woId) {
           const { data: remainingLogs } = await supabase
-            .from("production_logs")
-            .select("id")
-            .eq("work_order_id", woId)
+            .from('production_logs')
+            .select('id')
+            .eq('work_order_id', woId)
             .limit(1);
 
           if (!remainingLogs || remainingLogs.length === 0) {
             const { data: plans } = await supabase
-              .from("rolling_plans")
-              .select("id")
-              .eq("work_order_id", woId)
+              .from('rolling_plans')
+              .select('id')
+              .eq('work_order_id', woId)
               .limit(1);
 
-            const newStatus = plans && plans.length > 0 ? "Scheduled" : "Pending Plan";
-            await supabase
-              .from("work_orders")
-              .update({ status: newStatus })
-              .eq("id", woId);
+            const newStatus = plans && plans.length > 0 ? 'Scheduled' : 'Pending Plan';
+            await supabase.from('work_orders').update({ status: newStatus }).eq('id', woId);
           }
         }
       }
 
       setDeleteId(null);
-      setMessage("Production entry deleted successfully.");
+      setMessage('Production entry deleted successfully.');
       await Promise.all([reloadQueue(), reloadHistory()]);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to delete.");
+      setError(e instanceof Error ? e.message : 'Failed to delete.');
     } finally {
       setDeleteBusy(false);
     }
   }
 
+  const targetDeleteEntry = deleteId ? entries.find((e) => e.id === deleteId) || null : null;
+  const targetDeleteCheck = targetDeleteEntry
+    ? canDeleteForStage(targetDeleteEntry.stage_code)
+    : { allowed: false, reason: 'Entry not found' };
+
   return (
     <div className="space-y-4">
-      {/* Breadcrumb & Top Header */}
-      <div className="space-y-1">
-        <div className="text-xs text-slate-500 font-medium">
-          <span>Production Management</span>
-          <span className="mx-1.5 text-slate-400">&gt;</span>
-          <span>Supply Chain</span>
-          <span className="mx-1.5 text-slate-400">&gt;</span>
-          <span className="font-bold text-slate-700">Work Center Execution</span>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-1">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-            Production Entry & WIP Tracking
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center rounded-lg border border-slate-300 bg-white shadow-2xs">
-              <select
-                value={stage}
-                onChange={(e) => setStage(e.target.value as StageCode)}
-                className="h-9 rounded-lg border-0 bg-transparent px-3 text-sm font-semibold text-slate-800 focus:ring-0 cursor-pointer"
-              >
-                {STAGES.map((s) => (
-                  <option key={s.code} value={s.code}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()])}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
-            >
-              <RefreshCw size={14} className={queueLoading || historyLoading ? "animate-spin text-sky-600" : "text-slate-500"} />
-              <span>Refresh</span>
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Top Toolbar */}
+      <ProductionToolbar
+        stage={stage}
+        setStage={setStage}
+        date={date}
+        setDate={setDate}
+        isAllowed={isAllowed}
+        ordersCount={filteredRows.length}
+        loading={queueLoading || historyLoading}
+        onRefresh={() => void Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()])}
+        allExpanded={rows.length > 0 && rows.every((r) => expandedRows[`${r.work_order_id}|${r.route_id}`])}
+        onToggleAllRows={toggleAllRows}
+      />
 
       {/* Messages */}
       {message && (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm font-medium text-emerald-800 shadow-xs">
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-xs sm:text-sm font-medium text-emerald-800 shadow-2xs animate-in fade-in">
           <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-          {message}
+          <span>{message}</span>
         </div>
       )}
       {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50/80 px-4 py-3 text-sm font-medium text-red-800 shadow-xs">
-          <AlertTriangle size={16} className="mt-0.5 text-red-600 shrink-0" />
+        <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-xs sm:text-sm font-medium text-rose-800 shadow-2xs animate-in fade-in">
+          <AlertTriangle size={16} className="mt-0.5 text-rose-600 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {/* Work Center WIP Summary Strip */}
-      <WipSummaryCards
-        workCenterSummary={workCenterSummary}
-        stage={stage}
-        setStage={setStage}
-      />
+      <WipSummaryCards workCenterSummary={workCenterSummary} stage={stage} setStage={setStage} />
 
       {/* Form Access & Permissions Banner */}
       <FormAccessBanner access={stageFormAccess} className="mb-2" />
 
-      {/* Shift Process Date & Queue Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-        <div className="flex flex-wrap items-center gap-8">
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-              Shift Process Date
-            </label>
-            <input
-              type="date"
-              value={date}
-              disabled={!isAllowed}
-              onChange={(e) => setDate(e.target.value)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-2xs focus:border-sky-500 focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-            />
-          </div>
-          <div className="border-l border-slate-200 pl-8">
-            <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-              Orders in Queue
-            </span>
-            <span className="text-sm font-bold text-sky-600">
-              {filteredRows.length} Records
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleAllRows}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-800 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
-          >
-            {rows.every((r) => expandedRows[`${r.work_order_id}|${r.route_id}`])
-              ? "Collapse WIP Flows"
-              : "Expand WIP Flows"}
-          </button>
-        </div>
-      </div>
-
-      {/* Queue Entry Grid Table */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-white px-5 py-3.5">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">
-              {STAGES.find((x) => x.code === stage)?.label || stage} Queue
-            </h2>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Quick Filter Search Input */}
-            <div className="relative">
-              <input
-                type="text"
-                value={woFilter}
-                onChange={(e) => setWoFilter(e.target.value)}
-                placeholder="Quick filter..."
-                className="h-8 w-48 sm:w-60 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 placeholder-slate-400 shadow-2xs focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
-              />
-              {woFilter && (
-                <button
-                  type="button"
-                  onClick={() => setWoFilter("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
-                  title="Clear filter"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-
-            {(stage === "DRAW" || stage === "HOLLOW_HEAT_TREATMENT" || stage === "HEAT_TREATMENT") && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
-                <Crown size={12} /> Master Consolidated
-              </span>
-            )}
-            {stage === "FINISHING" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-200/80 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
-                <Package size={12} /> Finishing & Bundling
-              </span>
-            )}
-          </div>
-        </div>
-
-        {queueLoading ? (
-          <div className="p-8 text-center text-sm text-slate-500">Loading work order production queue...</div>
-        ) : rows.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            {stage === "ROLLING"
-              ? "No issued rolling plans available in queue. Only officially issued rolling plans appear in Rolling Production."
-              : `No WIP available in queue for ${STAGES.find((x) => x.code === stage)?.label}. Record production in preceding stages first.`}
-          </div>
-        ) : filteredRows.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            <p>No work orders match filter &ldquo;{woFilter}&rdquo; in {STAGES.find((x) => x.code === stage)?.label} queue.</p>
-            <button
-              type="button"
-              onClick={() => setWoFilter("")}
-              className="mt-2 text-xs font-semibold text-sky-600 hover:underline cursor-pointer"
-            >
-              Clear filter
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead className="border-b border-slate-200 bg-slate-50 text-slate-700 font-semibold">
-                <tr>
-                  <th className="py-2.5 px-4 text-left font-bold text-slate-700">Order Information</th>
-                  <th className="py-2.5 px-3 text-center font-bold text-slate-700">Route</th>
-                  <th className="py-2.5 px-4 text-left font-bold text-slate-700">Balance</th>
-                  <th className="py-2.5 px-4 text-center font-bold text-slate-800 bg-[#e0f2fe] border-x border-sky-100">Production*</th>
-                  <th className="py-2.5 px-4 text-center font-bold text-slate-800 bg-[#ffe4e6] border-r border-rose-100">Rejection</th>
-                  {stage === "ROLLING" && (
-                    <th className="py-2.5 px-4 text-center font-bold text-slate-800 bg-[#d1fae5] border-r border-emerald-100">HTC OK</th>
-                  )}
-                  {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
-                    <th className="py-2.5 px-3 text-left font-bold text-slate-700">Heat Lot No.</th>
-                  )}
-                  <th className="py-2.5 px-4 text-center font-bold text-slate-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredRows.map((r) => {
-                  const key = `${r.work_order_id}|${r.route_id}`;
-                  const isExpanded = !!expandedRows[key];
-                  const d = calc({ ...r, stage_code: stage });
-                  const isRollingStage = stage === "ROLLING";
-                  const stageOd = isRollingStage && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
-                  const stageWt = isRollingStage && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
-
-                  const availMtr = n(r.balance_to_make_mtr);
-                  const effAvg = d.avg > 0 ? d.avg : (n(r.avg_length) || 6);
-                  const availPcs = isRollingStage && effAvg > 0
-                    ? Math.round(availMtr / effAvg)
-                    : (n(r.balance_to_make_pcs) > 0 ? Math.round(n(r.balance_to_make_pcs)) : (effAvg > 0 ? Math.round(availMtr / effAvg) : 0));
-                  const availMt = n(r.balance_to_make_mt) > 0 ? n(r.balance_to_make_mt) : mtFromMtr(availMtr, stageOd, stageWt);
-
-                  const maxAllowed = isRollingStage
-                    ? 0
-                    : n(r.max_allowed_mtr) > 0
-                    ? n(r.max_allowed_mtr)
-                    : availMtr;
-                  const maxAllowedPcs = isRollingStage
-                    ? 0
-                    : n(r.max_allowed_pcs) > 0
-                    ? n(r.max_allowed_pcs)
-                    : effAvg > 0
-                    ? Math.round(maxAllowed / effAvg)
-                    : 0;
-
-                  return (
-                    <tr key={key} className="hover:bg-slate-50/50 transition-colors">
-                      {/* Order Information */}
-                      <td className="py-3 px-4 align-middle">
-                        <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
-                          <span className="text-sm font-extrabold">{r.work_order_no}</span>
-                          {isRollingStage && (r.master_plan_no || r.plan_no) && (
-                            <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 text-sky-800 px-1.5 py-0.5 text-[10px] font-bold uppercase">
-                              PLAN: {r.master_plan_no || r.plan_no}
-                              {Number(r.revision_no || 0) > 0 ? ` (R${String(r.revision_no)})` : ''}
-                            </span>
-                          )}
-                          {isRollingStage && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.2 text-[9px] font-bold uppercase">
-                              ISSUED
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="text-xs text-slate-600 font-medium mt-0.5 truncate max-w-[220px]">
-                          {r.customer_name || "—"}
-                        </div>
-                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                          {r.od ? `${r.od} × ${r.wl ?? "—"} mm` : "—"} | Avg: {fmt(d.avg, "m")}
-                        </div>
-                      </td>
-
-                      {/* Route */}
-                      <td className="py-3 px-3 align-middle text-center">
-                        <span className="inline-flex rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold font-mono text-slate-700">
-                          {r.route_code}
-                        </span>
-                      </td>
-
-                      {/* Balance */}
-                      <td className="py-3 px-4 align-middle">
-                        <div className="font-extrabold text-emerald-700 font-mono text-xs">
-                          {fmt(availPcs)} PCS / {fmt(availMtr, " MTR")}
-                        </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
-                          {isRollingStage
-                            ? `Plan: ${fmt(r.planned_pcs || r.campaign_total_pcs || 0)} PCS`
-                            : `Avail: ${fmt(availPcs)} PCS`}
-                        </div>
-                      </td>
-
-                      {/* Production Inputs (PCS & MTR) */}
-                      <td className="py-3 px-4 align-middle bg-[#f0f9ff]/50 border-x border-sky-100">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            placeholder="PCS"
-                            disabled={!isAllowed}
-                            value={r.pcs}
-                            onChange={(e) => updateRow(key, "pcs", e.target.value)}
-                            className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-sky-500 focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-400"
-                          />
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            placeholder="MTR"
-                            disabled={!isAllowed}
-                            value={r.mtr}
-                            onChange={(e) => updateRow(key, "mtr", e.target.value)}
-                            className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-sky-500 focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-400"
-                          />
-                        </div>
-                      </td>
-
-                      {/* Rejection Inputs (PCS & MTR) */}
-                      <td className="py-3 px-4 align-middle bg-[#fff1f2]/50 border-r border-rose-100">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            placeholder="PCS"
-                            disabled={!isAllowed}
-                            value={r.rejection_pcs}
-                            onChange={(e) => updateRow(key, "rejection_pcs", e.target.value)}
-                            className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-slate-100 disabled:text-slate-400"
-                          />
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            placeholder="MTR"
-                            disabled={!isAllowed}
-                            value={r.rejection_mtr}
-                            onChange={(e) => updateRow(key, "rejection_mtr", e.target.value)}
-                            className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-slate-100 disabled:text-slate-400"
-                          />
-                        </div>
-                      </td>
-
-                      {/* HTC OK Inputs (Rolling Stage only) */}
-                      {stage === "ROLLING" && (
-                        <td className="py-3 px-4 align-middle bg-[#ecfdf5]/50 border-r border-emerald-100">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <input
-                              type="number"
-                              min="0"
-                              step="any"
-                              placeholder="PCS"
-                              disabled={!isAllowed}
-                              value={r.htc_ok_pcs}
-                              onChange={(e) => updateRow(key, "htc_ok_pcs", e.target.value)}
-                              className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400"
-                            />
-                          </div>
-                        </td>
-                      )}
-
-                      {/* Heat Lot No. (Heat Treatment only) */}
-                      {(stage === "HEAT_TREATMENT" || stage === "HOLLOW_HEAT_TREATMENT") && (
-                        <td className="py-3 px-3 align-middle">
-                          <input
-                            type="text"
-                            placeholder="e.g. HT-8842"
-                            disabled={!isAllowed}
-                            value={r.heat_lot_no}
-                            onChange={(e) => updateRow(key, "heat_lot_no", e.target.value)}
-                            className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-900 shadow-2xs focus:border-sky-500 focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-400"
-                          />
-                        </td>
-                      )}
-
-                      {/* Actions */}
-                      <td className="py-3 px-4 align-middle text-center">
-                        <button
-                          type="button"
-                          onClick={() => toggleRowExpansion(key)}
-                          className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-800 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
-                        >
-                          Notes
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Expandable Work Center WIP Breakdown Pipeline for expanded rows */}
-        {rows.some((r) => expandedRows[`${r.work_order_id}|${r.route_id}`]) && (
-          <div className="border-t border-slate-200 bg-slate-50/50 p-4 space-y-4">
-            <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-blue-600" />
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">
-                Work Center WIP Breakdown Across Full Process Route
-              </h3>
-            </div>
-
-            {rows
-              .filter((r) => expandedRows[`${r.work_order_id}|${r.route_id}`])
-              .map((r) => {
-                const key = `${r.work_order_id}|${r.route_id}`;
-                return (
-                  <div key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 text-sm">{r.work_order_no}</span>
-                        <span className="text-sm text-slate-500 font-mono">({r.customer_name || "Direct"})</span>
-                        <span className="rounded bg-blue-50 border border-blue-200 px-2.5 py-1 text-xs font-bold text-blue-700">
-                          Route: {r.route_code}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleRowExpansion(key)}
-                        className="text-sm font-semibold text-slate-500 hover:text-slate-900"
-                      >
-                        Close Breakdown
-                      </button>
-                    </div>
-
-                    {/* Flow steps */}
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                      {r.work_centers_wip?.map((w, idx) => {
-                        const isCurrent = w.stage_code === stage;
-                        const isRoll = w.stage_code === "ROLLING";
-                        const stageOd = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
-                        const stageWt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
-
-                        const availMt = w.available_mt ?? mtFromMtr(w.available_mtr, stageOd, stageWt);
-                        const grossMt = w.gross_output_mt ?? mtFromMtr(w.gross_output_mtr, stageOd, stageWt);
-                        const rejMt = w.rejection_mt ?? mtFromMtr(w.rejection_mtr, stageOd, stageWt);
-                        const netMt = w.net_output_mt ?? mtFromMtr(w.net_output_mtr, stageOd, stageWt);
-                        const htcMt = w.htc_ok_mt ?? mtFromMtr(w.htc_ok_mtr || 0, stageOd, stageWt);
-
-                        return (
-                          <div
-                            key={w.stage_code}
-                            className={`rounded-lg border p-3 space-y-2 relative transition-all ${
-                              isCurrent
-                                ? "border-blue-500 bg-blue-50/40 ring-1 ring-blue-500 shadow-sm"
-                                : "border-slate-200 bg-slate-50/30"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between border-b border-slate-200/60 pb-1.5">
-                              <span className="text-sm font-bold text-slate-800">
-                                {idx + 1}. {w.stage_name}
-                              </span>
-                              {isCurrent && (
-                                <span className="rounded-full bg-blue-600 px-2 py-0.2 text-[11px] font-bold text-white">
-                                  Current
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="space-y-1 text-sm">
-                              <div className="flex justify-between items-baseline">
-                                <span className="text-slate-500 text-sm">Available WIP:</span>
-                                <span className="font-bold font-mono text-slate-900 text-sm">
-                                  {fmt(w.available_pcs)} PCS ({fmt(w.available_mtr, "m")} · <span className="text-blue-700">{fmt(availMt, " MT")}</span>)
-                                </span>
-                              </div>
-                              <div className="flex justify-between items-baseline">
-                                <span className="text-slate-500 text-sm">Gross Output:</span>
-                                <span className="font-semibold font-mono text-slate-800 text-sm">
-                                  {fmt(w.gross_output_pcs)} PCS ({fmt(w.gross_output_mtr, "m")} · <span className="text-slate-600">{fmt(grossMt, " MT")}</span>)
-                                </span>
-                              </div>
-                              <div className="flex justify-between items-baseline">
-                                <span className="text-slate-500 text-sm">Rejection:</span>
-                                <span className="font-semibold font-mono text-rose-600 text-sm">
-                                  {fmt(w.rejection_pcs)} PCS ({fmt(w.rejection_mtr, "m")} · <span className="text-rose-600">{fmt(rejMt, " MT")}</span>)
-                                </span>
-                              </div>
-                              <div className="flex justify-between items-baseline border-t border-slate-100 pt-1">
-                                <span className="text-slate-700 font-semibold text-sm">Net Output:</span>
-                                <span className="font-bold font-mono text-emerald-700 text-sm">
-                                  {fmt(w.net_output_pcs)} PCS ({fmt(w.net_output_mtr, "m")} · <span className="text-emerald-700">{fmt(netMt, " MT")}</span>)
-                                </span>
-                              </div>
-                              {w.stage_code === "ROLLING" && (
-                                <div className="flex justify-between items-baseline border-t border-slate-100 pt-1">
-                                  <span className="text-indigo-700 font-semibold text-sm">HTC OK:</span>
-                                  <span className="font-bold font-mono text-indigo-700 text-sm">
-                                    {fmt(w.htc_ok_pcs)} PCS ({fmt(w.htc_ok_mtr, "m")} · <span className="text-indigo-700">{fmt(htcMt, " MT")}</span>)
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        )}
-
-        {/* Batch Save Action Footer */}
-        <div className="flex items-center justify-between border-t border-slate-200/80 bg-slate-50/70 p-3 sm:p-4">
-          <div className="text-sm text-slate-600">
-            {(!isStageAllowed(stage) || user?.role === 'auditor') && (
-              <span className="inline-flex items-center gap-1.5 text-amber-800 font-medium bg-amber-50 border border-amber-200/80 rounded-lg px-2.5 py-1.5 text-xs">
-                <Lock size={12} />
-                Entry disabled: Active role ({roleTitle}) does not have write permissions for {STAGES.find(s => s.code === stage)?.label}.
-              </span>
-            )}
-          </div>
-
-          <button
-            type="button"
-            disabled={saving || queueLoading || user?.role === 'auditor' || !isStageAllowed(stage)}
-            onClick={save}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-xs hover:from-blue-700 hover:to-indigo-700 active:scale-[0.98] transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? (
-              <>
-                <RefreshCw size={15} className="animate-spin" />
-                <span>Saving Entries...</span>
-              </>
-            ) : (
-              <span>Save Production Entries</span>
-            )}
-          </button>
-        </div>
-      </div>
+      {/* Main Queue Entry Grid */}
+      <ProductionQueueTable
+        stage={stage}
+        rows={rows}
+        filteredRows={filteredRows}
+        woFilter={woFilter}
+        setWoFilter={setWoFilter}
+        expandedRows={expandedRows}
+        onToggleRowExpansion={toggleRowExpansion}
+        onUpdateRow={updateRow}
+        onOpenBundling={openCampaignBundling}
+        isAllowed={isAllowed}
+        roleTitle={roleTitle}
+        isAuditor={user?.role === 'auditor'}
+        saving={saving}
+        queueLoading={queueLoading}
+        onSave={save}
+      />
 
       {/* Production History Table */}
-      <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
-        <div className="border-b border-slate-100 p-4 bg-slate-50/70">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Search size={15} className="text-slate-500" />
-              <h2 className="text-sm font-bold text-slate-900">Production History</h2>
-            </div>
-            <span className="text-sm font-semibold text-slate-500 font-mono">
-              {entries.length} Logged Record{entries.length === 1 ? "" : "s"}
-            </span>
-          </div>
-
-          <div className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-5 text-sm">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search WO, customer, grade..."
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-            <select
-              value={entryStage}
-              onChange={(e) => setEntryStage(e.target.value)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">All Stages</option>
-              {STAGES.map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={entryRoute}
-              onChange={(e) => setEntryRoute(e.target.value)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">All Routes</option>
-              {routes.map((route) => (
-                <option key={route} value={route}>
-                  {route}
-                </option>
-              ))}
-            </select>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-
-        {historyLoading ? (
-          <div className="p-8 text-center text-sm text-slate-500">Loading production history...</div>
-        ) : entries.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">No production entries match the criteria.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-slate-200 bg-slate-100/70 text-slate-700">
-                <tr>
-                  <th className="py-2.5 px-3 text-left font-semibold">Date</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">Work Order</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">Route & Stage</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Production (PCS & MTR)</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Rejection (PCS & MTR)</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">HTC OK</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">Heat Lot</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">Remarks</th>
-                  <th className="py-2.5 px-3 text-center font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {entries.map((entry) => {
-                  const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
-                  const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no);
-                  const mhLen = Number(entry.mh_avg_length || entry.mh_l1 || rowMatch?.mh_avg_length || rowMatch?.mh_l1 || 0);
-                  const woLen = Number(
-                    entry.avg_length ||
-                    rowMatch?.avg_length ||
-                    (Number(rowMatch?.total_order_mtr || 0) > 0 && Number(rowMatch?.total_order_pcs || 0) > 0
-                      ? Number(rowMatch?.total_order_mtr) / Number(rowMatch?.total_order_pcs)
-                      : 6.0)
-                  );
-                  const effectiveLen = (isMhStage && mhLen > 0) ? mhLen : (woLen > 0 ? woLen : 6.0);
-
-                  const dispOutPcs = Math.round(
-                    isMhStage && mhLen > 0
-                      ? (Number(entry.output_mtr || 0) / mhLen)
-                      : (Number(entry.output_pcs || 0) > 0
-                          ? Number(entry.output_pcs)
-                          : (effectiveLen > 0 && Number(entry.output_mtr || 0) > 0 ? Number(entry.output_mtr) / effectiveLen : 0))
-                  );
-
-                  const dispRejPcs = Math.round(
-                    isMhStage && mhLen > 0
-                      ? (Number(entry.rejection_mtr || 0) / mhLen)
-                      : (Number(entry.rejection_pcs || 0) > 0
-                          ? Number(entry.rejection_pcs)
-                          : (effectiveLen > 0 && Number(entry.rejection_mtr || 0) > 0 ? Number(entry.rejection_mtr) / effectiveLen : 0))
-                  );
-
-                  const dispHtcOkPcs = Math.round(
-                    isMhStage && mhLen > 0
-                      ? (Number(entry.htc_ok_mtr || 0) / mhLen)
-                      : (Number(entry.htc_ok_pcs || 0) > 0
-                          ? Number(entry.htc_ok_pcs)
-                          : (effectiveLen > 0 && Number(entry.htc_ok_mtr || 0) > 0 ? Number(entry.htc_ok_mtr) / effectiveLen : 0))
-                  );
-
-                  return (
-                    <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-2.5 px-3 font-mono text-slate-700">{entry.process_date}</td>
-                      <td className="py-2.5 px-3 font-bold text-slate-900">
-                        {entry.work_order_no}
-                        <div className="text-xs font-normal text-slate-500 truncate max-w-[130px]">
-                          {entry.customer_name || "—"}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className="rounded bg-slate-100 border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-800">
-                          {entry.route_code}
-                        </span>
-                        <div className="text-sm text-slate-600 font-medium mt-0.5">
-                          {STAGES.find((s) => s.code === entry.stage_code)?.label || entry.stage_code}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono">
-                        <div className="font-bold text-slate-900">{fmt(dispOutPcs)} PCS</div>
-                        <div className="text-xs text-slate-500">{fmt(entry.output_mtr, " MTR")}</div>
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono">
-                        <div className="font-bold text-rose-600">{fmt(dispRejPcs)} PCS</div>
-                        <div className="text-xs text-slate-500">{fmt(entry.rejection_mtr, " MTR")}</div>
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-emerald-700">
-                        {entry.htc_ok_mtr > 0 || dispHtcOkPcs > 0 ? (
-                          <>
-                            <div className="font-bold">{fmt(dispHtcOkPcs)} PCS</div>
-                            <div className="text-xs text-slate-500">{fmt(entry.htc_ok_mtr, " MTR")}</div>
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-800">{entry.heat_lot_no || "—"}</td>
-                      <td className="py-2.5 px-3 text-slate-600 max-w-[180px] truncate">{entry.remarks || "—"}</td>
-                    <td className="py-2.5 px-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {(() => {
-                          const editCheck = canEditForStage(entry.stage_code);
-                          const delCheck = canDeleteForStage(entry.stage_code);
-
-                          return (
-                            <>
-                              <button
-                                type="button"
-                                disabled={!entry.can_modify || !editCheck.allowed}
-                                onClick={() => openEdit(entry)}
-                                title={
-                                  !editCheck.allowed
-                                    ? editCheck.reason || "Unauthorized to edit"
-                                    : entry.can_modify
-                                    ? `Edit Entry (${entry.stage_code})`
-                                    : "Locked: subsequent production logs exist for this order"
-                                }
-                                className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                {!editCheck.allowed ? <Lock size={11} className="text-slate-400" /> : <Edit2 size={12} />}
-                                Edit
-                              </button>
-                              
-                              {delCheck.allowed ? (
-                                <button
-                                  type="button"
-                                  disabled={!entry.can_modify}
-                                  onClick={() => setDeleteId(entry.id)}
-                                  title={
-                                    entry.can_modify
-                                      ? `Delete Entry (${isAdmin ? "Admin Authority" : isSuperUser ? "Super User Authority" : "Assigned Work Center Authorized"})`
-                                      : "Locked: subsequent production logs exist for this order"
-                                  }
-                                  className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-2.5 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                  <Trash2 size={12} /> Delete
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  disabled={true}
-                                  title={delCheck.reason || "Deletion restricted"}
-                                  className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-100/70 px-2.5 py-1.5 text-sm font-medium text-slate-400 cursor-not-allowed opacity-60"
-                                >
-                                  <Lock size={11} /> Delete
-                                </button>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <ProductionHistoryTable
+        entries={entries}
+        rows={rows}
+        search={search}
+        setSearch={setSearch}
+        entryStage={entryStage}
+        setEntryStage={setEntryStage}
+        entryRoute={entryRoute}
+        setEntryRoute={setEntryRoute}
+        routes={routes}
+        fromDate={fromDate}
+        setFromDate={setFromDate}
+        toDate={toDate}
+        setToDate={setToDate}
+        historyLoading={historyLoading}
+        canEditForStage={canEditForStage}
+        canDeleteForStage={canDeleteForStage}
+        onOpenEdit={(entry) => setEditing(entry)}
+        onOpenDelete={(id) => setDeleteId(id)}
+        isAdmin={isAdmin}
+        isSuperUser={isSuperUser}
+        workCenter={workCenter}
+      />
 
       {/* Edit Entry Modal */}
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-6 py-4">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Edit Production Record</h2>
-                <p className="text-sm text-slate-500">
-                  {editing.work_order_no} · {editing.route_code} ·{" "}
-                  {STAGES.find((s) => s.code === editing.stage_code)?.label}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditing(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="grid gap-4 p-6 sm:grid-cols-2 text-sm">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Process Date *</label>
-                <input
-                  type="date"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Production (PCS & MTR) *</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="PCS"
-                    value={editPcs}
-                    onChange={(e) => changeEditPcs(e.target.value)}
-                    className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm font-bold"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="MTR"
-                    value={editMtr}
-                    onChange={(e) => changeEditMtr(e.target.value)}
-                    className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm font-bold"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Rejection (PCS & MTR)</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="PCS"
-                    value={editRejectionPcs}
-                    onChange={(e) => changeEditRejectionPcs(e.target.value)}
-                    className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-rose-700"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    placeholder="MTR"
-                    value={editRejectionMtr}
-                    onChange={(e) => changeEditRejectionMtr(e.target.value)}
-                    className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-rose-700"
-                  />
-                </div>
-              </div>
-
-              {editing.stage_code === "ROLLING" && (
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">HTC OK (PCS & MTR)</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      placeholder="PCS"
-                      value={editHtcPcs}
-                      onChange={(e) => changeEditHtcPcs(e.target.value)}
-                      className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-emerald-700 font-bold"
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      placeholder="MTR"
-                      value={editHtcMtr}
-                      onChange={(e) => changeEditHtcMtr(e.target.value)}
-                      className="w-1/2 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-emerald-700 font-bold"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {(editing.stage_code === "HEAT_TREATMENT" || editing.stage_code === "HOLLOW_HEAT_TREATMENT") && (
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Heat Lot No.</label>
-                  <input
-                    type="text"
-                    placeholder="Optional (e.g. HT-8842)"
-                    value={editHeatLot}
-                    onChange={(e) => setEditHeatLot(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium"
-                  />
-                </div>
-              )}
-
-              <div className="sm:col-span-2">
-                <label className="block font-semibold text-slate-700 mb-1">Remarks</label>
-                <input
-                  type="text"
-                  value={editRemarks}
-                  onChange={(e) => setEditRemarks(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-6 py-4">
-              <button
-                type="button"
-                onClick={() => setEditing(null)}
-                disabled={editSaving}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={updateEntry}
-                disabled={editSaving}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow hover:bg-slate-800 disabled:opacity-50"
-              >
-                {editSaving ? "Saving..." : "Update Production Entry"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <EditEntryModal
+          editing={editing}
+          onClose={() => setEditing(null)}
+          onSave={handleUpdateEntry}
+          avgLength={getEntryAvgLength(editing)}
+        />
       )}
 
       {/* Delete Confirmation Modal */}
-      {deleteId && (() => {
-        const targetEntry = entries.find((e) => e.id === deleteId);
-        const delCheck = targetEntry ? canDeleteForStage(targetEntry.stage_code) : { allowed: false, reason: "Entry not found" };
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200">
-              <div className="flex items-center gap-3">
-                <div className={`rounded-full p-2.5 ${delCheck.allowed ? "bg-rose-100 text-rose-600" : "bg-amber-100 text-amber-600"}`}>
-                  {delCheck.allowed ? <Trash2 size={20} /> : <ShieldAlert size={20} />}
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    {delCheck.allowed ? "Delete Production Entry" : "Permission Restricted"}
-                  </h3>
-                  <p className="text-sm text-slate-500 mt-0.5">
-                    {delCheck.allowed
-                      ? `Are you sure you want to delete this ${targetEntry?.stage_code} entry (${targetEntry?.work_order_no})? WIP balances will be recalculated immediately.`
-                      : delCheck.reason || "Unauthorized to delete this record."}
-                  </p>
-                </div>
-              </div>
-
-              {targetEntry && (
-                <div className="mt-4 rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm space-y-1">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Work Order:</span>
-                    <span className="font-mono font-bold text-slate-900">{targetEntry.work_order_no}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Work Center / Stage:</span>
-                    <span className="font-semibold text-slate-800">{targetEntry.stage_code}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Output Qty:</span>
-                    <span className="font-mono font-bold text-slate-900">{targetEntry.output_mtr} MTR ({targetEntry.output_pcs} PCS)</span>
-                  </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Authorization:</span>
-                    <span className="font-semibold text-emerald-700">
-                      {isAdmin ? "Admin Group (Global Deletion)" : isSuperUser ? "Super User Group (Global Deletion)" : `User Group (${workCenter} Assigned)`}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-6 flex justify-end gap-2">
-                <button
-                  type="button"
-                  disabled={deleteBusy}
-                  onClick={() => setDeleteId(null)}
-                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  {delCheck.allowed ? "Cancel" : "Close"}
-                </button>
-                {delCheck.allowed && (
-                  <button
-                    type="button"
-                    disabled={deleteBusy}
-                    onClick={deleteEntry}
-                    className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-rose-700 disabled:opacity-50"
-                  >
-                    {deleteBusy ? "Deleting..." : "Confirm Delete"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {deleteId && targetDeleteEntry && (
+        <DeleteEntryModal
+          targetEntry={targetDeleteEntry}
+          onClose={() => setDeleteId(null)}
+          onConfirm={handleDeleteEntry}
+          delCheck={targetDeleteCheck}
+          isAdmin={isAdmin}
+          isSuperUser={isSuperUser}
+          workCenter={workCenter}
+          busy={deleteBusy}
+        />
+      )}
 
       {/* Campaign Multi-Work Order Bundling Modal (Rule 2) */}
-      {bundlingCampaign && (() => {
-        const totalEnteredMtr = campaignBundles.reduce(
-          (sum, v) => sum + n(v.mtr),
-          0
-        );
-        const totalEnteredPcs = campaignBundles.reduce(
-          (sum, v) => sum + n(v.pcs),
-          0
-        );
-        const totalBundleCount = campaignBundles.filter(
-          (v) => n(v.pcs) > 0 || n(v.mtr) > 0
-        ).length;
-
-        const maxAvailMtr =
-          n(bundlingCampaign.max_allowed_mtr) > 0
-            ? n(bundlingCampaign.max_allowed_mtr)
-            : n(bundlingCampaign.balance_to_make_mtr);
-        const maxAvailPcs =
-          n(bundlingCampaign.max_allowed_pcs) > 0
-            ? n(bundlingCampaign.max_allowed_pcs)
-            : calc(bundlingCampaign).avg > 0
-            ? Math.round(maxAvailMtr / calc(bundlingCampaign).avg)
-            : n(bundlingCampaign.balance_to_make_pcs);
-        // Strictly validate based on PCS (Nos), NEVER based on MTR in finishing
-        const exceeds = maxAvailPcs > 0 && totalEnteredPcs > maxAvailPcs;
-
-        // Combine master order and child orders for the dialog
-        const masterCalc = calc(bundlingCampaign);
-        const ordersList: Array<{
-          id: any;
-          work_order_no: any;
-          customer_name: any;
-          grade: any;
-          size_od: any;
-          size_wt: any;
-          avg: any;
-          isMaster: boolean;
-          total_order_pcs: number;
-          total_order_mtr: number;
-          total_order_mt: number;
-          balance_to_make_pcs: number;
-          balance_to_make_mtr: number;
-          balance_to_make_mt: number;
-          finished_pcs: number;
-          finished_mtr: number;
-          capping_pcs: number;
-          capping_mtr: number;
-        }> = [
-          {
-            id: bundlingCampaign.work_order_id,
-            work_order_no: bundlingCampaign.work_order_no,
-            customer_name: bundlingCampaign.customer_name,
-            grade: bundlingCampaign.specification || null,
-            size_od: bundlingCampaign.od,
-            size_wt: bundlingCampaign.wl,
-            avg: masterCalc.avg || 6.0,
-            isMaster: true,
-            total_order_pcs: bundlingCampaign.total_order_pcs || 0,
-            total_order_mtr: bundlingCampaign.total_order_mtr || 0,
-            total_order_mt: bundlingCampaign.total_order_mt || 0,
-            balance_to_make_pcs: bundlingCampaign.balance_to_make_order_pcs ?? bundlingCampaign.balance_to_make_pcs ?? 0,
-            balance_to_make_mtr: bundlingCampaign.balance_to_make_order_mtr ?? bundlingCampaign.balance_to_make_mtr ?? 0,
-            balance_to_make_mt: bundlingCampaign.balance_to_make_order_mt ?? bundlingCampaign.balance_to_make_mt ?? 0,
-            finished_pcs: bundlingCampaign.finished_output_pcs || (masterCalc.avg > 0 ? Math.round(Number(bundlingCampaign.finished_output_mtr || 0) / masterCalc.avg) : 0),
-            finished_mtr: bundlingCampaign.finished_output_mtr || 0,
-            capping_pcs: Math.round(Number(bundlingCampaign.total_order_pcs || 0) * 1.1),
-            capping_mtr: bundlingCampaign.order_capping_mtr || Number(((bundlingCampaign.total_order_mtr || 0) * 1.1).toFixed(3)),
-          },
-          ...(bundlingCampaign.child_work_orders || []).map((c: any) => {
-            const childTotalMtr = Number(c.total_order_mtr || c.planned_mtr || 0);
-            const childAvg = (c.l1 && c.l2 ? (c.l1 + c.l2) / 2 : c.l1) || masterCalc.avg || 6.0;
-            const childTotalPcs = Number(c.total_order_pcs || c.planned_pcs || 0) || (childAvg > 0 ? Math.round(childTotalMtr / childAvg) : 0);
-            const childOd = Number(c.size_od || bundlingCampaign.od || 0);
-            const childWt = Number(c.size_wt || bundlingCampaign.wl || 0);
-            const childTotalMt = Number(c.total_order_mt || c.planned_mt || 0) || mtFromMtr(childTotalMtr, childOd, childWt);
-            const childFinishedMtr = Number(c.finished_output_mtr || 0);
-            const childFinishedPcs = Number(c.finished_output_pcs || 0) || (childAvg > 0 ? Math.round(childFinishedMtr / childAvg) : 0);
-            const childBalMtr = Number(c.balance_to_make_mtr ?? Math.max(0, childTotalMtr - childFinishedMtr));
-            const childBalPcs = childAvg > 0 ? Math.round(childBalMtr / childAvg) : 0;
-            const childBalMt = mtFromMtr(childBalMtr, childOd, childWt);
-            const childCapPcs = Math.round(childTotalPcs * 1.1);
-            const childCapMtr = Number(c.order_capping_mtr || (childTotalMtr * 1.1).toFixed(3));
-
-            return {
-              id: c.work_order_id || c.id,
-              work_order_no: c.work_order_no,
-              customer_name: c.customer_name,
-              grade: c.grade,
-              size_od: c.size_od,
-              size_wt: c.size_wt,
-              avg: childAvg,
-              isMaster: false,
-              total_order_pcs: childTotalPcs,
-              total_order_mtr: childTotalMtr,
-              total_order_mt: childTotalMt,
-              balance_to_make_pcs: childBalPcs,
-              balance_to_make_mtr: childBalMtr,
-              balance_to_make_mt: childBalMt,
-              finished_pcs: childFinishedPcs,
-              finished_mtr: childFinishedMtr,
-              capping_pcs: childCapPcs,
-              capping_mtr: childCapMtr,
-            };
-          }),
-        ];
-
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-            <div className="w-full max-w-6xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
-              {/* Modal Header */}
-              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-teal-100 p-2.5 text-teal-700">
-                    <Package size={22} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-slate-900">
-                        Finishing Multi-WO Bundler
-                      </h3>
-                      <span className="rounded-full bg-indigo-100 text-indigo-800 px-2.5 py-0.5 text-xs font-bold">
-                        Master: {bundlingCampaign.work_order_no}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Enter multiple bundles across Master and Child work orders. Finishing production will equal the sum of all bundles entered for each work order.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setBundlingCampaign(null)}
-                  className="rounded-lg p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* Campaign WIP Summary Bar */}
-              <div className="flex flex-wrap items-center justify-between gap-3 bg-teal-50/50 border-b border-teal-100 px-6 py-3 text-xs">
-                <div className="flex items-center gap-4">
-                  <span className="text-slate-600">
-                    Available WIP from VDI QC (OK):{" "}
-                    <b className="font-mono text-slate-900 text-sm">{fmt(maxAvailMtr)} MTR</b> (
-                    <span className="font-mono">{fmt(maxAvailPcs)} PCS</span>)
-                  </span>
-                  <span className="text-slate-400">|</span>
-                  <span className="text-slate-600">
-                    Linked Orders: <b>{ordersList.length}</b>
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-4 font-mono font-bold">
-                  <span className={exceeds ? "text-rose-600" : "text-teal-900"}>
-                    Total Bundled: {totalBundleCount} Bundles · {fmt(totalEnteredPcs)} PCS · {fmt(totalEnteredMtr)} MTR
-                  </span>
-                  <span className="text-slate-500">
-                    Remaining: {fmt(Math.max(0, maxAvailMtr - totalEnteredMtr))} MTR
-                  </span>
-                </div>
-              </div>
-
-              {/* Work Orders Bundling List */}
-              <div className="overflow-y-auto p-6 flex-1 space-y-4 bg-slate-50/30">
-                {ordersList.map((wo) => {
-                  const woBundles = campaignBundles.filter((b) => b.wo_id === wo.id);
-                  const woEnteredPcs = woBundles.reduce((s, b) => s + n(b.pcs), 0);
-                  const woEnteredMtr = woBundles.reduce((s, b) => s + n(b.mtr), 0);
-                  const woValidBundlesCount = woBundles.filter(
-                    (b) => n(b.pcs) > 0 || n(b.mtr) > 0
-                  ).length;
-                  const maxCapPcs = wo.capping_pcs || (wo.total_order_pcs > 0 ? Math.round(wo.total_order_pcs * 1.1) : 0);
-                  const maxCapMtr = wo.capping_mtr || (wo.total_order_mtr > 0 ? wo.total_order_mtr * 1.1 : 0);
-                  // Strictly validate based on PCS (Nos), NEVER based on MTR in finishing
-                  const woExceeds110 = maxCapPcs > 0 && woEnteredPcs + (wo.finished_pcs || 0) > maxCapPcs;
-
-                  return (
-                    <div
-                      key={wo.id}
-                      className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs"
-                    >
-                      {/* Work Order Card Header */}
-                      <div
-                        className={`px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 ${
-                          wo.isMaster ? "bg-indigo-50/40" : "bg-slate-50/80"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          {wo.isMaster ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 text-indigo-800 px-2 py-0.5 text-[11px] font-bold">
-                              <Crown size={11} /> Master Order
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-teal-100 text-teal-800 px-2 py-0.5 text-[11px] font-semibold">
-                              <Link2 size={11} /> Child Order
-                            </span>
-                          )}
-                          <span className="font-mono text-base font-bold text-slate-900">
-                            {wo.work_order_no}
-                          </span>
-                          <span className="text-xs text-slate-600">
-                            {wo.customer_name || "—"} ·{" "}
-                            <span className="font-mono text-slate-500 font-medium">
-                              {wo.size_od} × {wo.size_wt} mm (Avg: {fmt(wo.avg, "m")})
-                            </span>
-                          </span>
-                        </div>
-
-                        {/* Summary & Live Finishing Production Sum for this WO */}
-                        <div className="flex items-center gap-3 text-xs font-mono">
-                          <span className="text-slate-500">
-                            Order: <b>{fmt(wo.total_order_pcs)} PCS</b> ({fmt(wo.total_order_mtr, "m")})
-                          </span>
-                          <span className="text-slate-300">|</span>
-                          <span className="text-indigo-900">
-                            Balance: <b>{fmt(wo.balance_to_make_pcs)} PCS</b> ({fmt(wo.balance_to_make_mtr, "m")})
-                          </span>
-                          <span className="text-slate-300">|</span>
-                          <div
-                            className={`rounded-lg px-2.5 py-1 font-sans text-xs font-bold border transition-colors ${
-                              woExceeds110
-                                ? "bg-rose-50 border-rose-300 text-rose-700 ring-1 ring-rose-300"
-                                : "bg-teal-50 border-teal-300 text-teal-900"
-                            }`}
-                          >
-                            Finishing Production:{" "}
-                            <span className="font-mono text-sm font-black text-teal-950">
-                              {fmt(woEnteredPcs)} PCS
-                            </span>{" "}
-                            ({fmt(woEnteredMtr)} MTR)
-                            <span className="ml-1 text-[11px] opacity-75">
-                              [{woValidBundlesCount} Bundles]
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Bundles Table for this Work Order */}
-                      <div className="p-3">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-100/80 text-slate-700">
-                            <tr>
-                              <th className="px-3 py-2 font-bold w-12 text-center">#</th>
-                              <th className="px-3 py-2 font-bold w-48">Bundle / Lot No.</th>
-                              <th className="px-3 py-2 font-bold w-32 text-center bg-blue-50 text-blue-900">
-                                Bundle PCS
-                              </th>
-                              <th className="px-3 py-2 font-bold w-36 text-center bg-blue-50 text-blue-900">
-                                Bundle MTR
-                              </th>
-                              <th className="px-3 py-2 font-bold">Remarks</th>
-                              <th className="px-3 py-2 font-bold w-14 text-center">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {woBundles.map((b, bIdx) => (
-                              <tr key={b.id} className="hover:bg-slate-50/60">
-                                <td className="px-3 py-2 text-center font-bold text-slate-400 font-mono">
-                                  {bIdx + 1}
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input
-                                    type="text"
-                                    placeholder="e.g. BDL-01"
-                                    value={b.bundle_no}
-                                    onChange={(e) =>
-                                      updateBundleField(b.id, "bundle_no", e.target.value, wo.avg)
-                                    }
-                                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-mono text-slate-800 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
-                                  />
-                                </td>
-                                <td className="px-3 py-2 text-center bg-blue-50/20">
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    placeholder="0"
-                                    value={b.pcs}
-                                    onChange={(e) =>
-                                      updateBundleField(b.id, "pcs", e.target.value, wo.avg)
-                                    }
-                                    className="w-24 mx-auto rounded-lg border border-slate-300 bg-white px-2 py-1 text-center font-mono font-bold text-slate-900 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
-                                  />
-                                </td>
-                                <td className="px-3 py-2 text-center bg-blue-50/20">
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="any"
-                                    placeholder="0.00"
-                                    value={b.mtr}
-                                    onChange={(e) =>
-                                      updateBundleField(b.id, "mtr", e.target.value, wo.avg)
-                                    }
-                                    className="w-28 mx-auto rounded-lg border border-slate-300 bg-white px-2 py-1 text-center font-mono font-bold text-teal-900 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
-                                  />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input
-                                    type="text"
-                                    placeholder="Optional bundle notes..."
-                                    value={b.remarks}
-                                    onChange={(e) =>
-                                      updateBundleField(b.id, "remarks", e.target.value, wo.avg)
-                                    }
-                                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-800 focus:border-teal-500"
-                                  />
-                                </td>
-                                <td className="px-3 py-2 text-center">
-                                  <button
-                                    type="button"
-                                    onClick={() => removeBundle(b.id)}
-                                    title="Delete this bundle row"
-                                    className="p-1 rounded text-rose-500 hover:bg-rose-50 hover:text-rose-700 cursor-pointer transition-colors"
-                                  >
-                                    <Trash2 size={15} />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-
-                        {/* Add Bundle Button & 110% Warning */}
-                        <div className="mt-2.5 flex items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={() => addBundleToWo(wo.id, wo.work_order_no)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-teal-500 bg-teal-50/50 hover:bg-teal-100 text-teal-800 font-bold px-3 py-1.5 text-xs cursor-pointer transition-colors shadow-2xs"
-                          >
-                            <Plus size={14} /> Add Bundle to {wo.work_order_no}
-                          </button>
-
-                          {woExceeds110 && (
-                            <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded px-2 py-0.5">
-                              ⚠️ Total for {wo.work_order_no} ({fmt(woEnteredPcs)} PCS) exceeds 110% maximum order limit ({fmt(maxCapPcs)} PCS)!
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {exceeds && (
-                  <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
-                    <AlertTriangle size={16} className="text-rose-600 shrink-0" />
-                    <span>
-                      Total bundled pieces ({fmt(totalEnteredPcs)} PCS) exceeds the available WIP balance ({fmt(maxAvailPcs)} PCS) for this campaign. Please adjust piece counts.
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Modal Footer */}
-              <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4">
-                <div className="text-xs text-slate-500">
-                  Finishing Production in the table will update to the <b>sum of all bundles</b> entered.
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setBundlingCampaign(null)}
-                    disabled={bundlingSaving}
-                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={applyBundlesToGrid}
-                    disabled={bundlingSaving || totalEnteredPcs <= 0}
-                    className="rounded-lg border border-teal-600 bg-white hover:bg-teal-50 text-teal-800 font-bold px-4 py-2 text-sm shadow-xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-2 transition-colors"
-                    title="Populate the main production grid rows with the sum of all bundles"
-                  >
-                    <CheckCircle2 size={15} />
-                    Apply to Production Grid ({totalBundleCount} Bundles)
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={saveCampaignBundling}
-                    disabled={bundlingSaving || totalEnteredPcs <= 0 || exceeds}
-                    className="rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-2 text-sm shadow cursor-pointer disabled:opacity-50 inline-flex items-center gap-2 transition-colors"
-                  >
-                    {bundlingSaving ? (
-                      <>
-                        <RefreshCw size={15} className="animate-spin" />
-                        Saving Bundles...
-                      </>
-                    ) : (
-                      <>
-                        <Package size={15} />
-                        Record All Bundles ({fmt(totalEnteredMtr)} MTR / {totalBundleCount} Bundles)
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {bundlingCampaign && (
+        <BundlingCampaignModal
+          bundlingCampaign={bundlingCampaign}
+          campaignBundles={campaignBundles}
+          onClose={() => setBundlingCampaign(null)}
+          onAddBundle={addBundleToWo}
+          onRemoveBundle={removeBundle}
+          onUpdateBundleField={updateBundleField}
+          onApplyToGrid={applyBundlesToGrid}
+          onSaveBundles={saveCampaignBundling}
+          saving={bundlingSaving}
+        />
+      )}
     </div>
   );
 }

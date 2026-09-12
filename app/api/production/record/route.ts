@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { attachPcsToRemarks } from '@/lib/productionUtils';
+import { requireAuth } from '@/lib/supabase/authGuard';
 
 export async function POST(req: NextRequest) {
   try {
+    const authCheck = await requireAuth(req);
+    if ('errorResponse' in authCheck && authCheck.errorResponse) {
+      return authCheck.errorResponse;
+    }
+
     const admin = createAdminClient();
     if (!admin) {
       return NextResponse.json({ error: 'Database service is temporarily unavailable.' }, { status: 500 });

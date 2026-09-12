@@ -108,7 +108,13 @@ export async function getCurrentAppUser(forceRefresh = false): Promise<AppUserPr
   // If still not present in app_users, construct an active session user from Supabase Auth metadata
   if (!data) {
     const meta = auth.user.user_metadata || {};
-    const isAdmin = auth.user.email?.toLowerCase().includes('admin') || meta.role === 'Admin' || meta.user_group === 'admin';
+    const appMeta = auth.user.app_metadata || {};
+    const isAdmin =
+      meta.role === 'Admin' ||
+      meta.user_group === 'admin' ||
+      appMeta.role === 'Admin' ||
+      appMeta.role === 'admin' ||
+      meta.is_admin === true;
     const profile = mapAppUser({
       id: auth.user.id,
       auth_user_id: auth.user.id,

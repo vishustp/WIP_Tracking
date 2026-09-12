@@ -60,27 +60,6 @@ async function getAuthenticatedAdmin(request: NextRequest): Promise<AdminAuthRes
       }
     }
 
-    // Fallback for iframe preview environments when cookies/tokens are partitioned
-    if (!user && admin) {
-      const emailHeader = request.headers.get('x-user-email')?.toLowerCase().trim();
-      if (emailHeader) {
-        const { data: appAdmin } = await admin
-          .from('app_users')
-          .select('*')
-          .eq('email', emailHeader)
-          .eq('role', 'Admin')
-          .eq('active', true)
-          .maybeSingle();
-
-        if (appAdmin?.auth_user_id) {
-          const { data: authAdminUser } = await admin.auth.admin.getUserById(appAdmin.auth_user_id);
-          if (authAdminUser?.user) {
-            user = authAdminUser.user;
-          }
-        }
-      }
-    }
-
     if (!user) {
       return null;
     }

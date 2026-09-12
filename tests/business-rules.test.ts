@@ -29,8 +29,8 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
     mtr: "540",
     rejection_pcs: "0",
     rejection_mtr: "0",
-    htc_ok_pcs: "",
-    htc_ok_mtr: "",
+    htc_ok_pcs: "90",
+    htc_ok_mtr: "540",
     heat_lot_no: "",
     remarks: "",
   };
@@ -45,6 +45,8 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
         mh_avg_length: 6.25,
         pcs: "10",
         mtr: "62.5", // 10 * 6.25
+        htc_ok_pcs: "10",
+        htc_ok_mtr: "62.5",
       };
 
       const result = calc(rollingRow);
@@ -59,20 +61,19 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
   });
 
   describe("CDS Route Rules", () => {
-    it("Rule 1: Allows rolling up to Plan * 110% and blocks when exceeding", () => {
+    it("Rule 1: Allows rolling production to exceed plan without a hard 110% cap", () => {
       const row: Row = {
         ...baseRow,
         stage_code: "ROLLING",
         route_code: "CDS",
+        balance_to_make_mtr: 500,
         max_allowed_mtr: 550,
-        mtr: "540",
+        mtr: "600",
+        pcs: "100",
+        htc_ok_pcs: "100",
+        htc_ok_mtr: "600",
       };
       expect(validateProductionEntry(row, "ROLLING")).toHaveLength(0);
-
-      const invalidRow: Row = { ...row, mtr: "560" };
-      const errors = validateProductionEntry(invalidRow, "ROLLING");
-      expect(errors.length).toBeGreaterThan(0);
-      expect(errors[0].message).toContain("exceeds maximum allowed 110% of Plan");
     });
 
     it("Rule 2: Draw production is capped at Rolling HTC OK", () => {
@@ -80,17 +81,19 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
         ...baseRow,
         stage_code: "DRAW",
         route_code: "CDS",
-        prev_htc_ok: 500,
+        max_allowed_pcs: 83,
         max_allowed_mtr: 500,
-        mtr: "490",
+        pcs: "80",
+        mtr: "480",
+        htc_ok_pcs: "",
         htc_ok_mtr: "",
       };
       expect(validateProductionEntry(drawRow, "DRAW")).toHaveLength(0);
 
-      const excessDraw: Row = { ...drawRow, mtr: "510" };
+      const excessDraw: Row = { ...drawRow, pcs: "90", mtr: "540" };
       const errors = validateProductionEntry(excessDraw, "DRAW");
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors[0].message).toContain("Rolling HTC OK");
+      expect(errors[0].message).toContain("exceeds available Rolling HTC OK feeder balance");
     });
 
     it("Rule 3: Heat Treatment is capped at Draw Net Output and allows optional Heat Lot No.", () => {
@@ -98,8 +101,12 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
         ...baseRow,
         stage_code: "HEAT_TREATMENT",
         route_code: "CDS",
+        max_allowed_pcs: 80,
         max_allowed_mtr: 480,
+        pcs: "80",
         mtr: "480",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "",
         heat_lot_no: "HT-12345",
       };
       expect(validateProductionEntry(htRow, "HEAT_TREATMENT")).toHaveLength(0);
@@ -109,20 +116,24 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       expect(validateProductionEntry(noLot, "HEAT_TREATMENT")).toHaveLength(0);
     });
 
-    it("Rule 4: Finishing is capped at Heat Treatment * Multiple and Balance", () => {
+    it("Rule 4: Finishing is capped at available VDI QC Passed stock", () => {
       const finishRow: Row = {
         ...baseRow,
         stage_code: "FINISHING",
         route_code: "CDS",
+        max_allowed_pcs: 80,
         max_allowed_mtr: 480,
+        pcs: "80",
         mtr: "480",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "",
       };
       expect(validateProductionEntry(finishRow, "FINISHING")).toHaveLength(0);
 
-      const excessFinish: Row = { ...finishRow, mtr: "490" };
+      const excessFinish: Row = { ...finishRow, pcs: "85", mtr: "510" };
       const errors = validateProductionEntry(excessFinish, "FINISHING");
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors[0].message).toContain("Heat Treatment × Multiple or Balance to make");
+      expect(errors[0].message).toContain("exceeds available VDI QC Passed material");
     });
 
     it("Rule 4b: Finishing / Bundling cannot exceed 110% of total order quantity", () => {
@@ -130,15 +141,18 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
         ...baseRow,
         stage_code: "FINISHING",
         route_code: "CDS",
+        total_order_pcs: 167,
         total_order_mtr: 1000,
-        order_capping_mtr: 1100,
-        max_allowed_mtr: 1500,
-        mtr: "1100",
+        finished_output_pcs: 180,
+        max_allowed_pcs: 100,
+        max_allowed_mtr: 600,
+        pcs: "10",
+        mtr: "60",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "",
       };
-      expect(validateProductionEntry(finishRow, "FINISHING")).toHaveLength(0);
-
-      const excessFinish: Row = { ...finishRow, mtr: "1105" };
-      const errors = validateProductionEntry(excessFinish, "FINISHING");
+      // totalOrderPcs = 167, max110Pcs = 184 (167 * 1.10 = 183.7 -> 184). finished_output_pcs = 180, pcs = 10 -> total 190 > 184
+      const errors = validateProductionEntry(finishRow, "FINISHING");
       expect(errors.length).toBeGreaterThan(0);
       expect(errors[0].message).toContain("exceeds maximum allowed 110% of Total Order Quantity");
     });
@@ -148,13 +162,18 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
         ...baseRow,
         stage_code: "DRAW",
         route_code: "CDS",
+        balance_to_make_pcs: 0,
         balance_to_make_mtr: 0,
+        max_allowed_pcs: 0,
         max_allowed_mtr: 0,
-        mtr: "100",
+        pcs: "20",
+        mtr: "120",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "",
       };
       const errors = validateProductionEntry(zeroHtcDraw, "DRAW");
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors[0].message).toContain("No available WIP for DRAW. Please record Rolling HTC OK first.");
+      expect(errors[0].message).toContain("No available feeder WIP for DRAW");
     });
   });
 
@@ -164,16 +183,20 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
         ...baseRow,
         stage_code: "HOLLOW_HEAT_TREATMENT",
         route_code: "ALLOY_CDS",
+        max_allowed_pcs: 83,
         max_allowed_mtr: 500,
-        mtr: "500",
+        pcs: "80",
+        mtr: "480",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "",
         heat_lot_no: "LOT-999",
       };
       expect(validateProductionEntry(hhtRow, "HOLLOW_HEAT_TREATMENT")).toHaveLength(0);
 
-      const excessHht: Row = { ...hhtRow, mtr: "520" };
+      const excessHht: Row = { ...hhtRow, pcs: "90", mtr: "540" };
       const errors = validateProductionEntry(excessHht, "HOLLOW_HEAT_TREATMENT");
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors[0].message).toContain("Rolling HTC OK");
+      expect(errors[0].message).toContain("exceeds available Rolling HTC OK feeder balance");
     });
 
     it("Rule 2: Draw is capped at Hollow Heat Treatment Net Output", () => {
@@ -181,49 +204,61 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
         ...baseRow,
         stage_code: "DRAW",
         route_code: "ALLOY_CDS",
-        max_allowed_mtr: 490,
-        mtr: "490",
+        max_allowed_pcs: 80,
+        max_allowed_mtr: 480,
+        pcs: "80",
+        mtr: "480",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "",
       };
       expect(validateProductionEntry(drawRow, "DRAW")).toHaveLength(0);
 
-      const excessDraw: Row = { ...drawRow, mtr: "500" };
+      const excessDraw: Row = { ...drawRow, pcs: "85", mtr: "510" };
       const errors = validateProductionEntry(excessDraw, "DRAW");
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors[0].message).toContain("Hollow Heat Treatment");
+      expect(errors[0].message).toContain("exceeds available Hollow Heat Treatment Net OK");
     });
   });
 
   describe("HFS & ALLOY_HFS Route Rules", () => {
-    it("HFS Rule 1: Finishing is capped at Rolling HTC OK * Multiple and Balance", () => {
+    it("HFS Rule 1: Finishing is capped at VDI QC Passed material", () => {
       const finishRow: Row = {
         ...baseRow,
         stage_code: "FINISHING",
         route_code: "HFS",
-        max_allowed_mtr: 500,
-        mtr: "500",
+        max_allowed_pcs: 80,
+        max_allowed_mtr: 480,
+        pcs: "80",
+        mtr: "480",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "",
       };
       expect(validateProductionEntry(finishRow, "FINISHING")).toHaveLength(0);
 
-      const excessFinish: Row = { ...finishRow, mtr: "510" };
+      const excessFinish: Row = { ...finishRow, pcs: "85", mtr: "510" };
       const errors = validateProductionEntry(excessFinish, "FINISHING");
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors[0].message).toContain("Rolling HTC OK × Multiple or Balance to make");
+      expect(errors[0].message).toContain("exceeds available VDI QC Passed material");
     });
 
-    it("ALLOY_HFS Rule 2: Finishing is capped at Hollow Heat Treatment * Multiple and Balance", () => {
+    it("ALLOY_HFS Rule 2: Finishing is capped at VDI QC Passed material", () => {
       const finishRow: Row = {
         ...baseRow,
         stage_code: "FINISHING",
         route_code: "ALLOY_HFS",
-        max_allowed_mtr: 490,
-        mtr: "490",
+        max_allowed_pcs: 80,
+        max_allowed_mtr: 480,
+        pcs: "80",
+        mtr: "480",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "",
       };
       expect(validateProductionEntry(finishRow, "FINISHING")).toHaveLength(0);
 
-      const excessFinish: Row = { ...finishRow, mtr: "500" };
+      const excessFinish: Row = { ...finishRow, pcs: "85", mtr: "510" };
       const errors = validateProductionEntry(excessFinish, "FINISHING");
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors[0].message).toContain("Hollow Heat Treatment × Multiple or Balance to make");
+      expect(errors[0].message).toContain("exceeds available VDI QC Passed material");
     });
   });
 
@@ -270,4 +305,3 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
     });
   });
 });
-

@@ -1,4 +1,3 @@
-// app/api/ai/process-spec/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getDeterministicProcessSpec,
@@ -7,9 +6,15 @@ import {
   ProcessSpecResult,
   DimensionalTolerances,
 } from '@/lib/metallurgy/specEngine';
+import { requireAuth } from '@/lib/supabase/authGuard';
 
 export async function POST(req: NextRequest) {
   try {
+    const authCheck = await requireAuth(req);
+    if ('errorResponse' in authCheck && authCheck.errorResponse) {
+      return authCheck.errorResponse;
+    }
+
     const body = await req.json();
     const {
       grade,
