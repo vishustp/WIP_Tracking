@@ -323,7 +323,7 @@ export default function WorkOrders() {
     load();
   };
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const data = filtered.map((w: WO) => {
       const avg = w.l1 && w.l2 ? (w.l1 + w.l2) / 2 : w.l1 || w.l2 || 6.0;
       const od = w.size_od || 0;

@@ -211,7 +211,7 @@ export default function AgingReportClient() {
   const totalPages = Math.ceil(filteredRows.length / pageSize) || 1;
 
   // Excel Export
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const exportData = filteredRows.map((r, i) => ({
       '#': i + 1,
       'Work Order No': r.work_order_no,

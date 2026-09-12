@@ -937,7 +937,7 @@ export default function WorkOrderTrackingClient() {
   }, [filteredWorkOrders, getWoTrackingData]);
 
   // Export to Excel
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const rows = filteredWorkOrders.map((wo) => {
       const row = getWoTrackingData(wo);
       const rRoll = row.stagesData.find((s) => s.code === 'ROLLING');

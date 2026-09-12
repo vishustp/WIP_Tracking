@@ -344,7 +344,7 @@ export default function SizeGradeWipReportClient() {
   };
 
   // Excel Export
-  const exportExcel = () => {
+  const exportExcel = async () => {
     if (viewMode === 'matrix') {
       const exportData = matrixGroups.map((g, i) => ({
         '#': i + 1,
