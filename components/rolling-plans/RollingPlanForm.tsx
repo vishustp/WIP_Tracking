@@ -417,8 +417,34 @@ export default function RollingPlanForm() {
 
   // Setup groups for the campaign
   const [groups, setGroups] = useState<WorkOrderGroup[]>([]);
+  const [groupFilterQuery, setGroupFilterQuery] = useState('');
   const [woSearchQuery, setWoSearchQuery] = useState('');
   const [addWoSelectValue, setAddWoSelectValue] = useState('');
+
+  // Filtered groups based on user search query across parent and child work order details
+  const filteredGroups = useMemo(() => {
+    if (!groupFilterQuery.trim()) return groups;
+    const q = groupFilterQuery.toLowerCase().trim();
+    return groups.filter((g) => {
+      const parentMatches =
+        g.wo.work_order_no?.toLowerCase().includes(q) ||
+        g.wo.customer_name?.toLowerCase().includes(q) ||
+        g.wo.grade?.toLowerCase().includes(q) ||
+        g.wo.specification?.toLowerCase().includes(q) ||
+        `${g.wo.size_od}x${g.wo.size_wt}`.toLowerCase().includes(q) ||
+        g.grade?.toLowerCase().includes(q) ||
+        g.catg?.toLowerCase().includes(q) ||
+        g.spec?.toLowerCase().includes(q);
+      const childMatches = g.children.some(
+        (c) =>
+          c.wo.work_order_no?.toLowerCase().includes(q) ||
+          c.wo.customer_name?.toLowerCase().includes(q) ||
+          c.wo.grade?.toLowerCase().includes(q) ||
+          `${c.wo.size_od}x${c.wo.size_wt}`.toLowerCase().includes(q)
+      );
+      return parentMatches || childMatches;
+    });
+  }, [groups, groupFilterQuery]);
 
   // Child Work Order Picker Modal State
   const [activeChildTargetGroupId, setActiveChildTargetGroupId] = useState<string | null>(null);
@@ -1751,6 +1777,47 @@ export default function RollingPlanForm() {
               </div>
             </div>
 
+            {/* Search Filter Toolbar for Selected Work Orders */}
+            {groups.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={groupFilterQuery}
+                    onChange={(e) => setGroupFilterQuery(e.target.value)}
+                    placeholder="Filter selected work orders (WO No, Customer, Grade, Size, Route)..."
+                    className="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-8 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-hidden"
+                  />
+                  {groupFilterQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setGroupFilterQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                      aria-label="Clear filter"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 shrink-0 justify-between sm:justify-end">
+                  <span className="rounded-md bg-white border border-slate-200 px-2.5 py-1 text-slate-700 shadow-2xs">
+                    Showing <b>{filteredGroups.length}</b> of <b>{groups.length}</b> Setup{groups.length === 1 ? '' : 's'}
+                  </span>
+                  {groupFilterQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setGroupFilterQuery('')}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Groups List */}
             {groups.length === 0 ? (
               <div className="rounded-xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
@@ -1760,9 +1827,29 @@ export default function RollingPlanForm() {
                   Select work orders above to add them as rolling plan setups.
                 </p>
               </div>
+            ) : filteredGroups.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-xs">
+                <Search className="mx-auto h-8 w-8 text-slate-400" />
+                <p className="mt-2 text-sm font-semibold text-slate-700">
+                  No matching setups found for &quot;{groupFilterQuery}&quot;
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Try searching with a different Work Order No, Customer Name, Grade, or Size.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setGroupFilterQuery('')}
+                  className="mt-3 cursor-pointer"
+                >
+                  Clear Filter
+                </Button>
+              </div>
             ) : (
               <div className="space-y-4">
-                {groups.map((group, groupIndex) => {
+                {filteredGroups.map((group) => {
+                  const groupIndex = groups.findIndex((g) => g.id === group.id);
                   const gSummary = campaignSummary.groupSummaries.find((s) => s.groupId === group.id);
                   const pMetrics = {
                     pcs: gSummary?.parentPcs || 0,
