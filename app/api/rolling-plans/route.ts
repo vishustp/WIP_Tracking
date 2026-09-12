@@ -800,10 +800,11 @@ export async function DELETE(req: NextRequest) {
 }
 
 export interface UpdateRollingPlanPayload {
-  plan_id: string;
-  planned_pcs: number;
-  planned_rolling_date: string;
-  route_id: string;
+  plan_id?: string;
+  plan_ids?: string[];
+  planned_pcs?: number;
+  planned_rolling_date?: string;
+  route_id?: string;
   multiple?: number;
   multiple_str?: string;
   mh_od?: number;
@@ -840,7 +841,7 @@ export interface UpdateRollingPlanPayload {
   process_yield_pct?: number;
 
   // Lifecycle actions
-  lifecycle_action?: 'ISSUE' | 'REVISE' | 'CLOSE_PARTIAL' | 'EDIT';
+  lifecycle_action?: 'ISSUE' | 'REVISE' | 'CLOSE_PARTIAL' | 'EDIT' | 'BATCH_ISSUE';
   revision_reason?: string;
   close_reason?: string;
   actual_pcs?: number;
@@ -873,6 +874,61 @@ export async function PUT(req: NextRequest) {
     }
 
     const body: UpdateRollingPlanPayload = await req.json();
+
+    // =========================================================================
+    // BATCH ISSUE ROLLING PLANS
+    // =========================================================================
+    if (body.plan_ids && Array.isArray(body.plan_ids) && body.plan_ids.length > 0) {
+      const nowIso = new Date().toISOString();
+      const { data: targetPlans, error: fetchErr } = await admin
+        .from('rolling_plans')
+        .select('*')
+        .in('id', body.plan_ids);
+
+      if (fetchErr || !targetPlans || targetPlans.length === 0) {
+        return NextResponse.json({ error: 'No rolling plans found to issue.' }, { status: 404 });
+      }
+
+      let issuedCount = 0;
+      for (const tp of targetPlans) {
+        let pSt: any = {};
+        try { pSt = typeof tp.status === 'string' ? JSON.parse(tp.status) : tp.status || {}; } catch {}
+        pSt.lifecycle_status = 'ISSUED';
+        pSt.issued_at = nowIso;
+        if (pSt.revision_no == null) pSt.revision_no = 0;
+
+        await admin.from('rolling_plans').update({
+          status: JSON.stringify(pSt),
+          updated_at: nowIso,
+        }).eq('id', tp.id);
+
+        // If master plan, also mark child plans as ISSUED
+        if (pSt.is_master) {
+          const { data: childPlans } = await admin
+            .from('rolling_plans')
+            .select('id, status')
+            .ilike('plan_no', `${tp.plan_no}-C%`);
+
+          for (const cp of childPlans || []) {
+            let cpSt: any = {};
+            try { cpSt = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {}; } catch {}
+            cpSt.lifecycle_status = 'ISSUED';
+            cpSt.issued_at = nowIso;
+            if (cpSt.revision_no == null) cpSt.revision_no = 0;
+            await admin.from('rolling_plans').update({ status: JSON.stringify(cpSt), updated_at: nowIso }).eq('id', cp.id);
+          }
+        }
+        issuedCount++;
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Successfully issued ${issuedCount} rolling plan(s) in batch to Hot Rolling.`,
+        count: issuedCount,
+        lifecycle_status: 'ISSUED',
+      });
+    }
+
     const {
       plan_id,
       planned_pcs,

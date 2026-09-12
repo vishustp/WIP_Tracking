@@ -29,6 +29,8 @@ import {
   Flame,
   Sliders,
   FileText,
+  Send,
+  CheckSquare,
 } from 'lucide-react';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
@@ -420,6 +422,10 @@ export default function RollingPlanForm() {
   const [groupFilterQuery, setGroupFilterQuery] = useState('');
   const [woSearchQuery, setWoSearchQuery] = useState('');
   const [addWoSelectValue, setAddWoSelectValue] = useState('');
+
+  // Batch issue state
+  const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);
+  const [isBatchIssuing, setIsBatchIssuing] = useState(false);
 
   // Filtered groups based on user search query across parent and child work order details
   const filteredGroups = useMemo(() => {
@@ -1306,6 +1312,37 @@ export default function RollingPlanForm() {
     }
   }
 
+  // Batch Issue Multiple Rolling Plans
+  async function handleBatchIssuePlans(idsToIssue?: string[]) {
+    const targetIds = idsToIssue && idsToIssue.length > 0 ? idsToIssue : selectedPlanIds;
+    if (targetIds.length === 0) {
+      toast.error('No draft rolling plans selected to issue.');
+      return;
+    }
+    setIsBatchIssuing(true);
+    try {
+      const res = await fetch('/api/rolling-plans', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_ids: targetIds,
+          lifecycle_action: 'BATCH_ISSUE',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to batch issue rolling plans.');
+      }
+      toast.success(data.message || `Successfully issued ${data.count || targetIds.length} rolling plan(s) in batch.`);
+      setSelectedPlanIds([]);
+      await Promise.all([loadPlans(), loadWorkOrders()]);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to batch issue rolling plans.');
+    } finally {
+      setIsBatchIssuing(false);
+    }
+  }
+
   // Close Plan for partial quantity (Short-Close)
   async function handleClosePlanPartial() {
     if (!closingPlan) return;
@@ -1613,9 +1650,9 @@ export default function RollingPlanForm() {
       });
   }, [wos, groups, childModalSearch, childModalGradeFilter]);
 
-  // Filtered plans based on planTypeFilter
+  // Filtered plans based on planTypeFilter, strictly sorted in DESCENDING order
   const filteredPlans = useMemo(() => {
-    return plans.filter((p) => {
+    const list = plans.filter((p) => {
       let isMaster = false;
       let isChild = false;
       try {
@@ -1628,7 +1665,40 @@ export default function RollingPlanForm() {
       if (planTypeFilter === 'child') return isChild;
       return true;
     });
+
+    return [...list].sort((a, b) => {
+      const timeA = new Date(a.created_at || a.planned_rolling_date || 0).getTime();
+      const timeB = new Date(b.created_at || b.planned_rolling_date || 0).getTime();
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.plan_no || '').localeCompare(a.plan_no || '', undefined, { numeric: true });
+    });
   }, [plans, planTypeFilter]);
+
+  // Unissued (draft) plans currently available in filtered view
+  const unissuedPlansInView = useMemo(() => {
+    return filteredPlans.filter((p) => {
+      try {
+        const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {};
+        return parsed?.lifecycle_status !== 'ISSUED' && parsed?.lifecycle_status !== 'CLOSED';
+      } catch {
+        return true;
+      }
+    });
+  }, [filteredPlans]);
+
+  const toggleSelectAllPlans = () => {
+    if (selectedPlanIds.length === unissuedPlansInView.length && unissuedPlansInView.length > 0) {
+      setSelectedPlanIds([]);
+    } else {
+      setSelectedPlanIds(unissuedPlansInView.map((p) => p.id));
+    }
+  };
+
+  const toggleSelectPlan = (id: string) => {
+    setSelectedPlanIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -2787,6 +2857,33 @@ export default function RollingPlanForm() {
             ))}
           </Select>
 
+          {/* Batch Issue Button */}
+          {canManagePlans && selectedPlanIds.length > 0 && (
+            <Button
+              type="button"
+              onClick={() => void handleBatchIssuePlans()}
+              disabled={isBatchIssuing}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-9 cursor-pointer shadow-xs flex items-center gap-1.5"
+            >
+              <Send className={`h-3.5 w-3.5 ${isBatchIssuing ? 'animate-pulse' : ''}`} />
+              <span>{isBatchIssuing ? 'Issuing Plans...' : `Batch Issue Plans (${selectedPlanIds.length})`}</span>
+            </Button>
+          )}
+
+          {canManagePlans && unissuedPlansInView.length > 0 && selectedPlanIds.length === 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleBatchIssuePlans(unissuedPlansInView.map((p) => p.id))}
+              disabled={isBatchIssuing}
+              className="border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 font-bold text-xs h-9 cursor-pointer flex items-center gap-1.5 shadow-2xs"
+              title="Issue all unissued/draft plans currently shown in table"
+            >
+              <Send className="h-3.5 w-3.5 text-amber-600" />
+              <span>Batch Issue All Drafts ({unissuedPlansInView.length})</span>
+            </Button>
+          )}
+
           <Button
             type="button"
             variant="outline"
@@ -2804,6 +2901,19 @@ export default function RollingPlanForm() {
           <table className="w-full text-left text-xs">
             <thead className="sticky top-0 z-20 bg-slate-100 text-slate-700 border-b border-slate-200 shadow-2xs">
               <tr>
+                <th className="w-10 px-2.5 py-2.5 text-center font-bold">
+                  <input
+                    type="checkbox"
+                    checked={
+                      unissuedPlansInView.length > 0 &&
+                      selectedPlanIds.length === unissuedPlansInView.length
+                    }
+                    onChange={toggleSelectAllPlans}
+                    disabled={unissuedPlansInView.length === 0}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-3.5 w-3.5 disabled:opacity-40"
+                    title="Select all unissued plans in view"
+                  />
+                </th>
                 <th className="px-3 py-2.5 font-bold">Plan No</th>
                 <th className="px-3 py-2.5 font-bold">Type</th>
                 <th className="px-3 py-2.5 font-bold">Date</th>
@@ -2823,14 +2933,14 @@ export default function RollingPlanForm() {
             <tbody className="divide-y divide-slate-100">
               {plansLoading ? (
                 <tr>
-                  <td colSpan={14} className="p-8 text-center text-slate-400">
+                  <td colSpan={15} className="p-8 text-center text-slate-400">
                     <RefreshCw className="inline h-5 w-5 animate-spin mr-2" />
                     Loading rolling plans...
                   </td>
                 </tr>
               ) : filteredPlans.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="p-8 text-center text-slate-500">
+                  <td colSpan={15} className="p-8 text-center text-slate-500">
                     No rolling plans found matching the filters.
                   </td>
                 </tr>
@@ -2843,6 +2953,8 @@ export default function RollingPlanForm() {
 
                   const isMaster = !!parsedStatus?.is_master;
                   const isChild = !!parsedStatus?.is_child;
+                  const isIssued = parsedStatus?.lifecycle_status === 'ISSUED';
+                  const isClosed = parsedStatus?.lifecycle_status === 'CLOSED';
                   const rawChildOrders: any[] = parsedStatus?.child_work_orders || [];
                   // Exclude the master plan itself if it was mistakenly stored in child_work_orders
                   const childOrders = rawChildOrders.filter((c: any) => {
@@ -2859,13 +2971,32 @@ export default function RollingPlanForm() {
                       <tr
                         key={p.id}
                         className={
-                          isMaster
+                          selectedPlanIds.includes(p.id)
+                            ? 'bg-amber-50/60 hover:bg-amber-50'
+                            : isMaster
                             ? 'bg-indigo-50/20 hover:bg-indigo-50/40'
                             : isChild
                             ? 'bg-slate-50/40 hover:bg-slate-50'
                             : 'hover:bg-slate-50/60'
                         }
                       >
+                        {/* Checkbox Selection Cell */}
+                        <td className="px-2.5 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedPlanIds.includes(p.id)}
+                            onChange={() => toggleSelectPlan(p.id)}
+                            disabled={isIssued || isClosed}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-3.5 w-3.5 disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={
+                              isIssued
+                                ? 'Already Issued'
+                                : isClosed
+                                ? 'Closed Plan'
+                                : 'Select plan for batch issue'
+                            }
+                          />
+                        </td>
                         <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap">
                           {isChild ? (parsedStatus.master_plan_no || p.plan_no) : p.plan_no}
                         </td>
