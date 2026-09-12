@@ -102,7 +102,7 @@ export function ProductionQueueRow({
           <input
             type="number"
             min="0"
-            step="any"
+            step="1"
             placeholder="PCS"
             disabled={!isAllowed}
             value={row.pcs}
@@ -128,7 +128,7 @@ export function ProductionQueueRow({
           <input
             type="number"
             min="0"
-            step="any"
+            step="1"
             placeholder="PCS"
             disabled={!isAllowed}
             value={row.rejection_pcs}
@@ -155,7 +155,7 @@ export function ProductionQueueRow({
             <input
               type="number"
               min="0"
-              step="any"
+              step="1"
               placeholder="PCS"
               disabled={!isAllowed}
               value={row.htc_ok_pcs}

@@ -8,21 +8,33 @@ export const n = (v: unknown) => {
 export const fmt = (v: unknown, suffix = "") => {
   const x = Number(v);
   if (!Number.isFinite(x)) return "—";
-  return `${x.toLocaleString(undefined, { maximumFractionDigits: 3 })}${suffix}`;
+  const sUpper = suffix.toUpperCase();
+  if (sUpper.includes("PCS") || sUpper.includes("NOS") || sUpper.includes("PC") || sUpper.includes("BUNDLE")) {
+    return `${Math.round(x).toLocaleString()}${suffix}`;
+  }
+  return `${x.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 0 })}${suffix}`;
+};
+
+export const fmtPcs = (v: unknown, suffix = " PCS") => {
+  const x = Number(v);
+  if (!Number.isFinite(x)) return "0" + suffix;
+  return `${Math.round(x).toLocaleString()}${suffix}`;
 };
 
 export const pcsFromMtr = (mtr: number, avg: number) =>
   avg > 0 ? Math.round(mtr / avg) : 0;
 
 export const mtrFromPcs = (pcs: number, avg: number) =>
-  avg > 0 ? pcs * avg : 0;
+  avg > 0 ? Number((Math.round(pcs) * avg).toFixed(2)) : 0;
 
 export const mtFromMtr = (mtr: number, od: number, wt: number) =>
-  Math.max(od - wt, 0) *
-  Math.max(wt, 0) *
-  0.0246615 *
-  0.001 *
-  Math.max(mtr, 0);
+  Number((
+    Math.max(od - wt, 0) *
+    Math.max(wt, 0) *
+    0.0246615 *
+    0.001 *
+    Math.max(mtr, 0)
+  ).toFixed(2));
 
 export const calc = (row: {
   avg_length: number | null;
@@ -74,8 +86,8 @@ export const calc = (row: {
     : (hasPcs ? Math.round(n(row.pcs)) : (hasMtr && avg > 0 ? pcsFromMtr(n(row.mtr), avg) : 0));
   const calculatedMtr = mtrFromPcs(pcs, avg);
   const mtr = isFinishing
-    ? (hasMtr ? n(row.mtr) : 0)
-    : (hasMtr ? n(row.mtr) : calculatedMtr);
+    ? (hasMtr ? Number(n(row.mtr).toFixed(2)) : 0)
+    : (hasMtr ? Number(n(row.mtr).toFixed(2)) : calculatedMtr);
 
   const hasRejPcs = row.rejection_pcs !== undefined && row.rejection_pcs !== null && row.rejection_pcs.trim() !== "";
   const hasRejMtr = row.rejection_mtr !== undefined && row.rejection_mtr !== null && row.rejection_mtr.trim() !== "";
@@ -84,19 +96,19 @@ export const calc = (row: {
     : (hasRejPcs ? Math.round(n(row.rejection_pcs)) : (hasRejMtr && avg > 0 ? pcsFromMtr(n(row.rejection_mtr), avg) : 0));
   const calculatedRejMtr = mtrFromPcs(rejectionPcs, avg);
   const rejectionMtr = isFinishing
-    ? (hasRejMtr ? n(row.rejection_mtr) : 0)
-    : (hasRejMtr ? n(row.rejection_mtr) : calculatedRejMtr);
+    ? (hasRejMtr ? Number(n(row.rejection_mtr).toFixed(2)) : 0)
+    : (hasRejMtr ? Number(n(row.rejection_mtr).toFixed(2)) : calculatedRejMtr);
 
   const hasHtcPcs = row.htc_ok_pcs !== undefined && row.htc_ok_pcs !== null && row.htc_ok_pcs.trim() !== "";
   const hasHtcMtr = row.htc_ok_mtr !== undefined && row.htc_ok_mtr !== null && row.htc_ok_mtr.trim() !== "";
   const htcPcs = hasHtcPcs ? Math.round(n(row.htc_ok_pcs)) : (hasHtcMtr && avg > 0 ? pcsFromMtr(n(row.htc_ok_mtr), avg) : 0);
   const calculatedHtcMtr = mtrFromPcs(htcPcs, avg);
-  const htcMtr = hasHtcMtr ? n(row.htc_ok_mtr) : calculatedHtcMtr;
+  const htcMtr = hasHtcMtr ? Number(n(row.htc_ok_mtr).toFixed(2)) : calculatedHtcMtr;
 
-  const mt = mtFromMtr(mtr, effectiveOd, effectiveWt);
-  const rejectionMt = mtFromMtr(rejectionMtr, effectiveOd, effectiveWt);
-  const htcMt = mtFromMtr(htcMtr, effectiveOd, effectiveWt);
-  const netMtr = Math.max(0, mtr - rejectionMtr);
+  const mt = Number(mtFromMtr(mtr, effectiveOd, effectiveWt).toFixed(2));
+  const rejectionMt = Number(mtFromMtr(rejectionMtr, effectiveOd, effectiveWt).toFixed(2));
+  const htcMt = Number(mtFromMtr(htcMtr, effectiveOd, effectiveWt).toFixed(2));
+  const netMtr = Number(Math.max(0, mtr - rejectionMtr).toFixed(2));
   const netPcs = Math.max(0, pcs - rejectionPcs);
 
   return {

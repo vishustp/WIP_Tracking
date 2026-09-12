@@ -1547,7 +1547,7 @@ export default function DiversionForm() {
                     </td>
 
                     <td className="px-3 py-2 text-right font-mono text-slate-700 border-r border-slate-200">
-                      {fmt(p.diverted_pcs, 1)}
+                      {fmt(p.diverted_pcs, 0)}
                     </td>
 
                     <td className="px-3 py-2 text-right font-mono text-slate-700 border-r border-slate-200">

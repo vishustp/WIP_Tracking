@@ -84,7 +84,7 @@ export function EditEntryModal({
     if (value === '') {
       setEditMtr('');
     } else {
-      setEditMtr(String(mtrFromPcs(n(value), avgLength).toFixed(3).replace(/\.?0+$/, '')));
+      setEditMtr(String(mtrFromPcs(n(value), avgLength).toFixed(2).replace(/\.?0+$/, '')));
     }
   };
 
@@ -94,7 +94,7 @@ export function EditEntryModal({
     if (value === '') {
       setEditRejectionMtr('');
     } else {
-      setEditRejectionMtr(String(mtrFromPcs(n(value), avgLength).toFixed(3).replace(/\.?0+$/, '')));
+      setEditRejectionMtr(String(mtrFromPcs(n(value), avgLength).toFixed(2).replace(/\.?0+$/, '')));
     }
   };
 
@@ -103,7 +103,7 @@ export function EditEntryModal({
     if (value === '') {
       setEditHtcMtr('');
     } else {
-      setEditHtcMtr(String(mtrFromPcs(n(value), avgLength).toFixed(3).replace(/\.?0+$/, '')));
+      setEditHtcMtr(String(mtrFromPcs(n(value), avgLength).toFixed(2).replace(/\.?0+$/, '')));
     }
   };
 
@@ -196,7 +196,7 @@ export function EditEntryModal({
               <input
                 type="number"
                 min="0"
-                step="any"
+                step="1"
                 placeholder="PCS"
                 value={editPcs}
                 onChange={(e) => changeEditPcs(e.target.value)}
@@ -220,7 +220,7 @@ export function EditEntryModal({
               <input
                 type="number"
                 min="0"
-                step="any"
+                step="1"
                 placeholder="PCS"
                 value={editRejectionPcs}
                 onChange={(e) => changeEditRejectionPcs(e.target.value)}
@@ -245,7 +245,7 @@ export function EditEntryModal({
                 <input
                   type="number"
                   min="0"
-                  step="any"
+                  step="1"
                   placeholder="PCS"
                   value={editHtcPcs}
                   onChange={(e) => changeEditHtcPcs(e.target.value)}

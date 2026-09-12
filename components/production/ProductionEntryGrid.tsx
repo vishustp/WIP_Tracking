@@ -210,7 +210,7 @@ export default function ProductionEntryGrid() {
         }
 
         if (field === 'pcs') {
-          const mtr = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ''));
+          const mtr = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
           const extra: Record<string, string> = {};
           if (stage === 'ROLLING') {
             const newPcs = n(value);
@@ -218,7 +218,7 @@ export default function ProductionEntryGrid() {
             const autoHtcPcs = Math.max(0, newPcs - rejPcs);
             extra.htc_ok_pcs = autoHtcPcs > 0 ? String(autoHtcPcs) : newPcs > 0 ? '0' : '';
             extra.htc_ok_mtr =
-              autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(3).replace(/\.?0+$/, '')) : newPcs > 0 ? '0' : '';
+              autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : newPcs > 0 ? '0' : '';
           }
           return { ...r, pcs: value, mtr, ...extra };
         }
@@ -228,13 +228,13 @@ export default function ProductionEntryGrid() {
             const newMtr = n(value);
             const rejMtr = n(r.rejection_mtr);
             const autoHtcMtr = Math.max(0, newMtr - rejMtr);
-            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(3).replace(/\.?0+$/, '')) : newMtr > 0 ? '0' : '';
+            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(2).replace(/\.?0+$/, '')) : newMtr > 0 ? '0' : '';
           }
           return { ...r, mtr: value, ...extra };
         }
         if (field === 'rejection_pcs') {
           const rejection_mtr =
-            value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ''));
+            value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
           const extra: Record<string, string> = {};
           if (stage === 'ROLLING') {
             const prodPcs = n(r.pcs);
@@ -242,7 +242,7 @@ export default function ProductionEntryGrid() {
             const autoHtcPcs = Math.max(0, prodPcs - rejPcs);
             extra.htc_ok_pcs = autoHtcPcs > 0 ? String(autoHtcPcs) : prodPcs > 0 ? '0' : '';
             extra.htc_ok_mtr =
-              autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(3).replace(/\.?0+$/, '')) : prodPcs > 0 ? '0' : '';
+              autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : prodPcs > 0 ? '0' : '';
           }
           return { ...r, rejection_pcs: value, rejection_mtr, ...extra };
         }
@@ -252,13 +252,13 @@ export default function ProductionEntryGrid() {
             const prodMtr = n(r.mtr);
             const rejMtr = n(value);
             const autoHtcMtr = Math.max(0, prodMtr - rejMtr);
-            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(3).replace(/\.?0+$/, '')) : prodMtr > 0 ? '0' : '';
+            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(2).replace(/\.?0+$/, '')) : prodMtr > 0 ? '0' : '';
           }
           return { ...r, rejection_mtr: value, ...extra };
         }
         if (field === 'htc_ok_pcs') {
           const htc_ok_mtr =
-            value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(3).replace(/\.?0+$/, ''));
+            value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
           return { ...r, htc_ok_pcs: value, htc_ok_mtr };
         }
         if (field === 'htc_ok_mtr') {
