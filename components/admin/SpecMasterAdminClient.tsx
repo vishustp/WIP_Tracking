@@ -25,7 +25,7 @@ import {
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface SpecMasterRecord {
   id: string;
@@ -75,14 +75,14 @@ const EMPTY_RECORD: Omit<SpecMasterRecord, 'id' | 'created_at' | 'updated_at'> =
   ndt: 'UT',
   holding_time_sec: 5,
   coating: 'BLACK VARNISH',
-  end_condition: 'BEVEL END (30\u00b0-35\u00b0)',
+  end_condition: 'BEVEL END (30°-35°)',
   bundling: 'HEXAGONAL',
   end_cap: 'PLASTIC PROTECTOR',
   is_min_wall: false,
   is_active: true,
 };
 
-// â”€â”€â”€ Helper Components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Helper Components ────────────────────────────────────────────────────────
 
 function FieldInput({
   label,
@@ -130,7 +130,7 @@ function SectionHeader({ title, icon: Icon }: { title: string; icon: React.Eleme
   );
 }
 
-// â”€â”€â”€ Edit/Add Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Edit/Add Modal ─────────────────────────────────────────────────────────
 
 function SpecEditModal({
   rec,
@@ -162,7 +162,7 @@ function SpecEditModal({
     ndt: rec.ndt ?? 'UT',
     holding_time_sec: rec.holding_time_sec ?? 5,
     coating: rec.coating ?? 'BLACK VARNISH',
-    end_condition: rec.end_condition ?? 'BEVEL END (30\u00b0-35\u00b0)',
+    end_condition: rec.end_condition ?? 'BEVEL END (30°-35°)',
     bundling: rec.bundling ?? 'HEXAGONAL',
     end_cap: rec.end_cap ?? 'PLASTIC PROTECTOR',
     is_min_wall: rec.is_min_wall ?? false,
@@ -370,7 +370,7 @@ function SpecEditModal({
   );
 }
 
-// â”€â”€â”€ Delete Confirmation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Delete Confirmation ────────────────────────────────────────────────────
 
 function DeleteModal({
   rec,
@@ -436,7 +436,7 @@ function DeleteModal({
   );
 }
 
-// â”€â”€â”€ Row Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Row Component ──────────────────────────────────────────────────────────
 
 function SpecRow({
   rec,
@@ -485,7 +485,12 @@ function SpecRow({
         </span>
       </td>
       <td className="px-4 py-3 text-center">
-        <button onClick={() => onToggleActive(rec)} title={rec.is_active ? 'Click to deactivate' : 'Click to activate'} className="cursor-pointer">
+        <button
+          onClick={() => onToggleActive(rec)}
+          title={rec.is_active ? 'Click to deactivate' : 'Click to activate'}
+          aria-label={rec.is_active ? `Click to deactivate ${rec.spec_full}` : `Click to activate ${rec.spec_full}`}
+          className="cursor-pointer"
+        >
           {rec.is_active ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-600 mx-auto" />
           ) : (
@@ -515,7 +520,7 @@ function SpecRow({
   );
 }
 
-// â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function SpecMasterAdminClient() {
   const [records, setRecords] = useState<SpecMasterRecord[]>([]);
@@ -752,4 +757,3 @@ export default function SpecMasterAdminClient() {
     </div>
   );
 }
-
