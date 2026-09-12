@@ -220,7 +220,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <AgingNotificationBell currentUser={currentUser} />
               </div>
 
-              <button type="button" className="p-1 text-slate-500 hover:text-slate-800 transition cursor-pointer" title="Layers">
+              <button type="button" className="p-1 text-slate-500 hover:text-slate-800 transition cursor-pointer" title="Layers" aria-label="Layers">
                 <Layers size={17} />
               </button>
 

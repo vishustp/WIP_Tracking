@@ -485,7 +485,12 @@ function SpecRow({
         </span>
       </td>
       <td className="px-4 py-3 text-center">
-        <button onClick={() => onToggleActive(rec)} title={rec.is_active ? 'Click to deactivate' : 'Click to activate'} className="cursor-pointer">
+        <button
+          onClick={() => onToggleActive(rec)}
+          title={rec.is_active ? 'Click to deactivate' : 'Click to activate'}
+          aria-label={rec.is_active ? `Click to deactivate ${rec.spec_full}` : `Click to activate ${rec.spec_full}`}
+          className="cursor-pointer"
+        >
           {rec.is_active ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-600 mx-auto" />
           ) : (
