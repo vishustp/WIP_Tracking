@@ -243,9 +243,9 @@ export function computeGroupSpecs(
   // 12. Weight (Kgs) = (((RM OD)*(RM OD)*3.14*0.007856/4)*RM Len Min)
   const weightKg = Number((((rmOd * rmOd * 3.14 * 0.007856) / 4) * rmLenMin).toFixed(3));
 
-  // 21-23. Cust. OD, Cust. WT, Rolling WT = Cust. WT
-  const custOd = Number(group.custOd) || Number(group.wo.size_od) || 0;
-  const custWt = Number(group.custWt) || Number(group.wo.size_wt) || 0;
+  // 21-23. MH OD (custOd), MH WT (custWt), Rolling WT = MH WT
+  const custOd = Number(group.custOd) || 0;
+  const custWt = Number(group.custWt) || 0;
   const rollingWt = Number(group.rollingWt) || custWt;
 
   // 15. Billet Wt. After WHF = Weight (Kgs) * 0.97
@@ -297,8 +297,8 @@ export function computeGroupSpecs(
   const effectiveLen = smKgMtr > 0 ? Number((effectiveWg / smKgMtr).toFixed(2)) : smLen;
 
   // 32-34. Min, Max, E/R
-  const minLen = Number(group.reqLenMin) || Number(group.wo.l1) || 0;
-  const maxLen = Number(group.reqLenMax) || Number(group.wo.l2) || minLen;
+  const minLen = Number(group.reqLenMin) || 0;
+  const maxLen = Number(group.reqLenMax) || minLen;
   const erStatus: 'EL' | 'RL' = minLen > 0 && minLen === maxLen ? 'EL' : 'RL';
 
   // 13. Nos = Total Planned Pcs if entered, else Rolling MTR / Effective Length
@@ -388,21 +388,21 @@ export function createDefaultGroup(
     pmOd: '',
     pmWt: '',
     pmLen: '',
-    custOd: custOdNum > 0 ? String(custOdNum.toFixed(2)) : '',
-    custWt: custWtNum > 0 ? String(custWtNum.toFixed(2)) : '',
-    rollingWt: custWtNum > 0 ? String(custWtNum.toFixed(2)) : '',
-    smLen: smLenNum > 0 ? String(smLenNum.toFixed(2)) : '',
+    custOd: '',
+    custWt: '',
+    rollingWt: '',
+    smLen: '',
     feLen: '0.000',
     beLen: '0.000',
-    effLen: smLenNum > 0 ? String(smLenNum.toFixed(2)) : '',
-    reqLenEr: wo.l1 && wo.l2 && wo.l1 === wo.l2 ? 'EL' : 'RL',
-    reqLenMin: wo.l1 ? String(Number(wo.l1).toFixed(2)) : '',
-    reqLenMax: wo.l2 ? String(Number(wo.l2).toFixed(2)) : (wo.l1 ? String(Number(wo.l1).toFixed(2)) : ''),
+    effLen: '',
+    reqLenEr: 'RL',
+    reqLenMin: '',
+    reqLenMax: '',
     multipleStr: '1',
-    tolOdMin: custOdNum > 0 ? String((custOdNum - 0.4).toFixed(2)) : '',
-    tolOdMax: custOdNum > 0 ? String((custOdNum + 0.4).toFixed(2)) : '',
-    tolWtMin: custWtNum > 0 ? String((custWtNum * 0.92).toFixed(2)) : '',
-    tolWtMax: custWtNum > 0 ? String((custWtNum * 1.1).toFixed(2)) : '',
+    tolOdMin: '',
+    tolOdMax: '',
+    tolWtMin: '',
+    tolWtMax: '',
     processYieldPct: '',
     isSpecsExpanded: false,
   };
@@ -917,8 +917,19 @@ export default function RollingPlanForm() {
           if (matchedRoute?.material_category) {
             updated.catg = matchedRoute.material_category;
           }
+        } else if (field === 'custOd') {
+          const od = Number(value);
+          if (od > 0) {
+            updated.tolOdMin = String((od - 0.4).toFixed(2));
+            updated.tolOdMax = String((od + 0.4).toFixed(2));
+          }
         } else if (field === 'custWt') {
           updated.rollingWt = value;
+          const wt = Number(value);
+          if (wt > 0) {
+            updated.tolWtMin = String((wt * 0.92).toFixed(2));
+            updated.tolWtMax = String((wt * 1.1).toFixed(2));
+          }
         } else if (field === 'reqLenMin' || field === 'reqLenMax') {
           const min = field === 'reqLenMin' ? Number(value) : Number(g.reqLenMin);
           const max = field === 'reqLenMax' ? Number(value) : Number(g.reqLenMax);
@@ -1027,10 +1038,69 @@ export default function RollingPlanForm() {
       return;
     }
 
-    const unroutedGroup = groups.find((g) => !g.routeId && !route);
-    if (unroutedGroup) {
-      toast.error(`Please select a Process Route for Work Order ${unroutedGroup.wo.work_order_no} in Setup Specifications.`);
-      return;
+    // Comprehensive validation: All setup fields must be completed before saving
+    for (let gIdx = 0; gIdx < groups.length; gIdx++) {
+      const g = groups[gIdx];
+      const setupLabel = `Setup #${gIdx + 1} (${g.wo.work_order_no})`;
+
+      const expandAndToast = (msg: string) => {
+        setGroups((prev) =>
+          prev.map((item, idx) => (idx === gIdx ? { ...item, isSpecsExpanded: true } : item))
+        );
+        toast.error(msg);
+      };
+
+      if (!g.routeId && !route) {
+        expandAndToast(`Please select a Process Route for ${setupLabel} in Setup Specifications.`);
+        return;
+      }
+      if (!g.grade?.trim()) {
+        expandAndToast(`RM Grade is mandatory for ${setupLabel}. Please select or enter RM Grade.`);
+        return;
+      }
+      if (!g.rmOd || Number(g.rmOd) <= 0) {
+        expandAndToast(`Please enter RM OD (mm) for ${setupLabel}.`);
+        return;
+      }
+      if (!g.rmLenMin || Number(g.rmLenMin) <= 0) {
+        expandAndToast(`Please enter RM Len Min (m) for ${setupLabel}.`);
+        return;
+      }
+      if (!g.rmLenMax || Number(g.rmLenMax) <= 0) {
+        expandAndToast(`Please enter RM Len Max (m) for ${setupLabel}.`);
+        return;
+      }
+      if (!g.pmOd || Number(g.pmOd) <= 0) {
+        expandAndToast(`Please enter PM OD (mm) for ${setupLabel}.`);
+        return;
+      }
+      if (!g.pmWt || Number(g.pmWt) <= 0) {
+        expandAndToast(`Please enter PM Wt (mm) for ${setupLabel}.`);
+        return;
+      }
+      if (!g.custOd || Number(g.custOd) <= 0) {
+        expandAndToast(`Please enter MH OD (mm) for ${setupLabel}.`);
+        return;
+      }
+      if (!g.custWt || Number(g.custWt) <= 0) {
+        expandAndToast(`Please enter MH WT (mm) for ${setupLabel}.`);
+        return;
+      }
+      if (!g.reqLenMin || Number(g.reqLenMin) <= 0) {
+        expandAndToast(`Please enter Min (m) Length for ${setupLabel}.`);
+        return;
+      }
+      if (!g.reqLenMax || Number(g.reqLenMax) <= 0) {
+        expandAndToast(`Please enter Max (m) Length for ${setupLabel}.`);
+        return;
+      }
+
+      const parentPcs = Number(g.plannedPcs || 0);
+      const hasChildPcs = g.children.some((c) => Number(c.plannedPcs || 0) > 0);
+      if (parentPcs <= 0 && !hasChildPcs) {
+        toast.error(`Please enter Planned PCS for ${setupLabel}.`);
+        return;
+      }
     }
 
     setLoading(true);
@@ -1775,7 +1845,7 @@ export default function RollingPlanForm() {
                             <Sliders className="h-3.5 w-3.5 text-amber-600" />
                             <span>{group.isSpecsExpanded ? 'Hide Specs' : 'Setup Specs & Tolerances'}</span>
                             <span className="text-[10px] text-slate-400 font-mono hidden md:inline">
-                              ({routes.find((r) => r.id === (group.routeId || route))?.route_code || 'No Route'} · {specs.catg} · RM {specs.rmOd}mm · PM {specs.pmOd}mm · SM {specs.custOd}×{specs.custWt} · {specs.nos} Nos / {fmt(specs.mton, 2)} MT)
+                              ({routes.find((r) => r.id === (group.routeId || route))?.route_code || 'No Route'} · {specs.catg} · RM {specs.rmOd || '—'}mm · PM {specs.pmOd || '—'}mm · MH {specs.custOd || '—'}×{specs.custWt || '—'} · {specs.nos} Nos / {fmt(specs.mton, 2)} MT)
                             </span>
                           </button>
 
@@ -2059,17 +2129,18 @@ export default function RollingPlanForm() {
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] text-slate-500 font-semibold block">RM Grade</label>
+                                <label className="text-[10px] text-indigo-700 font-bold block">RM Grade *</label>
                                 <div className="relative">
                                   <input
                                     type="text"
                                     list={`rm-grade-list-${group.id}`}
                                     value={group.grade}
-                                    placeholder="Select or enter RM Grade..."
+                                    placeholder="Select or enter RM Grade *..."
                                     onChange={(e) =>
                                       handleUpdateGroupField(group.id, 'grade', e.target.value)
                                     }
-                                    className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold bg-white focus:border-indigo-500"
+                                    className="w-full rounded border border-indigo-300 p-1 text-xs font-mono font-bold bg-white focus:border-indigo-500"
+                                    required
                                   />
                                   <datalist id={`rm-grade-list-${group.id}`}>
                                     {STANDARD_RM_GRADES.map((g) => (
@@ -2188,7 +2259,7 @@ export default function RollingPlanForm() {
                                 4. Sizing Mill (SM)
                               </span>
                               <div>
-                                <label className="text-[10px] text-slate-500 block">Cust. OD × WT (mm) *</label>
+                                <label className="text-[10px] text-indigo-700 font-bold block">MH OD × WT (mm) *</label>
                                 <div className="flex gap-1.5">
                                   <input
                                     type="number"
@@ -2198,7 +2269,7 @@ export default function RollingPlanForm() {
                                       handleUpdateGroupField(group.id, 'custOd', e.target.value)
                                     }
                                     className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono font-bold"
-                                    placeholder="OD"
+                                    placeholder="MH OD"
                                   />
                                   <input
                                     type="number"
@@ -2208,7 +2279,7 @@ export default function RollingPlanForm() {
                                       handleUpdateGroupField(group.id, 'custWt', e.target.value)
                                     }
                                     className="w-1/2 rounded border border-slate-300 p-1 text-xs font-mono font-bold"
-                                    placeholder="WT"
+                                    placeholder="MH WT"
                                   />
                                 </div>
                               </div>
@@ -2292,7 +2363,7 @@ export default function RollingPlanForm() {
                               </span>
                               <div className="flex gap-1.5">
                                 <div className="w-1/2">
-                                  <label className="text-[10px] text-slate-500 block">Min (m) *</label>
+                                  <label className="text-[10px] text-indigo-700 font-bold block">Min (m) *</label>
                                   <input
                                     type="number"
                                     step="0.01"
@@ -2301,10 +2372,11 @@ export default function RollingPlanForm() {
                                       handleUpdateGroupField(group.id, 'reqLenMin', e.target.value)
                                     }
                                     className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
+                                    placeholder="Min (m)"
                                   />
                                 </div>
                                 <div className="w-1/2">
-                                  <label className="text-[10px] text-slate-500 block">Max (m) *</label>
+                                  <label className="text-[10px] text-indigo-700 font-bold block">Max (m) *</label>
                                   <input
                                     type="number"
                                     step="0.01"
@@ -2313,6 +2385,7 @@ export default function RollingPlanForm() {
                                       handleUpdateGroupField(group.id, 'reqLenMax', e.target.value)
                                     }
                                     className="w-full rounded border border-slate-300 p-1 text-xs font-mono font-bold"
+                                    placeholder="Max (m)"
                                   />
                                 </div>
                               </div>
@@ -2373,8 +2446,8 @@ export default function RollingPlanForm() {
                                   <th className="px-1.5 py-0.5 border-r border-slate-200">PM Kg/m</th>
                                   <th className="px-1.5 py-0.5 border-r border-slate-200">PM Len</th>
                                   <th className="px-1.5 py-0.5 border-r border-slate-200">WBF Wt</th>
-                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Cust OD</th>
-                                  <th className="px-1.5 py-0.5 border-r border-slate-200">Cust WT</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">MH OD</th>
+                                  <th className="px-1.5 py-0.5 border-r border-slate-200">MH WT</th>
                                   <th className="px-1.5 py-0.5 border-r border-slate-200">Roll WT</th>
                                   <th className="px-1.5 py-0.5 border-r border-slate-200">SM Kg/m</th>
                                   <th className="px-1.5 py-0.5 border-r border-slate-200">SM Len</th>
@@ -3500,7 +3573,7 @@ export default function RollingPlanForm() {
                         <Input type="number" step="0.01" value={editPmWt} onChange={(e) => setEditPmWt(e.target.value)} />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Cust OD (mm)</label>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">MH OD (mm)</label>
                         <Input
                           type="number"
                           step="0.01"
@@ -3512,7 +3585,7 @@ export default function RollingPlanForm() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Cust WT (mm)</label>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">MH WT (mm)</label>
                         <Input type="number" step="0.01" value={editCustWt} onChange={(e) => setEditCustWt(e.target.value)} />
                       </div>
                       <div>

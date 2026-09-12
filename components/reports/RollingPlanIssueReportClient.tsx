@@ -2135,7 +2135,7 @@ export default function RollingPlanIssueReportClient() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Cust OD (mm)</label>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">MH OD (mm)</label>
                         <input
                           type="number"
                           step="0.01"
@@ -2145,7 +2145,7 @@ export default function RollingPlanIssueReportClient() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">Cust WT (mm)</label>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">MH WT (mm)</label>
                         <input
                           type="number"
                           step="0.01"
