@@ -26,7 +26,7 @@ export interface ProductionQueueTableProps {
   ) => void;
   onOpenBundling: (row: Row) => void;
   isAllowed: boolean;
-  roleTitle: string;
+  roleTitle?: string;
   isAuditor: boolean;
   saving: boolean;
   queueLoading: boolean;

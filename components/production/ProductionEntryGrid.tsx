@@ -855,7 +855,7 @@ export default function ProductionEntryGrid() {
         onUpdateRow={updateRow}
         onOpenBundling={openCampaignBundling}
         isAllowed={isAllowed}
-        roleTitle={roleTitle}
+        roleTitle={roleTitle || 'Operator'}
         isAuditor={user?.role === 'auditor'}
         saving={saving}
         queueLoading={queueLoading}
