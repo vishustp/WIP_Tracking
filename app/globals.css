@@ -81,6 +81,16 @@ input:focus, select:focus, textarea:focus {
   color: #3730a3;
 }
 
+/* Dark inputs autofill text visibility fix */
+input.bg-slate-900:-webkit-autofill,
+input.bg-slate-900:-webkit-autofill:hover, 
+input.bg-slate-900:-webkit-autofill:focus, 
+input.bg-slate-900:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-box-shadow: 0 0 0px 1000px #0f172a inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 @media print {
   header,
   aside,

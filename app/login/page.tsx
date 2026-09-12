@@ -128,8 +128,8 @@ export default function LoginPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-slate-300 block">Email</label>
               <div className="relative">
-                <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                <Input
+                <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
+                <input
                   id="email-input"
                   type="email"
                   placeholder="name@company.com"
@@ -139,7 +139,7 @@ export default function LoginPage() {
                   autoCorrect="off"
                   autoComplete="username"
                   required
-                  className="pl-10 bg-slate-900 border-slate-700/80 text-white placeholder:text-slate-500 text-sm h-10.5 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  className="w-full pl-10 pr-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium placeholder:text-slate-500 text-sm h-11 focus:border-blue-500 focus:bg-slate-900 focus:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors"
                 />
               </div>
             </div>
@@ -147,8 +147,8 @@ export default function LoginPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-slate-300 block">Password</label>
               <div className="relative">
-                <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                <Input
+                <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
+                <input
                   id="password-input"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Enter your password"
@@ -156,12 +156,12 @@ export default function LoginPage() {
                   onChange={(e) => { setPassword(e.target.value); if (errorMessage) setErrorMessage(null); }}
                   autoComplete="current-password"
                   required
-                  className="pl-10 pr-10 bg-slate-900 border-slate-700/80 text-white placeholder:text-slate-500 text-sm h-10.5 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono"
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium placeholder:text-slate-500 text-sm h-11 focus:border-blue-500 focus:bg-slate-900 focus:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 p-1 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1 transition-colors z-10"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
