@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
+import GlobalKeyboardNavigation from '@/components/common/GlobalKeyboardNavigation';
 
 const groups = [
   {
@@ -113,6 +114,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+      <GlobalKeyboardNavigation />
       {/* Mobile overlay */}
       {open && (
         <div
