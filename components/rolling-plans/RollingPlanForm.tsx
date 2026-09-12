@@ -2640,9 +2640,9 @@ export default function RollingPlanForm() {
         </div>
 
         {/* Plans Table */}
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-auto max-h-[70vh] rounded-lg border border-slate-200 relative">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
+            <thead className="sticky top-0 z-20 bg-slate-100 text-slate-700 border-b border-slate-200 shadow-2xs">
               <tr>
                 <th className="px-3 py-2.5 font-bold">Plan No</th>
                 <th className="px-3 py-2.5 font-bold">Type</th>

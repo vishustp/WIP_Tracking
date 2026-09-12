@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
+import { parseExcelBuffer, exportJsonToExcel } from '@/lib/excelUtils';
 import { createClient } from '@/lib/supabase/client';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
@@ -418,13 +418,8 @@ export default function ExcelImporter() {
     setFileName(file.name);
     try {
       const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-      const sheetName = workbook.SheetNames[0];
-      if (!sheetName) throw new Error('No worksheet found in Excel file.');
-      const sheet = workbook.Sheets[sheetName];
-      if (!sheet) throw new Error('Unable to read worksheet.');
-      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
-      parseRecords(raw, sheetName);
+      const { sheetName, records } = await parseExcelBuffer<Record<string, unknown>>(buffer);
+      parseRecords(records, sheetName);
     } catch (error) {
       setRows([]);
       setMessage(error instanceof Error ? error.message : 'Unable to read Excel file.');
@@ -439,11 +434,12 @@ export default function ExcelImporter() {
     parseRecords(SAMPLE_EXCEL_DATA as any, 'Sample Schedule');
   };
 
-  const downloadTemplate = () => {
-    const ws = XLSX.utils.json_to_sheet(SAMPLE_EXCEL_DATA);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Work_Orders_Schedule');
-    XLSX.writeFile(wb, 'Seamless_Pipe_Work_Orders_Template.xlsx');
+  const downloadTemplate = async () => {
+    await exportJsonToExcel(
+      SAMPLE_EXCEL_DATA,
+      'Work_Orders_Schedule',
+      'Seamless_Pipe_Work_Orders_Template.xlsx'
+    );
   };
 
   async function importRows() {

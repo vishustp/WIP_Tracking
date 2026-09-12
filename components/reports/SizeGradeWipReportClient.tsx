@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '@/lib/excelUtils';
 import { createClient } from '@/lib/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -362,10 +362,11 @@ export default function SizeGradeWipReportClient() {
         'Total WIP (MT)': g.total_mt,
       }));
 
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'OD-WT-Grade WIP');
-      XLSX.writeFile(wb, `od-wt-grade-station-wip-report-${asOnDate}.xlsx`);
+      await exportJsonToExcel(
+        exportData,
+        'OD-WT-Grade WIP',
+        `od-wt-grade-station-wip-report-${asOnDate}.xlsx`
+      );
     } else {
       const exportData = filteredRawRows.map((r, i) => ({
         '#': i + 1,
@@ -379,10 +380,11 @@ export default function SizeGradeWipReportClient() {
         'Physical WIP (MT)': r.available_mt,
       }));
 
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Detailed WO WIP');
-      XLSX.writeFile(wb, `detailed-wo-wip-report-${asOnDate}.xlsx`);
+      await exportJsonToExcel(
+        exportData,
+        'Detailed WO WIP',
+        `detailed-wo-wip-report-${asOnDate}.xlsx`
+      );
     }
   };
 
@@ -643,9 +645,9 @@ export default function SizeGradeWipReportClient() {
       {/* MATRIX VIEW */}
       {viewMode === 'matrix' && (
         <div className="rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh] relative">
             <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
-              <thead className="bg-slate-100/80 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+              <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
                 <tr>
                   <th className="py-2.5 px-3 w-10 text-center"></th>
                   <th className="py-2.5 px-3">Size (OD × WT)</th>
@@ -864,9 +866,9 @@ export default function SizeGradeWipReportClient() {
       {/* LEDGER WORK ORDER DETAIL VIEW */}
       {viewMode === 'ledger' && (
         <div className="rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh] relative">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+              <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
                 <tr>
                   <th className="py-2.5 px-3">Work Order #</th>
                   <th className="py-2.5 px-3">Customer</th>

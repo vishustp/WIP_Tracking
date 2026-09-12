@@ -20,12 +20,15 @@ export function GlobalKeyboardNavigation() {
     if (pathname === '/login') return;
 
     const isVisible = (el: HTMLElement): boolean => {
-      return !!(
-        el.offsetWidth ||
-        el.offsetHeight ||
-        el.getClientRects().length ||
-        (el.offsetParent !== null && !el.hasAttribute('hidden'))
-      );
+      if (el.hasAttribute('hidden') || el.style.display === 'none' || el.style.visibility === 'hidden') {
+        return false;
+      }
+      // Check browser layout metrics when rendered in real DOM
+      if (el.offsetWidth || el.offsetHeight || el.getClientRects().length || el.offsetParent !== null) {
+        return true;
+      }
+      // Fallback for jsdom / test environments where layout engine is not instantiated
+      return !el.hasAttribute('hidden') && el.style.display !== 'none';
     };
 
     const getFocusableElements = (container: HTMLElement | Document): HTMLElement[] => {

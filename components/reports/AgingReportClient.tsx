@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '@/lib/excelUtils';
 import { createClient } from '@/lib/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -228,10 +228,11 @@ export default function AgingReportClient() {
       'Acknowledged': r.is_acknowledged ? 'Yes' : 'No',
     }));
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'WIP Aging');
-    XLSX.writeFile(wb, `wip-aging-bottleneck-report-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    await exportJsonToExcel(
+      exportData,
+      'WIP Aging',
+      `wip-aging-bottleneck-report-${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
   };
 
   return (
@@ -388,9 +389,9 @@ export default function AgingReportClient() {
 
       {/* Main Table */}
       <div className="rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh] relative">
           <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+            <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
               <tr>
                 <th className="py-2.5 px-3">Work Order</th>
                 <th className="py-2.5 px-3">Customer</th>

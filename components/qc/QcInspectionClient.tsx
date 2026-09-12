@@ -995,9 +995,9 @@ export default function QcInspectionClient() {
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh] relative">
                 <table className="min-w-full text-left text-xs">
-                  <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-700 font-semibold">
+                  <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold shadow-2xs">
                     <tr>
                       <th className="py-3 px-3.5">Work Order #</th>
                       <th className="py-3 px-3">Customer</th>
@@ -1098,9 +1098,9 @@ export default function QcInspectionClient() {
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh] relative">
                 <table className="min-w-full text-left text-xs">
-                  <thead className="bg-amber-50/70 border-b border-amber-200 text-amber-950 font-semibold">
+                  <thead className="sticky top-0 z-20 bg-amber-100 border-b border-amber-200 text-amber-950 font-semibold shadow-2xs">
                     <tr>
                       <th className="py-3 px-3.5">Work Order #</th>
                       <th className="py-3 px-3">Customer</th>
@@ -1219,9 +1219,9 @@ export default function QcInspectionClient() {
                 No QC inspections logged matching your search filters.
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[70vh] relative">
                 <table className="min-w-full text-left text-xs">
-                  <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-700 font-semibold">
+                  <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold shadow-2xs">
                     <tr>
                       <th className="py-3 px-3.5">Date</th>
                       <th className="py-3 px-3">Work Order #</th>

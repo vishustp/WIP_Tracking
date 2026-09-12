@@ -132,9 +132,9 @@ export function ProductionHistoryTable({
           />
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh] relative">
           <table className="min-w-full text-xs">
-            <thead className="border-b border-slate-200 bg-slate-100/70 text-slate-700">
+            <thead className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100 shadow-2xs text-slate-700">
               <tr>
                 <th className="py-2.5 px-3 text-left font-semibold">Date</th>
                 <th className="py-2.5 px-3 text-left font-semibold">Work Order</th>

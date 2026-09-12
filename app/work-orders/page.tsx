@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { toast } from 'sonner';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '@/lib/excelUtils';
 import Link from 'next/link';
 import { mtFromMtr, fmt, normalizeSpecification } from '@/lib/productionUtils';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
@@ -355,10 +355,7 @@ export default function WorkOrders() {
       };
     });
 
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Work Orders');
-    XLSX.writeFile(wb, 'work-orders.xlsx');
+    await exportJsonToExcel(data, 'Work Orders', 'work-orders.xlsx');
   };
 
   const handleDeleteWO = async (wo: WO) => {
@@ -779,14 +776,14 @@ export default function WorkOrders() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh] relative">
           {loading ? (
             <div className="p-8 text-center text-sm text-slate-500">Loading work orders...</div>
           ) : filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">No work orders match the criteria.</div>
           ) : (
             <table className="min-w-[1400px] w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+              <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 shadow-2xs">
                 <tr>
                   <th className="py-2.5 px-3 text-left font-semibold">Work Order</th>
                   <th className="py-2.5 px-3 text-left font-semibold">Customer</th>

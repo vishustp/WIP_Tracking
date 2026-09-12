@@ -7,7 +7,7 @@ import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { mtFromMtr, fmt } from '@/lib/productionUtils';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '@/lib/excelUtils';
 import {
   Search,
   Filter,
@@ -1010,11 +1010,8 @@ export default function WorkOrderTrackingClient() {
       };
     });
 
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'WO Tracking');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `work-order-tracking-sheet-${dateStr}.xlsx`);
+    await exportJsonToExcel(rows, 'WO Tracking', `work-order-tracking-sheet-${dateStr}.xlsx`);
   };
 
   return (
@@ -1246,7 +1243,7 @@ export default function WorkOrderTrackingClient() {
           </button>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh] relative">
           {loading ? (
             <div className="p-12 text-center text-sm text-slate-500">Loading work order tracking data...</div>
           ) : filteredWorkOrders.length === 0 ? (
@@ -1259,7 +1256,7 @@ export default function WorkOrderTrackingClient() {
             </div>
           ) : (
             <table className="min-w-full text-xs">
-              <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-700">
+              <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 shadow-2xs">
                 <tr>
                   <th className="py-3 px-3 text-left font-bold min-w-[200px]">Work Order & Specs</th>
                   <th className="py-3 px-3 text-center font-bold min-w-[130px] bg-blue-50/70 border-x border-blue-100 text-blue-900">

@@ -816,9 +816,9 @@ export default function AdminControlPanelClient() {
 
           {/* User Table */}
           <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh] relative">
               <table className="w-full text-left text-sm text-slate-700">
-                <thead className="bg-slate-50/80 text-sm font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                <thead className="sticky top-0 z-20 bg-slate-100 text-sm font-semibold uppercase tracking-wider text-slate-700 border-b border-slate-200 shadow-2xs">
                   <tr>
                     <th className="py-3 px-4">Operator / Staff</th>
                     <th className="py-3 px-4">User Group & Authority</th>
@@ -1194,9 +1194,9 @@ export default function AdminControlPanelClient() {
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh] relative">
               <table className="w-full text-left text-sm text-slate-700">
-                <thead className="bg-slate-50/80 text-sm font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                <thead className="sticky top-0 z-20 bg-slate-100 text-sm font-semibold uppercase tracking-wider text-slate-700 border-b border-slate-200 shadow-2xs">
                   <tr>
                     <th className="py-3 px-4">Date Time</th>
                     <th className="py-3 px-4">Operator / User</th>

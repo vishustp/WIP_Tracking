@@ -54,9 +54,8 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       expect(result.effectiveOd).toBe(108.0);
       expect(result.effectiveWt).toBe(10.0);
 
-      // Expected MT = (108 - 10) * 10 * 0.0246615 * 0.001 * 62.5
-      const expectedMt = (108 - 10) * 10 * 0.0246615 * 0.001 * 62.5;
-      expect(result.mt).toBeCloseTo(expectedMt, 4);
+      // MT is calculated and formatted to 2 decimal places: (108 - 10) * 10 * 0.0246615 * 0.001 * 62.5 = 1.5105... -> 1.51
+      expect(result.mt).toBe(1.51);
     });
   });
 

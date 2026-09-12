@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
+import { exportJsonToExcel } from '@/lib/excelUtils';
 import { createClient } from '@/lib/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -66,15 +66,12 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
 
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const out = filtered.map((r) =>
       Object.fromEntries(columns.map((c) => [c.label, r[c.key]]))
     );
-    const ws = XLSX.utils.json_to_sheet(out);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Report');
     const safeTitle = String(title || 'Report').trim();
-    XLSX.writeFile(wb, `${safeTitle.toLowerCase().replace(/\s+/g, '-')}.xlsx`);
+    await exportJsonToExcel(out, 'Report', `${safeTitle.toLowerCase().replace(/\s+/g, '-')}.xlsx`);
   };
 
   const formatValue = (val: any) => {
@@ -214,9 +211,9 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
 
           {/* Desktop Table View (and visible on mobile if table chosen) */}
           <div className={`rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden ${viewMode === 'cards' ? 'hidden sm:block' : 'block'}`}>
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[70vh] relative">
               <table className="min-w-full text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50/80 text-slate-700">
+                <thead className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100 shadow-2xs text-slate-700">
                   <tr>
                     {columns.map((c) => (
                       <th
