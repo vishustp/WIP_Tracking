@@ -11,11 +11,12 @@ export default async function Dashboard() {
 
   try {
     const supabase = await createClient();
-    const [kpiRes, wipRes, pendingRes, logsRes, plansRes, qcRes] = await Promise.all([
+    const [kpiRes, wipRes, pendingRes, plansRes] = await Promise.all([
       supabase.from('vw_dashboard_kpis').select('*').maybeSingle(),
       supabase
         .from('vw_route_stage_wip')
-        .select('work_order_id,work_order_no,customer_name,route_id,route_code,route_name,stage_id,stage_code,stage_name,sequence_no,incoming_qty,current_wip,current_wip_pcs,current_wip_mt,size_od,size_wt,l1,l2')
+        .select('*')
+        .gt('current_wip', 0)
         .order('sequence_no', { ascending: true })
         .order('work_order_no', { ascending: true }),
       supabase
@@ -25,217 +26,74 @@ export default async function Dashboard() {
         .order('target_date', { ascending: true, nullsFirst: false })
         .limit(20),
       supabase
-        .from('production_logs')
-        .select('work_order_id,stage_id,output_qty,rejection_qty,htc_ok,process_stages(stage_code)'),
-      supabase
         .from('rolling_plans')
-        .select('work_order_id,status,planned_qty,mh_od,mh_wt,mh_l1,mh_l2,plan_no'),
-      supabase
-        .from('qc_inspections')
-        .select('work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr'),
+        .select('work_order_id,status,planned_qty,mh_od,mh_wt,mh_l1,mh_l2,plan_no')
+        .not('status', 'is', null),
     ]);
 
     const rawWip = wipRes.data ?? [];
-    const prodLogs = (logsRes.data ?? []) as any[];
     const rollingPlans = (plansRes.data ?? []) as any[];
-    const qcLogs = (qcRes.data ?? []) as any[];
 
-    // Parse multi-work-order rolling campaign metadata
-    const planMap = new Map<string, any>();
-    const masterMap = new Map<string, any>();
-    const childMap = new Map<string, { master_wo_id: string; master_wo_no: string; planned_mtr?: number }>();
+    // Build Mother Hollow lookup map from rolling plans
+    const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null }>();
 
     for (const p of rollingPlans) {
-      planMap.set(p.work_order_id, p);
       try {
         const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+        const mhOd = Number(p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || 0) || null;
+        const mhWt = Number(p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || 0) || null;
+        const mhL1 = Number(p.mh_l1 || parsed?.mh_l1 || parsed?.sm?.sm_len || 0) || null;
+        const mhL2 = Number(p.mh_l2 || parsed?.mh_l2 || parsed?.sm?.sm_len || 0) || null;
+        const mhAvg = mhL1 && mhL2 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || null;
+
+        if (p.work_order_id) {
+          mhMap.set(p.work_order_id, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg });
+        }
         if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
-          masterMap.set(p.work_order_id, {
-            ...p,
-            parsed,
-            child_work_orders: parsed.child_work_orders,
-          });
           for (const c of parsed.child_work_orders) {
-            const childId = c.work_order_id || c.id;
-            if (childId) {
-              childMap.set(childId, {
-                master_wo_id: p.work_order_id,
-                master_wo_no: parsed.master_wo_no || '',
-                planned_mtr: Number(c.planned_mtr || 0),
-              });
+            const cId = c.work_order_id || c.id;
+            if (cId) {
+              mhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg });
             }
           }
-        } else if (parsed?.is_child) {
-          childMap.set(p.work_order_id, {
-            master_wo_id: parsed.master_wo_id,
-            master_wo_no: parsed.master_wo_no || '',
-            planned_mtr: Number(parsed.planned_mtr || p.planned_qty || 0),
-          });
         }
       } catch {}
     }
 
-    // Helper to get production logs for a work order (or master campaign if child)
-    const getLogsForWo = (woId: string) => {
-      const child = childMap.get(woId);
-      const effectiveId = child ? child.master_wo_id : woId;
-      return prodLogs.filter((l: any) => l.work_order_id === effectiveId);
-    };
+    const calculatedWip = rawWip.map((r: any) => {
+      const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT';
+      const planMh = mhMap.get(r.work_order_id);
+      const mhLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 0);
+      const woLen = Number(r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0);
+      const effectiveLen = isMhStage && mhLen > 0 ? mhLen : woLen > 0 ? woLen : 6.0;
 
-    // STRICT STEEL PLANT WIP CALCULATION:
-    // 1. Physical WIP is strictly calculated AFTER Rolling Production is done.
-    // 2. Physical WIP is strictly generated ONLY from Rolling HTC OK quantity.
-    // 3. Piece conservation is preserved across Mother Hollow -> Drawn Tube -> Finished Tube.
-    // 4. In multi-order campaigns, child orders have no independent pre-finishing WIP (bundled in Master).
-    const calculatedWip = rawWip
-      .map((r: any) => {
-        const stageCode = (r.stage_code || '').toUpperCase();
-        const childInfo = childMap.get(r.work_order_id);
+      const od = Number(isMhStage ? (planMh?.mh_od || r.mh_od || r.od || r.size_od || 0) : (r.od || r.size_od || 0));
+      const wt = Number(isMhStage ? (planMh?.mh_wt || r.mh_wt || r.wt || r.size_wt || 0) : (r.wt || r.size_wt || 0));
 
-        // Child orders in campaigns are bundled under master for pre-finishing stages
-        if (childInfo && stageCode !== 'FINISHING') {
-          return null;
-        }
+      const currentWipMtr = Number(r.current_wip || 0);
+      const currentWipPcs = isMhStage && mhLen > 0
+        ? Math.round(currentWipMtr / mhLen)
+        : (Number(r.current_wip_pcs || 0) > 0 ? Number(r.current_wip_pcs) : (effectiveLen > 0 ? Math.round(currentWipMtr / effectiveLen) : 0));
 
-        const effectiveWoId = childInfo ? childInfo.master_wo_id : r.work_order_id;
-        const plan = planMap.get(effectiveWoId);
-        const mh_l1 = Number(plan?.mh_l1) || 0;
-        const mh_l2 = Number(plan?.mh_l2) || 0;
-        const mhAvg = mh_l1 > 0 && mh_l2 > 0 ? (mh_l1 + mh_l2) / 2 : (mh_l1 || mh_l2 || 0);
+      const computedMt = od > 0 && wt > 0 ? mtFromMtr(currentWipMtr, od, wt) : 0;
+      const currentWipMt = isMhStage
+        ? Number(computedMt.toFixed(3))
+        : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : Number(computedMt.toFixed(3)));
 
-        const masterLogs = getLogsForWo(r.work_order_id);
-        const rollLogs = masterLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'ROLLING');
-        const rollingOutMtr = rollLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
-        const rollingHtcOkMtr = rollLogs.reduce((sum: number, l: any) => sum + Number(l.htc_ok || 0), 0);
-
-        // If rolling production is not done, physical WIP is strictly 0 across all stages
-        if (rollingOutMtr <= 0) {
-          return null;
-        }
-
-        const avgLen = r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : Number(r.l1) || Number(r.l2) || 6.0;
-
-        // Rolling HTC OK pieces (Mother Hollow count)
-        const rollHtcOkPcs = mhAvg > 0 ? Math.round(rollingHtcOkMtr / mhAvg) : (avgLen > 0 ? Math.round(rollingHtcOkMtr / avgLen) : 0);
-
-        // Hollow Heat Treatment (HTC)
-        const htcLogs = masterLogs.filter(
-          (l: any) => (l.process_stages?.stage_code || l.stage_code) === 'HOLLOW_HEAT_TREATMENT'
-        );
-        const htcOutMtr = htcLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
-        const htcRejMtr = htcLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
-        const htcOutPcs = mhAvg > 0 ? Math.round(htcOutMtr / mhAvg) : (avgLen > 0 ? Math.round(htcOutMtr / avgLen) : 0);
-        const htcRejPcs = mhAvg > 0 ? Math.round(htcRejMtr / mhAvg) : (avgLen > 0 ? Math.round(htcRejMtr / avgLen) : 0);
-
-        // Draw Bench
-        const drawLogs = masterLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'DRAW');
-        const drawOutMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
-        const drawRejMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
-        const drawOutPcs = avgLen > 0 ? Math.round(drawOutMtr / avgLen) : 0;
-        const drawRejPcs = avgLen > 0 ? Math.round(drawRejMtr / avgLen) : 0;
-        const drawTotalPcs = drawOutPcs + drawRejPcs;
-
-        // Heat Treatment
-        const htLogs = masterLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'HEAT_TREATMENT');
-        const htOutMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
-        const htRejMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
-        const htOutPcs = avgLen > 0 ? Math.round(htOutMtr / avgLen) : 0;
-        const htRejPcs = avgLen > 0 ? Math.round(htRejMtr / avgLen) : 0;
-        const htTotalPcs = htOutPcs + htRejPcs;
-
-        // QC / VDI Inspections
-        const isMasterWithChildren = !childInfo && Array.from(childMap.values()).some((c) => c.master_wo_id === r.work_order_id);
-        const woQcList = qcLogs.filter((q: any) => {
-          if (q.work_order_id === r.work_order_id) return true;
-          if (isMasterWithChildren && childMap.get(q.work_order_id)?.master_wo_id === r.work_order_id) return true;
-          return false;
-        });
-        const qcInspectedPcs = woQcList.reduce(
-          (sum: number, q: any) =>
-            sum + Number(q.inspected_pcs || Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0)),
-          0
-        );
-        const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
-
-        // Finishing (tracked per work order, aggregating child orders for master campaign)
-        const finLogs = prodLogs.filter((l: any) => {
-          const stage = l.process_stages?.stage_code || l.stage_code;
-          if (stage !== 'FINISHING') return false;
-          if (l.work_order_id === r.work_order_id) return true;
-          if (isMasterWithChildren && childMap.get(l.work_order_id)?.master_wo_id === r.work_order_id) return true;
-          return false;
-        });
-        const finOutMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
-        const finRejMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
-        const finOutPcs = avgLen > 0 ? Math.round(finOutMtr / avgLen) : 0;
-        const finRejPcs = avgLen > 0 ? Math.round(finRejMtr / avgLen) : 0;
-        const finTotalPcs = finOutPcs + finRejPcs;
-
-        let wipPcs = 0;
-        let wipMtr = 0;
-
-        if (stageCode === 'ROLLING') {
-          // Rolling outputs pass directly into Hollow HT or Cold Draw Bench queues
-          wipPcs = 0;
-          wipMtr = 0;
-        } else if (stageCode === 'HOLLOW_HEAT_TREATMENT') {
-          wipPcs = Math.max(0, rollHtcOkPcs - htcOutPcs - htcRejPcs);
-          wipMtr = mhAvg > 0 ? Number((wipPcs * mhAvg).toFixed(3)) : Number((wipPcs * avgLen).toFixed(3));
-        } else if (stageCode === 'DRAW') {
-          const incomingPcs = htcOutPcs > 0 ? htcOutPcs : rollHtcOkPcs;
-          wipPcs = Math.max(0, incomingPcs - drawTotalPcs);
-          wipMtr = Number((wipPcs * avgLen).toFixed(3));
-        } else if (stageCode === 'HEAT_TREATMENT') {
-          wipPcs = drawOutPcs > 0 ? Math.max(0, drawOutPcs - htTotalPcs) : 0;
-          wipMtr = Number((wipPcs * avgLen).toFixed(3));
-        } else if (stageCode === 'VDI') {
-          const isHfs = (r.route_code || '').includes('HFS');
-          const vdiIncomingPcs = isHfs
-            ? ((r.route_code || '').includes('ALLOY') ? htcOutPcs : rollHtcOkPcs)
-            : (htOutPcs > 0 ? htOutPcs : drawOutPcs);
-          wipPcs = Math.max(0, vdiIncomingPcs - qcInspectedPcs);
-          wipMtr = Number((wipPcs * avgLen).toFixed(3));
-        } else if (stageCode === 'FINISHING') {
-          if (woQcList.length > 0) {
-            const finishingIncomingPcs = qcOkPcs;
-            const targetMtr = childInfo
-              ? Number(childInfo.planned_mtr || r.incoming_qty || 0)
-              : Number(r.incoming_qty || 0);
-            const targetPcs = avgLen > 0 ? Math.round(targetMtr / avgLen) : 0;
-            wipPcs = finishingIncomingPcs > 0 ? Math.max(0, Math.min(targetPcs, finishingIncomingPcs) - finTotalPcs) : 0;
-            wipMtr = Number((wipPcs * avgLen).toFixed(3));
-          } else {
-            wipPcs = 0;
-            wipMtr = 0;
-          }
-        } else {
-          // General fallback for other stages if present
-          wipMtr = Math.max(0, Number(r.current_wip || 0));
-          wipPcs = avgLen > 0 ? Math.round(wipMtr / avgLen) : 0;
-        }
-
-        if (wipPcs <= 0 && wipMtr <= 0) return null;
-
-        const isMhStage = stageCode === 'ROLLING' || stageCode === 'HOLLOW_HEAT_TREATMENT';
-        let planParsed: any = {};
-        try {
-          planParsed = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
-        } catch {}
-        const mhOd = Number(plan?.mh_od || planParsed?.mh_od || planParsed?.cust_od || planParsed?.sm?.cust_od || planParsed?.sizing_mill?.cust_od || 0);
-        const mhWt = Number(plan?.mh_wt || planParsed?.mh_wt || planParsed?.cust_wt || planParsed?.sm?.rolling_wt || planParsed?.sm?.cust_wt || planParsed?.sizing_mill?.rolling_wt || 0);
-
-        const od = isMhStage && mhOd > 0 ? mhOd : (Number(r.size_od) || 0);
-        const wt = isMhStage && mhWt > 0 ? mhWt : (Number(r.size_wt) || 0);
-        const wipMt = od > 0 && wt > 0 ? mtFromMtr(wipMtr, od, wt) : 0;
-
-        return {
-          ...r,
-          current_wip: wipMtr,
-          current_wip_pcs: wipPcs,
-          current_wip_mt: wipMt,
-        };
-      })
-      .filter(Boolean);
+      return {
+        ...r,
+        od,
+        wt,
+        mh_od: planMh?.mh_od || null,
+        mh_wt: planMh?.mh_wt || null,
+        mh_l1: planMh?.mh_l1 || null,
+        mh_l2: planMh?.mh_l2 || null,
+        mh_avg_length: planMh?.mh_avg_length || null,
+        current_wip: currentWipMtr,
+        current_wip_pcs: currentWipPcs,
+        current_wip_mt: currentWipMt,
+      };
+    });
 
     const totalWipMtr = calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip) || 0), 0);
     const totalWipPcs = calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip_pcs) || 0), 0);
