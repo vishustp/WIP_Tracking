@@ -494,6 +494,8 @@ export function useQueue(stage: StageCode) {
             const htRejMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
             const htOutPcs = tubeAvg > 0 ? Math.round(htOutMtr / tubeAvg) : 0;
             const htRejPcs = tubeAvg > 0 ? Math.round(htRejMtr / tubeAvg) : 0;
+            const htNetPcs = Math.max(0, htOutPcs - htRejPcs);
+            const htNetMtr = Math.max(0, htOutMtr - htRejMtr);
 
             const hhtDivIn = getStageDivIn(r.work_order_id, "HOLLOW_HEAT_TREATMENT");
             const hhtDivOut = getStageDivOut(r.work_order_id, "HOLLOW_HEAT_TREATMENT");
