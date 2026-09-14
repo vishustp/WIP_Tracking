@@ -70,6 +70,11 @@ type WIPRow = {
   size_wt?: number | null;
   l1?: number | null;
   l2?: number | null;
+  mh_od?: number | null;
+  mh_wt?: number | null;
+  mh_l1?: number | null;
+  mh_l2?: number | null;
+  mh_avg_length?: number | null;
 };
 
 type PendingRow = {
