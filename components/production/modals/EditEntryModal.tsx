@@ -80,21 +80,29 @@ export function EditEntryModal({
 
   const changeEditPcs = (value: string) => {
     setEditPcs(value);
-    if (isFinishing) return;
-    if (value === '') {
-      setEditMtr('');
-    } else {
-      setEditMtr(String(mtrFromPcs(n(value), avgLength).toFixed(2).replace(/\.?0+$/, '')));
+    const mtrVal = value === '' ? '' : String(mtrFromPcs(n(value), avgLength).toFixed(2).replace(/\.?0+$/, ''));
+    if (!isFinishing) setEditMtr(mtrVal);
+
+    const pPcs = n(value);
+    const rPcs = n(editRejectionPcs);
+    const okPcs = Math.max(0, pPcs - rPcs);
+    setEditHtcPcs(value === '' ? '' : String(okPcs));
+    if (!isFinishing) {
+      setEditHtcMtr(okPcs > 0 ? String(mtrFromPcs(okPcs, avgLength).toFixed(2).replace(/\.?0+$/, '')) : '0');
     }
   };
 
   const changeEditRejectionPcs = (value: string) => {
     setEditRejectionPcs(value);
-    if (isFinishing) return;
-    if (value === '') {
-      setEditRejectionMtr('');
-    } else {
-      setEditRejectionMtr(String(mtrFromPcs(n(value), avgLength).toFixed(2).replace(/\.?0+$/, '')));
+    const rejMtrVal = value === '' ? '' : String(mtrFromPcs(n(value), avgLength).toFixed(2).replace(/\.?0+$/, ''));
+    if (!isFinishing) setEditRejectionMtr(rejMtrVal);
+
+    const pPcs = n(editPcs);
+    const rPcs = n(value);
+    const okPcs = Math.max(0, pPcs - rPcs);
+    setEditHtcPcs(editPcs === '' ? '' : String(okPcs));
+    if (!isFinishing) {
+      setEditHtcMtr(okPcs > 0 ? String(mtrFromPcs(okPcs, avgLength).toFixed(2).replace(/\.?0+$/, '')) : '0');
     }
   };
 

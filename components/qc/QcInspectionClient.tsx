@@ -465,6 +465,31 @@ export default function QcInspectionClient() {
     setSalvageReasons((prev) => prev.filter((item) => item.id !== id));
   };
 
+  // Auto-calculate VDI OK Nos when inspection inputs change
+  const handleInspectedPcsChange = (val: string) => {
+    setInspectedPcs(val);
+    const insp = parseFloat(val) || 0;
+    const sal = parseFloat(vdiSalvagePcs) || 0;
+    const rej = parseFloat(vdiRejectionPcs) || 0;
+    setVdiOkPcs(String(Math.max(0, insp - sal - rej)));
+  };
+
+  const handleSalvagePcsChange = (val: string) => {
+    setVdiSalvagePcs(val);
+    const insp = parseFloat(inspectedPcs) || 0;
+    const sal = parseFloat(val) || 0;
+    const rej = parseFloat(vdiRejectionPcs) || 0;
+    setVdiOkPcs(String(Math.max(0, insp - sal - rej)));
+  };
+
+  const handleRejectionPcsChange = (val: string) => {
+    setVdiRejectionPcs(val);
+    const insp = parseFloat(inspectedPcs) || 0;
+    const sal = parseFloat(vdiSalvagePcs) || 0;
+    const rej = parseFloat(val) || 0;
+    setVdiOkPcs(String(Math.max(0, insp - sal - rej)));
+  };
+
   // Computed live metrics for the form
   const formMetrics = useMemo(() => {
     if (!selectedQueueItem) return { inspMtr: 0, inspMt: 0, okMtr: 0, okMt: 0, salMtr: 0, salMt: 0, rejMtr: 0, rejMt: 0, totalSalvageReasonPcs: 0, isSalvageBalanced: true, isPcsBalanced: true };
@@ -638,6 +663,27 @@ export default function QcInspectionClient() {
     setReworkRejectionPcs('0');
     setReworkRemarks('');
     setReworkModalOpen(true);
+  };
+
+  // Auto-calculate passed VDI OK pieces when rework inputs change
+  const handleReworkDivertedChange = (val: string) => {
+    setReworkDivertedPcs(val);
+    const avail = reworkTargetInspection
+      ? Number(reworkTargetInspection.vdi_salvage_pcs || 0)
+      : (reworkTargetWo?.total_salvage_pcs || 0);
+    const div = parseFloat(val) || 0;
+    const rej = parseFloat(reworkRejectionPcs) || 0;
+    setReworkVdiOkPcs(String(Math.max(0, avail - div - rej)));
+  };
+
+  const handleReworkRejectionChange = (val: string) => {
+    setReworkRejectionPcs(val);
+    const avail = reworkTargetInspection
+      ? Number(reworkTargetInspection.vdi_salvage_pcs || 0)
+      : (reworkTargetWo?.total_salvage_pcs || 0);
+    const div = parseFloat(reworkDivertedPcs) || 0;
+    const rej = parseFloat(val) || 0;
+    setReworkVdiOkPcs(String(Math.max(0, avail - div - rej)));
   };
 
   const reworkFormMetrics = useMemo(() => {
@@ -1426,7 +1472,7 @@ export default function QcInspectionClient() {
                     min="1"
                     required
                     value={inspectedPcs}
-                    onChange={(e) => setInspectedPcs(e.target.value)}
+                    onChange={(e) => handleInspectedPcsChange(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-sm font-black text-slate-900 focus:ring-2 focus:ring-blue-500"
                   />
                   <div className="text-[11px] font-mono text-slate-500">
@@ -1457,7 +1503,7 @@ export default function QcInspectionClient() {
                     type="number"
                     min="0"
                     value={vdiSalvagePcs}
-                    onChange={(e) => setVdiSalvagePcs(e.target.value)}
+                    onChange={(e) => handleSalvagePcsChange(e.target.value)}
                     className="w-full rounded-lg border border-amber-300 px-3 py-1.5 font-mono text-sm font-black text-amber-900 focus:ring-2 focus:ring-amber-500"
                   />
                   <div className="text-[11px] font-mono text-amber-700">
@@ -1472,7 +1518,7 @@ export default function QcInspectionClient() {
                     type="number"
                     min="0"
                     value={vdiRejectionPcs}
-                    onChange={(e) => setVdiRejectionPcs(e.target.value)}
+                    onChange={(e) => handleRejectionPcsChange(e.target.value)}
                     className="w-full rounded-lg border border-rose-300 px-3 py-1.5 font-mono text-sm font-black text-rose-900 focus:ring-2 focus:ring-rose-500"
                   />
                   <div className="text-[11px] font-mono text-rose-700">
@@ -1796,7 +1842,7 @@ export default function QcInspectionClient() {
                       min="0"
                       max={reworkFormMetrics.availPcs}
                       value={reworkDivertedPcs}
-                      onChange={(e) => setReworkDivertedPcs(e.target.value)}
+                      onChange={(e) => handleReworkDivertedChange(e.target.value)}
                       placeholder="0"
                       className="w-full rounded-lg border border-blue-300 px-3 py-1.5 font-mono text-sm font-black text-blue-900 focus:ring-2 focus:ring-blue-500"
                     />
@@ -1823,7 +1869,7 @@ export default function QcInspectionClient() {
                       min="0"
                       max={reworkFormMetrics.availPcs}
                       value={reworkRejectionPcs}
-                      onChange={(e) => setReworkRejectionPcs(e.target.value)}
+                      onChange={(e) => handleReworkRejectionChange(e.target.value)}
                       placeholder="0"
                       className="w-full rounded-lg border border-rose-300 px-3 py-1.5 font-mono text-sm font-black text-rose-900 focus:ring-2 focus:ring-rose-500"
                     />

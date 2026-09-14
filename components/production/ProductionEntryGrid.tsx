@@ -204,55 +204,95 @@ export default function ProductionEntryGrid() {
         const effectiveAvg =
           stage === 'ROLLING' && effectiveMhAvg > 0 ? effectiveMhAvg : n(r.avg_length);
 
-        // For Finishing: Do NOT calculate PCS based on MTR or MTR based on PCS.
+        // For Finishing: calculate direct numbers without mandatory length multiplication
         if (stage === 'FINISHING') {
+          if (field === 'pcs') {
+            const newPcs = n(value);
+            const rejPcs = n(r.rejection_pcs);
+            const autoOkPcs = Math.max(0, newPcs - rejPcs);
+            return {
+              ...r,
+              pcs: value,
+              htc_ok_pcs: value === '' ? '' : String(autoOkPcs),
+            };
+          }
+          if (field === 'mtr') {
+            const newMtr = n(value);
+            const rejMtr = n(r.rejection_mtr);
+            const autoOkMtr = Math.max(0, newMtr - rejMtr);
+            return {
+              ...r,
+              mtr: value,
+              htc_ok_mtr: value === '' ? '' : String(autoOkMtr.toFixed(2).replace(/\.?0+$/, '')),
+            };
+          }
+          if (field === 'rejection_pcs') {
+            const prodPcs = n(r.pcs);
+            const rejPcs = n(value);
+            const autoOkPcs = Math.max(0, prodPcs - rejPcs);
+            return {
+              ...r,
+              rejection_pcs: value,
+              htc_ok_pcs: r.pcs === '' ? '' : String(autoOkPcs),
+            };
+          }
+          if (field === 'rejection_mtr') {
+            const prodMtr = n(r.mtr);
+            const rejMtr = n(value);
+            const autoOkMtr = Math.max(0, prodMtr - rejMtr);
+            return {
+              ...r,
+              rejection_mtr: value,
+              htc_ok_mtr: r.mtr === '' ? '' : String(autoOkMtr.toFixed(2).replace(/\.?0+$/, '')),
+            };
+          }
           return { ...r, [field]: value };
         }
 
         if (field === 'pcs') {
           const mtr = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
-          const extra: Record<string, string> = {};
-          if (stage === 'ROLLING') {
-            const newPcs = n(value);
-            const rejPcs = n(r.rejection_pcs);
-            const autoHtcPcs = Math.max(0, newPcs - rejPcs);
-            extra.htc_ok_pcs = autoHtcPcs > 0 ? String(autoHtcPcs) : newPcs > 0 ? '0' : '';
-            extra.htc_ok_mtr =
-              autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : newPcs > 0 ? '0' : '';
-          }
+          const newPcs = n(value);
+          const rejPcs = n(r.rejection_pcs);
+          const autoOkPcs = Math.max(0, newPcs - rejPcs);
+          const autoOkMtr =
+            autoOkPcs > 0 ? String(mtrFromPcs(autoOkPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : newPcs > 0 ? '0' : '';
+          const extra: Record<string, string> = {
+            htc_ok_pcs: value === '' ? '' : String(autoOkPcs),
+            htc_ok_mtr: value === '' ? '' : autoOkMtr,
+          };
           return { ...r, pcs: value, mtr, ...extra };
         }
         if (field === 'mtr') {
           const extra: Record<string, string> = {};
-          if (stage === 'ROLLING' && n(r.pcs) <= 0) {
+          if (n(r.pcs) <= 0) {
             const newMtr = n(value);
             const rejMtr = n(r.rejection_mtr);
-            const autoHtcMtr = Math.max(0, newMtr - rejMtr);
-            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(2).replace(/\.?0+$/, '')) : newMtr > 0 ? '0' : '';
+            const autoOkMtr = Math.max(0, newMtr - rejMtr);
+            extra.htc_ok_mtr = value === '' ? '' : autoOkMtr > 0 ? String(autoOkMtr.toFixed(2).replace(/\.?0+$/, '')) : '0';
           }
           return { ...r, mtr: value, ...extra };
         }
         if (field === 'rejection_pcs') {
           const rejection_mtr =
             value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
-          const extra: Record<string, string> = {};
-          if (stage === 'ROLLING') {
-            const prodPcs = n(r.pcs);
-            const rejPcs = n(value);
-            const autoHtcPcs = Math.max(0, prodPcs - rejPcs);
-            extra.htc_ok_pcs = autoHtcPcs > 0 ? String(autoHtcPcs) : prodPcs > 0 ? '0' : '';
-            extra.htc_ok_mtr =
-              autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : prodPcs > 0 ? '0' : '';
-          }
+          const prodPcs = n(r.pcs);
+          const rejPcs = n(value);
+          const autoOkPcs = Math.max(0, prodPcs - rejPcs);
+          const autoOkMtr =
+            autoOkPcs > 0 ? String(mtrFromPcs(autoOkPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : prodPcs > 0 ? '0' : '';
+          const extra: Record<string, string> = {
+            htc_ok_pcs: r.pcs === '' ? '' : String(autoOkPcs),
+            htc_ok_mtr: r.pcs === '' ? '' : autoOkMtr,
+          };
           return { ...r, rejection_pcs: value, rejection_mtr, ...extra };
         }
         if (field === 'rejection_mtr') {
           const extra: Record<string, string> = {};
-          if (stage === 'ROLLING' && n(r.pcs) <= 0) {
+          if (n(r.pcs) <= 0) {
             const prodMtr = n(r.mtr);
             const rejMtr = n(value);
-            const autoHtcMtr = Math.max(0, prodMtr - rejMtr);
-            extra.htc_ok_mtr = autoHtcMtr > 0 ? String(autoHtcMtr.toFixed(2).replace(/\.?0+$/, '')) : prodMtr > 0 ? '0' : '';
+            const autoOkMtr = Math.max(0, prodMtr - rejMtr);
+            extra.htc_ok_mtr = r.mtr === '' ? '' : autoOkMtr > 0 ? String(autoOkMtr.toFixed(2).replace(/\.?0+$/, '')) : '0';
           }
           return { ...r, rejection_mtr: value, ...extra };
         }

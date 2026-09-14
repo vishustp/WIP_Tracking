@@ -148,8 +148,8 @@ export function ProductionQueueRow({
         </div>
       </td>
 
-      {/* HTC OK Inputs (Rolling Stage only) */}
-      {stage === 'ROLLING' && (
+      {/* OK Nos Column (HTC OK for Rolling, Auto-calculated Net OK for other stages) */}
+      {stage === 'ROLLING' ? (
         <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#ecfdf5]/60 border-r border-emerald-100">
           <div className="flex items-center justify-center gap-1.5">
             <input
@@ -163,6 +163,26 @@ export function ProductionQueueRow({
               className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400"
             />
           </div>
+        </td>
+      ) : (
+        <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#ecfdf5]/60 border-r border-emerald-100 text-center">
+          {(() => {
+            const pPcs = n(row.pcs);
+            const rPcs = n(row.rejection_pcs);
+            const okPcs = Math.max(0, pPcs - rPcs);
+            const pMtr = n(row.mtr);
+            const rMtr = n(row.rejection_mtr);
+            const okMtr = Math.max(0, pMtr - rMtr);
+
+            return pPcs > 0 || pMtr > 0 ? (
+              <div className="inline-flex flex-col items-center justify-center bg-emerald-100/70 border border-emerald-300 px-2 py-0.5 rounded text-emerald-900 font-mono font-extrabold text-xs shadow-2xs">
+                <span>{okPcs > 0 ? `${fmt(okPcs)} PCS` : (okMtr > 0 ? `${fmt(okMtr)} m` : '0 PCS')}</span>
+                {okMtr > 0 && okPcs > 0 && <span className="text-[10px] text-emerald-700 font-normal">{fmt(okMtr)} m</span>}
+              </div>
+            ) : (
+              <span className="text-slate-400 font-mono">—</span>
+            );
+          })()}
         </td>
       )}
 
