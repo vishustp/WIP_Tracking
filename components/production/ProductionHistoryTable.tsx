@@ -2,7 +2,7 @@
 
 import { Search, Edit2, Trash2, Lock, RefreshCw } from 'lucide-react';
 import { ProductionEntry, Row, STAGES } from '@/types';
-import { fmt } from '@/lib/productionUtils';
+import { fmt, extractPcsFromRemarks } from '@/lib/productionUtils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -163,21 +163,27 @@ export function ProductionHistoryTable({
                 );
                 const effectiveLen = isMhStage && mhLen > 0 ? mhLen : woLen > 0 ? woLen : 6.0;
 
+                const { pcs: parsedPcs, rejPcs: parsedRejPcs } = extractPcsFromRemarks(entry.remarks);
+
                 const dispOutPcs = Math.round(
-                  Number(entry.output_pcs || 0) > 0
-                    ? Number(entry.output_pcs)
+                  parsedPcs != null
+                    ? parsedPcs
                     : isMhStage && mhLen > 0
                     ? Number(entry.output_mtr || 0) / mhLen
+                    : Number(entry.output_pcs || 0) > 0
+                    ? Number(entry.output_pcs)
                     : effectiveLen > 0 && Number(entry.output_mtr || 0) > 0
                     ? Number(entry.output_mtr) / effectiveLen
                     : 0
                 );
 
                 const dispRejPcs = Math.round(
-                  Number(entry.rejection_pcs || 0) > 0
-                    ? Number(entry.rejection_pcs)
+                  parsedRejPcs != null
+                    ? parsedRejPcs
                     : isMhStage && mhLen > 0
                     ? Number(entry.rejection_mtr || 0) / mhLen
+                    : Number(entry.rejection_pcs || 0) > 0
+                    ? Number(entry.rejection_pcs)
                     : effectiveLen > 0 && Number(entry.rejection_mtr || 0) > 0
                     ? Number(entry.rejection_mtr) / effectiveLen
                     : 0

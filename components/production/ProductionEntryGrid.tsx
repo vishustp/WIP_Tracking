@@ -809,7 +809,9 @@ export default function ProductionEntryGrid() {
       p_heat_lot_no: payload.editHeatLot.trim() || null,
       p_remarks: finalRemarks.trim() || null,
     });
-    if (rpcError) throw rpcError;
+    if (rpcError) {
+      throw new Error(rpcError.message || 'Failed to update entry.');
+    }
 
     setMessage('Production entry updated successfully.');
     setEditing(null);

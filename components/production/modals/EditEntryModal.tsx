@@ -157,8 +157,16 @@ export function EditEntryModal({
         editHeatLot,
         editRemarks,
       });
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Failed to update entry.');
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : typeof err === 'string'
+          ? err
+          : 'Failed to update entry.';
+      setLocalError(msg);
     } finally {
       setSaving(false);
     }
