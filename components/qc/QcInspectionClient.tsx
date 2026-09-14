@@ -25,6 +25,15 @@ const DEFAULT_SALVAGE_REASONS = [
   'Other / Custom Defect'
 ];
 
+function getYesterdayDateStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function QcInspectionClient() {
   const supabase = createClient();
 
@@ -54,7 +63,7 @@ export default function QcInspectionClient() {
   const [selectedQueueItem, setSelectedQueueItem] = useState<QcQueueItem | null>(null);
 
   // Form inputs
-  const [formDate, setFormDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [formDate, setFormDate] = useState(() => getYesterdayDateStr());
   const [inspectedPcs, setInspectedPcs] = useState('');
   const [vdiOkPcs, setVdiOkPcs] = useState('');
   const [vdiSalvagePcs, setVdiSalvagePcs] = useState('');
@@ -71,7 +80,7 @@ export default function QcInspectionClient() {
   const [reworkModalOpen, setReworkModalOpen] = useState(false);
   const [reworkTargetWo, setReworkTargetWo] = useState<QcSalvageQueueItem | null>(null);
   const [reworkTargetInspection, setReworkTargetInspection] = useState<QcInspection | null>(null);
-  const [reworkDate, setReworkDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reworkDate, setReworkDate] = useState(() => getYesterdayDateStr());
   const [reworkVdiOkPcs, setReworkVdiOkPcs] = useState('');
   const [reworkDivertedPcs, setReworkDivertedPcs] = useState('');
   const [reworkTargetWoId, setReworkTargetWoId] = useState('');
@@ -387,7 +396,7 @@ export default function QcInspectionClient() {
     }
     setSelectedQueueItem(item);
     setEditingInspection(null);
-    setFormDate(new Date().toISOString().slice(0, 10));
+    setFormDate(getYesterdayDateStr());
     setInspectedPcs(String(item.available_ht_ok_pcs));
     setVdiOkPcs(String(item.available_ht_ok_pcs));
     setVdiSalvagePcs('0');
@@ -650,7 +659,7 @@ export default function QcInspectionClient() {
     }
     setReworkTargetWo(item);
     setReworkTargetInspection(inspection || null);
-    setReworkDate(new Date().toISOString().slice(0, 10));
+    setReworkDate(getYesterdayDateStr());
 
     const availPcs = inspection
       ? Number(inspection.vdi_salvage_pcs || 0)

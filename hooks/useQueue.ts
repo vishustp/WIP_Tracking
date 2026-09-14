@@ -542,9 +542,10 @@ export function useQueue(stage: StageCode) {
               availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0;
             }
 
-            const od = Number(r.od || 0);
-            const wt = Number(r.wl || 0);
-            const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
+            const isMhStage = s === "ROLLING" || s === "HOLLOW_HEAT_TREATMENT";
+            const effectiveOd = isMhStage && r.mh_od && Number(r.mh_od) > 0 ? Number(r.mh_od) : Number(r.od || 0);
+            const effectiveWt = isMhStage && r.mh_wt && Number(r.mh_wt) > 0 ? Number(r.mh_wt) : Number(r.wl || 0);
+            const availMt = Math.max(effectiveOd - effectiveWt, 0) * Math.max(effectiveWt, 0) * 0.0246615 * 0.001 * availMtr;
 
             const base: Row = {
               ...r,

@@ -31,13 +31,14 @@ export function ProductionQueueRow({
   const key = `${row.work_order_id}|${row.route_id}`;
   const d = calc({ ...row, stage_code: stage });
   const isRollingStage = stage === 'ROLLING';
-  const stageOd = isRollingStage && row.mh_od ? Number(row.mh_od) : Number(row.od || 0);
-  const stageWt = isRollingStage && row.mh_wt ? Number(row.mh_wt) : Number(row.wl || 0);
+  const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
+  const stageOd = isMhStage && row.mh_od ? Number(row.mh_od) : Number(row.od || 0);
+  const stageWt = isMhStage && row.mh_wt ? Number(row.mh_wt) : Number(row.wl || 0);
 
   const availMtr = n(row.balance_to_make_mtr);
   const effAvg = d.avg > 0 ? d.avg : n(row.avg_length) || 6;
   const availPcs =
-    isRollingStage && effAvg > 0
+    isMhStage && effAvg > 0
       ? Math.round(availMtr / effAvg)
       : n(row.balance_to_make_pcs) > 0
       ? Math.round(n(row.balance_to_make_pcs))

@@ -117,8 +117,9 @@ export default function SizeGradeWipReportClient() {
         });
 
         const mapped = wipRes.data.map((r: any) => {
-          const od = Number(r.od || r.size_od || 0);
-          const wt = Number(r.wt || r.size_wt || 0);
+          const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT';
+          const od = Number(isMhStage && r.mh_od ? r.mh_od : (r.od || r.size_od || 0));
+          const wt = Number(isMhStage && r.mh_wt ? r.mh_wt : (r.wt || r.size_wt || 0));
           const currentWipMtr = Number(r.current_wip || 0);
           const currentWipPcs = Number(r.current_wip_pcs || 0);
           const computedMt = mtFromMtr(currentWipMtr, od, wt);

@@ -117,8 +117,9 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
   const totalPlantWipMt = useMemo(() => {
     return kpi?.total_wip_mt ?? wip.reduce((acc, r) => {
       const mtr = Number(r.current_wip || 0);
-      const od = Number(r.size_od || 0);
-      const wt = Number(r.size_wt || 0);
+      const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT';
+      const od = Number(isMhStage && r.mh_od ? r.mh_od : (r.size_od || 0));
+      const wt = Number(isMhStage && r.mh_wt ? r.mh_wt : (r.size_wt || 0));
       return acc + Number(r.current_wip_mt ?? (od > 0 && wt > 0 ? mtFromMtr(mtr, od, wt) : 0));
     }, 0);
   }, [kpi, wip]);

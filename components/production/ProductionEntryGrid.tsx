@@ -28,6 +28,15 @@ import EditEntryModal from '@/components/production/modals/EditEntryModal';
 import DeleteEntryModal from '@/components/production/modals/DeleteEntryModal';
 import BundlingCampaignModal, { CampaignBundle } from '@/components/production/modals/BundlingCampaignModal';
 
+function getYesterdayDateStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function ProductionEntryGrid() {
   const supabase = useMemo(() => createClient(), []);
   const {
@@ -45,7 +54,7 @@ export default function ProductionEntryGrid() {
 
   // --- State ---
   const [stage, setStage] = useState<StageCode>('ROLLING');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => getYesterdayDateStr());
 
   const [search, setSearch] = useState('');
   const [woFilter, setWoFilter] = useState('');
@@ -324,9 +333,9 @@ export default function ProductionEntryGrid() {
           0
         );
         activeItem.availMt = rows.reduce((sum, r) => {
-          const isRoll = stage === 'ROLLING';
-          const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
-          const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+          const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
+          const od = isMhStage && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
+          const wt = isMhStage && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
           const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
           return sum + mtFromMtr(mtrVal, od, wt);
         }, 0);
@@ -410,9 +419,9 @@ export default function ProductionEntryGrid() {
               }
               const mtr = Number(w.available_mtr || 0);
               const pcs = Number(w.available_pcs || 0);
-              const isRoll = sc === 'ROLLING';
-              const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
-              const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+              const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT';
+              const od = isMhStage && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
+              const wt = isMhStage && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
               const mt = Number(w.available_mt ?? mtFromMtr(mtr, od, wt));
               if (!hasFactoryData) {
                 summary[sc].availMtr += mtr;
@@ -437,9 +446,9 @@ export default function ProductionEntryGrid() {
         }, 0);
         const queueTotalMt = rows.reduce((sum, r) => {
           if (r.is_child && r.master_wo_id) return sum;
-          const isRoll = activeSc === 'ROLLING';
-          const od = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
-          const wt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+          const isMhStage = activeSc === 'ROLLING' || activeSc === 'HOLLOW_HEAT_TREATMENT';
+          const od = isMhStage && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
+          const wt = isMhStage && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
           const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
           return sum + mtFromMtr(mtrVal, od, wt);
         }, 0);

@@ -53,24 +53,25 @@ export const calc = (row: {
   mh_avg_length?: number | null;
   stage_code?: string;
 }) => {
-  const isRolling = (row.stage_code || "").toUpperCase() === "ROLLING";
+  const sc = (row.stage_code || "").toUpperCase();
+  const isMhStage = sc === "ROLLING" || sc === "HOLLOW_HEAT_TREATMENT";
   
-  // Rule 5: Rolling Mtr and MT will be calculated based on MH OD, MH WT and MH Length
+  // Rule 5: Rolling and Hollow Heat Treatment Mtr and MT will be calculated based on MH OD, MH WT and MH Length
   const mhL1 = Number(row.mh_l1 || 0);
   const mhL2 = Number(row.mh_l2 || 0);
   const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || 0);
   const effectiveMhAvg = Number(row.mh_avg_length || 0) > 0 ? Number(row.mh_avg_length) : computedMhAvg;
 
   const effectiveAvg =
-    isRolling && effectiveMhAvg > 0
+    isMhStage && effectiveMhAvg > 0
       ? effectiveMhAvg
       : n(row.avg_length);
 
   const effectiveOd =
-    isRolling && row.mh_od && Number(row.mh_od) > 0 ? Number(row.mh_od) : n(row.od);
+    isMhStage && row.mh_od && Number(row.mh_od) > 0 ? Number(row.mh_od) : n(row.od);
 
   const effectiveWt =
-    isRolling && row.mh_wt && Number(row.mh_wt) > 0 ? Number(row.mh_wt) : n(row.wl);
+    isMhStage && row.mh_wt && Number(row.mh_wt) > 0 ? Number(row.mh_wt) : n(row.wl);
 
   const avg = effectiveAvg;
 

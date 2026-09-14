@@ -57,9 +57,9 @@ export function ProductionWipBreakdown({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
               {r.work_centers_wip?.map((w, idx) => {
                 const isCurrent = w.stage_code === stage;
-                const isRoll = w.stage_code === 'ROLLING';
-                const stageOd = isRoll && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
-                const stageWt = isRoll && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+                const isMh = w.stage_code === 'ROLLING' || w.stage_code === 'HOLLOW_HEAT_TREATMENT';
+                const stageOd = isMh && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
+                const stageWt = isMh && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
 
                 const availMt = w.available_mt ?? mtFromMtr(w.available_mtr, stageOd, stageWt);
                 const grossMt = w.gross_output_mt ?? mtFromMtr(w.gross_output_mtr, stageOd, stageWt);
