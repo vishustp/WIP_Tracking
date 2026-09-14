@@ -1023,10 +1023,18 @@ export default function RollingPlanForm() {
     const groupSummaries = groups.map((g, gIdx) => {
       // Preliminary computation of group specs to get effective length
       const prelimSpecs = computeGroupSpecs(g, 0, gIdx + 1);
-      const avgLen =
-        Number(g.reqLenMin) > 0
-          ? Number(g.reqLenMin)
-          : (prelimSpecs.effectiveLen > 0 ? prelimSpecs.effectiveLen : Number(g.wo.l1 || 6.0));
+      const minL = Number(g.reqLenMin) || 0;
+      const maxL = Number(g.reqLenMax) || 0;
+      let avgLen = 0;
+      if (minL > 0 && maxL > 0) {
+        avgLen = (minL + maxL) / 2;
+      } else if (minL > 0) {
+        avgLen = minL;
+      } else if (maxL > 0) {
+        avgLen = maxL;
+      } else {
+        avgLen = prelimSpecs.effectiveLen > 0 ? prelimSpecs.effectiveLen : Number(g.wo.l1 || 6.0);
+      }
       const custOdNum = prelimSpecs.custOd;
       const custWtNum = prelimSpecs.custWt;
 
@@ -2161,7 +2169,7 @@ export default function RollingPlanForm() {
                                 <th className="px-3 py-1.5 font-bold">Size (OD × WT)</th>
                                 <th className="px-3 py-1.5 font-bold">Length</th>
                                 <th className="px-3 py-1.5 font-bold text-right">Available Balance</th>
-                                <th className="px-3 py-1.5 font-bold text-center w-32">Planned PCS *</th>
+                                <th className="px-3 py-1.5 font-bold text-center w-36 min-w-[140px] whitespace-nowrap">Planned PCS *</th>
                                 <th className="px-3 py-1.5 font-bold text-right">Planned MTR</th>
                                 <th className="px-3 py-1.5 font-bold text-right">Planned MT</th>
                                 <th className="px-3 py-1.5 font-bold text-center">Action</th>
@@ -2211,19 +2219,22 @@ export default function RollingPlanForm() {
                                   </span>{' '}
                                   MTR
                                 </td>
-                                <td className="px-3 py-2 text-center">
-                                  <Input
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    value={group.plannedPcs}
-                                    onChange={(e) =>
-                                      handleUpdateGroupField(group.id, 'plannedPcs', e.target.value)
-                                    }
-                                    disabled={!canManagePlans}
-                                    className="h-8 w-28 text-center font-mono font-bold bg-white text-slate-900 border-slate-300"
-                                    required
-                                  />
+                                <td className="px-3 py-2 text-center whitespace-nowrap min-w-[140px]">
+                                  <div className="w-32 mx-auto">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      step="1"
+                                      value={group.plannedPcs}
+                                      onChange={(e) =>
+                                        handleUpdateGroupField(group.id, 'plannedPcs', e.target.value)
+                                      }
+                                      disabled={!canManagePlans}
+                                      className="h-8.5 w-full rounded-lg border border-slate-300 px-3 py-1 text-center font-mono text-sm font-black bg-white text-slate-900 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      placeholder="0"
+                                      required
+                                    />
+                                  </div>
                                 </td>
                                 <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
                                   {fmt(pMetrics.mtr)} m
