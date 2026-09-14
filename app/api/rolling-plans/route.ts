@@ -245,19 +245,17 @@ export async function POST(req: NextRequest) {
       // Hollow dimensions for this group
       const grpCustOd = Number(g.cust_od || g.mh_od || mh_od || masterWo.size_od || 0);
       const grpCustWt = Number(g.cust_wt || g.rolling_wt || g.mh_wt || mh_wt || masterWo.size_wt || 0);
+      const rawSmLen = Number(g.sm_len || g.eff_len || g.mh_l1 || mh_l1 || 6.0);
+      const grpSmLen = rawSmLen > 50 ? Number((rawSmLen / 1000).toFixed(2)) : rawSmLen;
       const rMin = Number(g.req_len_min || g.mh_l1 || mh_l1 || 0);
       const rMax = Number(g.req_len_max || g.mh_l2 || mh_l2 || 0);
-      let grpAvgLen = 6.0;
+      let grpAvgLen = grpSmLen > 0 ? grpSmLen : 6.0;
       if (rMin > 0 && rMax > 0) {
         grpAvgLen = (rMin + rMax) / 2;
       } else if (rMin > 0) {
         grpAvgLen = rMin;
       } else if (rMax > 0) {
         grpAvgLen = rMax;
-      } else {
-        const rawSmLen = Number(g.sm_len || g.eff_len || 6.0);
-        const grpSmLen = rawSmLen > 50 ? Number((rawSmLen / 1000).toFixed(2)) : rawSmLen;
-        grpAvgLen = grpSmLen > 0 ? grpSmLen : 6.0;
       }
 
       const calcHollowMtr = (pcs: number) => Number((pcs * grpAvgLen).toFixed(2));
