@@ -8,7 +8,8 @@ import { GROUP_CONFIGS } from '@/lib/permissions';
 import {
   User, ShieldCheck, HardHat, Mail, Phone, Building, Clock,
   KeyRound, BellRing, History, CheckCircle2, AlertTriangle, Save,
-  RefreshCw, Check, UserCheck, Sparkles, Layers, Factory, ShieldAlert, Lock
+  RefreshCw, Check, UserCheck, Sparkles, Layers, Factory, ShieldAlert, Lock,
+  Eye, EyeOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -83,6 +84,10 @@ export default function UserProfileClient() {
   const [shift, setShift] = useState('');
   const [defaultStage, setDefaultStage] = useState('ROLLING');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   // Preferences
   const [prefBottleneck, setPrefBottleneck] = useState(true);
@@ -142,6 +147,43 @@ export default function UserProfileClient() {
     label: currentUser.role_title || 'User',
     badgeClass: 'bg-slate-100 text-slate-800 border-slate-200',
     permissions: ['Standard Access'],
+  };
+
+  const handleChangePassword = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const pwd = newPassword.trim();
+    const confirmPwd = confirmPassword.trim();
+
+    if (!pwd) {
+      toast.error('Please enter a new password.');
+      return;
+    }
+    if (pwd.length < 6) {
+      toast.error('Password must be at least 6 characters long.');
+      return;
+    }
+    if (pwd !== confirmPwd) {
+      toast.error('Passwords do not match. Please re-enter.');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.updateUser({ password: pwd });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setNewPassword('');
+      setConfirmPassword('');
+      toast.success('Your password has been changed successfully!');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to change password. Please try again.');
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   const handleSave = async () => {
@@ -411,30 +453,99 @@ export default function UserProfileClient() {
             </div>
           </div>
 
-          {/* Supabase Auth Security */}
+          {/* Self-Service Change Password Card for All Users */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 text-slate-900 font-semibold text-sm">
                 <Lock className="h-4 w-4 text-blue-600" />
-                <span>Account Security</span>
+                <span>Change Password</span>
               </div>
-              <span className="text-sm text-slate-400">Supabase Auth</span>
+              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
+                Self-Service
+              </span>
             </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">New Password</label>
-              <input
-                type="password"
-                disabled={!isAdmin}
-                minLength={6}
-                placeholder={isAdmin ? 'Enter a new password' : 'Admin Only'}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className={`w-full rounded-lg border px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-hidden ${
-                  !isAdmin ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed' : 'border-slate-300'
-                }`}
-              />
-              <p className="text-sm text-slate-400 mt-1">Passwords are managed by Supabase Auth. No password or PIN is stored in the application database.</p>
-            </div>
+
+            <form onSubmit={handleChangePassword} className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="font-semibold text-slate-700 block text-xs">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    minLength={6}
+                    placeholder="Enter new password (min. 6 characters)"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 text-sm font-mono focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-slate-700 block text-xs">Confirm New Password</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    minLength={6}
+                    placeholder="Re-enter new password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 text-sm font-mono focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {confirmPassword && newPassword && (
+                  <p className={`text-xs mt-1 flex items-center gap-1 ${newPassword === confirmPassword ? 'text-emerald-600 font-medium' : 'text-rose-600'}`}>
+                    {newPassword === confirmPassword ? (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Passwords match
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="h-3.5 w-3.5" /> Passwords do not match
+                      </>
+                    )}
+                  </p>
+                )}
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p className="text-[11px] text-slate-400">
+                  Password changes take effect immediately on your next login.
+                </p>
+                <button
+                  type="submit"
+                  disabled={changingPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition shrink-0 cursor-pointer"
+                >
+                  {changingPassword ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Updating...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="h-3.5 w-3.5" /> Update Password
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
 
           {/* Shop Floor Notification Preferences */}
