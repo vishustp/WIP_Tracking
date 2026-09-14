@@ -98,6 +98,11 @@ export async function GET(req: NextRequest) {
         const lifecycle = parsed?.lifecycle_status || (parsed?.issued_at ? "ISSUED" : "DRAFT");
         const isIssued = (lifecycle === "ISSUED" || lifecycle === "REVISED") && lifecycle !== "CLOSED";
 
+        const mhOdVal = p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || null;
+        const mhWtVal = p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || null;
+        const mhL1Val = p.mh_l1 || parsed?.mh_l1 || parsed?.sm?.sm_len || null;
+        const mhL2Val = p.mh_l2 || parsed?.mh_l2 || parsed?.sm?.sm_len || null;
+
         if (!planByWoMap.has(p.work_order_id)) {
           planByWoMap.set(p.work_order_id, {
             id: p.id,
@@ -106,6 +111,10 @@ export async function GET(req: NextRequest) {
             is_issued: isIssued,
             revision_no: Number(parsed?.revision_no || 0),
             revision_date: parsed?.revision_date || null,
+            mh_od: mhOdVal,
+            mh_wt: mhWtVal,
+            mh_l1: mhL1Val,
+            mh_l2: mhL2Val,
           });
         }
 
@@ -196,10 +205,10 @@ export async function GET(req: NextRequest) {
               total_campaign_pcs: totalCampaignPcs,
               child_work_orders: enrichedChildOrders,
               route_id: p.process_route_id,
-              mh_od: p.mh_od,
-              mh_wt: p.mh_wt,
-              mh_l1: p.mh_l1,
-              mh_l2: p.mh_l2,
+              mh_od: mhOdVal,
+              mh_wt: mhWtVal,
+              mh_l1: mhL1Val,
+              mh_l2: mhL2Val,
               multiple: p.multiple || 1,
               is_issued: isIssued,
               lifecycle_status: lifecycle,
@@ -298,12 +307,52 @@ export async function GET(req: NextRequest) {
       const l2 = Number(wo.l2 || 6.5);
       const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6.25;
 
-      const mhL1 = Number(campaign?.mh_l1 || plan?.mh_l1 || l1);
-      const mhL2 = Number(campaign?.mh_l2 || plan?.mh_l2 || l2);
+      let planParsed: any = {};
+      try {
+        planParsed = typeof plan?.status === "string" ? JSON.parse(plan.status) : plan?.status || {};
+      } catch {}
+
+      const mhL1 = Number(
+        campaign?.mh_l1 ||
+        planInfo?.mh_l1 ||
+        plan?.mh_l1 ||
+        planParsed?.mh_l1 ||
+        planParsed?.sm?.sm_len ||
+        l1
+      );
+      const mhL2 = Number(
+        campaign?.mh_l2 ||
+        planInfo?.mh_l2 ||
+        plan?.mh_l2 ||
+        planParsed?.mh_l2 ||
+        planParsed?.sm?.sm_len ||
+        l2
+      );
       const mhAvgLength = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || avgLength;
 
-      const mhOd = Number(campaign?.mh_od || plan?.mh_od || wo.size_od || 0);
-      const mhWt = Number(campaign?.mh_wt || plan?.mh_wt || wo.size_wt || 0);
+      const mhOd = Number(
+        campaign?.mh_od ||
+        planInfo?.mh_od ||
+        plan?.mh_od ||
+        planParsed?.mh_od ||
+        planParsed?.cust_od ||
+        planParsed?.sm?.cust_od ||
+        planParsed?.sizing_mill?.cust_od ||
+        wo.size_od ||
+        0
+      );
+      const mhWt = Number(
+        campaign?.mh_wt ||
+        planInfo?.mh_wt ||
+        plan?.mh_wt ||
+        planParsed?.mh_wt ||
+        planParsed?.cust_wt ||
+        planParsed?.sm?.rolling_wt ||
+        planParsed?.sm?.cust_wt ||
+        planParsed?.sizing_mill?.rolling_wt ||
+        wo.size_wt ||
+        0
+      );
 
       const multiple = Number(campaign?.multiple || plan?.multiple || 1);
 

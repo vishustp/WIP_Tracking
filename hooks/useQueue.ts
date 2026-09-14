@@ -99,6 +99,11 @@ export function useQueue(stage: StageCode) {
           const lifecycle = parsed?.lifecycle_status || (parsed?.issued_at ? "ISSUED" : "DRAFT");
           const isIssued = (lifecycle === "ISSUED" || lifecycle === "REVISED") && lifecycle !== "CLOSED";
 
+          const mhOdVal = p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || null;
+          const mhWtVal = p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || null;
+          const mhL1Val = p.mh_l1 || parsed?.mh_l1 || parsed?.sm?.sm_len || null;
+          const mhL2Val = p.mh_l2 || parsed?.mh_l2 || parsed?.sm?.sm_len || null;
+
           if (!planByWoMap.has(p.work_order_id)) {
             planByWoMap.set(p.work_order_id, {
               id: p.id,
@@ -106,6 +111,10 @@ export function useQueue(stage: StageCode) {
               lifecycle_status: lifecycle,
               is_issued: isIssued,
               revision_no: Number(parsed?.revision_no || 0),
+              mh_od: mhOdVal,
+              mh_wt: mhWtVal,
+              mh_l1: mhL1Val,
+              mh_l2: mhL2Val,
             });
           }
 
@@ -141,10 +150,10 @@ export function useQueue(stage: StageCode) {
               total_campaign_pcs: totalCampaignPcs,
               child_work_orders: parsed.child_work_orders,
               route_id: p.process_route_id,
-              mh_od: p.mh_od,
-              mh_wt: p.mh_wt,
-              mh_l1: p.mh_l1,
-              mh_l2: p.mh_l2,
+              mh_od: mhOdVal,
+              mh_wt: mhWtVal,
+              mh_l1: mhL1Val,
+              mh_l2: mhL2Val,
               is_issued: isIssued,
               lifecycle_status: lifecycle,
               revision_no: Number(parsed?.revision_no || 0),
@@ -466,10 +475,59 @@ export function useQueue(stage: StageCode) {
             const campaign = masterCampaignMap.get(r.work_order_id);
             const masterLogs = logs.filter((l: any) => l.work_order_id === r.work_order_id);
 
-            const mhL1 = Number(campaign?.mh_l1 || r.mh_l1 || 6);
-            const mhL2 = Number(campaign?.mh_l2 || r.mh_l2 || 6);
+            const planInfo = planByWoMap.get(r.work_order_id);
+            const plan = plans.find((p: any) => p.work_order_id === r.work_order_id);
+            let planParsed: any = {};
+            try {
+              planParsed = typeof plan?.status === "string" ? JSON.parse(plan.status) : plan?.status || {};
+            } catch {}
+
+            const mhL1 = Number(
+              campaign?.mh_l1 ||
+              planInfo?.mh_l1 ||
+              r.mh_l1 ||
+              plan?.mh_l1 ||
+              planParsed?.mh_l1 ||
+              planParsed?.sm?.sm_len ||
+              6
+            );
+            const mhL2 = Number(
+              campaign?.mh_l2 ||
+              planInfo?.mh_l2 ||
+              r.mh_l2 ||
+              plan?.mh_l2 ||
+              planParsed?.mh_l2 ||
+              planParsed?.sm?.sm_len ||
+              6
+            );
             const mhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || 6;
             const tubeAvg = Number(r.avg_length) || 6.25;
+
+            const mhOd = Number(
+              campaign?.mh_od ||
+              planInfo?.mh_od ||
+              r.mh_od ||
+              plan?.mh_od ||
+              planParsed?.mh_od ||
+              planParsed?.cust_od ||
+              planParsed?.sm?.cust_od ||
+              planParsed?.sizing_mill?.cust_od ||
+              r.od ||
+              0
+            );
+            const mhWt = Number(
+              campaign?.mh_wt ||
+              planInfo?.mh_wt ||
+              r.mh_wt ||
+              plan?.mh_wt ||
+              planParsed?.mh_wt ||
+              planParsed?.cust_wt ||
+              planParsed?.sm?.rolling_wt ||
+              planParsed?.sm?.cust_wt ||
+              planParsed?.sizing_mill?.rolling_wt ||
+              r.wl ||
+              0
+            );
 
             const rollLogs = masterLogs.filter((l: any) => !rollingStageId || l.stage_id === rollingStageId);
             const rollingHtcOkMtr = rollLogs.reduce((sum: number, l: any) => sum + Number(l.htc_ok || 0), 0);
@@ -543,12 +601,17 @@ export function useQueue(stage: StageCode) {
             }
 
             const isHollowHt = s === "HOLLOW_HEAT_TREATMENT";
-            const effectiveOd = isHollowHt && r.mh_od && Number(r.mh_od) > 0 ? Number(r.mh_od) : Number(r.od || 0);
-            const effectiveWt = isHollowHt && r.mh_wt && Number(r.mh_wt) > 0 ? Number(r.mh_wt) : Number(r.wl || 0);
+            const effectiveOd = isHollowHt && mhOd > 0 ? mhOd : Number(r.od || 0);
+            const effectiveWt = isHollowHt && mhWt > 0 ? mhWt : Number(r.wl || 0);
             const availMt = Math.max(effectiveOd - effectiveWt, 0) * Math.max(effectiveWt, 0) * 0.0246615 * 0.001 * availMtr;
 
             const base: Row = {
               ...r,
+              mh_od: mhOd,
+              mh_wt: mhWt,
+              mh_l1: mhL1,
+              mh_l2: mhL2,
+              mh_avg_length: mhAvg,
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
               balance_to_make_mt: Number(availMt.toFixed(3)),

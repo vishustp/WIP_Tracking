@@ -105,9 +105,10 @@ export default function SizeGradeWipReportClient() {
       const supabase = createClient();
 
       // Query view for live stage physical WIP
-      const [wipRes, woRes] = await Promise.all([
+      const [wipRes, woRes, plansRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0),
         supabase.from('work_orders').select('id, grade, specification'),
+        supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, mh_l1, mh_l2').not('status', 'is', null),
       ]);
 
       if (wipRes.data) {
@@ -116,16 +117,35 @@ export default function SizeGradeWipReportClient() {
           gradeMap.set(w.id, w.grade || w.specification || 'ASTM A106 Gr.B');
         });
 
+        const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null }>();
+        (plansRes.data || []).forEach((p: any) => {
+          try {
+            const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+            const mhOd = Number(p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || 0) || null;
+            const mhWt = Number(p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || 0) || null;
+            if (p.work_order_id) {
+              mhMap.set(p.work_order_id, { mh_od: mhOd, mh_wt: mhWt });
+            }
+            if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
+              for (const c of parsed.child_work_orders) {
+                const cId = c.work_order_id || c.id;
+                if (cId) mhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt });
+              }
+            }
+          } catch {}
+        });
+
         const mapped = wipRes.data.map((r: any) => {
           const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT';
-          const od = Number(isMhStage && r.mh_od ? r.mh_od : (r.od || r.size_od || 0));
-          const wt = Number(isMhStage && r.mh_wt ? r.mh_wt : (r.wt || r.size_wt || 0));
+          const planMh = mhMap.get(r.work_order_id);
+          const od = Number(isMhStage ? (planMh?.mh_od || r.mh_od || r.od || r.size_od || 0) : (r.od || r.size_od || 0));
+          const wt = Number(isMhStage ? (planMh?.mh_wt || r.mh_wt || r.wt || r.size_wt || 0) : (r.wt || r.size_wt || 0));
           const currentWipMtr = Number(r.current_wip || 0);
           const currentWipPcs = Number(r.current_wip_pcs || 0);
           const computedMt = mtFromMtr(currentWipMtr, od, wt);
-          const currentWipMt = Number(r.current_wip_mt || r.available_mt || 0) > 0
-            ? Number(r.current_wip_mt || r.available_mt)
-            : Number(computedMt.toFixed(3));
+          const currentWipMt = isMhStage
+            ? Number(computedMt.toFixed(3))
+            : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : Number(computedMt.toFixed(3)));
 
           return {
             ...r,

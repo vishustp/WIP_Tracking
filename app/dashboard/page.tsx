@@ -216,8 +216,16 @@ export default async function Dashboard() {
 
         if (wipPcs <= 0 && wipMtr <= 0) return null;
 
-        const od = Number(r.size_od) || 0;
-        const wt = Number(r.size_wt) || 0;
+        const isMhStage = stageCode === 'ROLLING' || stageCode === 'HOLLOW_HEAT_TREATMENT';
+        let planParsed: any = {};
+        try {
+          planParsed = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
+        } catch {}
+        const mhOd = Number(plan?.mh_od || planParsed?.mh_od || planParsed?.cust_od || planParsed?.sm?.cust_od || planParsed?.sizing_mill?.cust_od || 0);
+        const mhWt = Number(plan?.mh_wt || planParsed?.mh_wt || planParsed?.cust_wt || planParsed?.sm?.rolling_wt || planParsed?.sm?.cust_wt || planParsed?.sizing_mill?.rolling_wt || 0);
+
+        const od = isMhStage && mhOd > 0 ? mhOd : (Number(r.size_od) || 0);
+        const wt = isMhStage && mhWt > 0 ? mhWt : (Number(r.size_wt) || 0);
         const wipMt = od > 0 && wt > 0 ? mtFromMtr(wipMtr, od, wt) : 0;
 
         return {

@@ -208,15 +208,19 @@ export default function WorkCenterProductionReportClient() {
         ? Math.round(Number(e.rejection_pcs || 0))
         : Math.round(Number(e.rejection_pcs || 0) > 0 ? Number(e.rejection_pcs) : (effLen > 0 && rMtr > 0 ? rMtr / effLen : 0));
 
+      const isMhStage = e.stage_code === 'ROLLING' || e.stage_code === 'HOLLOW_HEAT_TREATMENT' || selectedWc === 'ROLLING' || selectedWc === 'HOLLOW_HEAT_TREATMENT';
+      const stageOd = isMhStage && e.mh_od ? Number(e.mh_od) : Number(e.od || 0);
+      const stageWt = isMhStage && e.mh_wt ? Number(e.mh_wt) : Number(e.wl || 0);
+
       const inMt = isFinishing
         ? mtFromMtr(inMtr, Number(e.od || 0), Number(e.wl || 0)) || Number(e.input_mt || 0)
-        : Number(e.input_mt || 0) || mtFromMtr(inMtr, Number(e.od || 0), Number(e.wl || 0));
+        : (isMhStage ? mtFromMtr(inMtr, stageOd, stageWt) : (Number(e.input_mt || 0) || mtFromMtr(inMtr, stageOd, stageWt)));
       const outMt = isFinishing
         ? mtFromMtr(outMtr, Number(e.od || 0), Number(e.wl || 0)) || Number(e.output_mt || 0)
-        : Number(e.output_mt || 0) || mtFromMtr(outMtr, Number(e.od || 0), Number(e.wl || 0));
+        : (isMhStage ? mtFromMtr(outMtr, stageOd, stageWt) : (Number(e.output_mt || 0) || mtFromMtr(outMtr, stageOd, stageWt)));
       const rMt = isFinishing
         ? mtFromMtr(rMtr, Number(e.od || 0), Number(e.wl || 0)) || Number(e.rejection_mt || 0)
-        : Number(e.rejection_mt || 0) || mtFromMtr(rMtr, Number(e.od || 0), Number(e.wl || 0));
+        : (isMhStage ? mtFromMtr(rMtr, stageOd, stageWt) : (Number(e.rejection_mt || 0) || mtFromMtr(rMtr, stageOd, stageWt)));
 
       inputMtr += inMtr;
       inputPcs += inPcs;

@@ -93,7 +93,9 @@ export default function ProductionEntryGrid() {
   const [factoryWip, setFactoryWip] = useState<any[]>([]);
   const [serverSummary, setServerSummary] = useState<any[] | null>(null);
   const [childWoIds, setChildWoIds] = useState<Set<string>>(new Set());
+  const [planMhMap, setPlanMhMap] = useState<Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null }>>(new Map());
 
+  // Factory-wide WIP and child order tracking
   const loadFactoryWip = useCallback(async () => {
     try {
       try {
@@ -113,18 +115,33 @@ export default function ProductionEntryGrid() {
 
       const [wipRes, plansRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*'),
-        supabase.from('rolling_plans').select('status, work_order_id').not('status', 'is', null),
+        supabase.from('rolling_plans').select('id, status, work_order_id, mh_od, mh_wt, mh_l1, mh_l2').not('status', 'is', null),
       ]);
       if (wipRes.data) setFactoryWip(wipRes.data);
       if (plansRes.data) {
         const cIds = new Set<string>();
+        const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null }>();
+
         for (const p of plansRes.data) {
           try {
             const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+            const mhOd = Number(p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || 0) || null;
+            const mhWt = Number(p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || 0) || null;
+            const mhL1 = Number(p.mh_l1 || parsed?.mh_l1 || parsed?.sm?.sm_len || 0) || null;
+            const mhL2 = Number(p.mh_l2 || parsed?.mh_l2 || parsed?.sm?.sm_len || 0) || null;
+            const mhAvg = mhL1 && mhL2 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || null;
+
+            if (p.work_order_id) {
+              mhMap.set(p.work_order_id, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg });
+            }
+
             if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
               for (const c of parsed.child_work_orders) {
-                if (c.work_order_id) cIds.add(c.work_order_id);
-                if (c.id) cIds.add(c.id);
+                const cId = c.work_order_id || c.id;
+                if (cId) {
+                  cIds.add(cId);
+                  mhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg });
+                }
               }
             } else if (parsed?.is_child && p.work_order_id) {
               cIds.add(p.work_order_id);
@@ -134,6 +151,7 @@ export default function ProductionEntryGrid() {
           }
         }
         setChildWoIds(cIds);
+        setPlanMhMap(mhMap);
       }
     } catch {
       // ignore
@@ -334,8 +352,9 @@ export default function ProductionEntryGrid() {
         );
         activeItem.availMt = rows.reduce((sum, r) => {
           const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
-          const od = isMhStage && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
-          const wt = isMhStage && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+          const planMh = planMhMap.get(r.work_order_id);
+          const od = isMhStage ? Number(r.mh_od || planMh?.mh_od || r.od || 0) : Number(r.od || 0);
+          const wt = isMhStage ? Number(r.mh_wt || planMh?.mh_wt || r.wl || 0) : Number(r.wl || 0);
           const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
           return sum + mtFromMtr(mtrVal, od, wt);
         }, 0);
@@ -386,16 +405,18 @@ export default function ProductionEntryGrid() {
 
           const mtr = Number(w.current_wip ?? w.available_mtr ?? 0);
           let pcs = Number(w.current_wip_pcs ?? w.available_pcs ?? 0);
-          const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW';
-          const mhAvgLen = Number(w.mh_avg_length || w.mh_l1 || 0);
+          const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT';
+          const planMh = planMhMap.get(w.work_order_id);
+          const mhAvgLen = Number(w.mh_avg_length || w.mh_l1 || planMh?.mh_avg_length || planMh?.mh_l1 || 0);
           const avgLen = isMhStage && mhAvgLen > 0 ? mhAvgLen : Number(w.avg_length || 6.0);
           if (pcs === 0 && mtr > 0 && avgLen > 0) {
             pcs = Number((mtr / avgLen).toFixed(2));
           }
-          const isMhDim = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW';
-          const od = isMhDim && w.mh_od ? Number(w.mh_od) : Number(w.od || w.size_od || 0);
-          const wt = isMhDim && w.mh_wt ? Number(w.mh_wt) : Number(w.wl || w.wt || w.size_wt || 0);
-          const mt = Number(w.available_mt ?? w.current_wip_mt ?? mtFromMtr(mtr, od, wt));
+          const od = isMhStage ? Number(planMh?.mh_od || w.mh_od || w.od || w.size_od || 0) : Number(w.od || w.size_od || 0);
+          const wt = isMhStage ? Number(planMh?.mh_wt || w.mh_wt || w.wl || w.wt || w.size_wt || 0) : Number(w.wl || w.wt || w.size_wt || 0);
+          const mt = isMhStage
+            ? mtFromMtr(mtr, od, wt)
+            : Number(w.available_mt ?? w.current_wip_mt ?? mtFromMtr(mtr, od, wt));
 
           if (mtr > 0 || pcs > 0) {
             summary[sc].availMtr += mtr;
@@ -420,9 +441,12 @@ export default function ProductionEntryGrid() {
               const mtr = Number(w.available_mtr || 0);
               const pcs = Number(w.available_pcs || 0);
               const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT';
-              const od = isMhStage && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
-              const wt = isMhStage && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
-              const mt = Number(w.available_mt ?? mtFromMtr(mtr, od, wt));
+              const planMh = planMhMap.get(r.work_order_id);
+              const od = isMhStage ? Number(r.mh_od || planMh?.mh_od || r.od || 0) : Number(r.od || 0);
+              const wt = isMhStage ? Number(r.mh_wt || planMh?.mh_wt || r.wl || 0) : Number(r.wl || 0);
+              const mt = isMhStage
+                ? mtFromMtr(mtr, od, wt)
+                : Number(w.available_mt ?? mtFromMtr(mtr, od, wt));
               if (!hasFactoryData) {
                 summary[sc].availMtr += mtr;
                 summary[sc].availPcs += pcs;
@@ -447,8 +471,9 @@ export default function ProductionEntryGrid() {
         const queueTotalMt = rows.reduce((sum, r) => {
           if (r.is_child && r.master_wo_id) return sum;
           const isMhStage = activeSc === 'ROLLING' || activeSc === 'HOLLOW_HEAT_TREATMENT';
-          const od = isMhStage && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
-          const wt = isMhStage && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
+          const planMh = planMhMap.get(r.work_order_id);
+          const od = isMhStage ? Number(r.mh_od || planMh?.mh_od || r.od || 0) : Number(r.od || 0);
+          const wt = isMhStage ? Number(r.mh_wt || planMh?.mh_wt || r.wl || 0) : Number(r.wl || 0);
           const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
           return sum + mtFromMtr(mtrVal, od, wt);
         }, 0);
@@ -461,7 +486,7 @@ export default function ProductionEntryGrid() {
     }
 
     return Object.values(summary);
-  }, [factoryWip, rows, stage, childWoIds, serverSummary]);
+  }, [factoryWip, rows, stage, childWoIds, serverSummary, planMhMap]);
 
   // Batch save (atomic)
   async function save() {

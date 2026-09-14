@@ -87,13 +87,32 @@ export default function AgingReportClient() {
       }
 
       // Fallback if view not yet applied to database
-      const [wipRes, prodRes] = await Promise.all([
+      const [wipRes, prodRes, plansRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date').order('process_date', { ascending: false }),
+        supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, mh_l1, mh_l2').not('status', 'is', null),
       ]);
 
       if (wipRes.data) {
         const today = new Date();
+        const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null }>();
+        (plansRes.data || []).forEach((p: any) => {
+          try {
+            const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+            const mhOd = Number(p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || 0) || null;
+            const mhWt = Number(p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || 0) || null;
+            if (p.work_order_id) {
+              mhMap.set(p.work_order_id, { mh_od: mhOd, mh_wt: mhWt });
+            }
+            if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
+              for (const c of parsed.child_work_orders) {
+                const cId = c.work_order_id || c.id;
+                if (cId) mhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt });
+              }
+            }
+          } catch {}
+        });
+
         const computed: AgingRow[] = wipRes.data.map((r: any) => {
           const matchLog = (prodRes.data || []).find(
             (p: any) => p.work_order_id === r.work_order_id && p.stage_id === r.stage_id
@@ -104,22 +123,30 @@ export default function AgingReportClient() {
           const sev: 'NORMAL' | 'WARNING' | 'CRITICAL' =
             diffDays > 5 ? 'CRITICAL' : diffDays >= 3 ? 'WARNING' : 'NORMAL';
 
+          const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT';
+          const planMh = mhMap.get(r.work_order_id);
+          const od = Number(isMhStage ? (planMh?.mh_od || r.mh_od || r.od || 0) : (r.od || 0));
+          const wt = Number(isMhStage ? (planMh?.mh_wt || r.mh_wt || r.wt || 0) : (r.wt || 0));
+          const currentWipMtr = Number(r.current_wip) || 0;
+          const computedMt = (Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * currentWipMtr);
+          const availMt = isMhStage
+            ? Number(computedMt.toFixed(3))
+            : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : Number(computedMt.toFixed(3)));
+
           return {
             work_order_id: r.work_order_id,
             work_order_no: r.work_order_no,
             customer_name: r.customer_name,
             grade: r.grade || 'ASTM A106 Gr.B',
-            od: Number(r.od) || 0,
-            wt: Number(r.wt) || 0,
+            od,
+            wt,
             l1: r.l1,
             l2: r.l2,
             stage_code: r.stage_code,
             stage_name: r.stage_name || r.stage_code,
-            current_wip: Number(r.current_wip) || 0,
+            current_wip: currentWipMtr,
             current_wip_pcs: Number(r.current_wip_pcs) || 0,
-            available_mt: Number(r.current_wip_mt || r.available_mt || 0) > 0
-              ? Number(r.current_wip_mt || r.available_mt)
-              : Number((Math.max(Number(r.od || 0) - Number(r.wt || 0), 0) * Math.max(Number(r.wt || 0), 0) * 0.0246615 * 0.001 * Number(r.current_wip || 0)).toFixed(3)),
+            available_mt: availMt,
             last_activity_date: actDateStr,
             days_stuck: diffDays,
             severity: sev,
