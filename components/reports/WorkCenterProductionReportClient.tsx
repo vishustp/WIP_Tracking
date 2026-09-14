@@ -15,6 +15,7 @@ import {
   Clock,
   Calendar,
   Filter,
+  ClipboardCheck,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { ProductionEntry, StageCode } from '@/types';
@@ -62,6 +63,14 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
     description: 'Quench, temper, normalizing, and final metallurgical property conditioning.',
     icon: Flame,
     color: 'border-rose-500 text-rose-700 bg-rose-50',
+  },
+  {
+    code: 'VDI',
+    label: 'Visual Dimension Inspection & QC',
+    shortLabel: 'VDI / QC',
+    description: 'Dimensional verification (OD/WT/Length), surface inspection, and QA disposition.',
+    icon: ClipboardCheck,
+    color: 'border-purple-500 text-purple-700 bg-purple-50',
   },
   {
     code: 'FINISHING',

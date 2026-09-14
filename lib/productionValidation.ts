@@ -119,6 +119,7 @@ export function validateProductionEntry(
     if (stage === "HOLLOW_HEAT_TREATMENT") feederName = "Rolling HTC OK";
     else if (stage === "DRAW") feederName = route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK";
     else if (stage === "HEAT_TREATMENT") feederName = "Draw Bench Net OK";
+    else if (stage === "VDI") feederName = route.includes("HFS") ? (route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK") : "Heat Treatment Net OK";
     else if (stage === "FINISHING") feederName = "VDI Inspection (QC Passed)";
 
     errors.push({
@@ -147,6 +148,12 @@ export function validateProductionEntry(
       errors.push({
         workOrder: row.work_order_no,
         message: `Heat Treatment Production (${d.pcs} PCS) exceeds available Draw Bench Net OK feeder balance (${fmt(allowedPcs)} PCS).`,
+      });
+    } else if (stage === "VDI") {
+      const vdiFeeder = route.includes("HFS") ? (route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK") : "Heat Treatment Net OK";
+      errors.push({
+        workOrder: row.work_order_no,
+        message: `VDI Inspection (${d.pcs} PCS) exceeds available ${vdiFeeder} feeder balance (${fmt(allowedPcs)} PCS).`,
       });
     } else if (stage === "FINISHING") {
       errors.push({

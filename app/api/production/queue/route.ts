@@ -83,6 +83,7 @@ export async function GET(req: NextRequest) {
     const hollowHtStageId = stageCodeToId.get("HOLLOW_HEAT_TREATMENT");
     const drawStageId = stageCodeToId.get("DRAW");
     const htStageId = stageCodeToId.get("HEAT_TREATMENT");
+    const vdiStageId = stageCodeToId.get("VDI");
     const finStageId = stageCodeToId.get("FINISHING");
 
     // Parse multi-WO campaigns from rolling plans
@@ -250,7 +251,7 @@ export async function GET(req: NextRequest) {
     const sumQty = (logList: any[], field: string) =>
       logList.reduce((sum, l) => sum + Number(l[field] || 0), 0);
 
-    // Summary accumulator across all 5 work centers
+    // Summary accumulator across all 6 work centers
     const workCenterSummary: Record<
       StageCode,
       { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }
@@ -259,6 +260,7 @@ export async function GET(req: NextRequest) {
       HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      VDI: { label: "VDI / QC Inspection", stage_code: "VDI", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
     };
 
@@ -433,6 +435,35 @@ export async function GET(req: NextRequest) {
       const qcOkMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
       const qcSalvagePcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
       const qcSalvageMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+      const qcRejPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0), 0);
+      const qcRejMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
+      const qcInspectedPcs = woQcList.reduce(
+        (sum: number, q: any) =>
+          sum + Number(q.inspected_pcs || Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0)),
+        0
+      );
+      const qcInspectedMtr = woQcList.reduce(
+        (sum: number, q: any) =>
+          sum + Number(q.inspected_mtr || Number(q.vdi_ok_mtr || 0) + Number(q.vdi_salvage_mtr || 0) + Number(q.vdi_rejection_mtr || 0)),
+        0
+      );
+
+      // VDI Stage WIP (Waiting for QC Inspection)
+      const vdiDivIn = getStageDivIn(woId, "VDI");
+      const vdiDivOut = getStageDivOut(woId, "VDI");
+      const vdiDivInPcs = avgLength > 0 ? Math.round(vdiDivIn / avgLength) : 0;
+      const vdiDivOutPcs = avgLength > 0 ? Math.round(vdiDivOut / avgLength) : 0;
+
+      // VDI incoming: for CDS from Heat Treatment net output, for HFS from Rolling HTC OK (or Hollow HT for ALLOY_HFS)
+      const vdiIncomingPcs = !isCds
+        ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs)
+        : htNetPcs;
+
+      const vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
+      const vdiAvailMtr = avgLength > 0
+        ? (vdiAvailPcs > 0 ? Number((vdiAvailPcs * avgLength).toFixed(3)) : 0)
+        : 0;
+      const vdiAvailMt = mtFromMtr(vdiAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       const finDivIn = getStageDivIn(woId, "FINISHING");
       const finDivOut = getStageDivOut(woId, "FINISHING");
@@ -542,6 +573,24 @@ export async function GET(req: NextRequest) {
       }
 
       pipeline.push({
+        stage_code: "VDI",
+        stage_name: "Visual Dimension Inspection",
+        sequence_no: pipeline.length + 1,
+        available_mtr: vdiAvailMtr,
+        available_pcs: vdiAvailPcs,
+        available_mt: vdiAvailMt,
+        gross_output_mtr: qcInspectedMtr,
+        gross_output_pcs: qcInspectedPcs,
+        gross_output_mt: mtFromMtr(qcInspectedMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+        rejection_mtr: qcRejMtr + qcSalvageMtr,
+        rejection_pcs: qcRejPcs + qcSalvagePcs,
+        rejection_mt: mtFromMtr(qcRejMtr + qcSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+        net_output_mtr: qcOkMtr,
+        net_output_pcs: qcOkPcs,
+        net_output_mt: mtFromMtr(qcOkMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+      });
+
+      pipeline.push({
         stage_code: "FINISHING",
         stage_name: "Finishing",
         sequence_no: pipeline.length + 1,
@@ -559,7 +608,7 @@ export async function GET(req: NextRequest) {
         net_output_mt: mtFromMtr(finNetMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
       });
 
-      // Update workCenterSummary for the 5 stages
+      // Update workCenterSummary for all 6 stages
       // (Universal Rule: Work orders with zero or sub-single balance < 1 Pc and < 1.0 Mtr must not appear in queues)
       if (isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)) {
         workCenterSummary.ROLLING.availMtr += rollAvailMtr;
@@ -584,6 +633,12 @@ export async function GET(req: NextRequest) {
         workCenterSummary.HEAT_TREATMENT.availPcs += htAvailPcs;
         workCenterSummary.HEAT_TREATMENT.availMt += htAvailMt;
         workCenterSummary.HEAT_TREATMENT.count += 1;
+      }
+      if (vdiAvailMtr >= 1.0 || vdiAvailPcs >= 1) {
+        workCenterSummary.VDI.availMtr += vdiAvailMtr;
+        workCenterSummary.VDI.availPcs += vdiAvailPcs;
+        workCenterSummary.VDI.availMt += vdiAvailMt;
+        workCenterSummary.VDI.count += 1;
       }
       if (finAvailMtr >= 1.0 || finAvailPcs >= 1) {
         workCenterSummary.FINISHING.availMtr += finAvailMtr;
@@ -614,7 +669,7 @@ export async function GET(req: NextRequest) {
       const orderCappingMtr = Number((totalOrderMtr * 1.10).toFixed(3));
       const orderCappingPcs = avgLength > 0 ? Math.round(orderCappingMtr / avgLength) : 0;
 
-      // Pre-build Row objects for this work order for all 5 stages
+      // Pre-build Row objects for this work order for all 6 stages
       const baseRowData = {
         work_order_id: wo.id,
         work_order_no: wo.work_order_no,
@@ -728,6 +783,23 @@ export async function GET(req: NextRequest) {
                 prev_net_output: drawNetMtr,
                 feeder_source_label: "Draw Bench Net OK",
                 feeder_stage_code: "DRAW",
+              }
+            : null,
+        VDI:
+          (vdiAvailMtr >= 1.0 || vdiAvailPcs >= 1)
+            ? {
+                ...baseRowData,
+                stage_code: "VDI",
+                balance_to_make_mtr: vdiAvailMtr,
+                balance_to_make_pcs: vdiAvailPcs,
+                balance_to_make_mt: vdiAvailMt,
+                max_allowed_mtr: vdiAvailMtr,
+                max_allowed_pcs: vdiAvailPcs,
+                prev_stage_code: !isCds ? (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING") : "HEAT_TREATMENT",
+                prev_htc_ok: !isCds && !isAlloy ? rollHtcOkMtr : undefined,
+                prev_net_output: !isCds ? (isAlloy ? hollowHtNetMtr : undefined) : htNetMtr,
+                feeder_source_label: !isCds ? (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK") : "Heat Treatment Net OK",
+                feeder_stage_code: !isCds ? (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING") : "HEAT_TREATMENT",
               }
             : null,
         FINISHING:

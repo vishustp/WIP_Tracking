@@ -28,7 +28,7 @@ import {
 import { toast } from 'sonner';
 import { mtFromMtr } from '@/lib/productionUtils';
 
-type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'FINISHING';
+type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'VDI' | 'FINISHING';
 
 interface ContributingOrder {
   work_order_id: string;
@@ -62,6 +62,10 @@ interface SizeGradeGroup {
   ht_mtr: number;
   ht_pcs: number;
   ht_mt: number;
+  // VDI / QC
+  vdi_mtr: number;
+  vdi_pcs: number;
+  vdi_mt: number;
   // Finishing
   finishing_mtr: number;
   finishing_pcs: number;
@@ -209,6 +213,9 @@ export default function SizeGradeWipReportClient() {
           ht_mtr: 0,
           ht_pcs: 0,
           ht_mt: 0,
+          vdi_mtr: 0,
+          vdi_pcs: 0,
+          vdi_mt: 0,
           finishing_mtr: 0,
           finishing_pcs: 0,
           finishing_mt: 0,
@@ -243,6 +250,10 @@ export default function SizeGradeWipReportClient() {
         group.ht_mtr += mtr;
         group.ht_pcs += pcs;
         group.ht_mt += mt;
+      } else if (stage === 'VDI') {
+        group.vdi_mtr += mtr;
+        group.vdi_pcs += pcs;
+        group.vdi_mt += mt;
       } else if (stage === 'FINISHING') {
         group.finishing_mtr += mtr;
         group.finishing_pcs += pcs;
@@ -288,6 +299,10 @@ export default function SizeGradeWipReportClient() {
     const drawPcs = matrixGroups.reduce((sum, g) => sum + g.draw_pcs, 0);
     const drawMt = matrixGroups.reduce((sum, g) => sum + g.draw_mt, 0);
 
+    const vdiMtr = matrixGroups.reduce((sum, g) => sum + g.vdi_mtr, 0);
+    const vdiPcs = matrixGroups.reduce((sum, g) => sum + g.vdi_pcs, 0);
+    const vdiMt = matrixGroups.reduce((sum, g) => sum + g.vdi_mt, 0);
+
     const finishingMtr = matrixGroups.reduce((sum, g) => sum + g.finishing_mtr, 0);
     const finishingPcs = matrixGroups.reduce((sum, g) => sum + g.finishing_pcs, 0);
     const finishingMt = matrixGroups.reduce((sum, g) => sum + g.finishing_mt, 0);
@@ -311,6 +326,9 @@ export default function SizeGradeWipReportClient() {
       drawMtr,
       drawPcs,
       drawMt,
+      vdiMtr,
+      vdiPcs,
+      vdiMt,
       finishingMtr,
       finishingPcs,
       finishingMt,
@@ -664,6 +682,9 @@ export default function SizeGradeWipReportClient() {
                   <th className="py-2.5 px-3 text-right bg-orange-50/60 border-r border-orange-200 text-orange-900">
                     Final Heat Treatment
                   </th>
+                  <th className="py-2.5 px-3 text-right bg-purple-50/60 border-r border-purple-200 text-purple-900">
+                    VDI / QC Inspection
+                  </th>
                   <th className="py-2.5 px-3 text-right bg-emerald-50/60 border-r border-emerald-200 text-emerald-900">
                     Finishing (FG)
                   </th>
@@ -676,14 +697,14 @@ export default function SizeGradeWipReportClient() {
               <tbody className="divide-y divide-slate-200">
                 {loading && matrixGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400">
+                    <td colSpan={10} className="py-12 text-center text-slate-400">
                       <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                       Aggregating OD, WT and Grade station-wise WIP matrix...
                     </td>
                   </tr>
                 ) : matrixGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400">
+                    <td colSpan={10} className="py-12 text-center text-slate-400">
                       <CheckCircle2 className="h-8 w-8 text-slate-300 mx-auto mb-2" />
                       <div className="font-semibold text-slate-700">No matching WIP inventory found</div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
@@ -740,6 +761,11 @@ export default function SizeGradeWipReportClient() {
                             {formatCell(g.ht_mtr, g.ht_pcs, g.ht_mt)}
                           </td>
 
+                          {/* VDI */}
+                          <td className="py-2.5 px-3 text-right font-mono font-bold bg-purple-50/20 border-r border-purple-100 text-purple-900">
+                            {formatCell(g.vdi_mtr, g.vdi_pcs, g.vdi_mt)}
+                          </td>
+
                           {/* Finishing */}
                           <td className="py-2.5 px-3 text-right font-mono font-bold bg-emerald-50/20 border-r border-emerald-100 text-emerald-900">
                             {formatCell(g.finishing_mtr, g.finishing_pcs, g.finishing_mt)}
@@ -754,7 +780,7 @@ export default function SizeGradeWipReportClient() {
                         {/* Inline Contributing Work Orders Sub-Table */}
                         {isExpanded && (
                           <tr className="bg-slate-50/80">
-                            <td colSpan={9} className="py-3 px-6 border-y border-slate-200">
+                            <td colSpan={10} className="py-3 px-6 border-y border-slate-200">
                               <div className="rounded border border-slate-300 bg-white p-3 shadow-2xs space-y-2">
                                 <div className="text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-100 pb-1.5">
                                   <div className="flex items-center gap-1.5">
@@ -848,6 +874,9 @@ export default function SizeGradeWipReportClient() {
                         matrixGroups.reduce((s, g) => s + g.ht_pcs, 0),
                         matrixGroups.reduce((s, g) => s + g.ht_mt, 0)
                       )}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-black text-purple-950 bg-purple-100/50 border-r border-purple-200">
+                      {formatCell(kpis.vdiMtr, kpis.vdiPcs, kpis.vdiMt)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-emerald-950 bg-emerald-100/50 border-r border-emerald-200">
                       {formatCell(kpis.finishingMtr, kpis.finishingPcs, kpis.finishingMt)}

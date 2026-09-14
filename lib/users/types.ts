@@ -6,6 +6,7 @@ export type WorkCenterCode =
   | 'HOLLOW_HEAT_TREATMENT'
   | 'DRAW'
   | 'HEAT_TREATMENT'
+  | 'VDI'
   | 'FINISHING'
   | 'QA'
   | 'AUDIT';

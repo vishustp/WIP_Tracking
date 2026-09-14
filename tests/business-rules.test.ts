@@ -259,6 +259,26 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       expect(errors.length).toBeGreaterThan(0);
       expect(errors[0].message).toContain("exceeds available VDI QC Passed material");
     });
+
+    it("VDI Rule: VDI inspection is capped at Heat Treatment Net OK (or Rolling HTC OK)", () => {
+      const vdiRow: Row = {
+        ...baseRow,
+        stage_code: "VDI",
+        route_code: "CDS",
+        max_allowed_pcs: 80,
+        max_allowed_mtr: 480,
+        pcs: "80",
+        mtr: "480",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "",
+      };
+      expect(validateProductionEntry(vdiRow, "VDI")).toHaveLength(0);
+
+      const excessVdi: Row = { ...vdiRow, pcs: "85", mtr: "510" };
+      const errors = validateProductionEntry(excessVdi, "VDI");
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0].message).toContain("VDI Inspection (85 PCS) exceeds available Heat Treatment Net OK feeder balance");
+    });
   });
 
   describe("PCS-based Production, Rejection & HTC OK calculations", () => {

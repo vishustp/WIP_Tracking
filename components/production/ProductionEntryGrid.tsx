@@ -296,7 +296,7 @@ export default function ProductionEntryGrid() {
     }
 
     const summary: Record<
-      string,
+      StageCode,
       { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }
     > = {
       ROLLING: { label: 'Rolling Mill', stage_code: 'ROLLING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
@@ -310,6 +310,7 @@ export default function ProductionEntryGrid() {
       },
       DRAW: { label: 'Draw Bench', stage_code: 'DRAW', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HEAT_TREATMENT: { label: 'Heat Treatment', stage_code: 'HEAT_TREATMENT', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      VDI: { label: 'VDI / QC Inspection', stage_code: 'VDI', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       FINISHING: { label: 'Finishing Line', stage_code: 'FINISHING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
     };
 
@@ -320,6 +321,7 @@ export default function ProductionEntryGrid() {
       if (raw === 'ROLLING' || raw.includes('ROLL')) return 'ROLLING';
       if (raw === 'DRAW' || raw.includes('DRAW')) return 'DRAW';
       if (raw === 'HEAT_TREATMENT' || raw.includes('HEAT')) return 'HEAT_TREATMENT';
+      if (raw === 'VDI' || raw.includes('VDI') || raw.includes('INSPECT')) return 'VDI';
       if (raw === 'FINISHING' || raw.includes('FINISH')) return 'FINISHING';
       return null;
     };

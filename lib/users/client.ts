@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import type { AppUserProfile, UserGroup, UserRole } from './types';
 
-const ALL_STAGES = ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'];
+const ALL_STAGES = ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'VDI', 'FINISHING'];
 
 const ROLE_MAP: Record<string, { role: UserRole; group: UserGroup; title: string }> = {
   Admin: { role: 'admin', group: 'admin', title: 'PPC Administrator' },

@@ -181,6 +181,7 @@ export function useQueue(stage: StageCode) {
         s === "DRAW" ||
         s === "HOLLOW_HEAT_TREATMENT" ||
         s === "HEAT_TREATMENT" ||
+        s === "VDI" ||
         s === "ROLLING";
 
       if (s === "ROLLING") {
@@ -519,6 +520,23 @@ export function useQueue(stage: StageCode) {
               const htDivInPcs = tubeAvg > 0 ? Math.round(htDivIn / tubeAvg) : 0;
               const htDivOutPcs = tubeAvg > 0 ? Math.round(htDivOut / tubeAvg) : 0;
               availPcs = Math.max(0, drawNetPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs);
+              availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0;
+            } else if (s === "VDI") {
+              const isHfs = r.route_code === "HFS" || r.route_code === "ALLOY_HFS";
+              const incomingPcs = isHfs
+                ? (r.route_code === "ALLOY_HFS" ? hollowHtNetPcs : rollHtcOkPcs)
+                : htNetPcs;
+              const vdiDivIn = getStageDivIn(r.work_order_id, "VDI");
+              const vdiDivOut = getStageDivOut(r.work_order_id, "VDI");
+              const vdiDivInPcs = tubeAvg > 0 ? Math.round(vdiDivIn / tubeAvg) : 0;
+              const vdiDivOutPcs = tubeAvg > 0 ? Math.round(vdiDivOut / tubeAvg) : 0;
+              const vdiLogs = qcInspections.filter((q: any) => q.work_order_id === r.work_order_id);
+              const qcInspectedPcs = vdiLogs.reduce(
+                (sum: number, q: any) =>
+                  sum + Number(q.inspected_pcs || Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0)),
+                0
+              );
+              availPcs = Math.max(0, incomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
               availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0;
             }
 

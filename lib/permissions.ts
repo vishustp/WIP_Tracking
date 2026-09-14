@@ -82,6 +82,7 @@ export const WORK_CENTER_LABELS: Record<string, string> = {
   HOLLOW_HEAT_TREATMENT: 'Hollow Heat Treatment & Annealing',
   DRAW: 'Cold Draw Bench & Pilgering',
   HEAT_TREATMENT: 'Final Heat Treatment & QA Lab',
+  VDI: 'Visual Dimension Inspection (VDI / QC)',
   FINISHING: 'Finishing, Straightening & Dispatch',
 };
 
