@@ -121,34 +121,38 @@ export function useHistory(
 
         const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(entry.remarks);
 
-        // If exact piece count was encoded in remarks (e.g. for Finishing or manual piece overrides), respect it directly!
-        const outputPcs = parsedPcs != null
-          ? parsedPcs
-          : isMhStage && mhLen > 0
-          ? Math.round(outMtr / mhLen)
-          : (entry.output_pcs != null && Number(entry.output_pcs) > 0
-              ? Math.round(Number(entry.output_pcs))
-              : Math.round(outMtr / effectiveLen));
+        // If exact piece count was stored in entry or encoded in remarks, respect it directly!
+        const outputPcs =
+          entry.output_pcs != null && Number(entry.output_pcs) > 0
+            ? Math.round(Number(entry.output_pcs))
+            : parsedPcs != null
+            ? parsedPcs
+            : isMhStage && mhLen > 0
+            ? Math.round(outMtr / mhLen)
+            : Math.round(outMtr / effectiveLen);
 
-        const inputPcs = isMhStage && mhLen > 0
-          ? Math.round(inMtr / mhLen)
-          : (entry.input_pcs != null && Number(entry.input_pcs) > 0
-              ? Math.round(Number(entry.input_pcs))
-              : Math.round(inMtr / effectiveLen));
+        const inputPcs =
+          entry.input_pcs != null && Number(entry.input_pcs) > 0
+            ? Math.round(Number(entry.input_pcs))
+            : isMhStage && mhLen > 0
+            ? Math.round(inMtr / mhLen)
+            : Math.round(inMtr / effectiveLen);
 
-        const rejectionPcs = parsedRejPcs != null
-          ? parsedRejPcs
-          : isMhStage && mhLen > 0
-          ? Math.round(rejMtr / mhLen)
-          : (entry.rejection_pcs != null && Number(entry.rejection_pcs) > 0
-              ? Math.round(Number(entry.rejection_pcs))
-              : Math.round(rejMtr / effectiveLen));
+        const rejectionPcs =
+          entry.rejection_pcs != null && Number(entry.rejection_pcs) > 0
+            ? Math.round(Number(entry.rejection_pcs))
+            : parsedRejPcs != null
+            ? parsedRejPcs
+            : isMhStage && mhLen > 0
+            ? Math.round(rejMtr / mhLen)
+            : Math.round(rejMtr / effectiveLen);
 
-        const htcOkPcs = isMhStage && mhLen > 0
-          ? Math.round(htcMtr / mhLen)
-          : (entry.htc_ok_pcs != null && Number(entry.htc_ok_pcs) > 0
-              ? Math.round(Number(entry.htc_ok_pcs))
-              : Math.round(htcMtr / effectiveLen));
+        const htcOkPcs =
+          entry.htc_ok_pcs != null && Number(entry.htc_ok_pcs) > 0
+            ? Math.round(Number(entry.htc_ok_pcs))
+            : isMhStage && mhLen > 0
+            ? Math.round(htcMtr / mhLen)
+            : Math.round(htcMtr / effectiveLen);
 
         return {
           ...entry,

@@ -164,30 +164,30 @@ export function ProductionHistoryTable({
                 const effectiveLen = isMhStage && mhLen > 0 ? mhLen : woLen > 0 ? woLen : 6.0;
 
                 const dispOutPcs = Math.round(
-                  isMhStage && mhLen > 0
-                    ? Number(entry.output_mtr || 0) / mhLen
-                    : Number(entry.output_pcs || 0) > 0
+                  Number(entry.output_pcs || 0) > 0
                     ? Number(entry.output_pcs)
+                    : isMhStage && mhLen > 0
+                    ? Number(entry.output_mtr || 0) / mhLen
                     : effectiveLen > 0 && Number(entry.output_mtr || 0) > 0
                     ? Number(entry.output_mtr) / effectiveLen
                     : 0
                 );
 
                 const dispRejPcs = Math.round(
-                  isMhStage && mhLen > 0
-                    ? Number(entry.rejection_mtr || 0) / mhLen
-                    : Number(entry.rejection_pcs || 0) > 0
+                  Number(entry.rejection_pcs || 0) > 0
                     ? Number(entry.rejection_pcs)
+                    : isMhStage && mhLen > 0
+                    ? Number(entry.rejection_mtr || 0) / mhLen
                     : effectiveLen > 0 && Number(entry.rejection_mtr || 0) > 0
                     ? Number(entry.rejection_mtr) / effectiveLen
                     : 0
                 );
 
                 const dispHtcOkPcs = Math.round(
-                  isMhStage && mhLen > 0
-                    ? Number(entry.htc_ok_mtr || 0) / mhLen
-                    : Number(entry.htc_ok_pcs || 0) > 0
+                  Number(entry.htc_ok_pcs || 0) > 0
                     ? Number(entry.htc_ok_pcs)
+                    : isMhStage && mhLen > 0
+                    ? Number(entry.htc_ok_mtr || 0) / mhLen
                     : effectiveLen > 0 && Number(entry.htc_ok_mtr || 0) > 0
                     ? Number(entry.htc_ok_mtr) / effectiveLen
                     : 0
