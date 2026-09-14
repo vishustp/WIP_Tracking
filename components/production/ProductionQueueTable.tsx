@@ -130,26 +130,28 @@ export function ProductionQueueTable({
           />
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-xs">
-            <thead className="border-b border-slate-200 bg-slate-50 text-slate-700 font-semibold">
+        <div className="overflow-x-auto max-h-[580px] overflow-y-auto relative">
+          <table className="min-w-full text-xs border-collapse">
+            <thead className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100/95 backdrop-blur-xs text-slate-800 font-semibold shadow-xs">
               <tr>
-                <th className="py-2.5 px-3 sm:px-4 text-left font-bold text-slate-700">Order Information</th>
-                <th className="py-2.5 px-2.5 text-center font-bold text-slate-700">Route</th>
-                <th className="py-2.5 px-3 sm:px-4 text-left font-bold text-slate-700">Balance</th>
-                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#e0f2fe] border-x border-sky-100">
+                <th className="sticky left-0 top-0 z-30 py-2.5 px-3 sm:px-4 text-left font-bold text-slate-900 bg-slate-100 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] min-w-[220px] sm:min-w-[260px]">
+                  Order Information
+                </th>
+                <th className="py-2.5 px-2.5 text-center font-bold text-slate-700 whitespace-nowrap">Route</th>
+                <th className="py-2.5 px-3 sm:px-4 text-left font-bold text-slate-700 whitespace-nowrap">Balance</th>
+                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#e0f2fe] border-x border-sky-100 whitespace-nowrap">
                   Production*
                 </th>
-                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#ffe4e6] border-r border-rose-100">
+                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#ffe4e6] border-r border-rose-100 whitespace-nowrap">
                   Rejection
                 </th>
-                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#d1fae5] border-r border-emerald-100">
+                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#d1fae5] border-r border-emerald-100 whitespace-nowrap">
                   {stage === 'ROLLING' ? 'HTC OK (Nos)' : 'OK Nos (Net)'}
                 </th>
                 {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT') && (
-                  <th className="py-2.5 px-3 text-left font-bold text-slate-700">Heat Lot No.</th>
+                  <th className="py-2.5 px-3 text-left font-bold text-slate-700 whitespace-nowrap">Heat Lot No.</th>
                 )}
-                <th className="py-2.5 px-3 text-center font-bold text-slate-700">Actions</th>
+                <th className="py-2.5 px-3 text-center font-bold text-slate-700 whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

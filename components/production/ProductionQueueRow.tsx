@@ -47,9 +47,9 @@ export function ProductionQueueRow({
       : 0;
 
   return (
-    <tr className="hover:bg-slate-50/60 transition-colors">
-      {/* Order Information */}
-      <td className="py-2.5 px-3 sm:px-4 align-middle">
+    <tr className="group hover:bg-slate-50/70 transition-colors">
+      {/* Order Information (Frozen Left Column) */}
+      <td className="sticky left-0 z-10 py-2.5 px-3 sm:px-4 align-middle bg-white group-hover:bg-slate-50 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[220px] sm:min-w-[260px]">
         <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
           <span className="text-xs sm:text-sm font-extrabold">{row.work_order_no}</span>
           {isRollingStage && (row.master_plan_no || row.plan_no) && (
