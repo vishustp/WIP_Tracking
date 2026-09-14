@@ -100,15 +100,20 @@ export const calc = (row: {
     ? (hasRejMtr ? Number(n(row.rejection_mtr).toFixed(2)) : 0)
     : (hasRejMtr ? Number(n(row.rejection_mtr).toFixed(2)) : calculatedRejMtr);
 
-  const hasHtcPcs = row.htc_ok_pcs !== undefined && row.htc_ok_pcs !== null && row.htc_ok_pcs.trim() !== "";
-  const hasHtcMtr = row.htc_ok_mtr !== undefined && row.htc_ok_mtr !== null && row.htc_ok_mtr.trim() !== "";
-  const htcPcs = hasHtcPcs ? Math.round(n(row.htc_ok_pcs)) : (hasHtcMtr && avg > 0 ? pcsFromMtr(n(row.htc_ok_mtr), avg) : 0);
-  const calculatedHtcMtr = mtrFromPcs(htcPcs, avg);
-  const htcMtr = hasHtcMtr ? Number(n(row.htc_ok_mtr).toFixed(2)) : calculatedHtcMtr;
+  const isRolling = sc === "ROLLING" || !sc;
+  const hasHtcPcs = isRolling && row.htc_ok_pcs !== undefined && row.htc_ok_pcs !== null && String(row.htc_ok_pcs).trim() !== "";
+  const hasHtcMtr = isRolling && row.htc_ok_mtr !== undefined && row.htc_ok_mtr !== null && String(row.htc_ok_mtr).trim() !== "";
+  const htcPcs = isRolling
+    ? (hasHtcPcs ? Math.round(n(row.htc_ok_pcs)) : (hasHtcMtr && avg > 0 ? pcsFromMtr(n(row.htc_ok_mtr), avg) : 0))
+    : 0;
+  const calculatedHtcMtr = isRolling ? mtrFromPcs(htcPcs, avg) : 0;
+  const htcMtr = isRolling
+    ? (hasHtcMtr ? Number(n(row.htc_ok_mtr).toFixed(2)) : calculatedHtcMtr)
+    : 0;
 
   const mt = Number(mtFromMtr(mtr, effectiveOd, effectiveWt).toFixed(2));
   const rejectionMt = Number(mtFromMtr(rejectionMtr, effectiveOd, effectiveWt).toFixed(2));
-  const htcMt = Number(mtFromMtr(htcMtr, effectiveOd, effectiveWt).toFixed(2));
+  const htcMt = isRolling ? Number(mtFromMtr(htcMtr, effectiveOd, effectiveWt).toFixed(2)) : 0;
   const netMtr = Number(Math.max(0, mtr - rejectionMtr).toFixed(2));
   const netPcs = Math.max(0, pcs - rejectionPcs);
 

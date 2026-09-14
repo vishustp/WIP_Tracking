@@ -234,47 +234,37 @@ export default function ProductionEntryGrid() {
         // For Finishing: calculate direct numbers without mandatory length multiplication
         if (stage === 'FINISHING') {
           if (field === 'pcs') {
-            const newPcs = n(value);
-            const rejPcs = n(r.rejection_pcs);
-            const autoOkPcs = Math.max(0, newPcs - rejPcs);
             return {
               ...r,
               pcs: value,
-              htc_ok_pcs: value === '' ? '' : String(autoOkPcs),
+              htc_ok_pcs: '',
             };
           }
           if (field === 'mtr') {
-            const newMtr = n(value);
-            const rejMtr = n(r.rejection_mtr);
-            const autoOkMtr = Math.max(0, newMtr - rejMtr);
             return {
               ...r,
               mtr: value,
-              htc_ok_mtr: value === '' ? '' : String(autoOkMtr.toFixed(2).replace(/\.?0+$/, '')),
+              htc_ok_mtr: '',
             };
           }
           if (field === 'rejection_pcs') {
-            const prodPcs = n(r.pcs);
-            const rejPcs = n(value);
-            const autoOkPcs = Math.max(0, prodPcs - rejPcs);
             return {
               ...r,
               rejection_pcs: value,
-              htc_ok_pcs: r.pcs === '' ? '' : String(autoOkPcs),
+              htc_ok_pcs: '',
             };
           }
           if (field === 'rejection_mtr') {
-            const prodMtr = n(r.mtr);
-            const rejMtr = n(value);
-            const autoOkMtr = Math.max(0, prodMtr - rejMtr);
             return {
               ...r,
               rejection_mtr: value,
-              htc_ok_mtr: r.mtr === '' ? '' : String(autoOkMtr.toFixed(2).replace(/\.?0+$/, '')),
+              htc_ok_mtr: '',
             };
           }
           return { ...r, [field]: value };
         }
+
+        const isRollingStage = stage === 'ROLLING';
 
         if (field === 'pcs') {
           const mtr = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
@@ -283,15 +273,20 @@ export default function ProductionEntryGrid() {
           const autoOkPcs = Math.max(0, newPcs - rejPcs);
           const autoOkMtr =
             autoOkPcs > 0 ? String(mtrFromPcs(autoOkPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : newPcs > 0 ? '0' : '';
-          const extra: Record<string, string> = {
-            htc_ok_pcs: value === '' ? '' : String(autoOkPcs),
-            htc_ok_mtr: value === '' ? '' : autoOkMtr,
-          };
+          const extra: Record<string, string> = isRollingStage
+            ? {
+                htc_ok_pcs: value === '' ? '' : String(autoOkPcs),
+                htc_ok_mtr: value === '' ? '' : autoOkMtr,
+              }
+            : {
+                htc_ok_pcs: '',
+                htc_ok_mtr: '',
+              };
           return { ...r, pcs: value, mtr, ...extra };
         }
         if (field === 'mtr') {
           const extra: Record<string, string> = {};
-          if (n(r.pcs) <= 0) {
+          if (isRollingStage && n(r.pcs) <= 0) {
             const newMtr = n(value);
             const rejMtr = n(r.rejection_mtr);
             const autoOkMtr = Math.max(0, newMtr - rejMtr);
@@ -307,15 +302,20 @@ export default function ProductionEntryGrid() {
           const autoOkPcs = Math.max(0, prodPcs - rejPcs);
           const autoOkMtr =
             autoOkPcs > 0 ? String(mtrFromPcs(autoOkPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : prodPcs > 0 ? '0' : '';
-          const extra: Record<string, string> = {
-            htc_ok_pcs: r.pcs === '' ? '' : String(autoOkPcs),
-            htc_ok_mtr: r.pcs === '' ? '' : autoOkMtr,
-          };
+          const extra: Record<string, string> = isRollingStage
+            ? {
+                htc_ok_pcs: r.pcs === '' ? '' : String(autoOkPcs),
+                htc_ok_mtr: r.pcs === '' ? '' : autoOkMtr,
+              }
+            : {
+                htc_ok_pcs: '',
+                htc_ok_mtr: '',
+              };
           return { ...r, rejection_pcs: value, rejection_mtr, ...extra };
         }
         if (field === 'rejection_mtr') {
           const extra: Record<string, string> = {};
-          if (n(r.pcs) <= 0) {
+          if (isRollingStage && n(r.pcs) <= 0) {
             const prodMtr = n(r.mtr);
             const rejMtr = n(value);
             const autoOkMtr = Math.max(0, prodMtr - rejMtr);

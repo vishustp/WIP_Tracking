@@ -86,13 +86,6 @@ export function validateProductionEntry(
         message: `HTC OK (${fmt(d.htc, " MTR")}) cannot exceed Net Rolling Output (${fmt(Math.max(0, d.mtr - d.rejection), " MTR")}).`,
       });
     }
-  } else {
-    if (d.htcPcs > 0 || d.htc > 0) {
-      errors.push({
-        workOrder: row.work_order_no,
-        message: "HTC OK is only applicable at Rolling stage.",
-      });
-    }
   }
 
   // 6. Maximum Allowed Quantity Checks based on Nos (PCS) & Preceding Feeder WIP
