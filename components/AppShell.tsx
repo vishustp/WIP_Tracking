@@ -211,7 +211,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <div className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-sky-500/90 hover:bg-sky-500 px-3 py-1 text-xs font-semibold text-white shadow-2xs transition">
                 <Layers size={13} className="text-white" />
                 <span>Design: Variation 5</span>
-                <button type="button" className="ml-1 text-white/80 hover:text-white cursor-pointer">
+                <button type="button" className="ml-1 text-white/80 hover:text-white cursor-pointer" aria-label="Dismiss design variation">
                   <X size={12} />
                 </button>
               </div>
@@ -230,6 +230,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   type="button"
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
                   className="h-8 w-8 rounded-full bg-[#004f84] text-white flex items-center justify-center text-xs font-extrabold shadow-xs hover:opacity-90 transition cursor-pointer"
+                  aria-label="User menu"
+                  aria-expanded={userDropdownOpen}
                 >
                   {currentUser?.name?.[0]?.toUpperCase() || 'V'}
                 </button>
