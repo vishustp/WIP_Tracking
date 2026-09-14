@@ -60,7 +60,9 @@ export default async function Dashboard() {
       } catch {}
     }
 
-    const calculatedWip = rawWip.map((r: any) => {
+    const calculatedWip = rawWip
+      .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
+      .map((r: any) => {
       const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT';
       const planMh = mhMap.get(r.work_order_id);
       const mhLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 0);
