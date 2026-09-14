@@ -183,15 +183,25 @@ export function ProductionHistoryTable({
                     : 0
                 );
 
-                const dispHtcOkPcs = Math.round(
-                  Number(entry.htc_ok_pcs || 0) > 0
-                    ? Number(entry.htc_ok_pcs)
-                    : isMhStage && mhLen > 0
-                    ? Number(entry.htc_ok_mtr || 0) / mhLen
-                    : effectiveLen > 0 && Number(entry.htc_ok_mtr || 0) > 0
-                    ? Number(entry.htc_ok_mtr) / effectiveLen
-                    : 0
-                );
+                const dispHtcOkPcs =
+                  entry.stage_code === 'ROLLING'
+                    ? Math.max(
+                        0,
+                        Number(entry.htc_ok_pcs || 0) > 0
+                          ? Math.min(dispOutPcs, Number(entry.htc_ok_pcs))
+                          : dispOutPcs - dispRejPcs
+                      )
+                    : 0;
+
+                const dispHtcOkMtr =
+                  entry.stage_code === 'ROLLING'
+                    ? Math.min(
+                        Number(entry.output_mtr || 0),
+                        Number(entry.htc_ok_mtr || 0) > 0
+                          ? Number(entry.htc_ok_mtr)
+                          : Math.max(0, Number(entry.output_mtr || 0) - Number(entry.rejection_mtr || 0))
+                      )
+                    : 0;
 
                 const editCheck = canEditForStage(entry.stage_code);
                 const delCheck = canDeleteForStage(entry.stage_code);
@@ -222,10 +232,10 @@ export function ProductionHistoryTable({
                       <div className="text-[11px] text-slate-500">{fmt(entry.rejection_mtr, ' MTR')}</div>
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-emerald-700">
-                      {entry.htc_ok_mtr > 0 || dispHtcOkPcs > 0 ? (
+                      {entry.stage_code === 'ROLLING' && (dispHtcOkMtr > 0 || dispHtcOkPcs > 0) ? (
                         <>
                           <div className="font-bold">{fmt(dispHtcOkPcs)} PCS</div>
-                          <div className="text-[11px] text-slate-500">{fmt(entry.htc_ok_mtr, ' MTR')}</div>
+                          <div className="text-[11px] text-slate-500">{fmt(dispHtcOkMtr, ' MTR')}</div>
                         </>
                       ) : (
                         '—'

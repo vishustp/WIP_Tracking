@@ -148,11 +148,19 @@ export function useHistory(
             : Math.round(rejMtr / effectiveLen);
 
         const htcOkPcs =
-          entry.htc_ok_pcs != null && Number(entry.htc_ok_pcs) > 0
-            ? Math.round(Number(entry.htc_ok_pcs))
-            : isMhStage && mhLen > 0
-            ? Math.round(htcMtr / mhLen)
-            : Math.round(htcMtr / effectiveLen);
+          entry.stage_code === 'ROLLING'
+            ? Math.max(
+                0,
+                entry.htc_ok_pcs != null && Number(entry.htc_ok_pcs) > 0
+                  ? Math.min(outputPcs, Math.round(Number(entry.htc_ok_pcs)))
+                  : outputPcs - rejectionPcs
+              )
+            : 0;
+
+        const htcOkMtr =
+          entry.stage_code === 'ROLLING'
+            ? Math.min(outMtr, htcMtr > 0 ? htcMtr : Math.max(0, outMtr - rejMtr))
+            : 0;
 
         return {
           ...entry,
@@ -164,6 +172,7 @@ export function useHistory(
           input_pcs: inputPcs,
           rejection_pcs: rejectionPcs,
           htc_ok_pcs: htcOkPcs,
+          htc_ok_mtr: htcOkMtr,
         };
       });
 
