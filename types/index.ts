@@ -176,7 +176,6 @@ export const STAGES: { code: StageCode; label: string }[] = [
   { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
   { code: "DRAW", label: "Draw" },
   { code: "HEAT_TREATMENT", label: "Heat Treatment" },
-  { code: "VDI", label: "VDI / QC Inspection" },
   { code: "FINISHING", label: "Finishing" },
 ];
 

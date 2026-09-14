@@ -11,7 +11,7 @@ export default async function Dashboard() {
 
   try {
     const supabase = await createClient();
-    const [kpiRes, wipRes, pendingRes, logsRes, plansRes] = await Promise.all([
+    const [kpiRes, wipRes, pendingRes, logsRes, plansRes, qcRes] = await Promise.all([
       supabase.from('vw_dashboard_kpis').select('*').maybeSingle(),
       supabase
         .from('vw_route_stage_wip')
@@ -30,11 +30,15 @@ export default async function Dashboard() {
       supabase
         .from('rolling_plans')
         .select('work_order_id,status,planned_qty,mh_od,mh_wt,mh_l1,mh_l2,plan_no'),
+      supabase
+        .from('qc_inspections')
+        .select('work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr'),
     ]);
 
     const rawWip = wipRes.data ?? [];
     const prodLogs = (logsRes.data ?? []) as any[];
     const rollingPlans = (plansRes.data ?? []) as any[];
+    const qcLogs = (qcRes.data ?? []) as any[];
 
     // Parse multi-work-order rolling campaign metadata
     const planMap = new Map<string, any>();
@@ -139,8 +143,21 @@ export default async function Dashboard() {
         const htRejPcs = avgLen > 0 ? Math.round(htRejMtr / avgLen) : 0;
         const htTotalPcs = htOutPcs + htRejPcs;
 
-        // Finishing (tracked per work order, aggregating child orders for master campaign)
+        // QC / VDI Inspections
         const isMasterWithChildren = !childInfo && Array.from(childMap.values()).some((c) => c.master_wo_id === r.work_order_id);
+        const woQcList = qcLogs.filter((q: any) => {
+          if (q.work_order_id === r.work_order_id) return true;
+          if (isMasterWithChildren && childMap.get(q.work_order_id)?.master_wo_id === r.work_order_id) return true;
+          return false;
+        });
+        const qcInspectedPcs = woQcList.reduce(
+          (sum: number, q: any) =>
+            sum + Number(q.inspected_pcs || Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0)),
+          0
+        );
+        const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+
+        // Finishing (tracked per work order, aggregating child orders for master campaign)
         const finLogs = prodLogs.filter((l: any) => {
           const stage = l.process_stages?.stage_code || l.stage_code;
           if (stage !== 'FINISHING') return false;
@@ -171,14 +188,26 @@ export default async function Dashboard() {
         } else if (stageCode === 'HEAT_TREATMENT') {
           wipPcs = drawOutPcs > 0 ? Math.max(0, drawOutPcs - htTotalPcs) : 0;
           wipMtr = Number((wipPcs * avgLen).toFixed(3));
-        } else if (stageCode === 'FINISHING') {
-          const precedingOutPcs = htOutPcs > 0 ? htOutPcs : drawOutPcs;
-          const targetMtr = childInfo
-            ? Number(childInfo.planned_mtr || r.incoming_qty || 0)
-            : Number(r.incoming_qty || 0);
-          const targetPcs = avgLen > 0 ? Math.round(targetMtr / avgLen) : 0;
-          wipPcs = precedingOutPcs > 0 ? Math.max(0, Math.min(targetPcs, precedingOutPcs) - finTotalPcs) : 0;
+        } else if (stageCode === 'VDI') {
+          const isHfs = (r.route_code || '').includes('HFS');
+          const vdiIncomingPcs = isHfs
+            ? ((r.route_code || '').includes('ALLOY') ? htcOutPcs : rollHtcOkPcs)
+            : (htOutPcs > 0 ? htOutPcs : drawOutPcs);
+          wipPcs = Math.max(0, vdiIncomingPcs - qcInspectedPcs);
           wipMtr = Number((wipPcs * avgLen).toFixed(3));
+        } else if (stageCode === 'FINISHING') {
+          if (woQcList.length > 0) {
+            const finishingIncomingPcs = qcOkPcs;
+            const targetMtr = childInfo
+              ? Number(childInfo.planned_mtr || r.incoming_qty || 0)
+              : Number(r.incoming_qty || 0);
+            const targetPcs = avgLen > 0 ? Math.round(targetMtr / avgLen) : 0;
+            wipPcs = finishingIncomingPcs > 0 ? Math.max(0, Math.min(targetPcs, finishingIncomingPcs) - finTotalPcs) : 0;
+            wipMtr = Number((wipPcs * avgLen).toFixed(3));
+          } else {
+            wipPcs = 0;
+            wipMtr = 0;
+          }
         } else {
           // General fallback for other stages if present
           wipMtr = Math.max(0, Number(r.current_wip || 0));

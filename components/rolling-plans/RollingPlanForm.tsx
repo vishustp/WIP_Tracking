@@ -461,7 +461,11 @@ export default function RollingPlanForm() {
   const [isMultiPickerOpen, setIsMultiPickerOpen] = useState(false);
   const [modalSearch, setModalSearch] = useState('');
   const [modalGradeFilter, setModalGradeFilter] = useState('ALL');
+  const [modalPlanFilter, setModalPlanFilter] = useState<'ALL' | 'UNPLANNED' | 'PLANNED'>('ALL');
   const [modalSelectedIds, setModalSelectedIds] = useState<string[]>([]);
+
+  // Historical rolling plans lookup state (to show Old Plan No info)
+  const [allHistoricalPlans, setAllHistoricalPlans] = useState<any[]>([]);
 
   // Common campaign parameters
   const [route, setRoute] = useState('');
@@ -782,22 +786,31 @@ export default function RollingPlanForm() {
     }
   }, []);
 
-  // Reload work orders list
+  // Reload work orders list and historical plans lookup
   const loadWorkOrders = useCallback(async () => {
     try {
       const s = createClient();
-      const { data, error } = await s
-        .from('work_orders')
-        .select('id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_mtr')
-        .order('work_order_no');
-      if (error) throw error;
-      setWos((data ?? []) as WO[]);
+      const [woRes, rpRes] = await Promise.all([
+        s
+          .from('work_orders')
+          .select('id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_mtr')
+          .order('work_order_no'),
+        s
+          .from('rolling_plans')
+          .select('id,plan_no,work_order_id,planned_qty,planned_rolling_date,status,created_at')
+          .order('created_at', { ascending: false }),
+      ]);
+      if (woRes.error) throw woRes.error;
+      setWos((woRes.data ?? []) as WO[]);
+      if (rpRes.data) {
+        setAllHistoricalPlans(rpRes.data);
+      }
     } catch {
       // ignore
     }
   }, []);
 
-  // Load initial work orders and routes
+  // Load initial work orders, routes, and historical plans
   useEffect(() => {
     const s = createClient();
     Promise.all([
@@ -810,8 +823,12 @@ export default function RollingPlanForm() {
         .select('id,route_code,route_name,material_category')
         .eq('active', true)
         .order('route_code'),
+      s
+        .from('rolling_plans')
+        .select('id,plan_no,work_order_id,planned_qty,planned_rolling_date,status,created_at')
+        .order('created_at', { ascending: false }),
     ])
-      .then(async ([a, b]) => {
+      .then(async ([a, b, c]) => {
         if (a?.error) throw new Error(a.error.message);
         const woList = (a?.data ?? []) as WO[];
         setWos(woList);
@@ -821,6 +838,10 @@ export default function RollingPlanForm() {
         setRoutes(routeList);
         if (routeList.length > 0) {
           setRoute((prev) => prev || routeList[0].id);
+        }
+
+        if (c?.data) {
+          setAllHistoricalPlans(c.data);
         }
 
         // Auto-select initial WO if query param present
@@ -835,6 +856,7 @@ export default function RollingPlanForm() {
       .catch((error) => {
         setWos([]);
         setRoutes([]);
+        setAllHistoricalPlans([]);
         toast.error(error instanceof Error ? error.message : 'Failed to load rolling plan masters.');
       });
   }, [initialWoId, fetchUnplannedQty]);
@@ -1606,6 +1628,86 @@ export default function RollingPlanForm() {
     return Array.from(s).sort();
   }, [wos]);
 
+  // Lookup map: work_order_id -> historical plan details & Old Plan No info
+  const woPlanHistoryMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        totalPlannedMtr: number;
+        isFullQtyPlanned: boolean;
+        isPartialQtyPlanned: boolean;
+        plans: Array<{
+          id: string;
+          planNo: string;
+          displayPlanNo: string;
+          plannedMtr: number;
+          plannedDate: string;
+          status: string;
+          lifecycleStatus: string;
+          isChild: boolean;
+        }>;
+        planNos: string[];
+        displayPlanNosStr: string;
+      }
+    >();
+
+    const grouped = new Map<string, any[]>();
+    allHistoricalPlans.forEach((rp) => {
+      if (!rp.work_order_id) return;
+      const list = grouped.get(rp.work_order_id) || [];
+      list.push(rp);
+      grouped.set(rp.work_order_id, list);
+    });
+
+    wos.forEach((w) => {
+      const wPlans = grouped.get(w.id) || [];
+      let totalPlannedMtr = 0;
+      const parsedPlans = wPlans.map((p) => {
+        let parsedSt: any = {};
+        try {
+          parsedSt = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {};
+        } catch {}
+
+        const displayNo = parsedSt?.campaign_plan_no || p.plan_no || '—';
+        const pMtr = Number(p.planned_qty || parsedSt?.master_planned_mtr || parsedSt?.planned_mtr || 0);
+        totalPlannedMtr += pMtr;
+        const lifecycleStatus = parsedSt?.lifecycle_status || (p.status === 'Issued' ? 'ISSUED' : 'DRAFT');
+        const isChild = Boolean(parsedSt?.is_child);
+
+        return {
+          id: p.id,
+          planNo: p.plan_no,
+          displayPlanNo: displayNo,
+          plannedMtr: pMtr,
+          plannedDate: p.planned_rolling_date,
+          status: typeof p.status === 'string' && !p.status.startsWith('{') ? p.status : (lifecycleStatus || 'Issued'),
+          lifecycleStatus,
+          isChild,
+        };
+      });
+
+      const planNos = Array.from(new Set(parsedPlans.map((x) => x.displayPlanNo).filter(Boolean)));
+      const orderedMtr = Number(w.ordered_qty || 0);
+      const balMtr = Number(w.balance_qty_mtr ?? 0);
+
+      const isFullQtyPlanned =
+        parsedPlans.length > 0 &&
+        (balMtr <= 0 || (orderedMtr > 0 && totalPlannedMtr >= orderedMtr - 0.01));
+      const isPartialQtyPlanned = parsedPlans.length > 0 && !isFullQtyPlanned;
+
+      map.set(w.id, {
+        totalPlannedMtr,
+        isFullQtyPlanned,
+        isPartialQtyPlanned,
+        plans: parsedPlans,
+        planNos,
+        displayPlanNosStr: planNos.join(', '),
+      });
+    });
+
+    return map;
+  }, [allHistoricalPlans, wos]);
+
   // Filtered available WOs for Multi-Select modal (parent setups)
   const modalFilteredWos = useMemo(() => {
     const selectedIds = new Set<string>();
@@ -1617,16 +1719,25 @@ export default function RollingPlanForm() {
       .filter((w) => !selectedIds.has(w.id))
       .filter((w) => {
         if (modalGradeFilter !== 'ALL' && w.grade !== modalGradeFilter) return false;
+        const hist = woPlanHistoryMap.get(w.id);
+        if (modalPlanFilter === 'UNPLANNED' && (hist?.isFullQtyPlanned || hist?.isPartialQtyPlanned)) {
+          return false;
+        }
+        if (modalPlanFilter === 'PLANNED' && !hist?.isFullQtyPlanned && !hist?.isPartialQtyPlanned) {
+          return false;
+        }
         if (!modalSearch) return true;
         const q = modalSearch.toLowerCase();
+        const planNoMatches = hist?.planNos.some((pn) => pn.toLowerCase().includes(q)) || false;
         return (
           w.work_order_no.toLowerCase().includes(q) ||
           (w.customer_name && w.customer_name.toLowerCase().includes(q)) ||
           (w.grade && w.grade.toLowerCase().includes(q)) ||
-          `${w.size_od}x${w.size_wt}`.includes(q)
+          `${w.size_od}x${w.size_wt}`.includes(q) ||
+          planNoMatches
         );
       });
-  }, [wos, groups, modalSearch, modalGradeFilter]);
+  }, [wos, groups, modalSearch, modalGradeFilter, modalPlanFilter, woPlanHistoryMap]);
 
   // Filtered available WOs for Child Order Picker modal
   const childModalFilteredWos = useMemo(() => {
@@ -1639,16 +1750,19 @@ export default function RollingPlanForm() {
       .filter((w) => !selectedIds.has(w.id))
       .filter((w) => {
         if (childModalGradeFilter !== 'ALL' && w.grade !== childModalGradeFilter) return false;
+        const hist = woPlanHistoryMap.get(w.id);
         if (!childModalSearch) return true;
         const q = childModalSearch.toLowerCase();
+        const planNoMatches = hist?.planNos.some((pn) => pn.toLowerCase().includes(q)) || false;
         return (
           w.work_order_no.toLowerCase().includes(q) ||
           (w.customer_name && w.customer_name.toLowerCase().includes(q)) ||
           (w.grade && w.grade.toLowerCase().includes(q)) ||
-          `${w.size_od}x${w.size_wt}`.includes(q)
+          `${w.size_od}x${w.size_wt}`.includes(q) ||
+          planNoMatches
         );
       });
-  }, [wos, groups, childModalSearch, childModalGradeFilter]);
+  }, [wos, groups, childModalSearch, childModalGradeFilter, woPlanHistoryMap]);
 
   // Filtered plans based on planTypeFilter, strictly sorted in DESCENDING order
   const filteredPlans = useMemo(() => {
@@ -1931,6 +2045,8 @@ export default function RollingPlanForm() {
                     gSummary?.specs ||
                     computeGroupSpecs(group, gSummary?.totalGroupMtr || 0, groupIndex + 1);
 
+                  const masterHist = woPlanHistoryMap.get(group.wo.id);
+
                   return (
                     <div
                       key={group.id}
@@ -1949,6 +2065,22 @@ export default function RollingPlanForm() {
                               {group.wo.work_order_no}
                             </span>
                           </div>
+
+                          {/* Old Plan No Information Pill (If Full or Partial Qty was previously issued) */}
+                          {masterHist?.isFullQtyPlanned && (
+                            <span className="rounded-md bg-amber-100 border border-amber-300 px-2 py-0.5 text-xs font-bold text-amber-900 flex items-center gap-1 shadow-2xs">
+                              <AlertTriangle className="h-3.5 w-3.5 text-amber-700 shrink-0" />
+                              <span>Old Plan No: <strong className="font-mono">{masterHist.displayPlanNosStr}</strong></span>
+                              <span className="bg-amber-200/80 px-1 py-0.2 rounded text-[10px] text-amber-800 uppercase tracking-tight">Full Qty Issued</span>
+                            </span>
+                          )}
+                          {masterHist?.isPartialQtyPlanned && (
+                            <span className="rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-xs font-semibold text-blue-800 flex items-center gap-1">
+                              <Info className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                              <span>Old Plan No: <strong className="font-mono">{masterHist.displayPlanNosStr}</strong></span>
+                              <span className="text-blue-600 font-mono text-[11px]">({fmt(masterHist.totalPlannedMtr)} m Issued)</span>
+                            </span>
+                          )}
 
                           {/* Route Badge */}
                           {(() => {
@@ -2043,8 +2175,20 @@ export default function RollingPlanForm() {
                                     Master Order
                                   </span>
                                 </td>
-                                <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap">
-                                  {group.wo.work_order_no}
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  <div className="font-mono font-bold text-slate-900">
+                                    {group.wo.work_order_no}
+                                  </div>
+                                  {masterHist?.isFullQtyPlanned ? (
+                                    <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 border border-amber-300 text-[10px] font-bold text-amber-900">
+                                      <AlertTriangle className="h-3 w-3 text-amber-700 shrink-0" />
+                                      <span>Old Plan: {masterHist.displayPlanNosStr} (Full Qty Issued)</span>
+                                    </div>
+                                  ) : masterHist?.isPartialQtyPlanned ? (
+                                    <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-[10px] font-semibold text-blue-800">
+                                      <span>Old Plan: {masterHist.displayPlanNosStr} ({fmt(masterHist.totalPlannedMtr)} m)</span>
+                                    </div>
+                                  ) : null}
                                 </td>
                                 <td className="px-3 py-2 max-w-[180px] truncate text-slate-600">
                                   <span className="font-semibold text-slate-800">
@@ -2132,6 +2276,8 @@ export default function RollingPlanForm() {
                               </thead>
                               <tbody className="divide-y divide-emerald-100">
                                 {group.children.map((child) => {
+                                  const childHist = woPlanHistoryMap.get(child.wo.id);
+
                                   return (
                                     <tr key={child.id} className="hover:bg-emerald-50/30">
                                       <td className="px-3 py-2 whitespace-nowrap">
@@ -2140,8 +2286,20 @@ export default function RollingPlanForm() {
                                           Child Order
                                         </span>
                                       </td>
-                                      <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap">
-                                        {child.wo.work_order_no}
+                                      <td className="px-3 py-2 whitespace-nowrap">
+                                        <div className="font-mono font-bold text-slate-900">
+                                          {child.wo.work_order_no}
+                                        </div>
+                                        {childHist?.isFullQtyPlanned ? (
+                                          <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 border border-amber-300 text-[10px] font-bold text-amber-900">
+                                            <AlertTriangle className="h-3 w-3 text-amber-700 shrink-0" />
+                                            <span>Old Plan: {childHist.displayPlanNosStr} (Full Qty Issued)</span>
+                                          </div>
+                                        ) : childHist?.isPartialQtyPlanned ? (
+                                          <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-[10px] font-semibold text-blue-800">
+                                            <span>Old Plan: {childHist.displayPlanNosStr} ({fmt(childHist.totalPlannedMtr)} m)</span>
+                                          </div>
+                                        ) : null}
                                       </td>
                                       <td className="px-3 py-2 max-w-[180px] truncate text-slate-600">
                                         <span className="font-semibold text-slate-800">
@@ -4385,34 +4543,73 @@ export default function RollingPlanForm() {
               </div>
             </div>
 
-            {/* Quick Grade Filter Chips */}
-            <div className="flex flex-wrap items-center gap-1.5 mb-3 text-xs">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quick Filter:</span>
-              <button
-                type="button"
-                onClick={() => setModalGradeFilter('ALL')}
-                className={`px-2 py-0.5 rounded-md font-semibold cursor-pointer transition ${
-                  modalGradeFilter === 'ALL'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                All ({wos.length})
-              </button>
-              {availableGrades.slice(0, 5).map((g) => (
+            {/* Quick Filter Chips (Grade & Plan Status) */}
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3 text-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status:</span>
                 <button
-                  key={g}
                   type="button"
-                  onClick={() => setModalGradeFilter(g)}
+                  onClick={() => setModalPlanFilter('ALL')}
                   className={`px-2 py-0.5 rounded-md font-semibold cursor-pointer transition ${
-                    modalGradeFilter === g
-                      ? 'bg-indigo-600 text-white'
+                    modalPlanFilter === 'ALL'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
-                  {g}
+                  All ({wos.length})
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setModalPlanFilter('UNPLANNED')}
+                  className={`px-2 py-0.5 rounded-md font-semibold cursor-pointer transition ${
+                    modalPlanFilter === 'UNPLANNED'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                  }`}
+                >
+                  Unplanned Only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalPlanFilter('PLANNED')}
+                  className={`px-2 py-0.5 rounded-md font-semibold cursor-pointer transition ${
+                    modalPlanFilter === 'PLANNED'
+                      ? 'bg-amber-600 text-white shadow-2xs'
+                      : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                  }`}
+                >
+                  Old Plan Issued
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Grades:</span>
+                <button
+                  type="button"
+                  onClick={() => setModalGradeFilter('ALL')}
+                  className={`px-2 py-0.5 rounded-md font-semibold cursor-pointer transition ${
+                    modalGradeFilter === 'ALL'
+                      ? 'bg-slate-800 text-white'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  All
+                </button>
+                {availableGrades.slice(0, 4).map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setModalGradeFilter(g)}
+                    className={`px-2 py-0.5 rounded-md font-semibold cursor-pointer transition ${
+                      modalGradeFilter === g
+                        ? 'bg-slate-800 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Modal Work Orders Table */}
@@ -4459,6 +4656,8 @@ export default function RollingPlanForm() {
                   ) : (
                     modalFilteredWos.map((w) => {
                       const isChecked = modalSelectedIds.includes(w.id);
+                      const hist = woPlanHistoryMap.get(w.id);
+
                       return (
                         <tr
                           key={w.id}
@@ -4483,7 +4682,25 @@ export default function RollingPlanForm() {
                               className="rounded border-slate-300 text-indigo-600 cursor-pointer"
                             />
                           </td>
-                          <td className="px-3 py-2 font-mono font-bold text-slate-900">{w.work_order_no}</td>
+                          <td className="px-3 py-2">
+                            <div className="font-mono font-bold text-slate-900">{w.work_order_no}</div>
+                            {hist?.isFullQtyPlanned ? (
+                              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center gap-1 rounded bg-amber-100 border border-amber-300 px-1.5 py-0.5 text-[10px] font-bold text-amber-900 shadow-2xs">
+                                  <Info className="h-3 w-3 text-amber-700 shrink-0" />
+                                  <span>Old Plan: <strong>{hist.displayPlanNosStr}</strong></span>
+                                  <span className="bg-amber-200/80 px-1 py-0.2 rounded text-[9px] text-amber-800 uppercase tracking-tight">Full Qty Issued</span>
+                                </span>
+                              </div>
+                            ) : hist?.isPartialQtyPlanned ? (
+                              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800">
+                                  <span>Old Plan: <strong>{hist.displayPlanNosStr}</strong></span>
+                                  <span className="text-blue-600 font-mono">({fmt(hist.totalPlannedMtr)} MTR Issued)</span>
+                                </span>
+                              </div>
+                            ) : null}
+                          </td>
                           <td className="px-3 py-2 text-slate-700">{w.customer_name || 'Standard Stock'}</td>
                           <td className="px-3 py-2 font-mono text-slate-600">{w.grade}</td>
                           <td className="px-3 py-2 font-mono font-semibold">
@@ -4564,7 +4781,7 @@ export default function RollingPlanForm() {
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search by WO No, customer, size, grade..."
+                    placeholder="Search by WO No, customer, size, grade, old plan no..."
                     value={childModalSearch}
                     onChange={(e) => setChildModalSearch(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 py-1.5 pl-9 pr-3 text-xs focus:border-emerald-500 focus:outline-hidden"
@@ -4606,32 +4823,54 @@ export default function RollingPlanForm() {
                         </td>
                       </tr>
                     ) : (
-                      childModalFilteredWos.map((w) => (
-                        <tr key={w.id} className="hover:bg-emerald-50/40 transition">
-                          <td className="px-3 py-2 font-mono font-bold text-slate-900">{w.work_order_no}</td>
-                          <td className="px-3 py-2 text-slate-700">{w.customer_name || 'Standard Stock'}</td>
-                          <td className="px-3 py-2 font-mono text-slate-600">{w.grade}</td>
-                          <td className="px-3 py-2 font-mono font-semibold">
-                            {w.size_od} × {w.size_wt} mm
-                          </td>
-                          <td className="px-3 py-2 font-mono text-slate-500">
-                            {w.l1 && w.l2 ? `${w.l1}–${w.l2} m` : w.l1 || w.l2 ? `${w.l1 || w.l2} m` : '—'}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
-                            {fmt(w.balance_qty_mtr)} MTR
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <Button
-                              type="button"
-                              onClick={() => handleAddChildToGroup(targetGroup.id, w)}
-                              className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md cursor-pointer inline-flex items-center gap-1 shadow-2xs"
-                            >
-                              <Plus className="h-3 w-3" />
-                              Add as Child
-                            </Button>
-                          </td>
-                        </tr>
-                      ))
+                      childModalFilteredWos.map((w) => {
+                        const hist = woPlanHistoryMap.get(w.id);
+
+                        return (
+                          <tr key={w.id} className="hover:bg-emerald-50/40 transition">
+                            <td className="px-3 py-2">
+                              <div className="font-mono font-bold text-slate-900">{w.work_order_no}</div>
+                              {hist?.isFullQtyPlanned ? (
+                                <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                  <span className="inline-flex items-center gap-1 rounded bg-amber-100 border border-amber-300 px-1.5 py-0.5 text-[10px] font-bold text-amber-900 shadow-2xs">
+                                    <Info className="h-3 w-3 text-amber-700 shrink-0" />
+                                    <span>Old Plan: <strong>{hist.displayPlanNosStr}</strong></span>
+                                    <span className="bg-amber-200/80 px-1 py-0.2 rounded text-[9px] text-amber-800 uppercase tracking-tight">Full Qty Issued</span>
+                                  </span>
+                                </div>
+                              ) : hist?.isPartialQtyPlanned ? (
+                                <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                  <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800">
+                                    <span>Old Plan: <strong>{hist.displayPlanNosStr}</strong></span>
+                                    <span className="text-blue-600 font-mono">({fmt(hist.totalPlannedMtr)} MTR)</span>
+                                  </span>
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">{w.customer_name || 'Standard Stock'}</td>
+                            <td className="px-3 py-2 font-mono text-slate-600">{w.grade}</td>
+                            <td className="px-3 py-2 font-mono font-semibold">
+                              {w.size_od} × {w.size_wt} mm
+                            </td>
+                            <td className="px-3 py-2 font-mono text-slate-500">
+                              {w.l1 && w.l2 ? `${w.l1}–${w.l2} m` : w.l1 || w.l2 ? `${w.l1 || w.l2} m` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
+                              {fmt(w.balance_qty_mtr)} MTR
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <Button
+                                type="button"
+                                onClick={() => handleAddChildToGroup(targetGroup.id, w)}
+                                className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                              >
+                                <Plus className="h-3 w-3" />
+                                Add as Child
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
