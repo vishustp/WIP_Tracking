@@ -135,7 +135,9 @@ export default function SizeGradeWipReportClient() {
           } catch {}
         });
 
-        const mapped = wipRes.data.map((r: any) => {
+        const mapped = wipRes.data
+          .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
+          .map((r: any) => {
           const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT';
           const planMh = mhMap.get(r.work_order_id);
           const od = Number(isMhStage ? (planMh?.mh_od || r.mh_od || r.od || r.size_od || 0) : (r.od || r.size_od || 0));

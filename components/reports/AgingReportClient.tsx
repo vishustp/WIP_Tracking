@@ -113,7 +113,9 @@ export default function AgingReportClient() {
           } catch {}
         });
 
-        const computed: AgingRow[] = wipRes.data.map((r: any) => {
+        const computed: AgingRow[] = wipRes.data
+          .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
+          .map((r: any) => {
           const matchLog = (prodRes.data || []).find(
             (p: any) => p.work_order_id === r.work_order_id && p.stage_id === r.stage_id
           );
