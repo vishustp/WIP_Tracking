@@ -36,6 +36,8 @@ interface ContributingOrder {
   customer_name: string | null;
   stage_code: StageCode;
   stage_name: string;
+  route_code?: string;
+  route_name?: string;
   wip_mtr: number;
   wip_pcs: number;
   wip_mt: number;
@@ -91,6 +93,7 @@ export default function SizeGradeWipReportClient() {
 
   // Filters
   const [search, setSearch] = useState<string>('');
+  const [selectedRoute, setSelectedRoute] = useState<string>('ALL');
   const [selectedGrade, setSelectedGrade] = useState<string>('ALL');
   const [fromOd, setFromOd] = useState<string>('');
   const [toOd, setToOd] = useState<string>('');
@@ -105,16 +108,26 @@ export default function SizeGradeWipReportClient() {
       const supabase = createClient();
 
       // Query view for live stage physical WIP
-      const [wipRes, woRes, plansRes] = await Promise.all([
+      const [wipRes, woRes, plansRes, routesRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0),
-        supabase.from('work_orders').select('id, grade, specification'),
-        supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, mh_l1, mh_l2').not('status', 'is', null),
+        supabase.from('work_orders').select('id, grade, specification, process_route_id'),
+        supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, mh_l1, mh_l2, process_route_id').not('status', 'is', null),
+        supabase.from('process_routes').select('id, route_code, route_name').eq('active', true),
       ]);
 
       if (wipRes.data) {
+        const routeMap = new Map<string, { route_code: string; route_name: string }>();
+        (routesRes.data || []).forEach((r: any) => {
+          routeMap.set(r.id, { route_code: r.route_code, route_name: r.route_name });
+        });
+
         const gradeMap = new Map<string, string>();
+        const woRouteMap = new Map<string, { route_code?: string; route_name?: string }>();
         (woRes.data || []).forEach((w: any) => {
           gradeMap.set(w.id, w.grade || w.specification || 'ASTM A106 Gr.B');
+          if (w.process_route_id && routeMap.has(w.process_route_id)) {
+            woRouteMap.set(w.id, routeMap.get(w.process_route_id)!);
+          }
         });
 
         const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null }>();
@@ -149,11 +162,17 @@ export default function SizeGradeWipReportClient() {
             ? Number(computedMt.toFixed(3))
             : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : Number(computedMt.toFixed(3)));
 
+          const routeInfo = woRouteMap.get(r.work_order_id);
+          const routeCode = r.route_code || routeInfo?.route_code || (r.route_id ? routeMap.get(r.route_id)?.route_code : '') || 'HFS';
+          const routeName = r.route_name || routeInfo?.route_name || (r.route_id ? routeMap.get(r.route_id)?.route_name : '') || routeCode;
+
           return {
             ...r,
             grade: r.grade || gradeMap.get(r.work_order_id) || 'ASTM A106 Gr.B',
             od,
             wt,
+            route_code: routeCode,
+            route_name: routeName,
             current_wip: currentWipMtr,
             current_wip_pcs: currentWipPcs,
             available_mt: currentWipMt,
@@ -174,6 +193,25 @@ export default function SizeGradeWipReportClient() {
     loadData();
   }, [loadData]);
 
+  // Extract unique process routes
+  const uniqueRoutes = useMemo(() => {
+    const map = new Map<string, string>();
+    rawWipRows.forEach((r) => {
+      if (r.route_code) {
+        map.set(r.route_code, r.route_name || r.route_code);
+      }
+    });
+    if (map.size === 0) {
+      map.set('HFS', 'Hot Finished Seamless');
+      map.set('CDS', 'Cold Drawn Seamless');
+      map.set('ALLOY_HFS', 'Alloy Hot Finished Seamless');
+      map.set('ALLOY_CDS', 'Alloy Cold Drawn Seamless');
+    }
+    return Array.from(map.entries())
+      .map(([code, name]) => ({ code, name }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [rawWipRows]);
+
   // Extract unique material grades
   const uniqueGrades = useMemo(() => {
     const s = new Set<string>();
@@ -186,6 +224,9 @@ export default function SizeGradeWipReportClient() {
   // Filter raw rows
   const filteredRawRows = useMemo(() => {
     return rawWipRows.filter((r) => {
+      // Route filter
+      if (selectedRoute !== 'ALL' && (r.route_code || '').toUpperCase() !== selectedRoute.toUpperCase()) return false;
+
       // Grade filter
       if (selectedGrade !== 'ALL' && r.grade !== selectedGrade) return false;
 
@@ -201,12 +242,13 @@ export default function SizeGradeWipReportClient() {
         const matchGrade = (r.grade || '').toLowerCase().includes(q);
         const matchWo = (r.work_order_no || '').toLowerCase().includes(q);
         const matchCust = (r.customer_name || '').toLowerCase().includes(q);
-        if (!matchSize && !matchGrade && !matchWo && !matchCust) return false;
+        const matchRoute = (r.route_code || '').toLowerCase().includes(q) || (r.route_name || '').toLowerCase().includes(q);
+        if (!matchSize && !matchGrade && !matchWo && !matchCust && !matchRoute) return false;
       }
 
       return true;
     });
-  }, [rawWipRows, selectedGrade, fromOd, toOd, search]);
+  }, [rawWipRows, selectedRoute, selectedGrade, fromOd, toOd, search]);
 
   // Aggregate into Size & Grade Matrix
   const matrixGroups = useMemo(() => {
@@ -293,6 +335,8 @@ export default function SizeGradeWipReportClient() {
         customer_name: r.customer_name,
         stage_code: stage,
         stage_name: r.stage_name || stage,
+        route_code: r.route_code || 'HFS',
+        route_name: r.route_name || r.route_code || 'HFS',
         wip_mtr: mtr,
         wip_pcs: pcs,
         wip_mt: mt,
@@ -413,6 +457,7 @@ export default function SizeGradeWipReportClient() {
         '#': i + 1,
         'Work Order': r.work_order_no,
         'Customer': r.customer_name || '—',
+        'Route': r.route_code || 'HFS',
         'Size (OD × WT mm)': `${r.od} × ${r.wt}`,
         'Material Grade': r.grade,
         'Stage': r.stage_name || r.stage_code,
@@ -585,15 +630,31 @@ export default function SizeGradeWipReportClient() {
       <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5">
           {/* Search Size or Grade */}
-          <div className="relative lg:col-span-4">
+          <div className="relative lg:col-span-3">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
             <Input
               type="text"
-              placeholder="Search Size (e.g. 48.3x3.68), Grade, or WO..."
+              placeholder="Search Size, Grade, WO, Route..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 text-xs h-9"
             />
+          </div>
+
+          {/* Route Dropdown Filter */}
+          <div className="lg:col-span-2">
+            <Select
+              value={selectedRoute}
+              onChange={(e) => setSelectedRoute(e.target.value)}
+              className="text-xs h-9 font-medium"
+            >
+              <option value="ALL">All Routes (HFS/CDS...)</option>
+              {uniqueRoutes.map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.code} {r.name && r.name !== r.code ? `(${r.name})` : ''}
+                </option>
+              ))}
+            </Select>
           </div>
 
           {/* Grade Dropdown */}
@@ -613,10 +674,10 @@ export default function SizeGradeWipReportClient() {
           </div>
 
           {/* OD Range Filter */}
-          <div className="lg:col-span-3 flex items-center gap-1.5">
+          <div className="lg:col-span-2 flex items-center gap-1.5">
             <Input
               type="number"
-              placeholder="From OD (mm)"
+              placeholder="From OD"
               value={fromOd}
               onChange={(e) => setFromOd(e.target.value)}
               className="text-xs h-9 w-full font-mono"
@@ -624,7 +685,7 @@ export default function SizeGradeWipReportClient() {
             <span className="text-slate-400 text-xs shrink-0">to</span>
             <Input
               type="number"
-              placeholder="To OD (mm)"
+              placeholder="To OD"
               value={toOd}
               onChange={(e) => setToOd(e.target.value)}
               className="text-xs h-9 w-full font-mono"
@@ -821,6 +882,7 @@ export default function SizeGradeWipReportClient() {
                                       <tr>
                                         <th className="py-1 px-2">Work Order No</th>
                                         <th className="py-1 px-2">Customer</th>
+                                        <th className="py-1 px-2">Route</th>
                                         <th className="py-1 px-2">Current Work Center</th>
                                         <th className="py-1 px-2 text-right">Physical WIP ({unit})</th>
                                         <th className="py-1 px-2 text-right">Action</th>
@@ -834,6 +896,11 @@ export default function SizeGradeWipReportClient() {
                                           </td>
                                           <td className="py-1.5 px-2 text-slate-600 truncate max-w-[200px]">
                                             {c.customer_name || 'Generic Customer'}
+                                          </td>
+                                          <td className="py-1.5 px-2">
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 font-mono">
+                                              {c.route_code || 'HFS'}
+                                            </span>
                                           </td>
                                           <td className="py-1.5 px-2">
                                             <span className="font-semibold text-slate-700">
@@ -924,6 +991,7 @@ export default function SizeGradeWipReportClient() {
                 <tr>
                   <th className="py-2.5 px-3">Work Order #</th>
                   <th className="py-2.5 px-3">Customer</th>
+                  <th className="py-2.5 px-3">Route</th>
                   <th className="py-2.5 px-3">Size (OD × WT)</th>
                   <th className="py-2.5 px-3">Material Grade</th>
                   <th className="py-2.5 px-3">Current Station</th>
@@ -936,7 +1004,7 @@ export default function SizeGradeWipReportClient() {
               <tbody className="divide-y divide-slate-200">
                 {filteredRawRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400">
+                    <td colSpan={10} className="py-12 text-center text-slate-400">
                       No active work orders matching filters.
                     </td>
                   </tr>
@@ -948,6 +1016,11 @@ export default function SizeGradeWipReportClient() {
                       </td>
                       <td className="py-2.5 px-3 text-slate-600 truncate max-w-[160px]">
                         {r.customer_name || 'Generic Customer'}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200 font-mono">
+                          {r.route_code || 'HFS'}
+                        </span>
                       </td>
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
                         {r.od} × {r.wt} mm
