@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { StageCode, Row, emptyRow } from "@/types";
-import { calcElongationFactor } from "@/lib/productionUtils";
 
 export function useQueue(stage: StageCode) {
   const [rows, setRows] = useState<Row[]>([]);
@@ -565,9 +564,6 @@ export function useQueue(stage: StageCode) {
             let availPcs = 0;
             let availMtr = 0;
 
-            const elongation = mhOd > 0 && mhWt > 0 ? calcElongationFactor(mhOd, mhWt, r.od, r.wl) : 1.0;
-            const drawnLen = mhAvg > 0 && elongation > 1 ? Number((mhAvg * elongation).toFixed(2)) : tubeAvg;
-
             if (s === "HOLLOW_HEAT_TREATMENT") {
               const hhtDivInPcs = mhAvg > 0 ? Math.round(hhtDivIn / mhAvg) : 0;
               const hhtDivOutPcs = mhAvg > 0 ? Math.round(hhtDivOut / mhAvg) : 0;
@@ -575,21 +571,21 @@ export function useQueue(stage: StageCode) {
               availMtr = mhAvg > 0 ? Number((availPcs * mhAvg).toFixed(3)) : 0;
             } else if (s === "DRAW") {
               const incomingPcs = r.route_code === "ALLOY_CDS" ? hollowHtNetPcs : rollHtcOkPcs;
-              const drawDivInPcs = mhAvg > 0 ? Math.round(drawDivIn / mhAvg) : (tubeAvg > 0 ? Math.round(drawDivIn / tubeAvg) : 0);
-              const drawDivOutPcs = mhAvg > 0 ? Math.round(drawDivOut / mhAvg) : (tubeAvg > 0 ? Math.round(drawDivOut / tubeAvg) : 0);
+              const drawDivInPcs = tubeAvg > 0 ? Math.round(drawDivIn / tubeAvg) : (mhAvg > 0 ? Math.round(drawDivIn / mhAvg) : 0);
+              const drawDivOutPcs = tubeAvg > 0 ? Math.round(drawDivOut / tubeAvg) : (mhAvg > 0 ? Math.round(drawDivOut / mhAvg) : 0);
               availPcs = Math.max(0, incomingPcs + drawDivInPcs - drawOutPcs - drawRejPcs - drawDivOutPcs);
-              availMtr = mhAvg > 0 ? Number((availPcs * mhAvg).toFixed(3)) : (tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0);
+              availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0;
             } else if (s === "HEAT_TREATMENT") {
-              const htDivInPcs = drawnLen > 0 ? Math.round(htDivIn / drawnLen) : (tubeAvg > 0 ? Math.round(htDivIn / tubeAvg) : 0);
-              const htDivOutPcs = drawnLen > 0 ? Math.round(htDivOut / drawnLen) : (tubeAvg > 0 ? Math.round(htDivOut / tubeAvg) : 0);
+              const htDivInPcs = tubeAvg > 0 ? Math.round(htDivIn / tubeAvg) : 0;
+              const htDivOutPcs = tubeAvg > 0 ? Math.round(htDivOut / tubeAvg) : 0;
               availPcs = Math.max(0, drawNetPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs);
-              availMtr = drawnLen > 0 ? Number((availPcs * drawnLen).toFixed(3)) : (tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0);
+              availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0;
             } else if (s === "VDI") {
               const isHfs = r.route_code === "HFS" || r.route_code === "ALLOY_HFS";
               const incomingPcs = isHfs
                 ? (r.route_code === "ALLOY_HFS" ? hollowHtNetPcs : rollHtcOkPcs)
                 : htNetPcs;
-              const effLen = isHfs ? (mhAvg > 0 ? mhAvg : tubeAvg) : (drawnLen > 0 ? drawnLen : tubeAvg);
+              const effLen = isHfs ? (mhAvg > 0 ? mhAvg : tubeAvg) : tubeAvg;
               const vdiDivIn = getStageDivIn(r.work_order_id, "VDI");
               const vdiDivOut = getStageDivOut(r.work_order_id, "VDI");
               const vdiDivInPcs = effLen > 0 ? Math.round(vdiDivIn / effLen) : 0;
@@ -604,9 +600,7 @@ export function useQueue(stage: StageCode) {
               availMtr = effLen > 0 ? Number((availPcs * effLen).toFixed(3)) : 0;
             }
 
-            const isHollowHt = s === "HOLLOW_HEAT_TREATMENT";
-            const isDraw = s === "DRAW";
-            const isMhWip = isHollowHt || isDraw;
+            const isMhWip = s === "HOLLOW_HEAT_TREATMENT";
             const effectiveOd = isMhWip && mhOd > 0 ? mhOd : Number(r.od || 0);
             const effectiveWt = isMhWip && mhWt > 0 ? mhWt : Number(r.wl || 0);
             const availMt = Math.max(effectiveOd - effectiveWt, 0) * Math.max(effectiveWt, 0) * 0.0246615 * 0.001 * availMtr;

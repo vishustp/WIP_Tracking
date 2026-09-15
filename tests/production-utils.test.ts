@@ -175,9 +175,7 @@ describe("Production Utils Unit Tests", () => {
       expect(calcElongationFactor(50.8, 3.66, 50.8, 3.66)).toBe(1.0);
     });
 
-    it("calc() applies elongation factor to piece length at DRAW stage", () => {
-      // MH Length = 4.55m, Elongation = 1.6751 -> Drawn length per piece = 7.62m
-      // 202 PCS at Draw -> 202 * 7.62 = 1539.24 Mtr
+    it("calc() calculates DRAW stage based on Final OD, WT, and average length of L1, L2", () => {
       const res = calc({
         avg_length: 6.5,
         pcs: "202",
@@ -198,10 +196,12 @@ describe("Production Utils Unit Tests", () => {
       expect(res.pcs).toBe(202);
       expect(res.rejection_pcs).toBe(2);
       expect(res.netPcs).toBe(200);
-      expect(res.avg).toBe(7.62);
-      expect(res.mtr).toBe(1539.24);
-      expect(res.rejectionMtr).toBe(15.24);
-      expect(res.netMtr).toBe(1524);
+      expect(res.avg).toBe(6.5);
+      expect(res.mtr).toBe(1313); // 202 * 6.5 = 1313
+      expect(res.rejectionMtr).toBe(13); // 2 * 6.5 = 13
+      expect(res.netMtr).toBe(1300); // 200 * 6.5 = 1300
+      expect(res.effectiveOd).toBe(50.8);
+      expect(res.effectiveWt).toBe(3.66);
     });
   });
 });

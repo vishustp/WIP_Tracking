@@ -84,19 +84,10 @@ export const calc = (row: {
   const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || 0);
   const effectiveMhAvg = Number(row.mh_avg_length || 0) > 0 ? Number(row.mh_avg_length) : computedMhAvg;
 
-  // Elongation factor for cold drawing
-  const elongation = (isDraw || isHeatTreatment) && effectiveMhAvg > 0
-    ? calcElongationFactor(row.mh_od, row.mh_wt, row.od, row.wl)
-    : 1.0;
-  const drawnLength = effectiveMhAvg > 0 && elongation > 1 ? Number((effectiveMhAvg * elongation).toFixed(2)) : 0;
-
+  // For Draw, HT, and all subsequent stages: calculated based on Final OD, WT, and average of (L1, L2)
   const effectiveAvg =
     isMhStage && effectiveMhAvg > 0
       ? effectiveMhAvg
-      : isDraw && drawnLength > 0
-      ? drawnLength
-      : isHeatTreatment && drawnLength > 0
-      ? drawnLength
       : n(row.avg_length);
 
   const effectiveOd =

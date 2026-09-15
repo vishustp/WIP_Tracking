@@ -12,7 +12,6 @@ import {
   n,
   mtrFromPcs,
   mtFromMtr,
-  calcElongationFactor,
   attachPcsToRemarks,
   extractPcsFromRemarks,
 } from '@/lib/productionUtils';
@@ -229,20 +228,10 @@ export default function ProductionEntryGrid() {
         const mhL2 = Number(r.mh_l2 || 0);
         const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || 0;
         const effectiveMhAvg = Number(r.mh_avg_length || 0) > 0 ? Number(r.mh_avg_length) : computedMhAvg;
-        
-        const elongation =
-          (stage === 'DRAW' || stage === 'HEAT_TREATMENT') && effectiveMhAvg > 0
-            ? calcElongationFactor(r.mh_od, r.mh_wt, r.od, r.wl)
-            : 1.0;
-        const drawnLength = effectiveMhAvg > 0 && elongation > 1 ? Number((effectiveMhAvg * elongation).toFixed(2)) : 0;
 
         const effectiveAvg =
           (stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT') && effectiveMhAvg > 0
             ? effectiveMhAvg
-            : stage === 'DRAW' && drawnLength > 0
-            ? drawnLength
-            : stage === 'HEAT_TREATMENT' && drawnLength > 0
-            ? drawnLength
             : n(r.avg_length);
 
         // For Finishing: calculate direct numbers without mandatory length multiplication
@@ -799,23 +788,8 @@ export default function ProductionEntryGrid() {
           : 6.0)
     );
 
-    const elongation =
-      (isDraw || isHeatTreatment) && mhLen > 0
-        ? calcElongationFactor(
-            entry.mh_od || rowMatch?.mh_od,
-            entry.mh_wt || rowMatch?.mh_wt,
-            entry.od || rowMatch?.od,
-            entry.wl || rowMatch?.wl
-          )
-        : 1.0;
-    const drawnLength = mhLen > 0 && elongation > 1 ? Number((mhLen * elongation).toFixed(2)) : 0;
-
     return isMhStage && mhLen > 0
       ? mhLen
-      : isDraw && drawnLength > 0
-      ? drawnLength
-      : isHeatTreatment && drawnLength > 0
-      ? drawnLength
       : woLen > 0
       ? woLen
       : 6.0;
