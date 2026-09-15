@@ -2,7 +2,7 @@
 
 import { Package, Crown } from 'lucide-react';
 import { Row, StageCode } from '@/types';
-import { calc, fmt, n, mtFromMtr } from '@/lib/productionUtils';
+import { calc, fmt, n, mtFromMtr, calcElongationFactor } from '@/lib/productionUtils';
 
 export interface ProductionQueueRowProps {
   row: Row;
@@ -34,6 +34,10 @@ export function ProductionQueueRow({
   const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
   const stageOd = isMhStage && row.mh_od ? Number(row.mh_od) : Number(row.od || 0);
   const stageWt = isMhStage && row.mh_wt ? Number(row.mh_wt) : Number(row.wl || 0);
+
+  const elongation = (stage === 'DRAW' || stage === 'HEAT_TREATMENT') && row.mh_od && row.mh_wt
+    ? calcElongationFactor(row.mh_od, row.mh_wt, row.od, row.wl)
+    : 1.0;
 
   const availMtr = n(row.balance_to_make_mtr);
   const effAvg = d.avg > 0 ? d.avg : n(row.avg_length) || 6;
@@ -74,7 +78,15 @@ export function ProductionQueueRow({
           {row.customer_name || '—'}
         </div>
         <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-          {row.od ? `${row.od} × ${row.wl ?? '—'} mm` : '—'} | Avg: {fmt(d.avg, 'm')}
+          {stage === 'DRAW' && row.mh_od ? (
+            <span>
+              MH: {row.mh_od} × {row.mh_wt} mm → Final: {row.od} × {row.wl} mm | {elongation > 1 ? `μ: ${elongation}× | ` : ''}Avg: {fmt(d.avg, 'm')}
+            </span>
+          ) : (
+            <span>
+              {row.od ? `${row.od} × ${row.wl ?? '—'} mm` : '—'} | Avg: {fmt(d.avg, 'm')}
+            </span>
+          )}
         </div>
       </td>
 
@@ -93,6 +105,8 @@ export function ProductionQueueRow({
         <div className="text-[11px] text-slate-400 mt-0.5">
           {isRollingStage
             ? `Plan: ${fmt(row.planned_pcs || row.campaign_total_pcs || 0)} PCS`
+            : stage === 'DRAW' && elongation > 1
+            ? `MH Avail: ${fmt(availPcs)} PCS (${fmt(availMtr * elongation, 'm')} drawn)`
             : `Avail: ${fmt(availPcs)} PCS`}
         </div>
       </td>

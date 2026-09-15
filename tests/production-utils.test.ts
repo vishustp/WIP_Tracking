@@ -160,4 +160,48 @@ describe("Production Utils Unit Tests", () => {
       expect(normalizeSpecification("P91")).toBe("ASTM A335 Gr.P91");
     });
   });
+
+  describe("6. Elongation Factor & Draw / Heat Treatment Calculations", () => {
+    it("calcElongationFactor() accurately calculates area reduction ratio mu", () => {
+      // MH: 60.3 x 5.25 -> (60.3 - 5.25)*5.25 = 289.0125
+      // Final: 50.8 x 3.66 -> (50.8 - 3.66)*3.66 = 172.5324
+      // Ratio: 289.0125 / 172.5324 = 1.6751
+      const mu = calcElongationFactor(60.3, 5.25, 50.8, 3.66);
+      expect(mu).toBe(1.6751);
+    });
+
+    it("calcElongationFactor() returns 1.0 when MH dimensions are absent or equal to final", () => {
+      expect(calcElongationFactor(null, null, 50.8, 3.66)).toBe(1.0);
+      expect(calcElongationFactor(50.8, 3.66, 50.8, 3.66)).toBe(1.0);
+    });
+
+    it("calc() applies elongation factor to piece length at DRAW stage", () => {
+      // MH Length = 4.55m, Elongation = 1.6751 -> Drawn length per piece = 7.62m
+      // 202 PCS at Draw -> 202 * 7.62 = 1539.24 Mtr
+      const res = calc({
+        avg_length: 6.5,
+        pcs: "202",
+        mtr: "",
+        rejection_pcs: "2",
+        rejection_mtr: "",
+        htc_ok_pcs: "0",
+        htc_ok_mtr: "0",
+        od: 50.8,
+        wl: 3.66,
+        mh_od: 60.3,
+        mh_wt: 5.25,
+        mh_l1: 4.55,
+        mh_l2: 4.55,
+        stage_code: "DRAW",
+      });
+
+      expect(res.pcs).toBe(202);
+      expect(res.rejection_pcs).toBe(2);
+      expect(res.netPcs).toBe(200);
+      expect(res.avg).toBe(7.62);
+      expect(res.mtr).toBe(1539.24);
+      expect(res.rejectionMtr).toBe(15.24);
+      expect(res.netMtr).toBe(1524);
+    });
+  });
 });
