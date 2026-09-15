@@ -12,6 +12,7 @@ import {
   attachCustomLengthToRemarks,
   extractCustomLengthFromRemarks,
   normalizeSpecification,
+  calcElongationFactor,
 } from "../lib/productionUtils";
 
 describe("Production Utils Unit Tests", () => {
@@ -196,7 +197,7 @@ describe("Production Utils Unit Tests", () => {
       });
 
       expect(res.pcs).toBe(202);
-      expect(res.rejection_pcs).toBe(2);
+      expect(res.rejectionPcs).toBe(2);
       expect(res.netPcs).toBe(200);
       expect(res.avg).toBe(6.5);
       expect(res.mtr).toBe(1313); // 202 * 6.5 = 1313
@@ -231,7 +232,7 @@ describe("Production Utils Unit Tests", () => {
 
     it("attachCustomLengthToRemarks() and extractCustomLengthFromRemarks() handle custom length metadata correctly", () => {
       const tagged = attachCustomLengthToRemarks("Pass 1 drawn", "7.5", "8.5", 8.0);
-      expect(tagged).toBe("Pass 1 drawn [L1:7.5] [L2:8.5] [AVG:8]");
+      expect(tagged).toBe("Pass 1 drawn [L1:7.5] [L2:8.5] [AVG:8.00]");
 
       const extracted = extractCustomLengthFromRemarks(tagged);
       expect(extracted.l1).toBe(7.5);
