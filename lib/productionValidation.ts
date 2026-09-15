@@ -158,12 +158,6 @@ export function validateProductionEntry(
         workOrder: row.work_order_no,
         message: `Production (${d.pcs} PCS) exceeds maximum allowed feeder stock (${fmt(allowedPcs)} PCS).`,
       });
-    }
-  } else if (stage !== "FINISHING" && stage !== "ROLLING" && d.pcs <= 0 && d.mtr > 0 && allowedMtr > 0 && d.mtr > allowedMtr + 0.001) {
-    errors.push({
-      workOrder: row.work_order_no,
-      message: `Production (${fmt(d.mtr, " MTR")}) exceeds maximum allowed feeder stock (${fmt(allowedMtr, " MTR")}).`,
-    });
   }
 
   // 6. Finishing specific: Bundling cannot exceed 110% of total order quantity
