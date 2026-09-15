@@ -72,6 +72,8 @@ export interface Row {
   ht_prod_nos?: number | null;
   ht_rej_nos?: number | null;
   ht_input_nos: string;
+  input_l1?: string;
+  input_l2?: string;
   pcs: string;
   mtr: string;
   rejection_pcs: string;
@@ -192,8 +194,12 @@ export const emptyRow = (r: Omit<
   | "heat_lot_no"
   | "remarks"
   | "ht_input_nos"
+  | "input_l1"
+  | "input_l2"
 >): Row => ({
   ...r,
+  input_l1: r.l1 ? String(r.l1) : "",
+  input_l2: r.l2 ? String(r.l2) : "",
   ht_input_nos: "",
   pcs: "",
   mtr: "",

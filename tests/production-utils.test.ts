@@ -9,6 +9,8 @@ import {
   calc,
   attachPcsToRemarks,
   extractPcsFromRemarks,
+  attachCustomLengthToRemarks,
+  extractCustomLengthFromRemarks,
   normalizeSpecification,
 } from "../lib/productionUtils";
 
@@ -175,7 +177,7 @@ describe("Production Utils Unit Tests", () => {
       expect(calcElongationFactor(50.8, 3.66, 50.8, 3.66)).toBe(1.0);
     });
 
-    it("calc() calculates DRAW stage based on Final OD, WT, and average length of L1, L2", () => {
+    it("calc() calculates DRAW stage based on Final OD, WT, and average length of L1, L2 (theoretical fallback)", () => {
       const res = calc({
         avg_length: 6.5,
         pcs: "202",
@@ -202,6 +204,40 @@ describe("Production Utils Unit Tests", () => {
       expect(res.netMtr).toBe(1300); // 200 * 6.5 = 1300
       expect(res.effectiveOd).toBe(50.8);
       expect(res.effectiveWt).toBe(3.66);
+    });
+
+    it("calc() uses user-entered L1 and L2 when provided for new entries at DRAW / HT", () => {
+      const res = calc({
+        avg_length: 6.0, // theoretical fallback
+        input_l1: "7.5", // user input
+        input_l2: "8.5", // user input (avg = 8.0)
+        pcs: "10",
+        mtr: "",
+        rejection_pcs: "1",
+        rejection_mtr: "",
+        htc_ok_pcs: "0",
+        htc_ok_mtr: "0",
+        od: 50.8,
+        wl: 3.66,
+        stage_code: "DRAW",
+      });
+
+      expect(res.avg).toBe(8.0); // (7.5 + 8.5) / 2
+      expect(res.pcs).toBe(10);
+      expect(res.mtr).toBe(80.0); // 10 * 8.0 = 80
+      expect(res.rejectionMtr).toBe(8.0); // 1 * 8.0 = 8
+      expect(res.netMtr).toBe(72.0); // 9 * 8.0 = 72
+    });
+
+    it("attachCustomLengthToRemarks() and extractCustomLengthFromRemarks() handle custom length metadata correctly", () => {
+      const tagged = attachCustomLengthToRemarks("Pass 1 drawn", "7.5", "8.5", 8.0);
+      expect(tagged).toBe("Pass 1 drawn [L1:7.5] [L2:8.5] [AVG:8]");
+
+      const extracted = extractCustomLengthFromRemarks(tagged);
+      expect(extracted.l1).toBe(7.5);
+      expect(extracted.l2).toBe(8.5);
+      expect(extracted.avg).toBe(8.0);
+      expect(extracted.cleanRemarks).toBe("Pass 1 drawn");
     });
   });
 });

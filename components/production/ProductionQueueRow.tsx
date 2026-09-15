@@ -12,7 +12,7 @@ export interface ProductionQueueRowProps {
     key: string,
     field: keyof Pick<
       Row,
-      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks'
+      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks' | 'input_l1' | 'input_l2'
     >,
     value: string
   ) => void;
@@ -86,6 +86,40 @@ export function ProductionQueueRow({
           {row.route_code}
         </span>
       </td>
+
+      {/* Length Inputs (L1 / L2) for DB and HT */}
+      {(stage === 'DRAW' || stage === 'HEAT_TREATMENT') && (
+        <td className="py-2.5 px-2.5 align-middle bg-indigo-50/30 border-r border-indigo-100 text-center">
+          <div className="flex items-center justify-center gap-1">
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder={row.l1 ? String(row.l1) : 'L1'}
+              disabled={!isAllowed}
+              value={row.input_l1 ?? (row.l1 ? String(row.l1) : '')}
+              onChange={(e) => onUpdateRow(key, 'input_l1', e.target.value)}
+              className="w-14 rounded border border-slate-300 bg-white px-1 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100 disabled:text-slate-400"
+              title="L1 Minimum Length (m)"
+            />
+            <span className="text-slate-400 font-bold">-</span>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder={row.l2 ? String(row.l2) : 'L2'}
+              disabled={!isAllowed}
+              value={row.input_l2 ?? (row.l2 ? String(row.l2) : '')}
+              onChange={(e) => onUpdateRow(key, 'input_l2', e.target.value)}
+              className="w-14 rounded border border-slate-300 bg-white px-1 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100 disabled:text-slate-400"
+              title="L2 Maximum Length (m)"
+            />
+          </div>
+          <div className="text-[10px] text-indigo-700 font-mono font-medium mt-0.5">
+            Avg: {fmt(d.avg, 'm')}
+          </div>
+        </td>
+      )}
 
       {/* Balance */}
       <td className="py-2.5 px-3 sm:px-4 align-middle">

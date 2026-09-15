@@ -14,6 +14,8 @@ import {
   mtFromMtr,
   attachPcsToRemarks,
   extractPcsFromRemarks,
+  attachCustomLengthToRemarks,
+  extractCustomLengthFromRemarks,
 } from '@/lib/productionUtils';
 import { StageCode, STAGES, Row, ProductionEntry } from '@/types';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
@@ -215,7 +217,7 @@ export default function ProductionEntryGrid() {
     key: string,
     field: keyof Pick<
       Row,
-      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks'
+      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks' | 'input_l1' | 'input_l2'
     >,
     value: string
   ) => {
@@ -229,10 +231,22 @@ export default function ProductionEntryGrid() {
         const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || 0;
         const effectiveMhAvg = Number(r.mh_avg_length || 0) > 0 ? Number(r.mh_avg_length) : computedMhAvg;
 
+        const hasUserL1 = (field === 'input_l1' ? value : r.input_l1) !== undefined && String(field === 'input_l1' ? value : r.input_l1).trim() !== '';
+        const hasUserL2 = (field === 'input_l2' ? value : r.input_l2) !== undefined && String(field === 'input_l2' ? value : r.input_l2).trim() !== '';
+        const curL1 = hasUserL1 ? Number(field === 'input_l1' ? value : r.input_l1) : Number(r.l1 || 0);
+        const curL2 = hasUserL2 ? Number(field === 'input_l2' ? value : r.input_l2) : Number(r.l2 || 0);
+        const userAvg = curL1 > 0 && curL2 > 0 ? (curL1 + curL2) / 2 : (curL1 || curL2 || 0);
+
         const effectiveAvg =
           (stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT') && effectiveMhAvg > 0
             ? effectiveMhAvg
-            : n(r.avg_length);
+            : (hasUserL1 || hasUserL2) && userAvg > 0
+            ? userAvg
+            : n(r.avg_length) > 0
+            ? n(r.avg_length)
+            : userAvg > 0
+            ? userAvg
+            : 6.0;
 
         // For Finishing: calculate direct numbers without mandatory length multiplication
         if (stage === 'FINISHING') {
@@ -268,6 +282,17 @@ export default function ProductionEntryGrid() {
         }
 
         const isRollingStage = stage === 'ROLLING';
+
+        if (field === 'input_l1' || field === 'input_l2') {
+          const updatedMtr = n(r.pcs) > 0 ? String(mtrFromPcs(n(r.pcs), effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : r.mtr;
+          const updatedRejMtr = n(r.rejection_pcs) > 0 ? String(mtrFromPcs(n(r.rejection_pcs), effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : r.rejection_mtr;
+          return {
+            ...r,
+            [field]: value,
+            mtr: updatedMtr,
+            rejection_mtr: updatedRejMtr,
+          };
+        }
 
         if (field === 'pcs') {
           const mtr = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
@@ -531,7 +556,13 @@ export default function ProductionEntryGrid() {
           rejection_pcs: d.rejectionPcs || null,
           htc_ok_pcs: stage === 'ROLLING' ? d.htcPcs || null : null,
           heat_lot_no: r.heat_lot_no || null,
-          remarks: attachPcsToRemarks(r.remarks, d.pcs, d.rejectionPcs) || null,
+          remarks:
+            attachCustomLengthToRemarks(
+              attachPcsToRemarks(r.remarks, d.pcs, d.rejectionPcs),
+              r.input_l1 ?? (r.l1 ? String(r.l1) : ''),
+              r.input_l2 ?? (r.l2 ? String(r.l2) : ''),
+              d.avg
+            ) || null,
         };
       });
 

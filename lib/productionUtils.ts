@@ -66,6 +66,10 @@ export const calc = (row: {
   htc_ok_mtr: string;
   od: number | null;
   wl: number | null;
+  l1?: number | null;
+  l2?: number | null;
+  input_l1?: string;
+  input_l2?: string;
   mh_od?: number | null;
   mh_wt?: number | null;
   mh_l1?: number | null;
@@ -84,11 +88,25 @@ export const calc = (row: {
   const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || 0);
   const effectiveMhAvg = Number(row.mh_avg_length || 0) > 0 ? Number(row.mh_avg_length) : computedMhAvg;
 
-  // For Draw, HT, and all subsequent stages: calculated based on Final OD, WT, and average of (L1, L2)
+  // For Draw and HT: User can input custom L1 and L2 for new entries.
+  // If user inputs input_l1 / input_l2, compute effective average from user input.
+  // For existing rows / theoretical values, fall back to theoretical avg_length / (l1+l2)/2.
+  const hasUserL1 = row.input_l1 !== undefined && row.input_l1 !== null && String(row.input_l1).trim() !== "";
+  const hasUserL2 = row.input_l2 !== undefined && row.input_l2 !== null && String(row.input_l2).trim() !== "";
+  const userL1 = hasUserL1 ? Number(row.input_l1) : Number(row.l1 || 0);
+  const userL2 = hasUserL2 ? Number(row.input_l2) : Number(row.l2 || 0);
+  const userComputedAvg = userL1 > 0 && userL2 > 0 ? (userL1 + userL2) / 2 : (userL1 || userL2 || 0);
+
   const effectiveAvg =
     isMhStage && effectiveMhAvg > 0
       ? effectiveMhAvg
-      : n(row.avg_length);
+      : (hasUserL1 || hasUserL2) && userComputedAvg > 0
+      ? userComputedAvg
+      : n(row.avg_length) > 0
+      ? n(row.avg_length)
+      : userComputedAvg > 0
+      ? userComputedAvg
+      : 6.0;
 
   const effectiveOd =
     isMhStage && row.mh_od && Number(row.mh_od) > 0 ? Number(row.mh_od) : n(row.od);
@@ -218,8 +236,57 @@ export function extractPcsFromRemarks(remarks: string | null | undefined): {
   const cleanRemarks = remarks
     .replace(/\[PCS:\d+\]/gi, "")
     .replace(/\[REJ_PCS:\d+\]/gi, "")
+    .replace(/\[L1:[^\]]+\]/gi, "")
+    .replace(/\[L2:[^\]]+\]/gi, "")
+    .replace(/\[AVG:[^\]]+\]/gi, "")
     .trim();
   return { pcs, rejPcs, cleanRemarks };
+}
+
+export function attachCustomLengthToRemarks(
+  remarks: string | null | undefined,
+  l1: number | string | null | undefined,
+  l2: number | string | null | undefined,
+  avg: number | string | null | undefined
+): string {
+  let base = (remarks || "").trim();
+  base = base
+    .replace(/\[L1:[^\]]+\]/gi, "")
+    .replace(/\[L2:[^\]]+\]/gi, "")
+    .replace(/\[AVG:[^\]]+\]/gi, "")
+    .trim();
+  const tags: string[] = [];
+  const nL1 = Number(l1);
+  const nL2 = Number(l2);
+  const nAvg = Number(avg);
+  if (Number.isFinite(nL1) && nL1 > 0) tags.push(`[L1:${nL1}]`);
+  if (Number.isFinite(nL2) && nL2 > 0) tags.push(`[L2:${nL2}]`);
+  if (Number.isFinite(nAvg) && nAvg > 0) tags.push(`[AVG:${nAvg.toFixed(2)}]`);
+  if (tags.length === 0) return base;
+  return base ? `${base} ${tags.join(" ")}` : tags.join(" ");
+}
+
+export function extractCustomLengthFromRemarks(remarks: string | null | undefined): {
+  l1: number | null;
+  l2: number | null;
+  avg: number | null;
+  cleanRemarks: string;
+} {
+  if (!remarks) return { l1: null, l2: null, avg: null, cleanRemarks: "" };
+  const l1Match = remarks.match(/\[L1:([0-9.]+)\]/i);
+  const l2Match = remarks.match(/\[L2:([0-9.]+)\]/i);
+  const avgMatch = remarks.match(/\[AVG:([0-9.]+)\]/i);
+  const l1 = l1Match ? parseFloat(l1Match[1]) : null;
+  const l2 = l2Match ? parseFloat(l2Match[1]) : null;
+  const avg = avgMatch ? parseFloat(avgMatch[1]) : null;
+  const cleanRemarks = remarks
+    .replace(/\[L1:[^\]]+\]/gi, "")
+    .replace(/\[L2:[^\]]+\]/gi, "")
+    .replace(/\[AVG:[^\]]+\]/gi, "")
+    .replace(/\[PCS:\d+\]/gi, "")
+    .replace(/\[REJ_PCS:\d+\]/gi, "")
+    .trim();
+  return { l1, l2, avg, cleanRemarks };
 }
 
 export const STANDARD_RM_GRADES = [

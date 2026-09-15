@@ -2,7 +2,7 @@
 
 import { Search, Edit2, Trash2, Lock, RefreshCw } from 'lucide-react';
 import { ProductionEntry, Row, STAGES } from '@/types';
-import { fmt, extractPcsFromRemarks } from '@/lib/productionUtils';
+import { fmt, extractPcsFromRemarks, extractCustomLengthFromRemarks } from '@/lib/productionUtils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -161,9 +161,17 @@ export function ProductionHistoryTable({
                       ? Number(rowMatch?.total_order_mtr) / Number(rowMatch?.total_order_pcs)
                       : 6.0)
                 );
-                const effectiveLen = isMhStage && mhLen > 0 ? mhLen : woLen > 0 ? woLen : 6.0;
+                const customLen = extractCustomLengthFromRemarks(entry.remarks);
+                const effectiveLen =
+                  isMhStage && mhLen > 0
+                    ? mhLen
+                    : customLen.avg && customLen.avg > 0
+                    ? customLen.avg
+                    : woLen > 0
+                    ? woLen
+                    : 6.0;
 
-                const { pcs: parsedPcs, rejPcs: parsedRejPcs } = extractPcsFromRemarks(entry.remarks);
+                const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(entry.remarks);
 
                 const dispOutPcs = Math.round(
                   parsedPcs != null
@@ -248,7 +256,18 @@ export function ProductionHistoryTable({
                       )}
                     </td>
                     <td className="py-2.5 px-3 font-mono text-slate-800">{entry.heat_lot_no || '—'}</td>
-                    <td className="py-2.5 px-3 text-slate-600 max-w-[180px] truncate">{entry.remarks || '—'}</td>
+                    <td className="py-2.5 px-3 text-slate-600 max-w-[200px]">
+                      {customLen.l1 != null && customLen.l2 != null ? (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="inline-flex items-center rounded bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.2 text-[10px] font-bold font-mono text-indigo-700">
+                            L: {customLen.l1 === customLen.l2 ? `${customLen.l1}m` : `${customLen.l1}–${customLen.l2}m`}
+                          </span>
+                          {cleanRemarks && <span className="truncate text-xs">{cleanRemarks}</span>}
+                        </div>
+                      ) : (
+                        <span className="truncate text-xs">{cleanRemarks || entry.remarks || '—'}</span>
+                      )}
+                    </td>
                     <td className="py-2.5 px-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
