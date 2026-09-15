@@ -1,6 +1,6 @@
--- Migration 049: Remove MTR and MT limits from production entry and update RPCs
--- Reason: Drawn and finished meters/weights naturally vary and increase after drawing / elongation.
--- Physical unit balance (pieces) is tracked, and MTR/MT checks must not block production recording or edits.
+-- Drop existing functions first to prevent parameter default conflict errors
+drop function if exists public.update_production_entry(uuid,date,numeric,numeric,numeric,text,text);
+drop function if exists public.record_production(uuid,uuid,text,date,numeric,numeric,numeric,numeric,text,text);
 
 create or replace function public.record_production(
   p_work_order_id uuid,
