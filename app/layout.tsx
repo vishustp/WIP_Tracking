@@ -20,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={inter.variable}>
       <body className={`${inter.className} antialiased bg-slate-50 text-slate-900`}>
         <AppShell>{children}</AppShell>
-        <Toaster richColors position="top-right" />
+        <Toaster richColors position="top-right" closeButton duration={4500} />
       </body>
     </html>
   );

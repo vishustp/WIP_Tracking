@@ -86,8 +86,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         setUserDropdownOpen(false);
       }
     };
+    const handleGlobalError = (event: ErrorEvent) => {
+      if (event.message && !event.message.includes('ResizeObserver')) {
+        toast.error(event.message);
+      }
+    };
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const msg = reason instanceof Error ? reason.message : typeof reason === 'string' ? reason : 'An unexpected error occurred';
+      if (msg && !msg.includes('NEXT_REDIRECT') && !msg.includes('ResizeObserver')) {
+        toast.error(msg);
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('error', handleGlobalError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('error', handleGlobalError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
   }, []);
 
   if (pathname === '/login') return <>{children}</>;
@@ -95,8 +115,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       await createClient().auth.signOut();
-    } catch { }
-    toast.info('Signed out successfully');
+      toast.info('Signed out successfully');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to sign out');
+    }
     router.replace('/login');
     router.refresh();
   };
@@ -136,25 +158,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span className="text-[8px] font-semibold tracking-wider text-sky-200 uppercase">Supply Chain Execution</span>
             </div>
           </div>
-          <button className="lg:hidden rounded-lg p-1.5 text-sky-200 hover:bg-sky-800" onClick={() => setOpen(false)} aria-label="Close menu"><X size={16} /></button>
+          <button className="lg:hidden rounded-lg p-1.5 text-sky-200 hover:bg-sky-800 cursor-pointer" onClick={() => setOpen(false)} aria-label="Close menu"><X size={16} /></button>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2 py-4">
           {visibleGroups.map((group) => (
             <div key={group.label} className="mb-4 last:mb-0">
-              <div className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.label}</div>
+              <div className="mb-1.5 px-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.label}</div>
               <div className="space-y-0.5">
                 {group.items.map((item) => {
                   const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
+                  const Icon = item.icon;
                   return (
                     <button
                       key={item.href}
                       onClick={() => { router.push(item.href); setOpen(false); }}
-                      className={`group relative flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-left text-xs font-semibold transition-colors cursor-pointer ${active
-                          ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 rounded-l-none'
-                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      className={`group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px] font-semibold transition-all duration-150 ease-out cursor-pointer active:scale-[0.97] active:bg-sky-100/70 select-none ${active
+                          ? 'bg-sky-50 text-sky-800 font-bold border-l-4 border-sky-600 rounded-l-none shadow-xs'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 hover:translate-x-0.5'
                         }`}
                     >
+                      <Icon className={`h-4 w-4 shrink-0 transition-transform duration-150 group-hover:scale-110 group-active:scale-95 ${active ? 'text-sky-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
                       <span>{item.label}</span>
                     </button>
                   );
