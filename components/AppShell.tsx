@@ -28,14 +28,14 @@ const groups = [
     ],
   },
   {
+    label: 'PRODUCTION',
+    items: [{ href: '/production', label: 'Production Entry', icon: Factory }],
+  },
+  {
     label: 'QUALITY',
     items: [
       { href: '/qc/vdi', label: 'VDI Entries', icon: ClipboardCheck },
     ],
-  },
-  {
-    label: 'PRODUCTION',
-    items: [{ href: '/production', label: 'Production Entry', icon: Factory }],
   },
   {
     label: 'REPORTS',
@@ -95,7 +95,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       await createClient().auth.signOut();
-    } catch {}
+    } catch { }
     toast.info('Signed out successfully');
     router.replace('/login');
     router.refresh();
@@ -150,11 +150,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <button
                       key={item.href}
                       onClick={() => { router.push(item.href); setOpen(false); }}
-                      className={`group relative flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-left text-xs font-semibold transition-colors cursor-pointer ${
-                        active
+                      className={`group relative flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-left text-xs font-semibold transition-colors cursor-pointer ${active
                           ? 'bg-sky-50 text-sky-700 border-l-4 border-sky-600 rounded-l-none'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                      }`}
+                        }`}
                     >
                       <span>{item.label}</span>
                     </button>
