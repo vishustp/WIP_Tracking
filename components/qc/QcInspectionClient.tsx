@@ -523,7 +523,7 @@ export default function QcInspectionClient() {
     const rejMt = Number(mtFromMtr(rejMtr, od, wt).toFixed(3));
 
     const totalSalvageReasonPcs = salvageReasons.reduce((sum, r) => sum + n(r.pcs), 0);
-    const isSalvageBalanced = salP === 0 || totalSalvageReasonPcs === salP;
+    const isSalvageBalanced = salP === 0 || salvageReasons.length === 0 || totalSalvageReasonPcs === salP;
     const isPcsBalanced = inspP > 0 && okP + salP + rejP === inspP;
 
     return {
@@ -567,11 +567,6 @@ export default function QcInspectionClient() {
 
     if (okP + salP + rejP !== inspP) {
       toast.error(`Sum of VDI OK (${okP}) + Salvage (${salP}) + Rejection (${rejP}) must equal Inspected pieces (${inspP}).`);
-      return;
-    }
-
-    if (salP > 0 && formMetrics.totalSalvageReasonPcs !== salP) {
-      toast.error(`Salvage defect lines total (${formMetrics.totalSalvageReasonPcs} Nos) does not match VDI Salvage Nos (${salP} Nos). Please adjust defect quantities.`);
       return;
     }
 
@@ -1546,15 +1541,15 @@ export default function QcInspectionClient() {
                 <span>{formMetrics.isPcsBalanced ? '✓ Balanced with Inspected' : `⚠️ Must equal ${n(inspectedPcs)} Nos`}</span>
               </div>
 
-              {/* Multi-Line Salvage Reasons Section */}
+              {/* Multi-Line Salvage Reasons Section (Optional) */}
               <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                      Salvage Defect Breakdown Lines
+                      Salvage Defect Breakdown Lines <span className="text-slate-500 font-normal normal-case">(Optional)</span>
                     </h4>
                     <p className="text-[11px] text-slate-500">
-                      Specify defect categories and pieces for all salvage material
+                      Specify defect categories and pieces for salvage material (optional)
                     </p>
                   </div>
                   <button
@@ -1569,9 +1564,7 @@ export default function QcInspectionClient() {
 
                 {salvageReasons.length === 0 ? (
                   <div className="text-center py-3 text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                    {n(vdiSalvagePcs) > 0
-                      ? '⚠️ Please click "+ Add Salvage Reason" above to allocate the salvage pieces to defect causes.'
-                      : 'No salvage pieces recorded. Add lines if any material needs rework.'}
+                    No itemized salvage defect lines added (optional).
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1622,8 +1615,8 @@ export default function QcInspectionClient() {
 
                     <div className="flex items-center justify-between text-xs font-mono pt-1 text-slate-600">
                       <span>Reason lines allocated: <strong>{formMetrics.totalSalvageReasonPcs} Nos</strong></span>
-                      <span className={formMetrics.isSalvageBalanced ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'}>
-                        {formMetrics.isSalvageBalanced ? '✓ Salvage reasons match' : `⚠️ Must match VDI Salvage (${n(vdiSalvagePcs)} Nos)`}
+                      <span className="text-slate-500 font-medium">
+                        (Optional breakdown for {n(vdiSalvagePcs)} Salvage Nos)
                       </span>
                     </div>
                   </div>
