@@ -47,6 +47,7 @@ export default function QcInspectionClient() {
   const [qcInspections, setQcInspections] = useState<QcInspection[]>([]);
   const [stages, setStages] = useState<{ id: string; stage_code: string; stage_name: string }[]>([]);
   const [routes, setRoutes] = useState<{ id: string; route_code: string; route_name: string }[]>([]);
+  const [rollingPlans, setRollingPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Search & Filter
@@ -110,18 +111,20 @@ export default function QcInspectionClient() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [woRes, logsRes, qcRes, stagesRes, routesRes] = await Promise.all([
+      const [woRes, logsRes, qcRes, stagesRes, routesRes, plansRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('production_logs').select('*'),
         supabase.from('qc_inspections').select('*').order('created_at', { ascending: false }),
         supabase.from('process_stages').select('*'),
         supabase.from('process_routes').select('id, route_code, route_name'),
+        supabase.from('rolling_plans').select('*').not('status', 'is', null),
       ]);
 
       if (woRes.data) setWorkOrders(woRes.data as WorkOrder[]);
       if (logsRes.data) setProductionLogs(logsRes.data as ProductionLog[]);
       if (stagesRes.data) setStages(stagesRes.data);
       if (routesRes.data) setRoutes(routesRes.data);
+      if (plansRes.data) setRollingPlans(plansRes.data);
 
       // Handle qc_inspections gracefully even if table was just created
       if (qcRes.data) {
@@ -142,16 +145,87 @@ export default function QcInspectionClient() {
     loadData();
   }, [loadData]);
 
-  // Build QC Queue Items: Work orders with available Heat Treatment OK or Rolling HTC OK WIP
+  // Build QC Queue Items: Separate queues for Parents (Master Campaigns) and Children
   const queueItems = useMemo(() => {
     const htStage = stages.find((s) => s.stage_code === 'HEAT_TREATMENT');
     const rollingStage = stages.find((s) => s.stage_code === 'ROLLING');
     const routeMap = new Map<string, any>();
     routes.forEach((r) => routeMap.set(r.id, r));
 
+    const masterCampaignMap = new Map<string, any>();
+    const childWoMap = new Map<string, any>();
+
+    (rollingPlans || []).forEach((p: any) => {
+      try {
+        const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {};
+        if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
+          const masterPlannedMtr = Number(parsed.master_planned_mtr || p.planned_qty || 0);
+          const childPlannedMtr = (parsed.child_work_orders || []).reduce(
+            (sum: number, c: any) => sum + Number(c.planned_mtr || 0),
+            0
+          );
+          const totalCampaignMtr =
+            Number(parsed.total_campaign_mtr) > 0
+              ? Number(parsed.total_campaign_mtr)
+              : masterPlannedMtr + childPlannedMtr;
+
+          const masterPlannedPcs = Number(parsed.master_planned_pcs || 0);
+          const childPlannedPcs = (parsed.child_work_orders || []).reduce(
+            (sum: number, c: any) => sum + Number(c.planned_pcs || 0),
+            0
+          );
+          const totalCampaignPcs =
+            Number(parsed.total_campaign_pcs) > 0
+              ? Number(parsed.total_campaign_pcs)
+              : masterPlannedPcs + childPlannedPcs;
+
+          masterCampaignMap.set(p.work_order_id, {
+            plan_id: p.id,
+            plan_no: p.plan_no,
+            master_wo_id: p.work_order_id,
+            master_wo_no: parsed.master_wo_no || p.work_order_no,
+            master_planned_mtr: masterPlannedMtr,
+            master_planned_pcs: masterPlannedPcs,
+            total_campaign_mtr: totalCampaignMtr,
+            total_campaign_pcs: totalCampaignPcs,
+            child_work_orders: parsed.child_work_orders,
+            route_id: p.process_route_id,
+          });
+
+          for (const child of parsed.child_work_orders) {
+            const childId = child.work_order_id || child.id;
+            if (childId) {
+              childWoMap.set(childId, {
+                ...child,
+                master_wo_id: p.work_order_id,
+                master_wo_no: parsed.master_wo_no || p.work_order_no,
+                master_plan_no: p.plan_no,
+                master_plan_id: p.id,
+              });
+            }
+          }
+        } else if (parsed?.is_child) {
+          childWoMap.set(p.work_order_id, {
+            work_order_id: p.work_order_id,
+            master_wo_id: parsed.master_wo_id,
+            master_wo_no: parsed.master_wo_no,
+            master_plan_no: parsed.master_plan_no,
+            planned_mtr: parsed.planned_mtr || p.planned_qty,
+            planned_pcs: parsed.planned_pcs,
+          });
+        }
+      } catch {}
+    });
+
     const items: QcQueueItem[] = [];
+    const processedWoIds = new Set<string>();
 
     workOrders.forEach((wo) => {
+      if (processedWoIds.has(wo.id)) return;
+
+      const campaign = masterCampaignMap.get(wo.id);
+      const childInfo = childWoMap.get(wo.id);
+
       // Work order dimensions & average length
       const od = Number(wo.size_od || 0);
       const wt = Number(wo.size_wt || 0);
@@ -161,86 +235,238 @@ export default function QcInspectionClient() {
 
       // Logs for this work order
       const woLogs = productionLogs.filter((l) => l.work_order_id === wo.id);
-      if (woLogs.length === 0) return;
 
       // Determine route: HFS vs CDS
-      const routeId = wo.process_route_id || woLogs.find((l) => l.process_route_id)?.process_route_id;
+      const routeId = wo.process_route_id || woLogs.find((l) => l.process_route_id)?.process_route_id || campaign?.route_id;
       const matchedRoute = routeId ? routeMap.get(routeId) : null;
       const routeCode = matchedRoute?.route_code || (wo.grade?.toUpperCase().includes('HFS') ? 'HFS' : 'CDS');
       const isHfs = routeCode === 'HFS' || routeCode === 'ALLOY_HFS';
 
-      let relevantLogs: ProductionLog[] = [];
-      let feederLabel = 'Heat Treatment OK';
-      let feederStageCode = 'HEAT_TREATMENT';
+      let feederLabel = isHfs ? 'Rolling HTC OK' : 'Heat Treatment OK';
+      let feederStageCode = isHfs ? 'ROLLING' : 'HEAT_TREATMENT';
 
-      if (isHfs) {
-        // Case HFS (Hot Finished Seamless) Route: Feeder source is strictly Rolling HTC OK Nos
-        relevantLogs = woLogs.filter(
-          (l) => rollingStage && l.stage_id === rollingStage.id && Number(l.htc_ok || 0) > 0
-        );
-        feederLabel = 'Rolling HTC OK';
-        feederStageCode = 'ROLLING';
+      // 1. MASTER CAMPAIGN: Split parent and each child into distinct VDI queue rows
+      if (campaign && Array.isArray(campaign.child_work_orders) && campaign.child_work_orders.length > 0) {
+        processedWoIds.add(wo.id);
+
+        let relevantLogs: ProductionLog[] = [];
+        if (isHfs) {
+          relevantLogs = woLogs.filter(
+            (l) => rollingStage && l.stage_id === rollingStage.id && Number(l.htc_ok || 0) > 0
+          );
+        } else {
+          relevantLogs = woLogs.filter((l) => htStage && l.stage_id === htStage.id);
+        }
+
+        const outMtr = relevantLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+        const rejMtr = relevantLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+        const htcOkMtr = relevantLogs.reduce((sum, l) => sum + Number(l.htc_ok || 0), 0);
+
+        const totalCampaignHtOkMtr = isHfs
+          ? htcOkMtr
+          : (htcOkMtr > 0 ? htcOkMtr : Math.max(0, outMtr - rejMtr));
+        const totalCampaignHtOkPcs = avgLen > 0 ? Math.round(totalCampaignHtOkMtr / avgLen) : 0;
+
+        const totalCampaignPcs = campaign.total_campaign_pcs > 0 ? campaign.total_campaign_pcs : totalCampaignHtOkPcs;
+        const totalCampaignMtr = campaign.total_campaign_mtr > 0 ? campaign.total_campaign_mtr : totalCampaignHtOkMtr;
+
+        // A. Add Master Work Order Row (Parent)
+        const masterPlannedPcs = campaign.master_planned_pcs > 0 ? campaign.master_planned_pcs : Math.max(0, totalCampaignPcs - (campaign.child_work_orders || []).reduce((s: number, c: any) => s + Number(c.planned_pcs || 0), 0));
+        const masterPlannedMtr = campaign.master_planned_mtr > 0 ? campaign.master_planned_mtr : Math.max(0, totalCampaignMtr - (campaign.child_work_orders || []).reduce((s: number, c: any) => s + Number(c.planned_mtr || 0), 0));
+        const masterRatio = totalCampaignPcs > 0 ? (masterPlannedPcs / totalCampaignPcs) : 1;
+
+        const masterHtOkPcs = Math.round(totalCampaignHtOkPcs * masterRatio);
+        const masterHtOkMtr = Number((totalCampaignHtOkMtr * masterRatio).toFixed(2));
+        const masterHtOkMt = mtFromMtr(masterHtOkMtr, od, wt);
+
+        const masterInspections = qcInspections.filter((q) => q.work_order_id === wo.id);
+        const masterAlreadyInspectedPcs = masterInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
+        const masterAlreadyInspectedMtr = masterInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
+
+        const masterAvailPcs = Math.max(0, masterHtOkPcs - masterAlreadyInspectedPcs);
+        const masterAvailMtr = Math.max(0, masterHtOkMtr - masterAlreadyInspectedMtr);
+        const masterAvailMt = mtFromMtr(masterAvailMtr, od, wt);
+
+        if (masterAvailPcs >= 1 || masterAvailMtr >= 1.0) {
+          items.push({
+            work_order_id: wo.id,
+            work_order_no: wo.work_order_no,
+            customer_name: wo.customer_name || null,
+            specification: wo.specification || wo.grade || null,
+            size_od: od,
+            size_wt: wt,
+            l1,
+            l2,
+            avg_length: avgLen,
+            process_route_id: routeId || null,
+            route_code: routeCode,
+            feeder_source_label: feederLabel,
+            feeder_stage_code: feederStageCode,
+            ht_ok_pcs: masterHtOkPcs,
+            ht_ok_mtr: masterHtOkMtr,
+            ht_ok_mt: masterHtOkMt,
+            already_inspected_pcs: masterAlreadyInspectedPcs,
+            available_ht_ok_pcs: masterAvailPcs,
+            available_ht_ok_mtr: masterAvailMtr,
+            available_ht_ok_mt: masterAvailMt,
+            is_master: true,
+            master_plan_no: campaign.plan_no,
+            child_work_orders: campaign.child_work_orders,
+          });
+        }
+
+        // B. Add Every Child Work Order Row Separately
+        for (const child of campaign.child_work_orders) {
+          const childId = child.work_order_id || child.id;
+          if (!childId) continue;
+          processedWoIds.add(childId);
+
+          const childWo = workOrders.find((w) => w.id === childId);
+          const childOd = Number(child.size_od || childWo?.size_od || od);
+          const childWt = Number(child.size_wt || childWo?.size_wt || wt);
+          const childL1 = Number(child.l1 || childWo?.l1 || l1);
+          const childL2 = Number(child.l2 || childWo?.l2 || l2);
+          const childAvg = childL1 > 0 && childL2 > 0 ? (childL1 + childL2) / 2 : (childL1 || childL2 || avgLen);
+
+          // Check if child has direct logs in production_logs
+          const childDirectLogs = productionLogs.filter((l) => l.work_order_id === childId);
+          let childHtOkPcs = 0;
+          let childHtOkMtr = 0;
+
+          if (childDirectLogs.length > 0) {
+            let relLogs: ProductionLog[] = [];
+            if (isHfs) {
+              relLogs = childDirectLogs.filter((l) => rollingStage && l.stage_id === rollingStage.id && Number(l.htc_ok || 0) > 0);
+            } else {
+              relLogs = childDirectLogs.filter((l) => htStage && l.stage_id === htStage.id);
+            }
+            const outM = relLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+            const rejM = relLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+            const htcM = relLogs.reduce((sum, l) => sum + Number(l.htc_ok || 0), 0);
+            childHtOkMtr = isHfs ? htcM : (htcM > 0 ? htcM : Math.max(0, outM - rejM));
+            childHtOkPcs = childAvg > 0 ? Math.round(childHtOkMtr / childAvg) : 0;
+          } else {
+            // Allocate child's share from the master campaign feeder pool
+            const childPlannedPcs = Number(child.planned_pcs || 0);
+            const childPlannedMtr = Number(child.planned_mtr || 0);
+            const childRatio = totalCampaignPcs > 0
+              ? (childPlannedPcs / totalCampaignPcs)
+              : (totalCampaignMtr > 0 ? (childPlannedMtr / totalCampaignMtr) : 0);
+
+            childHtOkPcs = childPlannedPcs > 0 && totalCampaignHtOkPcs >= totalCampaignPcs ? childPlannedPcs : Math.round(totalCampaignHtOkPcs * childRatio);
+            childHtOkMtr = Number((totalCampaignHtOkMtr * childRatio).toFixed(2));
+          }
+
+          const childHtOkMt = mtFromMtr(childHtOkMtr, childOd, childWt);
+
+          const childInspections = qcInspections.filter((q) => q.work_order_id === childId);
+          const childAlreadyInspectedPcs = childInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
+          const childAlreadyInspectedMtr = childInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
+
+          const childAvailPcs = Math.max(0, childHtOkPcs - childAlreadyInspectedPcs);
+          const childAvailMtr = Math.max(0, childHtOkMtr - childAlreadyInspectedMtr);
+          const childAvailMt = mtFromMtr(childAvailMtr, childOd, childWt);
+
+          if (childAvailPcs >= 1 || childAvailMtr >= 1.0) {
+            items.push({
+              work_order_id: childId,
+              work_order_no: child.work_order_no || childWo?.work_order_no || '—',
+              customer_name: child.customer_name || childWo?.customer_name || null,
+              specification: child.grade || childWo?.specification || childWo?.grade || wo.specification || null,
+              size_od: childOd,
+              size_wt: childWt,
+              l1: childL1,
+              l2: childL2,
+              avg_length: childAvg,
+              process_route_id: childWo?.process_route_id || routeId || null,
+              route_code: routeCode,
+              feeder_source_label: feederLabel,
+              feeder_stage_code: feederStageCode,
+              ht_ok_pcs: childHtOkPcs,
+              ht_ok_mtr: childHtOkMtr,
+              ht_ok_mt: childHtOkMt,
+              already_inspected_pcs: childAlreadyInspectedPcs,
+              available_ht_ok_pcs: childAvailPcs,
+              available_ht_ok_mtr: childAvailMtr,
+              available_ht_ok_mt: childAvailMt,
+              is_child: true,
+              master_wo_id: wo.id,
+              master_wo_no: wo.work_order_no,
+              master_plan_no: campaign.plan_no,
+            });
+          }
+        }
       } else {
-        // Case CDS (Standard & Alloy Steel) Routes: Feeder source is strictly Heat Treatment OK Nos
-        relevantLogs = woLogs.filter((l) => htStage && l.stage_id === htStage.id);
-        feederLabel = 'Heat Treatment OK';
-        feederStageCode = 'HEAT_TREATMENT';
-      }
+        // 2. STANDALONE WORK ORDER (OR STANDALONE CHILD)
+        processedWoIds.add(wo.id);
 
-      if (relevantLogs.length === 0) return;
+        if (woLogs.length === 0) return;
 
-      const outMtr = relevantLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const rejMtr = relevantLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const htcOkMtr = relevantLogs.reduce((sum, l) => sum + Number(l.htc_ok || 0), 0);
+        let relevantLogs: ProductionLog[] = [];
+        if (isHfs) {
+          relevantLogs = woLogs.filter(
+            (l) => rollingStage && l.stage_id === rollingStage.id && Number(l.htc_ok || 0) > 0
+          );
+        } else {
+          relevantLogs = woLogs.filter((l) => htStage && l.stage_id === htStage.id);
+        }
 
-      // Effective HT OK Mtr: uses htc_ok if HFS/logged, otherwise net output (output - rejection)
-      const effectiveHtOkMtr = isHfs
-        ? htcOkMtr
-        : (htcOkMtr > 0 ? htcOkMtr : Math.max(0, outMtr - rejMtr));
+        if (relevantLogs.length === 0) return;
 
-      if (effectiveHtOkMtr <= 0) return;
+        const outMtr = relevantLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+        const rejMtr = relevantLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+        const htcOkMtr = relevantLogs.reduce((sum, l) => sum + Number(l.htc_ok || 0), 0);
 
-      const effectiveHtOkPcs = avgLen > 0 ? Math.round(effectiveHtOkMtr / avgLen) : 0;
-      const effectiveHtOkMt = mtFromMtr(effectiveHtOkMtr, od, wt);
+        const effectiveHtOkMtr = isHfs
+          ? htcOkMtr
+          : (htcOkMtr > 0 ? htcOkMtr : Math.max(0, outMtr - rejMtr));
 
-      // Total already inspected at QC for this order
-      const woInspections = qcInspections.filter((q) => q.work_order_id === wo.id);
-      const alreadyInspectedPcs = woInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
-      const alreadyInspectedMtr = woInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
+        if (effectiveHtOkMtr <= 0) return;
 
-      const availablePcs = Math.max(0, effectiveHtOkPcs - alreadyInspectedPcs);
-      const availableMtr = Math.max(0, effectiveHtOkMtr - alreadyInspectedMtr);
-      const availableMt = mtFromMtr(availableMtr, od, wt);
+        const effectiveHtOkPcs = avgLen > 0 ? Math.round(effectiveHtOkMtr / avgLen) : 0;
+        const effectiveHtOkMt = mtFromMtr(effectiveHtOkMtr, od, wt);
 
-      // Universal Mill Rule: Minimum Queue Quantity >= 1 (filter out zero or sub-single balance)
-      if (availablePcs >= 1 || availableMtr >= 1.0) {
-        items.push({
-          work_order_id: wo.id,
-          work_order_no: wo.work_order_no,
-          customer_name: wo.customer_name || null,
-          specification: wo.specification || wo.grade || null,
-          size_od: od,
-          size_wt: wt,
-          l1,
-          l2,
-          avg_length: avgLen,
-          process_route_id: routeId || null,
-          route_code: routeCode,
-          feeder_source_label: feederLabel,
-          feeder_stage_code: feederStageCode,
-          ht_ok_pcs: effectiveHtOkPcs,
-          ht_ok_mtr: effectiveHtOkMtr,
-          ht_ok_mt: effectiveHtOkMt,
-          already_inspected_pcs: alreadyInspectedPcs,
-          available_ht_ok_pcs: availablePcs,
-          available_ht_ok_mtr: availableMtr,
-          available_ht_ok_mt: availableMt,
-        });
+        const woInspections = qcInspections.filter((q) => q.work_order_id === wo.id);
+        const alreadyInspectedPcs = woInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
+        const alreadyInspectedMtr = woInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
+
+        const availablePcs = Math.max(0, effectiveHtOkPcs - alreadyInspectedPcs);
+        const availableMtr = Math.max(0, effectiveHtOkMtr - alreadyInspectedMtr);
+        const availableMt = mtFromMtr(availableMtr, od, wt);
+
+        if (availablePcs >= 1 || availableMtr >= 1.0) {
+          items.push({
+            work_order_id: wo.id,
+            work_order_no: wo.work_order_no,
+            customer_name: wo.customer_name || null,
+            specification: wo.specification || wo.grade || null,
+            size_od: od,
+            size_wt: wt,
+            l1,
+            l2,
+            avg_length: avgLen,
+            process_route_id: routeId || null,
+            route_code: routeCode,
+            feeder_source_label: feederLabel,
+            feeder_stage_code: feederStageCode,
+            ht_ok_pcs: effectiveHtOkPcs,
+            ht_ok_mtr: effectiveHtOkMtr,
+            ht_ok_mt: effectiveHtOkMt,
+            already_inspected_pcs: alreadyInspectedPcs,
+            available_ht_ok_pcs: availablePcs,
+            available_ht_ok_mtr: availableMtr,
+            available_ht_ok_mt: availableMt,
+            is_child: !!childInfo,
+            master_wo_id: childInfo?.master_wo_id,
+            master_wo_no: childInfo?.master_wo_no,
+            master_plan_no: childInfo?.master_plan_no,
+          });
+        }
       }
     });
 
     return items;
-  }, [workOrders, productionLogs, qcInspections, stages, routes]);
+  }, [workOrders, productionLogs, qcInspections, stages, routes, rollingPlans]);
 
   // Filtered Queue
   const filteredQueue = useMemo(() => {
@@ -250,14 +476,36 @@ export default function QcInspectionClient() {
       (item) =>
         item.work_order_no.toLowerCase().includes(q) ||
         (item.customer_name || '').toLowerCase().includes(q) ||
-        (item.specification || '').toLowerCase().includes(q)
+        (item.specification || '').toLowerCase().includes(q) ||
+        (item.master_wo_no || '').toLowerCase().includes(q)
     );
   }, [queueItems, queueSearch]);
 
   // Enriched History with Work Order Details
   const enrichedHistory = useMemo(() => {
-    const woMap = new Map<string, WorkOrder>();
+    const woMap = new Map<string, any>();
     workOrders.forEach((w) => woMap.set(w.id, w));
+
+    // Also populate child orders from rolling plans
+    (rollingPlans || []).forEach((p: any) => {
+      try {
+        const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {};
+        if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
+          parsed.child_work_orders.forEach((c: any) => {
+            const cId = c.work_order_id || c.id;
+            if (cId && !woMap.has(cId)) {
+              woMap.set(cId, {
+                work_order_no: c.work_order_no,
+                customer_name: c.customer_name,
+                specification: c.grade,
+                size_od: c.size_od,
+                size_wt: c.size_wt,
+              });
+            }
+          });
+        }
+      } catch {}
+    });
 
     return qcInspections.map((q) => {
       const wo = woMap.get(q.work_order_id);
@@ -270,7 +518,7 @@ export default function QcInspectionClient() {
         size_wt: wo?.size_wt || q.size_wt,
       };
     });
-  }, [qcInspections, workOrders]);
+  }, [qcInspections, workOrders, rollingPlans]);
 
   // Filtered History
   const filteredHistory = useMemo(() => {
@@ -292,8 +540,35 @@ export default function QcInspectionClient() {
   // Build Salvage Queue Items: Work orders with active VDI Salvage pieces pending rework
   const salvageQueueItems = useMemo(() => {
     const items: QcSalvageQueueItem[] = [];
+    const allWorkOrders = [...workOrders];
 
-    workOrders.forEach((wo) => {
+    // Include any child work orders from rolling plans
+    (rollingPlans || []).forEach((p: any) => {
+      try {
+        const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {};
+        if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
+          parsed.child_work_orders.forEach((c: any) => {
+            const cId = c.work_order_id || c.id;
+            if (cId && !allWorkOrders.some((w) => w.id === cId)) {
+              allWorkOrders.push({
+                id: cId,
+                work_order_no: c.work_order_no,
+                customer_name: c.customer_name || null,
+                grade: c.grade || '—',
+                specification: c.grade || '—',
+                size_od: c.size_od || 0,
+                size_wt: c.size_wt || 0,
+                l1: c.l1 || 6,
+                l2: c.l2 || 6,
+                process_route_id: p.process_route_id || null,
+              } as any);
+            }
+          });
+        }
+      } catch {}
+    });
+
+    allWorkOrders.forEach((wo) => {
       const woInspections = qcInspections.filter(
         (q) => q.work_order_id === wo.id && Number(q.vdi_salvage_pcs || 0) > 0
       );
@@ -335,7 +610,7 @@ export default function QcInspectionClient() {
     });
 
     return items;
-  }, [workOrders, qcInspections]);
+  }, [workOrders, qcInspections, rollingPlans]);
 
   // Filtered Salvage Queue
   const filteredSalvageQueue = useMemo(() => {
@@ -1066,12 +1341,29 @@ export default function QcInspectionClient() {
                     {filteredQueue.map((item) => (
                       <tr key={item.work_order_id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="py-3 px-3.5 font-bold font-mono text-slate-900 text-sm">
-                          <div>{item.work_order_no}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{item.work_order_no}</span>
+                            {item.is_master && (
+                              <span className="rounded bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                                Master Campaign
+                              </span>
+                            )}
+                            {item.is_child && (
+                              <span className="rounded bg-teal-50 border border-teal-200 px-1.5 py-0.5 text-[10px] font-bold text-teal-700" title={item.master_wo_no ? `Child of Master WO ${item.master_wo_no}` : 'Child Work Order'}>
+                                Child WO
+                              </span>
+                            )}
+                          </div>
                           {item.feeder_source_label && (
-                            <div className="mt-1">
+                            <div className="mt-1 flex items-center gap-1 flex-wrap">
                               <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold">
                                 Feeder: {item.feeder_source_label}
                               </span>
+                              {item.is_child && item.master_wo_no && (
+                                <span className="text-[10px] text-slate-500 font-normal">
+                                  (via {item.master_wo_no})
+                                </span>
+                              )}
                             </div>
                           )}
                         </td>
@@ -1411,9 +1703,21 @@ export default function QcInspectionClient() {
                   <ClipboardCheck size={20} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">
-                    {editingInspection ? 'Edit QC / VDI Inspection' : 'Record QC / VDI Inspection'}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-900 text-base">
+                      {editingInspection ? 'Edit QC / VDI Inspection' : 'Record QC / VDI Inspection'}
+                    </h3>
+                    {selectedQueueItem.is_master && (
+                      <span className="rounded bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                        Master Campaign
+                      </span>
+                    )}
+                    {selectedQueueItem.is_child && (
+                      <span className="rounded bg-teal-50 border border-teal-200 px-2 py-0.5 text-[10px] font-bold text-teal-700">
+                        Child WO {selectedQueueItem.master_wo_no ? `(Master: ${selectedQueueItem.master_wo_no})` : ''}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500">
                     Work Order #{selectedQueueItem.work_order_no} · {selectedQueueItem.customer_name || 'Commercial Tube'}
                   </p>

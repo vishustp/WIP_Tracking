@@ -342,6 +342,12 @@ export interface QcQueueItem {
   available_ht_ok_pcs: number;
   available_ht_ok_mtr: number;
   available_ht_ok_mt: number;
+  is_master?: boolean;
+  is_child?: boolean;
+  master_wo_id?: string;
+  master_wo_no?: string;
+  master_plan_no?: string;
+  child_work_orders?: any[];
 }
 
 export interface QcSalvageQueueItem {
