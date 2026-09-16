@@ -240,6 +240,7 @@ export default function SizeGradeWipReportClient() {
           hhtPcs: number;
           drawPcs: number;
           htPcs: number;
+          vdiPcs: number;
           finPcs: number;
           htcOkPcs: number;
         }>();
@@ -251,6 +252,7 @@ export default function SizeGradeWipReportClient() {
             hhtPcs: 0,
             drawPcs: 0,
             htPcs: 0,
+            vdiPcs: 0,
             finPcs: 0,
             htcOkPcs: 0,
           };
@@ -267,7 +269,9 @@ export default function SizeGradeWipReportClient() {
             entry.drawPcs += pcs;
           } else if (stage === 'HEAT_TREATMENT') {
             entry.htPcs += pcs;
-          } else if (stage === 'FINISHING' || stage === 'VDI' || stage === 'CUTTING') {
+          } else if (stage === 'VDI') {
+            entry.vdiPcs += pcs;
+          } else if (stage === 'FINISHING' || stage === 'CUTTING') {
             entry.finPcs += pcs;
           }
           woPieceLedger.set(log.work_order_id, entry);
@@ -294,7 +298,7 @@ export default function SizeGradeWipReportClient() {
           const orderWt = Number(wo?.size_wt || r.size_wt || r.wt || 0);
           const orderAvgLen = Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : (wo?.l1 || wo?.l2 || r.l1 || r.l2 || 6.0));
 
-          const ledger = woPieceLedger.get(r.work_order_id) || { rolledPcs: 0, hhtPcs: 0, drawPcs: 0, htPcs: 0, finPcs: 0, htcOkPcs: 0 };
+          const ledger = woPieceLedger.get(r.work_order_id) || { rolledPcs: 0, hhtPcs: 0, drawPcs: 0, htPcs: 0, vdiPcs: 0, finPcs: 0, htcOkPcs: 0 };
 
           let calculatedPcs = 0;
           let calculatedMtr = 0;
@@ -310,21 +314,29 @@ export default function SizeGradeWipReportClient() {
               activeOd = mhOd;
               activeWt = mhWt;
             } else if (stage === 'DRAW') {
-              calculatedPcs = Math.max(0, (ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs) - ledger.drawPcs);
+              const incoming = ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs;
+              calculatedPcs = Math.max(0, incoming - ledger.drawPcs);
               calculatedMtr = calculatedPcs * mhAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
               activeOd = mhOd;
               activeWt = mhWt;
             } else if (stage === 'HEAT_TREATMENT') {
-              calculatedPcs = ledger.drawPcs; // Mother shells drawn waiting at HT
+              calculatedPcs = Math.max(0, ledger.drawPcs - ledger.htPcs);
               calculatedMtr = calculatedPcs * mhAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
               activeOd = mhOd;
               activeWt = mhWt;
-            } else {
-              // Finishing stages (CDS Route: HT Nos * Multiple)
-              const finishingTargetPcs = ledger.drawPcs * mult;
-              calculatedPcs = Math.max(0, finishingTargetPcs - ledger.finPcs);
+            } else if (stage === 'VDI') {
+              const htSource = ledger.htPcs > 0 ? ledger.htPcs : ledger.drawPcs;
+              const incomingVdi = htSource * mult;
+              calculatedPcs = Math.max(0, incomingVdi - ledger.vdiPcs - ledger.finPcs);
+              calculatedMtr = calculatedPcs * orderAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
+              activeOd = orderOd;
+              activeWt = orderWt;
+            } else if (stage === 'FINISHING' || stage === 'CUTTING') {
+              const incomingFin = ledger.vdiPcs > 0 ? ledger.vdiPcs : 0;
+              calculatedPcs = Math.max(0, incomingFin - ledger.finPcs);
               calculatedMtr = calculatedPcs * orderAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
               activeOd = orderOd;
@@ -338,11 +350,17 @@ export default function SizeGradeWipReportClient() {
               calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
               activeOd = mhOd;
               activeWt = mhWt;
-            } else {
-              // Finishing stages (HFS Route: HTC OK Nos * Multiple)
-              const htcNos = ledger.htcOkPcs > 0 ? ledger.htcOkPcs : ledger.rolledPcs;
-              const finishingTargetPcs = htcNos * mult;
-              calculatedPcs = Math.max(0, finishingTargetPcs - ledger.finPcs);
+            } else if (stage === 'VDI') {
+              const htcNos = ledger.htcOkPcs > 0 ? ledger.htcOkPcs : (ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs);
+              const incomingVdi = htcNos * mult;
+              calculatedPcs = Math.max(0, incomingVdi - ledger.vdiPcs - ledger.finPcs);
+              calculatedMtr = calculatedPcs * orderAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
+              activeOd = orderOd;
+              activeWt = orderWt;
+            } else if (stage === 'FINISHING' || stage === 'CUTTING') {
+              const incomingFin = ledger.vdiPcs > 0 ? ledger.vdiPcs : 0;
+              calculatedPcs = Math.max(0, incomingFin - ledger.finPcs);
               calculatedMtr = calculatedPcs * orderAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
               activeOd = orderOd;
@@ -350,10 +368,10 @@ export default function SizeGradeWipReportClient() {
             }
           }
 
-          // Fallback to view numbers if ledger yields 0 but view has recorded WIP
-          const finalPcs = calculatedPcs > 0 ? calculatedPcs : Number(r.current_wip_pcs || 0);
-          const finalMtr = calculatedMtr > 0 ? calculatedMtr : Number(r.current_wip || 0);
-          const finalMt = calculatedMt > 0 ? calculatedMt : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : mtFromMtr(finalMtr, activeOd, activeWt));
+          const hasLedger = ledger.rolledPcs > 0 || ledger.drawPcs > 0 || ledger.htPcs > 0 || ledger.vdiPcs > 0 || ledger.finPcs > 0;
+          const finalPcs = hasLedger ? calculatedPcs : Number(r.current_wip_pcs || 0);
+          const finalMtr = hasLedger ? calculatedMtr : Number(r.current_wip || 0);
+          const finalMt = hasLedger ? calculatedMt : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : mtFromMtr(finalMtr, activeOd, activeWt));
 
           const rollingDate = rollingDateMap.get(r.work_order_id) || null;
           const resolvedGrade =
@@ -394,33 +412,27 @@ export default function SizeGradeWipReportClient() {
   const uniqueRoutes = useMemo(() => {
     const map = new Map<string, string>();
     rawWipRows.forEach((r) => {
-      if (r.route_code) {
-        map.set(r.route_code, r.route_name || r.route_code);
-      }
+      const code = r.route_code || 'HFS';
+      const name = r.route_name || code;
+      map.set(code, name);
     });
-    if (map.size === 0) {
-      map.set('HFS', 'Hot Finished Seamless');
-      map.set('CDS', 'Cold Drawn Seamless');
-      map.set('ALLOY_HFS', 'Alloy Hot Finished Seamless');
-      map.set('ALLOY_CDS', 'Alloy Cold Drawn Seamless');
-    }
-    return Array.from(map.entries())
-      .map(([code, name]) => ({ code, name }))
-      .sort((a, b) => a.code.localeCompare(b.code));
+    return Array.from(map.entries()).map(([code, name]) => ({ code, name }));
   }, [rawWipRows]);
 
   // Extract unique material grades
   const uniqueGrades = useMemo(() => {
-    const s = new Set<string>();
+    const set = new Set<string>();
     rawWipRows.forEach((r) => {
-      if (r.grade) s.add(r.grade);
+      if (r.grade) set.add(r.grade);
     });
-    return Array.from(s).sort();
+    return Array.from(set).sort();
   }, [rawWipRows]);
 
   // Filter raw rows
   const filteredRawRows = useMemo(() => {
     return rawWipRows.filter((r) => {
+      // Must have positive physical inventory
+      if (Number(r.current_wip_pcs || 0) <= 0 && Number(r.current_wip || 0) <= 0) return false;
       // Route filter
       if (selectedRoute !== 'ALL' && (r.route_code || '').toUpperCase() !== selectedRoute.toUpperCase()) return false;
 
