@@ -222,74 +222,106 @@ export default function BandSawCuttingClient() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
-      {/* Header Banner */}
-      <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 p-6 text-white shadow-md">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-500/30 px-3 py-1 text-xs font-bold text-indigo-200 border border-indigo-400/30">
-                <Scissors size={14} className="rotate-90" />
-                Work Center: Band Saw
-              </span>
-              <span className="text-xs text-indigo-200">Cutting &amp; Sizing Station</span>
+      {/* Header Banner - Light Theme */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/20 shrink-0">
+              <Scissors size={22} className="rotate-90" />
             </div>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-              Band Saw Pipe Cutting &amp; Multi-Length Hub
-            </h1>
-            <p className="text-xs sm:text-sm text-indigo-200/90 max-w-2xl">
-              Precision cutting of mother tubes into target order lengths. Total Cut Pieces feed directly into the downstream VDI QC Inspection workflow.
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                  Band Saw Work Center
+                </span>
+                <span className="text-xs font-semibold text-slate-500">Cutting &amp; Sizing Station</span>
+              </div>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 mt-0.5">
+                Band Saw Pipe Cutting &amp; Multi-Length Hub
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
+                Precision cutting of mother tubes into target order lengths. Total Cut Pieces feed directly into downstream VDI QC Inspection.
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-start sm:self-auto">
             <Button
               onClick={fetchData}
               variant="outline"
               size="sm"
               disabled={refreshing}
-              className="h-9 gap-1.5 border-indigo-300/30 bg-indigo-800/50 text-xs font-semibold text-white hover:bg-indigo-700 hover:text-white"
+              className="h-9 gap-1.5 border-slate-300 bg-white text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 active:scale-95 transition-all"
             >
-              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+              <RefreshCw size={14} className={refreshing ? 'animate-spin text-indigo-600' : 'text-slate-500'} />
               Refresh
             </Button>
           </div>
         </div>
 
-        {/* KPI Strip */}
-        <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rounded-xl border border-white/10 bg-white/10 p-3.5 backdrop-blur-xs">
-            <div className="text-[11px] font-semibold text-indigo-200">Mother Pipes to Cut</div>
-            <div className="mt-1 font-mono text-xl sm:text-2xl font-black text-white">
-              {totalAvailablePcs}{' '}
-              <span className="text-xs font-normal text-indigo-200">PCS</span>
+        {/* Light KPI Metric Cards */}
+        <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+          {/* Mother Pipes to Cut */}
+          <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/50 to-white p-4 shadow-2xs">
+            <div className="text-[11px] font-bold text-indigo-800 uppercase tracking-wider">
+              Mother Pipes to Cut
             </div>
-            <div className="text-[10px] text-indigo-300 mt-0.5">{fmt(totalAvailableMt, 2)} MT available</div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl font-black text-indigo-950">
+                {totalAvailablePcs}
+              </span>
+              <span className="text-xs font-bold text-indigo-700">PCS</span>
+            </div>
+            <div className="text-[11px] font-medium text-indigo-600 mt-1">
+              {fmt(totalAvailableMt, 2)} MT available
+            </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/10 p-3.5 backdrop-blur-xs">
-            <div className="text-[11px] font-semibold text-indigo-200">Cut Produced Today</div>
-            <div className="mt-1 font-mono text-xl sm:text-2xl font-black text-white">
-              {todayCutPcs}{' '}
-              <span className="text-xs font-normal text-indigo-200">PCS</span>
+          {/* Cut Produced Today */}
+          <div className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50/50 to-white p-4 shadow-2xs">
+            <div className="text-[11px] font-bold text-sky-800 uppercase tracking-wider">
+              Cut Produced Today
             </div>
-            <div className="text-[10px] text-indigo-300 mt-0.5">{fmt(todayCutMt, 2)} MT logged today</div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl font-black text-sky-950">
+                {todayCutPcs}
+              </span>
+              <span className="text-xs font-bold text-sky-700">PCS</span>
+            </div>
+            <div className="text-[11px] font-medium text-sky-600 mt-1">
+              {fmt(todayCutMt, 2)} MT logged today
+            </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/10 p-3.5 backdrop-blur-xs">
-            <div className="text-[11px] font-semibold text-indigo-200">Avg Cutting Yield</div>
-            <div className="mt-1 font-mono text-xl sm:text-2xl font-black text-emerald-300">
-              {avgYieldPct.toFixed(1)}%
+          {/* Avg Cutting Yield */}
+          <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/50 to-white p-4 shadow-2xs">
+            <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
+              Avg Cutting Yield
             </div>
-            <div className="text-[10px] text-indigo-300 mt-0.5">High efficiency throughput</div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl font-black text-emerald-700">
+                {avgYieldPct.toFixed(1)}%
+              </span>
+            </div>
+            <div className="text-[11px] font-medium text-emerald-600 mt-1">
+              High efficiency throughput
+            </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/10 p-3.5 backdrop-blur-xs">
-            <div className="text-[11px] font-semibold text-indigo-200">Next Stage Destination</div>
-            <div className="mt-1 font-mono text-sm sm:text-base font-bold text-white flex items-center gap-1">
-              <ArrowRight size={14} className="text-indigo-400 shrink-0" />
-              VDI QC Inspection
+          {/* Next Stage Destination */}
+          <div className="rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50/50 to-white p-4 shadow-2xs">
+            <div className="text-[11px] font-bold text-purple-800 uppercase tracking-wider">
+              Next Destination
             </div>
-            <div className="text-[10px] text-indigo-300 mt-0.5">Gated quality check</div>
+            <div className="mt-2 flex items-center gap-1.5">
+              <ArrowRight size={16} className="text-purple-600 shrink-0" />
+              <span className="font-mono text-base sm:text-lg font-extrabold text-purple-950">
+                VDI QC Check
+              </span>
+            </div>
+            <div className="text-[11px] font-medium text-purple-600 mt-1">
+              Gated quality inspection
+            </div>
           </div>
         </div>
       </div>
