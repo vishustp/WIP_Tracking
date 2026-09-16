@@ -149,7 +149,14 @@ export default function WorkCenterProductionReportClient() {
             } catch {}
           }
           if (rp.work_order_id) {
-            planMap.set(rp.work_order_id, { plan_no: planNo || undefined, revision_no: revisionNo || undefined });
+            const existing = planMap.get(rp.work_order_id);
+            if (existing) {
+              const planList = Array.from(new Set([...(existing.plan_no ? existing.plan_no.split(', ') : []), planNo].filter(Boolean)));
+              existing.plan_no = planList.join(', ');
+              if (revisionNo > (existing.revision_no || 0)) existing.revision_no = revisionNo;
+            } else {
+              planMap.set(rp.work_order_id, { plan_no: planNo || undefined, revision_no: revisionNo || undefined });
+            }
           }
           if (rp.status) {
             try {
@@ -157,8 +164,14 @@ export default function WorkCenterProductionReportClient() {
               if (Array.isArray(meta?.child_work_orders)) {
                 meta.child_work_orders.forEach((child: any) => {
                   const cId = child.work_order_id || child.id;
-                  if (cId && !planMap.has(cId)) {
-                    planMap.set(cId, { plan_no: planNo || undefined, revision_no: revisionNo || undefined });
+                  if (cId) {
+                    const existing = planMap.get(cId);
+                    if (existing) {
+                      const planList = Array.from(new Set([...(existing.plan_no ? existing.plan_no.split(', ') : []), planNo].filter(Boolean)));
+                      existing.plan_no = planList.join(', ');
+                    } else {
+                      planMap.set(cId, { plan_no: planNo || undefined, revision_no: revisionNo || undefined });
+                    }
                   }
                 });
               }

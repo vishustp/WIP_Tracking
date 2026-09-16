@@ -103,10 +103,14 @@ export function useQueue(stage: StageCode) {
           const mhL1Val = p.mh_l1 || parsed?.mh_l1 || parsed?.sm?.sm_len || null;
           const mhL2Val = p.mh_l2 || parsed?.mh_l2 || parsed?.sm?.sm_len || null;
 
-          if (!planByWoMap.has(p.work_order_id)) {
+          const planNoStr = p.plan_no ? String(p.plan_no).trim() : '';
+          const existingPlan = planByWoMap.get(p.work_order_id);
+          if (!existingPlan) {
             planByWoMap.set(p.work_order_id, {
               id: p.id,
-              plan_no: p.plan_no,
+              plan_no: planNoStr,
+              plan_nos: [planNoStr].filter(Boolean),
+              planned_qty_sum: Number(p.planned_qty || 0),
               lifecycle_status: lifecycle,
               is_issued: isIssued,
               revision_no: Number(parsed?.revision_no || 0),
@@ -115,6 +119,16 @@ export function useQueue(stage: StageCode) {
               mh_l1: mhL1Val,
               mh_l2: mhL2Val,
             });
+          } else {
+            const updatedPlanNos = Array.from(new Set([...(existingPlan.plan_nos || []), planNoStr].filter(Boolean)));
+            existingPlan.plan_nos = updatedPlanNos;
+            existingPlan.plan_no = updatedPlanNos.join(', ');
+            existingPlan.planned_qty_sum = (existingPlan.planned_qty_sum || 0) + Number(p.planned_qty || 0);
+            if (isIssued) existingPlan.is_issued = true;
+            if (!existingPlan.mh_od && mhOdVal) existingPlan.mh_od = mhOdVal;
+            if (!existingPlan.mh_wt && mhWtVal) existingPlan.mh_wt = mhWtVal;
+            if (!existingPlan.mh_l1 && mhL1Val) existingPlan.mh_l1 = mhL1Val;
+            if (!existingPlan.mh_l2 && mhL2Val) existingPlan.mh_l2 = mhL2Val;
           }
 
           if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
@@ -138,22 +152,28 @@ export function useQueue(stage: StageCode) {
                 ? Number(parsed.total_campaign_pcs)
                 : masterPlannedPcs + childPlannedPcs;
 
+            const existing = masterCampaignMap.get(p.work_order_id);
+            const combinedPlanNos = existing
+              ? Array.from(new Set([...(existing.plan_nos || [existing.plan_no]), planNoStr].filter(Boolean)))
+              : [planNoStr].filter(Boolean);
+
             masterCampaignMap.set(p.work_order_id, {
               plan_id: p.id,
-              plan_no: p.plan_no,
+              plan_no: combinedPlanNos.join(', ') || p.plan_no,
+              plan_nos: combinedPlanNos,
               master_wo_id: p.work_order_id,
               master_wo_no: parsed.master_wo_no,
-              master_planned_mtr: masterPlannedMtr,
-              master_planned_pcs: masterPlannedPcs,
-              total_campaign_mtr: totalCampaignMtr,
-              total_campaign_pcs: totalCampaignPcs,
+              master_planned_mtr: (existing?.master_planned_mtr || 0) + masterPlannedMtr,
+              master_planned_pcs: (existing?.master_planned_pcs || 0) + masterPlannedPcs,
+              total_campaign_mtr: (existing?.total_campaign_mtr || 0) + totalCampaignMtr,
+              total_campaign_pcs: (existing?.total_campaign_pcs || 0) + totalCampaignPcs,
               child_work_orders: parsed.child_work_orders,
               route_id: p.process_route_id,
               mh_od: mhOdVal,
               mh_wt: mhWtVal,
               mh_l1: mhL1Val,
               mh_l2: mhL2Val,
-              is_issued: isIssued,
+              is_issued: isIssued || existing?.is_issued,
               lifecycle_status: lifecycle,
               revision_no: Number(parsed?.revision_no || 0),
             });
@@ -163,7 +183,7 @@ export function useQueue(stage: StageCode) {
                 ...child,
                 master_wo_id: p.work_order_id,
                 master_wo_no: parsed.master_wo_no,
-                master_plan_no: p.plan_no,
+                master_plan_no: combinedPlanNos.join(', ') || p.plan_no,
                 master_plan_id: p.id,
               });
             }
@@ -309,7 +329,7 @@ export function useQueue(stage: StageCode) {
             // Standard single work order plan
             const planInfo = planByWoMap.get(r.work_order_id);
             const plan = plans.find((p: any) => p.work_order_id === r.work_order_id);
-            const planMtr = plan ? Number(plan.planned_qty || 0) : rawBalMtr;
+            const planMtr = planInfo?.planned_qty_sum ? Number(planInfo.planned_qty_sum) : plan ? Number(plan.planned_qty || 0) : rawBalMtr;
             const availMtr = totalLoggedMtr > 0
               ? Math.max(0, (planMtr || rawBalMtr) + rollDivIn - totalLoggedMtr - rollDivOut)
               : (rawBalMtr > 0 ? rawBalMtr : Math.max(0, (planMtr || 0) + rollDivIn - rollDivOut));

@@ -137,7 +137,17 @@ export function useHistory(
           } catch {}
         }
         if (rp.work_order_id) {
-          planMap.set(rp.work_order_id, { mh_l1: l1, mh_l2: l2, mh_avg_length: avg, plan_no: planNo || undefined, revision_no: revisionNo || undefined });
+          const existing = planMap.get(rp.work_order_id);
+          if (existing) {
+            const planList = Array.from(new Set([...(existing.plan_no ? existing.plan_no.split(', ') : []), planNo].filter(Boolean)));
+            existing.plan_no = planList.join(', ');
+            if (revisionNo > (existing.revision_no || 0)) existing.revision_no = revisionNo;
+            if (!existing.mh_l1 && l1) existing.mh_l1 = l1;
+            if (!existing.mh_l2 && l2) existing.mh_l2 = l2;
+            if (!existing.mh_avg_length && avg) existing.mh_avg_length = avg;
+          } else {
+            planMap.set(rp.work_order_id, { mh_l1: l1, mh_l2: l2, mh_avg_length: avg, plan_no: planNo || undefined, revision_no: revisionNo || undefined });
+          }
         }
         // Also check child work orders in multi-WO rolling plans
         if (rp.status) {
@@ -146,8 +156,14 @@ export function useHistory(
             if (Array.isArray(meta?.child_work_orders)) {
               meta.child_work_orders.forEach((child: any) => {
                 const childWoId = child.work_order_id || child.id;
-                if (childWoId && !planMap.has(childWoId)) {
-                  planMap.set(childWoId, { mh_l1: l1, mh_l2: l2, mh_avg_length: avg, plan_no: planNo || undefined, revision_no: revisionNo || undefined });
+                if (childWoId) {
+                  const existing = planMap.get(childWoId);
+                  if (existing) {
+                    const planList = Array.from(new Set([...(existing.plan_no ? existing.plan_no.split(', ') : []), planNo].filter(Boolean)));
+                    existing.plan_no = planList.join(', ');
+                  } else {
+                    planMap.set(childWoId, { mh_l1: l1, mh_l2: l2, mh_avg_length: avg, plan_no: planNo || undefined, revision_no: revisionNo || undefined });
+                  }
                 }
               });
             }
