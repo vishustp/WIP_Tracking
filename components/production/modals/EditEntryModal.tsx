@@ -180,7 +180,8 @@ export function EditEntryModal({
         <div>
           <h2 className="text-base font-bold text-slate-900">Edit Production Record</h2>
           <p className="text-xs text-slate-500 font-normal mt-0.5 font-mono">
-            {editing.work_order_no} · {editing.route_code} · {stageLabel}
+            {editing.work_order_no}
+            {editing.plan_no ? ` · Plan: ${editing.plan_no}` : ''} · {editing.route_code} · {stageLabel}
           </p>
         </div>
       }

@@ -127,10 +127,53 @@ export default function WorkCenterProductionReportClient() {
 
       if (error) throw error;
       const raw = (data as ProductionEntry[]) || [];
+
+      // Fetch rolling plans to attach plan_no
+      const planMap = new Map<string, { plan_no?: string; revision_no?: number }>();
+      try {
+        const { data: rpData } = await s
+          .from('rolling_plans')
+          .select('id, plan_no, work_order_id, status')
+          .not('status', 'is', null);
+
+        ((rpData as any[]) || []).forEach((rp: any) => {
+          let planNo = rp.plan_no ? String(rp.plan_no).trim() : '';
+          let revisionNo = 0;
+          if (rp.status) {
+            try {
+              const meta = typeof rp.status === 'string' ? JSON.parse(rp.status) : rp.status;
+              if (meta?.campaign_plan_no) planNo = String(meta.campaign_plan_no).trim();
+              else if (meta?.master_plan_no) planNo = String(meta.master_plan_no).trim();
+              else if (meta?.plan_no) planNo = String(meta.plan_no).trim();
+              if (meta?.revision_no) revisionNo = Number(meta.revision_no) || 0;
+            } catch {}
+          }
+          if (rp.work_order_id) {
+            planMap.set(rp.work_order_id, { plan_no: planNo || undefined, revision_no: revisionNo || undefined });
+          }
+          if (rp.status) {
+            try {
+              const meta = typeof rp.status === 'string' ? JSON.parse(rp.status) : rp.status;
+              if (Array.isArray(meta?.child_work_orders)) {
+                meta.child_work_orders.forEach((child: any) => {
+                  const cId = child.work_order_id || child.id;
+                  if (cId && !planMap.has(cId)) {
+                    planMap.set(cId, { plan_no: planNo || undefined, revision_no: revisionNo || undefined });
+                  }
+                });
+              }
+            } catch {}
+          }
+        });
+      } catch {}
+
       const enriched = raw.map((e) => {
+        const plan = e.work_order_id ? planMap.get(e.work_order_id) : undefined;
         const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(e.remarks);
         return {
           ...e,
+          plan_no: plan?.plan_no,
+          revision_no: plan?.revision_no,
           output_pcs: parsedPcs != null ? parsedPcs : e.output_pcs,
           rejection_pcs: parsedRejPcs != null ? parsedRejPcs : e.rejection_pcs,
           remarks: cleanRemarks || e.remarks,
@@ -715,7 +758,14 @@ export default function WorkCenterProductionReportClient() {
                       </td>
 
                       <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap print:text-black">
-                        {e.work_order_no}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{e.work_order_no}</span>
+                          {e.plan_no && (
+                            <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 border border-sky-200 text-sky-800 px-1.5 py-0.2 text-[9px] font-bold font-mono tracking-tight print:border print:border-black">
+                              PLAN: {e.plan_no}{e.revision_no && Number(e.revision_no) > 0 ? ` (R${e.revision_no})` : ''}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-3 py-2 max-w-[150px] truncate">

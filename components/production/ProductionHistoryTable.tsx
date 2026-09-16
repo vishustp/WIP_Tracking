@@ -71,7 +71,7 @@ export function ProductionHistoryTable({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search WO, customer, grade..."
+            placeholder="Search WO, customer, grade, plan no..."
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 text-xs"
           />
           <select
@@ -151,6 +151,8 @@ export function ProductionHistoryTable({
               {entries.map((entry) => {
                 const isMhStage = entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
                 const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no);
+                const effPlanNo = entry.plan_no || rowMatch?.master_plan_no || rowMatch?.plan_no;
+                const effRevNo = entry.revision_no || rowMatch?.revision_no;
                 const mhLen = Number(
                   entry.mh_avg_length || entry.mh_l1 || rowMatch?.mh_avg_length || rowMatch?.mh_l1 || 0
                 );
@@ -224,8 +226,15 @@ export function ProductionHistoryTable({
                   <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="py-2.5 px-3 font-mono text-slate-700">{entry.process_date}</td>
                     <td className="py-2.5 px-3 font-bold text-slate-900">
-                      {entry.work_order_no}
-                      <div className="text-[11px] font-normal text-slate-500 truncate max-w-[130px]">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-extrabold">{entry.work_order_no}</span>
+                        {effPlanNo && (
+                          <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 border border-sky-200 text-sky-800 px-1.5 py-0.5 text-[10px] font-bold font-mono tracking-tight shadow-2xs">
+                            PLAN: {effPlanNo}{effRevNo && Number(effRevNo) > 0 ? ` (R${effRevNo})` : ''}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] font-normal text-slate-500 truncate max-w-[140px]">
                         {entry.customer_name || '—'}
                       </div>
                     </td>

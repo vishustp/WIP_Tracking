@@ -158,6 +158,8 @@ export interface ProductionEntry {
   mh_avg_length?: number | null;
   mh_l1?: number | null;
   mh_l2?: number | null;
+  plan_no?: string;
+  revision_no?: number;
   input_mtr: number;
   input_pcs: number;
   input_mt: number;
