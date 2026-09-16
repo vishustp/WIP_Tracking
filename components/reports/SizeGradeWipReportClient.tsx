@@ -322,10 +322,10 @@ export default function SizeGradeWipReportClient() {
               activeWt = mhWt;
             } else if (stage === 'HEAT_TREATMENT') {
               calculatedPcs = Math.max(0, ledger.drawPcs - ledger.htPcs);
-              calculatedMtr = calculatedPcs * mhAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
-              activeOd = mhOd;
-              activeWt = mhWt;
+              calculatedMtr = calculatedPcs * orderAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
+              activeOd = orderOd;
+              activeWt = orderWt;
             } else if (stage === 'VDI') {
               const htSource = ledger.htPcs > 0 ? ledger.htPcs : ledger.drawPcs;
               const incomingVdi = htSource * mult;
