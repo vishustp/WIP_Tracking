@@ -115,18 +115,40 @@ export default function WorkCenterProductionReportClient() {
       const s = createClient();
       const stageArg = selectedWc === 'ALL' ? null : selectedWc;
 
-      const { data, error } = await s.rpc('get_production_entries', {
-        p_search: search.trim() || null,
-        p_stage_code: stageArg,
-        p_route_code: null,
-        p_from_date: fromDate || null,
-        p_to_date: toDate || null,
-        p_limit: 2500,
-        p_offset: 0,
+      const [prodRes, woRes, routeRes, qcRes] = await Promise.all([
+        s.rpc('get_production_entries', {
+          p_search: search.trim() || null,
+          p_stage_code: stageArg,
+          p_route_code: null,
+          p_from_date: fromDate || null,
+          p_to_date: toDate || null,
+          p_limit: 2500,
+          p_offset: 0,
+        }),
+        s
+          .from('work_orders')
+          .select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, avg_length, l1, l2, process_route_id')
+          .limit(5000),
+        s.from('process_routes').select('id, route_code, route_name').eq('active', true),
+        (selectedWc === 'VDI' || selectedWc === 'ALL')
+          ? s.from('qc_inspections').select('*').order('created_at', { ascending: false }).limit(2500)
+          : Promise.resolve({ data: [] as any[], error: null }),
+      ]);
+
+      if (prodRes.error) throw prodRes.error;
+      const raw = (prodRes.data as ProductionEntry[]) || [];
+
+      // Route and Work Order Maps
+      const routeMap = new Map<string, { route_code: string; route_name: string }>();
+      (routeRes.data || []).forEach((r: any) => {
+        routeMap.set(r.id, { route_code: r.route_code, route_name: r.route_name });
       });
 
-      if (error) throw error;
-      const raw = (data as ProductionEntry[]) || [];
+      const woMap = new Map<string, any>();
+      (woRes.data || []).forEach((w: any) => {
+        woMap.set(w.id, w);
+        if (w.work_order_no) woMap.set(String(w.work_order_no).trim(), w);
+      });
 
       // Fetch log details and rolling plans to attach exact plan_no per log entry
       const entryIds = raw.map((e) => e.id).filter(Boolean);
@@ -138,12 +160,13 @@ export default function WorkCenterProductionReportClient() {
         const [{ data: logDetails }, { data: rpData }] = await Promise.all([
           s
             .from('production_logs')
-            .select('id, rolling_plan_id, work_order_id, created_at, process_date')
+            .select('id, rolling_plan_id, work_order_id, input_qty, output_qty, rejection_qty, htc_ok, output_pcs, rejection_pcs, htc_ok_pcs, heat_lot_no, remarks, created_at, process_date')
             .in('id', entryIds),
           s
             .from('rolling_plans')
             .select('id, plan_no, work_order_id, status, created_at')
-            .not('status', 'is', null),
+            .not('status', 'is', null)
+            .limit(5000),
         ]);
 
         ((logDetails as any[]) || []).forEach((l: any) => {
@@ -196,6 +219,7 @@ export default function WorkCenterProductionReportClient() {
       const enriched = raw.map((e) => {
         const logRow = logMap.get(e.id);
         const targetWoId = logRow?.work_order_id || e.work_order_id;
+        const woInfo = targetWoId ? woMap.get(targetWoId) : woMap.get(String(e.work_order_no).trim());
 
         let plan: any = null;
         if (logRow?.rolling_plan_id && planByIdMap.has(logRow.rolling_plan_id)) {
@@ -220,17 +244,104 @@ export default function WorkCenterProductionReportClient() {
         }
 
         const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(e.remarks);
+        const outPcs = parsedPcs != null ? parsedPcs : (Number(logRow?.output_pcs || e.output_pcs || 0));
+        const rejPcs = parsedRejPcs != null ? parsedRejPcs : (Number(logRow?.rejection_pcs || e.rejection_pcs || 0));
+        const outMtr = Number(e.output_mtr || logRow?.output_qty || 0);
+        const rejMtr = Number(e.rejection_mtr || logRow?.rejection_qty || 0);
+        const inMtr = Number(e.input_mtr || logRow?.input_qty || 0) > 0
+          ? Number(e.input_mtr || logRow?.input_qty)
+          : Math.max(outMtr + rejMtr, outMtr);
+        const inPcs = Number(e.input_pcs || 0) > 0
+          ? Number(e.input_pcs)
+          : Math.max(outPcs + rejPcs, outPcs);
+        const od = Number(e.od || woInfo?.size_od || 0);
+        const wl = Number(e.wl || woInfo?.size_wt || 0);
+
         return {
           ...e,
+          od,
+          wl,
+          customer_name: e.customer_name || woInfo?.customer_name || 'Standard Stock',
+          grade: woInfo?.grade || woInfo?.specification || '—',
           rolling_plan_id: plan?.id || logRow?.rolling_plan_id,
           plan_no: plan?.plan_no,
           revision_no: plan?.revision_no,
-          output_pcs: parsedPcs != null ? parsedPcs : e.output_pcs,
-          rejection_pcs: parsedRejPcs != null ? parsedRejPcs : e.rejection_pcs,
+          input_pcs: inPcs,
+          input_mtr: inMtr,
+          input_mt: Number(e.input_mt || 0) > 0 ? Number(e.input_mt) : mtFromMtr(inMtr, od, wl),
+          output_pcs: outPcs,
+          output_mtr: outMtr,
+          output_mt: Number(e.output_mt || 0) > 0 ? Number(e.output_mt) : mtFromMtr(outMtr, od, wl),
+          rejection_pcs: rejPcs,
+          rejection_mtr: rejMtr,
+          rejection_mt: mtFromMtr(rejMtr, od, wl),
           remarks: cleanRemarks || e.remarks,
         };
       });
-      setEntries(enriched);
+
+      // Also merge records from qc_inspections for STR/Cutting/Hydro/UT (VDI)
+      const qcEntries: ProductionEntry[] = [];
+      if (qcRes?.data && Array.isArray(qcRes.data)) {
+        qcRes.data.forEach((q: any) => {
+          const wo = woMap.get(q.work_order_id);
+          const qDate = q.inspection_date ? String(q.inspection_date).slice(0, 10) : String(q.created_at).slice(0, 10);
+          if (fromDate && qDate < fromDate) return;
+          if (toDate && qDate > toDate) return;
+          if (search.trim()) {
+            const term = search.trim().toLowerCase();
+            const matchWo = (wo?.work_order_no || '').toLowerCase().includes(term);
+            const matchCust = (wo?.customer_name || '').toLowerCase().includes(term);
+            const matchHeat = (q.heat_lot_no || '').toLowerCase().includes(term);
+            const matchRem = (q.remarks || '').toLowerCase().includes(term);
+            if (!matchWo && !matchCust && !matchHeat && !matchRem) return;
+          }
+
+          const od = Number(wo?.size_od || 0);
+          const wl = Number(wo?.size_wt || 0);
+          const inPcs = Number(q.inspected_pcs || 0);
+          const inMtr = Number(q.inspected_mtr || 0);
+          const outPcs = Number(q.vdi_ok_pcs || 0);
+          const outMtr = Number(q.vdi_ok_mtr || 0);
+          const rejPcs = Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0);
+          const rejMtr = Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0);
+          const routeInfo = wo?.process_route_id ? routeMap.get(wo.process_route_id) : null;
+
+          qcEntries.push({
+            id: q.id,
+            work_order_no: wo?.work_order_no || '—',
+            customer_name: wo?.customer_name || 'Standard Stock',
+            route_code: routeInfo?.route_code || 'HFS',
+            stage_code: 'VDI',
+            process_date: qDate,
+            od,
+            wl,
+            l1: Number(wo?.l1 || 0),
+            l2: Number(wo?.l2 || 0),
+            avg_length: Number(wo?.avg_length || 6.0),
+            input_pcs: inPcs > 0 ? inPcs : (outPcs + rejPcs),
+            input_mtr: inMtr > 0 ? inMtr : (outMtr + rejMtr),
+            input_mt: mtFromMtr(inMtr, od, wl),
+            output_pcs: outPcs,
+            output_mtr: outMtr,
+            output_mt: mtFromMtr(outMtr, od, wl),
+            rejection_pcs: rejPcs,
+            rejection_mtr: rejMtr,
+            rejection_mt: mtFromMtr(rejMtr, od, wl),
+            htc_ok_pcs: outPcs,
+            htc_ok_mtr: outMtr,
+            heat_lot_no: q.heat_lot_no || '',
+            remarks: q.remarks ? `[STR/Cutting/Hydro/UT QC] ${q.remarks}` : '[STR/Cutting/Hydro/UT QC]',
+            created_at: q.created_at,
+          } as ProductionEntry);
+        });
+      }
+
+      // Combine and sort by date/time descending
+      const combined = [...enriched, ...qcEntries].sort(
+        (a, b) => new Date(b.created_at || b.process_date).getTime() - new Date(a.created_at || a.process_date).getTime()
+      );
+
+      setEntries(combined);
     } catch (err: any) {
       toast.error(err?.message || 'Failed to load production entries.');
       setEntries([]);
@@ -754,23 +865,29 @@ export default function WorkCenterProductionReportClient() {
                 <th className="px-3 py-2.5 whitespace-nowrap">Heat / Lot No</th>
                 <th className="px-3 py-2.5 whitespace-nowrap">Pipe Size (OD × WT)</th>
 
-                {/* Primary Focus Columns: PCS and MT prominently highlighted */}
+                {/* Input Columns */}
+                <th className="px-3 py-2.5 text-right whitespace-nowrap bg-slate-200/70 text-slate-800 border-l border-slate-300">
+                  INPUT (PCS)
+                </th>
+                <th className="px-3 py-2.5 text-right whitespace-nowrap bg-slate-200/70 text-slate-800 border-r border-slate-300">
+                  INPUT (MTR)
+                </th>
+
+                {/* Primary Output Columns */}
                 <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-indigo-950 bg-indigo-100/90 border-l border-indigo-300 print:border-black print:bg-white print:text-black">
                   OUTPUT (PCS) ★
+                </th>
+                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-blue-950 bg-blue-100/90 border-r border-blue-200 print:border-black print:bg-white print:text-black">
+                  OUTPUT (MTR)
                 </th>
                 <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-emerald-950 bg-emerald-100/90 border-r border-emerald-300 print:border-black print:bg-white print:text-black">
                   WEIGHT (MT) ★
                 </th>
 
-                <th className="px-3 py-2.5 text-right whitespace-nowrap">Input MTR</th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap">Output MTR</th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap">Rej MTR</th>
-                {selectedWc === 'ROLLING' && (
-                  <th className="px-3 py-2.5 text-right whitespace-nowrap">HTC OK</th>
-                )}
-                {selectedWc === 'FINISHING' && (
-                  <th className="px-3 py-2.5 text-right whitespace-nowrap">VDI OK (Net)</th>
-                )}
+                <th className="px-3 py-2.5 text-right whitespace-nowrap bg-rose-50 text-rose-900 border-r border-rose-200">Rej (Pcs / m)</th>
+                <th className="px-3 py-2.5 text-right whitespace-nowrap bg-emerald-50 text-emerald-900 border-r border-emerald-200">
+                  {selectedWc === 'ROLLING' ? 'HTC OK' : selectedWc === 'VDI' ? 'VDI OK (QC)' : 'Net Accepted'}
+                </th>
                 <th className="px-3 py-2.5 text-center whitespace-nowrap">Yield %</th>
                 <th className="px-3 py-2.5">Operator Remarks</th>
               </tr>
@@ -778,25 +895,26 @@ export default function WorkCenterProductionReportClient() {
             <tbody className="divide-y divide-slate-200 print:divide-black">
               {loading ? (
                 <tr>
-                  <td colSpan={selectedWc === 'ROLLING' || selectedWc === 'FINISHING' ? 13 : 12} className="p-8 text-center text-slate-500">
+                  <td colSpan={14} className="p-8 text-center text-slate-500">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                     Loading shift production records...
                   </td>
                 </tr>
               ) : filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={selectedWc === 'ROLLING' || selectedWc === 'FINISHING' ? 13 : 12} className="p-8 text-center text-slate-500">
+                  <td colSpan={14} className="p-8 text-center text-slate-500">
                     No production entries logged for {activeWcConfig.label} during this time frame.
                   </td>
                 </tr>
               ) : (
                 filteredEntries.map((e) => {
-                  const net = Math.max(e.output_mtr - e.rejection_mtr, 0);
+                  const netMtr = Math.max(e.output_mtr - e.rejection_mtr, 0);
+                  const netPcs = Math.max(e.output_pcs - e.rejection_pcs, 0);
                   const entryYield =
                     e.input_mtr > 0
-                      ? (net / e.input_mtr) * 100
+                      ? (netMtr / e.input_mtr) * 100
                       : e.output_mtr > 0
-                      ? (net / e.output_mtr) * 100
+                      ? (netMtr / e.output_mtr) * 100
                       : 100;
 
                   return (
@@ -819,9 +937,11 @@ export default function WorkCenterProductionReportClient() {
                         </div>
                       </td>
 
-                      <td className="px-3 py-2 max-w-[150px] truncate">
+                      <td className="px-3 py-2 max-w-[170px] truncate">
                         <div className="font-semibold text-slate-800 print:text-black">{e.customer_name || 'Standard Stock'}</div>
-                        <div className="text-[10px] font-mono text-slate-500 print:text-black">Route: {e.route_code}</div>
+                        <div className="text-[10px] font-mono text-slate-500 print:text-black">
+                          Grade: <span className="font-semibold text-slate-700">{e.grade || '—'}</span> · Route: {e.route_code}
+                        </div>
                       </td>
 
                       <td className="px-3 py-2 font-mono font-bold text-slate-800 whitespace-nowrap print:text-black">
@@ -838,11 +958,26 @@ export default function WorkCenterProductionReportClient() {
                         {e.od && e.wl ? `${fmt(e.od)} × ${fmt(e.wl)} mm` : '—'}
                       </td>
 
+                      {/* Input PCS */}
+                      <td className="px-3 py-2 text-right font-mono bg-slate-50/70 border-l border-slate-200 print:bg-white print:border-black">
+                        <span className="font-bold text-slate-800">{fmt(e.input_pcs, 0)}</span>
+                      </td>
+
+                      {/* Input MTR */}
+                      <td className="px-3 py-2 text-right font-mono text-slate-700 bg-slate-50/70 border-r border-slate-200 print:text-black">
+                        {fmt(e.input_mtr)}
+                      </td>
+
                       {/* Primary Focus Cells: Output PCS (Highlighted, Bold) */}
                       <td className="px-3 py-2 text-right font-mono bg-indigo-50/60 border-l border-indigo-200 print:bg-white print:border-black">
                         <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-indigo-950 bg-indigo-100/90 border border-indigo-300 print:bg-white print:border-black print:text-black">
                           {fmt(e.output_pcs, 0)}
                         </span>
+                      </td>
+
+                      {/* Output MTR */}
+                      <td className="px-3 py-2 text-right font-mono font-bold text-blue-700 print:text-black">
+                        {fmt(e.output_mtr)}
                       </td>
 
                       {/* Primary Focus Cells: Output MT (Highlighted, Bold) */}
@@ -852,28 +987,27 @@ export default function WorkCenterProductionReportClient() {
                         </span>
                       </td>
 
-                      <td className="px-3 py-2 text-right font-mono text-slate-700 print:text-black">
-                        {fmt(e.input_mtr)}
+                      {/* Rejection */}
+                      <td className="px-3 py-2 text-right font-mono font-semibold text-rose-600 bg-rose-50/30 border-r border-rose-100 print:text-black">
+                        {e.rejection_pcs > 0 || e.rejection_mtr > 0 ? (
+                          <span>
+                            {fmt(e.rejection_pcs, 0)} pcs ({fmt(e.rejection_mtr)}m)
+                          </span>
+                        ) : (
+                          '0'
+                        )}
                       </td>
 
-                      <td className="px-3 py-2 text-right font-mono font-bold text-blue-700 print:text-black">
-                        {fmt(e.output_mtr)}
+                      {/* HTC OK / VDI OK / Net Accepted */}
+                      <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30 border-r border-emerald-100 print:text-black">
+                        {selectedWc === 'ROLLING' ? (
+                          <span>{fmt(e.htc_ok_pcs, 0)} pcs ({fmt(e.htc_ok_mtr)}m)</span>
+                        ) : selectedWc === 'VDI' ? (
+                          <span>{fmt(e.output_pcs, 0)} pcs ({fmt(e.output_mtr)}m)</span>
+                        ) : (
+                          <span>{fmt(netPcs, 0)} pcs ({fmt(netMtr)}m)</span>
+                        )}
                       </td>
-
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-rose-600 print:text-black">
-                        {e.rejection_mtr > 0 ? fmt(e.rejection_mtr) : '0'}
-                      </td>
-
-                      {selectedWc === 'ROLLING' && (
-                        <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700 print:text-black">
-                          {fmt(e.htc_ok_mtr)}
-                        </td>
-                      )}
-                      {selectedWc === 'FINISHING' && (
-                        <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700 print:text-black">
-                          {fmt(net)}
-                        </td>
-                      )}
 
                       <td className="px-3 py-2 text-center font-mono font-bold print:text-black">
                         <span

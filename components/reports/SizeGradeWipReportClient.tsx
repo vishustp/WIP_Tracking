@@ -112,12 +112,12 @@ export default function SizeGradeWipReportClient() {
 
       // Query view for live stage physical WIP + rolling logs + plans
       const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes] = await Promise.all([
-        supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0),
-        supabase.from('work_orders').select('id, grade, specification, process_route_id'),
-        supabase.from('rolling_plans').select('work_order_id, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id').not('status', 'is', null),
+        supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).limit(5000),
+        supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, process_route_id, size_od, size_wt').limit(5000),
+        supabase.from('rolling_plans').select('id, work_order_id, plan_no, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id, created_at').not('status', 'is', null).limit(5000),
         supabase.from('process_routes').select('id, route_code, route_name').eq('active', true),
-        supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at').order('process_date', { ascending: false }),
-        supabase.from('process_stages').select('id, stage_code'),
+        supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at').order('process_date', { ascending: false }).limit(5000),
+        supabase.from('process_stages').select('id, stage_code, stage_name'),
       ]);
 
       if (wipRes.data) {
@@ -182,7 +182,11 @@ export default function SizeGradeWipReportClient() {
         const gradeMap = new Map<string, string>();
         const woRouteMap = new Map<string, { route_code?: string; route_name?: string }>();
         (woRes.data || []).forEach((w: any) => {
-          gradeMap.set(w.id, w.grade || w.specification || 'ASTM A106 Gr.B');
+          const g = String(w.grade || w.specification || '').trim();
+          if (g) {
+            gradeMap.set(w.id, g);
+            if (w.work_order_no) gradeMap.set(String(w.work_order_no).trim(), g);
+          }
           if (w.process_route_id && routeMap.has(w.process_route_id)) {
             woRouteMap.set(w.id, routeMap.get(w.process_route_id)!);
           }
@@ -192,6 +196,11 @@ export default function SizeGradeWipReportClient() {
         (plansRes.data || []).forEach((p: any) => {
           try {
             const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+            const planGrade = String(parsed?.grade || parsed?.specification || '').trim();
+            if (planGrade && p.work_order_id && !gradeMap.has(p.work_order_id)) {
+              gradeMap.set(p.work_order_id, planGrade);
+            }
+
             const mhOd = Number(p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || 0) || null;
             const mhWt = Number(p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || 0) || null;
             if (p.work_order_id) {
@@ -200,6 +209,9 @@ export default function SizeGradeWipReportClient() {
             if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
               for (const c of parsed.child_work_orders) {
                 const cId = c.work_order_id || c.id;
+                const cGrade = String(c.grade || c.specification || planGrade).trim();
+                if (cId && cGrade) gradeMap.set(cId, cGrade);
+                if (c.work_order_no && cGrade) gradeMap.set(String(c.work_order_no).trim(), cGrade);
                 if (cId) mhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt });
               }
             }
@@ -217,17 +229,23 @@ export default function SizeGradeWipReportClient() {
           const currentWipPcs = Number(r.current_wip_pcs || 0);
           const computedMt = mtFromMtr(currentWipMtr, od, wt);
           const currentWipMt = isMhStage
-            ? Number(computedMt.toFixed(3))
-            : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : Number(computedMt.toFixed(3)));
+            ? Number(computedMt.toFixed(2))
+            : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : Number(computedMt.toFixed(2)));
 
           const routeInfo = woRouteMap.get(r.work_order_id);
           const routeCode = r.route_code || routeInfo?.route_code || (r.route_id ? routeMap.get(r.route_id)?.route_code : '') || 'HFS';
           const routeName = r.route_name || routeInfo?.route_name || (r.route_id ? routeMap.get(r.route_id)?.route_name : '') || routeCode;
           const rollingDate = rollingDateMap.get(r.work_order_id) || null;
+          const resolvedGrade =
+            gradeMap.get(r.work_order_id) ||
+            gradeMap.get(String(r.work_order_no).trim()) ||
+            r.grade ||
+            r.specification ||
+            'Standard';
 
           return {
             ...r,
-            grade: r.grade || gradeMap.get(r.work_order_id) || 'ASTM A106 Gr.B',
+            grade: resolvedGrade,
             od,
             wt,
             route_code: routeCode,
@@ -326,7 +344,7 @@ export default function SizeGradeWipReportClient() {
     filteredRawRows.forEach((r) => {
       const od = Number(r.od || 0);
       const wt = Number(r.wt || 0);
-      const grade = r.grade || 'ASTM A106 Gr.B';
+      const grade = r.grade || 'Standard';
       const key = `${od}_${wt}_${grade}`;
 
       if (!map.has(key)) {
@@ -520,9 +538,20 @@ export default function SizeGradeWipReportClient() {
         'Rolling Mill (pcs)': g.rolling_pcs,
         'Rolling Mill (MT)': g.rolling_mt,
         'Hollow HT (m)': g.htc_mtr,
+        'Hollow HT (pcs)': g.htc_pcs,
+        'Hollow HT (MT)': g.htc_mt,
         'Cold Draw (m)': g.draw_mtr,
+        'Cold Draw (pcs)': g.draw_pcs,
+        'Cold Draw (MT)': g.draw_mt,
         'Heat Treatment (m)': g.ht_mtr,
+        'Heat Treatment (pcs)': g.ht_pcs,
+        'Heat Treatment (MT)': g.ht_mt,
+        'VDI / QC (m)': g.vdi_mtr,
+        'VDI / QC (pcs)': g.vdi_pcs,
+        'VDI / QC (MT)': g.vdi_mt,
         'Finishing Goods (m)': g.finishing_mtr,
+        'Finishing Goods (pcs)': g.finishing_pcs,
+        'Finishing Goods (MT)': g.finishing_mt,
         'Total WIP (Mtrs)': g.total_mtr,
         'Total WIP (Pcs)': g.total_pcs,
         'Total WIP (MT)': g.total_mt,
