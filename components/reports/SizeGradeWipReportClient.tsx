@@ -192,7 +192,7 @@ export default function SizeGradeWipReportClient() {
           }
         });
 
-        const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null }>();
+        const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null }>();
         (plansRes.data || []).forEach((p: any) => {
           try {
             const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
@@ -203,8 +203,14 @@ export default function SizeGradeWipReportClient() {
 
             const mhOd = Number(p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || 0) || null;
             const mhWt = Number(p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || 0) || null;
+            const mhL1 = Number(p.mh_l1 || parsed?.mh_l1 || parsed?.l1 || 0) || null;
+            const mhL2 = Number(p.mh_l2 || parsed?.mh_l2 || parsed?.l2 || 0) || null;
+            const mhAvg = mhL1 && mhL2 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || null);
+
+            const mhEntry = { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg };
+
             if (p.work_order_id) {
-              mhMap.set(p.work_order_id, { mh_od: mhOd, mh_wt: mhWt });
+              mhMap.set(p.work_order_id, mhEntry);
             }
             if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
               for (const c of parsed.child_work_orders) {
@@ -212,7 +218,8 @@ export default function SizeGradeWipReportClient() {
                 const cGrade = String(c.grade || c.specification || planGrade).trim();
                 if (cId && cGrade) gradeMap.set(cId, cGrade);
                 if (c.work_order_no && cGrade) gradeMap.set(String(c.work_order_no).trim(), cGrade);
-                if (cId) mhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt });
+                if (cId) mhMap.set(cId, mhEntry);
+                if (c.work_order_no) mhMap.set(String(c.work_order_no).trim(), mhEntry);
               }
             }
           } catch {}
@@ -221,12 +228,17 @@ export default function SizeGradeWipReportClient() {
         const mapped = wipRes.data
           .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
           .map((r: any) => {
-          const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT';
-          const planMh = mhMap.get(r.work_order_id);
-          const od = Number(isMhStage ? (planMh?.mh_od || r.mh_od || r.od || r.size_od || 0) : (r.od || r.size_od || 0));
-          const wt = Number(isMhStage ? (planMh?.mh_wt || r.mh_wt || r.wt || r.size_wt || 0) : (r.wt || r.size_wt || 0));
+          const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT' || r.stage_code === 'DRAW';
+          const planMh = mhMap.get(r.work_order_id) || mhMap.get(String(r.work_order_no).trim());
+          const od = Number(isMhStage && planMh?.mh_od ? planMh.mh_od : (r.od || r.size_od || 0));
+          const wt = Number(isMhStage && planMh?.mh_wt ? planMh.mh_wt : (r.wt || r.size_wt || 0));
+          
+          const mhAvgLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 0);
+          const orderAvgLen = Number(r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : (r.l1 || r.l2 || 6.0));
+          const effAvgLen = isMhStage && mhAvgLen > 0 ? mhAvgLen : (orderAvgLen > 0 ? orderAvgLen : 6.0);
+
           const currentWipMtr = Number(r.current_wip || 0);
-          const currentWipPcs = Number(r.current_wip_pcs || 0);
+          const currentWipPcs = effAvgLen > 0 && currentWipMtr > 0 ? Math.round(currentWipMtr / effAvgLen) : Number(r.current_wip_pcs || 0);
           const computedMt = mtFromMtr(currentWipMtr, od, wt);
           const currentWipMt = isMhStage
             ? Number(computedMt.toFixed(2))
