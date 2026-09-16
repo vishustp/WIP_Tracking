@@ -1027,8 +1027,9 @@ export default function ProductionEntryGrid() {
           isOpen={!!bandSawRow}
           onClose={() => setBandSawRow(null)}
           onSuccess={() => {
-            fetchQueue(stage);
-            fetchEntries();
+            reloadQueue();
+            reloadHistory();
+            loadFactoryWip();
           }}
           processDate={date}
         />
