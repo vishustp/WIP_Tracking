@@ -145,6 +145,8 @@ export interface ProductionEntry {
   work_order_id?: string;
   work_order_no: string;
   customer_name: string | null;
+  grade?: string | null;
+  specification?: string | null;
   route_code: string;
   stage_code: StageCode;
   process_date: string;
