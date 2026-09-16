@@ -66,7 +66,7 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'VDI',
-    label: 'Visual Dimension Inspection & QC',
+    label: 'STR/Cutting/Hydro/UT',
     shortLabel: 'VDI / QC',
     description: 'Dimensional verification (OD/WT/Length), surface inspection, and QA disposition.',
     icon: ClipboardCheck,
