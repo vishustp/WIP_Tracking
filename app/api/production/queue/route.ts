@@ -83,6 +83,7 @@ export async function GET(req: NextRequest) {
     const hollowHtStageId = stageCodeToId.get("HOLLOW_HEAT_TREATMENT");
     const drawStageId = stageCodeToId.get("DRAW");
     const htStageId = stageCodeToId.get("HEAT_TREATMENT");
+    const bandSawStageId = stageCodeToId.get("BAND_SAW");
     const vdiStageId = stageCodeToId.get("VDI");
     const finStageId = stageCodeToId.get("FINISHING");
 
@@ -310,7 +311,7 @@ export async function GET(req: NextRequest) {
     const sumQty = (logList: any[], field: string) =>
       logList.reduce((sum, l) => sum + Number(l[field] || 0), 0);
 
-    // Summary accumulator across all 6 work centers
+    // Summary accumulator across all 7 work centers
     const workCenterSummary: Record<
       StageCode,
       { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }
@@ -319,6 +320,7 @@ export async function GET(req: NextRequest) {
       HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      BAND_SAW: { label: "Band Saw", stage_code: "BAND_SAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       VDI: { label: "VDI / QC Inspection", stage_code: "VDI", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
     };
@@ -508,6 +510,28 @@ export async function GET(req: NextRequest) {
       const htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
       const htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
+      // 4.5 Band Saw Stage Metrics (between HT / Hollow HT / Rolling and VDI)
+      const bandSawLogs = getStageLogs(woId, bandSawStageId);
+      const bandSawOutMtr = sumQty(bandSawLogs, "output_qty");
+      const bandSawRejMtr = sumQty(bandSawLogs, "rejection_qty");
+      const bandSawOutPcs = sumQty(bandSawLogs, "output_pcs") || (avgLength > 0 ? Math.round(bandSawOutMtr / avgLength) : 0);
+      const bandSawRejPcs = sumQty(bandSawLogs, "rejection_pcs") || (avgLength > 0 ? Math.round(bandSawRejMtr / avgLength) : 0);
+      const bandSawNetMtr = Math.max(0, bandSawOutMtr - bandSawRejMtr);
+      const bandSawNetPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
+
+      const bandSawDivIn = getStageDivIn(woId, "BAND_SAW");
+      const bandSawDivOut = getStageDivOut(woId, "BAND_SAW");
+      const bandSawDivInPcs = avgLength > 0 ? Math.round(bandSawDivIn / avgLength) : 0;
+      const bandSawDivOutPcs = avgLength > 0 ? Math.round(bandSawDivOut / avgLength) : 0;
+
+      const bandSawIncomingPcs = !isCds
+        ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs)
+        : htNetPcs;
+
+      const bandSawAvailPcs = Math.max(0, bandSawIncomingPcs + bandSawDivInPcs - bandSawOutPcs - bandSawRejPcs - bandSawDivOutPcs);
+      const bandSawAvailMtr = avgLength > 0 ? Number((bandSawAvailPcs * avgLength).toFixed(3)) : 0;
+      const bandSawAvailMt = mtFromMtr(bandSawAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
       // 5. Finishing Stage Metrics (adjusted for Finishing Diversions)
       const finLogs = getStageLogs(woId, finStageId);
       let finOutMtr = sumQty(finLogs, "output_qty");
@@ -567,10 +591,10 @@ export async function GET(req: NextRequest) {
       const vdiDivInPcs = avgLength > 0 ? Math.round(vdiDivIn / avgLength) : 0;
       const vdiDivOutPcs = avgLength > 0 ? Math.round(vdiDivOut / avgLength) : 0;
 
-      // VDI incoming: for CDS from Heat Treatment net output, for HFS from Rolling HTC OK (or Hollow HT for ALLOY_HFS)
-      const vdiIncomingPcs = !isCds
-        ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs)
-        : htNetPcs;
+      // VDI incoming: strictly from Band Saw Net Output Pieces (or feeder stage if no band saw logged yet for legacy data)
+      const vdiIncomingPcs = bandSawLogs.length > 0
+        ? bandSawNetPcs
+        : (!isCds ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs) : htNetPcs);
 
       const vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
       const vdiAvailMtr = avgLength > 0
@@ -686,6 +710,24 @@ export async function GET(req: NextRequest) {
       }
 
       pipeline.push({
+        stage_code: "BAND_SAW",
+        stage_name: "Band Saw",
+        sequence_no: pipeline.length + 1,
+        available_mtr: bandSawAvailMtr,
+        available_pcs: bandSawAvailPcs,
+        available_mt: bandSawAvailMt,
+        gross_output_mtr: bandSawOutMtr,
+        gross_output_pcs: bandSawOutPcs,
+        gross_output_mt: mtFromMtr(bandSawOutMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+        rejection_mtr: bandSawRejMtr,
+        rejection_pcs: bandSawRejPcs,
+        rejection_mt: mtFromMtr(bandSawRejMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+        net_output_mtr: bandSawNetMtr,
+        net_output_pcs: bandSawNetPcs,
+        net_output_mt: mtFromMtr(bandSawNetMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+      });
+
+      pipeline.push({
         stage_code: "VDI",
         stage_name: "Visual Dimension Inspection",
         sequence_no: pipeline.length + 1,
@@ -721,7 +763,7 @@ export async function GET(req: NextRequest) {
         net_output_mt: mtFromMtr(finNetMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
       });
 
-      // Update workCenterSummary for all 6 stages
+      // Update workCenterSummary for all stages
       // (Universal Rule: Work orders with zero or sub-single balance < 1 Pc and < 1.0 Mtr must not appear in queues)
       if (isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)) {
         workCenterSummary.ROLLING.availMtr += rollAvailMtr;
@@ -746,6 +788,12 @@ export async function GET(req: NextRequest) {
         workCenterSummary.HEAT_TREATMENT.availPcs += htAvailPcs;
         workCenterSummary.HEAT_TREATMENT.availMt += htAvailMt;
         workCenterSummary.HEAT_TREATMENT.count += 1;
+      }
+      if (bandSawAvailMtr >= 1.0 || bandSawAvailPcs >= 1) {
+        workCenterSummary.BAND_SAW.availMtr += bandSawAvailMtr;
+        workCenterSummary.BAND_SAW.availPcs += bandSawAvailPcs;
+        workCenterSummary.BAND_SAW.availMt += bandSawAvailMt;
+        workCenterSummary.BAND_SAW.count += 1;
       }
       if (vdiAvailMtr >= 1.0 || vdiAvailPcs >= 1) {
         workCenterSummary.VDI.availMtr += vdiAvailMtr;
@@ -898,6 +946,23 @@ export async function GET(req: NextRequest) {
                 feeder_stage_code: "DRAW",
               }
             : null,
+        BAND_SAW:
+          (bandSawAvailMtr >= 1.0 || bandSawAvailPcs >= 1)
+            ? {
+                ...baseRowData,
+                stage_code: "BAND_SAW",
+                balance_to_make_mtr: bandSawAvailMtr,
+                balance_to_make_pcs: bandSawAvailPcs,
+                balance_to_make_mt: bandSawAvailMt,
+                max_allowed_mtr: bandSawAvailMtr,
+                max_allowed_pcs: bandSawAvailPcs,
+                prev_stage_code: isCds ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
+                prev_htc_ok: !isCds && !isAlloy ? rollHtcOkMtr : undefined,
+                prev_net_output: isCds ? htNetMtr : (isAlloy ? hollowHtNetMtr : undefined),
+                feeder_source_label: isCds ? "Heat Treatment Net OK" : (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK"),
+                feeder_stage_code: isCds ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
+              }
+            : null,
         VDI:
           (vdiAvailMtr >= 1.0 || vdiAvailPcs >= 1)
             ? {
@@ -908,11 +973,11 @@ export async function GET(req: NextRequest) {
                 balance_to_make_mt: vdiAvailMt,
                 max_allowed_mtr: vdiAvailMtr,
                 max_allowed_pcs: vdiAvailPcs,
-                prev_stage_code: !isCds ? (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING") : "HEAT_TREATMENT",
-                prev_htc_ok: !isCds && !isAlloy ? rollHtcOkMtr : undefined,
-                prev_net_output: !isCds ? (isAlloy ? hollowHtNetMtr : undefined) : htNetMtr,
-                feeder_source_label: !isCds ? (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK") : "Heat Treatment Net OK",
-                feeder_stage_code: !isCds ? (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING") : "HEAT_TREATMENT",
+                prev_stage_code: bandSawLogs.length > 0 ? "BAND_SAW" : (!isCds ? (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING") : "HEAT_TREATMENT"),
+                prev_htc_ok: bandSawLogs.length === 0 && !isCds && !isAlloy ? rollHtcOkMtr : undefined,
+                prev_net_output: bandSawLogs.length > 0 ? bandSawNetMtr : (!isCds ? (isAlloy ? hollowHtNetMtr : undefined) : htNetPcs),
+                feeder_source_label: bandSawLogs.length > 0 ? "Band Saw Net OK" : (!isCds ? (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK") : "Heat Treatment Net OK"),
+                feeder_stage_code: bandSawLogs.length > 0 ? "BAND_SAW" : (!isCds ? (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING") : "HEAT_TREATMENT"),
               }
             : null,
         FINISHING:
