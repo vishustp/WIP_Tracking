@@ -206,11 +206,11 @@ describe("Production Utils Unit Tests", () => {
       expect(res.effectiveWt).toBe(3.66);
     });
 
-    it("calc() uses user-entered L1 and L2 when provided for new entries at DRAW / HT", () => {
+    it("calc() uses order L1 and L2 when provided for entries at DRAW / HT", () => {
       const res = calc({
-        avg_length: 6.0, // theoretical fallback
-        input_l1: "7.5", // user input
-        input_l2: "8.5", // user input (avg = 8.0)
+        avg_length: null,
+        l1: 7.5,
+        l2: 8.5,
         pcs: "10",
         mtr: "",
         rejection_pcs: "1",
