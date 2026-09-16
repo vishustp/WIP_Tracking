@@ -121,27 +121,56 @@ export default function SizeGradeWipReportClient() {
       ]);
 
       if (wipRes.data) {
-        const rollingStageId = (stagesRes.data || []).find((s: any) => s.stage_code === 'ROLLING')?.id;
+        const rollingStageId = (stagesRes.data || []).find((s: any) => (s.stage_code || '').toUpperCase() === 'ROLLING')?.id;
 
-        // Build rolling date map per work order
+        // Build rolling date map per work order ID
         const rollingDateMap = new Map<string, string>();
 
         // 1. From production logs for Rolling Mill
         (prodRes.data || []).forEach((p: any) => {
-          if ((!rollingStageId || p.stage_id === rollingStageId) && p.process_date && p.work_order_id) {
+          const isRolling = !rollingStageId || p.stage_id === rollingStageId;
+          const pDate = p.process_date ? String(p.process_date).slice(0, 10) : (p.created_at ? String(p.created_at).slice(0, 10) : null);
+          if (isRolling && pDate && p.work_order_id) {
             if (!rollingDateMap.has(p.work_order_id)) {
-              rollingDateMap.set(p.work_order_id, p.process_date);
+              rollingDateMap.set(p.work_order_id, pDate);
             }
           }
         });
 
-        // 2. Fallback from rolling plans planned_rolling_date
+        // 2. Fallback from rolling plans (with child work order propagation)
         (plansRes.data || []).forEach((pl: any) => {
-          if (pl.work_order_id && !rollingDateMap.has(pl.work_order_id)) {
-            const planDate = pl.planned_rolling_date || (typeof pl.status === 'string' ? JSON.parse(pl.status)?.planned_rolling_date : pl.status?.planned_rolling_date);
-            if (planDate) {
-              rollingDateMap.set(pl.work_order_id, planDate);
+          let planDate = pl.planned_rolling_date ? String(pl.planned_rolling_date).slice(0, 10) : null;
+          try {
+            const parsed = typeof pl.status === 'string' ? JSON.parse(pl.status) : pl.status;
+            if (!planDate && parsed?.planned_rolling_date) {
+              planDate = String(parsed.planned_rolling_date).slice(0, 10);
             }
+            if (!planDate && pl.created_at) {
+              planDate = String(pl.created_at).slice(0, 10);
+            }
+
+            const effectiveRollingDate = (pl.work_order_id && rollingDateMap.get(pl.work_order_id)) || planDate;
+            if (pl.work_order_id && effectiveRollingDate && !rollingDateMap.has(pl.work_order_id)) {
+              rollingDateMap.set(pl.work_order_id, effectiveRollingDate);
+            }
+
+            // Propagate to all child work orders in master campaign
+            if (parsed?.is_master && Array.isArray(parsed?.child_work_orders) && effectiveRollingDate) {
+              for (const c of parsed.child_work_orders) {
+                const cId = c.work_order_id || c.id;
+                if (cId && !rollingDateMap.has(cId)) {
+                  rollingDateMap.set(cId, effectiveRollingDate);
+                }
+              }
+            }
+          } catch {}
+        });
+
+        // 3. Fallback for any remaining WIP rows from production_logs
+        (prodRes.data || []).forEach((p: any) => {
+          if (p.work_order_id && !rollingDateMap.has(p.work_order_id)) {
+            const fbDate = p.process_date ? String(p.process_date).slice(0, 10) : (p.created_at ? String(p.created_at).slice(0, 10) : null);
+            if (fbDate) rollingDateMap.set(p.work_order_id, fbDate);
           }
         });
 
@@ -267,8 +296,13 @@ export default function SizeGradeWipReportClient() {
       if (toOd !== '' && !isNaN(Number(toOd)) && od > Number(toOd)) return false;
 
       // Rolling Production Date Range Filter
-      if (fromRollingDate && (!r.rolling_date || r.rolling_date < fromRollingDate)) return false;
-      if (toRollingDate && (!r.rolling_date || r.rolling_date > toRollingDate)) return false;
+      const rDate = r.rolling_date ? String(r.rolling_date).slice(0, 10) : null;
+      if (fromRollingDate) {
+        if (!rDate || rDate < fromRollingDate) return false;
+      }
+      if (toRollingDate) {
+        if (!rDate || rDate > toRollingDate) return false;
+      }
 
       // Search
       if (search.trim()) {
@@ -278,8 +312,7 @@ export default function SizeGradeWipReportClient() {
         const matchWo = (r.work_order_no || '').toLowerCase().includes(q);
         const matchCust = (r.customer_name || '').toLowerCase().includes(q);
         const matchRoute = (r.route_code || '').toLowerCase().includes(q) || (r.route_name || '').toLowerCase().includes(q);
-        const matchRollingDate = (r.rolling_date || '').toLowerCase().includes(q);
-        if (!matchSize && !matchGrade && !matchWo && !matchCust && !matchRoute && !matchRollingDate) return false;
+        if (!matchSize && !matchGrade && !matchWo && !matchCust && !matchRoute) return false;
       }
 
       return true;
@@ -966,7 +999,6 @@ export default function SizeGradeWipReportClient() {
                                     <thead className="text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
                                       <tr>
                                         <th className="py-1 px-2">Work Order No</th>
-                                        <th className="py-1 px-2">Rolling Date</th>
                                         <th className="py-1 px-2">Customer</th>
                                         <th className="py-1 px-2">Route</th>
                                         <th className="py-1 px-2">Current Work Center</th>
@@ -979,16 +1011,6 @@ export default function SizeGradeWipReportClient() {
                                         <tr key={idx} className="hover:bg-slate-50">
                                           <td className="py-1.5 px-2 font-mono font-bold text-slate-900">
                                             {c.work_order_no}
-                                          </td>
-                                          <td className="py-1.5 px-2 font-mono text-[11px] text-slate-700 whitespace-nowrap">
-                                            {c.rolling_date ? (
-                                              <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-blue-800 font-semibold border border-blue-200">
-                                                <Calendar size={10} className="text-blue-600" />
-                                                {c.rolling_date}
-                                              </span>
-                                            ) : (
-                                              <span className="text-slate-400">—</span>
-                                            )}
                                           </td>
                                           <td className="py-1.5 px-2 text-slate-600 truncate max-w-[200px]">
                                             {c.customer_name || 'Generic Customer'}
@@ -1086,7 +1108,6 @@ export default function SizeGradeWipReportClient() {
               <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
                 <tr>
                   <th className="py-2.5 px-3">Work Order #</th>
-                  <th className="py-2.5 px-3">Rolling Date</th>
                   <th className="py-2.5 px-3">Customer</th>
                   <th className="py-2.5 px-3">Route</th>
                   <th className="py-2.5 px-3">Size (OD × WT)</th>
@@ -1101,7 +1122,7 @@ export default function SizeGradeWipReportClient() {
               <tbody className="divide-y divide-slate-200">
                 {filteredRawRows.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-slate-400">
+                    <td colSpan={10} className="py-12 text-center text-slate-400">
                       No active work orders matching filters.
                     </td>
                   </tr>
@@ -1110,16 +1131,6 @@ export default function SizeGradeWipReportClient() {
                     <tr key={i} className="hover:bg-slate-50 transition">
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
                         {r.work_order_no}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700 whitespace-nowrap">
-                        {r.rolling_date ? (
-                          <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-blue-800 font-semibold border border-blue-200">
-                            <Calendar size={10} className="text-blue-600" />
-                            {r.rolling_date}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
                       </td>
                       <td className="py-2.5 px-3 text-slate-600 truncate max-w-[160px]">
                         {r.customer_name || 'Generic Customer'}
