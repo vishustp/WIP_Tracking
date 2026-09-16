@@ -150,9 +150,13 @@ export function ProductionHistoryTable({
             <tbody className="divide-y divide-slate-100">
               {entries.map((entry) => {
                 const isMhStage = entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
-                const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no);
-                const effPlanNo = entry.plan_no || rowMatch?.master_plan_no || rowMatch?.plan_no;
-                const effRevNo = entry.revision_no || rowMatch?.revision_no;
+                const rowMatch = rows.find(
+                  (r) =>
+                    r.work_order_no === entry.work_order_no &&
+                    (entry.plan_no ? r.plan_no === entry.plan_no || r.master_plan_no === entry.plan_no : true)
+                );
+                const effPlanNo = entry.plan_no || (rowMatch?.plan_no && !rowMatch.plan_no.includes(',') ? rowMatch.plan_no : undefined);
+                const effRevNo = entry.revision_no ?? rowMatch?.revision_no;
                 const mhLen = Number(
                   entry.mh_avg_length || entry.mh_l1 || rowMatch?.mh_avg_length || rowMatch?.mh_l1 || 0
                 );

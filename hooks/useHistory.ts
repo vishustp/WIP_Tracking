@@ -101,25 +101,36 @@ export function useHistory(
 
       // Collect unique work order numbers to fetch their rolling plans and accurate stage lengths
       const woNos = Array.from(new Set(rawList.map((e: ProductionEntry) => e.work_order_no).filter(Boolean)));
+      const entryIds = rawList.map((e) => e.id).filter(Boolean);
 
-      const { data: woData } = await supabase
-        .from("work_orders")
-        .select("id, work_order_no, ordered_qty_mtr, ordered_qty_pcs, l1, l2")
-        .in("work_order_no", woNos);
+      const [{ data: woData }, { data: logDetails }, { data: rpData }] = await Promise.all([
+        supabase
+          .from("work_orders")
+          .select("id, work_order_no, ordered_qty_mtr, ordered_qty_pcs, l1, l2")
+          .in("work_order_no", woNos),
+        supabase
+          .from("production_logs")
+          .select("id, rolling_plan_id, work_order_id, created_at, process_date")
+          .in("id", entryIds),
+        supabase
+          .from("rolling_plans")
+          .select("id, plan_no, work_order_id, mh_l1, mh_l2, status, created_at")
+          .not("status", "is", null),
+      ]);
 
       const woMap = new Map<string, any>();
-      const woIds: string[] = [];
       ((woData as any[]) || []).forEach((w: any) => {
         woMap.set(w.work_order_no, w);
-        woIds.push(w.id);
       });
 
-      // Fetch rolling plans for these work orders
-      const planMap = new Map<string, { mh_l1: number; mh_l2: number; mh_avg_length: number; plan_no?: string; revision_no?: number }>();
-      const { data: rpData } = await supabase
-        .from("rolling_plans")
-        .select("id, plan_no, work_order_id, mh_l1, mh_l2, status, created_at")
-        .not("status", "is", null);
+      const logMap = new Map<string, any>();
+      ((logDetails as any[]) || []).forEach((l: any) => {
+        logMap.set(l.id, l);
+      });
+
+      // Build structured plan maps: by plan ID and by work order ID (chronological)
+      const planByIdMap = new Map<string, any>();
+      const plansByWoMap = new Map<string, any[]>();
 
       ((rpData as any[]) || []).forEach((rp: any) => {
         const l1 = Number(rp.mh_l1 || 0);
@@ -127,6 +138,8 @@ export function useHistory(
         const avg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 > 0 ? l1 : l2;
         let planNo = rp.plan_no ? String(rp.plan_no).trim() : '';
         let revisionNo = 0;
+        let childIds: string[] = [];
+
         if (rp.status) {
           try {
             const meta = typeof rp.status === "string" ? JSON.parse(rp.status) : rp.status;
@@ -134,47 +147,68 @@ export function useHistory(
             else if (meta?.master_plan_no) planNo = String(meta.master_plan_no).trim();
             else if (meta?.plan_no) planNo = String(meta.plan_no).trim();
             if (meta?.revision_no) revisionNo = Number(meta.revision_no) || 0;
-          } catch {}
-        }
-        if (rp.work_order_id) {
-          const existing = planMap.get(rp.work_order_id);
-          if (existing) {
-            const planList = Array.from(new Set([...(existing.plan_no ? existing.plan_no.split(', ') : []), planNo].filter(Boolean)));
-            existing.plan_no = planList.join(', ');
-            if (revisionNo > (existing.revision_no || 0)) existing.revision_no = revisionNo;
-            if (!existing.mh_l1 && l1) existing.mh_l1 = l1;
-            if (!existing.mh_l2 && l2) existing.mh_l2 = l2;
-            if (!existing.mh_avg_length && avg) existing.mh_avg_length = avg;
-          } else {
-            planMap.set(rp.work_order_id, { mh_l1: l1, mh_l2: l2, mh_avg_length: avg, plan_no: planNo || undefined, revision_no: revisionNo || undefined });
-          }
-        }
-        // Also check child work orders in multi-WO rolling plans
-        if (rp.status) {
-          try {
-            const meta = typeof rp.status === "string" ? JSON.parse(rp.status) : rp.status;
             if (Array.isArray(meta?.child_work_orders)) {
-              meta.child_work_orders.forEach((child: any) => {
-                const childWoId = child.work_order_id || child.id;
-                if (childWoId) {
-                  const existing = planMap.get(childWoId);
-                  if (existing) {
-                    const planList = Array.from(new Set([...(existing.plan_no ? existing.plan_no.split(', ') : []), planNo].filter(Boolean)));
-                    existing.plan_no = planList.join(', ');
-                  } else {
-                    planMap.set(childWoId, { mh_l1: l1, mh_l2: l2, mh_avg_length: avg, plan_no: planNo || undefined, revision_no: revisionNo || undefined });
-                  }
-                }
-              });
+              childIds = meta.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean);
             }
           } catch {}
+        }
+
+        const planObj = {
+          id: rp.id,
+          work_order_id: rp.work_order_id,
+          child_work_order_ids: childIds,
+          plan_no: planNo || undefined,
+          revision_no: revisionNo || undefined,
+          mh_l1: l1,
+          mh_l2: l2,
+          mh_avg_length: avg,
+          created_at: rp.created_at,
+        };
+
+        planByIdMap.set(rp.id, planObj);
+
+        if (rp.work_order_id) {
+          const list = plansByWoMap.get(rp.work_order_id) || [];
+          list.push(planObj);
+          plansByWoMap.set(rp.work_order_id, list);
+        }
+
+        for (const cId of childIds) {
+          const list = plansByWoMap.get(cId) || [];
+          list.push(planObj);
+          plansByWoMap.set(cId, list);
         }
       });
 
       // Enrich entries with stage-aware pieces and rounded whole integers
       const enrichedEntries: ProductionEntry[] = rawList.map((entry: ProductionEntry) => {
+        const logRow = logMap.get(entry.id);
         const wo = woMap.get(entry.work_order_no);
-        const plan = (entry.work_order_id ? planMap.get(entry.work_order_id) : null) || (wo?.id ? planMap.get(wo.id) : null);
+        const targetWoId = logRow?.work_order_id || entry.work_order_id || wo?.id;
+
+        // Resolve the EXACT rolling plan for this specific log entry
+        let plan: any = null;
+        if (logRow?.rolling_plan_id && planByIdMap.has(logRow.rolling_plan_id)) {
+          plan = planByIdMap.get(logRow.rolling_plan_id);
+        } else if (targetWoId && plansByWoMap.has(targetWoId)) {
+          const woPlans = plansByWoMap.get(targetWoId) || [];
+          if (woPlans.length === 1) {
+            plan = woPlans[0];
+          } else if (woPlans.length > 1) {
+            const logTime = new Date(logRow?.created_at || entry.created_at || entry.process_date || 0).getTime();
+            const sorted = [...woPlans].sort(
+              (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+            );
+            let matched = sorted[0];
+            for (const p of sorted) {
+              if (new Date(p.created_at || 0).getTime() <= logTime) {
+                matched = p;
+              }
+            }
+            plan = matched;
+          }
+        }
+
         const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
 
         const mhLen = Number(plan?.mh_avg_length || plan?.mh_l1 || 0);
@@ -238,6 +272,7 @@ export function useHistory(
 
         return {
           ...entry,
+          rolling_plan_id: plan?.id || logRow?.rolling_plan_id,
           plan_no: plan?.plan_no,
           revision_no: plan?.revision_no,
           remarks: cleanRemarks || entry.remarks,

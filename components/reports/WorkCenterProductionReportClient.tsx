@@ -128,17 +128,33 @@ export default function WorkCenterProductionReportClient() {
       if (error) throw error;
       const raw = (data as ProductionEntry[]) || [];
 
-      // Fetch rolling plans to attach plan_no
-      const planMap = new Map<string, { plan_no?: string; revision_no?: number }>();
+      // Fetch log details and rolling plans to attach exact plan_no per log entry
+      const entryIds = raw.map((e) => e.id).filter(Boolean);
+      const planByIdMap = new Map<string, any>();
+      const plansByWoMap = new Map<string, any[]>();
+      const logMap = new Map<string, any>();
+
       try {
-        const { data: rpData } = await s
-          .from('rolling_plans')
-          .select('id, plan_no, work_order_id, status')
-          .not('status', 'is', null);
+        const [{ data: logDetails }, { data: rpData }] = await Promise.all([
+          s
+            .from('production_logs')
+            .select('id, rolling_plan_id, work_order_id, created_at, process_date')
+            .in('id', entryIds),
+          s
+            .from('rolling_plans')
+            .select('id, plan_no, work_order_id, status, created_at')
+            .not('status', 'is', null),
+        ]);
+
+        ((logDetails as any[]) || []).forEach((l: any) => {
+          logMap.set(l.id, l);
+        });
 
         ((rpData as any[]) || []).forEach((rp: any) => {
           let planNo = rp.plan_no ? String(rp.plan_no).trim() : '';
           let revisionNo = 0;
+          let childIds: string[] = [];
+
           if (rp.status) {
             try {
               const meta = typeof rp.status === 'string' ? JSON.parse(rp.status) : rp.status;
@@ -146,45 +162,67 @@ export default function WorkCenterProductionReportClient() {
               else if (meta?.master_plan_no) planNo = String(meta.master_plan_no).trim();
               else if (meta?.plan_no) planNo = String(meta.plan_no).trim();
               if (meta?.revision_no) revisionNo = Number(meta.revision_no) || 0;
-            } catch {}
-          }
-          if (rp.work_order_id) {
-            const existing = planMap.get(rp.work_order_id);
-            if (existing) {
-              const planList = Array.from(new Set([...(existing.plan_no ? existing.plan_no.split(', ') : []), planNo].filter(Boolean)));
-              existing.plan_no = planList.join(', ');
-              if (revisionNo > (existing.revision_no || 0)) existing.revision_no = revisionNo;
-            } else {
-              planMap.set(rp.work_order_id, { plan_no: planNo || undefined, revision_no: revisionNo || undefined });
-            }
-          }
-          if (rp.status) {
-            try {
-              const meta = typeof rp.status === 'string' ? JSON.parse(rp.status) : rp.status;
               if (Array.isArray(meta?.child_work_orders)) {
-                meta.child_work_orders.forEach((child: any) => {
-                  const cId = child.work_order_id || child.id;
-                  if (cId) {
-                    const existing = planMap.get(cId);
-                    if (existing) {
-                      const planList = Array.from(new Set([...(existing.plan_no ? existing.plan_no.split(', ') : []), planNo].filter(Boolean)));
-                      existing.plan_no = planList.join(', ');
-                    } else {
-                      planMap.set(cId, { plan_no: planNo || undefined, revision_no: revisionNo || undefined });
-                    }
-                  }
-                });
+                childIds = meta.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean);
               }
             } catch {}
+          }
+
+          const planObj = {
+            id: rp.id,
+            work_order_id: rp.work_order_id,
+            child_work_order_ids: childIds,
+            plan_no: planNo || undefined,
+            revision_no: revisionNo || undefined,
+            created_at: rp.created_at,
+          };
+
+          planByIdMap.set(rp.id, planObj);
+
+          if (rp.work_order_id) {
+            const list = plansByWoMap.get(rp.work_order_id) || [];
+            list.push(planObj);
+            plansByWoMap.set(rp.work_order_id, list);
+          }
+
+          for (const cId of childIds) {
+            const list = plansByWoMap.get(cId) || [];
+            list.push(planObj);
+            plansByWoMap.set(cId, list);
           }
         });
       } catch {}
 
       const enriched = raw.map((e) => {
-        const plan = e.work_order_id ? planMap.get(e.work_order_id) : undefined;
+        const logRow = logMap.get(e.id);
+        const targetWoId = logRow?.work_order_id || e.work_order_id;
+
+        let plan: any = null;
+        if (logRow?.rolling_plan_id && planByIdMap.has(logRow.rolling_plan_id)) {
+          plan = planByIdMap.get(logRow.rolling_plan_id);
+        } else if (targetWoId && plansByWoMap.has(targetWoId)) {
+          const woPlans = plansByWoMap.get(targetWoId) || [];
+          if (woPlans.length === 1) {
+            plan = woPlans[0];
+          } else if (woPlans.length > 1) {
+            const logTime = new Date(logRow?.created_at || e.created_at || e.process_date || 0).getTime();
+            const sorted = [...woPlans].sort(
+              (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+            );
+            let matched = sorted[0];
+            for (const p of sorted) {
+              if (new Date(p.created_at || 0).getTime() <= logTime) {
+                matched = p;
+              }
+            }
+            plan = matched;
+          }
+        }
+
         const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(e.remarks);
         return {
           ...e,
+          rolling_plan_id: plan?.id || logRow?.rolling_plan_id,
           plan_no: plan?.plan_no,
           revision_no: plan?.revision_no,
           output_pcs: parsedPcs != null ? parsedPcs : e.output_pcs,
