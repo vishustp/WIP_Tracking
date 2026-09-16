@@ -283,17 +283,17 @@ export function useQueue(stage: StageCode) {
           const rollDivOut = getStageDivOut(r.work_order_id, "ROLLING");
 
           if (campaign) {
-            const totalCampaignMtr = Number(campaign.total_campaign_mtr || 0);
-            const totalCampaignPcs = Number(campaign.total_campaign_pcs || 0);
+            const masterPlannedMtr = Number(campaign.master_planned_mtr || campaign.planned_mtr || 0);
+            const masterPlannedPcs = Number(campaign.master_planned_pcs || campaign.planned_pcs || 0) || (effAvg > 0 ? Math.round(masterPlannedMtr / effAvg) : 0);
 
             // If totalLoggedMtr > 0, calculate balance; otherwise use the database RPC computed balance
             const availMtr = totalLoggedMtr > 0
-              ? Math.max(0, totalCampaignMtr + rollDivIn - totalLoggedMtr - rollDivOut)
-              : (rawBalMtr > 0 ? rawBalMtr : Math.max(0, totalCampaignMtr + rollDivIn - rollDivOut));
+              ? Math.max(0, masterPlannedMtr + rollDivIn - totalLoggedMtr - rollDivOut)
+              : (rawBalMtr > 0 ? rawBalMtr : Math.max(0, masterPlannedMtr + rollDivIn - rollDivOut));
 
             const availPcs = effAvg > 0
               ? Math.round(availMtr / effAvg)
-              : (rawBalPcs > 0 ? Math.round(rawBalPcs) : (totalCampaignPcs > 0 ? Math.max(0, totalCampaignPcs - totalLoggedPcs) : 0));
+              : (rawBalPcs > 0 ? Math.round(rawBalPcs) : (masterPlannedPcs > 0 ? Math.max(0, masterPlannedPcs - totalLoggedPcs) : 0));
             const mhOd = Number(campaign.mh_od || r.mh_od || r.od || 0);
             const mhWt = Number(campaign.mh_wt || r.mh_wt || r.wl || 0);
             const availMt =
@@ -302,14 +302,14 @@ export function useQueue(stage: StageCode) {
             // Effective logged production for capping
             const effLoggedMtr = totalLoggedMtr > 0
               ? totalLoggedMtr
-              : (totalCampaignMtr > availMtr ? totalCampaignMtr - availMtr : 0);
+              : (masterPlannedMtr > availMtr ? masterPlannedMtr - availMtr : 0);
 
-            // Capping at rolling = 110% of total Plan issued against master + child work order - total already logged
-            const maxCappingMtr = Number((totalCampaignMtr * 1.1).toFixed(3));
+            // Capping at rolling = 110% of Plan issued against master work order - total already logged
+            const maxCappingMtr = Number((masterPlannedMtr * 1.1).toFixed(3));
             const cappingMtr = Math.max(0, maxCappingMtr - effLoggedMtr);
             const cappingPcs = effAvg > 0
               ? Math.round(cappingMtr / effAvg)
-              : Math.max(0, Math.round(totalCampaignPcs * 1.1) - totalLoggedPcs);
+              : Math.max(0, Math.round(masterPlannedPcs * 1.1) - totalLoggedPcs);
 
             return {
               ...r,
@@ -323,9 +323,9 @@ export function useQueue(stage: StageCode) {
               plan_no: campaign.plan_no,
               plan_id: campaign.plan_id,
               lifecycle_status: campaign.lifecycle_status,
-              planned_pcs: totalCampaignPcs,
-              campaign_total_mtr: totalCampaignMtr,
-              campaign_total_pcs: totalCampaignPcs,
+              planned_pcs: masterPlannedPcs,
+              campaign_total_mtr: masterPlannedMtr,
+              campaign_total_pcs: masterPlannedPcs,
               child_work_orders: campaign.child_work_orders,
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,

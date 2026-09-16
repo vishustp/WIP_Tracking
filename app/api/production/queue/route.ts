@@ -417,18 +417,18 @@ export async function GET(req: NextRequest) {
       const rollTotalLogged = rollOutMtr + rollRejMtr;
 
       const storedPlanPcs = Number(
-        campaign?.total_campaign_pcs ||
+        campaign?.master_planned_pcs ||
         planInfo?.planned_pcs_sum ||
+        planParsed?.master_planned_pcs ||
         planParsed?.planned_pcs ||
-        planParsed?.plan_qty?.nos ||
         0
       );
 
       const totalCampaignMtr = campaign
-        ? Number(campaign.total_campaign_mtr || 0)
+        ? Number(campaign.master_planned_mtr || 0)
         : Number(planInfo?.planned_qty_sum || plan?.planned_qty || 0);
       const totalCampaignPcs = campaign
-        ? Number(campaign.total_campaign_pcs || 0)
+        ? (Number(campaign.master_planned_pcs) > 0 ? Number(campaign.master_planned_pcs) : (mhAvgLength > 0 ? Math.round(totalCampaignMtr / mhAvgLength) : 0))
         : (storedPlanPcs > 0 ? storedPlanPcs : (mhAvgLength > 0 ? Math.round(totalCampaignMtr / mhAvgLength) : 0));
 
       const effPlanMhAvg = totalCampaignPcs > 0 && totalCampaignMtr > 0 ? totalCampaignMtr / totalCampaignPcs : mhAvgLength;
