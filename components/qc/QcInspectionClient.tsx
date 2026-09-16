@@ -270,24 +270,24 @@ export default function QcInspectionClient() {
         const totalCampaignPcs = campaign.total_campaign_pcs > 0 ? campaign.total_campaign_pcs : totalCampaignHtOkPcs;
         const totalCampaignMtr = campaign.total_campaign_mtr > 0 ? campaign.total_campaign_mtr : totalCampaignHtOkMtr;
 
-        // A. Add Master Work Order Row (Parent)
-        const masterPlannedPcs = campaign.master_planned_pcs > 0 ? campaign.master_planned_pcs : Math.max(0, totalCampaignPcs - (campaign.child_work_orders || []).reduce((s: number, c: any) => s + Number(c.planned_pcs || 0), 0));
-        const masterPlannedMtr = campaign.master_planned_mtr > 0 ? campaign.master_planned_mtr : Math.max(0, totalCampaignMtr - (campaign.child_work_orders || []).reduce((s: number, c: any) => s + Number(c.planned_mtr || 0), 0));
-        const masterRatio = totalCampaignPcs > 0 ? (masterPlannedPcs / totalCampaignPcs) : 1;
+        // Collect all work order IDs in this campaign pool (master + all children)
+        const allCampaignWoIds = new Set<string>([
+          wo.id,
+          ...campaign.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean),
+        ]);
 
-        const masterHtOkPcs = Math.round(totalCampaignHtOkPcs * masterRatio);
-        const masterHtOkMtr = Number((totalCampaignHtOkMtr * masterRatio).toFixed(2));
-        const masterHtOkMt = mtFromMtr(masterHtOkMtr, od, wt);
+        // Total inspected so far across the ENTIRE campaign pool
+        const campaignInspections = qcInspections.filter((q) => allCampaignWoIds.has(q.work_order_id));
+        const campaignAlreadyInspectedPcs = campaignInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
+        const campaignAlreadyInspectedMtr = campaignInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
 
-        const masterInspections = qcInspections.filter((q) => q.work_order_id === wo.id);
-        const masterAlreadyInspectedPcs = masterInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
-        const masterAlreadyInspectedMtr = masterInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
+        // Shared total remaining WIP balance at VDI for the entire campaign
+        const sharedAvailPcs = Math.max(0, totalCampaignHtOkPcs - campaignAlreadyInspectedPcs);
+        const sharedAvailMtr = Math.max(0, totalCampaignHtOkMtr - campaignAlreadyInspectedMtr);
+        const sharedAvailMt = mtFromMtr(sharedAvailMtr, od, wt);
 
-        const masterAvailPcs = Math.max(0, masterHtOkPcs - masterAlreadyInspectedPcs);
-        const masterAvailMtr = Math.max(0, masterHtOkMtr - masterAlreadyInspectedMtr);
-        const masterAvailMt = mtFromMtr(masterAvailMtr, od, wt);
-
-        if (masterAvailPcs >= 1 || masterAvailMtr >= 1.0) {
+        // A. Add Master Work Order Row (Parent) with full shared campaign balance
+        if (sharedAvailPcs >= 1 || sharedAvailMtr >= 1.0) {
           items.push({
             work_order_id: wo.id,
             work_order_no: wo.work_order_no,
@@ -302,20 +302,20 @@ export default function QcInspectionClient() {
             route_code: routeCode,
             feeder_source_label: feederLabel,
             feeder_stage_code: feederStageCode,
-            ht_ok_pcs: masterHtOkPcs,
-            ht_ok_mtr: masterHtOkMtr,
-            ht_ok_mt: masterHtOkMt,
-            already_inspected_pcs: masterAlreadyInspectedPcs,
-            available_ht_ok_pcs: masterAvailPcs,
-            available_ht_ok_mtr: masterAvailMtr,
-            available_ht_ok_mt: masterAvailMt,
+            ht_ok_pcs: totalCampaignHtOkPcs,
+            ht_ok_mtr: totalCampaignHtOkMtr,
+            ht_ok_mt: mtFromMtr(totalCampaignHtOkMtr, od, wt),
+            already_inspected_pcs: campaignAlreadyInspectedPcs,
+            available_ht_ok_pcs: sharedAvailPcs,
+            available_ht_ok_mtr: sharedAvailMtr,
+            available_ht_ok_mt: sharedAvailMt,
             is_master: true,
             master_plan_no: campaign.plan_no,
             child_work_orders: campaign.child_work_orders,
           });
         }
 
-        // B. Add Every Child Work Order Row Separately
+        // B. Add Every Child Work Order Row with full shared campaign balance
         for (const child of campaign.child_work_orders) {
           const childId = child.work_order_id || child.id;
           if (!childId) continue;
@@ -327,47 +327,9 @@ export default function QcInspectionClient() {
           const childL1 = Number(child.l1 || childWo?.l1 || l1);
           const childL2 = Number(child.l2 || childWo?.l2 || l2);
           const childAvg = childL1 > 0 && childL2 > 0 ? (childL1 + childL2) / 2 : (childL1 || childL2 || avgLen);
+          const childAvailMt = mtFromMtr(sharedAvailMtr, childOd, childWt);
 
-          // Check if child has direct logs in production_logs
-          const childDirectLogs = productionLogs.filter((l) => l.work_order_id === childId);
-          let childHtOkPcs = 0;
-          let childHtOkMtr = 0;
-
-          if (childDirectLogs.length > 0) {
-            let relLogs: ProductionLog[] = [];
-            if (isHfs) {
-              relLogs = childDirectLogs.filter((l) => rollingStage && l.stage_id === rollingStage.id && Number(l.htc_ok || 0) > 0);
-            } else {
-              relLogs = childDirectLogs.filter((l) => htStage && l.stage_id === htStage.id);
-            }
-            const outM = relLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-            const rejM = relLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-            const htcM = relLogs.reduce((sum, l) => sum + Number(l.htc_ok || 0), 0);
-            childHtOkMtr = isHfs ? htcM : (htcM > 0 ? htcM : Math.max(0, outM - rejM));
-            childHtOkPcs = childAvg > 0 ? Math.round(childHtOkMtr / childAvg) : 0;
-          } else {
-            // Allocate child's share from the master campaign feeder pool
-            const childPlannedPcs = Number(child.planned_pcs || 0);
-            const childPlannedMtr = Number(child.planned_mtr || 0);
-            const childRatio = totalCampaignPcs > 0
-              ? (childPlannedPcs / totalCampaignPcs)
-              : (totalCampaignMtr > 0 ? (childPlannedMtr / totalCampaignMtr) : 0);
-
-            childHtOkPcs = childPlannedPcs > 0 && totalCampaignHtOkPcs >= totalCampaignPcs ? childPlannedPcs : Math.round(totalCampaignHtOkPcs * childRatio);
-            childHtOkMtr = Number((totalCampaignHtOkMtr * childRatio).toFixed(2));
-          }
-
-          const childHtOkMt = mtFromMtr(childHtOkMtr, childOd, childWt);
-
-          const childInspections = qcInspections.filter((q) => q.work_order_id === childId);
-          const childAlreadyInspectedPcs = childInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
-          const childAlreadyInspectedMtr = childInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
-
-          const childAvailPcs = Math.max(0, childHtOkPcs - childAlreadyInspectedPcs);
-          const childAvailMtr = Math.max(0, childHtOkMtr - childAlreadyInspectedMtr);
-          const childAvailMt = mtFromMtr(childAvailMtr, childOd, childWt);
-
-          if (childAvailPcs >= 1 || childAvailMtr >= 1.0) {
+          if (sharedAvailPcs >= 1 || sharedAvailMtr >= 1.0) {
             items.push({
               work_order_id: childId,
               work_order_no: child.work_order_no || childWo?.work_order_no || '—',
@@ -382,12 +344,12 @@ export default function QcInspectionClient() {
               route_code: routeCode,
               feeder_source_label: feederLabel,
               feeder_stage_code: feederStageCode,
-              ht_ok_pcs: childHtOkPcs,
-              ht_ok_mtr: childHtOkMtr,
-              ht_ok_mt: childHtOkMt,
-              already_inspected_pcs: childAlreadyInspectedPcs,
-              available_ht_ok_pcs: childAvailPcs,
-              available_ht_ok_mtr: childAvailMtr,
+              ht_ok_pcs: totalCampaignHtOkPcs,
+              ht_ok_mtr: totalCampaignHtOkMtr,
+              ht_ok_mt: mtFromMtr(totalCampaignHtOkMtr, childOd, childWt),
+              already_inspected_pcs: campaignAlreadyInspectedPcs,
+              available_ht_ok_pcs: sharedAvailPcs,
+              available_ht_ok_mtr: sharedAvailMtr,
               available_ht_ok_mt: childAvailMt,
               is_child: true,
               master_wo_id: wo.id,
@@ -629,8 +591,8 @@ export default function QcInspectionClient() {
     const today = new Date().toISOString().slice(0, 10);
     const todayLogs = qcInspections.filter((q) => q.inspection_date === today);
 
-    const pendingPcs = queueItems.reduce((sum, item) => sum + item.available_ht_ok_pcs, 0);
-    const pendingMt = queueItems.reduce((sum, item) => sum + item.available_ht_ok_mt, 0);
+    const pendingPcs = queueItems.filter((item) => !item.is_child).reduce((sum, item) => sum + item.available_ht_ok_pcs, 0);
+    const pendingMt = queueItems.filter((item) => !item.is_child).reduce((sum, item) => sum + item.available_ht_ok_mt, 0);
 
     const inspectedTodayPcs = todayLogs.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
     const inspectedTodayMt = todayLogs.reduce((sum, q) => sum + Number(q.inspected_mt || 0), 0);
