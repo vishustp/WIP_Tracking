@@ -540,7 +540,7 @@ export default function BandSawCuttingClient() {
                           </span>
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {currentUser?.role === 'admin' || currentUser?.role === 'super_user' ? (
+                          {currentUser?.group === 'admin' || currentUser?.group === 'super_user' || currentUser?.role === 'admin' ? (
                             <button
                               type="button"
                               onClick={() => setDeletingEntry(entry)}
