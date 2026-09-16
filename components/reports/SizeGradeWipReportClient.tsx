@@ -26,7 +26,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { mtFromMtr } from '@/lib/productionUtils';
+import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
 
 type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'VDI' | 'FINISHING';
 
@@ -113,14 +113,19 @@ export default function SizeGradeWipReportClient() {
       // Query view for live stage physical WIP + rolling logs + plans
       const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).limit(5000),
-        supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, process_route_id, size_od, size_wt').limit(5000),
-        supabase.from('rolling_plans').select('id, work_order_id, plan_no, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id, created_at').not('status', 'is', null).limit(5000),
+        supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, process_route_id, size_od, size_wt, l1, l2, ordered_qty_pcs').limit(5000),
+        supabase.from('rolling_plans').select('id, work_order_id, plan_no, multiple, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id, created_at').not('status', 'is', null).limit(5000),
         supabase.from('process_routes').select('id, route_code, route_name').eq('active', true),
-        supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at').order('process_date', { ascending: false }).limit(5000),
+        supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at, remarks, htc_ok_pcs, output_pcs, rejection_pcs').order('process_date', { ascending: false }).limit(5000),
         supabase.from('process_stages').select('id, stage_code, stage_name'),
       ]);
 
       if (wipRes.data) {
+        const stageCodeById = new Map<string, string>();
+        (stagesRes.data || []).forEach((s: any) => {
+          if (s.id && s.stage_code) stageCodeById.set(s.id, (s.stage_code || '').toUpperCase());
+        });
+
         const rollingStageId = (stagesRes.data || []).find((s: any) => (s.stage_code || '').toUpperCase() === 'ROLLING')?.id;
 
         // Build rolling date map per work order ID
@@ -181,7 +186,10 @@ export default function SizeGradeWipReportClient() {
 
         const gradeMap = new Map<string, string>();
         const woRouteMap = new Map<string, { route_code?: string; route_name?: string }>();
+        const woDetailsMap = new Map<string, any>();
         (woRes.data || []).forEach((w: any) => {
+          woDetailsMap.set(w.id, w);
+          if (w.work_order_no) woDetailsMap.set(String(w.work_order_no).trim(), w);
           const g = String(w.grade || w.specification || '').trim();
           if (g) {
             gradeMap.set(w.id, g);
@@ -192,7 +200,7 @@ export default function SizeGradeWipReportClient() {
           }
         });
 
-        const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null }>();
+        const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null; multiple?: number }>();
         (plansRes.data || []).forEach((p: any) => {
           try {
             const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
@@ -206,8 +214,9 @@ export default function SizeGradeWipReportClient() {
             const mhL1 = Number(p.mh_l1 || parsed?.mh_l1 || parsed?.l1 || 0) || null;
             const mhL2 = Number(p.mh_l2 || parsed?.mh_l2 || parsed?.l2 || 0) || null;
             const mhAvg = mhL1 && mhL2 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || null);
+            const mult = Number(p.multiple || parsed?.multiple || 1) || 1;
 
-            const mhEntry = { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg };
+            const mhEntry = { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg, multiple: mult };
 
             if (p.work_order_id) {
               mhMap.set(p.work_order_id, mhEntry);
@@ -225,28 +234,127 @@ export default function SizeGradeWipReportClient() {
           } catch {}
         });
 
+        // Pre-calculate exact piece counts per work order from production_logs
+        const woPieceLedger = new Map<string, {
+          rolledPcs: number;
+          hhtPcs: number;
+          drawPcs: number;
+          htPcs: number;
+          finPcs: number;
+          htcOkPcs: number;
+        }>();
+
+        (prodRes.data || []).forEach((log: any) => {
+          if (!log.work_order_id) return;
+          const entry = woPieceLedger.get(log.work_order_id) || {
+            rolledPcs: 0,
+            hhtPcs: 0,
+            drawPcs: 0,
+            htPcs: 0,
+            finPcs: 0,
+            htcOkPcs: 0,
+          };
+          const { pcs: parsedPcs } = extractPcsFromRemarks(log.remarks);
+          const pcs = parsedPcs != null ? parsedPcs : (Number(log.output_pcs || 0));
+          const stage = stageCodeById.get(log.stage_id) || '';
+
+          if (stage === 'ROLLING') {
+            entry.rolledPcs += pcs;
+            entry.htcOkPcs += Number(log.htc_ok_pcs || pcs);
+          } else if (stage === 'HOLLOW_HEAT_TREATMENT') {
+            entry.hhtPcs += pcs;
+          } else if (stage === 'DRAW') {
+            entry.drawPcs += pcs;
+          } else if (stage === 'HEAT_TREATMENT') {
+            entry.htPcs += pcs;
+          } else if (stage === 'FINISHING' || stage === 'VDI' || stage === 'CUTTING') {
+            entry.finPcs += pcs;
+          }
+          woPieceLedger.set(log.work_order_id, entry);
+        });
+
         const mapped = wipRes.data
           .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
           .map((r: any) => {
-          const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT' || r.stage_code === 'DRAW';
-          const planMh = mhMap.get(r.work_order_id) || mhMap.get(String(r.work_order_no).trim());
-          const od = Number(isMhStage && planMh?.mh_od ? planMh.mh_od : (r.od || r.size_od || 0));
-          const wt = Number(isMhStage && planMh?.mh_wt ? planMh.mh_wt : (r.wt || r.size_wt || 0));
-          
-          const mhAvgLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 0);
-          const orderAvgLen = Number(r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : (r.l1 || r.l2 || 6.0));
-          const effAvgLen = isMhStage && mhAvgLen > 0 ? mhAvgLen : (orderAvgLen > 0 ? orderAvgLen : 6.0);
-
-          const currentWipMtr = Number(r.current_wip || 0);
-          const currentWipPcs = effAvgLen > 0 && currentWipMtr > 0 ? Math.round(currentWipMtr / effAvgLen) : Number(r.current_wip_pcs || 0);
-          const computedMt = mtFromMtr(currentWipMtr, od, wt);
-          const currentWipMt = isMhStage
-            ? Number(computedMt.toFixed(2))
-            : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : Number(computedMt.toFixed(2)));
-
           const routeInfo = woRouteMap.get(r.work_order_id);
           const routeCode = r.route_code || routeInfo?.route_code || (r.route_id ? routeMap.get(r.route_id)?.route_code : '') || 'HFS';
           const routeName = r.route_name || routeInfo?.route_name || (r.route_id ? routeMap.get(r.route_id)?.route_name : '') || routeCode;
+          const isCds = routeCode.toUpperCase().includes('CDS');
+          const stage = (r.stage_code || '').toUpperCase();
+
+          const planMh = mhMap.get(r.work_order_id) || mhMap.get(String(r.work_order_no).trim());
+          const wo = woDetailsMap.get(r.work_order_id) || woDetailsMap.get(String(r.work_order_no).trim());
+          const mult = Number(planMh?.multiple || 1) || 1;
+
+          const mhOd = Number(planMh?.mh_od || wo?.size_od || r.size_od || 0);
+          const mhWt = Number(planMh?.mh_wt || wo?.size_wt || r.size_wt || 0);
+          const mhAvgLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 6.0);
+
+          const orderOd = Number(wo?.size_od || r.size_od || r.od || 0);
+          const orderWt = Number(wo?.size_wt || r.size_wt || r.wt || 0);
+          const orderAvgLen = Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : (wo?.l1 || wo?.l2 || r.l1 || r.l2 || 6.0));
+
+          const ledger = woPieceLedger.get(r.work_order_id) || { rolledPcs: 0, hhtPcs: 0, drawPcs: 0, htPcs: 0, finPcs: 0, htcOkPcs: 0 };
+
+          let calculatedPcs = 0;
+          let calculatedMtr = 0;
+          let calculatedMt = 0;
+          let activeOd = orderOd;
+          let activeWt = orderWt;
+
+          if (isCds) {
+            if (stage === 'HOLLOW_HEAT_TREATMENT') {
+              calculatedPcs = Math.max(0, ledger.rolledPcs - ledger.hhtPcs);
+              calculatedMtr = calculatedPcs * mhAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
+              activeOd = mhOd;
+              activeWt = mhWt;
+            } else if (stage === 'DRAW') {
+              calculatedPcs = Math.max(0, (ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs) - ledger.drawPcs);
+              calculatedMtr = calculatedPcs * mhAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
+              activeOd = mhOd;
+              activeWt = mhWt;
+            } else if (stage === 'HEAT_TREATMENT') {
+              calculatedPcs = ledger.drawPcs; // Mother shells drawn waiting at HT
+              calculatedMtr = calculatedPcs * mhAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
+              activeOd = mhOd;
+              activeWt = mhWt;
+            } else {
+              // Finishing stages (CDS Route: HT Nos * Multiple)
+              const finishingTargetPcs = ledger.drawPcs * mult;
+              calculatedPcs = Math.max(0, finishingTargetPcs - ledger.finPcs);
+              calculatedMtr = calculatedPcs * orderAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
+              activeOd = orderOd;
+              activeWt = orderWt;
+            }
+          } else {
+            // HFS Route
+            if (stage === 'HOLLOW_HEAT_TREATMENT') {
+              calculatedPcs = Math.max(0, ledger.rolledPcs - ledger.hhtPcs);
+              calculatedMtr = calculatedPcs * mhAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
+              activeOd = mhOd;
+              activeWt = mhWt;
+            } else {
+              // Finishing stages (HFS Route: HTC OK Nos * Multiple)
+              const htcNos = ledger.htcOkPcs > 0 ? ledger.htcOkPcs : ledger.rolledPcs;
+              const finishingTargetPcs = htcNos * mult;
+              calculatedPcs = Math.max(0, finishingTargetPcs - ledger.finPcs);
+              calculatedMtr = calculatedPcs * orderAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
+              activeOd = orderOd;
+              activeWt = orderWt;
+            }
+          }
+
+          // Fallback to view numbers if ledger yields 0 but view has recorded WIP
+          const finalPcs = calculatedPcs > 0 ? calculatedPcs : Number(r.current_wip_pcs || 0);
+          const finalMtr = calculatedMtr > 0 ? calculatedMtr : Number(r.current_wip || 0);
+          const finalMt = calculatedMt > 0 ? calculatedMt : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : mtFromMtr(finalMtr, activeOd, activeWt));
+
           const rollingDate = rollingDateMap.get(r.work_order_id) || null;
           const resolvedGrade =
             gradeMap.get(r.work_order_id) ||
@@ -258,18 +366,17 @@ export default function SizeGradeWipReportClient() {
           return {
             ...r,
             grade: resolvedGrade,
-            od,
-            wt,
+            od: activeOd,
+            wt: activeWt,
             route_code: routeCode,
             route_name: routeName,
             rolling_date: rollingDate,
-            current_wip: currentWipMtr,
-            current_wip_pcs: currentWipPcs,
-            available_mt: currentWipMt,
-            current_wip_mt: currentWipMt,
+            current_wip: Number(finalMtr.toFixed(2)),
+            current_wip_pcs: Math.round(finalPcs),
+            available_mt: Number(finalMt.toFixed(2)),
+            current_wip_mt: Number(finalMt.toFixed(2)),
           };
         });
-
         setRawWipRows(mapped);
       }
     } catch (err) {
