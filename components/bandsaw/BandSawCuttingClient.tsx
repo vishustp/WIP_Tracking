@@ -579,10 +579,14 @@ export default function BandSawCuttingClient() {
       {/* Delete Confirmation Modal */}
       {deletingEntry && (
         <DeleteEntryModal
-          entry={deletingEntry}
+          targetEntry={deletingEntry}
           onClose={() => setDeletingEntry(null)}
           onConfirm={handleDeleteEntry}
-          isDeleting={isDeleting}
+          delCheck={{ allowed: true }}
+          isAdmin={currentUser?.group === 'admin' || currentUser?.role === 'admin'}
+          isSuperUser={currentUser?.group === 'super_user'}
+          workCenter="BAND_SAW"
+          busy={isDeleting}
         />
       )}
     </div>
