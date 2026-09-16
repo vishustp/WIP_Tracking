@@ -306,9 +306,80 @@ export function extractCustomLengthFromRemarks(remarks: string | null | undefine
     .replace(/\[AVG:[^\]]+\]/gi, "")
     .replace(/\[PCS:\d+\]/gi, "")
     .replace(/\[REJ_PCS:\d+\]/gi, "")
+    .replace(/\[CUTS:[^\]]+\]/gi, "")
     .trim();
   return { l1, l2, avg, cleanRemarks };
 }
+
+export function attachBandSawCutsToRemarks(
+  remarks: string | null | undefined,
+  cuts: Array<{ length_mtr: number; cut_pcs: number; cut_category?: string }>,
+  motherPcs?: number | null,
+  yieldPct?: number | null,
+  offcutMtr?: number | null,
+  l1?: number | string | null,
+  l2?: number | string | null
+): string {
+  let base = (remarks || "").trim();
+  base = base.replace(/\[CUTS:[^\]]+\]/gi, "").trim();
+
+  const cutsData = {
+    m_pcs: motherPcs || null,
+    yield: yieldPct !== undefined && yieldPct !== null ? Number(yieldPct.toFixed(1)) : null,
+    offcut_m: offcutMtr !== undefined && offcutMtr !== null ? Number(offcutMtr.toFixed(2)) : null,
+    items: cuts.map((c) => ({
+      len: Number(c.length_mtr),
+      pcs: Number(c.cut_pcs),
+      cat: c.cut_category || "PRIME",
+    })),
+  };
+
+  const jsonStr = JSON.stringify(cutsData);
+  const tag = `[CUTS:${jsonStr}]`;
+
+  const totalPrimePcs = cuts
+    .filter((c) => (c.cut_category || "PRIME") === "PRIME" || c.cut_category === "SECONDARY")
+    .reduce((sum, c) => sum + Number(c.cut_pcs || 0), 0);
+
+  return attachPcsToRemarks(base ? `${base} ${tag}` : tag, totalPrimePcs || null, null, l1, l2);
+}
+
+export function extractBandSawCutsFromRemarks(remarks: string | null | undefined): {
+  cuts: Array<{ len: number; pcs: number; cat: string }> | null;
+  motherPcs: number | null;
+  yieldPct: number | null;
+  offcutMtr: number | null;
+  cleanRemarks: string;
+} {
+  if (!remarks) return { cuts: null, motherPcs: null, yieldPct: null, offcutMtr: null, cleanRemarks: "" };
+  const match = remarks.match(/\[CUTS:(\{.*?\})\]/i);
+  let cuts: Array<{ len: number; pcs: number; cat: string }> | null = null;
+  let motherPcs: number | null = null;
+  let yieldPct: number | null = null;
+  let offcutMtr: number | null = null;
+
+  if (match && match[1]) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      cuts = Array.isArray(parsed.items) ? parsed.items : null;
+      motherPcs = parsed.m_pcs ?? null;
+      yieldPct = parsed.yield ?? null;
+      offcutMtr = parsed.offcut_m ?? null;
+    } catch {}
+  }
+
+  const cleanRemarks = remarks
+    .replace(/\[CUTS:[^\]]+\]/gi, "")
+    .replace(/\[L1:[^\]]+\]/gi, "")
+    .replace(/\[L2:[^\]]+\]/gi, "")
+    .replace(/\[AVG:[^\]]+\]/gi, "")
+    .replace(/\[PCS:\d+\]/gi, "")
+    .replace(/\[REJ_PCS:\d+\]/gi, "")
+    .trim();
+
+  return { cuts, motherPcs, yieldPct, offcutMtr, cleanRemarks };
+}
+
 
 export const STANDARD_RM_GRADES = [
   'SAE-1018',

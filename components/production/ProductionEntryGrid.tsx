@@ -29,6 +29,7 @@ import ProductionHistoryTable from '@/components/production/ProductionHistoryTab
 import EditEntryModal from '@/components/production/modals/EditEntryModal';
 import DeleteEntryModal from '@/components/production/modals/DeleteEntryModal';
 import BundlingCampaignModal, { CampaignBundle } from '@/components/production/modals/BundlingCampaignModal';
+import BandSawCuttingModal from '@/components/production/modals/BandSawCuttingModal';
 
 function getYesterdayDateStr(): string {
   const d = new Date();
@@ -81,6 +82,9 @@ export default function ProductionEntryGrid() {
   const [bundlingCampaign, setBundlingCampaign] = useState<Row | null>(null);
   const [campaignBundles, setCampaignBundles] = useState<CampaignBundle[]>([]);
   const [bundlingSaving, setBundlingSaving] = useState(false);
+
+  // Band Saw cutting modal state
+  const [bandSawRow, setBandSawRow] = useState<Row | null>(null);
 
   // --- Data fetching ---
   const { rows, setRows, loading: queueLoading, reload: reloadQueue } = useQueue(stage);
@@ -943,6 +947,7 @@ export default function ProductionEntryGrid() {
         onToggleRowExpansion={toggleRowExpansion}
         onUpdateRow={updateRow}
         onOpenBundling={openCampaignBundling}
+        onOpenBandSawCutting={(r) => setBandSawRow(r)}
         isAllowed={isAllowed}
         roleTitle={roleTitle || 'Operator'}
         isAuditor={user?.role === 'auditor'}
@@ -1012,6 +1017,20 @@ export default function ProductionEntryGrid() {
           onApplyToGrid={applyBundlesToGrid}
           onSaveBundles={saveCampaignBundling}
           saving={bundlingSaving}
+        />
+      )}
+
+      {/* Band Saw Multi-Length Cutting Modal */}
+      {bandSawRow && (
+        <BandSawCuttingModal
+          row={bandSawRow}
+          isOpen={!!bandSawRow}
+          onClose={() => setBandSawRow(null)}
+          onSuccess={() => {
+            fetchQueue(stage);
+            fetchEntries();
+          }}
+          processDate={date}
         />
       )}
     </div>

@@ -371,3 +371,42 @@ export interface QcSalvageQueueItem {
   salvage_reasons: SalvageReasonItem[];
   inspections: QcInspection[];
 }
+
+export type BandSawCutCategory = 'PRIME' | 'SECONDARY' | 'OFFCUT' | 'SCRAP_TRIM';
+
+export interface BandSawCutItem {
+  id: string;
+  length_mtr: number;
+  cut_pcs: number;
+  cut_category: BandSawCutCategory;
+  total_mtr: number;
+  total_mt?: number;
+  remarks?: string;
+}
+
+export interface BandSawQueueItem {
+  work_order_id: string;
+  work_order_no: string;
+  customer_name: string | null;
+  specification: string | null;
+  size_od: number;
+  size_wt: number;
+  l1?: number | null;
+  l2?: number | null;
+  avg_length: number;
+  mh_od?: number | null;
+  mh_wt?: number | null;
+  mh_l1?: number | null;
+  mh_l2?: number | null;
+  mh_avg_length?: number | null;
+  route_id: string;
+  route_code: string;
+  route_name?: string;
+  feeder_source_label?: string;
+  feeder_stage_code?: string;
+  available_mother_pcs: number;
+  available_mother_mtr: number;
+  available_mother_mt: number;
+  plan_no?: string;
+  is_master?: boolean;
+}

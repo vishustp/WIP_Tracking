@@ -1,6 +1,6 @@
 'use client';
 
-import { Package, Crown } from 'lucide-react';
+import { Package, Crown, Scissors } from 'lucide-react';
 import { Row, StageCode } from '@/types';
 import { calc, fmt, n, mtFromMtr } from '@/lib/productionUtils';
 
@@ -18,6 +18,7 @@ export interface ProductionQueueRowProps {
   ) => void;
   onToggleExpand: (key: string) => void;
   onOpenBundling?: (row: Row) => void;
+  onOpenBandSawCutting?: (row: Row) => void;
 }
 
 export function ProductionQueueRow({
@@ -27,6 +28,7 @@ export function ProductionQueueRow({
   onUpdateRow,
   onToggleExpand,
   onOpenBundling,
+  onOpenBandSawCutting,
 }: ProductionQueueRowProps) {
   const key = row.plan_id ? `${row.work_order_id}|${row.route_id}|${row.plan_id}` : `${row.work_order_id}|${row.route_id}`;
   const d = calc({ ...row, stage_code: stage });
@@ -286,6 +288,16 @@ export function ProductionQueueRow({
           >
             WIP Flow
           </button>
+          {stage === 'BAND_SAW' && onOpenBandSawCutting && (
+            <button
+              type="button"
+              onClick={() => onOpenBandSawCutting(row)}
+              className="inline-flex items-center gap-1 rounded border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-800 shadow-2xs hover:bg-indigo-100 transition cursor-pointer"
+              title="Open Multi-Length Band Saw Cutting Form"
+            >
+              <Scissors size={12} className="rotate-90" /> Cut Form
+            </button>
+          )}
           {stage === 'FINISHING' && (row.is_master || (row.child_work_orders && row.child_work_orders.length > 0)) && onOpenBundling && (
             <button
               type="button"
