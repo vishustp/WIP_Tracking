@@ -41,7 +41,6 @@ export function WipSummaryCards({
     "HOLLOW_HEAT_TREATMENT",
     "DRAW",
     "HEAT_TREATMENT",
-    "BAND_SAW",
     "VDI",
     "FINISHING",
   ];
@@ -54,7 +53,7 @@ export function WipSummaryCards({
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-6">
         {orderedStages.map((stgCode) => {
           const wc = workCenterSummary.find((x) => x.stage_code === stgCode) || {
             label: STAGE_DISPLAY_NAMES[stgCode] || stgCode,

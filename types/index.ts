@@ -184,6 +184,15 @@ export const STAGES: { code: StageCode; label: string }[] = [
   { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
   { code: "DRAW", label: "Draw" },
   { code: "HEAT_TREATMENT", label: "Heat Treatment" },
+  { code: "VDI", label: "VDI" },
+  { code: "FINISHING", label: "Finishing" },
+];
+
+export const ALL_ROUTING_STAGES: { code: StageCode; label: string }[] = [
+  { code: "ROLLING", label: "Rolling" },
+  { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
+  { code: "DRAW", label: "Draw" },
+  { code: "HEAT_TREATMENT", label: "Heat Treatment" },
   { code: "BAND_SAW", label: "Band Saw" },
   { code: "VDI", label: "VDI" },
   { code: "FINISHING", label: "Finishing" },
