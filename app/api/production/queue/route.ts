@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
       try {
         const parsed = typeof p.status === "string" ? JSON.parse(p.status) : p.status;
         const lifecycle = parsed?.lifecycle_status || (parsed?.issued_at ? "ISSUED" : "DRAFT");
-        const isIssued = (lifecycle === "ISSUED" || lifecycle === "REVISED") && lifecycle !== "CLOSED";
+        const isIssued = (lifecycle === "ISSUED" || lifecycle === "REVISED") && lifecycle !== "CLOSED" && lifecycle !== "SHORT_CLOSED";
 
         const mhOdVal = p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || null;
         const mhWtVal = p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || null;
@@ -915,7 +915,7 @@ export async function GET(req: NextRequest) {
           try {
             const plParsed = typeof pl.status === "string" ? JSON.parse(pl.status) : pl.status || {};
             const plLifecycle = plParsed?.lifecycle_status || (plParsed?.issued_at ? "ISSUED" : "DRAFT");
-            const plIsIssued = (plLifecycle === "ISSUED" || plLifecycle === "REVISED") && plLifecycle !== "CLOSED";
+            const plIsIssued = (plLifecycle === "ISSUED" || plLifecycle === "REVISED") && plLifecycle !== "CLOSED" && plLifecycle !== "SHORT_CLOSED";
             if (!plIsIssued) continue;
 
             const plMhOd = Number(pl.mh_od || plParsed?.mh_od || plParsed?.cust_od || plParsed?.sm?.cust_od || plParsed?.sizing_mill?.cust_od || mhOd);
