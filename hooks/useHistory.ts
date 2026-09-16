@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ProductionEntry } from "@/types";
-import { extractPcsFromRemarks } from "@/lib/productionUtils";
+import { extractPcsFromRemarks, mtFromMtr } from "@/lib/productionUtils";
 
 export function useHistory(
   search: string,
@@ -114,7 +114,7 @@ export function useHistory(
           .in("id", entryIds),
         supabase
           .from("rolling_plans")
-          .select("id, plan_no, work_order_id, mh_l1, mh_l2, status, created_at")
+          .select("id, plan_no, work_order_id, mh_od, mh_wt, mh_l1, mh_l2, status, created_at")
           .not("status", "is", null),
       ]);
 
@@ -131,6 +131,7 @@ export function useHistory(
       // Build structured plan maps: by plan ID and by work order ID (chronological)
       const planByIdMap = new Map<string, any>();
       const plansByWoMap = new Map<string, any[]>();
+      const planMhMap = new Map<string, { mh_od: number; mh_wt: number; mh_l1?: number; mh_l2?: number }>();
 
       ((rpData as any[]) || []).forEach((rp: any) => {
         const l1 = Number(rp.mh_l1 || 0);
@@ -139,6 +140,8 @@ export function useHistory(
         let planNo = rp.plan_no ? String(rp.plan_no).trim() : '';
         let revisionNo = 0;
         let childIds: string[] = [];
+        let mhOd = Number(rp.mh_od || 0);
+        let mhWt = Number(rp.mh_wt || 0);
 
         if (rp.status) {
           try {
@@ -147,10 +150,24 @@ export function useHistory(
             else if (meta?.master_plan_no) planNo = String(meta.master_plan_no).trim();
             else if (meta?.plan_no) planNo = String(meta.plan_no).trim();
             if (meta?.revision_no) revisionNo = Number(meta.revision_no) || 0;
+            if (!mhOd) mhOd = Number(meta?.mh_od || meta?.cust_od || meta?.sm?.cust_od || meta?.sizing_mill?.cust_od || 0);
+            if (!mhWt) mhWt = Number(meta?.mh_wt || meta?.cust_wt || meta?.sm?.rolling_wt || meta?.sm?.cust_wt || meta?.sizing_mill?.rolling_wt || 0);
             if (Array.isArray(meta?.child_work_orders)) {
               childIds = meta.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean);
+              meta.child_work_orders.forEach((c: any) => {
+                if (c.work_order_no && mhOd > 0 && mhWt > 0) {
+                  planMhMap.set(String(c.work_order_no).trim(), { mh_od: mhOd, mh_wt: mhWt, mh_l1: l1, mh_l2: l2 });
+                }
+              });
             }
           } catch {}
+        }
+
+        if (mhOd > 0 && mhWt > 0) {
+          if (rp.work_order_id) planMhMap.set(rp.work_order_id, { mh_od: mhOd, mh_wt: mhWt, mh_l1: l1, mh_l2: l2 });
+          for (const cId of childIds) {
+            planMhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt, mh_l1: l1, mh_l2: l2 });
+          }
         }
 
         const planObj = {
@@ -159,6 +176,8 @@ export function useHistory(
           child_work_order_ids: childIds,
           plan_no: planNo || undefined,
           revision_no: revisionNo || undefined,
+          mh_od: mhOd || undefined,
+          mh_wt: mhWt || undefined,
           mh_l1: l1,
           mh_l2: l2,
           mh_avg_length: avg,
@@ -180,7 +199,7 @@ export function useHistory(
         }
       });
 
-      // Enrich entries with stage-aware pieces and rounded whole integers
+      // Enrich entries with stage-aware pieces, mother hollow dimensions, and accurate MT
       const enrichedEntries: ProductionEntry[] = rawList.map((entry: ProductionEntry) => {
         const logRow = logMap.get(entry.id);
         const wo = woMap.get(entry.work_order_no);
@@ -210,8 +229,9 @@ export function useHistory(
         }
 
         const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
+        const mhInfo = plan?.mh_od ? plan : (targetWoId ? planMhMap.get(targetWoId) : null) || (entry.work_order_no ? planMhMap.get(String(entry.work_order_no).trim()) : null);
 
-        const mhLen = Number(plan?.mh_avg_length || plan?.mh_l1 || 0);
+        const mhLen = Number(plan?.mh_avg_length || plan?.mh_l1 || mhInfo?.mh_l1 || 0);
         const woAvg = Number(
           (wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : (wo?.l1 || wo?.l2)) ||
           entry.avg_length ||
@@ -270,8 +290,18 @@ export function useHistory(
             ? Math.min(outMtr, htcMtr > 0 ? htcMtr : Math.max(0, outMtr - rejMtr))
             : 0;
 
+        const effOd = isMhStage && mhInfo?.mh_od ? Number(mhInfo.mh_od) : Number(entry.od || wo?.size_od || 0);
+        const effWt = isMhStage && mhInfo?.mh_wt ? Number(mhInfo.mh_wt) : Number(entry.wl || wo?.size_wt || 0);
+
+        const outMt = isMhStage && effOd > 0 && effWt > 0 ? mtFromMtr(outMtr, effOd, effWt) : (Number(entry.output_mt || 0) > 0 ? Number(entry.output_mt) : mtFromMtr(outMtr, effOd, effWt));
+        const inMt = isMhStage && effOd > 0 && effWt > 0 ? mtFromMtr(inMtr, effOd, effWt) : (Number(entry.input_mt || 0) > 0 ? Number(entry.input_mt) : mtFromMtr(inMtr, effOd, effWt));
+        const rejMt = mtFromMtr(rejMtr, effOd, effWt);
+        const htcOkMt = isMhStage ? mtFromMtr(htcOkMtr, effOd, effWt) : 0;
+
         return {
           ...entry,
+          od: effOd,
+          wl: effWt,
           rolling_plan_id: plan?.id || logRow?.rolling_plan_id,
           plan_no: plan?.plan_no,
           revision_no: plan?.revision_no,
@@ -284,6 +314,10 @@ export function useHistory(
           rejection_pcs: rejectionPcs,
           htc_ok_pcs: htcOkPcs,
           htc_ok_mtr: htcOkMtr,
+          output_mt: outMt,
+          input_mt: inMt,
+          rejection_mt: rejMt,
+          htc_ok_mt: htcOkMt,
         };
       });
 

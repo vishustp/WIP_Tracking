@@ -164,7 +164,7 @@ export default function WorkCenterProductionReportClient() {
             .in('id', entryIds),
           s
             .from('rolling_plans')
-            .select('id, plan_no, work_order_id, status, created_at')
+            .select('id, plan_no, work_order_id, mh_od, mh_wt, mh_l1, mh_l2, status, created_at')
             .not('status', 'is', null)
             .limit(5000),
         ]);
@@ -173,10 +173,16 @@ export default function WorkCenterProductionReportClient() {
           logMap.set(l.id, l);
         });
 
+        const planMhMap = new Map<string, { mh_od: number; mh_wt: number; mh_l1?: number; mh_l2?: number }>();
+
         ((rpData as any[]) || []).forEach((rp: any) => {
           let planNo = rp.plan_no ? String(rp.plan_no).trim() : '';
           let revisionNo = 0;
           let childIds: string[] = [];
+          let mhOd = Number(rp.mh_od || 0);
+          let mhWt = Number(rp.mh_wt || 0);
+          let mhL1 = Number(rp.mh_l1 || 0);
+          let mhL2 = Number(rp.mh_l2 || 0);
 
           if (rp.status) {
             try {
@@ -185,10 +191,26 @@ export default function WorkCenterProductionReportClient() {
               else if (meta?.master_plan_no) planNo = String(meta.master_plan_no).trim();
               else if (meta?.plan_no) planNo = String(meta.plan_no).trim();
               if (meta?.revision_no) revisionNo = Number(meta.revision_no) || 0;
+              if (!mhOd) mhOd = Number(meta?.mh_od || meta?.cust_od || meta?.sm?.cust_od || meta?.sizing_mill?.cust_od || 0);
+              if (!mhWt) mhWt = Number(meta?.mh_wt || meta?.cust_wt || meta?.sm?.rolling_wt || meta?.sm?.cust_wt || meta?.sizing_mill?.rolling_wt || 0);
+              if (!mhL1) mhL1 = Number(meta?.mh_l1 || meta?.l1 || 0);
+              if (!mhL2) mhL2 = Number(meta?.mh_l2 || meta?.l2 || 0);
               if (Array.isArray(meta?.child_work_orders)) {
                 childIds = meta.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean);
+                meta.child_work_orders.forEach((c: any) => {
+                  if (c.work_order_no && mhOd > 0 && mhWt > 0) {
+                    planMhMap.set(String(c.work_order_no).trim(), { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2 });
+                  }
+                });
               }
             } catch {}
+          }
+
+          if (mhOd > 0 && mhWt > 0) {
+            if (rp.work_order_id) planMhMap.set(rp.work_order_id, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2 });
+            for (const cId of childIds) {
+              planMhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2 });
+            }
           }
 
           const planObj = {
@@ -197,6 +219,10 @@ export default function WorkCenterProductionReportClient() {
             child_work_order_ids: childIds,
             plan_no: planNo || undefined,
             revision_no: revisionNo || undefined,
+            mh_od: mhOd || undefined,
+            mh_wt: mhWt || undefined,
+            mh_l1: mhL1 || undefined,
+            mh_l2: mhL2 || undefined,
             created_at: rp.created_at,
           };
 
@@ -243,6 +269,9 @@ export default function WorkCenterProductionReportClient() {
           }
         }
 
+        const isMhStage = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOLLOW_HEAT_TREATMENT';
+        const mhInfo = plan?.mh_od ? plan : (targetWoId ? planMhMap.get(targetWoId) : null) || (e.work_order_no ? planMhMap.get(String(e.work_order_no).trim()) : null);
+
         const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(e.remarks);
         const outPcs = parsedPcs != null ? parsedPcs : (Number(logRow?.output_pcs || e.output_pcs || 0));
         const rejPcs = parsedRejPcs != null ? parsedRejPcs : (Number(logRow?.rejection_pcs || e.rejection_pcs || 0));
@@ -254,8 +283,12 @@ export default function WorkCenterProductionReportClient() {
         const inPcs = Number(e.input_pcs || 0) > 0
           ? Number(e.input_pcs)
           : Math.max(outPcs + rejPcs, outPcs);
-        const od = Number(e.od || woInfo?.size_od || 0);
-        const wl = Number(e.wl || woInfo?.size_wt || 0);
+        const od = isMhStage && mhInfo?.mh_od ? Number(mhInfo.mh_od) : Number(e.od || woInfo?.size_od || 0);
+        const wl = isMhStage && mhInfo?.mh_wt ? Number(mhInfo.mh_wt) : Number(e.wl || woInfo?.size_wt || 0);
+
+        const calculatedInMt = mtFromMtr(inMtr, od, wl);
+        const calculatedOutMt = mtFromMtr(outMtr, od, wl);
+        const calculatedRejMt = mtFromMtr(rejMtr, od, wl);
 
         return {
           ...e,
@@ -268,13 +301,13 @@ export default function WorkCenterProductionReportClient() {
           revision_no: plan?.revision_no,
           input_pcs: inPcs,
           input_mtr: inMtr,
-          input_mt: Number(e.input_mt || 0) > 0 ? Number(e.input_mt) : mtFromMtr(inMtr, od, wl),
+          input_mt: isMhStage ? calculatedInMt : (Number(e.input_mt || 0) > 0 ? Number(e.input_mt) : calculatedInMt),
           output_pcs: outPcs,
           output_mtr: outMtr,
-          output_mt: Number(e.output_mt || 0) > 0 ? Number(e.output_mt) : mtFromMtr(outMtr, od, wl),
+          output_mt: isMhStage ? calculatedOutMt : (Number(e.output_mt || 0) > 0 ? Number(e.output_mt) : calculatedOutMt),
           rejection_pcs: rejPcs,
           rejection_mtr: rejMtr,
-          rejection_mt: mtFromMtr(rejMtr, od, wl),
+          rejection_mt: calculatedRejMt,
           remarks: cleanRemarks || e.remarks,
         };
       });
