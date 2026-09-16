@@ -112,11 +112,11 @@ export default function SizeGradeWipReportClient() {
 
       // Query view for live stage physical WIP + rolling logs + plans
       const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes] = await Promise.all([
-        supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).limit(5000),
+        supabase.from('vw_route_stage_wip').select('*').limit(5000),
         supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, process_route_id, size_od, size_wt, l1, l2, ordered_qty_pcs').limit(5000),
         supabase.from('rolling_plans').select('id, work_order_id, plan_no, multiple, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id, created_at').not('status', 'is', null).limit(5000),
         supabase.from('process_routes').select('id, route_code, route_name').eq('active', true),
-        supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at, remarks, htc_ok_pcs, output_pcs, rejection_pcs').order('process_date', { ascending: false }).limit(5000),
+        supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at, remarks, output_qty, rejection_qty, htc_ok').order('process_date', { ascending: false }).limit(5000),
         supabase.from('process_stages').select('id, stage_code, stage_name'),
       ]);
 
@@ -257,12 +257,12 @@ export default function SizeGradeWipReportClient() {
             htcOkPcs: 0,
           };
           const { pcs: parsedPcs } = extractPcsFromRemarks(log.remarks);
-          const pcs = parsedPcs != null ? parsedPcs : (Number(log.output_pcs || 0));
+          const pcs = parsedPcs != null ? parsedPcs : 0;
           const stage = stageCodeById.get(log.stage_id) || '';
 
           if (stage === 'ROLLING') {
             entry.rolledPcs += pcs;
-            entry.htcOkPcs += Number(log.htc_ok_pcs || pcs);
+            entry.htcOkPcs += pcs;
           } else if (stage === 'HOLLOW_HEAT_TREATMENT') {
             entry.hhtPcs += pcs;
           } else if (stage === 'DRAW') {
