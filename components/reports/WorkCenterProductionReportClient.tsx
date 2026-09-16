@@ -154,6 +154,7 @@ export default function WorkCenterProductionReportClient() {
       const entryIds = raw.map((e) => e.id).filter(Boolean);
       const planByIdMap = new Map<string, any>();
       const plansByWoMap = new Map<string, any[]>();
+      const planMhMap = new Map<string, { mh_od: number; mh_wt: number; mh_l1?: number; mh_l2?: number }>();
       const logMap = new Map<string, any>();
 
       try {
@@ -172,8 +173,6 @@ export default function WorkCenterProductionReportClient() {
         ((logDetails as any[]) || []).forEach((l: any) => {
           logMap.set(l.id, l);
         });
-
-        const planMhMap = new Map<string, { mh_od: number; mh_wt: number; mh_l1?: number; mh_l2?: number }>();
 
         ((rpData as any[]) || []).forEach((rp: any) => {
           let planNo = rp.plan_no ? String(rp.plan_no).trim() : '';
