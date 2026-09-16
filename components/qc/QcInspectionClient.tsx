@@ -1234,7 +1234,7 @@ export default function QcInspectionClient() {
         <button
           type="button"
           onClick={() => setActiveTab('queue')}
-          className={`pb-3.5 flex items-center gap-2 border-b-2 transition-colors ${
+          className={`pb-3.5 flex items-center gap-2 border-b-2 transition-all duration-150 active:scale-[0.97] cursor-pointer select-none ${
             activeTab === 'queue'
               ? 'border-blue-600 text-blue-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -1250,7 +1250,7 @@ export default function QcInspectionClient() {
         <button
           type="button"
           onClick={() => setActiveTab('salvage')}
-          className={`pb-3.5 flex items-center gap-2 border-b-2 transition-colors ${
+          className={`pb-3.5 flex items-center gap-2 border-b-2 transition-all duration-150 active:scale-[0.97] cursor-pointer select-none ${
             activeTab === 'salvage'
               ? 'border-amber-600 text-amber-700 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -1272,7 +1272,7 @@ export default function QcInspectionClient() {
         <button
           type="button"
           onClick={() => setActiveTab('history')}
-          className={`pb-3.5 flex items-center gap-2 border-b-2 transition-colors ${
+          className={`pb-3.5 flex items-center gap-2 border-b-2 transition-all duration-150 active:scale-[0.97] cursor-pointer select-none ${
             activeTab === 'history'
               ? 'border-blue-600 text-blue-600 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-800'

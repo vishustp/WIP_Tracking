@@ -38,6 +38,7 @@ interface ContributingOrder {
   stage_name: string;
   route_code?: string;
   route_name?: string;
+  rolling_date?: string | null;
   wip_mtr: number;
   wip_pcs: number;
   wip_mt: number;
@@ -97,6 +98,8 @@ export default function SizeGradeWipReportClient() {
   const [selectedGrade, setSelectedGrade] = useState<string>('ALL');
   const [fromOd, setFromOd] = useState<string>('');
   const [toOd, setToOd] = useState<string>('');
+  const [fromRollingDate, setFromRollingDate] = useState<string>('');
+  const [toRollingDate, setToRollingDate] = useState<string>('');
   const [asOnDate, setAsOnDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
   // Expanded groups in matrix
@@ -107,15 +110,41 @@ export default function SizeGradeWipReportClient() {
       setLoading(true);
       const supabase = createClient();
 
-      // Query view for live stage physical WIP
-      const [wipRes, woRes, plansRes, routesRes] = await Promise.all([
+      // Query view for live stage physical WIP + rolling logs + plans
+      const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0),
         supabase.from('work_orders').select('id, grade, specification, process_route_id'),
-        supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, mh_l1, mh_l2, process_route_id').not('status', 'is', null),
+        supabase.from('rolling_plans').select('work_order_id, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id').not('status', 'is', null),
         supabase.from('process_routes').select('id, route_code, route_name').eq('active', true),
+        supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at').order('process_date', { ascending: false }),
+        supabase.from('process_stages').select('id, stage_code'),
       ]);
 
       if (wipRes.data) {
+        const rollingStageId = (stagesRes.data || []).find((s: any) => s.stage_code === 'ROLLING')?.id;
+
+        // Build rolling date map per work order
+        const rollingDateMap = new Map<string, string>();
+
+        // 1. From production logs for Rolling Mill
+        (prodRes.data || []).forEach((p: any) => {
+          if ((!rollingStageId || p.stage_id === rollingStageId) && p.process_date && p.work_order_id) {
+            if (!rollingDateMap.has(p.work_order_id)) {
+              rollingDateMap.set(p.work_order_id, p.process_date);
+            }
+          }
+        });
+
+        // 2. Fallback from rolling plans planned_rolling_date
+        (plansRes.data || []).forEach((pl: any) => {
+          if (pl.work_order_id && !rollingDateMap.has(pl.work_order_id)) {
+            const planDate = pl.planned_rolling_date || (typeof pl.status === 'string' ? JSON.parse(pl.status)?.planned_rolling_date : pl.status?.planned_rolling_date);
+            if (planDate) {
+              rollingDateMap.set(pl.work_order_id, planDate);
+            }
+          }
+        });
+
         const routeMap = new Map<string, { route_code: string; route_name: string }>();
         (routesRes.data || []).forEach((r: any) => {
           routeMap.set(r.id, { route_code: r.route_code, route_name: r.route_name });
@@ -165,6 +194,7 @@ export default function SizeGradeWipReportClient() {
           const routeInfo = woRouteMap.get(r.work_order_id);
           const routeCode = r.route_code || routeInfo?.route_code || (r.route_id ? routeMap.get(r.route_id)?.route_code : '') || 'HFS';
           const routeName = r.route_name || routeInfo?.route_name || (r.route_id ? routeMap.get(r.route_id)?.route_name : '') || routeCode;
+          const rollingDate = rollingDateMap.get(r.work_order_id) || null;
 
           return {
             ...r,
@@ -173,6 +203,7 @@ export default function SizeGradeWipReportClient() {
             wt,
             route_code: routeCode,
             route_name: routeName,
+            rolling_date: rollingDate,
             current_wip: currentWipMtr,
             current_wip_pcs: currentWipPcs,
             available_mt: currentWipMt,
@@ -235,6 +266,10 @@ export default function SizeGradeWipReportClient() {
       if (fromOd !== '' && !isNaN(Number(fromOd)) && od < Number(fromOd)) return false;
       if (toOd !== '' && !isNaN(Number(toOd)) && od > Number(toOd)) return false;
 
+      // Rolling Production Date Range Filter
+      if (fromRollingDate && (!r.rolling_date || r.rolling_date < fromRollingDate)) return false;
+      if (toRollingDate && (!r.rolling_date || r.rolling_date > toRollingDate)) return false;
+
       // Search
       if (search.trim()) {
         const q = search.trim().toLowerCase();
@@ -243,7 +278,8 @@ export default function SizeGradeWipReportClient() {
         const matchWo = (r.work_order_no || '').toLowerCase().includes(q);
         const matchCust = (r.customer_name || '').toLowerCase().includes(q);
         const matchRoute = (r.route_code || '').toLowerCase().includes(q) || (r.route_name || '').toLowerCase().includes(q);
-        if (!matchSize && !matchGrade && !matchWo && !matchCust && !matchRoute) return false;
+        const matchRollingDate = (r.rolling_date || '').toLowerCase().includes(q);
+        if (!matchSize && !matchGrade && !matchWo && !matchCust && !matchRoute && !matchRollingDate) return false;
       }
 
       return true;
@@ -337,6 +373,7 @@ export default function SizeGradeWipReportClient() {
         stage_name: r.stage_name || stage,
         route_code: r.route_code || 'HFS',
         route_name: r.route_name || r.route_code || 'HFS',
+        rolling_date: r.rolling_date || null,
         wip_mtr: mtr,
         wip_pcs: pcs,
         wip_mt: mt,
@@ -351,32 +388,43 @@ export default function SizeGradeWipReportClient() {
     });
   }, [filteredRawRows]);
 
-  // Overall KPIs
+  // Metric summaries across all active combinations
   const kpis = useMemo(() => {
-    const totalSizes = matrixGroups.length;
-    const totalWipMtr = matrixGroups.reduce((sum, g) => sum + g.total_mtr, 0);
-    const totalWipPcs = matrixGroups.reduce((sum, g) => sum + g.total_pcs, 0);
-    const totalWipMt = matrixGroups.reduce((sum, g) => sum + g.total_mt, 0);
-
-    const rollingMtr = matrixGroups.reduce((sum, g) => sum + g.rolling_mtr, 0);
-    const rollingPcs = matrixGroups.reduce((sum, g) => sum + g.rolling_pcs, 0);
-    const rollingMt = matrixGroups.reduce((sum, g) => sum + g.rolling_mt, 0);
-
-    const drawMtr = matrixGroups.reduce((sum, g) => sum + g.draw_mtr, 0);
-    const drawPcs = matrixGroups.reduce((sum, g) => sum + g.draw_pcs, 0);
-    const drawMt = matrixGroups.reduce((sum, g) => sum + g.draw_mt, 0);
-
-    const vdiMtr = matrixGroups.reduce((sum, g) => sum + g.vdi_mtr, 0);
-    const vdiPcs = matrixGroups.reduce((sum, g) => sum + g.vdi_pcs, 0);
-    const vdiMt = matrixGroups.reduce((sum, g) => sum + g.vdi_mt, 0);
-
-    const finishingMtr = matrixGroups.reduce((sum, g) => sum + g.finishing_mtr, 0);
-    const finishingPcs = matrixGroups.reduce((sum, g) => sum + g.finishing_pcs, 0);
-    const finishingMt = matrixGroups.reduce((sum, g) => sum + g.finishing_mt, 0);
-
-    // Largest WIP size
+    let totalSizes = matrixGroups.length;
+    let totalWipMtr = 0;
+    let totalWipPcs = 0;
+    let totalWipMt = 0;
+    let rollingMtr = 0;
+    let rollingPcs = 0;
+    let rollingMt = 0;
+    let drawMtr = 0;
+    let drawPcs = 0;
+    let drawMt = 0;
+    let vdiMtr = 0;
+    let vdiPcs = 0;
+    let vdiMt = 0;
+    let finishingMtr = 0;
+    let finishingPcs = 0;
+    let finishingMt = 0;
     let topGroup: SizeGradeGroup | null = null;
+
     matrixGroups.forEach((g) => {
+      totalWipMtr += g.total_mtr;
+      totalWipPcs += g.total_pcs;
+      totalWipMt += g.total_mt;
+      rollingMtr += g.rolling_mtr;
+      rollingPcs += g.rolling_pcs;
+      rollingMt += g.rolling_mt;
+      drawMtr += g.draw_mtr;
+      drawPcs += g.draw_pcs;
+      drawMt += g.draw_mt;
+      vdiMtr += g.vdi_mtr;
+      vdiPcs += g.vdi_pcs;
+      vdiMt += g.vdi_mt;
+      finishingMtr += g.finishing_mtr;
+      finishingPcs += g.finishing_pcs;
+      finishingMt += g.finishing_mt;
+
       if (!topGroup || g.total_mtr > topGroup.total_mtr) {
         topGroup = g;
       }
@@ -456,6 +504,7 @@ export default function SizeGradeWipReportClient() {
       const exportData = filteredRawRows.map((r, i) => ({
         '#': i + 1,
         'Work Order': r.work_order_no,
+        'Rolling Date': r.rolling_date || '—',
         'Customer': r.customer_name || '—',
         'Route': r.route_code || 'HFS',
         'Size (OD × WT mm)': `${r.od} × ${r.wt}`,
@@ -628,21 +677,25 @@ export default function SizeGradeWipReportClient() {
 
       {/* Filter Toolbar */}
       <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
           {/* Search Size or Grade */}
           <div className="relative lg:col-span-3">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-            <Input
-              type="text"
-              placeholder="Search Size, Grade, WO, Route..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 text-xs h-9"
-            />
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">Search Keywords</label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Input
+                type="text"
+                placeholder="Search Size, Grade, WO, Route..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 text-xs h-9"
+              />
+            </div>
           </div>
 
           {/* Route Dropdown Filter */}
           <div className="lg:col-span-2">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">Process Route</label>
             <Select
               value={selectedRoute}
               onChange={(e) => setSelectedRoute(e.target.value)}
@@ -658,7 +711,8 @@ export default function SizeGradeWipReportClient() {
           </div>
 
           {/* Grade Dropdown */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-2">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">Material Grade</label>
             <Select
               value={selectedGrade}
               onChange={(e) => setSelectedGrade(e.target.value)}
@@ -674,33 +728,64 @@ export default function SizeGradeWipReportClient() {
           </div>
 
           {/* OD Range Filter */}
-          <div className="lg:col-span-2 flex items-center gap-1.5">
-            <Input
-              type="number"
-              placeholder="From OD"
-              value={fromOd}
-              onChange={(e) => setFromOd(e.target.value)}
-              className="text-xs h-9 w-full font-mono"
-            />
-            <span className="text-slate-400 text-xs shrink-0">to</span>
-            <Input
-              type="number"
-              placeholder="To OD"
-              value={toOd}
-              onChange={(e) => setToOd(e.target.value)}
-              className="text-xs h-9 w-full font-mono"
-            />
+          <div className="lg:col-span-2">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">OD Range (mm)</label>
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                placeholder="Min OD"
+                value={fromOd}
+                onChange={(e) => setFromOd(e.target.value)}
+                className="text-xs h-9 w-full font-mono"
+              />
+              <span className="text-slate-400 text-xs shrink-0">-</span>
+              <Input
+                type="number"
+                placeholder="Max OD"
+                value={toOd}
+                onChange={(e) => setToOd(e.target.value)}
+                className="text-xs h-9 w-full font-mono"
+              />
+            </div>
           </div>
 
-          {/* As On Date Filter */}
-          <div className="lg:col-span-2">
-            <Input
-              type="date"
-              title="As On Date"
-              value={asOnDate}
-              onChange={(e) => setAsOnDate(e.target.value)}
-              className="text-xs h-9 font-mono"
-            />
+          {/* Rolling Production Date Range Filter */}
+          <div className="lg:col-span-3">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
+              <span className="flex items-center gap-1 text-blue-900 font-bold">
+                <Calendar className="h-3 w-3 text-blue-600" />
+                Rolling Date Range:
+              </span>
+              {(fromRollingDate || toRollingDate) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFromRollingDate('');
+                    setToRollingDate('');
+                  }}
+                  className="text-[10px] text-blue-600 hover:text-blue-800 underline font-semibold cursor-pointer active:scale-95 transition-transform"
+                >
+                  Clear Date
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <Input
+                type="date"
+                title="From Rolling Date"
+                value={fromRollingDate}
+                onChange={(e) => setFromRollingDate(e.target.value)}
+                className="text-[11px] h-9 font-mono px-1.5 w-full bg-blue-50/30 border-blue-200"
+              />
+              <span className="text-slate-400 text-xs shrink-0">to</span>
+              <Input
+                type="date"
+                title="To Rolling Date"
+                value={toRollingDate}
+                onChange={(e) => setToRollingDate(e.target.value)}
+                className="text-[11px] h-9 font-mono px-1.5 w-full bg-blue-50/30 border-blue-200"
+              />
+            </div>
           </div>
         </div>
 
@@ -881,6 +966,7 @@ export default function SizeGradeWipReportClient() {
                                     <thead className="text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
                                       <tr>
                                         <th className="py-1 px-2">Work Order No</th>
+                                        <th className="py-1 px-2">Rolling Date</th>
                                         <th className="py-1 px-2">Customer</th>
                                         <th className="py-1 px-2">Route</th>
                                         <th className="py-1 px-2">Current Work Center</th>
@@ -893,6 +979,16 @@ export default function SizeGradeWipReportClient() {
                                         <tr key={idx} className="hover:bg-slate-50">
                                           <td className="py-1.5 px-2 font-mono font-bold text-slate-900">
                                             {c.work_order_no}
+                                          </td>
+                                          <td className="py-1.5 px-2 font-mono text-[11px] text-slate-700 whitespace-nowrap">
+                                            {c.rolling_date ? (
+                                              <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-blue-800 font-semibold border border-blue-200">
+                                                <Calendar size={10} className="text-blue-600" />
+                                                {c.rolling_date}
+                                              </span>
+                                            ) : (
+                                              <span className="text-slate-400">—</span>
+                                            )}
                                           </td>
                                           <td className="py-1.5 px-2 text-slate-600 truncate max-w-[200px]">
                                             {c.customer_name || 'Generic Customer'}
@@ -990,6 +1086,7 @@ export default function SizeGradeWipReportClient() {
               <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
                 <tr>
                   <th className="py-2.5 px-3">Work Order #</th>
+                  <th className="py-2.5 px-3">Rolling Date</th>
                   <th className="py-2.5 px-3">Customer</th>
                   <th className="py-2.5 px-3">Route</th>
                   <th className="py-2.5 px-3">Size (OD × WT)</th>
@@ -1004,7 +1101,7 @@ export default function SizeGradeWipReportClient() {
               <tbody className="divide-y divide-slate-200">
                 {filteredRawRows.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-400">
+                    <td colSpan={11} className="py-12 text-center text-slate-400">
                       No active work orders matching filters.
                     </td>
                   </tr>
@@ -1013,6 +1110,16 @@ export default function SizeGradeWipReportClient() {
                     <tr key={i} className="hover:bg-slate-50 transition">
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
                         {r.work_order_no}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700 whitespace-nowrap">
+                        {r.rolling_date ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-blue-800 font-semibold border border-blue-200">
+                            <Calendar size={10} className="text-blue-600" />
+                            {r.rolling_date}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="py-2.5 px-3 text-slate-600 truncate max-w-[160px]">
                         {r.customer_name || 'Generic Customer'}

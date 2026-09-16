@@ -1961,7 +1961,7 @@ export default function RollingPlanForm() {
                     setIsMultiPickerOpen(true);
                   }}
                   disabled={!canManagePlans}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 cursor-pointer shadow-xs"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 cursor-pointer shadow-xs active:scale-[0.97] transition-all duration-150 select-none"
                 >
                   <Plus className="h-3.5 w-3.5 mr-1" />
                   Select Work Orders (Dialog)
@@ -1985,7 +1985,7 @@ export default function RollingPlanForm() {
                     <button
                       type="button"
                       onClick={() => setGroupFilterQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer active:scale-90 transition-transform"
                       aria-label="Clear filter"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -2001,7 +2001,7 @@ export default function RollingPlanForm() {
                     <button
                       type="button"
                       onClick={() => setGroupFilterQuery('')}
-                      className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer active:scale-95 transition-transform"
                     >
                       Reset
                     </button>
@@ -2033,7 +2033,7 @@ export default function RollingPlanForm() {
                   variant="outline"
                   size="sm"
                   onClick={() => setGroupFilterQuery('')}
-                  className="mt-3 cursor-pointer"
+                  className="mt-3 cursor-pointer active:scale-[0.97] transition-all duration-150 font-semibold"
                 >
                   Clear Filter
                 </Button>
@@ -2114,7 +2114,7 @@ export default function RollingPlanForm() {
                               setActiveChildTargetGroupId(group.id);
                             }}
                             disabled={!canManagePlans}
-                            className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md shadow-xs cursor-pointer flex items-center gap-1"
+                            className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md shadow-xs cursor-pointer flex items-center gap-1 active:scale-[0.96] transition-all duration-150 select-none"
                             title="Add child work orders under this work order"
                           >
                             <Plus className="h-3.5 w-3.5" />

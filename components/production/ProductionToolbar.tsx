@@ -65,7 +65,7 @@ export function ProductionToolbar({
               size="sm"
               onClick={onRefresh}
               disabled={loading}
-              className="h-9"
+              className="h-9 active:scale-[0.97] transition-all duration-150 select-none cursor-pointer"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin text-brand-600' : 'text-slate-500'} />
               <span>Refresh</span>
@@ -105,7 +105,7 @@ export function ProductionToolbar({
             variant="outline"
             size="sm"
             onClick={onToggleAllRows}
-            className="text-xs"
+            className="text-xs active:scale-[0.97] transition-all duration-150 select-none cursor-pointer font-semibold"
           >
             {allExpanded ? 'Collapse WIP Flows' : 'Expand WIP Flows'}
           </Button>
