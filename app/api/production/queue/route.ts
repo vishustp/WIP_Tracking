@@ -952,6 +952,10 @@ export async function GET(req: NextRequest) {
         for (const pl of woPlans) {
           try {
             const plParsed = typeof pl.status === "string" ? JSON.parse(pl.status) : pl.status || {};
+            // RULE 2: Child plans are NOT separate rolling plans on the Hot Rolling floor.
+            // Hot Rolling executes only the Master / Released PPC Rolling Plan!
+            if (plParsed?.is_child) continue;
+
             const plLifecycle = plParsed?.lifecycle_status || (plParsed?.issued_at ? "ISSUED" : "DRAFT");
             const plIsIssued = (plLifecycle === "ISSUED" || plLifecycle === "REVISED") && plLifecycle !== "CLOSED" && plLifecycle !== "SHORT_CLOSED";
             if (!plIsIssued) continue;
@@ -963,39 +967,32 @@ export async function GET(req: NextRequest) {
             const plMhAvg = plMhL1 > 0 && plMhL2 > 0 ? (plMhL1 + plMhL2) / 2 : plMhL1 || mhAvgLength;
 
             const isPlMaster = Boolean(plParsed?.is_master && Array.isArray(plParsed?.child_work_orders));
-            const storedPlPcs = Number(
-              plParsed?.planned_pcs ||
-              plParsed?.plan_qty?.nos ||
-              plParsed?.master_planned_pcs ||
-              (isPlMaster ? plParsed?.total_campaign_pcs || plParsed?.total_group_pcs : 0) ||
+
+            let plPlannedMtr = Number(
+              (isPlMaster && Number(plParsed.total_campaign_mtr) > 0 ? Number(plParsed.total_campaign_mtr) : 0) ||
+              pl.planned_qty ||
+              plParsed?.rolling_mtr ||
+              plParsed?.total_group_mtr ||
+              plParsed?.master_planned_mtr ||
               0
             );
 
-            let plPlannedMtr = Number(pl.planned_qty || plParsed?.rolling_mtr || plParsed?.master_planned_mtr || 0);
-            let plPlannedPcs = storedPlPcs > 0 ? storedPlPcs : (plMhAvg > 0 ? Math.round(plPlannedMtr / plMhAvg) : 0);
+            let plPlannedPcs = Number(
+              plParsed?.planned_pcs ||
+              plParsed?.plan_qty?.nos ||
+              (isPlMaster && Number(plParsed.total_campaign_pcs) > 0 ? Number(plParsed.total_campaign_pcs) : 0) ||
+              plParsed?.total_group_pcs ||
+              plParsed?.master_planned_pcs ||
+              0
+            );
+
+            if (plPlannedPcs <= 0 && plMhAvg > 0 && plPlannedMtr > 0) {
+              plPlannedPcs = Math.round(plPlannedMtr / plMhAvg);
+            }
+
             let plEnrichedChildren: any[] | undefined = undefined;
 
             if (isPlMaster) {
-              const mPlannedMtr = Number(plParsed.master_planned_mtr || pl.planned_qty || 0);
-              const cPlannedMtr = (plParsed.child_work_orders || []).reduce(
-                (sum: number, c: any) => sum + Number(c.planned_mtr || 0),
-                0
-              );
-              plPlannedMtr = Number(plParsed.total_campaign_mtr) > 0
-                ? Number(plParsed.total_campaign_mtr)
-                : mPlannedMtr + cPlannedMtr;
-
-              const mPlannedPcs = Number(plParsed.master_planned_pcs || 0);
-              const cPlannedPcs = (plParsed.child_work_orders || []).reduce(
-                (sum: number, c: any) => sum + Number(c.planned_pcs || 0),
-                0
-              );
-              const totalCampaignPcs = Number(plParsed.total_campaign_pcs) > 0
-                ? Number(plParsed.total_campaign_pcs)
-                : mPlannedPcs + cPlannedPcs;
-
-              plPlannedPcs = totalCampaignPcs > 0 ? totalCampaignPcs : (storedPlPcs > 0 ? storedPlPcs : (plMhAvg > 0 ? Math.round(plPlannedMtr / plMhAvg) : 0));
-
               plEnrichedChildren = (plParsed.child_work_orders || []).map((child: any) => {
                 const cId = child.work_order_id || child.id;
                 const cWo = woMap.get(cId);
