@@ -1038,6 +1038,7 @@ export async function GET(req: NextRequest) {
                 revision_no: Number(plParsed?.revision_no || 0),
                 is_master: isPlMaster,
                 child_work_orders: plEnrichedChildren,
+                planned_pcs: plPlannedPcs,
                 campaign_total_mtr: plPlannedMtr,
                 campaign_total_pcs: plPlannedPcs,
                 balance_to_make_mtr: plAvailMtr,

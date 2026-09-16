@@ -38,9 +38,7 @@ export function ProductionQueueRow({
   const availMtr = n(row.balance_to_make_mtr);
   const effAvg = d.avg > 0 ? d.avg : n(row.avg_length) || 6;
   const availPcs =
-    isMhStage && effAvg > 0
-      ? Math.round(availMtr / effAvg)
-      : n(row.balance_to_make_pcs) > 0
+    n(row.balance_to_make_pcs) > 0
       ? Math.round(n(row.balance_to_make_pcs))
       : effAvg > 0
       ? Math.round(availMtr / effAvg)
