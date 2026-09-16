@@ -1,9 +1,9 @@
-// types/index.ts
 export type StageCode =
   | "ROLLING"
   | "HOLLOW_HEAT_TREATMENT"
   | "DRAW"
   | "HEAT_TREATMENT"
+  | "BAND_SAW"
   | "VDI"
   | "FINISHING";
 
@@ -184,6 +184,8 @@ export const STAGES: { code: StageCode; label: string }[] = [
   { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
   { code: "DRAW", label: "Draw" },
   { code: "HEAT_TREATMENT", label: "Heat Treatment" },
+  { code: "BAND_SAW", label: "Band Saw" },
+  { code: "VDI", label: "VDI" },
   { code: "FINISHING", label: "Finishing" },
 ];
 

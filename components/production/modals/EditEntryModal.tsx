@@ -31,7 +31,25 @@ export function EditEntryModal({
   avgLength,
 }: EditEntryModalProps) {
   const isMhStage = editing.stage_code === 'ROLLING' || editing.stage_code === 'HOLLOW_HEAT_TREATMENT';
+  const hasL1L2 = editing.stage_code === 'DRAW' || editing.stage_code === 'HEAT_TREATMENT' || editing.stage_code === 'BAND_SAW' || editing.stage_code === 'VDI' || editing.stage_code === 'FINISHING';
   const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(editing.remarks);
+
+  const l1Match = (editing.remarks || '').match(/\[L1:([0-9.]+)\]/i);
+  const l2Match = (editing.remarks || '').match(/\[L2:([0-9.]+)\]/i);
+  const initialL1 = l1Match ? l1Match[1] : (editing.l1 ? String(editing.l1) : '');
+  const initialL2 = l2Match ? l2Match[1] : (editing.l2 ? String(editing.l2) : '');
+
+  const [editL1, setEditL1] = useState(initialL1);
+  const [editL2, setEditL2] = useState(initialL2);
+
+  const effAvgLength = (() => {
+    const nL1 = Number(editL1);
+    const nL2 = Number(editL2);
+    if (nL1 > 0 && nL2 > 0) return (nL1 + nL2) / 2;
+    if (nL1 > 0) return nL1;
+    if (nL2 > 0) return nL2;
+    return avgLength > 0 ? avgLength : 6.0;
+  })();
 
   const effOutPcs =
     parsedPcs != null
@@ -80,7 +98,7 @@ export function EditEntryModal({
 
   const changeEditPcs = (value: string) => {
     setEditPcs(value);
-    const mtrVal = value === '' ? '' : String(mtrFromPcs(n(value), avgLength).toFixed(2).replace(/\.?0+$/, ''));
+    const mtrVal = value === '' ? '' : String(mtrFromPcs(n(value), effAvgLength).toFixed(2).replace(/\.?0+$/, ''));
     if (!isFinishing) setEditMtr(mtrVal);
 
     const pPcs = n(value);
@@ -88,13 +106,13 @@ export function EditEntryModal({
     const okPcs = Math.max(0, pPcs - rPcs);
     setEditHtcPcs(value === '' ? '' : String(okPcs));
     if (!isFinishing) {
-      setEditHtcMtr(okPcs > 0 ? String(mtrFromPcs(okPcs, avgLength).toFixed(2).replace(/\.?0+$/, '')) : '0');
+      setEditHtcMtr(okPcs > 0 ? String(mtrFromPcs(okPcs, effAvgLength).toFixed(2).replace(/\.?0+$/, '')) : '0');
     }
   };
 
   const changeEditRejectionPcs = (value: string) => {
     setEditRejectionPcs(value);
-    const rejMtrVal = value === '' ? '' : String(mtrFromPcs(n(value), avgLength).toFixed(2).replace(/\.?0+$/, ''));
+    const rejMtrVal = value === '' ? '' : String(mtrFromPcs(n(value), effAvgLength).toFixed(2).replace(/\.?0+$/, ''));
     if (!isFinishing) setEditRejectionMtr(rejMtrVal);
 
     const pPcs = n(editPcs);
@@ -102,7 +120,7 @@ export function EditEntryModal({
     const okPcs = Math.max(0, pPcs - rPcs);
     setEditHtcPcs(editPcs === '' ? '' : String(okPcs));
     if (!isFinishing) {
-      setEditHtcMtr(okPcs > 0 ? String(mtrFromPcs(okPcs, avgLength).toFixed(2).replace(/\.?0+$/, '')) : '0');
+      setEditHtcMtr(okPcs > 0 ? String(mtrFromPcs(okPcs, effAvgLength).toFixed(2).replace(/\.?0+$/, '')) : '0');
     }
   };
 
@@ -111,7 +129,7 @@ export function EditEntryModal({
     if (value === '') {
       setEditHtcMtr('');
     } else {
-      setEditHtcMtr(String(mtrFromPcs(n(value), avgLength).toFixed(2).replace(/\.?0+$/, '')));
+      setEditHtcMtr(String(mtrFromPcs(n(value), effAvgLength).toFixed(2).replace(/\.?0+$/, '')));
     }
   };
 
@@ -119,13 +137,13 @@ export function EditEntryModal({
     e.preventDefault();
     setLocalError('');
 
-    const mtr = isFinishing ? n(editMtr) : editPcs.trim() !== '' ? mtrFromPcs(n(editPcs), avgLength) : n(editMtr);
+    const mtr = isFinishing ? n(editMtr) : editPcs.trim() !== '' ? mtrFromPcs(n(editPcs), effAvgLength) : n(editMtr);
     const rejection = isFinishing
       ? n(editRejectionMtr)
       : editRejectionPcs.trim() !== ''
-      ? mtrFromPcs(n(editRejectionPcs), avgLength)
+      ? mtrFromPcs(n(editRejectionPcs), effAvgLength)
       : n(editRejectionMtr);
-    const htc = editHtcPcs.trim() !== '' ? mtrFromPcs(n(editHtcPcs), avgLength) : n(editHtcMtr);
+    const htc = editing.stage_code === 'ROLLING' ? (editHtcPcs.trim() !== '' ? mtrFromPcs(n(editHtcPcs), effAvgLength) : n(editHtcMtr)) : 0;
 
     if (!editDate) {
       setLocalError('Process date is required.');
@@ -146,6 +164,10 @@ export function EditEntryModal({
 
     setSaving(true);
     try {
+      const finalRemarks = hasL1L2
+        ? `${cleanRemarks} [L1:${editL1 || 0}] [L2:${editL2 || 0}]`.trim()
+        : editRemarks;
+
       await onSave({
         editDate,
         editMtr: mtr,
@@ -155,7 +177,7 @@ export function EditEntryModal({
         editHtcMtr: editing.stage_code === 'ROLLING' ? htc : 0,
         editHtcPcs,
         editHeatLot,
-        editRemarks,
+        editRemarks: finalRemarks,
       });
     } catch (err: unknown) {
       const msg =
@@ -206,6 +228,32 @@ export function EditEntryModal({
               required
             />
           </div>
+
+          {hasL1L2 && (
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Cut / Pipe Length (L1 - L2 in meters)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="L1 (Min)"
+                  value={editL1}
+                  onChange={(e) => setEditL1(e.target.value)}
+                  className="w-1/2 rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-xs font-bold text-slate-900 shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="L2 (Max)"
+                  value={editL2}
+                  onChange={(e) => setEditL2(e.target.value)}
+                  className="w-1/2 rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-xs font-bold text-slate-900 shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Production (PCS & MTR) *</label>

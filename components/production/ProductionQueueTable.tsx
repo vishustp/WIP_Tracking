@@ -20,7 +20,7 @@ export interface ProductionQueueTableProps {
     key: string,
     field: keyof Pick<
       Row,
-      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks'
+      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks' | 'input_l1' | 'input_l2'
     >,
     value: string
   ) => void;
@@ -51,6 +51,7 @@ export function ProductionQueueTable({
   onSave,
 }: ProductionQueueTableProps) {
   const stageLabel = STAGES.find((x) => x.code === stage)?.label || stage;
+  const hasL1L2 = stage === 'DRAW' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
@@ -85,7 +86,7 @@ export function ProductionQueueTable({
             )}
           </div>
 
-          {(stage === 'DRAW' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'HEAT_TREATMENT') && (
+          {(stage === 'DRAW' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW') && (
             <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
               <Crown size={12} /> Master Consolidated
             </span>
@@ -139,6 +140,11 @@ export function ProductionQueueTable({
                 </th>
                 <th className="py-2.5 px-2.5 text-center font-bold text-slate-700 whitespace-nowrap">Route</th>
                 <th className="py-2.5 px-3 sm:px-4 text-left font-bold text-slate-700 whitespace-nowrap">Balance</th>
+                {hasL1L2 && (
+                  <th className="py-2.5 px-3 text-center font-bold text-slate-800 bg-[#fef9c3] border-x border-amber-200 whitespace-nowrap">
+                    Length (L1 / L2)
+                  </th>
+                )}
                 <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#e0f2fe] border-x border-sky-100 whitespace-nowrap">
                   Production*
                 </th>

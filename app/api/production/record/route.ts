@@ -54,7 +54,9 @@ export async function POST(req: NextRequest) {
         const finalRemarks = attachPcsToRemarks(
           item.remarks,
           Number(item.output_pcs || 0) || null,
-          Number(item.rejection_pcs || 0) || null
+          Number(item.rejection_pcs || 0) || null,
+          item.input_l1 || null,
+          item.input_l2 || null
         );
         return {
           ...item,
@@ -70,22 +72,6 @@ export async function POST(req: NextRequest) {
       const outPcs = Number(item.output_pcs || 0);
       const htcMtr = Number(item.htc_ok || 0);
       const htcPcs = Number(item.htc_ok_pcs || 0);
-
-      // Rule: Standard 4-Meter Scrap Rule
-      if (outPcs > 0 && outMtr > 0) {
-        const avgLen = outMtr / outPcs;
-        if (avgLen < 3.999) {
-          return NextResponse.json(
-            { error: `Standard 4-Meter Scrap Rule: Output piece length (${avgLen.toFixed(2)} Mtr/pc) is under 4.0 meters. Off-cut scrap cannot be recorded as prime production.` },
-            { status: 400 }
-          );
-        }
-      } else if (outPcs <= 0 && outMtr > 0 && outMtr < 3.999) {
-        return NextResponse.json(
-          { error: `Standard 4-Meter Scrap Rule: Output length (${outMtr.toFixed(2)} Mtr) is under 4.0 meters. Off-cut scrap cannot be recorded as prime production.` },
-          { status: 400 }
-        );
-      }
 
       // Rule: Rolling HTC OK strictly required
       if (item.stage_code === 'ROLLING' && (outMtr > 0 || outPcs > 0)) {

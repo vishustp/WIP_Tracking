@@ -25,6 +25,7 @@ const STAGE_DISPLAY_NAMES: Record<StageCode, string> = {
   HOLLOW_HEAT_TREATMENT: "HOLLOW HT",
   DRAW: "DRAW BENCH",
   HEAT_TREATMENT: "HEAT TREATMENT",
+  BAND_SAW: "BAND SAW",
   VDI: "VDI / QC",
   FINISHING: "FINISHING",
 };
@@ -34,12 +35,14 @@ export function WipSummaryCards({
   stage,
   setStage,
 }: WipSummaryCardsProps) {
-  // Production Entry stages in sequential order (VDI has its own dedicated inspection form)
+  // Production Entry stages in sequential order
   const orderedStages: StageCode[] = [
     "ROLLING",
     "HOLLOW_HEAT_TREATMENT",
     "DRAW",
     "HEAT_TREATMENT",
+    "BAND_SAW",
+    "VDI",
     "FINISHING",
   ];
 
@@ -51,7 +54,7 @@ export function WipSummaryCards({
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
         {orderedStages.map((stgCode) => {
           const wc = workCenterSummary.find((x) => x.stage_code === stgCode) || {
             label: STAGE_DISPLAY_NAMES[stgCode] || stgCode,

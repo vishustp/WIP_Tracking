@@ -28,7 +28,7 @@ import {
 import { toast } from 'sonner';
 import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
 
-type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'VDI' | 'FINISHING';
+type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING';
 
 interface ContributingOrder {
   work_order_id: string;
@@ -65,6 +65,10 @@ interface SizeGradeGroup {
   ht_mtr: number;
   ht_pcs: number;
   ht_mt: number;
+  // Band Saw
+  band_saw_mtr: number;
+  band_saw_pcs: number;
+  band_saw_mt: number;
   // VDI / QC
   vdi_mtr: number;
   vdi_pcs: number;
@@ -240,6 +244,7 @@ export default function SizeGradeWipReportClient() {
           hhtPcs: number;
           drawPcs: number;
           htPcs: number;
+          bandSawPcs: number;
           vdiPcs: number;
           finPcs: number;
           htcOkPcs: number;
@@ -252,6 +257,7 @@ export default function SizeGradeWipReportClient() {
             hhtPcs: 0,
             drawPcs: 0,
             htPcs: 0,
+            bandSawPcs: 0,
             vdiPcs: 0,
             finPcs: 0,
             htcOkPcs: 0,
@@ -269,6 +275,8 @@ export default function SizeGradeWipReportClient() {
             entry.drawPcs += pcs;
           } else if (stage === 'HEAT_TREATMENT') {
             entry.htPcs += pcs;
+          } else if (stage === 'BAND_SAW') {
+            entry.bandSawPcs += pcs;
           } else if (stage === 'VDI') {
             entry.vdiPcs += pcs;
           } else if (stage === 'FINISHING' || stage === 'CUTTING') {
@@ -298,7 +306,7 @@ export default function SizeGradeWipReportClient() {
           const orderWt = Number(wo?.size_wt || r.size_wt || r.wt || 0);
           const orderAvgLen = Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : (wo?.l1 || wo?.l2 || r.l1 || r.l2 || 6.0));
 
-          const ledger = woPieceLedger.get(r.work_order_id) || { rolledPcs: 0, hhtPcs: 0, drawPcs: 0, htPcs: 0, vdiPcs: 0, finPcs: 0, htcOkPcs: 0 };
+          const ledger = woPieceLedger.get(r.work_order_id) || { rolledPcs: 0, hhtPcs: 0, drawPcs: 0, htPcs: 0, bandSawPcs: 0, vdiPcs: 0, finPcs: 0, htcOkPcs: 0 };
 
           let calculatedPcs = 0;
           let calculatedMtr = 0;
@@ -326,8 +334,15 @@ export default function SizeGradeWipReportClient() {
               calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
               activeOd = orderOd;
               activeWt = orderWt;
+            } else if (stage === 'BAND_SAW') {
+              const drawnCut = ledger.bandSawPcs > 0 ? (mult > 0 ? Math.ceil(ledger.bandSawPcs / mult) : ledger.bandSawPcs) : 0;
+              calculatedPcs = Math.max(0, ledger.htPcs - drawnCut);
+              calculatedMtr = calculatedPcs * orderAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
+              activeOd = orderOd;
+              activeWt = orderWt;
             } else if (stage === 'VDI') {
-              const incomingVdi = ledger.htPcs * mult;
+              const incomingVdi = ledger.bandSawPcs > 0 ? ledger.bandSawPcs : (ledger.htPcs > 0 ? ledger.htPcs * mult : 0);
               calculatedPcs = Math.max(0, incomingVdi - ledger.vdiPcs - ledger.finPcs);
               calculatedMtr = calculatedPcs * orderAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
@@ -349,9 +364,17 @@ export default function SizeGradeWipReportClient() {
               calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
               activeOd = mhOd;
               activeWt = mhWt;
+            } else if (stage === 'BAND_SAW') {
+              const htcNos = ledger.htcOkPcs > 0 ? ledger.htcOkPcs : (ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs);
+              const rolledCut = ledger.bandSawPcs > 0 ? (mult > 0 ? Math.ceil(ledger.bandSawPcs / mult) : ledger.bandSawPcs) : 0;
+              calculatedPcs = Math.max(0, htcNos - rolledCut);
+              calculatedMtr = calculatedPcs * orderAvgLen;
+              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
+              activeOd = orderOd;
+              activeWt = orderWt;
             } else if (stage === 'VDI') {
               const htcNos = ledger.htcOkPcs > 0 ? ledger.htcOkPcs : (ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs);
-              const incomingVdi = htcNos * mult;
+              const incomingVdi = ledger.bandSawPcs > 0 ? ledger.bandSawPcs : (htcNos > 0 ? htcNos * mult : 0);
               calculatedPcs = Math.max(0, incomingVdi - ledger.vdiPcs - ledger.finPcs);
               calculatedMtr = calculatedPcs * orderAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
@@ -367,7 +390,7 @@ export default function SizeGradeWipReportClient() {
             }
           }
 
-          const hasLedger = ledger.rolledPcs > 0 || ledger.drawPcs > 0 || ledger.htPcs > 0 || ledger.vdiPcs > 0 || ledger.finPcs > 0;
+          const hasLedger = ledger.rolledPcs > 0 || ledger.drawPcs > 0 || ledger.htPcs > 0 || ledger.bandSawPcs > 0 || ledger.vdiPcs > 0 || ledger.finPcs > 0;
           const finalPcs = hasLedger ? calculatedPcs : Number(r.current_wip_pcs || 0);
           const finalMtr = hasLedger ? calculatedMtr : Number(r.current_wip || 0);
           const finalMt = hasLedger ? calculatedMt : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : mtFromMtr(finalMtr, activeOd, activeWt));
@@ -495,6 +518,9 @@ export default function SizeGradeWipReportClient() {
           ht_mtr: 0,
           ht_pcs: 0,
           ht_mt: 0,
+          band_saw_mtr: 0,
+          band_saw_pcs: 0,
+          band_saw_mt: 0,
           vdi_mtr: 0,
           vdi_pcs: 0,
           vdi_mt: 0,
@@ -532,6 +558,10 @@ export default function SizeGradeWipReportClient() {
         group.ht_mtr += mtr;
         group.ht_pcs += pcs;
         group.ht_mt += mt;
+      } else if (stage === 'BAND_SAW') {
+        group.band_saw_mtr += mtr;
+        group.band_saw_pcs += pcs;
+        group.band_saw_mt += mt;
       } else if (stage === 'VDI') {
         group.vdi_mtr += mtr;
         group.vdi_pcs += pcs;
@@ -581,6 +611,12 @@ export default function SizeGradeWipReportClient() {
     let drawMtr = 0;
     let drawPcs = 0;
     let drawMt = 0;
+    let htMtr = 0;
+    let htPcs = 0;
+    let htMt = 0;
+    let bandSawMtr = 0;
+    let bandSawPcs = 0;
+    let bandSawMt = 0;
     let vdiMtr = 0;
     let vdiPcs = 0;
     let vdiMt = 0;
@@ -599,6 +635,12 @@ export default function SizeGradeWipReportClient() {
       drawMtr += g.draw_mtr;
       drawPcs += g.draw_pcs;
       drawMt += g.draw_mt;
+      htMtr += g.ht_mtr;
+      htPcs += g.ht_pcs;
+      htMt += g.ht_mt;
+      bandSawMtr += g.band_saw_mtr;
+      bandSawPcs += g.band_saw_pcs;
+      bandSawMt += g.band_saw_mt;
       vdiMtr += g.vdi_mtr;
       vdiPcs += g.vdi_pcs;
       vdiMt += g.vdi_mt;
@@ -622,6 +664,12 @@ export default function SizeGradeWipReportClient() {
       drawMtr,
       drawPcs,
       drawMt,
+      htMtr,
+      htPcs,
+      htMt,
+      bandSawMtr,
+      bandSawPcs,
+      bandSawMt,
       vdiMtr,
       vdiPcs,
       vdiMt,
@@ -1025,7 +1073,7 @@ export default function SizeGradeWipReportClient() {
       {viewMode === 'matrix' && (
         <div className="rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
           <div className="overflow-auto max-h-[70vh] relative">
-            <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
+            <table className="w-full text-left text-xs border-collapse min-w-[1200px]">
               <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
                 <tr>
                   <th className="py-2.5 px-3 w-10 text-center"></th>
@@ -1043,6 +1091,9 @@ export default function SizeGradeWipReportClient() {
                   <th className="py-2.5 px-3 text-right bg-orange-50/60 border-r border-orange-200 text-orange-900">
                     Final Heat Treatment
                   </th>
+                  <th className="py-2.5 px-3 text-right bg-yellow-50/60 border-r border-yellow-200 text-yellow-900">
+                    Band Saw Cutting
+                  </th>
                   <th className="py-2.5 px-3 text-right bg-purple-50/60 border-r border-purple-200 text-purple-900">
                     VDI / QC Inspection
                   </th>
@@ -1058,14 +1109,14 @@ export default function SizeGradeWipReportClient() {
               <tbody className="divide-y divide-slate-200">
                 {loading && matrixGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-400">
+                    <td colSpan={11} className="py-12 text-center text-slate-400">
                       <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                       Aggregating OD, WT and Grade station-wise WIP matrix...
                     </td>
                   </tr>
                 ) : matrixGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-400">
+                    <td colSpan={11} className="py-12 text-center text-slate-400">
                       <CheckCircle2 className="h-8 w-8 text-slate-300 mx-auto mb-2" />
                       <div className="font-semibold text-slate-700">No matching WIP inventory found</div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
@@ -1122,6 +1173,11 @@ export default function SizeGradeWipReportClient() {
                             {formatCell(g.ht_mtr, g.ht_pcs, g.ht_mt)}
                           </td>
 
+                          {/* Band Saw */}
+                          <td className="py-2.5 px-3 text-right font-mono font-bold bg-yellow-50/20 border-r border-yellow-100 text-yellow-900">
+                            {formatCell(g.band_saw_mtr, g.band_saw_pcs, g.band_saw_mt)}
+                          </td>
+
                           {/* VDI */}
                           <td className="py-2.5 px-3 text-right font-mono font-bold bg-purple-50/20 border-r border-purple-100 text-purple-900">
                             {formatCell(g.vdi_mtr, g.vdi_pcs, g.vdi_mt)}
@@ -1141,7 +1197,7 @@ export default function SizeGradeWipReportClient() {
                         {/* Inline Contributing Work Orders Sub-Table */}
                         {isExpanded && (
                           <tr className="bg-slate-50/80">
-                            <td colSpan={10} className="py-3 px-6 border-y border-slate-200">
+                            <td colSpan={11} className="py-3 px-6 border-y border-slate-200">
                               <div className="rounded border border-slate-300 bg-white p-3 shadow-2xs space-y-2">
                                 <div className="text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-100 pb-1.5">
                                   <div className="flex items-center gap-1.5">
@@ -1236,11 +1292,10 @@ export default function SizeGradeWipReportClient() {
                       {formatCell(kpis.drawMtr, kpis.drawPcs, kpis.drawMt)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-orange-950 bg-orange-100/50 border-r border-orange-200">
-                      {formatCell(
-                        matrixGroups.reduce((s, g) => s + g.ht_mtr, 0),
-                        matrixGroups.reduce((s, g) => s + g.ht_pcs, 0),
-                        matrixGroups.reduce((s, g) => s + g.ht_mt, 0)
-                      )}
+                      {formatCell(kpis.htMtr, kpis.htPcs, kpis.htMt)}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-black text-yellow-950 bg-yellow-100/50 border-r border-yellow-200">
+                      {formatCell(kpis.bandSawMtr, kpis.bandSawPcs, kpis.bandSawMt)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-black text-purple-950 bg-purple-100/50 border-r border-purple-200">
                       {formatCell(kpis.vdiMtr, kpis.vdiPcs, kpis.vdiMt)}

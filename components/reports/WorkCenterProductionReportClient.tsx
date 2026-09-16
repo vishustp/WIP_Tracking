@@ -65,6 +65,14 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
     color: 'border-rose-500 text-rose-700 bg-rose-50',
   },
   {
+    code: 'BAND_SAW',
+    label: 'Band Saw Cutting',
+    shortLabel: 'Band Saw',
+    description: 'Precision pipe cutting into customer finished lengths prior to inspection.',
+    icon: Layers,
+    color: 'border-yellow-500 text-yellow-700 bg-yellow-50',
+  },
+  {
     code: 'VDI',
     label: 'STR/Cutting/Hydro/UT',
     shortLabel: 'VDI / QC',

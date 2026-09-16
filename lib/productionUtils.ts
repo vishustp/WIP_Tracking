@@ -103,8 +103,15 @@ export const calc = (row: {
   const l2 = Number(row.l2 || 0);
   const orderAvg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : (l1 || l2 || 0);
 
+  // User input L1 and L2 average
+  const inputL1 = Number(row.input_l1 || 0);
+  const inputL2 = Number(row.input_l2 || 0);
+  const userEnteredAvg = inputL1 > 0 && inputL2 > 0 ? (inputL1 + inputL2) / 2 : (inputL1 || inputL2 || 0);
+
   const effectiveAvg =
-    isMhStage && effectiveMhAvg > 0
+    userEnteredAvg > 0
+      ? userEnteredAvg
+      : isMhStage && effectiveMhAvg > 0
       ? effectiveMhAvg
       : orderAvg > 0
       ? orderAvg
@@ -207,13 +214,26 @@ export const calculateYieldWithScrap = (
 export function attachPcsToRemarks(
   remarks: string | null | undefined,
   pcs?: number | null,
-  rejPcs?: number | null
+  rejPcs?: number | null,
+  l1?: number | string | null,
+  l2?: number | string | null
 ): string {
-  const clean = (remarks || "")
+  let clean = (remarks || "")
     .replace(/\[PCS:\d+\]/gi, "")
     .replace(/\[REJ_PCS:\d+\]/gi, "")
+    .replace(/\[L1:[^\]]+\]/gi, "")
+    .replace(/\[L2:[^\]]+\]/gi, "")
+    .replace(/\[AVG:[^\]]+\]/gi, "")
     .trim();
   const tags: string[] = [];
+  const nL1 = Number(l1);
+  const nL2 = Number(l2);
+  if (Number.isFinite(nL1) && nL1 > 0) {
+    tags.push(`[L1:${nL1}]`);
+  }
+  if (Number.isFinite(nL2) && nL2 > 0) {
+    tags.push(`[L2:${nL2}]`);
+  }
   if (pcs != null && !isNaN(Number(pcs)) && Number(pcs) > 0) {
     tags.push(`[PCS:${Math.round(Number(pcs))}]`);
   }

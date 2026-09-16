@@ -12,7 +12,7 @@ export interface ProductionQueueRowProps {
     key: string,
     field: keyof Pick<
       Row,
-      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks'
+      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks' | 'input_l1' | 'input_l2'
     >,
     value: string
   ) => void;
@@ -32,6 +32,7 @@ export function ProductionQueueRow({
   const d = calc({ ...row, stage_code: stage });
   const isRollingStage = stage === 'ROLLING';
   const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
+  const hasL1L2 = stage === 'DRAW' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
   const stageOd = isMhStage && row.mh_od ? Number(row.mh_od) : Number(row.od || 0);
   const stageWt = isMhStage && row.mh_wt ? Number(row.mh_wt) : Number(row.wl || 0);
 
@@ -112,6 +113,53 @@ export function ProductionQueueRow({
         </div>
       </td>
 
+      {/* Length Inputs (L1 / L2) for Draw, HT, Band Saw, VDI, Finishing */}
+      {hasL1L2 && (
+        <td className="py-2.5 px-2 sm:px-3 align-middle bg-[#fefce8]/60 border-x border-amber-100">
+          <div className="flex items-center justify-center gap-1">
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder={row.l1 ? `${row.l1}` : 'L1'}
+              disabled={!isAllowed}
+              value={row.input_l1 ?? ''}
+              onChange={(e) => {
+                onUpdateRow(key, 'input_l1', e.target.value);
+                const l1Val = Number(e.target.value);
+                const l2Val = Number(row.input_l2 || e.target.value);
+                const avgVal = l1Val > 0 && l2Val > 0 ? (l1Val + l2Val) / 2 : l1Val;
+                if (row.pcs && avgVal > 0) {
+                  onUpdateRow(key, 'mtr', (Number(row.pcs) * avgVal).toFixed(2));
+                }
+              }}
+              className="w-14 rounded border border-amber-300 bg-white px-1.5 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500 disabled:bg-slate-100 disabled:text-slate-400"
+              title="L1 (Length Min / Cut Length in meters)"
+            />
+            <span className="text-slate-400 text-xs">-</span>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              placeholder={row.l2 ? `${row.l2}` : 'L2'}
+              disabled={!isAllowed}
+              value={row.input_l2 ?? ''}
+              onChange={(e) => {
+                onUpdateRow(key, 'input_l2', e.target.value);
+                const l2Val = Number(e.target.value);
+                const l1Val = Number(row.input_l1 || e.target.value);
+                const avgVal = l1Val > 0 && l2Val > 0 ? (l1Val + l2Val) / 2 : l2Val;
+                if (row.pcs && avgVal > 0) {
+                  onUpdateRow(key, 'mtr', (Number(row.pcs) * avgVal).toFixed(2));
+                }
+              }}
+              className="w-14 rounded border border-amber-300 bg-white px-1.5 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500 disabled:bg-slate-100 disabled:text-slate-400"
+              title="L2 (Length Max / Cut Length in meters)"
+            />
+          </div>
+        </td>
+      )}
+
       {/* Production Inputs (PCS & MTR) */}
       <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#f0f9ff]/60 border-x border-sky-100">
         <div className="flex items-center justify-center gap-1.5">
@@ -122,7 +170,19 @@ export function ProductionQueueRow({
             placeholder="PCS"
             disabled={!isAllowed}
             value={row.pcs}
-            onChange={(e) => onUpdateRow(key, 'pcs', e.target.value)}
+            onChange={(e) => {
+              onUpdateRow(key, 'pcs', e.target.value);
+              const numPcs = Number(e.target.value);
+              const inputL1 = Number(row.input_l1);
+              const inputL2 = Number(row.input_l2);
+              const userAvg = inputL1 > 0 && inputL2 > 0 ? (inputL1 + inputL2) / 2 : (inputL1 || inputL2 || 0);
+              const avgLen = userAvg > 0 ? userAvg : d.avg > 0 ? d.avg : 6.0;
+              if (numPcs > 0 && avgLen > 0) {
+                onUpdateRow(key, 'mtr', (numPcs * avgLen).toFixed(2));
+              } else if (!e.target.value) {
+                onUpdateRow(key, 'mtr', '');
+              }
+            }}
             className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-slate-100 disabled:text-slate-400"
           />
           <input

@@ -143,6 +143,8 @@ const STAGES_ORDER = [
   { code: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment', short: 'HTC', bg: 'bg-amber-50 text-amber-900 border-amber-200' },
   { code: 'DRAW', label: 'Draw Bench', short: 'DRAW', bg: 'bg-indigo-50 text-indigo-900 border-indigo-200' },
   { code: 'HEAT_TREATMENT', label: 'Heat Treatment', short: 'HT', bg: 'bg-orange-50 text-orange-900 border-orange-200' },
+  { code: 'BAND_SAW', label: 'Band Saw', short: 'SAW', bg: 'bg-yellow-50 text-yellow-900 border-yellow-200' },
+  { code: 'VDI', label: 'VDI / QC', short: 'VDI', bg: 'bg-purple-50 text-purple-900 border-purple-200' },
   { code: 'FINISHING', label: 'Finishing Line', short: 'FINISH', bg: 'bg-emerald-50 text-emerald-900 border-emerald-200' },
 ];
 

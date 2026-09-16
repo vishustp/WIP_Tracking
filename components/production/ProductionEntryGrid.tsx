@@ -358,6 +358,7 @@ export default function ProductionEntryGrid() {
       },
       DRAW: { label: 'Draw Bench', stage_code: 'DRAW', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HEAT_TREATMENT: { label: 'Heat Treatment', stage_code: 'HEAT_TREATMENT', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      BAND_SAW: { label: 'Band Saw', stage_code: 'BAND_SAW', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       VDI: { label: 'VDI / QC Inspection', stage_code: 'VDI', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       FINISHING: { label: 'Finishing Line', stage_code: 'FINISHING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
     };
@@ -369,6 +370,7 @@ export default function ProductionEntryGrid() {
       if (raw === 'ROLLING' || raw.includes('ROLL')) return 'ROLLING';
       if (raw === 'DRAW' || raw.includes('DRAW')) return 'DRAW';
       if (raw === 'HEAT_TREATMENT' || raw.includes('HEAT')) return 'HEAT_TREATMENT';
+      if (raw === 'BAND_SAW' || raw.includes('BAND') || raw.includes('SAW') || raw.includes('CUT')) return 'BAND_SAW';
       if (raw === 'VDI' || raw.includes('VDI') || raw.includes('INSPECT')) return 'VDI';
       if (raw === 'FINISHING' || raw.includes('FINISH')) return 'FINISHING';
       return null;
@@ -509,7 +511,7 @@ export default function ProductionEntryGrid() {
           rejection_pcs: d.rejectionPcs || null,
           htc_ok_pcs: stage === 'ROLLING' ? d.htcPcs || null : null,
           heat_lot_no: r.heat_lot_no || null,
-          remarks: attachPcsToRemarks(r.remarks, d.pcs, d.rejectionPcs) || null,
+          remarks: attachPcsToRemarks(r.remarks, d.pcs, d.rejectionPcs, r.input_l1, r.input_l2) || null,
         };
       });
 
