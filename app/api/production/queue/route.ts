@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       admin.from("process_stages").select("id, stage_code, stage_name"),
       admin
         .from("production_logs")
-        .select("id, work_order_id, rolling_plan_id, stage_id, process_route_id, process_date, input_qty, output_qty, rejection_qty, htc_ok, heat_lot_no, remarks")
+        .select("id, work_order_id, rolling_plan_id, stage_id, process_route_id, process_date, input_qty, output_qty, rejection_qty, htc_ok, heat_lot_no, remarks, created_at")
         .order("created_at", { ascending: true })
         .limit(50000),
       admin
