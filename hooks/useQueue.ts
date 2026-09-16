@@ -105,10 +105,8 @@ export function useQueue(stage: StageCode) {
 
           const planNoStr = p.plan_no ? String(p.plan_no).trim() : '';
           const storedPlanPcs = Number(
-            parsed?.planned_pcs ||
-            parsed?.plan_qty?.nos ||
             parsed?.master_planned_pcs ||
-            (parsed?.is_master ? parsed?.total_campaign_pcs || parsed?.total_group_pcs : 0) ||
+            parsed?.planned_pcs ||
             0
           );
 

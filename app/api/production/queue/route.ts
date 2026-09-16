@@ -105,10 +105,8 @@ export async function GET(req: NextRequest) {
 
         const planNoStr = p.plan_no ? String(p.plan_no).trim() : '';
         const storedPlanPcs = Number(
-          parsed?.planned_pcs ||
-          parsed?.plan_qty?.nos ||
           parsed?.master_planned_pcs ||
-          (parsed?.is_master ? parsed?.total_campaign_pcs || parsed?.total_group_pcs : 0) ||
+          parsed?.planned_pcs ||
           0
         );
 
@@ -988,20 +986,16 @@ export async function GET(req: NextRequest) {
             const isPlMaster = Boolean(plParsed?.is_master && Array.isArray(plParsed?.child_work_orders));
 
             let plPlannedMtr = Number(
-              (isPlMaster && Number(plParsed.total_campaign_mtr) > 0 ? Number(plParsed.total_campaign_mtr) : 0) ||
               pl.planned_qty ||
-              plParsed?.rolling_mtr ||
-              plParsed?.total_group_mtr ||
               plParsed?.master_planned_mtr ||
+              plParsed?.planned_mtr ||
+              plParsed?.rolling_mtr ||
               0
             );
 
             let plPlannedPcs = Number(
-              plParsed?.planned_pcs ||
-              plParsed?.plan_qty?.nos ||
-              (isPlMaster && Number(plParsed.total_campaign_pcs) > 0 ? Number(plParsed.total_campaign_pcs) : 0) ||
-              plParsed?.total_group_pcs ||
               plParsed?.master_planned_pcs ||
+              plParsed?.planned_pcs ||
               0
             );
 
