@@ -17,9 +17,10 @@ export function ProductionWipBreakdown({
   stage,
   onToggleRow,
 }: ProductionWipBreakdownProps) {
-  const activeExpandedRows = rows.filter(
-    (r) => expandedRows[`${r.work_order_id}|${r.route_id}`]
-  );
+  const getRowKey = (r: Row) =>
+    r.plan_id ? `${r.work_order_id}|${r.route_id}|${r.plan_id}` : `${r.work_order_id}|${r.route_id}`;
+
+  const activeExpandedRows = rows.filter((r) => expandedRows[getRowKey(r)]);
 
   if (activeExpandedRows.length === 0) return null;
 
@@ -33,12 +34,17 @@ export function ProductionWipBreakdown({
       </div>
 
       {activeExpandedRows.map((r) => {
-        const key = `${r.work_order_id}|${r.route_id}`;
+        const key = getRowKey(r);
         return (
           <div key={key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-bold text-slate-900 text-sm">{r.work_order_no}</span>
+                {r.plan_no && (
+                  <span className="rounded bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-xs font-bold text-indigo-700 font-mono">
+                    PLAN: {r.plan_no}
+                  </span>
+                )}
                 <span className="text-xs text-slate-500 font-mono">({r.customer_name || 'Direct'})</span>
                 <span className="rounded bg-sky-50 border border-sky-200 px-2 py-0.5 text-xs font-bold text-sky-700">
                   Route: {r.route_code}

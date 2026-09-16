@@ -138,11 +138,6 @@ export function ProductionQueueTable({
                   Order Information
                 </th>
                 <th className="py-2.5 px-2.5 text-center font-bold text-slate-700 whitespace-nowrap">Route</th>
-                {(stage === 'DRAW' || stage === 'HEAT_TREATMENT') && (
-                  <th className="py-2.5 px-3 text-center font-bold text-indigo-900 bg-indigo-50/70 border-r border-indigo-100 whitespace-nowrap">
-                    Length (L1 / L2 m)
-                  </th>
-                )}
                 <th className="py-2.5 px-3 sm:px-4 text-left font-bold text-slate-700 whitespace-nowrap">Balance</th>
                 <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#e0f2fe] border-x border-sky-100 whitespace-nowrap">
                   Production*
@@ -162,7 +157,7 @@ export function ProductionQueueTable({
             <tbody className="divide-y divide-slate-100">
               {filteredRows.map((r) => (
                 <ProductionQueueRow
-                  key={`${r.work_order_id}|${r.route_id}`}
+                  key={r.plan_id ? `${r.work_order_id}|${r.route_id}|${r.plan_id}` : `${r.work_order_id}|${r.route_id}`}
                   row={r}
                   stage={stage}
                   isAllowed={isAllowed}

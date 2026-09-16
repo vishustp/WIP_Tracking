@@ -136,6 +136,7 @@ export async function POST(req: NextRequest) {
             work_order_id: item.work_order_id,
             stage_id: stageId,
             process_route_id: item.route_id,
+            rolling_plan_id: item.rolling_plan_id || null,
             process_date: processDate,
             input_qty: inputMtr,
             output_qty: outputMtr,

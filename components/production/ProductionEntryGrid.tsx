@@ -202,12 +202,13 @@ export default function ProductionEntryGrid() {
   }, [rows, woFilter]);
 
   // Toggle all rows expansion
+  // Toggle all rows expansion
   const toggleAllRows = () => {
     const targetRows = filteredRows.length > 0 ? filteredRows : rows;
-    const allExpanded = targetRows.every((r) => expandedRows[`${r.work_order_id}|${r.route_id}`]);
+    const allExpanded = targetRows.every((r) => expandedRows[r.plan_id ? `${r.work_order_id}|${r.route_id}|${r.plan_id}` : `${r.work_order_id}|${r.route_id}`]);
     const newState: Record<string, boolean> = { ...expandedRows };
     targetRows.forEach((r) => {
-      newState[`${r.work_order_id}|${r.route_id}`] = !allExpanded;
+      newState[r.plan_id ? `${r.work_order_id}|${r.route_id}|${r.plan_id}` : `${r.work_order_id}|${r.route_id}`] = !allExpanded;
     });
     setExpandedRows(newState);
   };
@@ -217,13 +218,14 @@ export default function ProductionEntryGrid() {
     key: string,
     field: keyof Pick<
       Row,
-      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks' | 'input_l1' | 'input_l2'
+      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks'
     >,
     value: string
   ) => {
     setRows((current) =>
       current.map((r) => {
-        if (`${r.work_order_id}|${r.route_id}` !== key) return r;
+        const rKey = r.plan_id ? `${r.work_order_id}|${r.route_id}|${r.plan_id}` : `${r.work_order_id}|${r.route_id}`;
+        if (rKey !== key) return r;
 
         // Rule 5: Rolling Mtr and MT calculated based on MH dimensions if applicable
         const mhL1 = Number(r.mh_l1 || 0);
@@ -231,21 +233,17 @@ export default function ProductionEntryGrid() {
         const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || 0;
         const effectiveMhAvg = Number(r.mh_avg_length || 0) > 0 ? Number(r.mh_avg_length) : computedMhAvg;
 
-        const hasUserL1 = (field === 'input_l1' ? value : r.input_l1) !== undefined && String(field === 'input_l1' ? value : r.input_l1).trim() !== '';
-        const hasUserL2 = (field === 'input_l2' ? value : r.input_l2) !== undefined && String(field === 'input_l2' ? value : r.input_l2).trim() !== '';
-        const curL1 = hasUserL1 ? Number(field === 'input_l1' ? value : r.input_l1) : Number(r.l1 || 0);
-        const curL2 = hasUserL2 ? Number(field === 'input_l2' ? value : r.input_l2) : Number(r.l2 || 0);
-        const userAvg = curL1 > 0 && curL2 > 0 ? (curL1 + curL2) / 2 : (curL1 || curL2 || 0);
+        const orderL1 = Number(r.l1 || 0);
+        const orderL2 = Number(r.l2 || 0);
+        const orderAvg = orderL1 > 0 && orderL2 > 0 ? (orderL1 + orderL2) / 2 : orderL1 || orderL2 || 0;
 
         const effectiveAvg =
           (stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT') && effectiveMhAvg > 0
             ? effectiveMhAvg
-            : (hasUserL1 || hasUserL2) && userAvg > 0
-            ? userAvg
+            : orderAvg > 0
+            ? orderAvg
             : n(r.avg_length) > 0
             ? n(r.avg_length)
-            : userAvg > 0
-            ? userAvg
             : 6.0;
 
         // For Finishing: calculate direct numbers without mandatory length multiplication
@@ -283,82 +281,88 @@ export default function ProductionEntryGrid() {
 
         const isRollingStage = stage === 'ROLLING';
 
-        if (field === 'input_l1' || field === 'input_l2') {
-          const updatedMtr = n(r.pcs) > 0 ? String(mtrFromPcs(n(r.pcs), effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : r.mtr;
-          const updatedRejMtr = n(r.rejection_pcs) > 0 ? String(mtrFromPcs(n(r.rejection_pcs), effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : r.rejection_mtr;
+        if (field === 'pcs') {
+          const mtrVal = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
+          const currentPcs = n(value);
+          const currentRejPcs = n(r.rejection_pcs);
+          const autoHtcPcs = Math.max(0, currentPcs - currentRejPcs);
+          const autoHtcMtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : '0';
+
           return {
             ...r,
-            [field]: value,
-            mtr: updatedMtr,
-            rejection_mtr: updatedRejMtr,
+            pcs: value,
+            mtr: mtrVal,
+            htc_ok_pcs: isRollingStage ? (value === '' ? '' : String(autoHtcPcs)) : r.htc_ok_pcs,
+            htc_ok_mtr: isRollingStage ? (value === '' ? '' : autoHtcMtr) : r.htc_ok_mtr,
           };
         }
 
-        if (field === 'pcs') {
-          const mtr = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
-          const newPcs = n(value);
-          const rejPcs = n(r.rejection_pcs);
-          const autoOkPcs = Math.max(0, newPcs - rejPcs);
-          const autoOkMtr =
-            autoOkPcs > 0 ? String(mtrFromPcs(autoOkPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : newPcs > 0 ? '0' : '';
-          const extra: Record<string, string> = isRollingStage
-            ? {
-                htc_ok_pcs: value === '' ? '' : String(autoOkPcs),
-                htc_ok_mtr: value === '' ? '' : autoOkMtr,
-              }
-            : {
-                htc_ok_pcs: '',
-                htc_ok_mtr: '',
-              };
-          return { ...r, pcs: value, mtr, ...extra };
-        }
         if (field === 'mtr') {
-          const extra: Record<string, string> = {};
-          if (isRollingStage && n(r.pcs) <= 0) {
-            const newMtr = n(value);
-            const rejMtr = n(r.rejection_mtr);
-            const autoOkMtr = Math.max(0, newMtr - rejMtr);
-            extra.htc_ok_mtr = value === '' ? '' : autoOkMtr > 0 ? String(autoOkMtr.toFixed(2).replace(/\.?0+$/, '')) : '0';
-          }
-          return { ...r, mtr: value, ...extra };
+          const pcsVal = value === '' ? '' : String(effectiveAvg > 0 ? Math.round(n(value) / effectiveAvg) : 0);
+          const currentPcs = n(pcsVal);
+          const currentRejPcs = n(r.rejection_pcs);
+          const autoHtcPcs = Math.max(0, currentPcs - currentRejPcs);
+          const autoHtcMtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : '0';
+
+          return {
+            ...r,
+            mtr: value,
+            pcs: pcsVal,
+            htc_ok_pcs: isRollingStage ? (value === '' ? '' : String(autoHtcPcs)) : r.htc_ok_pcs,
+            htc_ok_mtr: isRollingStage ? (value === '' ? '' : autoHtcMtr) : r.htc_ok_mtr,
+          };
         }
+
         if (field === 'rejection_pcs') {
-          const rejection_mtr =
-            value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
-          const prodPcs = n(r.pcs);
-          const rejPcs = n(value);
-          const autoOkPcs = Math.max(0, prodPcs - rejPcs);
-          const autoOkMtr =
-            autoOkPcs > 0 ? String(mtrFromPcs(autoOkPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : prodPcs > 0 ? '0' : '';
-          const extra: Record<string, string> = isRollingStage
-            ? {
-                htc_ok_pcs: r.pcs === '' ? '' : String(autoOkPcs),
-                htc_ok_mtr: r.pcs === '' ? '' : autoOkMtr,
-              }
-            : {
-                htc_ok_pcs: '',
-                htc_ok_mtr: '',
-              };
-          return { ...r, rejection_pcs: value, rejection_mtr, ...extra };
+          const rejMtrVal = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
+          const currentPcs = n(r.pcs);
+          const currentRejPcs = n(value);
+          const autoHtcPcs = Math.max(0, currentPcs - currentRejPcs);
+          const autoHtcMtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : '0';
+
+          return {
+            ...r,
+            rejection_pcs: value,
+            rejection_mtr: rejMtrVal,
+            htc_ok_pcs: isRollingStage ? (r.pcs === '' ? '' : String(autoHtcPcs)) : r.htc_ok_pcs,
+            htc_ok_mtr: isRollingStage ? (r.pcs === '' ? '' : autoHtcMtr) : r.htc_ok_mtr,
+          };
         }
+
         if (field === 'rejection_mtr') {
-          const extra: Record<string, string> = {};
-          if (isRollingStage && n(r.pcs) <= 0) {
-            const prodMtr = n(r.mtr);
-            const rejMtr = n(value);
-            const autoOkMtr = Math.max(0, prodMtr - rejMtr);
-            extra.htc_ok_mtr = r.mtr === '' ? '' : autoOkMtr > 0 ? String(autoOkMtr.toFixed(2).replace(/\.?0+$/, '')) : '0';
-          }
-          return { ...r, rejection_mtr: value, ...extra };
+          const rejPcsVal = value === '' ? '' : String(effectiveAvg > 0 ? Math.round(n(value) / effectiveAvg) : 0);
+          const currentPcs = n(r.pcs);
+          const currentRejPcs = n(rejPcsVal);
+          const autoHtcPcs = Math.max(0, currentPcs - currentRejPcs);
+          const autoHtcMtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : '0';
+
+          return {
+            ...r,
+            rejection_mtr: value,
+            rejection_pcs: rejPcsVal,
+            htc_ok_pcs: isRollingStage ? (r.pcs === '' ? '' : String(autoHtcPcs)) : r.htc_ok_pcs,
+            htc_ok_mtr: isRollingStage ? (r.pcs === '' ? '' : autoHtcMtr) : r.htc_ok_mtr,
+          };
         }
+
         if (field === 'htc_ok_pcs') {
-          const htc_ok_mtr =
-            value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
-          return { ...r, htc_ok_pcs: value, htc_ok_mtr };
+          const htcMtrVal = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
+          return {
+            ...r,
+            htc_ok_pcs: value,
+            htc_ok_mtr: htcMtrVal,
+          };
         }
+
         if (field === 'htc_ok_mtr') {
-          return { ...r, htc_ok_mtr: value };
+          const htcPcsVal = value === '' ? '' : String(effectiveAvg > 0 ? Math.round(n(value) / effectiveAvg) : 0);
+          return {
+            ...r,
+            htc_ok_mtr: value,
+            htc_ok_pcs: htcPcsVal,
+          };
         }
+
         return { ...r, [field]: value };
       })
     );
@@ -548,6 +552,7 @@ export default function ProductionEntryGrid() {
           work_order_id: r.work_order_id,
           route_id: r.route_id,
           stage_code: r.stage_code,
+          rolling_plan_id: r.plan_id || null,
           input_qty: d.mtr,
           output_qty: d.mtr,
           rejection_qty: d.rejectionMtr,
@@ -556,13 +561,7 @@ export default function ProductionEntryGrid() {
           rejection_pcs: d.rejectionPcs || null,
           htc_ok_pcs: stage === 'ROLLING' ? d.htcPcs || null : null,
           heat_lot_no: r.heat_lot_no || null,
-          remarks:
-            attachCustomLengthToRemarks(
-              attachPcsToRemarks(r.remarks, d.pcs, d.rejectionPcs),
-              r.input_l1 ?? (r.l1 ? String(r.l1) : ''),
-              r.input_l2 ?? (r.l2 ? String(r.l2) : ''),
-              d.avg
-            ) || null,
+          remarks: attachPcsToRemarks(r.remarks, d.pcs, d.rejectionPcs) || null,
         };
       });
 

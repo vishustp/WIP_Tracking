@@ -79,8 +79,6 @@ export const calc = (row: {
 }) => {
   const sc = (row.stage_code || "").toUpperCase();
   const isMhStage = sc === "ROLLING" || sc === "HOLLOW_HEAT_TREATMENT";
-  const isDraw = sc === "DRAW";
-  const isHeatTreatment = sc === "HEAT_TREATMENT";
   
   // Rule 5: Rolling and Hollow Heat Treatment Mtr and MT will be calculated based on MH OD, MH WT and MH Length
   const mhL1 = Number(row.mh_l1 || 0);
@@ -88,24 +86,18 @@ export const calc = (row: {
   const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || 0);
   const effectiveMhAvg = Number(row.mh_avg_length || 0) > 0 ? Number(row.mh_avg_length) : computedMhAvg;
 
-  // For Draw and HT: User can input custom L1 and L2 for new entries.
-  // If user inputs input_l1 / input_l2, compute effective average from user input.
-  // For existing rows / theoretical values, fall back to theoretical avg_length / (l1+l2)/2.
-  const hasUserL1 = row.input_l1 !== undefined && row.input_l1 !== null && String(row.input_l1).trim() !== "";
-  const hasUserL2 = row.input_l2 !== undefined && row.input_l2 !== null && String(row.input_l2).trim() !== "";
-  const userL1 = hasUserL1 ? Number(row.input_l1) : Number(row.l1 || 0);
-  const userL2 = hasUserL2 ? Number(row.input_l2) : Number(row.l2 || 0);
-  const userComputedAvg = userL1 > 0 && userL2 > 0 ? (userL1 + userL2) / 2 : (userL1 || userL2 || 0);
+  // Order L1 and L2 average
+  const l1 = Number(row.l1 || 0);
+  const l2 = Number(row.l2 || 0);
+  const orderAvg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : (l1 || l2 || 0);
 
   const effectiveAvg =
     isMhStage && effectiveMhAvg > 0
       ? effectiveMhAvg
-      : (hasUserL1 || hasUserL2) && userComputedAvg > 0
-      ? userComputedAvg
+      : orderAvg > 0
+      ? orderAvg
       : n(row.avg_length) > 0
       ? n(row.avg_length)
-      : userComputedAvg > 0
-      ? userComputedAvg
       : 6.0;
 
   const effectiveOd =

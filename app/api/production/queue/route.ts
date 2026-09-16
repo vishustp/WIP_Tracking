@@ -23,14 +23,14 @@ export async function GET(req: NextRequest) {
     const [plansRes, stagesRes, logsRes, woRes, routesRes, qcRes, divsRes] = await Promise.all([
       admin
         .from("rolling_plans")
-        .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2, multiple")
+        .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2, multiple, created_at")
         .not("status", "is", null)
         .order("created_at", { ascending: false })
         .limit(300),
       admin.from("process_stages").select("id, stage_code, stage_name"),
       admin
         .from("production_logs")
-        .select("id, work_order_id, stage_id, process_route_id, process_date, input_qty, output_qty, rejection_qty, htc_ok, heat_lot_no, remarks")
+        .select("id, work_order_id, rolling_plan_id, stage_id, process_route_id, process_date, input_qty, output_qty, rejection_qty, htc_ok, heat_lot_no, remarks")
         .order("created_at", { ascending: true })
         .limit(50000),
       admin
@@ -896,6 +896,124 @@ export async function GET(req: NextRequest) {
       };
 
       allCalculatedRows.set(woId, { queueRows, pipeline });
+
+      // Generate individual plan rows for ROLLING stage queue
+      const woPlans = plans
+        .filter((p) => p.work_order_id === woId)
+        .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+
+      if (woPlans.length > 0) {
+        const sumDirectLogged = woPlans.reduce((acc, pl) => {
+          const plLogs = rollLogs.filter((l) => l.rolling_plan_id === pl.id);
+          return acc + sumQty(plLogs, "output_qty") + sumQty(plLogs, "rejection_qty");
+        }, 0);
+        let unassignedRollLogged = Math.max(0, rollTotalLogged - sumDirectLogged);
+
+        for (const pl of woPlans) {
+          try {
+            const plParsed = typeof pl.status === "string" ? JSON.parse(pl.status) : pl.status || {};
+            const plLifecycle = plParsed?.lifecycle_status || (plParsed?.issued_at ? "ISSUED" : "DRAFT");
+            const plIsIssued = (plLifecycle === "ISSUED" || plLifecycle === "REVISED") && plLifecycle !== "CLOSED";
+            if (!plIsIssued) continue;
+
+            const plMhOd = Number(pl.mh_od || plParsed?.mh_od || plParsed?.cust_od || plParsed?.sm?.cust_od || plParsed?.sizing_mill?.cust_od || mhOd);
+            const plMhWt = Number(pl.mh_wt || plParsed?.mh_wt || plParsed?.cust_wt || plParsed?.sm?.rolling_wt || plParsed?.sm?.cust_wt || plParsed?.sizing_mill?.rolling_wt || mhWt);
+            const plMhL1 = Number(pl.mh_l1 || plParsed?.mh_l1 || plParsed?.sm?.sm_len || mhL1);
+            const plMhL2 = Number(pl.mh_l2 || plParsed?.mh_l2 || plParsed?.sm?.sm_len || mhL2);
+            const plMhAvg = plMhL1 > 0 && plMhL2 > 0 ? (plMhL1 + plMhL2) / 2 : plMhL1 || mhAvgLength;
+
+            const isPlMaster = Boolean(plParsed?.is_master && Array.isArray(plParsed?.child_work_orders));
+            let plPlannedMtr = Number(pl.planned_qty || 0);
+            let plPlannedPcs = plMhAvg > 0 ? Math.round(plPlannedMtr / plMhAvg) : 0;
+            let plEnrichedChildren: any[] | undefined = undefined;
+
+            if (isPlMaster) {
+              const mPlannedMtr = Number(plParsed.master_planned_mtr || pl.planned_qty || 0);
+              const cPlannedMtr = (plParsed.child_work_orders || []).reduce(
+                (sum: number, c: any) => sum + Number(c.planned_mtr || 0),
+                0
+              );
+              plPlannedMtr = Number(plParsed.total_campaign_mtr) > 0
+                ? Number(plParsed.total_campaign_mtr)
+                : mPlannedMtr + cPlannedMtr;
+
+              const mPlannedPcs = Number(plParsed.master_planned_pcs || 0);
+              const cPlannedPcs = (plParsed.child_work_orders || []).reduce(
+                (sum: number, c: any) => sum + Number(c.planned_pcs || 0),
+                0
+              );
+              plPlannedPcs = Number(plParsed.total_campaign_pcs) > 0
+                ? Number(plParsed.total_campaign_pcs)
+                : mPlannedPcs + cPlannedPcs;
+
+              plEnrichedChildren = (plParsed.child_work_orders || []).map((child: any) => {
+                const cId = child.work_order_id || child.id;
+                const cWo = woMap.get(cId);
+                const cL1 = Number(child.l1 || cWo?.l1 || 6);
+                const cL2 = Number(child.l2 || cWo?.l2 || 6.5);
+                const cAvg = cL1 > 0 && cL2 > 0 ? (cL1 + cL2) / 2 : cL1 || 6.25;
+                const cOd = Number(child.size_od || cWo?.size_od || 0);
+                const cWt = Number(child.size_wt || cWo?.size_wt || 0);
+                const cTotalMtr = Number(child.planned_mtr || cWo?.ordered_qty_mtr || cWo?.ordered_qty || 0);
+                const cTotalPcs = Number(child.planned_pcs || cWo?.ordered_qty_pcs || 0) || (cAvg > 0 ? Math.round(cTotalMtr / cAvg) : 0);
+                return {
+                  ...child,
+                  work_order_id: cId,
+                  id: cId,
+                  work_order_no: child.work_order_no || cWo?.work_order_no || "Child Order",
+                  customer_name: child.customer_name || cWo?.customer_name || null,
+                  grade: child.grade || cWo?.grade || null,
+                  size_od: cOd,
+                  size_wt: cWt,
+                  l1: cL1,
+                  l2: cL2,
+                  total_order_pcs: cTotalPcs,
+                  total_order_mtr: cTotalMtr,
+                  total_order_mt: Number(child.planned_mt || cWo?.ordered_qty_mt || 0) || mtFromMtr(cTotalMtr, cOd, cWt),
+                };
+              });
+            }
+
+            const directPlLogs = rollLogs.filter((l) => l.rolling_plan_id === pl.id);
+            const directLogged = sumQty(directPlLogs, "output_qty") + sumQty(directPlLogs, "rejection_qty");
+            const unassignedForPl = Math.min(Math.max(0, plPlannedMtr - directLogged), unassignedRollLogged);
+            unassignedRollLogged = Math.max(0, unassignedRollLogged - unassignedForPl);
+            const plLoggedTotal = directLogged + unassignedForPl;
+
+            const plAvailMtr = Math.max(0, plPlannedMtr - plLoggedTotal);
+            const plAvailPcs = plMhAvg > 0 ? Math.round(plAvailMtr / plMhAvg) : 0;
+            const plAvailMt = mtFromMtr(plAvailMtr, plMhOd, plMhWt);
+
+            if (plAvailMtr >= 1.0 || plAvailPcs >= 1) {
+              rollingPlanRows.push({
+                ...baseRowData,
+                stage_code: "ROLLING",
+                plan_id: pl.id,
+                plan_no: pl.plan_no,
+                master_plan_no: pl.plan_no,
+                lifecycle_status: plLifecycle,
+                revision_no: Number(plParsed?.revision_no || 0),
+                is_master: isPlMaster,
+                child_work_orders: plEnrichedChildren,
+                campaign_total_mtr: plPlannedMtr,
+                campaign_total_pcs: plPlannedPcs,
+                balance_to_make_mtr: plAvailMtr,
+                balance_to_make_pcs: plAvailPcs,
+                balance_to_make_mt: plAvailMt,
+                mh_od: plMhOd,
+                mh_wt: plMhWt,
+                mh_l1: plMhL1,
+                mh_l2: plMhL2,
+                mh_avg_length: plMhAvg,
+                max_allowed_mtr: null,
+                max_allowed_pcs: null,
+                feeder_source_label: `Rolling Plan: ${pl.plan_no}`,
+                feeder_stage_code: "ROLLING_PLAN",
+              });
+            }
+          } catch {}
+        }
+      }
     }
 
     // Process Child Work Orders for Finishing stage
@@ -1016,13 +1134,29 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Sync Rolling Mill summary with individual plan balances
+    if (rollingPlanRows.length > 0) {
+      workCenterSummary.ROLLING.availMtr = rollingPlanRows.reduce((sum, r) => sum + Number(r.balance_to_make_mtr || 0), 0);
+      workCenterSummary.ROLLING.availPcs = rollingPlanRows.reduce((sum, r) => sum + Number(r.balance_to_make_pcs || 0), 0);
+      workCenterSummary.ROLLING.availMt = rollingPlanRows.reduce((sum, r) => sum + Number(r.balance_to_make_mt || 0), 0);
+      workCenterSummary.ROLLING.count = rollingPlanRows.length;
+    }
+
     // Select the appropriate rows for the requested stage
-    // (Universal Rule: Filter out any work order whose available balance is less than 1 (Qty < 1 Pc or < 1.0 Mtr))
+    // (Universal Rule: Filter out any work order/plan whose available balance is less than 1 (Qty < 1 Pc or < 1.0 Mtr))
     const selectedRows: Row[] = [];
-    for (const { queueRows } of allCalculatedRows.values()) {
-      const row = queueRows[targetStage];
-      if (row && (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0)) {
-        selectedRows.push(row);
+    if (targetStage === "ROLLING") {
+      selectedRows.push(
+        ...rollingPlanRows.filter(
+          (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+        )
+      );
+    } else {
+      for (const { queueRows } of allCalculatedRows.values()) {
+        const row = queueRows[targetStage];
+        if (row && (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0)) {
+          selectedRows.push(row);
+        }
       }
     }
 
