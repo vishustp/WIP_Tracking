@@ -327,8 +327,7 @@ export default function SizeGradeWipReportClient() {
               activeOd = orderOd;
               activeWt = orderWt;
             } else if (stage === 'VDI') {
-              const htSource = ledger.htPcs > 0 ? ledger.htPcs : ledger.drawPcs;
-              const incomingVdi = htSource * mult;
+              const incomingVdi = ledger.htPcs * mult;
               calculatedPcs = Math.max(0, incomingVdi - ledger.vdiPcs - ledger.finPcs);
               calculatedMtr = calculatedPcs * orderAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
