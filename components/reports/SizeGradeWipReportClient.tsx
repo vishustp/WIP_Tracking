@@ -317,7 +317,7 @@ export default function SizeGradeWipReportClient() {
 
       return true;
     });
-  }, [rawWipRows, selectedRoute, selectedGrade, fromOd, toOd, search]);
+  }, [rawWipRows, selectedRoute, selectedGrade, fromOd, toOd, search, fromRollingDate, toRollingDate]);
 
   // Aggregate into Size & Grade Matrix
   const matrixGroups = useMemo(() => {

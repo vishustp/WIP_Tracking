@@ -303,6 +303,8 @@ export async function GET(req: NextRequest) {
     const allCalculatedRows: Map<string, { queueRows: Record<StageCode, Row | null>; pipeline: WorkCenterWipInfo[] }> =
       new Map();
 
+    const rollingPlanRows: Row[] = [];
+
     // Collect all candidate master / standalone work orders
     const candidateWoIds = new Set<string>();
     plans.forEach((p) => {
