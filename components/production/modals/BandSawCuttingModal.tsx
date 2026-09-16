@@ -272,7 +272,7 @@ export function BandSawCuttingModal({
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl" title="Band Saw Pipe Cutting & Multi-Length Station">
+    <Modal onClose={onClose} maxWidth="4xl" title="Band Saw Pipe Cutting & Multi-Length Station">
       <div className="space-y-6">
         {/* Work Order Information Banner */}
         <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/90 via-blue-50/70 to-slate-50 p-4.5 shadow-2xs">
