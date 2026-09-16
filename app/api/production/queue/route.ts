@@ -272,14 +272,30 @@ export async function GET(req: NextRequest) {
             mParsed = typeof masterPlan?.status === 'string' ? JSON.parse(masterPlan.status) : masterPlan?.status || {};
           } catch {}
 
+          const childInMaster = Array.isArray(mParsed?.child_work_orders)
+            ? mParsed.child_work_orders.find((c: any) => (c.work_order_id || c.id) === p.work_order_id)
+            : null;
+
+          const childPlannedMtr = Number(
+            childInMaster?.planned_mtr ||
+            parsed.planned_mtr ||
+            p.planned_qty ||
+            0
+          );
+          const childPlannedPcs = Number(
+            childInMaster?.planned_pcs ||
+            parsed.planned_pcs ||
+            (childInMaster as any)?.pcs ||
+            0
+          );
+
           childWoMap.set(p.work_order_id, {
             work_order_id: p.work_order_id,
             master_wo_id: parsed.master_wo_id,
             master_wo_no: parsed.master_wo_no,
             master_plan_no: parsed.master_plan_no,
-            // RULE 2: For Child Plan Rolling plan Qty separately will Not be issued. Child plan will use Master Plan's Rolling Qty where required.
-            planned_mtr: Number(mParsed?.total_campaign_mtr || masterPlan?.planned_qty || p.planned_qty || 0),
-            planned_pcs: Number(mParsed?.total_campaign_pcs || (masterPlan as any)?.planned_pcs || 0),
+            planned_mtr: childPlannedMtr,
+            planned_pcs: childPlannedPcs,
           });
         }
       } catch {
@@ -1076,16 +1092,18 @@ export async function GET(req: NextRequest) {
       const childFinOutMtr = sumQty(childFinLogs, "output_qty");
       const childFinRejMtr = sumQty(childFinLogs, "rejection_qty");
       const childPlannedMtr = Number(child.planned_mtr || childWo?.balance_qty_mtr || 0);
+      const l1 = Number(child.l1 || childWo?.l1 || 6);
+      const l2 = Number(child.l2 || childWo?.l2 || 6.5);
+      const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6.25;
+      const childPlannedPcs = Number(child.planned_pcs || childWo?.ordered_qty_pcs || (avgLength > 0 ? Math.round(childPlannedMtr / avgLength) : 0));
 
       // Remaining to finish for this child order
       const remainingTargetMtr = Math.max(0, childPlannedMtr - childFinOutMtr - childFinRejMtr);
       // Available WIP is bounded by upstream finishing available stock
       const childAvailMtr = Math.min(remainingTargetMtr, masterFinishingAvail);
-
-      const l1 = Number(child.l1 || childWo?.l1 || 6);
-      const l2 = Number(child.l2 || childWo?.l2 || 6.5);
-      const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6.25;
-      const childAvailPcs = avgLength > 0 ? Math.round(childAvailMtr / avgLength) : 0;
+      const childAvailPcs = (childFinOutMtr <= 0 && childFinRejMtr <= 0 && childPlannedPcs > 0)
+        ? childPlannedPcs
+        : (avgLength > 0 ? Math.round(childAvailMtr / avgLength) : 0);
 
       if (childAvailPcs >= 1 || childAvailMtr >= 1.0) {
         const od = Number(child.size_od || childWo?.size_od || 0);

@@ -763,8 +763,10 @@ export function useQueue(stage: StageCode) {
 
               const l1 = Number(child.l1 || r.l1 || 6);
               const l2 = Number(child.l2 || r.l2 || 6);
-              const avgLen = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6;
-              const remainingPcs = avgLen > 0 ? Math.round(remainingMtr / avgLen) : 0;
+              const childPlannedPcs = Number(child.planned_pcs || 0);
+              const remainingPcs = childFinishedMtr <= 0 && childPlannedPcs > 0
+                ? childPlannedPcs
+                : (avgLen > 0 ? Math.round(remainingMtr / avgLen) : 0);
 
               const od = Number(child.size_od || r.od || 0);
               const wt = Number(child.size_wt || r.wl || 0);
