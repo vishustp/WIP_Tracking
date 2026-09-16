@@ -37,13 +37,16 @@ export function Modal({
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const initialFocusDone = useRef(false);
 
   // Handle ESC key and focus trap
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (closeOnEscape && e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        onCloseRef.current?.();
         return;
       }
 
@@ -76,22 +79,26 @@ export function Modal({
 
     document.addEventListener("keydown", handleKeyDown);
 
-    // Initial focus on first interactive element or close button
-    const timer = setTimeout(() => {
-      if (modalRef.current) {
-        const firstFocusable = modalRef.current.querySelector<HTMLElement>(
-          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])'
-        );
-        firstFocusable?.focus();
-      }
-    }, 50);
+    // Initial focus on first interactive element or close button ONLY once on mount
+    let timer: NodeJS.Timeout | undefined;
+    if (!initialFocusDone.current) {
+      initialFocusDone.current = true;
+      timer = setTimeout(() => {
+        if (modalRef.current) {
+          const firstFocusable = modalRef.current.querySelector<HTMLElement>(
+            'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])'
+          );
+          firstFocusable?.focus();
+        }
+      }, 50);
+    }
 
     return () => {
       document.body.style.overflow = originalOverflow;
       document.removeEventListener("keydown", handleKeyDown);
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
     };
-  }, [closeOnEscape, onClose]);
+  }, [closeOnEscape]);
 
   return (
     <div

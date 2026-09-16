@@ -122,28 +122,25 @@ export const calc = (row: {
 
   const isFinishing = (row.stage_code || "").toUpperCase() === "FINISHING";
 
-  // RULE: For Finishing, DO NOT calculate PCS or MTR based on length or MTR.
-  // Both PCS and MTR are entered directly. Only MT is calculated based on Size and MTR.
-  // For other stages: Nos cannot change based on Mtr, only Mtr will change based on Nos.
-  const hasPcs = row.pcs !== undefined && row.pcs !== null && row.pcs.trim() !== "";
-  const hasMtr = row.mtr !== undefined && row.mtr !== null && row.mtr.trim() !== "";
-  const pcs = isFinishing
-    ? (hasPcs ? Math.round(n(row.pcs)) : 0)
-    : (hasPcs ? Math.round(n(row.pcs)) : (hasMtr && avg > 0 ? pcsFromMtr(n(row.mtr), avg) : 0));
+  const hasPcs = row.pcs !== undefined && row.pcs !== null && String(row.pcs).trim() !== "";
+  const hasMtr = row.mtr !== undefined && row.mtr !== null && String(row.mtr).trim() !== "";
+  const pcs = hasPcs
+    ? Math.round(n(row.pcs))
+    : (hasMtr && avg > 0 ? pcsFromMtr(n(row.mtr), avg) : 0);
   const calculatedMtr = mtrFromPcs(pcs, avg);
-  const mtr = isFinishing
-    ? (hasMtr ? Number(n(row.mtr).toFixed(2)) : 0)
-    : (hasMtr ? Number(n(row.mtr).toFixed(2)) : calculatedMtr);
+  const mtr = hasMtr
+    ? Number(n(row.mtr).toFixed(2))
+    : calculatedMtr;
 
-  const hasRejPcs = row.rejection_pcs !== undefined && row.rejection_pcs !== null && row.rejection_pcs.trim() !== "";
-  const hasRejMtr = row.rejection_mtr !== undefined && row.rejection_mtr !== null && row.rejection_mtr.trim() !== "";
-  const rejectionPcs = isFinishing
-    ? (hasRejPcs ? Math.round(n(row.rejection_pcs)) : 0)
-    : (hasRejPcs ? Math.round(n(row.rejection_pcs)) : (hasRejMtr && avg > 0 ? pcsFromMtr(n(row.rejection_mtr), avg) : 0));
+  const hasRejPcs = row.rejection_pcs !== undefined && row.rejection_pcs !== null && String(row.rejection_pcs).trim() !== "";
+  const hasRejMtr = row.rejection_mtr !== undefined && row.rejection_mtr !== null && String(row.rejection_mtr).trim() !== "";
+  const rejectionPcs = hasRejPcs
+    ? Math.round(n(row.rejection_pcs))
+    : (hasRejMtr && avg > 0 ? pcsFromMtr(n(row.rejection_mtr), avg) : 0);
   const calculatedRejMtr = mtrFromPcs(rejectionPcs, avg);
-  const rejectionMtr = isFinishing
-    ? (hasRejMtr ? Number(n(row.rejection_mtr).toFixed(2)) : 0)
-    : (hasRejMtr ? Number(n(row.rejection_mtr).toFixed(2)) : calculatedRejMtr);
+  const rejectionMtr = hasRejMtr
+    ? Number(n(row.rejection_mtr).toFixed(2))
+    : calculatedRejMtr;
 
   const isRolling = sc === "ROLLING" || !sc;
   const hasHtcPcs = isRolling && row.htc_ok_pcs !== undefined && row.htc_ok_pcs !== null && String(row.htc_ok_pcs).trim() !== "";

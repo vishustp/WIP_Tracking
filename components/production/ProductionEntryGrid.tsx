@@ -227,7 +227,7 @@ export default function ProductionEntryGrid() {
         const rKey = r.plan_id ? `${r.work_order_id}|${r.route_id}|${r.plan_id}` : `${r.work_order_id}|${r.route_id}`;
         if (rKey !== key) return r;
 
-        // Rule 5: Rolling Mtr and MT calculated based on MH dimensions if applicable
+        // Rolling Mtr and MT calculated based on MH dimensions if applicable
         const mhL1 = Number(r.mh_l1 || 0);
         const mhL2 = Number(r.mh_l2 || 0);
         const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || 0;
@@ -246,47 +246,14 @@ export default function ProductionEntryGrid() {
             ? n(r.avg_length)
             : 6.0;
 
-        // For Finishing: calculate direct numbers without mandatory length multiplication
-        if (stage === 'FINISHING') {
-          if (field === 'pcs') {
-            return {
-              ...r,
-              pcs: value,
-              htc_ok_pcs: '',
-            };
-          }
-          if (field === 'mtr') {
-            return {
-              ...r,
-              mtr: value,
-              htc_ok_mtr: '',
-            };
-          }
-          if (field === 'rejection_pcs') {
-            return {
-              ...r,
-              rejection_pcs: value,
-              htc_ok_pcs: '',
-            };
-          }
-          if (field === 'rejection_mtr') {
-            return {
-              ...r,
-              rejection_mtr: value,
-              htc_ok_mtr: '',
-            };
-          }
-          return { ...r, [field]: value };
-        }
-
         const isRollingStage = stage === 'ROLLING';
 
         if (field === 'pcs') {
-          const mtrVal = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
+          const mtrVal = value === '' ? '' : String(Number(mtrFromPcs(n(value), effectiveAvg).toFixed(2)));
           const currentPcs = n(value);
           const currentRejPcs = n(r.rejection_pcs);
           const autoHtcPcs = Math.max(0, currentPcs - currentRejPcs);
-          const autoHtcMtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : '0';
+          const autoHtcMtr = autoHtcPcs > 0 ? String(Number(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2))) : '0';
 
           return {
             ...r,
@@ -298,27 +265,19 @@ export default function ProductionEntryGrid() {
         }
 
         if (field === 'mtr') {
-          const pcsVal = value === '' ? '' : String(effectiveAvg > 0 ? Math.round(n(value) / effectiveAvg) : 0);
-          const currentPcs = n(pcsVal);
-          const currentRejPcs = n(r.rejection_pcs);
-          const autoHtcPcs = Math.max(0, currentPcs - currentRejPcs);
-          const autoHtcMtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : '0';
-
+          // Allow user to manually correct/type MTR directly without overwriting their PCS
           return {
             ...r,
             mtr: value,
-            pcs: pcsVal,
-            htc_ok_pcs: isRollingStage ? (value === '' ? '' : String(autoHtcPcs)) : r.htc_ok_pcs,
-            htc_ok_mtr: isRollingStage ? (value === '' ? '' : autoHtcMtr) : r.htc_ok_mtr,
           };
         }
 
         if (field === 'rejection_pcs') {
-          const rejMtrVal = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
+          const rejMtrVal = value === '' ? '' : String(Number(mtrFromPcs(n(value), effectiveAvg).toFixed(2)));
           const currentPcs = n(r.pcs);
           const currentRejPcs = n(value);
           const autoHtcPcs = Math.max(0, currentPcs - currentRejPcs);
-          const autoHtcMtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : '0';
+          const autoHtcMtr = autoHtcPcs > 0 ? String(Number(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2))) : '0';
 
           return {
             ...r,
@@ -330,23 +289,14 @@ export default function ProductionEntryGrid() {
         }
 
         if (field === 'rejection_mtr') {
-          const rejPcsVal = value === '' ? '' : String(effectiveAvg > 0 ? Math.round(n(value) / effectiveAvg) : 0);
-          const currentPcs = n(r.pcs);
-          const currentRejPcs = n(rejPcsVal);
-          const autoHtcPcs = Math.max(0, currentPcs - currentRejPcs);
-          const autoHtcMtr = autoHtcPcs > 0 ? String(mtrFromPcs(autoHtcPcs, effectiveAvg).toFixed(2).replace(/\.?0+$/, '')) : '0';
-
           return {
             ...r,
             rejection_mtr: value,
-            rejection_pcs: rejPcsVal,
-            htc_ok_pcs: isRollingStage ? (r.pcs === '' ? '' : String(autoHtcPcs)) : r.htc_ok_pcs,
-            htc_ok_mtr: isRollingStage ? (r.pcs === '' ? '' : autoHtcMtr) : r.htc_ok_mtr,
           };
         }
 
         if (field === 'htc_ok_pcs') {
-          const htcMtrVal = value === '' ? '' : String(mtrFromPcs(n(value), effectiveAvg).toFixed(2).replace(/\.?0+$/, ''));
+          const htcMtrVal = value === '' ? '' : String(Number(mtrFromPcs(n(value), effectiveAvg).toFixed(2)));
           return {
             ...r,
             htc_ok_pcs: value,
@@ -355,11 +305,9 @@ export default function ProductionEntryGrid() {
         }
 
         if (field === 'htc_ok_mtr') {
-          const htcPcsVal = value === '' ? '' : String(effectiveAvg > 0 ? Math.round(n(value) / effectiveAvg) : 0);
           return {
             ...r,
             htc_ok_mtr: value,
-            htc_ok_pcs: htcPcsVal,
           };
         }
 
@@ -669,15 +617,26 @@ export default function ProductionEntryGrid() {
   const updateBundleField = (
     bundleId: string,
     field: 'bundle_no' | 'pcs' | 'mtr' | 'remarks',
-    val: string
+    val: string,
+    avgLen?: number
   ) => {
     setCampaignBundles((prev) =>
       prev.map((b) => {
         if (b.id !== bundleId) return b;
-        return {
+        const updated = {
           ...b,
           [field]: val,
         };
+        // Auto-calculate MTR when PCS is entered (based on final length / avgLen)
+        if (field === 'pcs') {
+          const numPcs = Number(val);
+          if (avgLen && avgLen > 0 && !isNaN(numPcs) && numPcs > 0) {
+            updated.mtr = String(Number((numPcs * avgLen).toFixed(2)));
+          } else if (val === '' || numPcs === 0) {
+            updated.mtr = '';
+          }
+        }
+        return updated;
       })
     );
   };
@@ -702,7 +661,7 @@ export default function ProductionEntryGrid() {
         return {
           ...r,
           pcs: String(sumPcs),
-          mtr: String(Number(sumMtr.toFixed(3))),
+          mtr: String(Number(sumMtr.toFixed(2))),
           heat_lot_no: bundleNos || r.heat_lot_no,
           remarks: attachPcsToRemarks(baseRemarks, sumPcs, 0),
         };
