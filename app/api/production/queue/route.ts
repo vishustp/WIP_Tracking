@@ -104,6 +104,14 @@ export async function GET(req: NextRequest) {
         const mhL2Val = p.mh_l2 || parsed?.mh_l2 || parsed?.sm?.sm_len || null;
 
         const planNoStr = p.plan_no ? String(p.plan_no).trim() : '';
+        const storedPlanPcs = Number(
+          parsed?.planned_pcs ||
+          parsed?.plan_qty?.nos ||
+          parsed?.master_planned_pcs ||
+          (parsed?.is_master ? parsed?.total_campaign_pcs || parsed?.total_group_pcs : 0) ||
+          0
+        );
+
         const existingPlan = planByWoMap.get(p.work_order_id);
         if (!existingPlan) {
           planByWoMap.set(p.work_order_id, {
@@ -111,6 +119,7 @@ export async function GET(req: NextRequest) {
             plan_no: planNoStr,
             plan_nos: [planNoStr].filter(Boolean),
             planned_qty_sum: Number(p.planned_qty || 0),
+            planned_pcs_sum: storedPlanPcs,
             lifecycle_status: lifecycle,
             is_issued: isIssued,
             revision_no: Number(parsed?.revision_no || 0),
@@ -125,6 +134,7 @@ export async function GET(req: NextRequest) {
           existingPlan.plan_nos = updatedPlanNos;
           existingPlan.plan_no = updatedPlanNos.join(', ');
           existingPlan.planned_qty_sum = (existingPlan.planned_qty_sum || 0) + Number(p.planned_qty || 0);
+          existingPlan.planned_pcs_sum = (existingPlan.planned_pcs_sum || 0) + storedPlanPcs;
           if (isIssued) existingPlan.is_issued = true;
           if (!existingPlan.mh_od && mhOdVal) existingPlan.mh_od = mhOdVal;
           if (!existingPlan.mh_wt && mhWtVal) existingPlan.mh_wt = mhWtVal;
@@ -392,19 +402,31 @@ export async function GET(req: NextRequest) {
       const rollNetMtr = Math.max(0, rollOutMtr - rollRejMtr);
       const rollTotalLogged = rollOutMtr + rollRejMtr;
 
+      const storedPlanPcs = Number(
+        campaign?.total_campaign_pcs ||
+        planInfo?.planned_pcs_sum ||
+        planParsed?.planned_pcs ||
+        planParsed?.plan_qty?.nos ||
+        0
+      );
+
       const totalCampaignMtr = campaign
         ? Number(campaign.total_campaign_mtr || 0)
         : Number(planInfo?.planned_qty_sum || plan?.planned_qty || 0);
       const totalCampaignPcs = campaign
         ? Number(campaign.total_campaign_pcs || 0)
-        : (mhAvgLength > 0 ? Math.round(totalCampaignMtr / mhAvgLength) : 0);
+        : (storedPlanPcs > 0 ? storedPlanPcs : (mhAvgLength > 0 ? Math.round(totalCampaignMtr / mhAvgLength) : 0));
+
+      const effPlanMhAvg = totalCampaignPcs > 0 && totalCampaignMtr > 0 ? totalCampaignMtr / totalCampaignPcs : mhAvgLength;
 
       // 1. Rolling Available WIP & Target Tracking
       // RULE 1: Rolling Production can be more than 10% of the Rolling Plan (no hard 110% ceiling).
       const rollDivIn = getStageDivIn(woId, "ROLLING");
       const rollDivOut = getStageDivOut(woId, "ROLLING");
       const rollAvailMtr = Math.max(0, totalCampaignMtr + rollDivIn - rollTotalLogged - rollDivOut);
-      const rollAvailPcs = mhAvgLength > 0 ? Math.round(rollAvailMtr / mhAvgLength) : 0;
+      const rollAvailPcs = rollTotalLogged <= 0 && totalCampaignPcs > 0
+        ? totalCampaignPcs
+        : (totalCampaignPcs > 0 ? Math.max(0, totalCampaignPcs - (rollTotalLogged > 0 ? Math.round(rollTotalLogged / effPlanMhAvg) : 0)) : (effPlanMhAvg > 0 ? Math.round(rollAvailMtr / effPlanMhAvg) : 0));
       const rollAvailMt = mtFromMtr(rollAvailMtr, mhOd, mhWt);
 
       // 2. Hollow Heat Treatment Stage Metrics (adjusted for HHT Diversions)
@@ -925,8 +947,16 @@ export async function GET(req: NextRequest) {
             const plMhAvg = plMhL1 > 0 && plMhL2 > 0 ? (plMhL1 + plMhL2) / 2 : plMhL1 || mhAvgLength;
 
             const isPlMaster = Boolean(plParsed?.is_master && Array.isArray(plParsed?.child_work_orders));
-            let plPlannedMtr = Number(pl.planned_qty || 0);
-            let plPlannedPcs = plMhAvg > 0 ? Math.round(plPlannedMtr / plMhAvg) : 0;
+            const storedPlPcs = Number(
+              plParsed?.planned_pcs ||
+              plParsed?.plan_qty?.nos ||
+              plParsed?.master_planned_pcs ||
+              (isPlMaster ? plParsed?.total_campaign_pcs || plParsed?.total_group_pcs : 0) ||
+              0
+            );
+
+            let plPlannedMtr = Number(pl.planned_qty || plParsed?.rolling_mtr || plParsed?.master_planned_mtr || 0);
+            let plPlannedPcs = storedPlPcs > 0 ? storedPlPcs : (plMhAvg > 0 ? Math.round(plPlannedMtr / plMhAvg) : 0);
             let plEnrichedChildren: any[] | undefined = undefined;
 
             if (isPlMaster) {
@@ -944,9 +974,11 @@ export async function GET(req: NextRequest) {
                 (sum: number, c: any) => sum + Number(c.planned_pcs || 0),
                 0
               );
-              plPlannedPcs = Number(plParsed.total_campaign_pcs) > 0
+              const totalCampaignPcs = Number(plParsed.total_campaign_pcs) > 0
                 ? Number(plParsed.total_campaign_pcs)
                 : mPlannedPcs + cPlannedPcs;
+
+              plPlannedPcs = totalCampaignPcs > 0 ? totalCampaignPcs : (storedPlPcs > 0 ? storedPlPcs : (plMhAvg > 0 ? Math.round(plPlannedMtr / plMhAvg) : 0));
 
               plEnrichedChildren = (plParsed.child_work_orders || []).map((child: any) => {
                 const cId = child.work_order_id || child.id;
@@ -976,14 +1008,23 @@ export async function GET(req: NextRequest) {
               });
             }
 
-            const directPlLogs = rollLogs.filter((l) => l.rolling_plan_id === pl.id);
-            const directLogged = sumQty(directPlLogs, "output_qty") + sumQty(directPlLogs, "rejection_qty");
-            const unassignedForPl = Math.min(Math.max(0, plPlannedMtr - directLogged), unassignedRollLogged);
-            unassignedRollLogged = Math.max(0, unassignedRollLogged - unassignedForPl);
-            const plLoggedTotal = directLogged + unassignedForPl;
+            const effPlMhAvg = plPlannedPcs > 0 && plPlannedMtr > 0 ? plPlannedMtr / plPlannedPcs : plMhAvg;
 
-            const plAvailMtr = Math.max(0, plPlannedMtr - plLoggedTotal);
-            const plAvailPcs = plMhAvg > 0 ? Math.round(plAvailMtr / plMhAvg) : 0;
+            const directPlLogs = rollLogs.filter((l) => l.rolling_plan_id === pl.id);
+            const directLoggedMtr = sumQty(directPlLogs, "output_qty") + sumQty(directPlLogs, "rejection_qty");
+            const unassignedForPl = Math.min(Math.max(0, plPlannedMtr - directLoggedMtr), unassignedRollLogged);
+            unassignedRollLogged = Math.max(0, unassignedRollLogged - unassignedForPl);
+            const plLoggedTotalMtr = directLoggedMtr + unassignedForPl;
+
+            const directLoggedPcs = sumQty(directPlLogs, "output_pcs") + sumQty(directPlLogs, "rejection_pcs");
+            const plLoggedTotalPcs = directLoggedPcs > 0
+              ? directLoggedPcs
+              : (effPlMhAvg > 0 ? Math.round(plLoggedTotalMtr / effPlMhAvg) : 0);
+
+            const plAvailMtr = Math.max(0, plPlannedMtr - plLoggedTotalMtr);
+            const plAvailPcs = plLoggedTotalMtr <= 0 && plPlannedPcs > 0
+              ? plPlannedPcs
+              : (plPlannedPcs > 0 ? Math.max(0, plPlannedPcs - plLoggedTotalPcs) : (effPlMhAvg > 0 ? Math.round(plAvailMtr / effPlMhAvg) : 0));
             const plAvailMt = mtFromMtr(plAvailMtr, plMhOd, plMhWt);
 
             if (plAvailMtr >= 1.0 || plAvailPcs >= 1) {
@@ -1006,7 +1047,7 @@ export async function GET(req: NextRequest) {
                 mh_wt: plMhWt,
                 mh_l1: plMhL1,
                 mh_l2: plMhL2,
-                mh_avg_length: plMhAvg,
+                mh_avg_length: effPlMhAvg,
                 max_allowed_mtr: null,
                 max_allowed_pcs: null,
                 feeder_source_label: `Rolling Plan: ${pl.plan_no}`,

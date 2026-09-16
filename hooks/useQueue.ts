@@ -104,6 +104,14 @@ export function useQueue(stage: StageCode) {
           const mhL2Val = p.mh_l2 || parsed?.mh_l2 || parsed?.sm?.sm_len || null;
 
           const planNoStr = p.plan_no ? String(p.plan_no).trim() : '';
+          const storedPlanPcs = Number(
+            parsed?.planned_pcs ||
+            parsed?.plan_qty?.nos ||
+            parsed?.master_planned_pcs ||
+            (parsed?.is_master ? parsed?.total_campaign_pcs || parsed?.total_group_pcs : 0) ||
+            0
+          );
+
           const existingPlan = planByWoMap.get(p.work_order_id);
           if (!existingPlan) {
             planByWoMap.set(p.work_order_id, {
@@ -111,6 +119,7 @@ export function useQueue(stage: StageCode) {
               plan_no: planNoStr,
               plan_nos: [planNoStr].filter(Boolean),
               planned_qty_sum: Number(p.planned_qty || 0),
+              planned_pcs_sum: storedPlanPcs,
               lifecycle_status: lifecycle,
               is_issued: isIssued,
               revision_no: Number(parsed?.revision_no || 0),
@@ -124,6 +133,7 @@ export function useQueue(stage: StageCode) {
             existingPlan.plan_nos = updatedPlanNos;
             existingPlan.plan_no = updatedPlanNos.join(', ');
             existingPlan.planned_qty_sum = (existingPlan.planned_qty_sum || 0) + Number(p.planned_qty || 0);
+            existingPlan.planned_pcs_sum = (existingPlan.planned_pcs_sum || 0) + storedPlanPcs;
             if (isIssued) existingPlan.is_issued = true;
             if (!existingPlan.mh_od && mhOdVal) existingPlan.mh_od = mhOdVal;
             if (!existingPlan.mh_wt && mhWtVal) existingPlan.mh_wt = mhWtVal;
@@ -330,10 +340,16 @@ export function useQueue(stage: StageCode) {
             const planInfo = planByWoMap.get(r.work_order_id);
             const plan = plans.find((p: any) => p.work_order_id === r.work_order_id);
             const planMtr = planInfo?.planned_qty_sum ? Number(planInfo.planned_qty_sum) : plan ? Number(plan.planned_qty || 0) : rawBalMtr;
+            const storedPcs = Number(planInfo?.planned_pcs_sum || 0);
+            const planPcs = storedPcs > 0 ? storedPcs : (effAvg > 0 ? Math.round(planMtr / effAvg) : rawBalPcs);
+            const effPlanLen = planPcs > 0 && planMtr > 0 ? planMtr / planPcs : effAvg;
+
             const availMtr = totalLoggedMtr > 0
               ? Math.max(0, (planMtr || rawBalMtr) + rollDivIn - totalLoggedMtr - rollDivOut)
               : (rawBalMtr > 0 ? rawBalMtr : Math.max(0, (planMtr || 0) + rollDivIn - rollDivOut));
-            const availPcs = effAvg > 0 ? Math.round(availMtr / effAvg) : (rawBalPcs > 0 ? Math.round(rawBalPcs) : 0);
+            const availPcs = totalLoggedMtr <= 0 && planPcs > 0
+              ? planPcs
+              : (planPcs > 0 ? Math.max(0, planPcs - (totalLoggedMtr > 0 ? Math.round(totalLoggedMtr / effPlanLen) : 0)) : (effPlanLen > 0 ? Math.round(availMtr / effPlanLen) : 0));
             const od = Number(r.od || 0);
             const wt = Number(r.wl || 0);
             const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
@@ -343,10 +359,11 @@ export function useQueue(stage: StageCode) {
               : ((planMtr || availMtr) > availMtr ? (planMtr || availMtr) - availMtr : 0);
             const maxCappingMtr = Number(((planMtr || availMtr) * 1.1).toFixed(3));
             const cappingMtr = Math.max(0, maxCappingMtr - effLoggedMtr);
-            const cappingPcs = effAvg > 0 ? Math.round(cappingMtr / effAvg) : Math.max(0, Math.round(availPcs * 1.1) - totalLoggedPcs);
+            const cappingPcs = effPlanLen > 0 ? Math.round(cappingMtr / effPlanLen) : Math.max(0, Math.round(availPcs * 1.1) - totalLoggedPcs);
 
             return {
               ...r,
+              mh_avg_length: effPlanLen,
               master_plan_no: planInfo?.plan_no || plan?.plan_no,
               plan_no: planInfo?.plan_no || plan?.plan_no,
               plan_id: planInfo?.id || plan?.id,
