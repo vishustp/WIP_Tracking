@@ -5,9 +5,16 @@ export const n = (v: unknown) => {
   return Number.isFinite(x) ? x : 0;
 };
 
-export const fmt = (v: unknown, suffix = "") => {
+export const fmt = (v: unknown, suffixOrDecimals: string | number = "") => {
   const x = Number(v);
   if (!Number.isFinite(x)) return "—";
+  if (typeof suffixOrDecimals === "number") {
+    return x.toLocaleString(undefined, {
+      minimumFractionDigits: suffixOrDecimals,
+      maximumFractionDigits: suffixOrDecimals,
+    });
+  }
+  const suffix = suffixOrDecimals || "";
   const sUpper = suffix.toUpperCase();
   if (sUpper.includes("PCS") || sUpper.includes("NOS") || sUpper.includes("PC") || sUpper.includes("BUNDLE")) {
     return `${Math.round(x).toLocaleString()}${suffix}`;
