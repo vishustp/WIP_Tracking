@@ -90,10 +90,25 @@ export function ProductionQueueRow({
         <div className="font-extrabold text-emerald-700 font-mono text-xs">
           {fmt(availPcs)} PCS / {fmt(availMtr, ' MTR')}
         </div>
-        <div className="text-[11px] text-slate-400 mt-0.5">
-          {isRollingStage
-            ? `Plan: ${fmt(row.planned_pcs || row.campaign_total_pcs || 0)} PCS`
-            : `Avail: ${fmt(availPcs)} PCS`}
+        <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+          {isRollingStage ? (
+            (() => {
+              const planPcs = Number(row.planned_pcs || row.campaign_total_pcs || 0);
+              const donePcs = Math.max(0, planPcs - availPcs);
+              return (
+                <span>
+                  Plan: <span className="font-semibold text-slate-700">{fmt(planPcs)} PCS</span>
+                  {donePcs > 0 && (
+                    <span className="text-emerald-600 font-semibold ml-1">
+                      ({fmt(donePcs)} done)
+                    </span>
+                  )}
+                </span>
+              );
+            })()
+          ) : (
+            `Avail: ${fmt(availPcs)} PCS`
+          )}
         </div>
       </td>
 

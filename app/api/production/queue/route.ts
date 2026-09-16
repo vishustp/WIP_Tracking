@@ -943,11 +943,30 @@ export async function GET(req: NextRequest) {
         .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
 
       if (woPlans.length > 0) {
-        const sumDirectLogged = woPlans.reduce((acc, pl) => {
-          const plLogs = rollLogs.filter((l) => l.rolling_plan_id === pl.id);
-          return acc + sumQty(plLogs, "output_qty") + sumQty(plLogs, "rejection_qty");
-        }, 0);
-        let unassignedRollLogged = Math.max(0, rollTotalLogged - sumDirectLogged);
+        // Pre-assign all rollLogs for this work order to their specific plan chronologically
+        const planLogMap = new Map<string, any[]>();
+        woPlans.forEach((pl) => planLogMap.set(pl.id, []));
+
+        const sortedPlans = [...woPlans].sort(
+          (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+        );
+
+        for (const log of rollLogs) {
+          if (log.rolling_plan_id && planLogMap.has(log.rolling_plan_id)) {
+            planLogMap.get(log.rolling_plan_id)!.push(log);
+          } else if (sortedPlans.length === 1) {
+            planLogMap.get(sortedPlans[0].id)!.push(log);
+          } else if (sortedPlans.length > 1) {
+            const logTime = new Date(log.created_at || log.process_date || 0).getTime();
+            let matchedPlan = sortedPlans[0];
+            for (const pl of sortedPlans) {
+              if (new Date(pl.created_at || 0).getTime() <= logTime) {
+                matchedPlan = pl;
+              }
+            }
+            planLogMap.get(matchedPlan.id)!.push(log);
+          }
+        }
 
         for (const pl of woPlans) {
           try {
@@ -1023,11 +1042,9 @@ export async function GET(req: NextRequest) {
 
             const effPlMhAvg = plPlannedPcs > 0 && plPlannedMtr > 0 ? plPlannedMtr / plPlannedPcs : plMhAvg;
 
-            const directPlLogs = rollLogs.filter((l) => l.rolling_plan_id === pl.id);
+            const directPlLogs = planLogMap.get(pl.id) || [];
             const directLoggedMtr = sumQty(directPlLogs, "output_qty") + sumQty(directPlLogs, "rejection_qty");
-            const unassignedForPl = Math.min(Math.max(0, plPlannedMtr - directLoggedMtr), unassignedRollLogged);
-            unassignedRollLogged = Math.max(0, unassignedRollLogged - unassignedForPl);
-            const plLoggedTotalMtr = directLoggedMtr + unassignedForPl;
+            const plLoggedTotalMtr = directLoggedMtr;
 
             const directLoggedPcs = sumQty(directPlLogs, "output_pcs") + sumQty(directPlLogs, "rejection_pcs");
             const plLoggedTotalPcs = directLoggedPcs > 0
