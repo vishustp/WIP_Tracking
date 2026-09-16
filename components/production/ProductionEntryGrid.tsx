@@ -218,7 +218,7 @@ export default function ProductionEntryGrid() {
     key: string,
     field: keyof Pick<
       Row,
-      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks'
+      'pcs' | 'mtr' | 'rejection_pcs' | 'rejection_mtr' | 'htc_ok_pcs' | 'htc_ok_mtr' | 'heat_lot_no' | 'remarks' | 'input_l1' | 'input_l2'
     >,
     value: string
   ) => {
@@ -233,9 +233,9 @@ export default function ProductionEntryGrid() {
         const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || 0;
         const effectiveMhAvg = Number(r.mh_avg_length || 0) > 0 ? Number(r.mh_avg_length) : computedMhAvg;
 
-        const orderL1 = Number(r.l1 || 0);
-        const orderL2 = Number(r.l2 || 0);
-        const orderAvg = orderL1 > 0 && orderL2 > 0 ? (orderL1 + orderL2) / 2 : orderL1 || orderL2 || 0;
+        const dynL1 = Number(field === 'input_l1' ? value : (r.input_l1 || r.l1 || 0));
+        const dynL2 = Number(field === 'input_l2' ? value : (r.input_l2 || r.l2 || 0));
+        const orderAvg = dynL1 > 0 && dynL2 > 0 ? (dynL1 + dynL2) / 2 : dynL1 || dynL2 || 0;
 
         const effectiveAvg =
           (stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT') && effectiveMhAvg > 0
@@ -247,6 +247,16 @@ export default function ProductionEntryGrid() {
             : 6.0;
 
         const isRollingStage = stage === 'ROLLING';
+
+        if (field === 'input_l1' || field === 'input_l2') {
+          const currentPcs = n(r.pcs);
+          const mtrVal = currentPcs > 0 ? String(Number(mtrFromPcs(currentPcs, effectiveAvg).toFixed(2))) : r.mtr;
+          return {
+            ...r,
+            [field]: value,
+            mtr: mtrVal,
+          };
+        }
 
         if (field === 'pcs') {
           const mtrVal = value === '' ? '' : String(Number(mtrFromPcs(n(value), effectiveAvg).toFixed(2)));
