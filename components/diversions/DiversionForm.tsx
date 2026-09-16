@@ -404,7 +404,7 @@ const WORK_CENTERS = [
 ];
 
 const fmt = (n: number | null | undefined, digits = 2) =>
-  n == null || isNaN(n) ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: digits });
+  n == null || isNaN(n) ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 export default function DiversionForm() {
   const { user } = usePermissions();

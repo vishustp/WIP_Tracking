@@ -189,7 +189,7 @@ export async function GET(req: NextRequest) {
               const cBalOrderPcs = cAvg > 0 ? Math.round(cBalOrderMtr / cAvg) : 0;
               const cBalOrderMt = mtFromMtr(cBalOrderMtr, cOd, cWt);
 
-              const cCappingMtr = Number((cTotalOrderMtr * 1.10).toFixed(3));
+              const cCappingMtr = Number((cTotalOrderMtr * 1.10).toFixed(2));
               const cCappingPcs = cAvg > 0 ? Math.round(cCappingMtr / cAvg) : 0;
 
               return {
@@ -574,7 +574,7 @@ export async function GET(req: NextRequest) {
 
       const vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
       const vdiAvailMtr = avgLength > 0
-        ? (vdiAvailPcs > 0 ? Number((vdiAvailPcs * avgLength).toFixed(3)) : 0)
+        ? (vdiAvailPcs > 0 ? Number((vdiAvailPcs * avgLength).toFixed(2)) : 0)
         : 0;
       const vdiAvailMt = mtFromMtr(vdiAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
@@ -599,7 +599,7 @@ export async function GET(req: NextRequest) {
 
       const finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finOutPcs - finRejPcs - finDivOutPcs);
       const finAvailMtr = avgLength > 0
-        ? (finAvailPcs > 0 ? Number((finAvailPcs * avgLength).toFixed(3)) : 0)
+        ? (finAvailPcs > 0 ? Number((finAvailPcs * avgLength).toFixed(2)) : 0)
         : Math.max(0, finIncomingMtr + finDivIn - finOutMtr - finRejMtr - finDivOut);
       const finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
@@ -779,7 +779,7 @@ export async function GET(req: NextRequest) {
       const balanceToMakeOrderPcs = avgLength > 0 ? Math.round(balanceToMakeOrderMtr / avgLength) : 0;
       const balanceToMakeOrderMt = mtFromMtr(balanceToMakeOrderMtr, woOd, woWt);
 
-      const orderCappingMtr = Number((totalOrderMtr * 1.10).toFixed(3));
+      const orderCappingMtr = Number((totalOrderMtr * 1.10).toFixed(2));
       const orderCappingPcs = avgLength > 0 ? Math.round(orderCappingMtr / avgLength) : 0;
 
       // Pre-build Row objects for this work order for all 6 stages
@@ -1133,7 +1133,7 @@ export async function GET(req: NextRequest) {
         const childBalOrderPcs = avgLength > 0 ? Math.round(childBalOrderMtr / avgLength) : 0;
         const childBalOrderMt = mtFromMtr(childBalOrderMtr, od, wt);
 
-        const childCappingMtr = Number((childTotalOrderMtr * 1.10).toFixed(3));
+        const childCappingMtr = Number((childTotalOrderMtr * 1.10).toFixed(2));
         const childCappingPcs = avgLength > 0 ? Math.round(childCappingMtr / avgLength) : 0;
 
         const childMaxAllowedMtr = Math.min(childAvailMtr, Math.max(0, childCappingMtr - childFinOutMtr));
@@ -1242,8 +1242,8 @@ export async function GET(req: NextRequest) {
     // Format workCenterSummary values nicely
     const summaryArray = Object.values(workCenterSummary).map((s) => ({
       ...s,
-      availMtr: Number(s.availMtr.toFixed(3)),
-      availMt: Number(s.availMt.toFixed(3)),
+      availMtr: Number(s.availMtr.toFixed(2)),
+      availMt: Number(s.availMt.toFixed(2)),
     }));
 
     return NextResponse.json(

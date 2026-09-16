@@ -77,7 +77,7 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
   const formatValue = (val: any) => {
     if (val === null || val === undefined || val === '') return '—';
     if (typeof val === 'number') {
-      return Number.isInteger(val) ? val.toLocaleString() : val.toLocaleString(undefined, { maximumFractionDigits: 3 });
+      return Number.isInteger(val) ? val.toLocaleString() : val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     return String(val);
   };

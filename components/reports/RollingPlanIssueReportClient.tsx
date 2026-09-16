@@ -120,7 +120,7 @@ export interface FactoryPlanRow {
 const fmt = (n: number | string | null | undefined, digits = 2) => {
   if (n == null || n === '') return '—';
   const num = Number(n);
-  return isNaN(num) ? String(n) : num.toLocaleString(undefined, { maximumFractionDigits: digits });
+  return isNaN(num) ? String(n) : num.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 };
 
 const formatFinalSizeLength = (p: { l1?: number | null; l2?: number | null; avg_length?: number | null }) => {

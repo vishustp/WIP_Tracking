@@ -305,7 +305,7 @@ export function useQueue(stage: StageCode) {
               : (masterPlannedMtr > availMtr ? masterPlannedMtr - availMtr : 0);
 
             // Capping at rolling = 110% of Plan issued against master work order - total already logged
-            const maxCappingMtr = Number((masterPlannedMtr * 1.1).toFixed(3));
+            const maxCappingMtr = Number((masterPlannedMtr * 1.1).toFixed(2));
             const cappingMtr = Math.max(0, maxCappingMtr - effLoggedMtr);
             const cappingPcs = effAvg > 0
               ? Math.round(cappingMtr / effAvg)
@@ -329,7 +329,7 @@ export function useQueue(stage: StageCode) {
               child_work_orders: campaign.child_work_orders,
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
-              balance_to_make_mt: Number(availMt.toFixed(3)),
+              balance_to_make_mt: Number(availMt.toFixed(2)),
               max_allowed_mtr: cappingMtr,
               max_allowed_pcs: cappingPcs,
             };
@@ -355,7 +355,7 @@ export function useQueue(stage: StageCode) {
             const effLoggedMtr = totalLoggedMtr > 0
               ? totalLoggedMtr
               : ((planMtr || availMtr) > availMtr ? (planMtr || availMtr) - availMtr : 0);
-            const maxCappingMtr = Number(((planMtr || availMtr) * 1.1).toFixed(3));
+            const maxCappingMtr = Number(((planMtr || availMtr) * 1.1).toFixed(2));
             const cappingMtr = Math.max(0, maxCappingMtr - effLoggedMtr);
             const cappingPcs = effPlanLen > 0 ? Math.round(cappingMtr / effPlanLen) : Math.max(0, Math.round(availPcs * 1.1) - totalLoggedPcs);
 
@@ -372,7 +372,7 @@ export function useQueue(stage: StageCode) {
               campaign_total_pcs: planPcs,
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
-              balance_to_make_mt: Number(availMt.toFixed(3)),
+              balance_to_make_mt: Number(availMt.toFixed(2)),
               max_allowed_mtr: cappingMtr,
               max_allowed_pcs: cappingPcs,
             };
@@ -448,7 +448,7 @@ export function useQueue(stage: StageCode) {
                 const mhWt = Number(campaign.mh_wt || wo.size_wt || 0);
                 const availMt =
                   Math.max(mhOd - mhWt, 0) * Math.max(mhWt, 0) * 0.0246615 * 0.001 * availMtr;
-                const maxCappingMtr = Number((campaign.total_campaign_mtr * 1.1).toFixed(3));
+                const maxCappingMtr = Number((campaign.total_campaign_mtr * 1.1).toFixed(2));
                 const cappingMtr = Math.max(0, maxCappingMtr - totalLogged);
                 const cappingPcs = woEffAvg > 0
                   ? Math.round(cappingMtr / woEffAvg)
@@ -476,7 +476,7 @@ export function useQueue(stage: StageCode) {
                     stage_code: "ROLLING",
                     balance_to_make_mtr: availMtr,
                     balance_to_make_pcs: availPcs,
-                    balance_to_make_mt: Number(availMt.toFixed(3)),
+                    balance_to_make_mt: Number(availMt.toFixed(2)),
                     max_allowed_mtr: cappingMtr,
                     max_allowed_pcs: cappingPcs,
                     multiple: 1,
@@ -606,18 +606,18 @@ export function useQueue(stage: StageCode) {
               const hhtDivInPcs = mhAvg > 0 ? Math.round(hhtDivIn / mhAvg) : 0;
               const hhtDivOutPcs = mhAvg > 0 ? Math.round(hhtDivOut / mhAvg) : 0;
               availPcs = Math.max(0, rollHtcOkPcs + hhtDivInPcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs);
-              availMtr = mhAvg > 0 ? Number((availPcs * mhAvg).toFixed(3)) : 0;
+              availMtr = mhAvg > 0 ? Number((availPcs * mhAvg).toFixed(2)) : 0;
             } else if (s === "DRAW") {
               const incomingPcs = r.route_code === "ALLOY_CDS" ? hollowHtNetPcs : rollHtcOkPcs;
               const drawDivInPcs = tubeAvg > 0 ? Math.round(drawDivIn / tubeAvg) : (mhAvg > 0 ? Math.round(drawDivIn / mhAvg) : 0);
               const drawDivOutPcs = tubeAvg > 0 ? Math.round(drawDivOut / tubeAvg) : (mhAvg > 0 ? Math.round(drawDivOut / mhAvg) : 0);
               availPcs = Math.max(0, incomingPcs + drawDivInPcs - drawOutPcs - drawRejPcs - drawDivOutPcs);
-              availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0;
+              availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(2)) : 0;
             } else if (s === "HEAT_TREATMENT") {
               const htDivInPcs = tubeAvg > 0 ? Math.round(htDivIn / tubeAvg) : 0;
               const htDivOutPcs = tubeAvg > 0 ? Math.round(htDivOut / tubeAvg) : 0;
               availPcs = Math.max(0, drawNetPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs);
-              availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(3)) : 0;
+              availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(2)) : 0;
             } else if (s === "VDI") {
               const isHfs = r.route_code === "HFS" || r.route_code === "ALLOY_HFS";
               const incomingPcs = isHfs
@@ -635,7 +635,7 @@ export function useQueue(stage: StageCode) {
                 0
               );
               availPcs = Math.max(0, incomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
-              availMtr = effLen > 0 ? Number((availPcs * effLen).toFixed(3)) : 0;
+              availMtr = effLen > 0 ? Number((availPcs * effLen).toFixed(2)) : 0;
             }
 
             const isMhWip = s === "HOLLOW_HEAT_TREATMENT";
@@ -652,7 +652,7 @@ export function useQueue(stage: StageCode) {
               mh_avg_length: mhAvg,
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
-              balance_to_make_mt: Number(availMt.toFixed(3)),
+              balance_to_make_mt: Number(availMt.toFixed(2)),
               max_allowed_mtr: availMtr,
               max_allowed_pcs: availPcs,
               prev_htc_ok: rollingHtcOkMtr,
@@ -718,7 +718,7 @@ export function useQueue(stage: StageCode) {
               return sum + outP + rejP;
             }, 0);
             const availPcs = Math.max(0, qcOk + finDivInPcs - finishedPcs - finDivOutPcs);
-            const availMtr: number = effAvg > 0 ? Number((availPcs * effAvg).toFixed(3)) : Math.max(0, (Number(r.balance_to_make_mtr) || 0) + finDivIn - finDivOut);
+            const availMtr: number = effAvg > 0 ? Number((availPcs * effAvg).toFixed(2)) : Math.max(0, (Number(r.balance_to_make_mtr) || 0) + finDivIn - finDivOut);
             const od = Number(r.od || 0);
             const wt = Number(r.wl || 0);
             const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
@@ -726,7 +726,7 @@ export function useQueue(stage: StageCode) {
               ...rowToUse,
               balance_to_make_pcs: availPcs,
               balance_to_make_mtr: availMtr,
-              balance_to_make_mt: Number(availMt.toFixed(3)),
+              balance_to_make_mt: Number(availMt.toFixed(2)),
               max_allowed_pcs: availPcs,
               max_allowed_mtr: availMtr,
             };
@@ -795,7 +795,7 @@ export function useQueue(stage: StageCode) {
                 prev_stage_name: r.prev_stage_name,
                 balance_to_make_mtr: remainingMtr,
                 balance_to_make_pcs: remainingPcs,
-                balance_to_make_mt: Number(remainingMt.toFixed(3)),
+                balance_to_make_mt: Number(remainingMt.toFixed(2)),
                 max_allowed_mtr: remainingMtr > 0 ? remainingMtr : r.balance_to_make_mtr,
                 multiple: r.multiple || 1,
                 ht_nos: null,

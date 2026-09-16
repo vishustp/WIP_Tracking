@@ -83,7 +83,7 @@ interface SizeGradeGroup {
 type Unit = 'MTRS' | 'PCS' | 'MT';
 
 const fmt = (n: number | null | undefined, digits = 2) =>
-  n == null || isNaN(n) ? '0' : Number(n).toLocaleString(undefined, { maximumFractionDigits: digits });
+  n == null || isNaN(n) ? (digits > 0 ? (0).toFixed(digits) : '0') : Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 export default function SizeGradeWipReportClient() {
   const router = useRouter();

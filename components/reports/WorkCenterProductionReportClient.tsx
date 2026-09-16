@@ -91,7 +91,7 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
 ];
 
 const fmt = (n: number | null | undefined, digits = 2) =>
-  n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: digits });
+  n == null ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 export default function WorkCenterProductionReportClient() {
   const [selectedWc, setSelectedWc] = useState<string>('ROLLING');

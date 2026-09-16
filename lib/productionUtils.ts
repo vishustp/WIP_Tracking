@@ -12,13 +12,25 @@ export const fmt = (v: unknown, suffix = "") => {
   if (sUpper.includes("PCS") || sUpper.includes("NOS") || sUpper.includes("PC") || sUpper.includes("BUNDLE")) {
     return `${Math.round(x).toLocaleString()}${suffix}`;
   }
-  return `${x.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 0 })}${suffix}`;
+  return `${x.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}${suffix}`;
 };
 
 export const fmtPcs = (v: unknown, suffix = " PCS") => {
   const x = Number(v);
   if (!Number.isFinite(x)) return "0" + suffix;
   return `${Math.round(x).toLocaleString()}${suffix}`;
+};
+
+export const fmtMtr = (v: unknown, suffix = " MTR") => {
+  const x = Number(v);
+  if (!Number.isFinite(x)) return "0.00" + suffix;
+  return `${x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffix}`;
+};
+
+export const fmtMt = (v: unknown, suffix = " MT") => {
+  const x = Number(v);
+  if (!Number.isFinite(x)) return "0.00" + suffix;
+  return `${x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${suffix}`;
 };
 
 export const pcsFromMtr = (mtr: number, avg: number) =>
