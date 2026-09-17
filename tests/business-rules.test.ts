@@ -60,19 +60,36 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
   });
 
   describe("CDS Route Rules", () => {
-    it("Rule 1: Allows rolling production to exceed plan without a hard 110% cap", () => {
-      const row: Row = {
+    it("Rule 1: Rolling production is capped at 110% of Rolling Plan quantity", () => {
+      const validRow: Row = {
         ...baseRow,
         stage_code: "ROLLING",
         route_code: "CDS",
-        balance_to_make_mtr: 500,
+        planned_rolling_total: 500,
+        max_allowed_mtr: 550, // 500 * 1.10
+        max_allowed_pcs: 92,
+        mtr: "540",
+        pcs: "90",
+        htc_ok_pcs: "90",
+        htc_ok_mtr: "540",
+      };
+      expect(validateProductionEntry(validRow, "ROLLING")).toHaveLength(0);
+
+      const excessRow: Row = {
+        ...baseRow,
+        stage_code: "ROLLING",
+        route_code: "CDS",
+        planned_rolling_total: 500,
         max_allowed_mtr: 550,
+        max_allowed_pcs: 92,
         mtr: "600",
         pcs: "100",
         htc_ok_pcs: "100",
         htc_ok_mtr: "600",
       };
-      expect(validateProductionEntry(row, "ROLLING")).toHaveLength(0);
+      const errors = validateProductionEntry(excessRow, "ROLLING");
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0].message).toContain("exceeds maximum allowed 110% of Rolling Plan");
     });
 
     it("Rule 2: Draw production is capped at Rolling HTC OK", () => {

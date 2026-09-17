@@ -893,8 +893,10 @@ export async function GET(req: NextRequest) {
                 balance_to_make_mtr: rollAvailMtr,
                 balance_to_make_pcs: rollAvailPcs,
                 balance_to_make_mt: rollAvailMt,
-                max_allowed_mtr: null,
-                max_allowed_pcs: null,
+                planned_rolling_total: totalCampaignMtr,
+                max_allowed_mtr: Number((totalCampaignMtr * 1.10).toFixed(2)),
+                max_allowed_pcs: Math.round(totalCampaignPcs * 1.10),
+                prev_gross_output: rollOutMtr + rollRejMtr,
                 feeder_source_label: "Active Rolling Plan",
                 feeder_stage_code: "ROLLING_PLAN",
               }

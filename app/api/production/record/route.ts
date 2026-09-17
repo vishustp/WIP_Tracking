@@ -81,6 +81,43 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
+
+        // Rule: Rolling production cannot exceed 110% of Rolling Plan
+        if (outMtr > 0) {
+          const [{ data: rollingPlan }, { data: existingLogs }] = await Promise.all([
+            admin
+              .from('rolling_plans')
+              .select('planned_qty, status')
+              .eq('work_order_id', item.work_order_id)
+              .maybeSingle(),
+            admin
+              .from('production_logs')
+              .select('output_qty')
+              .eq('work_order_id', item.work_order_id)
+              .eq('stage_id', stageMap.get('ROLLING') || ''),
+          ]);
+
+          if (rollingPlan) {
+            try {
+              const parsedStatus = typeof rollingPlan.status === 'string' ? JSON.parse(rollingPlan.status) : rollingPlan.status;
+              const plannedMtr = Number(parsedStatus?.master_planned_mtr || rollingPlan.planned_qty || 0);
+              if (plannedMtr > 0) {
+                const alreadyRolled = (existingLogs || []).reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+                const maxAllowed110 = plannedMtr * 1.10;
+                if (outMtr + alreadyRolled > maxAllowed110 + 0.1) {
+                  return NextResponse.json(
+                    {
+                      error: `Rolling production (${outMtr} MTR${alreadyRolled > 0 ? ` + already rolled ${alreadyRolled.toFixed(1)} MTR` : ''}) exceeds maximum allowed 110% of Rolling Plan (${plannedMtr} MTR, limit: ${maxAllowed110.toFixed(1)} MTR).`,
+                    },
+                    { status: 400 }
+                  );
+                }
+              }
+            } catch {
+              // ignore parse errors
+            }
+          }
+        }
       }
     }
 
