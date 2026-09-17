@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
@@ -21,6 +22,7 @@ import {
   Edit2,
   AlertTriangle,
   Sparkles,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -269,6 +271,14 @@ export default function BandSawCuttingClient() {
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
+            <Link
+              href="/excel-import"
+              className="inline-flex items-center gap-1.5 h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition active:scale-95"
+            >
+              <FileSpreadsheet size={14} className="text-emerald-600" />
+              Excel Import
+            </Link>
+
             <Button
               onClick={fetchData}
               variant="outline"

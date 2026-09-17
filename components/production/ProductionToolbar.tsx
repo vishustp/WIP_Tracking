@@ -1,6 +1,7 @@
 'use client';
 
-import { RefreshCw } from 'lucide-react';
+import Link from 'next/link';
+import { RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { StageCode, STAGES } from '@/types';
 import { Button } from '@/components/ui/button';
 
@@ -58,6 +59,14 @@ export function ProductionToolbar({
                 ))}
               </select>
             </div>
+
+            <Link
+              href="/excel-import"
+              className="inline-flex items-center gap-1.5 h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition active:scale-[0.97]"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Excel Import</span>
+            </Link>
 
             <Button
               type="button"

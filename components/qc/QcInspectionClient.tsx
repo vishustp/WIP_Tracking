@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { fmt, n, mtFromMtr } from '@/lib/productionUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
@@ -10,7 +11,7 @@ import type { QcInspection, SalvageReasonItem, QcQueueItem, QcSalvageQueueItem, 
 import {
   ClipboardCheck, Search, Plus, Trash2, Edit2, AlertCircle, CheckCircle2,
   ShieldCheck, Lock, RefreshCw, X, Filter, Layers, ArrowRight, Info, Check,
-  Wrench, ArrowRightLeft, GitFork, AlertTriangle
+  Wrench, ArrowRightLeft, GitFork, AlertTriangle, FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -1095,6 +1096,15 @@ export default function QcInspectionClient() {
               Read-Only Access
             </span>
           )}
+
+          <Link
+            href="/excel-import"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all"
+            title="Import QC Inspections from Excel"
+          >
+            <FileSpreadsheet size={13} className="text-emerald-600" />
+            Excel Import
+          </Link>
 
           <button
             type="button"
