@@ -314,6 +314,7 @@ export function BundlingCampaignModal({
                               type="button"
                               onClick={() => onRemoveBundle(b.id)}
                               title="Delete this bundle row"
+                              aria-label="Delete this bundle row"
                               className="p-1 rounded text-rose-500 hover:bg-rose-50 hover:text-rose-700 cursor-pointer transition-colors"
                             >
                               <Trash2 size={15} />

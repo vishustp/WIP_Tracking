@@ -982,6 +982,7 @@ export default function AdminControlPanelClient() {
                                 onClick={() => openManagePermissions(user)}
                                 className="p-1.5 rounded-md hover:bg-blue-50 text-blue-600 hover:text-blue-800 transition-colors"
                                 title="Configure View / Editing Rights"
+                                aria-label="Configure View / Editing Rights"
                               >
                                 <Shield className="h-3.5 w-3.5" />
                               </button>
@@ -990,6 +991,7 @@ export default function AdminControlPanelClient() {
                                 onClick={() => openEditUser(user)}
                                 className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors"
                                 title="Edit User Details"
+                                aria-label="Edit User Details"
                               >
                                 <Edit2 className="h-3.5 w-3.5" />
                               </button>
@@ -999,6 +1001,7 @@ export default function AdminControlPanelClient() {
                                   onClick={() => handleDeleteUser(user)}
                                   className="p-1.5 rounded-md hover:bg-rose-50 text-rose-500 hover:text-rose-700 transition-colors"
                                   title="Delete User"
+                                  aria-label="Delete User"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>

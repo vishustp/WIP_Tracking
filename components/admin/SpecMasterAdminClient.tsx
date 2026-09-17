@@ -499,6 +499,7 @@ function SpecRow({
             onClick={() => onEdit(rec)}
             className="p-1.5 rounded-lg hover:bg-indigo-100 text-indigo-600 transition-colors"
             title="Edit"
+            aria-label="Edit"
           >
             <Edit2 className="w-3.5 h-3.5" />
           </button>
@@ -506,6 +507,7 @@ function SpecRow({
             onClick={() => onDelete(rec)}
             className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors"
             title="Delete"
+            aria-label="Delete"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
