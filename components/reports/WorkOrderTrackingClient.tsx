@@ -172,6 +172,7 @@ export default function WorkOrderTrackingClient() {
 
   // UI state
   const [expandedWos, setExpandedWos] = useState<Record<string, boolean>>({});
+  const [expandedMasterChildren, setExpandedMasterChildren] = useState<Record<string, boolean>>({});
   const [selectedFinishingWo, setSelectedFinishingWo] = useState<{
     wo: WorkOrder;
     stagesData: StageTrackingMetric[];
@@ -850,6 +851,11 @@ export default function WorkOrderTrackingClient() {
     setExpandedWos((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // Toggle child work orders breakdown for a master work order
+  const toggleMasterChildren = (id: string) => {
+    setExpandedMasterChildren((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
   // Toggle all
   const toggleAll = () => {
     const anyExpanded = filteredWorkOrders.some((w) => expandedWos[w.id]);
@@ -1331,9 +1337,31 @@ export default function WorkOrderTrackingClient() {
 
                           {/* Master / Child Badge */}
                           {data.isMaster && (
-                            <div className="mt-1.5 inline-flex items-center gap-1 rounded bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.5 text-[10px] font-bold text-indigo-900">
-                              <Crown size={10} className="text-indigo-600" />
-                              Master Campaign ({data.masterInfo?.child_work_orders?.length || 0} Children)
+                            <div className="mt-1.5">
+                              {data.masterInfo?.child_work_orders && data.masterInfo.child_work_orders.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleMasterChildren(wo.id);
+                                  }}
+                                  className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-all cursor-pointer shadow-2xs ${
+                                    expandedMasterChildren[wo.id]
+                                      ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-300'
+                                      : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border-indigo-200 hover:border-indigo-300'
+                                  }`}
+                                  title="Click to view/hide linked Child Work Orders"
+                                >
+                                  <Crown size={11} className={expandedMasterChildren[wo.id] ? 'text-amber-300' : 'text-indigo-600'} />
+                                  <span>Master Campaign ({data.masterInfo.child_work_orders.length} Child WOs)</span>
+                                  {expandedMasterChildren[wo.id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                </button>
+                              ) : (
+                                <div className="inline-flex items-center gap-1 rounded bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.5 text-[10px] font-bold text-indigo-900">
+                                  <Crown size={10} className="text-indigo-600" />
+                                  Master Campaign
+                                </div>
+                              )}
                             </div>
                           )}
                           {data.childInfo && (
@@ -1765,6 +1793,168 @@ export default function WorkOrderTrackingClient() {
                           </div>
                         </td>
                       </tr>
+
+                      {/* Expanded Child Work Orders Breakdown for Master Campaign */}
+                      {expandedMasterChildren[wo.id] && data.masterInfo?.child_work_orders && data.masterInfo.child_work_orders.length > 0 && (
+                        <tr className="bg-indigo-50/40 border-y-2 border-indigo-200">
+                          <td colSpan={7} className="p-3.5">
+                            <div className="rounded-xl border border-indigo-200 bg-white p-3.5 space-y-3 shadow-xs">
+                              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 pb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
+                                    <Crown size={11} className="text-amber-300" />
+                                    Master Campaign
+                                  </span>
+                                  <span className="text-xs font-bold text-indigo-950">
+                                    Linked Child Work Orders for Master WO #{wo.work_order_no} ({data.masterInfo.child_work_orders.length} Children)
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleMasterChildren(wo.id)}
+                                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-900 cursor-pointer"
+                                >
+                                  Collapse Child Orders ▲
+                                </button>
+                              </div>
+
+                              <div className="overflow-x-auto">
+                                <table className="min-w-full text-xs">
+                                  <thead className="bg-indigo-50/70 border-b border-indigo-200 text-slate-700 text-[10.5px] uppercase font-bold">
+                                    <tr>
+                                      <th className="py-2 px-3 text-left">Child Work Order &amp; Spec</th>
+                                      <th className="py-2 px-3 text-center bg-blue-50/50 border-x border-blue-100 text-blue-900">
+                                        1. Rolling
+                                      </th>
+                                      <th className="py-2 px-3 text-center bg-amber-50/50 border-r border-amber-100 text-amber-900">
+                                        2. Hollow HT
+                                      </th>
+                                      <th className="py-2 px-3 text-center bg-indigo-50/50 border-r border-indigo-100 text-indigo-900">
+                                        3. Draw Bench
+                                      </th>
+                                      <th className="py-2 px-3 text-center bg-orange-50/50 border-r border-orange-100 text-orange-900">
+                                        4. Heat Treatment
+                                      </th>
+                                      <th className="py-2 px-3 text-center bg-emerald-50/50 border-r border-emerald-100 text-emerald-900">
+                                        5. Finishing Line
+                                      </th>
+                                      <th className="py-2 px-3 text-right">Completion</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {data.masterInfo.child_work_orders.map((child: any, cIdx: number) => {
+                                      const childId = child.work_order_id || child.id;
+                                      const childWoMatch = workOrders.find((w) => w.id === childId || w.work_order_no === child.work_order_no);
+                                      const cData = childWoMatch ? getWoTrackingData(childWoMatch) : null;
+                                      const cL1 = Number(child.l1 || childWoMatch?.l1 || 0);
+                                      const cL2 = Number(child.l2 || childWoMatch?.l2 || 0);
+                                      const cLenStr = cL1 > 0 && cL2 > 0 ? (cL1 === cL2 ? `${cL1}m` : `${cL1}-${cL2}m`) : cL1 > 0 ? `${cL1}m` : '6.0m';
+                                      const cFin = cData?.stagesData?.find((s) => s.code === 'FINISHING');
+                                      const cTargetPcs = cFin?.targetPcs || child.planned_pcs || child.total_order_pcs || 0;
+                                      const cFinOutPcs = cFin?.outPcs || 0;
+                                      const cWipPcs = cFin?.wipPcs || 0;
+                                      const cCompletionPct = cData?.completionPct || (cTargetPcs > 0 ? Math.min(100, Math.round((cFinOutPcs / cTargetPcs) * 100)) : 0);
+
+                                      return (
+                                        <tr key={childId || cIdx} className="hover:bg-slate-50/70">
+                                          <td className="py-2.5 px-3 align-top font-sans">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="text-slate-400">↳</span>
+                                              <span className="font-mono font-bold text-slate-900 text-xs">WO #{child.work_order_no}</span>
+                                              <span className="rounded bg-indigo-50 border border-indigo-200 px-1 py-0.2 text-[9.5px] font-bold text-indigo-700">
+                                                Child Order
+                                              </span>
+                                            </div>
+                                            <div className="text-[11px] text-slate-600 font-medium pl-3 truncate max-w-[200px]">
+                                              {child.customer_name || childWoMatch?.customer_name || 'Standard'}
+                                            </div>
+                                            <div className="text-[10px] font-mono text-slate-500 pl-3">
+                                              {child.size_od || childWoMatch?.size_od || wo.size_od} × {child.size_wt || childWoMatch?.size_wt || wo.size_wt} mm
+                                              {' • '}Target: <strong className="text-amber-700">{cLenStr}</strong>
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 pl-3">
+                                              Planned: <strong className="text-slate-700 font-mono">{fmt(child.planned_pcs || child.total_order_pcs || 0)} Pcs</strong>
+                                            </div>
+                                          </td>
+
+                                          <td className="py-2.5 px-3 text-center align-top bg-blue-50/20 border-x border-blue-100 text-[10px] text-slate-500 font-mono">
+                                            <div className="rounded bg-blue-50/80 p-1 border border-blue-100">
+                                              <span className="text-blue-900 font-semibold block">Bundled in Master</span>
+                                              <span className="text-[9.5px] text-blue-700 block">#{wo.work_order_no}</span>
+                                            </div>
+                                          </td>
+
+                                          <td className="py-2.5 px-3 text-center align-top bg-amber-50/20 border-r border-amber-100 text-[10px] text-slate-500 font-mono">
+                                            <div className="rounded bg-amber-50/80 p-1 border border-amber-100">
+                                              <span className="text-amber-900 font-semibold block">Bundled in Master</span>
+                                              <span className="text-[9.5px] text-amber-700 block">#{wo.work_order_no}</span>
+                                            </div>
+                                          </td>
+
+                                          <td className="py-2.5 px-3 text-center align-top bg-indigo-50/20 border-r border-indigo-100 text-[10px] text-slate-500 font-mono">
+                                            <div className="rounded bg-indigo-50/80 p-1 border border-indigo-100">
+                                              <span className="text-indigo-900 font-semibold block">Bundled in Master</span>
+                                              <span className="text-[9.5px] text-indigo-700 block">#{wo.work_order_no}</span>
+                                            </div>
+                                          </td>
+
+                                          <td className="py-2.5 px-3 text-center align-top bg-orange-50/20 border-r border-orange-100 text-[10px] text-slate-500 font-mono">
+                                            <div className="rounded bg-orange-50/80 p-1 border border-orange-100">
+                                              <span className="text-orange-900 font-semibold block">Bundled in Master</span>
+                                              <span className="text-[9.5px] text-orange-700 block">#{wo.work_order_no}</span>
+                                            </div>
+                                          </td>
+
+                                          <td className="py-2.5 px-3 align-top bg-emerald-50/20 border-r border-emerald-100 text-xs">
+                                            <div className="space-y-0.5 text-right font-mono">
+                                              <div className="flex justify-between text-[10.5px]">
+                                                <span className="text-slate-500 font-sans">Target:</span>
+                                                <span className="font-bold text-slate-700">{fmt(cTargetPcs)} Pcs</span>
+                                              </div>
+                                              <div className="flex justify-between text-[10.5px]">
+                                                <span className="text-slate-600 font-sans">Finished:</span>
+                                                <span className="font-bold text-emerald-800">{fmt(cFinOutPcs)} Nos</span>
+                                              </div>
+                                              <div className="flex justify-between text-[10px] text-emerald-900 pt-0.5 border-t border-emerald-200">
+                                                <span className="font-sans">Stock WIP:</span>
+                                                <span className="font-bold">{fmt(cWipPcs)} Nos</span>
+                                              </div>
+                                            </div>
+                                          </td>
+
+                                          <td className="py-2.5 px-3 align-top text-right font-mono">
+                                            <div className="space-y-1">
+                                              <div className="flex justify-between text-[10.5px]">
+                                                <span className="text-slate-500 font-sans">Done:</span>
+                                                <span className="font-bold text-slate-900">{cCompletionPct}%</span>
+                                              </div>
+                                              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                                <div
+                                                  className="bg-emerald-600 h-1.5 rounded-full transition-all"
+                                                  style={{ width: `${cCompletionPct}%` }}
+                                                />
+                                              </div>
+                                              {childWoMatch && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setFilterWo(child.work_order_no)}
+                                                  className="text-[9.5px] text-blue-600 hover:text-blue-800 font-sans underline cursor-pointer"
+                                                >
+                                                  Filter to this WO
+                                                </button>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
 
                       {/* Expanded Production History Rows */}
                       {isExpanded && (
