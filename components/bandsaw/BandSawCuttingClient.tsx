@@ -458,11 +458,18 @@ export default function BandSawCuttingClient() {
                     return (
                       <tr key={row.work_order_id} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                          WO #{row.work_order_no}
-                          {row.route_code && (
-                            <span className="ml-2 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                              {row.route_code}
-                            </span>
+                          <div className="flex items-center gap-1.5">
+                            <span>WO #{row.work_order_no}</span>
+                            {row.route_code && (
+                              <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                                {row.route_code}
+                              </span>
+                            )}
+                          </div>
+                          {row.child_work_orders && row.child_work_orders.length > 0 && (
+                            <div className="mt-1 inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[9.5px] font-bold text-blue-800">
+                              <span>Campaign ({row.child_work_orders.length} Child WOs)</span>
+                            </div>
                           )}
                         </td>
                         <td className="py-3 px-3 text-slate-700">
@@ -472,7 +479,24 @@ export default function BandSawCuttingClient() {
                         <td className="py-3 px-3 font-mono font-semibold text-slate-800">
                           {row.od} × {row.wl} mm
                         </td>
-                        <td className="py-3 px-3 font-mono text-slate-600">{lenLabel}</td>
+                        <td className="py-3 px-3 font-mono text-slate-700">
+                          <div className="font-semibold">{lenLabel}</div>
+                          {row.child_work_orders && row.child_work_orders.length > 0 && (
+                            <div className="mt-0.5 space-y-0.5">
+                              {row.child_work_orders.map((c: any, i: number) => {
+                                const cL1 = Number(c.l1 || 0);
+                                const cL2 = Number(c.l2 || 0);
+                                const cStr = cL1 > 0 && cL2 > 0 ? (cL1 === cL2 ? `${cL1}m` : `${cL1}-${cL2}m`) : cL1 > 0 ? `${cL1}m` : '6.0m';
+                                return (
+                                  <div key={i} className="text-[10px] text-blue-700 font-mono flex items-center gap-1">
+                                    <span className="text-slate-400">↳</span>
+                                    <span>#{c.work_order_no}: {cStr}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
                         <td className="py-3 px-3">
                           <span className="inline-flex rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
                             {row.feeder_source_label || 'Heat Treatment Net OK'}

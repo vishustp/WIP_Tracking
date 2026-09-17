@@ -69,6 +69,10 @@ export function BandSawCuttingModal({
   })();
   const lengthTypeStr = row.len_type ? `(${row.len_type})` : '';
 
+  // Child Work Orders (if Master Campaign or linked child orders)
+  const childOrders = row.child_work_orders || [];
+  const hasChildOrders = Array.isArray(childOrders) && childOrders.length > 0;
+
   // Default initial mother pipe average length
   const defaultMotherLen = (() => {
     if (l1 > 0 && l2 > 0) return (l1 + l2) / 2;
@@ -420,6 +424,30 @@ export function BandSawCuttingModal({
     );
   };
 
+  const autoFillFromChildOrders = () => {
+    if (!hasChildOrders) return;
+    const c1 = childOrders[0];
+    const c2 = childOrders[1] || childOrders[0];
+
+    const c1Len = Number(c1?.l1 || 5.50);
+    const c2Len = Number(c2?.l1 || (motherAvgLenNum - c1Len > 0 ? Number((motherAvgLenNum - c1Len).toFixed(2)) : 6.00));
+
+    const totalAvail = availMotherPcs > 0 ? availMotherPcs : 10;
+    const c1Pcs = c1?.planned_pcs ? Math.min(totalAvail, Math.ceil(c1.planned_pcs / 2)) : Math.floor(totalAvail / 2) || 1;
+    const c2Pcs = Math.max(1, totalAvail - c1Pcs);
+
+    setBatchGroupA_CutLen(String(c1Len));
+    setBatchGroupA_Pcs(String(c1Pcs));
+    setBatchGroupA_Multiplier('2');
+
+    setBatchGroupB_CutLen(String(c2Len));
+    setBatchGroupB_Pcs(String(c2Pcs));
+    setBatchGroupB_Multiplier('1');
+
+    setShowBatchSplitTool(true);
+    toast.success(`Loaded Child WOs: Group A -> WO #${c1.work_order_no} (${c1Len}m), Group B -> WO #${c2.work_order_no} (${c2Len}m)`);
+  };
+
   const handleApplyBatchSplit = () => {
     const gA_mPcs = parseInt(batchGroupA_Pcs, 10) || 0;
     const gA_len = parseFloat(batchGroupA_CutLen) || 0;
@@ -644,6 +672,64 @@ export function BandSawCuttingModal({
           </div>
         </div>
 
+        {/* Child Work Orders Strip if Master Campaign */}
+        {hasChildOrders && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 shadow-2xs space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase">
+                  Master Rolling Campaign
+                </span>
+                <span className="text-xs font-bold text-blue-950">
+                  Linked Child Work Orders ({childOrders.length})
+                </span>
+              </div>
+              <span className="text-[10px] text-blue-700 font-medium">
+                Click any child to cut or load into presets
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {childOrders.map((child, idx) => {
+                const cL1 = Number(child.l1 || 0);
+                const cL2 = Number(child.l2 || 0);
+                const cLenStr = cL1 > 0 && cL2 > 0 ? (cL1 === cL2 ? `${cL1}m` : `${cL1}-${cL2}m`) : cL1 > 0 ? `${cL1}m` : '6.0m';
+                const cPcs = child.planned_pcs || child.total_order_pcs || 0;
+
+                return (
+                  <div
+                    key={child.work_order_id || child.id || idx}
+                    className="flex items-center justify-between rounded-lg border border-blue-200/80 bg-white p-2.5 shadow-2xs hover:border-blue-400 hover:shadow-xs transition"
+                  >
+                    <div className="min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-slate-900">
+                        <span>WO #{child.work_order_no}</span>
+                      </div>
+                      <div className="text-[10.5px] text-slate-600 truncate">
+                        {child.customer_name || 'Standard'}
+                      </div>
+                      <div className="text-[10px] font-semibold text-slate-500 mt-0.5">
+                        Target: <span className="font-mono text-amber-700 font-bold">{cLenStr}</span>
+                        {cPcs > 0 && <span> • {cPcs} PCS</span>}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => applyTargetAndRemainder(cL1 > 0 ? cL1 : 6.0)}
+                      className="h-7 text-[10.5px] font-bold border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 shrink-0 gap-1 px-2"
+                      title={`Cut into Child WO #${child.work_order_no} length (${cLenStr})`}
+                    >
+                      <Scissors size={11} className="rotate-90" />
+                      Cut {cLenStr}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Section 1: Mother Pipe Processing & Live Balance Tracker */}
         <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -840,6 +926,24 @@ export function BandSawCuttingModal({
                 </button>
               )}
 
+              {/* Child Work Order Presets */}
+              {hasChildOrders &&
+                childOrders.map((child, idx) => {
+                  const cL1 = Number(child.l1 || 0);
+                  const cLenStr = cL1 > 0 ? `${cL1}m` : '6.0m';
+                  return (
+                    <button
+                      key={child.work_order_id || child.id || idx}
+                      type="button"
+                      onClick={() => applyTargetAndRemainder(cL1 > 0 ? cL1 : 6.0)}
+                      className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 font-bold text-blue-900 hover:border-blue-400 hover:bg-blue-100 transition-all text-xs shadow-2xs"
+                      title={`Cut into Child WO #${child.work_order_no} target length (${cLenStr})`}
+                    >
+                      <span>🎯 Child #{child.work_order_no} ({cLenStr})</span>
+                    </button>
+                  );
+                })}
+
               <button
                 type="button"
                 onClick={() => applyEqualMultiples(2)}
@@ -992,6 +1096,16 @@ export function BandSawCuttingModal({
                     <span className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-900">
                       Order Target: {orderLengthStr}
                     </span>
+                    {hasChildOrders && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={autoFillFromChildOrders}
+                        className="h-6 px-2 text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white gap-1 rounded shadow-2xs"
+                      >
+                        ⚡ Auto-Fill from Child WOs ({childOrders.length})
+                      </Button>
+                    )}
                   </div>
                   <span className="text-[11px] font-semibold text-purple-700">
                     Total Processed: {(parseInt(batchGroupA_Pcs, 10) || 0) + (parseInt(batchGroupB_Pcs, 10) || 0)} / {availMotherPcs} Pcs
