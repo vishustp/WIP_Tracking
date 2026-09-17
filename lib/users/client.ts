@@ -50,6 +50,7 @@ export function mapAppUser(row: any): AppUserProfile {
       return stages;
     })(),
     default_stage: row?.default_stage || (wc === 'ALL' ? 'ROLLING' : wc),
+    permissions: row?.permissions || (typeof row?.user_metadata?.permissions === 'object' ? row.user_metadata.permissions : undefined),
     phone: String(row?.phone || ''),
     avatar_color: String(row?.avatar_color || ''),
     active: row?.active !== false,

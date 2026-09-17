@@ -2,17 +2,18 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import type {
-  AppUserProfile, AppAuditLog, AppRoute, AppStage, UserRole, UserGroup, WorkCenterCode
+  AppUserProfile, AppAuditLog, AppRoute, AppStage, UserRole, UserGroup, WorkCenterCode, FormPermissions
 } from '@/lib/users/types';
 import { getCurrentAppUser, getAppUsers } from '@/lib/users/client';
-import { GROUP_CONFIGS, usePermissions, getFormAccess } from '@/lib/permissions';
+import { GROUP_CONFIGS, usePermissions, getFormAccess, MODULE_DEFINITIONS, getDefaultPermissions, WORK_CENTER_LABELS } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
+import UserPermissionsModal from './UserPermissionsModal';
 import {
   ShieldCheck, Users, Sliders, Activity, Database, Plus, Search,
   Edit2, Trash2, CheckCircle2, XCircle, RotateCcw, Download, Upload,
   KeyRound, Shield, AlertTriangle, RefreshCw, Layers, Check, X,
   Save, Filter, Lock, HardHat, Factory, UserCheck, ShieldAlert,
-  Eye, EyeOff, Loader2
+  Eye, EyeOff, Loader2, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
@@ -102,7 +103,7 @@ export default function AdminControlPanelClient() {
   const formAccess = useMemo(() => getFormAccess(user, 'admin_panel'), [user]);
   const canAdminister = formAccess.isAllowed;
 
-  const [activeTab, setActiveTab] = useState<'users' | 'routes' | 'guardrails' | 'audit' | 'maintenance'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'permissions' | 'routes' | 'guardrails' | 'audit' | 'maintenance'>('users');
   const [users, setUsers] = useState<AppUserProfile[]>([]);
   const [routes, setRoutes] = useState<AppRoute[]>([]);
   const [stages, setStages] = useState<AppStage[]>([]);
@@ -114,6 +115,12 @@ export default function AdminControlPanelClient() {
   const [userSearch, setUserSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [groupFilter, setGroupFilter] = useState('ALL');
+
+  // Permissions Matrix filter & modal state
+  const [isPermModalOpen, setIsPermModalOpen] = useState(false);
+  const [permTargetUser, setPermTargetUser] = useState<AppUserProfile | null>(null);
+  const [permSearch, setPermSearch] = useState('');
+  const [permGroupFilter, setPermGroupFilter] = useState('ALL');
 
   // Audit search & filters
   const [auditSearch, setAuditSearch] = useState('');
@@ -341,6 +348,48 @@ export default function AdminControlPanelClient() {
       pin: '',
     });
     setIsUserModalOpen(true);
+  };
+
+  // Open Manage Permissions Modal
+  const openManagePermissions = (targetUser: AppUserProfile) => {
+    setPermTargetUser(targetUser);
+    setIsPermModalOpen(true);
+  };
+
+  // Save Granular Permissions through Supabase Admin API
+  const handleSavePermissions = async (targetUser: AppUserProfile, perms: FormPermissions) => {
+    if (!canAdminister) {
+      toast.error('Permission denied: Only Admin Group accounts can configure user permissions.');
+      return;
+    }
+
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch('/api/admin/users', {
+      method: 'PUT',
+      headers: authHeaders,
+      credentials: 'include',
+      body: JSON.stringify({
+        id: targetUser.id,
+        permissions: perms,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update user permissions.');
+    }
+
+    setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? { ...u, permissions: perms } : u)));
+    if (currentUser && currentUser.id === targetUser.id) {
+      setCurrentUser((prev) => (prev ? { ...prev, permissions: perms } : null));
+    }
+    void createClient().from('audit_log').insert({
+      user_id: currentUser?.auth_user_id,
+      action: 'PERMISSIONS_UPDATE',
+      entity: 'User Permissions',
+      record_id: targetUser.id,
+      new_value: { user_email: targetUser.email, permissions: perms },
+    });
   };
 
   // Handle save user through the real Supabase-backed Admin API.
@@ -725,7 +774,17 @@ export default function AdminControlPanelClient() {
             }`}
           >
             <Users className="h-4 w-4" />
-            <span>User Management & RBAC ({users.length})</span>
+            <span>User Management & Staff ({users.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('permissions')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition cursor-pointer ${
+              activeTab === 'permissions' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <ShieldCheck className="h-4 w-4 text-blue-300" />
+            <span>Access Rights & Form Permissions</span>
           </button>
           <button
             type="button"
@@ -920,6 +979,14 @@ export default function AdminControlPanelClient() {
                             <div className="inline-flex items-center gap-1.5">
                               <button
                                 type="button"
+                                onClick={() => openManagePermissions(user)}
+                                className="p-1.5 rounded-md hover:bg-blue-50 text-blue-600 hover:text-blue-800 transition-colors"
+                                title="Configure View / Editing Rights"
+                              >
+                                <Shield className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => openEditUser(user)}
                                 className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors"
                                 title="Edit User Details"
@@ -942,6 +1009,206 @@ export default function AdminControlPanelClient() {
                       );
                     })
                   )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 1b: Access Rights & Form Permissions Matrix */}
+      {activeTab === 'permissions' && (
+        <div className="space-y-6">
+          {/* Header & Filter Controls */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-base font-bold text-slate-900">User Access Rights & Permissions Matrix</h2>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Configure granular View-Only, Full Editing, or Restricted access across all 7 shop floor stations and planning modules.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[220px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search staff, role, ID..."
+                    value={permSearch}
+                    onChange={(e) => setPermSearch(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 py-1.5 text-xs focus:bg-white focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+
+                <select
+                  value={permGroupFilter}
+                  onChange={(e) => setPermGroupFilter(e.target.value)}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:bg-white focus:border-blue-500 focus:outline-hidden"
+                >
+                  <option value="ALL">All User Groups</option>
+                  <option value="admin">Admin Group Only</option>
+                  <option value="super_user">Super User Group Only</option>
+                  <option value="user">Operator User Group Only</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Quick KPI Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-100 text-xs">
+              <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-100 flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-blue-900">Total Factory Staff</div>
+                  <div className="text-base font-bold text-blue-950 mt-0.5 font-mono">{users.length} Active Accounts</div>
+                </div>
+                <Users className="h-7 w-7 text-blue-500/40" />
+              </div>
+
+              <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-100 flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-purple-900">Customized Rights Overrides</div>
+                  <div className="text-base font-bold text-purple-950 mt-0.5 font-mono">
+                    {users.filter((u) => Boolean(u.permissions && Object.keys(u.permissions).length > 0)).length} Users Custom
+                  </div>
+                </div>
+                <Sparkles className="h-7 w-7 text-purple-500/40" />
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100 flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-emerald-900">Global Authority Group</div>
+                  <div className="text-base font-bold text-emerald-950 mt-0.5 font-mono">
+                    {users.filter((u) => u.group === 'admin' || u.group === 'super_user').length} Admin / Super Users
+                  </div>
+                </div>
+                <ShieldCheck className="h-7 w-7 text-emerald-500/40" />
+              </div>
+            </div>
+          </div>
+
+          {/* Matrix Grid Table */}
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    <th className="py-3 px-4">User Profile</th>
+                    <th className="py-3 px-4">Group & Station</th>
+                    <th className="py-3 px-3 text-center">Rolling</th>
+                    <th className="py-3 px-3 text-center">H-HT</th>
+                    <th className="py-3 px-3 text-center">Draw</th>
+                    <th className="py-3 px-3 text-center">HT</th>
+                    <th className="py-3 px-3 text-center">Saw</th>
+                    <th className="py-3 px-3 text-center">VDI</th>
+                    <th className="py-3 px-3 text-center">Finish</th>
+                    <th className="py-3 px-3 text-center">Plans</th>
+                    <th className="py-3 px-3 text-center">Diversion</th>
+                    <th className="py-3 px-3 text-center">Reports</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {users
+                    .filter((u) => {
+                      if (permGroupFilter !== 'ALL' && u.group !== permGroupFilter) return false;
+                      if (!permSearch.trim()) return true;
+                      const q = permSearch.toLowerCase().trim();
+                      const name = (u.name || (u as any).employee_name || '').toLowerCase();
+                      const email = (u.email || '').toLowerCase();
+                      const empId = (u.employee_id || (u as any).employee_code || '').toLowerCase();
+                      const roleTitle = (u.role_title || '').toLowerCase();
+                      return name.includes(q) || email.includes(q) || empId.includes(q) || roleTitle.includes(q);
+                    })
+                    .map((u) => {
+                      const effectivePerms: FormPermissions = {
+                        ...getDefaultPermissions(u.group, u.work_center),
+                        ...(u.permissions || {}),
+                      };
+                      const hasCustomOverride = Boolean(u.permissions && Object.keys(u.permissions).length > 0);
+                      const grpCfg = GROUP_CONFIGS[u.group] || GROUP_CONFIGS.user;
+                      const wcLabel = WORK_CENTER_LABELS[u.work_center] || u.work_center;
+
+                      const renderBadge = (level: string | undefined) => {
+                        if (level === 'edit') {
+                          return (
+                            <span className="inline-flex items-center rounded-md bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                              EDIT
+                            </span>
+                          );
+                        }
+                        if (level === 'view') {
+                          return (
+                            <span className="inline-flex items-center rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                              VIEW
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center rounded-md bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+                            —
+                          </span>
+                        );
+                      };
+
+                      return (
+                        <tr key={u.id} className="hover:bg-slate-50/70 transition">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className={`h-7 w-7 rounded-lg flex items-center justify-center font-bold text-xs ${u.avatar_color || 'bg-slate-700 text-white'}`}>
+                                {String(u.name || u.email || 'U').split(' ').filter(Boolean).map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-semibold text-slate-900">{u.name || u.email}</div>
+                                <div className="text-[11px] text-slate-500 font-mono">{u.employee_id || '—'} • {u.email}</div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <div className="space-y-0.5">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${grpCfg.badgeClass}`}>
+                                {grpCfg.name}
+                              </span>
+                              <div className="text-[11px] text-slate-600 font-medium">
+                                {u.work_center === 'ALL' ? 'Global Station Access' : wcLabel}
+                              </div>
+                              {hasCustomOverride ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
+                                  <Sparkles className="h-2.5 w-2.5" /> Custom Rights
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400">Default Station Rights</span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3 text-center">{renderBadge(effectivePerms.production_rolling)}</td>
+                          <td className="py-3 px-3 text-center">{renderBadge(effectivePerms.production_hollow_ht)}</td>
+                          <td className="py-3 px-3 text-center">{renderBadge(effectivePerms.production_draw)}</td>
+                          <td className="py-3 px-3 text-center">{renderBadge(effectivePerms.production_ht)}</td>
+                          <td className="py-3 px-3 text-center">{renderBadge(effectivePerms.production_band_saw)}</td>
+                          <td className="py-3 px-3 text-center">{renderBadge(effectivePerms.production_vdi)}</td>
+                          <td className="py-3 px-3 text-center">{renderBadge(effectivePerms.production_finishing)}</td>
+                          <td className="py-3 px-3 text-center">{renderBadge(effectivePerms.rolling_plan)}</td>
+                          <td className="py-3 px-3 text-center">{renderBadge(effectivePerms.diversion)}</td>
+                          <td className="py-3 px-3 text-center">{renderBadge(effectivePerms.reports)}</td>
+
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => openManagePermissions(u)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:border-blue-300 shadow-xs transition cursor-pointer"
+                            >
+                              <Shield className="h-3.5 w-3.5" />
+                              <span>Configure Rights</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
@@ -1553,6 +1820,14 @@ export default function AdminControlPanelClient() {
           </div>
         </div>
       )}
+
+      {/* Granular User Permissions Modal */}
+      <UserPermissionsModal
+        isOpen={isPermModalOpen}
+        onClose={() => setIsPermModalOpen(false)}
+        user={permTargetUser}
+        onSave={handleSavePermissions}
+      />
     </div>
   );
 }

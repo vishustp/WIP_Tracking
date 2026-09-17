@@ -1,10 +1,101 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { AppUserProfile, UserGroup, UserRole } from './users/types';
+import type { AppUserProfile, UserGroup, UserRole, AccessLevel, FormPermissions } from './users/types';
 import { getCurrentAppUser } from './users/client';
 import { createClient } from './supabase/client';
 import { StageCode } from '@/types';
+
+export const STAGE_TO_PERMISSION_KEY: Record<string, keyof FormPermissions> = {
+  ROLLING: 'production_rolling',
+  HOLLOW_HEAT_TREATMENT: 'production_hollow_ht',
+  DRAW: 'production_draw',
+  HEAT_TREATMENT: 'production_ht',
+  BAND_SAW: 'production_band_saw',
+  VDI: 'production_vdi',
+  FINISHING: 'production_finishing',
+};
+
+export const MODULE_DEFINITIONS: {
+  key: keyof FormPermissions;
+  label: string;
+  category: 'production' | 'planning' | 'tools';
+  description: string;
+}[] = [
+  // Production Entry Stations
+  { key: 'production_rolling', label: 'Hot Rolling Mill', category: 'production', description: 'Mother hollow piercing, rolling, and initial hot sizing' },
+  { key: 'production_hollow_ht', label: 'Hollow Heat Treatment', category: 'production', description: 'Mother hollow annealing and stress relief prior to draw' },
+  { key: 'production_draw', label: 'Cold Draw Bench & Pilger', category: 'production', description: 'Cold drawing and dimensional reduction' },
+  { key: 'production_ht', label: 'Final Heat Treatment', category: 'production', description: 'Final austenitizing, quenching & tempering' },
+  { key: 'production_band_saw', label: 'Band Saw Cutting', category: 'production', description: 'Multi-length cutting and crop end separation' },
+  { key: 'production_vdi', label: 'VDI / QC Inspection', category: 'production', description: 'Visual, dimensional, hydro, and NDT QC tests' },
+  { key: 'production_finishing', label: 'Finishing Line & Packing', category: 'production', description: 'Final straightening, facing, coating, and bundling' },
+
+  // Planning & Management Modules
+  { key: 'work_order', label: 'Customer Work Orders', category: 'planning', description: 'Work order creation, specification master, and status' },
+  { key: 'rolling_plan', label: 'Rolling Plans', category: 'planning', description: 'Mother hollow schedule allocation and campaign planning' },
+  { key: 'diversion', label: 'Pipe Diversion Planning', category: 'planning', description: 'Physical WIP transfer and reallocation between orders' },
+
+  // Tools & Analytics
+  { key: 'excel_import', label: 'Excel Bulk Importer', category: 'tools', description: 'Bulk spreadsheet upload and data migration' },
+  { key: 'reports', label: 'Reports & Tracking Sheets', category: 'tools', description: 'WIP reports, stage production, and order tracking' },
+  { key: 'admin_panel', label: 'Admin Control Panel', category: 'tools', description: 'User management, permissions, and guardrails' },
+];
+
+export function getDefaultPermissions(group: UserGroup, workCenter: string): FormPermissions {
+  if (group === 'admin') {
+    return {
+      production_rolling: 'edit',
+      production_hollow_ht: 'edit',
+      production_draw: 'edit',
+      production_ht: 'edit',
+      production_band_saw: 'edit',
+      production_vdi: 'edit',
+      production_finishing: 'edit',
+      work_order: 'edit',
+      rolling_plan: 'edit',
+      diversion: 'edit',
+      excel_import: 'edit',
+      reports: 'edit',
+      admin_panel: 'edit',
+    };
+  }
+
+  if (group === 'super_user') {
+    return {
+      production_rolling: 'edit',
+      production_hollow_ht: 'edit',
+      production_draw: 'edit',
+      production_ht: 'edit',
+      production_band_saw: 'edit',
+      production_vdi: 'edit',
+      production_finishing: 'edit',
+      work_order: 'view',
+      rolling_plan: 'edit',
+      diversion: 'edit',
+      excel_import: 'view',
+      reports: 'edit',
+      admin_panel: 'none',
+    };
+  }
+
+  // Regular User: Edit assigned work center, View others
+  return {
+    production_rolling: workCenter === 'ALL' || workCenter === 'ROLLING' ? 'edit' : 'view',
+    production_hollow_ht: workCenter === 'ALL' || workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT' ? 'edit' : 'view',
+    production_draw: workCenter === 'ALL' || workCenter === 'DRAW' ? 'edit' : 'view',
+    production_ht: workCenter === 'ALL' || workCenter === 'HEAT_TREATMENT' || workCenter === 'HOLLOW_HEAT_TREATMENT' ? 'edit' : 'view',
+    production_band_saw: workCenter === 'ALL' || workCenter === 'BAND_SAW' ? 'edit' : 'view',
+    production_vdi: workCenter === 'ALL' || workCenter === 'VDI' || workCenter === 'QA' ? 'edit' : 'view',
+    production_finishing: workCenter === 'ALL' || workCenter === 'FINISHING' ? 'edit' : 'view',
+    work_order: 'view',
+    rolling_plan: 'view',
+    diversion: 'view',
+    excel_import: 'none',
+    reports: 'view',
+    admin_panel: 'none',
+  };
+}
 
 export type PermissionAction =
   | 'delete_production_entry'
@@ -361,7 +452,7 @@ export interface FormAccessResult {
 
 export function getFormAccess(
   user: AppUserProfile | null | undefined,
-  formKey: 'rolling_plan' | 'production_entry' | 'diversion' | 'work_order' | 'excel_import' | 'admin_panel' | 'settings',
+  formKey: 'rolling_plan' | 'production_entry' | 'diversion' | 'work_order' | 'excel_import' | 'admin_panel' | 'settings' | 'reports',
   stageCode?: string
 ): FormAccessResult {
   const group: UserGroup = user?.group || (user?.role === 'admin' ? 'admin' : user?.role === 'manager' ? 'super_user' : 'user');
@@ -370,12 +461,47 @@ export function getFormAccess(
   const wcLabel = WORK_CENTER_LABELS[wc] || wc;
   const isAuditor = user?.role === 'auditor';
 
+  // Check if Admin has configured explicit custom permissions for this user
+  const customPerms = user?.permissions;
+
   // 1. Production Entry Form
   if (formKey === 'production_entry') {
     const targetStage = stageCode || 'ROLLING';
     const targetStageLabel = WORK_CENTER_LABELS[targetStage] || targetStage;
-    const isStageAssigned = isUserAuthorizedForStage(user, targetStage);
+    const stagePermKey = STAGE_TO_PERMISSION_KEY[targetStage] || 'production_rolling';
+    const customAccess = customPerms ? customPerms[stagePermKey] : undefined;
 
+    if (customAccess !== undefined) {
+      const isAllowed = customAccess === 'edit';
+      const isView = customAccess === 'view';
+      return {
+        formKey,
+        formTitle: `${targetStageLabel} Production Entry`,
+        isAllowed,
+        mode: isAllowed ? 'full' : 'view_only',
+        canSubmit: isAllowed,
+        canEdit: isAllowed,
+        canDelete: isAllowed && (group === 'admin' || group === 'super_user' || user?.work_center === targetStage || user?.work_center === 'ALL'),
+        group,
+        groupName: groupCfg.name,
+        userWorkCenter: wc,
+        userWorkCenterLabel: wcLabel,
+        authorizedGroups: ['Admin Assigned Rights'],
+        bannerTitle: isAllowed
+          ? 'Work Center Operator Access (Admin Assigned)'
+          : isView
+          ? 'View-Only Accessibility Mode (Admin Assigned)'
+          : 'Access Restricted by Admin',
+        bannerMessage: isAllowed
+          ? `Authorized by Admin to record shift production, edit entries, and log rejections for ${targetStageLabel}.`
+          : isView
+          ? `This station is in View-Only mode by Admin configuration. You can monitor queues and history, but changes are disabled.`
+          : `Access to ${targetStageLabel} is restricted by Admin.`,
+        reason: isAllowed ? undefined : `Permission level set to ${customAccess.toUpperCase()} by Admin.`,
+      };
+    }
+
+    const isStageAssigned = isUserAuthorizedForStage(user, targetStage);
     const isAllowed = isStageAssigned && !isAuditor;
     const isJointFurnace = (targetStage === 'HOLLOW_HEAT_TREATMENT' || targetStage === 'HEAT_TREATMENT') &&
       user?.work_center !== targetStage &&
@@ -412,6 +538,30 @@ export function getFormAccess(
 
   // 2. Rolling Plan Form
   if (formKey === 'rolling_plan') {
+    const customAccess = customPerms?.rolling_plan;
+    if (customAccess !== undefined) {
+      const isAllowed = customAccess === 'edit';
+      return {
+        formKey,
+        formTitle: 'Rolling Plan Planning & Allocation',
+        isAllowed,
+        mode: isAllowed ? 'full' : 'view_only',
+        canSubmit: isAllowed,
+        canEdit: isAllowed,
+        canDelete: isAllowed && (group === 'admin' || group === 'super_user'),
+        group,
+        groupName: groupCfg.name,
+        userWorkCenter: wc,
+        userWorkCenterLabel: wcLabel,
+        authorizedGroups: ['Admin Assigned Rights'],
+        bannerTitle: isAllowed ? 'Full Planning Authority (Admin Assigned)' : 'View-Only Mode (Admin Assigned)',
+        bannerMessage: isAllowed
+          ? 'Authorized to create, allocate, edit, and void mother hollow rolling plans.'
+          : 'Rolling plan scheduling is in read-only mode by Admin configuration.',
+        reason: isAllowed ? undefined : `Permission level set to ${customAccess.toUpperCase()} by Admin.`,
+      };
+    }
+
     const isAllowed = (group === 'admin' || group === 'super_user') && !isAuditor;
     return {
       formKey,
@@ -438,6 +588,30 @@ export function getFormAccess(
 
   // 3. Pipe Diversion Form
   if (formKey === 'diversion') {
+    const customAccess = customPerms?.diversion;
+    if (customAccess !== undefined) {
+      const isAllowed = customAccess === 'edit';
+      return {
+        formKey,
+        formTitle: 'Physical WIP Pipe Diversion Planning',
+        isAllowed,
+        mode: isAllowed ? 'full' : 'view_only',
+        canSubmit: isAllowed,
+        canEdit: isAllowed,
+        canDelete: isAllowed && (group === 'admin' || group === 'super_user'),
+        group,
+        groupName: groupCfg.name,
+        userWorkCenter: wc,
+        userWorkCenterLabel: wcLabel,
+        authorizedGroups: ['Admin Assigned Rights'],
+        bannerTitle: isAllowed ? 'Diversion Authorization Active (Admin Assigned)' : 'View-Only Mode (Admin Assigned)',
+        bannerMessage: isAllowed
+          ? 'Authorized to transfer and divert validated physical WIP between compatible orders.'
+          : 'Pipe diversion reallocations are in read-only mode by Admin configuration.',
+        reason: isAllowed ? undefined : `Permission level set to ${customAccess.toUpperCase()} by Admin.`,
+      };
+    }
+
     const isAllowed = (group === 'admin' || group === 'super_user') && !isAuditor;
     return {
       formKey,
@@ -464,6 +638,30 @@ export function getFormAccess(
 
   // 4. Work Order Management
   if (formKey === 'work_order') {
+    const customAccess = customPerms?.work_order;
+    if (customAccess !== undefined) {
+      const isAllowed = customAccess === 'edit';
+      return {
+        formKey,
+        formTitle: 'Customer Work Orders',
+        isAllowed,
+        mode: isAllowed ? 'full' : 'view_only',
+        canSubmit: isAllowed,
+        canEdit: isAllowed,
+        canDelete: isAllowed && group === 'admin',
+        group,
+        groupName: groupCfg.name,
+        userWorkCenter: wc,
+        userWorkCenterLabel: wcLabel,
+        authorizedGroups: ['Admin Assigned Rights'],
+        bannerTitle: isAllowed ? 'Work Order Management (Admin Assigned)' : 'View-Only Mode (Admin Assigned)',
+        bannerMessage: isAllowed
+          ? 'Authorized to create, edit, close, and manage customer work order specifications.'
+          : 'Customer work order management is in read-only mode by Admin configuration.',
+        reason: isAllowed ? undefined : `Permission level set to ${customAccess.toUpperCase()} by Admin.`,
+      };
+    }
+
     const isAllowed = group === 'admin' && !isAuditor;
     return {
       formKey,
@@ -488,6 +686,30 @@ export function getFormAccess(
 
   // 5. Excel Import Tool
   if (formKey === 'excel_import') {
+    const customAccess = customPerms?.excel_import;
+    if (customAccess !== undefined) {
+      const isAllowed = customAccess === 'edit';
+      return {
+        formKey,
+        formTitle: 'Excel Work Order Batch Importer',
+        isAllowed,
+        mode: isAllowed ? 'full' : 'view_only',
+        canSubmit: isAllowed,
+        canEdit: isAllowed,
+        canDelete: false,
+        group,
+        groupName: groupCfg.name,
+        userWorkCenter: wc,
+        userWorkCenterLabel: wcLabel,
+        authorizedGroups: ['Admin Assigned Rights'],
+        bannerTitle: isAllowed ? 'Bulk Import Privileges (Admin Assigned)' : 'View-Only Mode (Admin Assigned)',
+        bannerMessage: isAllowed
+          ? 'Authorized to parse, validate, and bulk-load work order schedules.'
+          : 'Bulk data importation is in read-only mode by Admin configuration.',
+        reason: isAllowed ? undefined : `Permission level set to ${customAccess.toUpperCase()} by Admin.`,
+      };
+    }
+
     const isAllowed = group === 'admin' && !isAuditor;
     return {
       formKey,
@@ -510,9 +732,35 @@ export function getFormAccess(
     };
   }
 
-  // 6. Admin Control Panel
+  // 6. Reports & Tracking Sheets
+  if (formKey === 'reports') {
+    const customAccess = customPerms?.reports;
+    const isAllowed = customAccess === undefined ? true : customAccess !== 'none';
+    return {
+      formKey,
+      formTitle: 'Reports & Tracking Sheets',
+      isAllowed,
+      mode: 'view_only',
+      canSubmit: false,
+      canEdit: false,
+      canDelete: false,
+      group,
+      groupName: groupCfg.name,
+      userWorkCenter: wc,
+      userWorkCenterLabel: wcLabel,
+      authorizedGroups: ['All Users'],
+      bannerTitle: isAllowed ? 'Report View Access' : 'Access Restricted',
+      bannerMessage: isAllowed
+        ? 'Live visibility into factory work-in-progress and production metrics.'
+        : 'Access to reports is restricted by Admin.',
+      reason: isAllowed ? undefined : 'Restricted by Admin.',
+    };
+  }
+
+  // 7. Admin Control Panel
   if (formKey === 'admin_panel') {
-    const isAllowed = group === 'admin';
+    const customAccess = customPerms?.admin_panel;
+    const isAllowed = group === 'admin' || customAccess === 'edit';
     return {
       formKey,
       formTitle: 'Admin Control Panel',
@@ -520,7 +768,7 @@ export function getFormAccess(
       mode: isAllowed ? 'full' : 'view_only',
       canSubmit: isAllowed,
       canEdit: isAllowed,
-      canDelete: isAllowed,
+      canDelete: isAllowed && group === 'admin',
       group,
       groupName: groupCfg.name,
       userWorkCenter: wc,

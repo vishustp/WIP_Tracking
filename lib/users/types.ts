@@ -20,6 +20,29 @@ export type UserRole =
   | 'finishing_operator'
   | 'auditor';
 
+export type AccessLevel = 'none' | 'view' | 'edit';
+
+export interface FormPermissions {
+  // Work Center Production Entry Stages
+  production_rolling?: AccessLevel;
+  production_hollow_ht?: AccessLevel;
+  production_draw?: AccessLevel;
+  production_ht?: AccessLevel;
+  production_band_saw?: AccessLevel;
+  production_vdi?: AccessLevel;
+  production_finishing?: AccessLevel;
+
+  // Planning & Management Modules
+  work_order?: AccessLevel;
+  rolling_plan?: AccessLevel;
+  diversion?: AccessLevel;
+
+  // Tools & Analytics
+  excel_import?: AccessLevel;
+  reports?: AccessLevel;
+  admin_panel?: AccessLevel;
+}
+
 export interface AppUserProfile {
   id: string;
   auth_user_id?: string;
@@ -34,6 +57,7 @@ export interface AppUserProfile {
   work_center: string;
   allowed_stages: string[];
   default_stage?: string;
+  permissions?: FormPermissions;
   phone?: string;
   avatar_color?: string;
   pin?: string;

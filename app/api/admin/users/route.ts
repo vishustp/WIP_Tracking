@@ -196,6 +196,7 @@ export async function GET(request: NextRequest) {
         shift: u.shift || meta.shift || '',
         allowed_stages: u.allowed_stages || meta.allowed_stages || (u.work_center === 'ALL' ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'] : [u.work_center]),
         default_stage: u.default_stage || meta.default_stage || (u.work_center === 'ALL' ? 'ROLLING' : u.work_center),
+        permissions: u.permissions || meta.permissions || undefined,
       };
     });
 
@@ -265,6 +266,8 @@ export async function POST(request: NextRequest) {
     if (!email || !name || !employeeCode) return bad('Name, email and employee code are required');
     if (!password || password.length < 8) return bad('Password must be at least 8 characters');
 
+    const permissions = body.permissions || undefined;
+
     // Check if user already exists in auth
     const { data: created, error: authError } = await admin.auth.admin.createUser({
       email,
@@ -282,6 +285,7 @@ export async function POST(request: NextRequest) {
         allowed_stages: allowedStages,
         default_stage: defaultStage,
         phone,
+        permissions,
       },
     });
 
@@ -309,6 +313,7 @@ export async function POST(request: NextRequest) {
               allowed_stages: allowedStages,
               default_stage: defaultStage,
               phone,
+              permissions,
             },
           }).catch(() => {});
         } else {
@@ -505,6 +510,8 @@ export async function PUT(request: NextRequest) {
           // Silently continue
         }
 
+        const permissions = body.permissions !== undefined ? body.permissions : undefined;
+
         const updateAuthPayload: any = {
           email,
           user_metadata: {
@@ -518,6 +525,7 @@ export async function PUT(request: NextRequest) {
             allowed_stages: allowedStages,
             default_stage: defaultStage,
             phone,
+            ...(permissions !== undefined ? { permissions } : {}),
           },
         };
         if (newPassword && newPassword.length >= 8) {
@@ -528,6 +536,7 @@ export async function PUT(request: NextRequest) {
           return bad(`User saved, but password reset failed: ${authErr.message}`, 400);
         }
       } else if (newPassword && newPassword.length >= 8) {
+        const permissions = body.permissions !== undefined ? body.permissions : undefined;
         // Create user in auth if none existed yet
         const { data: newAuth, error: createAuthErr } = await adminClient.auth.admin.createUser({
           email,
@@ -544,6 +553,7 @@ export async function PUT(request: NextRequest) {
             allowed_stages: allowedStages,
             default_stage: defaultStage,
             phone,
+            ...(permissions !== undefined ? { permissions } : {}),
           },
         });
         if (!createAuthErr && newAuth?.user) {
@@ -557,6 +567,7 @@ export async function PUT(request: NextRequest) {
     const { data } = await dbClient.from('app_users').select('*').eq('id', id).single();
     const finalName = data?.employee_name || baseUpdate.employee_name || '';
     const finalCode = data?.employee_code || baseUpdate.employee_code || '';
+    const finalPermissions = body.permissions !== undefined ? body.permissions : (data?.permissions || undefined);
     const finalUser = {
       ...(data || {}),
       name: finalName,
@@ -569,6 +580,7 @@ export async function PUT(request: NextRequest) {
       shift,
       allowed_stages: allowedStages,
       default_stage: defaultStage,
+      permissions: finalPermissions,
     };
 
     return NextResponse.json({ user: finalUser });
