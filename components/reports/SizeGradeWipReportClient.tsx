@@ -24,6 +24,8 @@ import {
   LayoutGrid,
   CheckCircle2,
   Calendar,
+  Flame,
+  Scissors,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
@@ -649,13 +651,15 @@ export default function SizeGradeWipReportClient() {
 
   // Metric summaries across all active combinations
   const kpis = useMemo(() => {
-    let totalSizes = matrixGroups.length;
     let totalWipMtr = 0;
     let totalWipPcs = 0;
     let totalWipMt = 0;
     let rollingMtr = 0;
     let rollingPcs = 0;
     let rollingMt = 0;
+    let htcMtr = 0;
+    let htcPcs = 0;
+    let htcMt = 0;
     let drawMtr = 0;
     let drawPcs = 0;
     let drawMt = 0;
@@ -671,7 +675,6 @@ export default function SizeGradeWipReportClient() {
     let finishingMtr = 0;
     let finishingPcs = 0;
     let finishingMt = 0;
-    let topGroup: SizeGradeGroup | null = null;
 
     matrixGroups.forEach((g) => {
       totalWipMtr += g.total_mtr;
@@ -680,6 +683,9 @@ export default function SizeGradeWipReportClient() {
       rollingMtr += g.rolling_mtr;
       rollingPcs += g.rolling_pcs;
       rollingMt += g.rolling_mt;
+      htcMtr += g.htc_mtr;
+      htcPcs += g.htc_pcs;
+      htcMt += g.htc_mt;
       drawMtr += g.draw_mtr;
       drawPcs += g.draw_pcs;
       drawMt += g.draw_mt;
@@ -695,20 +701,18 @@ export default function SizeGradeWipReportClient() {
       finishingMtr += g.finishing_mtr;
       finishingPcs += g.finishing_pcs;
       finishingMt += g.finishing_mt;
-
-      if (!topGroup || g.total_mtr > topGroup.total_mtr) {
-        topGroup = g;
-      }
     });
 
     return {
-      totalSizes,
       totalWipMtr,
       totalWipPcs,
       totalWipMt,
       rollingMtr,
       rollingPcs,
       rollingMt,
+      htcMtr,
+      htcPcs,
+      htcMt,
       drawMtr,
       drawPcs,
       drawMt,
@@ -724,8 +728,6 @@ export default function SizeGradeWipReportClient() {
       finishingMtr,
       finishingPcs,
       finishingMt,
-      topSize: topGroup ? `${(topGroup as SizeGradeGroup).od} × ${(topGroup as SizeGradeGroup).wt} mm (${(topGroup as SizeGradeGroup).grade})` : '—',
-      topSizeMtr: topGroup ? (topGroup as SizeGradeGroup).total_mtr : 0,
     };
   }, [matrixGroups]);
 
@@ -908,80 +910,181 @@ export default function SizeGradeWipReportClient() {
         {`Displaying ${matrixGroups.length} size-grade combinations. Total plant WIP is ${fmt(kpis.totalWipMtr, 0)} meters, ${fmt(kpis.totalWipPcs, 0)} pieces, and ${fmt(kpis.totalWipMt, 2)} metric tons.`}
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {/* Active Sizes */}
-        <div className="rounded-lg border border-slate-200/90 bg-white p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Active Sizes</span>
-            <Layers className="h-4 w-4 text-slate-400" />
+      {/* WIP Summary Cards: Total Plant WIP + Work Centers (PCS, MTR, MT) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2.5">
+        {/* 1. Total Plant WIP */}
+        <div className="rounded-lg border border-slate-800 bg-slate-900 text-white p-3 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-800">
+            <span className="text-[11px] font-bold text-slate-200 uppercase tracking-wider truncate">Total Plant WIP</span>
+            <Gauge className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
           </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-bold text-slate-900 font-mono tracking-tight">{kpis.totalSizes}</span>
-            <span className="text-xs text-slate-500 font-medium">Combinations</span>
-          </div>
-          <div className="mt-1 text-[11px] text-slate-500 truncate">
-            Top: {kpis.topSize}
-          </div>
-        </div>
-
-        {/* Total Physical WIP (Mtrs) */}
-        <div className="rounded-lg border border-slate-300/90 bg-slate-50/70 p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Total Plant WIP</span>
-            <Gauge className="h-4 w-4 text-slate-600" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{fmt(kpis.totalWipMtr, 0)}</span>
-            <span className="text-xs text-slate-600 font-semibold">Mtrs</span>
-          </div>
-          <div className="mt-1 text-[11px] text-slate-600 font-mono">
-            {fmt(kpis.totalWipPcs, 0)} Pcs · {fmt(kpis.totalWipMt, 2)} MT
+          <div className="mt-2 space-y-1 font-mono text-[11px]">
+            <div className="flex items-baseline justify-between text-slate-300">
+              <span className="text-[10px] uppercase text-slate-400 font-sans font-semibold">PCS</span>
+              <span className="text-xs font-bold text-white">{fmt(kpis.totalWipPcs, 0)}</span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-300">
+              <span className="text-[10px] uppercase text-slate-400 font-sans font-semibold">MTR</span>
+              <span className="text-xs font-bold text-white">{fmt(kpis.totalWipMtr, 0)} <span className="text-[9px] text-slate-400 font-normal">m</span></span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-300">
+              <span className="text-[10px] uppercase text-slate-400 font-sans font-semibold">MT</span>
+              <span className="text-xs font-bold text-white">{fmt(kpis.totalWipMt, 2)} <span className="text-[9px] text-slate-400 font-normal">MT</span></span>
+            </div>
           </div>
         </div>
 
-        {/* Rolling Mill Stock */}
-        <div className="rounded-lg border border-slate-200/90 bg-white p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Rolling Mill</span>
-            <Factory className="h-4 w-4 text-slate-400" />
+        {/* 2. Rolling Mill */}
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Rolling Mill</span>
+            <Factory className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
           </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-bold text-slate-800 font-mono tracking-tight">{fmt(kpis.rollingMtr, 0)}</span>
-            <span className="text-xs text-slate-500 font-medium">Mtrs</span>
-          </div>
-          <div className="mt-1 text-[11px] text-slate-500">
-            Rolled mother hollow
-          </div>
-        </div>
-
-        {/* Cold Draw Buffer */}
-        <div className="rounded-lg border border-slate-200/90 bg-white p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Draw Bench Buffer</span>
-            <TrendingUp className="h-4 w-4 text-slate-400" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-bold text-slate-800 font-mono tracking-tight">{fmt(kpis.drawMtr, 0)}</span>
-            <span className="text-xs text-slate-500 font-medium">Mtrs</span>
-          </div>
-          <div className="mt-1 text-[11px] text-slate-500">
-            In-draw & intermediate
+          <div className="mt-2 space-y-1 font-mono text-[11px]">
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.rollingPcs, 0)}</span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.rollingMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.rollingMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            </div>
           </div>
         </div>
 
-        {/* Finished Goods WIP */}
-        <div className="rounded-lg border border-slate-200/90 bg-white p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Finished Stock</span>
-            <CheckCircle2 className="h-4 w-4 text-slate-400" />
+        {/* 3. Hollow HT */}
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Hollow HT</span>
+            <Flame className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
           </div>
-          <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-bold text-slate-800 font-mono tracking-tight">{fmt(kpis.finishingMtr, 0)}</span>
-            <span className="text-xs text-slate-500 font-medium">Mtrs</span>
+          <div className="mt-2 space-y-1 font-mono text-[11px]">
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htcPcs, 0)}</span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htcMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htcMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            </div>
           </div>
-          <div className="mt-1 text-[11px] text-slate-500">
-            Inspection passed stock
+        </div>
+
+        {/* 4. Cold Draw */}
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Cold Draw</span>
+            <TrendingUp className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+          </div>
+          <div className="mt-2 space-y-1 font-mono text-[11px]">
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.drawPcs, 0)}</span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.drawMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.drawMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            </div>
+          </div>
+        </div>
+
+        {/* 5. Final HT */}
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Final HT</span>
+            <Layers className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+          </div>
+          <div className="mt-2 space-y-1 font-mono text-[11px]">
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htPcs, 0)}</span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            </div>
+          </div>
+        </div>
+
+        {/* 6. Band Saw Cutting */}
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Band Saw</span>
+            <Scissors className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+          </div>
+          <div className="mt-2 space-y-1 font-mono text-[11px]">
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.bandSawPcs, 0)}</span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.bandSawMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.bandSawMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            </div>
+          </div>
+        </div>
+
+        {/* 7. VDI Inspection */}
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">VDI / QC</span>
+            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+          </div>
+          <div className="mt-2 space-y-1 font-mono text-[11px]">
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.vdiPcs, 0)}</span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.vdiMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.vdiMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            </div>
+          </div>
+        </div>
+
+        {/* 8. Finishing (FG) */}
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
+            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Finishing</span>
+            <CheckCircle2 className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+          </div>
+          <div className="mt-2 space-y-1 font-mono text-[11px]">
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.finishingPcs, 0)}</span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.finishingMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            </div>
+            <div className="flex items-baseline justify-between text-slate-600">
+              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-slate-900">{fmt(kpis.finishingMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            </div>
           </div>
         </div>
       </div>
