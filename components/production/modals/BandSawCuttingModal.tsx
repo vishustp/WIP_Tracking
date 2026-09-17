@@ -24,6 +24,10 @@ import {
   TrendingUp,
   Percent,
   Sparkles,
+  SlidersHorizontal,
+  Split,
+  Calculator,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -89,6 +93,27 @@ export function BandSawCuttingModal({
       },
     ];
   });
+
+  // Batch Splitter Modal & Preset States
+  const [showBatchSplitTool, setShowBatchSplitTool] = useState(false);
+  const [showCustomTargetInput, setShowCustomTargetInput] = useState(false);
+  const [customTargetLen, setCustomTargetLen] = useState<string>(
+    row.l1 ? String(row.l1) : '5.50'
+  );
+
+  // Combination cut inputs (e.g. 6.00m + 5.54m from 11.75m pipe)
+  const [showCombinationInput, setShowCombinationInput] = useState(false);
+  const [combCut1, setCombCut1] = useState<string>(row.l1 ? String(row.l1) : '6.00');
+  const [combCut2, setCombCut2] = useState<string>('5.54');
+
+  // Batch Splitter parameters
+  const [batchGroupA_Pcs, setBatchGroupA_Pcs] = useState(String(Math.floor(availMotherPcs / 2) || 1));
+  const [batchGroupA_CutLen, setBatchGroupA_CutLen] = useState(row.l1 ? String(row.l1) : '5.50');
+  const [batchGroupA_Multiplier, setBatchGroupA_Multiplier] = useState('2');
+
+  const [batchGroupB_Pcs, setBatchGroupB_Pcs] = useState(String(Math.ceil(availMotherPcs / 2) || 1));
+  const [batchGroupB_CutLen, setBatchGroupB_CutLen] = useState('11.00');
+  const [batchGroupB_Multiplier, setBatchGroupB_Multiplier] = useState('1');
 
   // Rejection / Defect cut pieces
   const [rejCutPcs, setRejCutPcs] = useState<string>('0');
@@ -203,6 +228,21 @@ export function BandSawCuttingModal({
     };
   }, [cutItems, pipeOd, pipeWt, nRejMtr, nRejPcs, totalMotherMtr, totalMotherMt]);
 
+  // Visual Single Pipe Utilization Slice
+  const singlePipeUtilization = useMemo(() => {
+    if (motherAvgLenNum <= 0) return { cutsTotal: 0, trimScrap: 0, pct: 0, isOver: false };
+    const avgCutsPerPipe = motherPcsNum > 0 ? totalAllCutMtr / motherPcsNum : totalAllCutMtr;
+    const trimScrapPerPipe = Math.max(0, Number((motherAvgLenNum - avgCutsPerPipe).toFixed(2)));
+    const pct = Math.min(100, (avgCutsPerPipe / motherAvgLenNum) * 100);
+    const isOver = avgCutsPerPipe > motherAvgLenNum * 1.01;
+    return {
+      cutsTotal: Number(avgCutsPerPipe.toFixed(2)),
+      trimScrap: trimScrapPerPipe,
+      pct: Number(pct.toFixed(1)),
+      isOver,
+    };
+  }, [motherAvgLenNum, motherPcsNum, totalAllCutMtr]);
+
   // Handlers for Cut Items
   const handleAddCutItem = () => {
     const defaultLen = Number((defaultMotherLen > 0 ? defaultMotherLen : 6.0).toFixed(2));
@@ -218,6 +258,222 @@ export function BandSawCuttingModal({
   };
 
   const handleUpdateCutItem = (
+    id: string,
+    field: keyof BandSawCutItem,
+    val: string | number | BandSawCutCategory
+  ) => {
+    setCutItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const updated = { ...item, [field]: val };
+        const len = Number(updated.length_mtr || 0);
+        const pcs = Number(updated.cut_pcs || 0);
+        updated.total_mtr = Number((len * pcs).toFixed(2));
+        updated.total_mt = mtFromMtr(updated.total_mtr, pipeOd, pipeWt);
+        return updated;
+      })
+    );
+  };
+
+  const handleRemoveCutItem = (id: string) => {
+    if (cutItems.length === 1) {
+      toast.info('At least one cut length row is required.');
+      return;
+    }
+    setCutItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  // --- Preset Handlers ---
+  const applyEqualMultiples = (multiple: number) => {
+    if (motherAvgLenNum <= 0) return;
+    const cutLen = Number((motherAvgLenNum / multiple).toFixed(2));
+    const totalPcs = motherPcsNum > 0 ? motherPcsNum * multiple : multiple;
+    const totalMtr = Number((cutLen * totalPcs).toFixed(2));
+    const newItems: BandSawCutItem[] = [
+      {
+        id: `cut-preset-${Date.now()}`,
+        length_mtr: cutLen,
+        cut_pcs: totalPcs,
+        cut_category: 'PRIME',
+        total_mtr: totalMtr,
+        total_mt: mtFromMtr(totalMtr, pipeOd, pipeWt),
+      },
+    ];
+    setCutItems(newItems);
+    toast.success(`Applied ${multiple}-Multiple cut: ${multiple} cuts @ ${cutLen}m per mother pipe.`);
+  };
+
+  const applyTargetAndRemainder = (targetLen: number) => {
+    if (motherAvgLenNum <= 0 || targetLen <= 0) {
+      toast.error('Target cut length must be positive.');
+      return;
+    }
+    if (targetLen > motherAvgLenNum) {
+      toast.error(`Target length (${targetLen}m) exceeds available mother length (${motherAvgLenNum}m).`);
+      return;
+    }
+    const multiple = Math.floor(motherAvgLenNum / targetLen);
+    const remainder = Number((motherAvgLenNum - multiple * targetLen).toFixed(2));
+    const totalTargetPcs = motherPcsNum > 0 ? motherPcsNum * multiple : multiple;
+    const targetTotalMtr = Number((targetLen * totalTargetPcs).toFixed(2));
+
+    const newItems: BandSawCutItem[] = [
+      {
+        id: `cut-target-${Date.now()}`,
+        length_mtr: targetLen,
+        cut_pcs: totalTargetPcs,
+        cut_category: 'PRIME',
+        total_mtr: targetTotalMtr,
+        total_mt: mtFromMtr(targetTotalMtr, pipeOd, pipeWt),
+      },
+    ];
+
+    if (remainder >= 0.05) {
+      const remPcs = motherPcsNum > 0 ? motherPcsNum : 1;
+      const remTotalMtr = Number((remainder * remPcs).toFixed(2));
+      newItems.push({
+        id: `cut-rem-${Date.now() + 1}`,
+        length_mtr: remainder,
+        cut_pcs: remPcs,
+        cut_category: remainder >= 4.0 ? 'OFFCUT' : 'SCRAP_TRIM',
+        total_mtr: remTotalMtr,
+        total_mt: mtFromMtr(remTotalMtr, pipeOd, pipeWt),
+      });
+    }
+
+    setCutItems(newItems);
+    setShowCustomTargetInput(false);
+    toast.success(
+      `Applied target cut: ${multiple} × ${targetLen}m ${
+        remainder > 0 ? `+ ${remainder}m (${remainder >= 4.0 ? 'Usable Offcut' : 'Trim Scrap'})` : ''
+      } per pipe.`
+    );
+  };
+
+  const applyTwoCombinationCut = (cut1Len: number, cut2Len: number) => {
+    if (motherAvgLenNum <= 0 || cut1Len <= 0 || cut2Len <= 0) return;
+    const sumLen = cut1Len + cut2Len;
+    if (sumLen > motherAvgLenNum * 1.02) {
+      toast.error(`Combined length (${sumLen}m) exceeds mother pipe length (${motherAvgLenNum}m).`);
+      return;
+    }
+    const remainder = Number((motherAvgLenNum - sumLen).toFixed(2));
+    const pcs = motherPcsNum > 0 ? motherPcsNum : 1;
+
+    const newItems: BandSawCutItem[] = [
+      {
+        id: `cut-comb-1-${Date.now()}`,
+        length_mtr: cut1Len,
+        cut_pcs: pcs,
+        cut_category: 'PRIME',
+        total_mtr: Number((cut1Len * pcs).toFixed(2)),
+        total_mt: mtFromMtr(cut1Len * pcs, pipeOd, pipeWt),
+      },
+      {
+        id: `cut-comb-2-${Date.now() + 1}`,
+        length_mtr: cut2Len,
+        cut_pcs: pcs,
+        cut_category: 'SECONDARY',
+        total_mtr: Number((cut2Len * pcs).toFixed(2)),
+        total_mt: mtFromMtr(cut2Len * pcs, pipeOd, pipeWt),
+      },
+    ];
+
+    if (remainder >= 0.05) {
+      newItems.push({
+        id: `cut-comb-rem-${Date.now() + 2}`,
+        length_mtr: remainder,
+        cut_pcs: pcs,
+        cut_category: remainder >= 4.0 ? 'OFFCUT' : 'SCRAP_TRIM',
+        total_mtr: Number((remainder * pcs).toFixed(2)),
+        total_mt: mtFromMtr(remainder * pcs, pipeOd, pipeWt),
+      });
+    }
+
+    setCutItems(newItems);
+    setShowCombinationInput(false);
+    toast.success(
+      `Applied Combination: 1 pc @ ${cut1Len}m + 1 pc @ ${cut2Len}m ${
+        remainder > 0 ? `+ ${remainder}m (${remainder >= 4.0 ? 'Offcut' : 'Trim Scrap'})` : ''
+      } per pipe.`
+    );
+  };
+
+  const handleApplyBatchSplit = () => {
+    const gA_mPcs = parseInt(batchGroupA_Pcs, 10) || 0;
+    const gA_len = parseFloat(batchGroupA_CutLen) || 0;
+    const gA_mult = parseInt(batchGroupA_Multiplier, 10) || 1;
+
+    const gB_mPcs = parseInt(batchGroupB_Pcs, 10) || 0;
+    const gB_len = parseFloat(batchGroupB_CutLen) || 0;
+    const gB_mult = parseInt(batchGroupB_Multiplier, 10) || 1;
+
+    const totalProcMotherPcs = gA_mPcs + gB_mPcs;
+    if (totalProcMotherPcs <= 0) {
+      toast.error('Please enter valid mother pipe quantities for batch split.');
+      return;
+    }
+
+    setMotherPcsInput(String(totalProcMotherPcs));
+
+    const newItems: BandSawCutItem[] = [];
+
+    if (gA_mPcs > 0 && gA_len > 0) {
+      const totalGA_Pcs = gA_mPcs * gA_mult;
+      const totalGA_Mtr = Number((gA_len * totalGA_Pcs).toFixed(2));
+      newItems.push({
+        id: `cut-batch-a-${Date.now()}`,
+        length_mtr: gA_len,
+        cut_pcs: totalGA_Pcs,
+        cut_category: 'PRIME',
+        total_mtr: totalGA_Mtr,
+        total_mt: mtFromMtr(totalGA_Mtr, pipeOd, pipeWt),
+      });
+
+      const remA = Number((motherAvgLenNum - gA_len * gA_mult).toFixed(2));
+      if (remA >= 0.05) {
+        const remA_Mtr = Number((remA * gA_mPcs).toFixed(2));
+        newItems.push({
+          id: `cut-batch-a-rem-${Date.now()}`,
+          length_mtr: remA,
+          cut_pcs: gA_mPcs,
+          cut_category: remA >= 4.0 ? 'OFFCUT' : 'SCRAP_TRIM',
+          total_mtr: remA_Mtr,
+          total_mt: mtFromMtr(remA_Mtr, pipeOd, pipeWt),
+        });
+      }
+    }
+
+    if (gB_mPcs > 0 && gB_len > 0) {
+      const totalGB_Pcs = gB_mPcs * gB_mult;
+      const totalGB_Mtr = Number((gB_len * totalGB_Pcs).toFixed(2));
+      newItems.push({
+        id: `cut-batch-b-${Date.now() + 1}`,
+        length_mtr: gB_len,
+        cut_pcs: totalGB_Pcs,
+        cut_category: gA_mPcs > 0 ? 'SECONDARY' : 'PRIME',
+        total_mtr: totalGB_Mtr,
+        total_mt: mtFromMtr(totalGB_Mtr, pipeOd, pipeWt),
+      });
+
+      const remB = Number((motherAvgLenNum - gB_len * gB_mult).toFixed(2));
+      if (remB >= 0.05) {
+        const remB_Mtr = Number((remB * gB_mPcs).toFixed(2));
+        newItems.push({
+          id: `cut-batch-b-rem-${Date.now() + 1}`,
+          length_mtr: remB,
+          cut_pcs: gB_mPcs,
+          cut_category: remB >= 4.0 ? 'OFFCUT' : 'SCRAP_TRIM',
+          total_mtr: remB_Mtr,
+          total_mt: mtFromMtr(remB_Mtr, pipeOd, pipeWt),
+        });
+      }
+    }
+
+    setCutItems(newItems);
+    setShowBatchSplitTool(false);
+    toast.success(`Batch split applied: ${gA_mPcs} pipes @ ${gA_len}m + ${gB_mPcs} pipes @ ${gB_len}m.`);
+  };
     id: string,
     field: keyof BandSawCutItem,
     val: string | number | BandSawCutCategory
@@ -502,28 +758,398 @@ export function BandSawCuttingModal({
           </div>
         </div>
 
-        {/* Section 2: Multi-Length Cutting Schedule Table */}
-        <div className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
-            <div>
-              <h4 className="flex items-center gap-2 text-xs font-bold text-slate-900 uppercase tracking-wider">
-                <Scissors size={14} className="text-indigo-600" />
-                2. Multi-Length Cut Schedule
-              </h4>
-              <p className="text-[11px] text-slate-500">
-                Define the multiple cut segments produced per mother pipe batch. Categorize non-order cuts as scrap.
-              </p>
+        {/* Section 2: Multi-Length Cutting Schedule & Smart Pattern Builder */}
+        <div className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden space-y-0">
+          {/* Header & Quick Action Presets */}
+          <div className="border-b border-slate-100 bg-slate-50/90 p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h4 className="flex items-center gap-2 text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  <Scissors size={14} className="text-indigo-600" />
+                  2. Multi-Length Cut Schedule &amp; Smart Pattern Builder
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Plan multi-length cuts from incoming mother pipe length (<strong>{motherAvgLenNum}m</strong>).
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowBatchSplitTool((prev) => !prev)}
+                  className={`h-8 gap-1.5 text-xs font-semibold shadow-2xs transition-all ${
+                    showBatchSplitTool
+                      ? 'border-purple-300 bg-purple-100 text-purple-800'
+                      : 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'
+                  }`}
+                >
+                  <Split size={13} />
+                  Batch Split Tool
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddCutItem}
+                  className="h-8 gap-1.5 border-indigo-200 bg-indigo-50/50 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                >
+                  <Plus size={14} />
+                  Add Cut Row
+                </Button>
+              </div>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleAddCutItem}
-              className="h-8 gap-1.5 border-indigo-200 bg-indigo-50/50 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-            >
-              <Plus size={14} />
-              Add Cut Length
-            </Button>
+
+            {/* Quick Multiples & Nesting Presets Bar */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200/60 text-xs">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Sparkles size={12} className="text-amber-500" />
+                Quick Presets:
+              </span>
+
+              <button
+                type="button"
+                onClick={() => applyEqualMultiples(2)}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-700 transition-all text-xs"
+                title="Cut each mother pipe into 2 equal parts"
+              >
+                <span>⚡ 2-Multiple (Half Cut)</span>
+                <span className="text-[10px] font-mono text-slate-400">
+                  (~{Number((motherAvgLenNum / 2).toFixed(2))}m)
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => applyEqualMultiples(3)}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-700 transition-all text-xs"
+                title="Cut each mother pipe into 3 equal parts"
+              >
+                <span>⚡ 3-Multiple (Thirds)</span>
+                <span className="text-[10px] font-mono text-slate-400">
+                  (~{Number((motherAvgLenNum / 3).toFixed(2))}m)
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowCustomTargetInput((prev) => !prev)}
+                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-semibold text-xs transition-all ${
+                  showCustomTargetInput
+                    ? 'border-indigo-400 bg-indigo-50 text-indigo-800'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/60'
+                }`}
+              >
+                <span>⚡ Target Cut + Remainder</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowCombinationInput((prev) => !prev)}
+                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-semibold text-xs transition-all ${
+                  showCombinationInput
+                    ? 'border-indigo-400 bg-indigo-50 text-indigo-800'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/60'
+                }`}
+              >
+                <span>⚡ 2-Length Combination (e.g. 6.00m + 5.54m)</span>
+              </button>
+            </div>
+
+            {/* Inline Custom Target Cut Input */}
+            {showCustomTargetInput && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-2.5 animate-fadeIn">
+                <span className="text-xs font-semibold text-indigo-900">Enter Target Required Length:</span>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.1"
+                    max={motherAvgLenNum}
+                    value={customTargetLen}
+                    onChange={(e) => setCustomTargetLen(e.target.value)}
+                    className="h-8 w-28 bg-white font-mono text-xs font-bold"
+                    placeholder="e.g. 5.50"
+                  />
+                  <span className="text-xs text-slate-600 font-medium">Mtr</span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => applyTargetAndRemainder(parseFloat(customTargetLen) || 0)}
+                  className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold"
+                >
+                  Apply to {motherPcsNum} Mother Pipes
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomTargetInput(false)}
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {/* Inline 2-Length Combination Input */}
+            {showCombinationInput && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-2.5 animate-fadeIn">
+                <span className="text-xs font-semibold text-indigo-900">Combination Cuts per Mother Pipe:</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-slate-600">Cut 1:</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.1"
+                    value={combCut1}
+                    onChange={(e) => setCombCut1(e.target.value)}
+                    className="h-8 w-24 bg-white font-mono text-xs font-bold"
+                    placeholder="6.00"
+                  />
+                  <span className="text-xs text-slate-500">m +</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-slate-600">Cut 2:</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.1"
+                    value={combCut2}
+                    onChange={(e) => setCombCut2(e.target.value)}
+                    className="h-8 w-24 bg-white font-mono text-xs font-bold"
+                    placeholder="5.54"
+                  />
+                  <span className="text-xs text-slate-500">m</span>
+                </div>
+                <div className="text-xs font-mono text-indigo-900">
+                  = {(parseFloat(combCut1) || 0) + (parseFloat(combCut2) || 0)}m{' '}
+                  <span className="text-slate-500">
+                    (Trim: {Math.max(0, Number((motherAvgLenNum - (parseFloat(combCut1) || 0) - (parseFloat(combCut2) || 0)).toFixed(2)))}m)
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    applyTwoCombinationCut(parseFloat(combCut1) || 0, parseFloat(combCut2) || 0)
+                  }
+                  className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold"
+                >
+                  Apply Combination
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setShowCombinationInput(false)}
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {/* Batch Splitter Tool Panel */}
+            {showBatchSplitTool && (
+              <div className="rounded-xl border border-purple-200 bg-gradient-to-r from-purple-50/90 via-indigo-50/70 to-slate-50 p-3.5 space-y-3 animate-fadeIn">
+                <div className="flex items-center justify-between border-b border-purple-200/70 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Split size={14} className="text-purple-700" />
+                    <span className="text-xs font-bold text-purple-950 uppercase tracking-wider">
+                      Batch Splitter (Divide {availMotherPcs} Available Mother Pipes of {motherAvgLenNum}m)
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-purple-700">
+                    Total Processed: {(parseInt(batchGroupA_Pcs, 10) || 0) + (parseInt(batchGroupB_Pcs, 10) || 0)} / {availMotherPcs} Pcs
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {/* Group A */}
+                  <div className="rounded-lg border border-purple-200 bg-white p-3 space-y-2">
+                    <div className="font-bold text-purple-900 text-[11px] uppercase">
+                      Sub-Batch A (e.g. 5.50m 2-Multiple Cut)
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-semibold">Mother Pipes</label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={batchGroupA_Pcs}
+                          onChange={(e) => setBatchGroupA_Pcs(e.target.value)}
+                          className="h-8 font-mono text-xs font-bold"
+                          placeholder="e.g. 50"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-semibold">Cut Length (m)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={batchGroupA_CutLen}
+                          onChange={(e) => setBatchGroupA_CutLen(e.target.value)}
+                          className="h-8 font-mono text-xs font-bold"
+                          placeholder="5.50"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-semibold">Cuts / Pipe</label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={batchGroupA_Multiplier}
+                          onChange={(e) => setBatchGroupA_Multiplier(e.target.value)}
+                          className="h-8 font-mono text-xs font-bold"
+                          placeholder="2"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-600 font-mono">
+                      Output: {(parseInt(batchGroupA_Pcs, 10) || 0) * (parseInt(batchGroupA_Multiplier, 10) || 1)} pcs @ {batchGroupA_CutLen}m
+                    </div>
+                  </div>
+
+                  {/* Group B */}
+                  <div className="rounded-lg border border-indigo-200 bg-white p-3 space-y-2">
+                    <div className="font-bold text-indigo-900 text-[11px] uppercase">
+                      Sub-Batch B (e.g. 11.00m Long Cut)
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-semibold">Mother Pipes</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={batchGroupB_Pcs}
+                          onChange={(e) => setBatchGroupB_Pcs(e.target.value)}
+                          className="h-8 font-mono text-xs font-bold"
+                          placeholder="e.g. 50"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-semibold">Cut Length (m)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={batchGroupB_CutLen}
+                          onChange={(e) => setBatchGroupB_CutLen(e.target.value)}
+                          className="h-8 font-mono text-xs font-bold"
+                          placeholder="11.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-semibold">Cuts / Pipe</label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={batchGroupB_Multiplier}
+                          onChange={(e) => setBatchGroupB_Multiplier(e.target.value)}
+                          className="h-8 font-mono text-xs font-bold"
+                          placeholder="1"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-[10px] text-slate-600 font-mono">
+                      Output: {(parseInt(batchGroupB_Pcs, 10) || 0) * (parseInt(batchGroupB_Multiplier, 10) || 1)} pcs @ {batchGroupB_CutLen}m
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowBatchSplitTool(false)}
+                    className="h-7 text-xs"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleApplyBatchSplit}
+                    className="h-7 bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold gap-1"
+                  >
+                    <CheckCircle2 size={13} />
+                    Apply Batch Split to Schedule
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Visual Single-Pipe Slicing Representation */}
+            <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                  <Layers size={13} className="text-indigo-600" />
+                  <span>Single Mother Pipe Utilization Visualizer ({motherAvgLenNum}m Pipe):</span>
+                </div>
+                <div className="flex items-center gap-2 font-mono text-xs">
+                  <span className="font-bold text-slate-800">
+                    Cuts per Pipe: {singlePipeUtilization.cutsTotal}m / {motherAvgLenNum}m ({singlePipeUtilization.pct}%)
+                  </span>
+                  <span className="rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[11px] font-bold text-amber-900">
+                    Trim Scrap: {singlePipeUtilization.trimScrap}m
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress Bar of Single Pipe */}
+              <div className="h-4 w-full rounded-full bg-slate-100 p-0.5 flex overflow-hidden border border-slate-200">
+                {cutItems.map((c, i) => {
+                  const cutPcsPerPipe = motherPcsNum > 0 ? Number(c.cut_pcs || 0) / motherPcsNum : 1;
+                  const itemMtrPerPipe = Number(c.length_mtr || 0) * cutPcsPerPipe;
+                  const itemPct = motherAvgLenNum > 0 ? (itemMtrPerPipe / motherAvgLenNum) * 100 : 0;
+                  const isPrime = c.cut_category === 'PRIME';
+                  const isSec = c.cut_category === 'SECONDARY';
+                  const isOff = c.cut_category === 'OFFCUT';
+
+                  return (
+                    <div
+                      key={c.id || i}
+                      style={{ width: `${Math.min(100, Math.max(2, itemPct))}%` }}
+                      className={`h-full transition-all flex items-center justify-center text-[9px] font-mono font-bold text-white ${
+                        isPrime
+                          ? 'bg-emerald-500'
+                          : isSec
+                          ? 'bg-indigo-500'
+                          : isOff
+                          ? 'bg-blue-400'
+                          : 'bg-amber-400'
+                      }`}
+                      title={`${c.length_mtr}m (${c.cut_category}) - ${itemPct.toFixed(1)}% of pipe`}
+                    >
+                      {itemPct >= 15 ? `${c.length_mtr}m` : ''}
+                    </div>
+                  );
+                })}
+
+                {/* Remaining Trim / Kerf Segment */}
+                {singlePipeUtilization.trimScrap > 0 && (
+                  <div
+                    style={{
+                      width: `${Math.max(
+                        2,
+                        (singlePipeUtilization.trimScrap / (motherAvgLenNum || 1)) * 100
+                      )}%`,
+                    }}
+                    className="h-full bg-amber-200/80 flex items-center justify-center text-[8px] font-mono font-bold text-amber-900"
+                    title={`Trim / Scrap Loss: ${singlePipeUtilization.trimScrap}m`}
+                  >
+                    {singlePipeUtilization.trimScrap >= 1 ? `${singlePipeUtilization.trimScrap}m` : ''}
+                  </div>
+                )}
+              </div>
+
+              {singlePipeUtilization.isOver && (
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-700 bg-rose-50 rounded-md p-1.5 border border-rose-200">
+                  <AlertCircle size={13} className="shrink-0" />
+                  <span>Warning: Total cuts per pipe ({singlePipeUtilization.cutsTotal}m) exceed available mother pipe length ({motherAvgLenNum}m).</span>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
