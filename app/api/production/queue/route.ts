@@ -17,7 +17,7 @@ interface CachePayload {
 let memoryCache: CachePayload | null = null;
 const CACHE_TTL_MS = 3500; // 3.5s in-memory TTL for high-concurrency request deduplication
 
-export function invalidateQueueCache() {
+function invalidateQueueCache() {
   memoryCache = null;
 }
 
