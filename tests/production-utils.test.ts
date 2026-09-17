@@ -35,8 +35,8 @@ describe("Production Utils Unit Tests", () => {
 
     it("fmt() formats MTR and other float values with maximum 2 decimal places", () => {
       expect(fmt(123.456, " MTR")).toBe("123.46 MTR");
-      expect(fmt(100.0, " MTR")).toBe("100 MTR");
-      expect(fmt(55.5, " MT")).toBe("55.5 MT");
+      expect(fmt(100.0, " MTR")).toBe("100.00 MTR");
+      expect(fmt(55.5, " MT")).toBe("55.50 MT");
     });
 
     it("fmtPcs() strictly rounds and returns whole number string with PCS suffix", () => {
@@ -232,7 +232,7 @@ describe("Production Utils Unit Tests", () => {
 
     it("attachCustomLengthToRemarks() and extractCustomLengthFromRemarks() handle custom length metadata correctly", () => {
       const tagged = attachCustomLengthToRemarks("Pass 1 drawn", "7.5", "8.5", 8.0);
-      expect(tagged).toBe("Pass 1 drawn [L1:7.5] [L2:8.5] [AVG:8]");
+      expect(tagged).toBe("Pass 1 drawn [L1:7.5] [L2:8.5] [AVG:8.00]");
 
       const extracted = extractCustomLengthFromRemarks(tagged);
       expect(extracted.l1).toBe(7.5);

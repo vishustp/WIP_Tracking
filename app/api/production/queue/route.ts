@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { StageCode, Row, WorkCenterWipInfo } from "@/types";
-import { mtFromMtr } from "@/lib/productionUtils";
+import { mtFromMtr, extractPcsFromRemarks } from "@/lib/productionUtils";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -310,6 +310,34 @@ export async function GET(req: NextRequest) {
 
     const sumQty = (logList: any[], field: string) =>
       logList.reduce((sum, l) => sum + Number(l[field] || 0), 0);
+
+    const getLogPcs = (log: any, fallbackAvg: number = 0) => {
+      if (log.output_pcs !== undefined && log.output_pcs !== null && Number(log.output_pcs) > 0) {
+        return Number(log.output_pcs);
+      }
+      const parsed = extractPcsFromRemarks(log.remarks);
+      if (parsed.pcs !== null && parsed.pcs > 0) {
+        return parsed.pcs;
+      }
+      if (fallbackAvg > 0 && Number(log.output_qty || 0) > 0) {
+        return Math.round(Number(log.output_qty) / fallbackAvg);
+      }
+      return 0;
+    };
+
+    const getLogRejPcs = (log: any, fallbackAvg: number = 0) => {
+      if (log.rejection_pcs !== undefined && log.rejection_pcs !== null && Number(log.rejection_pcs) > 0) {
+        return Number(log.rejection_pcs);
+      }
+      const parsed = extractPcsFromRemarks(log.remarks);
+      if (parsed.rejPcs !== null && parsed.rejPcs > 0) {
+        return parsed.rejPcs;
+      }
+      if (fallbackAvg > 0 && Number(log.rejection_qty || 0) > 0) {
+        return Math.round(Number(log.rejection_qty) / fallbackAvg);
+      }
+      return 0;
+    };
 
     // Summary accumulator across all 7 work centers
     const workCenterSummary: Record<
@@ -1106,18 +1134,28 @@ export async function GET(req: NextRequest) {
             const effPlMhAvg = plPlannedPcs > 0 && plPlannedMtr > 0 ? plPlannedMtr / plPlannedPcs : plMhAvg;
 
             const directPlLogs = planLogMap.get(pl.id) || [];
-            const directLoggedMtr = sumQty(directPlLogs, "output_qty") + sumQty(directPlLogs, "rejection_qty");
-            const plLoggedTotalMtr = directLoggedMtr;
+            let directLoggedPcs = 0;
+            let directRejPcs = 0;
+            let directLoggedMtr = 0;
 
-            const directLoggedPcs = sumQty(directPlLogs, "output_pcs") + sumQty(directPlLogs, "rejection_pcs");
-            const plLoggedTotalPcs = directLoggedPcs > 0
-              ? directLoggedPcs
-              : (effPlMhAvg > 0 ? Math.round(plLoggedTotalMtr / effPlMhAvg) : 0);
+            for (const l of directPlLogs) {
+              const lPcs = getLogPcs(l, effPlMhAvg);
+              const lRej = getLogRejPcs(l, effPlMhAvg);
+              directLoggedPcs += lPcs;
+              directRejPcs += lRej;
+              directLoggedMtr += Number(l.output_qty || 0) + Number(l.rejection_qty || 0);
+            }
 
-            const plAvailMtr = Math.max(0, plPlannedMtr - plLoggedTotalMtr);
-            const plAvailPcs = plLoggedTotalMtr <= 0 && plPlannedPcs > 0
-              ? plPlannedPcs
-              : (plPlannedPcs > 0 ? Math.max(0, plPlannedPcs - plLoggedTotalPcs) : (effPlMhAvg > 0 ? Math.round(plAvailMtr / effPlMhAvg) : 0));
+            const plLoggedTotalPcs = directLoggedPcs + directRejPcs;
+
+            const plAvailPcs = plPlannedPcs > 0
+              ? Math.max(0, plPlannedPcs - plLoggedTotalPcs)
+              : (effPlMhAvg > 0 ? Math.max(0, Math.round((plPlannedMtr - directLoggedMtr) / effPlMhAvg)) : 0);
+
+            const plAvailMtr = plPlannedPcs > 0 && effPlMhAvg > 0
+              ? Number((plAvailPcs * (plMhL1 && plMhL2 ? (plMhL1 + plMhL2) / 2 : (plMhL1 || effPlMhAvg))).toFixed(2))
+              : Math.max(0, Number((plPlannedMtr - directLoggedMtr).toFixed(2)));
+
             const plAvailMt = mtFromMtr(plAvailMtr, plMhOd, plMhWt);
 
             if (plAvailMtr >= 1.0 || plAvailPcs >= 1) {
@@ -1142,8 +1180,8 @@ export async function GET(req: NextRequest) {
                 mh_l1: plMhL1,
                 mh_l2: plMhL2,
                 mh_avg_length: effPlMhAvg,
-                max_allowed_mtr: null,
-                max_allowed_pcs: null,
+                max_allowed_mtr: Number(((plPlannedMtr || plAvailMtr) * 1.10).toFixed(2)),
+                max_allowed_pcs: Math.round((plPlannedPcs || plAvailPcs) * 1.10),
                 feeder_source_label: `Rolling Plan: ${pl.plan_no}`,
                 feeder_stage_code: "ROLLING_PLAN",
               });
