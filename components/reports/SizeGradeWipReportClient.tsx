@@ -134,14 +134,15 @@ export default function SizeGradeWipReportClient() {
       setLoading(true);
       const supabase = createClient();
 
-      // Query view for live stage physical WIP + rolling logs + plans
-      const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes] = await Promise.all([
+      // Query view for live stage physical WIP + rolling logs + plans + qc inspections
+      const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes, qcRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').limit(5000),
         supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, process_route_id, size_od, size_wt, l1, l2, ordered_qty_pcs').limit(5000),
         supabase.from('rolling_plans').select('id, work_order_id, plan_no, multiple, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id, created_at').not('status', 'is', null).limit(5000),
         supabase.from('process_routes').select('id, route_code, route_name').eq('active', true),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at, remarks, output_qty, rejection_qty, htc_ok').order('process_date', { ascending: false }).limit(5000),
         supabase.from('process_stages').select('id, stage_code, stage_name'),
+        supabase.from('qc_inspections').select('work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr').limit(5000),
       ]);
 
       if (wipRes.data) {
@@ -305,6 +306,26 @@ export default function SizeGradeWipReportClient() {
           woPieceLedger.set(log.work_order_id, entry);
         });
 
+        // Also incorporate VDI inspection results from qc_inspections
+        (qcRes.data || []).forEach((qc: any) => {
+          if (!qc.work_order_id) return;
+          const entry = woPieceLedger.get(qc.work_order_id) || {
+            rolledPcs: 0,
+            hhtPcs: 0,
+            drawPcs: 0,
+            htPcs: 0,
+            bandSawPcs: 0,
+            vdiPcs: 0,
+            finPcs: 0,
+            htcOkPcs: 0,
+          };
+          const qcPcs = Number(qc.inspected_pcs || 0) > 0
+            ? Number(qc.inspected_pcs)
+            : (Number(qc.vdi_ok_pcs || 0) + Number(qc.vdi_salvage_pcs || 0) + Number(qc.vdi_rejection_pcs || 0));
+          entry.vdiPcs += qcPcs;
+          woPieceLedger.set(qc.work_order_id, entry);
+        });
+
         const mapped = wipRes.data
           .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
           .map((r: any) => {
@@ -355,15 +376,20 @@ export default function SizeGradeWipReportClient() {
               activeOd = orderOd;
               activeWt = orderWt;
             } else if (stage === 'BAND_SAW') {
-              const drawnCut = ledger.bandSawPcs > 0 ? (mult > 0 ? Math.ceil(ledger.bandSawPcs / mult) : ledger.bandSawPcs) : 0;
-              calculatedPcs = Math.max(0, ledger.htPcs - drawnCut);
+              // Mother pipes converted into order pieces via multiple
+              const incomingCutPcs = ledger.htPcs > 0 ? ledger.htPcs * mult : (ledger.drawPcs > 0 ? ledger.drawPcs * mult : 0);
+              // Remove/deduct from cutting whichever quantity has completed VDI or finishing
+              const downstreamPassed = Math.max(ledger.bandSawPcs, ledger.vdiPcs, ledger.finPcs);
+              calculatedPcs = Math.max(0, incomingCutPcs - downstreamPassed);
               calculatedMtr = calculatedPcs * orderAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
               activeOd = orderOd;
               activeWt = orderWt;
             } else if (stage === 'VDI') {
-              const incomingVdi = ledger.bandSawPcs > 0 ? ledger.bandSawPcs : (ledger.htPcs > 0 ? ledger.htPcs * mult : 0);
-              calculatedPcs = Math.max(0, incomingVdi - ledger.vdiPcs - ledger.finPcs);
+              // Pieces cut and waiting for inspection
+              const downstreamPassed = Math.max(ledger.bandSawPcs, ledger.vdiPcs, ledger.finPcs);
+              const cutAvailable = ledger.bandSawPcs > 0 ? ledger.bandSawPcs : (downstreamPassed > 0 ? downstreamPassed : 0);
+              calculatedPcs = Math.max(0, cutAvailable - ledger.vdiPcs);
               calculatedMtr = calculatedPcs * orderAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
               activeOd = orderOd;
@@ -386,16 +412,18 @@ export default function SizeGradeWipReportClient() {
               activeWt = mhWt;
             } else if (stage === 'BAND_SAW') {
               const htcNos = ledger.htcOkPcs > 0 ? ledger.htcOkPcs : (ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs);
-              const rolledCut = ledger.bandSawPcs > 0 ? (mult > 0 ? Math.ceil(ledger.bandSawPcs / mult) : ledger.bandSawPcs) : 0;
-              calculatedPcs = Math.max(0, htcNos - rolledCut);
+              const incomingCutPcs = htcNos * mult;
+              // Remove/deduct from cutting whichever quantity has completed VDI or finishing
+              const downstreamPassed = Math.max(ledger.bandSawPcs, ledger.vdiPcs, ledger.finPcs);
+              calculatedPcs = Math.max(0, incomingCutPcs - downstreamPassed);
               calculatedMtr = calculatedPcs * orderAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
               activeOd = orderOd;
               activeWt = orderWt;
             } else if (stage === 'VDI') {
-              const htcNos = ledger.htcOkPcs > 0 ? ledger.htcOkPcs : (ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs);
-              const incomingVdi = ledger.bandSawPcs > 0 ? ledger.bandSawPcs : (htcNos > 0 ? htcNos * mult : 0);
-              calculatedPcs = Math.max(0, incomingVdi - ledger.vdiPcs - ledger.finPcs);
+              const downstreamPassed = Math.max(ledger.bandSawPcs, ledger.vdiPcs, ledger.finPcs);
+              const cutAvailable = ledger.bandSawPcs > 0 ? ledger.bandSawPcs : (downstreamPassed > 0 ? downstreamPassed : 0);
+              calculatedPcs = Math.max(0, cutAvailable - ledger.vdiPcs);
               calculatedMtr = calculatedPcs * orderAvgLen;
               calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
               activeOd = orderOd;

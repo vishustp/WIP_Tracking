@@ -510,6 +510,32 @@ export async function GET(req: NextRequest) {
       const htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
       const htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
+      // Check QC Inspections for this WO (or related campaign)
+      let woQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
+      if (campaign && Array.isArray(campaign.child_work_orders)) {
+        const childWoIds = new Set(campaign.child_work_orders.map((c: any) => c.work_order_id || c.id));
+        const campaignQcList = qcInspections.filter((q: any) => q.work_order_id === woId || childWoIds.has(q.work_order_id));
+        if (campaignQcList.length > 0) {
+          woQcList = campaignQcList;
+        }
+      }
+      const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+      const qcOkMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+      const qcSalvagePcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+      const qcSalvageMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+      const qcRejPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0), 0);
+      const qcRejMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
+      const qcInspectedPcs = woQcList.reduce(
+        (sum: number, q: any) =>
+          sum + Number(q.inspected_pcs || Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0)),
+        0
+      );
+      const qcInspectedMtr = woQcList.reduce(
+        (sum: number, q: any) =>
+          sum + Number(q.inspected_mtr || Number(q.vdi_ok_mtr || 0) + Number(q.vdi_salvage_mtr || 0) + Number(q.vdi_rejection_mtr || 0)),
+        0
+      );
+
       // 4.5 Band Saw Stage Metrics (between HT / Hollow HT / Rolling and VDI)
       const bandSawLogs = getStageLogs(woId, bandSawStageId);
       const bandSawOutMtr = sumQty(bandSawLogs, "output_qty");
@@ -528,7 +554,9 @@ export async function GET(req: NextRequest) {
         ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs)
         : htNetPcs;
 
-      const bandSawAvailPcs = Math.max(0, bandSawIncomingPcs + bandSawDivInPcs - bandSawOutPcs - bandSawRejPcs - bandSawDivOutPcs);
+      // Deduct whichever is greater: explicit Band Saw cuts, or downstream VDI inspected pieces
+      const bandSawPassedPcs = Math.max(bandSawOutPcs + bandSawRejPcs, qcInspectedPcs);
+      const bandSawAvailPcs = Math.max(0, bandSawIncomingPcs + bandSawDivInPcs - bandSawPassedPcs - bandSawDivOutPcs);
       const bandSawAvailMtr = avgLength > 0 ? Number((bandSawAvailPcs * avgLength).toFixed(3)) : 0;
       const bandSawAvailMt = mtFromMtr(bandSawAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
@@ -559,32 +587,6 @@ export async function GET(req: NextRequest) {
       }
       const finNetMtr = Math.max(0, finOutMtr - finRejMtr);
 
-      // Check QC Inspections for this WO (or related campaign)
-      let woQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
-      if (campaign && Array.isArray(campaign.child_work_orders)) {
-        const childWoIds = new Set(campaign.child_work_orders.map((c: any) => c.work_order_id || c.id));
-        const campaignQcList = qcInspections.filter((q: any) => q.work_order_id === woId || childWoIds.has(q.work_order_id));
-        if (campaignQcList.length > 0) {
-          woQcList = campaignQcList;
-        }
-      }
-      const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
-      const qcOkMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
-      const qcSalvagePcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
-      const qcSalvageMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
-      const qcRejPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0), 0);
-      const qcRejMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
-      const qcInspectedPcs = woQcList.reduce(
-        (sum: number, q: any) =>
-          sum + Number(q.inspected_pcs || Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0)),
-        0
-      );
-      const qcInspectedMtr = woQcList.reduce(
-        (sum: number, q: any) =>
-          sum + Number(q.inspected_mtr || Number(q.vdi_ok_mtr || 0) + Number(q.vdi_salvage_mtr || 0) + Number(q.vdi_rejection_mtr || 0)),
-        0
-      );
-
       // VDI Stage WIP (Waiting for QC Inspection)
       const vdiDivIn = getStageDivIn(woId, "VDI");
       const vdiDivOut = getStageDivOut(woId, "VDI");
@@ -594,7 +596,7 @@ export async function GET(req: NextRequest) {
       // VDI incoming: strictly from Band Saw Net Output Pieces (or feeder stage if no band saw logged yet for legacy data)
       const vdiIncomingPcs = bandSawLogs.length > 0
         ? bandSawNetPcs
-        : (!isCds ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs) : htNetPcs);
+        : (qcInspectedPcs > 0 ? qcInspectedPcs : (!isCds ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs) : htNetPcs));
 
       const vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
       const vdiAvailMtr = avgLength > 0
