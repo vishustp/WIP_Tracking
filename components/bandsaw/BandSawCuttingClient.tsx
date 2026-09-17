@@ -670,6 +670,7 @@ export default function BandSawCuttingClient() {
                               onClick={() => setDeletingEntry(entry)}
                               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
                               title="Delete entry"
+                              aria-label="Delete entry"
                             >
                               <Trash2 size={13} />
                             </button>

@@ -1629,6 +1629,7 @@ export default function QcInspectionClient() {
                                   }}
                                   className="inline-flex items-center rounded border border-amber-300 bg-amber-50 p-1.5 text-amber-800 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
                                   title="Process Rework for this inspection"
+                                  aria-label="Process Rework for this inspection"
                                 >
                                   <Wrench size={12} />
                                 </button>
@@ -1639,6 +1640,7 @@ export default function QcInspectionClient() {
                                 onClick={() => openEditModal(item)}
                                 className="inline-flex items-center rounded border border-slate-200 bg-slate-50 p-1.5 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
                                 title="Edit Inspection"
+                                aria-label="Edit Inspection"
                               >
                                 <Edit2 size={12} />
                               </button>
@@ -1648,6 +1650,7 @@ export default function QcInspectionClient() {
                                 onClick={() => setDeleteTarget(item)}
                                 className="inline-flex items-center rounded border border-red-200 bg-red-50 p-1.5 text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
                                 title="Delete Inspection Record"
+                                aria-label="Delete Inspection Record"
                               >
                                 <Trash2 size={12} />
                               </button>
