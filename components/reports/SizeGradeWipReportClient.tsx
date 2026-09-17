@@ -701,15 +701,18 @@ export default function SizeGradeWipReportClient() {
     };
   }, [matrixGroups]);
 
-  // Helper to format values according to currently selected unit
+  // Helper to format values according to currently selected unit with quiet typography
   const formatCell = (mtr: number, pcs: number, mt: number) => {
     if (unit === 'MTRS') {
-      return mtr > 0 ? `${fmt(mtr, 0)} m` : '—';
+      if (mtr > 0) return <span className="text-slate-800 font-medium">{fmt(mtr, 0)} <span className="text-slate-600 text-[10px]">m</span></span>;
+      return <span className="text-slate-500 font-normal">0</span>;
     }
     if (unit === 'PCS') {
-      return pcs > 0 ? `${fmt(pcs, 0)} pcs` : '—';
+      if (pcs > 0) return <span className="text-slate-800 font-medium">{fmt(pcs, 0)} <span className="text-slate-600 text-[10px]">pcs</span></span>;
+      return <span className="text-slate-500 font-normal">0</span>;
     }
-    return mt > 0 ? `${fmt(mt, 3)} MT` : '—';
+    if (mt > 0) return <span className="text-slate-800 font-medium">{fmt(mt, 3)} <span className="text-slate-600 text-[10px]">MT</span></span>;
+    return <span className="text-slate-500 font-normal">0</span>;
   };
 
   const toggleGroup = (key: string) => {
@@ -784,16 +787,16 @@ export default function SizeGradeWipReportClient() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200/80 pb-3.5">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-              <Gauge className="h-6 w-6 text-[#0078d4]" />
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
+              <Gauge className="h-5 w-5 text-slate-500" aria-hidden="true" />
               OD & WT Grade-Wise Station-Wise WIP Status
             </h1>
-            <span className="rounded-md bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-bold text-[#0078d4] font-mono">
+            <span className="rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 font-mono">
               As On: {asOnDate}
             </span>
           </div>
@@ -808,7 +811,7 @@ export default function SizeGradeWipReportClient() {
           <div
             role="radiogroup"
             aria-label="Display Unit"
-            className="inline-flex rounded-md border border-slate-300 p-0.5 bg-white text-xs shadow-2xs"
+            className="inline-flex rounded-md border border-slate-200 p-0.5 bg-slate-100/70 text-xs shadow-2xs"
           >
             <button
               type="button"
@@ -816,8 +819,8 @@ export default function SizeGradeWipReportClient() {
               aria-checked={unit === 'MTRS'}
               aria-label="Display inventory in Meters"
               onClick={() => setUnit('MTRS')}
-              className={`px-3 py-1.5 min-h-[34px] rounded font-semibold transition cursor-pointer ${
-                unit === 'MTRS' ? 'bg-[#0078d4] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 min-h-[32px] rounded font-semibold transition cursor-pointer ${
+                unit === 'MTRS' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Meters (m)
@@ -828,8 +831,8 @@ export default function SizeGradeWipReportClient() {
               aria-checked={unit === 'PCS'}
               aria-label="Display inventory in Pieces"
               onClick={() => setUnit('PCS')}
-              className={`px-3 py-1.5 min-h-[34px] rounded font-semibold transition cursor-pointer ${
-                unit === 'PCS' ? 'bg-[#0078d4] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 min-h-[32px] rounded font-semibold transition cursor-pointer ${
+                unit === 'PCS' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Pieces (pcs)
@@ -840,8 +843,8 @@ export default function SizeGradeWipReportClient() {
               aria-checked={unit === 'MT'}
               aria-label="Display inventory in Metric Tons"
               onClick={() => setUnit('MT')}
-              className={`px-3 py-1.5 min-h-[34px] rounded font-semibold transition cursor-pointer ${
-                unit === 'MT' ? 'bg-[#0078d4] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 min-h-[32px] rounded font-semibold transition cursor-pointer ${
+                unit === 'MT' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Weight (MT)
@@ -854,9 +857,9 @@ export default function SizeGradeWipReportClient() {
             onClick={loadData}
             disabled={loading}
             aria-label="Refresh live WIP matrix data"
-            className="text-xs h-9 border-slate-300"
+            className="text-xs h-8 border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
           >
-            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin text-slate-600' : 'text-slate-500'}`} />
             Refresh
           </Button>
 
@@ -864,9 +867,9 @@ export default function SizeGradeWipReportClient() {
             type="button"
             onClick={exportExcel}
             aria-label="Export WIP matrix to Excel spreadsheet"
-            className="text-xs h-9 bg-[#107c41] hover:bg-[#0b5a2f] text-white font-semibold flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-transform"
+            className="text-xs h-8 bg-slate-900 hover:bg-slate-800 text-white font-medium flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-transform"
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="h-3.5 w-3.5 text-slate-300" />
             Export Matrix
           </Button>
         </div>
@@ -880,14 +883,14 @@ export default function SizeGradeWipReportClient() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {/* Active Sizes */}
-        <div className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-2xs">
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Active Sizes</span>
-            <Layers className="h-4 w-4 text-[#0078d4]" />
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Active Sizes</span>
+            <Layers className="h-4 w-4 text-slate-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{kpis.totalSizes}</span>
-            <span className="text-xs text-slate-500 font-medium">OD × WT Combinations</span>
+            <span className="text-2xl font-bold text-slate-900 font-mono tracking-tight">{kpis.totalSizes}</span>
+            <span className="text-xs text-slate-500 font-medium">Combinations</span>
           </div>
           <div className="mt-1 text-[11px] text-slate-500 truncate">
             Top: {kpis.topSize}
@@ -895,72 +898,72 @@ export default function SizeGradeWipReportClient() {
         </div>
 
         {/* Total Physical WIP (Mtrs) */}
-        <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3.5 shadow-2xs">
+        <div className="rounded-lg border border-slate-300/90 bg-slate-50/70 p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-blue-900 uppercase tracking-wider">Total Plant WIP</span>
-            <Gauge className="h-4 w-4 text-[#0078d4]" />
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Total Plant WIP</span>
+            <Gauge className="h-4 w-4 text-slate-600" />
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-[#0078d4] font-mono tracking-tight">{fmt(kpis.totalWipMtr, 0)}</span>
-            <span className="text-xs text-blue-700 font-semibold">Mtrs</span>
+            <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{fmt(kpis.totalWipMtr, 0)}</span>
+            <span className="text-xs text-slate-600 font-semibold">Mtrs</span>
           </div>
-          <div className="mt-1 text-[11px] text-blue-800 font-mono">
+          <div className="mt-1 text-[11px] text-slate-600 font-mono">
             {fmt(kpis.totalWipPcs, 0)} Pcs · {fmt(kpis.totalWipMt, 2)} MT
           </div>
         </div>
 
         {/* Rolling Mill Stock */}
-        <div className="rounded-lg border border-blue-200 bg-white p-3.5 shadow-2xs">
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Rolling Mill (Mother Hollow)</span>
-            <Factory className="h-4 w-4 text-blue-600" />
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Rolling Mill</span>
+            <Factory className="h-4 w-4 text-slate-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-blue-900 font-mono tracking-tight">{fmt(kpis.rollingMtr, 0)}</span>
+            <span className="text-2xl font-bold text-slate-800 font-mono tracking-tight">{fmt(kpis.rollingMtr, 0)}</span>
             <span className="text-xs text-slate-500 font-medium">Mtrs</span>
           </div>
           <div className="mt-1 text-[11px] text-slate-500">
-            Rolled stock awaiting downstream
+            Rolled mother hollow
           </div>
         </div>
 
         {/* Cold Draw Buffer */}
-        <div className="rounded-lg border border-indigo-200 bg-white p-3.5 shadow-2xs">
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Draw Bench Buffer</span>
-            <TrendingUp className="h-4 w-4 text-indigo-600" />
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Draw Bench Buffer</span>
+            <TrendingUp className="h-4 w-4 text-slate-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-indigo-900 font-mono tracking-tight">{fmt(kpis.drawMtr, 0)}</span>
+            <span className="text-2xl font-bold text-slate-800 font-mono tracking-tight">{fmt(kpis.drawMtr, 0)}</span>
             <span className="text-xs text-slate-500 font-medium">Mtrs</span>
           </div>
           <div className="mt-1 text-[11px] text-slate-500">
-            In-draw & intermediate queue
+            In-draw & intermediate
           </div>
         </div>
 
         {/* Finished Goods WIP */}
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3.5 shadow-2xs">
+        <div className="rounded-lg border border-slate-200/90 bg-white p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Finished Stock</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Finished Stock</span>
+            <CheckCircle2 className="h-4 w-4 text-slate-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-emerald-800 font-mono tracking-tight">{fmt(kpis.finishingMtr, 0)}</span>
-            <span className="text-xs text-emerald-700 font-semibold">Mtrs</span>
+            <span className="text-2xl font-bold text-slate-800 font-mono tracking-tight">{fmt(kpis.finishingMtr, 0)}</span>
+            <span className="text-xs text-slate-500 font-medium">Mtrs</span>
           </div>
-          <div className="mt-1 text-[11px] text-emerald-700">
-            Inspection passed / dispatch ready
+          <div className="mt-1 text-[11px] text-slate-500">
+            Inspection passed stock
           </div>
         </div>
       </div>
 
       {/* Filter Toolbar */}
-      <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs space-y-3">
+      <div className="bg-white p-3 rounded-lg border border-slate-200/90 shadow-2xs space-y-2.5">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
           {/* Search Size or Grade */}
           <div className="relative lg:col-span-3">
-            <label htmlFor="wip-matrix-search" className="block text-[11px] font-bold text-slate-600 mb-1">
+            <label htmlFor="wip-matrix-search" className="block text-[11px] font-semibold text-slate-600 mb-1">
               Search Keywords
             </label>
             <div className="relative">
@@ -972,14 +975,14 @@ export default function SizeGradeWipReportClient() {
                 aria-label="Search by size, grade, work order, or process route"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 text-xs h-9"
+                className="pl-8 text-xs h-8 border-slate-200 focus:border-slate-400"
               />
             </div>
           </div>
 
           {/* Route Dropdown Filter */}
           <div className="lg:col-span-2">
-            <label htmlFor="wip-matrix-route" className="block text-[11px] font-bold text-slate-600 mb-1">
+            <label htmlFor="wip-matrix-route" className="block text-[11px] font-semibold text-slate-600 mb-1">
               Process Route
             </label>
             <Select
@@ -987,7 +990,7 @@ export default function SizeGradeWipReportClient() {
               aria-label="Filter by process route"
               value={selectedRoute}
               onChange={(e) => setSelectedRoute(e.target.value)}
-              className="text-xs h-9 font-medium"
+              className="text-xs h-8 font-medium border-slate-200"
             >
               <option value="ALL">All Routes (HFS/CDS...)</option>
               {uniqueRoutes.map((r) => (
@@ -1000,7 +1003,7 @@ export default function SizeGradeWipReportClient() {
 
           {/* Grade Dropdown */}
           <div className="lg:col-span-2">
-            <label htmlFor="wip-matrix-grade" className="block text-[11px] font-bold text-slate-600 mb-1">
+            <label htmlFor="wip-matrix-grade" className="block text-[11px] font-semibold text-slate-600 mb-1">
               Material Grade
             </label>
             <Select
@@ -1008,7 +1011,7 @@ export default function SizeGradeWipReportClient() {
               aria-label="Filter by material grade"
               value={selectedGrade}
               onChange={(e) => setSelectedGrade(e.target.value)}
-              className="text-xs h-9"
+              className="text-xs h-8 border-slate-200"
             >
               <option value="ALL">All Material Grades</option>
               {uniqueGrades.map((g) => (
@@ -1021,7 +1024,7 @@ export default function SizeGradeWipReportClient() {
 
           {/* OD Range Filter */}
           <div className="lg:col-span-2">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">OD Range (mm)</label>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">OD Range (mm)</label>
             <div className="flex items-center gap-1">
               <Input
                 type="number"
@@ -1029,7 +1032,7 @@ export default function SizeGradeWipReportClient() {
                 aria-label="Minimum Outer Diameter in millimeters"
                 value={fromOd}
                 onChange={(e) => setFromOd(e.target.value)}
-                className="text-xs h-9 w-full font-mono"
+                className="text-xs h-8 w-full font-mono border-slate-200"
               />
               <span className="text-slate-400 text-xs shrink-0" aria-hidden="true">-</span>
               <Input
@@ -1038,16 +1041,16 @@ export default function SizeGradeWipReportClient() {
                 aria-label="Maximum Outer Diameter in millimeters"
                 value={toOd}
                 onChange={(e) => setToOd(e.target.value)}
-                className="text-xs h-9 w-full font-mono"
+                className="text-xs h-8 w-full font-mono border-slate-200"
               />
             </div>
           </div>
 
           {/* Rolling Production Date Range Filter */}
           <div className="lg:col-span-3">
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
-              <span className="flex items-center gap-1 text-blue-900 font-bold">
-                <Calendar className="h-3 w-3 text-blue-600" aria-hidden="true" />
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 mb-1">
+              <span className="flex items-center gap-1 text-slate-700 font-semibold">
+                <Calendar className="h-3 w-3 text-slate-400" aria-hidden="true" />
                 Rolling Date Range:
               </span>
               {(fromRollingDate || toRollingDate) && (
@@ -1058,7 +1061,7 @@ export default function SizeGradeWipReportClient() {
                     setFromRollingDate('');
                     setToRollingDate('');
                   }}
-                  className="text-[10px] text-blue-600 hover:text-blue-800 underline font-semibold cursor-pointer active:scale-95 transition-transform"
+                  className="text-[10px] text-slate-500 hover:text-slate-800 underline font-medium cursor-pointer"
                 >
                   Clear Date
                 </button>
@@ -1071,7 +1074,7 @@ export default function SizeGradeWipReportClient() {
                 aria-label="From Rolling Production Date"
                 value={fromRollingDate}
                 onChange={(e) => setFromRollingDate(e.target.value)}
-                className="text-[11px] h-9 font-mono px-1.5 w-full bg-blue-50/30 border-blue-200"
+                className="text-[11px] h-8 font-mono px-1.5 w-full bg-white border-slate-200"
               />
               <span className="text-slate-400 text-xs shrink-0" aria-hidden="true">to</span>
               <Input
@@ -1080,14 +1083,14 @@ export default function SizeGradeWipReportClient() {
                 aria-label="To Rolling Production Date"
                 value={toRollingDate}
                 onChange={(e) => setToRollingDate(e.target.value)}
-                className="text-[11px] h-9 font-mono px-1.5 w-full bg-blue-50/30 border-blue-200"
+                className="text-[11px] h-8 font-mono px-1.5 w-full bg-white border-slate-200"
               />
             </div>
           </div>
         </div>
 
         {/* View Mode Switcher & Controls */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500 font-medium">View Mode:</span>
             <div
@@ -1100,8 +1103,8 @@ export default function SizeGradeWipReportClient() {
                 role="tab"
                 aria-selected={viewMode === 'matrix'}
                 onClick={() => setViewMode('matrix')}
-                className={`px-3 py-1.5 min-h-[34px] rounded font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                  viewMode === 'matrix' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
+                className={`px-3 py-1 min-h-[30px] rounded font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'matrix' ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/60' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 <LayoutGrid size={13} aria-hidden="true" />
@@ -1112,8 +1115,8 @@ export default function SizeGradeWipReportClient() {
                 role="tab"
                 aria-selected={viewMode === 'ledger'}
                 onClick={() => setViewMode('ledger')}
-                className={`px-3 py-1.5 min-h-[34px] rounded font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                  viewMode === 'ledger' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
+                className={`px-3 py-1 min-h-[30px] rounded font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'ledger' ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/60' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 <TableIcon size={13} aria-hidden="true" />
@@ -1127,7 +1130,7 @@ export default function SizeGradeWipReportClient() {
               type="button"
               onClick={toggleAll}
               aria-label={matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse all work order details' : 'Expand all work order details'}
-              className="text-xs font-semibold text-[#0078d4] hover:underline cursor-pointer"
+              className="text-xs font-medium text-slate-600 hover:text-slate-900 hover:underline cursor-pointer"
             >
               {matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse All Details' : 'Expand All WO Details'}
             </button>
@@ -1137,46 +1140,46 @@ export default function SizeGradeWipReportClient() {
 
       {/* MATRIX VIEW */}
       {viewMode === 'matrix' && (
-        <div className="rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
+        <div className="rounded-lg border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
           <div className="overflow-auto max-h-[70vh] relative">
             <table className="w-full text-left text-xs border-collapse min-w-[1200px]">
-              <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
+              <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
                 <tr>
                   <th className="py-2.5 px-3 w-10 text-center bg-clip-padding"></th>
                   <th className="py-2.5 px-3 bg-clip-padding">Size (OD × WT)</th>
-                  <th className="py-2.5 px-3 bg-clip-padding">Material Grade</th>
-                  <th className="py-2.5 px-3 text-right bg-blue-50/60 border-x border-blue-200 text-blue-900 bg-clip-padding">
+                  <th className="py-2.5 px-3 bg-clip-padding">Grade</th>
+                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
                     Rolling Mill (MH)
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-amber-50/60 border-r border-amber-200 text-amber-900 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
                     Hollow HT (HTC)
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-indigo-50/60 border-r border-indigo-200 text-indigo-900 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
                     Cold Draw Bench
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-orange-50/60 border-r border-orange-200 text-orange-900 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
                     Final Heat Treatment
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-yellow-50/60 border-r border-yellow-200 text-yellow-900 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
                     Band Saw Cutting
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-purple-50/60 border-r border-purple-200 text-purple-900 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
                     VDI / QC Inspection
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-emerald-50/60 border-r border-emerald-200 text-emerald-900 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
                     Finishing (FG)
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-slate-200/60 font-black text-slate-900 bg-clip-padding">
-                    Total Physical WIP
+                  <th className="py-2.5 px-3 text-right border-l border-slate-200 bg-slate-100/70 font-bold text-slate-800 bg-clip-padding">
+                    Total Plant WIP
                   </th>
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-100">
                 {loading && matrixGroups.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="py-12 text-center text-slate-400">
-                      <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
+                      <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-slate-500" />
                       Aggregating OD, WT and Grade station-wise WIP matrix...
                     </td>
                   </tr>
@@ -1208,8 +1211,8 @@ export default function SizeGradeWipReportClient() {
                               toggleGroup(g.key);
                             }
                           }}
-                          className={`transition cursor-pointer hover:bg-blue-50/30 focus:outline-none focus-visible:bg-blue-50/50 ${
-                            isExpanded ? 'bg-blue-50/20' : ''
+                          className={`transition cursor-pointer hover:bg-slate-50/80 focus:outline-none focus-visible:bg-slate-100/80 ${
+                            isExpanded ? 'bg-slate-50/50' : ''
                           }`}
                         >
                           {/* Chevron */}
@@ -1218,72 +1221,72 @@ export default function SizeGradeWipReportClient() {
                               size={14}
                               aria-hidden="true"
                               className={`transition-transform duration-200 ${
-                                isExpanded ? 'rotate-90 text-blue-600' : 'rotate-0 text-slate-400'
+                                isExpanded ? 'rotate-90 text-slate-700' : 'rotate-0 text-slate-400'
                               }`}
                             />
                           </td>
 
                           {/* Size (OD × WT) */}
-                          <td className="py-2.5 px-3 font-mono font-black text-slate-900 text-[13px]">
-                            {g.od} × {g.wt} <span className="text-[11px] text-slate-500 font-normal">mm</span>
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-800 text-[12px]">
+                            {g.od} × {g.wt} <span className="text-[11px] text-slate-400 font-normal">mm</span>
                           </td>
 
                           {/* Grade */}
                           <td className="py-2.5 px-3">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-200 font-mono">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200/80 font-mono">
                               {g.grade}
                             </span>
                           </td>
 
                           {/* Rolling Mill */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold bg-blue-50/20 border-x border-blue-100 text-blue-900">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
                             {formatCell(g.rolling_mtr, g.rolling_pcs, g.rolling_mt)}
                           </td>
 
                           {/* Hollow HT */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold bg-amber-50/20 border-r border-amber-100 text-amber-900">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
                             {formatCell(g.htc_mtr, g.htc_pcs, g.htc_mt)}
                           </td>
 
                           {/* Cold Draw */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold bg-indigo-50/20 border-r border-indigo-100 text-indigo-900">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
                             {formatCell(g.draw_mtr, g.draw_pcs, g.draw_mt)}
                           </td>
 
                           {/* Final HT */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold bg-orange-50/20 border-r border-orange-100 text-orange-900">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
                             {formatCell(g.ht_mtr, g.ht_pcs, g.ht_mt)}
                           </td>
 
                           {/* Band Saw */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold bg-yellow-50/20 border-r border-yellow-100 text-yellow-900">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
                             {formatCell(g.band_saw_mtr, g.band_saw_pcs, g.band_saw_mt)}
                           </td>
 
                           {/* VDI */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold bg-purple-50/20 border-r border-purple-100 text-purple-900">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
                             {formatCell(g.vdi_mtr, g.vdi_pcs, g.vdi_mt)}
                           </td>
 
                           {/* Finishing */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold bg-emerald-50/20 border-r border-emerald-100 text-emerald-900">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
                             {formatCell(g.finishing_mtr, g.finishing_pcs, g.finishing_mt)}
                           </td>
 
                           {/* Total Row WIP */}
-                          <td className="py-2.5 px-3 text-right font-mono font-black text-slate-900 bg-slate-100/50 text-[13px]">
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 bg-slate-50/70 border-l border-slate-200 text-[12px]">
                             {formatCell(g.total_mtr, g.total_pcs, g.total_mt)}
                           </td>
                         </tr>
 
                         {/* Inline Contributing Work Orders Sub-Table */}
                         {isExpanded && (
-                          <tr className="bg-slate-50/80">
+                          <tr className="bg-slate-50/60">
                             <td colSpan={11} className="py-3 px-6 border-y border-slate-200">
-                              <div className="rounded border border-slate-300 bg-white p-3 shadow-2xs space-y-2">
-                                <div className="text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-100 pb-1.5">
+                              <div className="rounded border border-slate-200 bg-white p-3 shadow-2xs space-y-2">
+                                <div className="text-xs font-semibold text-slate-700 flex items-center justify-between border-b border-slate-100 pb-1.5">
                                   <div className="flex items-center gap-1.5">
-                                    <Package className="h-3.5 w-3.5 text-[#0078d4]" />
+                                    <Package className="h-3.5 w-3.5 text-slate-500" />
                                     Contributing Work Orders for {g.od} × {g.wt} mm ({g.grade}):
                                   </div>
                                   <span className="font-mono text-[11px] text-slate-500 font-normal">
@@ -1293,7 +1296,7 @@ export default function SizeGradeWipReportClient() {
 
                                 <div className="overflow-x-auto">
                                   <table className="w-full text-xs text-left">
-                                    <thead className="text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
+                                    <thead className="text-[10px] uppercase font-semibold text-slate-500 border-b border-slate-200">
                                       <tr>
                                         <th className="py-1 px-2">Work Order No</th>
                                         <th className="py-1 px-2">Customer</th>
@@ -1305,24 +1308,24 @@ export default function SizeGradeWipReportClient() {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                       {g.contributing.map((c, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50">
-                                          <td className="py-1.5 px-2 font-mono font-bold text-slate-900">
+                                        <tr key={idx} className="hover:bg-slate-50/80">
+                                          <td className="py-1.5 px-2 font-mono font-bold text-slate-800">
                                             {c.work_order_no}
                                           </td>
                                           <td className="py-1.5 px-2 text-slate-600 truncate max-w-[200px]">
                                             {c.customer_name || 'Generic Customer'}
                                           </td>
                                           <td className="py-1.5 px-2">
-                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 font-mono">
+                                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 font-mono">
                                               {c.route_code || 'HFS'}
                                             </span>
                                           </td>
                                           <td className="py-1.5 px-2">
-                                            <span className="font-semibold text-slate-700">
+                                            <span className="font-medium text-slate-700">
                                               {c.stage_name}
                                             </span>
                                           </td>
-                                          <td className="py-1.5 px-2 text-right font-mono font-bold text-slate-900">
+                                          <td className="py-1.5 px-2 text-right font-mono font-semibold text-slate-800">
                                             {formatCell(c.wip_mtr, c.wip_pcs, c.wip_mt)}
                                           </td>
                                           <td className="py-1.5 px-2 text-right">
@@ -1332,10 +1335,10 @@ export default function SizeGradeWipReportClient() {
                                                 e.stopPropagation();
                                                 router.push(`/reports/tracking?wo=${encodeURIComponent(c.work_order_no)}`);
                                               }}
-                                              className="inline-flex items-center gap-1 text-[11px] text-[#0078d4] hover:underline font-semibold"
+                                              className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-950 hover:underline font-semibold"
                                             >
                                               <span>Track</span>
-                                              <ArrowRight size={12} />
+                                              <ArrowRight size={11} />
                                             </button>
                                           </td>
                                         </tr>
@@ -1355,37 +1358,37 @@ export default function SizeGradeWipReportClient() {
 
               {/* Total Summary Footer */}
               {matrixGroups.length > 0 && (
-                <tfoot className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-slate-900 text-xs">
+                <tfoot className="bg-slate-50/90 border-t-2 border-slate-200 font-semibold text-slate-800 text-xs">
                   <tr>
-                    <td colSpan={3} className="py-3 px-3 uppercase tracking-wider text-right font-black">
+                    <td colSpan={3} className="py-2.5 px-3 uppercase tracking-wider text-right font-bold text-slate-700">
                       Total Plant Inventory:
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-blue-950 bg-blue-100/50 border-x border-blue-200">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
                       {formatCell(kpis.rollingMtr, kpis.rollingPcs, kpis.rollingMt)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-amber-950 bg-amber-100/50 border-r border-amber-200">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
                       {formatCell(
                         matrixGroups.reduce((s, g) => s + g.htc_mtr, 0),
                         matrixGroups.reduce((s, g) => s + g.htc_pcs, 0),
                         matrixGroups.reduce((s, g) => s + g.htc_mt, 0)
                       )}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-indigo-950 bg-indigo-100/50 border-r border-indigo-200">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
                       {formatCell(kpis.drawMtr, kpis.drawPcs, kpis.drawMt)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-orange-950 bg-orange-100/50 border-r border-orange-200">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
                       {formatCell(kpis.htMtr, kpis.htPcs, kpis.htMt)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-yellow-950 bg-yellow-100/50 border-r border-yellow-200">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
                       {formatCell(kpis.bandSawMtr, kpis.bandSawPcs, kpis.bandSawMt)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-purple-950 bg-purple-100/50 border-r border-purple-200">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
                       {formatCell(kpis.vdiMtr, kpis.vdiPcs, kpis.vdiMt)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-emerald-950 bg-emerald-100/50 border-r border-emerald-200">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
                       {formatCell(kpis.finishingMtr, kpis.finishingPcs, kpis.finishingMt)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-black text-slate-950 bg-slate-200 text-[13px]">
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 bg-slate-100/90 border-l border-slate-300 text-[12px]">
                       {formatCell(kpis.totalWipMtr, kpis.totalWipPcs, kpis.totalWipMt)}
                     </td>
                   </tr>
@@ -1398,24 +1401,24 @@ export default function SizeGradeWipReportClient() {
 
       {/* LEDGER WORK ORDER DETAIL VIEW */}
       {viewMode === 'ledger' && (
-        <div className="rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
+        <div className="rounded-lg border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
           <div className="overflow-auto max-h-[70vh] relative">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
+              <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
                 <tr>
-                  <th className="py-2.5 px-3">Work Order #</th>
-                  <th className="py-2.5 px-3">Customer</th>
-                  <th className="py-2.5 px-3">Route</th>
-                  <th className="py-2.5 px-3">Size (OD × WT)</th>
-                  <th className="py-2.5 px-3">Material Grade</th>
-                  <th className="py-2.5 px-3">Current Station</th>
-                  <th className="py-2.5 px-3 text-right">Physical WIP (Mtrs)</th>
-                  <th className="py-2.5 px-3 text-right">WIP (Pcs)</th>
-                  <th className="py-2.5 px-3 text-right">WIP (MT)</th>
-                  <th className="py-2.5 px-3 text-right">Action</th>
+                  <th className="py-2.5 px-3 bg-clip-padding">Work Order #</th>
+                  <th className="py-2.5 px-3 bg-clip-padding">Customer</th>
+                  <th className="py-2.5 px-3 bg-clip-padding">Route</th>
+                  <th className="py-2.5 px-3 bg-clip-padding">Size (OD × WT)</th>
+                  <th className="py-2.5 px-3 bg-clip-padding">Material Grade</th>
+                  <th className="py-2.5 px-3 bg-clip-padding">Current Station</th>
+                  <th className="py-2.5 px-3 text-right bg-clip-padding">Physical WIP (Mtrs)</th>
+                  <th className="py-2.5 px-3 text-right bg-clip-padding">WIP (Pcs)</th>
+                  <th className="py-2.5 px-3 text-right bg-clip-padding">WIP (MT)</th>
+                  <th className="py-2.5 px-3 text-right bg-clip-padding">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-100">
                 {filteredRawRows.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="py-12 text-center text-slate-400">
@@ -1424,15 +1427,15 @@ export default function SizeGradeWipReportClient() {
                   </tr>
                 ) : (
                   filteredRawRows.map((r, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition">
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                    <tr key={i} className="hover:bg-slate-50/80 transition">
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
                         {r.work_order_no}
                       </td>
                       <td className="py-2.5 px-3 text-slate-600 truncate max-w-[160px]">
                         {r.customer_name || 'Generic Customer'}
                       </td>
                       <td className="py-2.5 px-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200 font-mono">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 font-mono">
                           {r.route_code || 'HFS'}
                         </span>
                       </td>
@@ -1444,26 +1447,26 @@ export default function SizeGradeWipReportClient() {
                           {r.grade}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 font-semibold text-slate-700">
+                      <td className="py-2.5 px-3 font-medium text-slate-700">
                         {r.stage_name || r.stage_code}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                      <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800">
                         {fmt(r.current_wip)} m
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-500">
                         {fmt(r.current_wip_pcs, 0)}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-500">
                         {fmt(r.available_mt, 3)}
                       </td>
                       <td className="py-2.5 px-3 text-right">
                         <button
                           type="button"
                           onClick={() => router.push(`/reports/tracking?wo=${encodeURIComponent(r.work_order_no)}`)}
-                          className="inline-flex items-center gap-1 text-[11px] text-[#0078d4] hover:underline font-semibold"
+                          className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-950 hover:underline font-semibold"
                         >
                           <span>Track</span>
-                          <ArrowRight size={12} />
+                          <ArrowRight size={11} />
                         </button>
                       </td>
                     </tr>
