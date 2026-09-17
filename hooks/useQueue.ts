@@ -2,36 +2,71 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { StageCode, Row, emptyRow } from "@/types";
 
+const clientQueueCache = new Map<string, { timestamp: number; rows: Row[] }>();
+const inflightPromises = new Map<string, Promise<any>>();
+const CLIENT_CACHE_TTL_MS = 3000;
+
 export function useQueue(stage: StageCode) {
-  const [rows, setRows] = useState<Row[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<Row[]>(() => {
+    const cached = clientQueueCache.get(stage);
+    return cached && Date.now() - cached.timestamp < CLIENT_CACHE_TTL_MS ? cached.rows : [];
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    const cached = clientQueueCache.get(stage);
+    return !(cached && Date.now() - cached.timestamp < CLIENT_CACHE_TTL_MS);
+  });
   const [error, setError] = useState<string | null>(null);
   const stageRef = useRef(stage);
   stageRef.current = stage;
 
-  const loadQueue = useCallback(async (targetStage?: StageCode) => {
+  const loadQueue = useCallback(async (targetStage?: StageCode, forceRefresh = false) => {
     const s = targetStage || stageRef.current;
+
+    // Check fast client-side cache
+    if (!forceRefresh) {
+      const cached = clientQueueCache.get(s);
+      if (cached && Date.now() - cached.timestamp < CLIENT_CACHE_TTL_MS) {
+        setRows(cached.rows);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
+
     try {
-      // 1. Try to fetch from server-side queue API (calculates strict WIP from Rolling HTC OK)
-      try {
-        const apiRes = await fetch(`/api/production/queue?stage=${s}&_t=${Date.now()}`, {
-          cache: "no-store",
-          headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
+      // Deduplicate concurrent inflight requests for the same stage
+      const cacheKey = `${s}_${forceRefresh ? 'fresh' : 'cached'}`;
+      let fetchPromise = inflightPromises.get(cacheKey);
+
+      if (!fetchPromise) {
+        const url = `/api/production/queue?stage=${s}${forceRefresh ? '&nocache=1' : ''}`;
+        fetchPromise = fetch(url, {
+          cache: forceRefresh ? "no-store" : "default",
+          headers: forceRefresh ? { "Pragma": "no-cache", "Cache-Control": "no-cache" } : {},
+        }).then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        }).finally(() => {
+          inflightPromises.delete(cacheKey);
         });
-        if (apiRes.ok) {
-          const json = await apiRes.json();
-          if (Array.isArray(json?.data)) {
-            setRows(json.data.map((r: any) => emptyRow(r)));
-            setLoading(false);
-            return;
-          }
-        }
-      } catch {
-        // Fall back to direct query below
+        inflightPromises.set(cacheKey, fetchPromise);
       }
 
+      const json = await fetchPromise;
+      if (Array.isArray(json?.data)) {
+        const mappedRows = json.data.map((r: any) => emptyRow(r));
+        clientQueueCache.set(s, { timestamp: Date.now(), rows: mappedRows });
+        setRows(mappedRows);
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Fall back to direct query below
+    }
+
+    try {
       const supabase = createClient();
 
       // 1. Fetch standard queue, plans, process stages, production logs, qc, and diversions

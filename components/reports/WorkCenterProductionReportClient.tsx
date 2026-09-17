@@ -108,6 +108,7 @@ export default function WorkCenterProductionReportClient() {
 
   // Filters
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [shiftFilter, setShiftFilter] = useState('ALL');
   const [fromDate, setFromDate] = useState(() => {
     // Default to last 7 days
@@ -117,6 +118,13 @@ export default function WorkCenterProductionReportClient() {
   });
   const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -125,7 +133,7 @@ export default function WorkCenterProductionReportClient() {
 
       const [prodRes, woRes, routeRes, qcRes] = await Promise.all([
         s.rpc('get_production_entries', {
-          p_search: search.trim() || null,
+          p_search: debouncedSearch.trim() || null,
           p_stage_code: stageArg,
           p_route_code: null,
           p_from_date: fromDate || null,
@@ -330,8 +338,8 @@ export default function WorkCenterProductionReportClient() {
           const qDate = q.inspection_date ? String(q.inspection_date).slice(0, 10) : String(q.created_at).slice(0, 10);
           if (fromDate && qDate < fromDate) return;
           if (toDate && qDate > toDate) return;
-          if (search.trim()) {
-            const term = search.trim().toLowerCase();
+          if (debouncedSearch.trim()) {
+            const term = debouncedSearch.trim().toLowerCase();
             const matchWo = (wo?.work_order_no || '').toLowerCase().includes(term);
             const matchCust = (wo?.customer_name || '').toLowerCase().includes(term);
             const matchHeat = (q.heat_lot_no || '').toLowerCase().includes(term);
@@ -391,7 +399,7 @@ export default function WorkCenterProductionReportClient() {
     } finally {
       setLoading(false);
     }
-  }, [selectedWc, search, fromDate, toDate]);
+  }, [selectedWc, debouncedSearch, fromDate, toDate]);
 
   useEffect(() => {
     loadData();

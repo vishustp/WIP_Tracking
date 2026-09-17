@@ -18,6 +18,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        <link rel="preconnect" href="https://dzhvbftmuwfyuaarsxtk.supabase.co" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://dzhvbftmuwfyuaarsxtk.supabase.co" />
+      </head>
       <body className={`${inter.className} antialiased bg-slate-50 text-slate-900`}>
         <AppShell>{children}</AppShell>
         <Toaster richColors position="top-right" closeButton duration={4500} />

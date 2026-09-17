@@ -23,13 +23,16 @@ import FormAccessBanner from '@/components/common/FormAccessBanner';
 import { WipSummaryCards } from '@/components/production/WipSummaryCards';
 
 // Modular Subcomponents
+import dynamic from 'next/dynamic';
 import ProductionToolbar from '@/components/production/ProductionToolbar';
 import ProductionQueueTable from '@/components/production/ProductionQueueTable';
 import ProductionHistoryTable from '@/components/production/ProductionHistoryTable';
-import EditEntryModal from '@/components/production/modals/EditEntryModal';
-import DeleteEntryModal from '@/components/production/modals/DeleteEntryModal';
-import BundlingCampaignModal, { CampaignBundle } from '@/components/production/modals/BundlingCampaignModal';
-import BandSawCuttingModal from '@/components/production/modals/BandSawCuttingModal';
+import type { CampaignBundle } from '@/components/production/modals/BundlingCampaignModal';
+
+const EditEntryModal = dynamic(() => import('@/components/production/modals/EditEntryModal'), { ssr: false });
+const DeleteEntryModal = dynamic(() => import('@/components/production/modals/DeleteEntryModal'), { ssr: false });
+const BundlingCampaignModal = dynamic(() => import('@/components/production/modals/BundlingCampaignModal'), { ssr: false });
+const BandSawCuttingModal = dynamic(() => import('@/components/production/modals/BandSawCuttingModal'), { ssr: false });
 
 function getYesterdayDateStr(): string {
   const d = new Date();

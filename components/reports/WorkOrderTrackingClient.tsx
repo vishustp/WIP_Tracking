@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useDeferredValue } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -169,6 +169,11 @@ export default function WorkOrderTrackingClient() {
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
+
+  const deferredFilterWo = useDeferredValue(filterWo);
+  const deferredFilterCustomer = useDeferredValue(filterCustomer);
+  const deferredFromOd = useDeferredValue(fromOd);
+  const deferredToOd = useDeferredValue(toOd);
 
   // UI state
   const [expandedWos, setExpandedWos] = useState<Record<string, boolean>>({});
@@ -349,24 +354,24 @@ export default function WorkOrderTrackingClient() {
       }
 
       // 1. Work Order No Filter
-      if (filterWo.trim()) {
-        const match = wo.work_order_no.toLowerCase().includes(filterWo.trim().toLowerCase());
+      if (deferredFilterWo.trim()) {
+        const match = wo.work_order_no.toLowerCase().includes(deferredFilterWo.trim().toLowerCase());
         if (!match) return false;
       }
 
       // 2. Customer Filter
-      if (filterCustomer.trim()) {
-        const match = (wo.customer_name || '').toLowerCase().includes(filterCustomer.trim().toLowerCase());
+      if (deferredFilterCustomer.trim()) {
+        const match = (wo.customer_name || '').toLowerCase().includes(deferredFilterCustomer.trim().toLowerCase());
         if (!match) return false;
       }
 
       // 3. OD Range Filter (From OD to To OD)
       const od = Number(wo.size_od || 0);
-      if (fromOd !== '' && !isNaN(Number(fromOd))) {
-        if (od < Number(fromOd)) return false;
+      if (deferredFromOd !== '' && !isNaN(Number(deferredFromOd))) {
+        if (od < Number(deferredFromOd)) return false;
       }
-      if (toOd !== '' && !isNaN(Number(toOd))) {
-        if (od > Number(toOd)) return false;
+      if (deferredToOd !== '' && !isNaN(Number(deferredToOd))) {
+        if (od > Number(deferredToOd)) return false;
       }
 
       // 4. Date Range Filter (From Date to To Date)
@@ -379,7 +384,7 @@ export default function WorkOrderTrackingClient() {
 
       return true;
     });
-  }, [workOrders, rolledWoIdSet, filterWo, filterCustomer, fromOd, toOd, fromDate, toDate, filterStatus]);
+  }, [workOrders, rolledWoIdSet, deferredFilterWo, deferredFilterCustomer, deferredFromOd, deferredToOd, fromDate, toDate, filterStatus]);
 
   // Helper to get aggregated stage metrics for a work order
   // RULE 1: WIP is strictly calculated AFTER rolling production is done, and ONLY from HTC OK quantity.

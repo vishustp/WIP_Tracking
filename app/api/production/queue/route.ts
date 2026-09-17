@@ -6,8 +6,74 @@ import { mtFromMtr, extractPcsFromRemarks } from "@/lib/productionUtils";
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+interface CachePayload {
+  timestamp: number;
+  allCalculatedRows: Map<string, { queueRows: Record<StageCode, Row | null>; pipeline: WorkCenterWipInfo[] }>;
+  rollingPlanRows: Row[];
+  childFinishingRows: Row[];
+  workCenterSummary: Record<StageCode, { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }>;
+}
+
+let memoryCache: CachePayload | null = null;
+const CACHE_TTL_MS = 3500; // 3.5s in-memory TTL for high-concurrency request deduplication
+
+export function invalidateQueueCache() {
+  memoryCache = null;
+}
+
 export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const targetStage = (searchParams.get("stage")?.toUpperCase() || "ROLLING") as StageCode;
+    const forceFresh = searchParams.has("nocache") || searchParams.has("refresh");
+
+    // Fast-path: Return from memory cache if within TTL (reduces DB hits by 90% during navigation)
+    if (!forceFresh && memoryCache && (Date.now() - memoryCache.timestamp) < CACHE_TTL_MS) {
+      const selectedRows: Row[] = [];
+      if (targetStage === "ROLLING") {
+        selectedRows.push(
+          ...memoryCache.rollingPlanRows.filter(
+            (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+          )
+        );
+      } else {
+        for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
+          const row = queueRows[targetStage];
+          if (row && (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0)) {
+            selectedRows.push(row);
+          }
+        }
+      }
+      if (targetStage === "FINISHING") {
+        selectedRows.push(
+          ...memoryCache.childFinishingRows.filter(
+            (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+          )
+        );
+      }
+      const summaryArray = Object.values(memoryCache.workCenterSummary).map((s) => ({
+        ...s,
+        availMtr: Number(s.availMtr.toFixed(2)),
+        availMt: Number(s.availMt.toFixed(2)),
+      }));
+
+      return NextResponse.json(
+        {
+          success: true,
+          stage: targetStage,
+          count: selectedRows.length,
+          data: selectedRows,
+          summary: summaryArray,
+          cached: true,
+        },
+        {
+          headers: {
+            "Cache-Control": "private, max-age=3, stale-while-revalidate=5",
+          },
+        }
+      );
+    }
+
     const admin = createAdminClient();
     if (!admin) {
       return NextResponse.json(
@@ -15,9 +81,6 @@ export async function GET(req: NextRequest) {
         { status: 500 }
       );
     }
-
-    const { searchParams } = new URL(req.url);
-    const targetStage = (searchParams.get("stage")?.toUpperCase() || "ROLLING") as StageCode;
 
     // Fetch plans, stages, logs, work orders, routes, qc, diversions
     const [plansRes, stagesRes, logsRes, woRes, routesRes, qcRes, divsRes] = await Promise.all([
@@ -1371,6 +1434,15 @@ export async function GET(req: NextRequest) {
       availMtr: Number(s.availMtr.toFixed(2)),
       availMt: Number(s.availMt.toFixed(2)),
     }));
+
+    // Save to memory cache for fast consecutive reads across tabs
+    memoryCache = {
+      timestamp: Date.now(),
+      allCalculatedRows,
+      rollingPlanRows,
+      childFinishingRows,
+      workCenterSummary,
+    };
 
     return NextResponse.json(
       {
