@@ -780,10 +780,10 @@ export default function AdminControlPanelClient() {
             type="button"
             onClick={() => setActiveTab('permissions')}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition cursor-pointer ${
-              activeTab === 'permissions' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+              activeTab === 'permissions' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <ShieldCheck className="h-4 w-4 text-blue-300" />
+            <ShieldCheck className={`h-4 w-4 ${activeTab === 'permissions' ? 'text-blue-400' : 'text-slate-500'}`} />
             <span>Access Rights & Form Permissions</span>
           </button>
           <button
@@ -1094,7 +1094,7 @@ export default function AdminControlPanelClient() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-600 uppercase tracking-wider">
                     <th className="py-3 px-4">User Profile</th>
                     <th className="py-3 px-4">Group & Station</th>
                     <th className="py-3 px-3 text-center">Rolling</th>
@@ -1134,21 +1134,21 @@ export default function AdminControlPanelClient() {
                       const renderBadge = (level: string | undefined) => {
                         if (level === 'edit') {
                           return (
-                            <span className="inline-flex items-center rounded-md bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                            <span className="inline-flex items-center justify-center rounded-md bg-emerald-600 text-white font-mono px-2 py-0.5 text-xs font-bold shadow-xs">
                               EDIT
                             </span>
                           );
                         }
                         if (level === 'view') {
                           return (
-                            <span className="inline-flex items-center rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                            <span className="inline-flex items-center justify-center rounded-md bg-indigo-600 text-white font-mono px-2 py-0.5 text-xs font-bold shadow-xs">
                               VIEW
                             </span>
                           );
                         }
                         return (
-                          <span className="inline-flex items-center rounded-md bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
-                            —
+                          <span className="inline-flex items-center justify-center rounded-md bg-slate-100 border border-slate-200 text-slate-400 font-mono px-2 py-0.5 text-xs font-semibold">
+                            NONE
                           </span>
                         );
                       };
@@ -1162,25 +1162,25 @@ export default function AdminControlPanelClient() {
                               </div>
                               <div>
                                 <div className="font-semibold text-slate-900">{u.name || u.email}</div>
-                                <div className="text-[11px] text-slate-500 font-mono">{u.employee_id || '—'} • {u.email}</div>
+                                <div className="text-xs text-slate-500 font-mono">{u.employee_id || '—'} • {u.email}</div>
                               </div>
                             </div>
                           </td>
 
                           <td className="py-3 px-4">
                             <div className="space-y-0.5">
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${grpCfg.badgeClass}`}>
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border ${grpCfg.badgeClass}`}>
                                 {grpCfg.name}
                               </span>
-                              <div className="text-[11px] text-slate-600 font-medium">
+                              <div className="text-xs text-slate-600 font-medium">
                                 {u.work_center === 'ALL' ? 'Global Station Access' : wcLabel}
                               </div>
                               {hasCustomOverride ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
                                   <Sparkles className="h-2.5 w-2.5" /> Custom Rights
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-slate-400">Default Station Rights</span>
+                                <span className="text-xs text-slate-400">Default Station Rights</span>
                               )}
                             </div>
                           </td>

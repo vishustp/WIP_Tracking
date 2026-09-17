@@ -174,7 +174,7 @@ export default function UserPermissionsModal({
             <button
               type="button"
               onClick={() => applyPreset('all_edit')}
-              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-700 transition"
+              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 transition"
             >
               <Edit3 className="h-3 w-3" />
               Full Edit (All Forms)
@@ -182,7 +182,7 @@ export default function UserPermissionsModal({
             <button
               type="button"
               onClick={() => applyPreset('all_view')}
-              className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-indigo-700 transition"
+              className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 transition"
             >
               <Eye className="h-3 w-3" />
               View-Only (Auditor)
@@ -190,7 +190,7 @@ export default function UserPermissionsModal({
             <button
               type="button"
               onClick={() => applyPreset('wc_default')}
-              className="inline-flex items-center gap-1 rounded-md bg-slate-700 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-slate-800 transition"
+              className="inline-flex items-center gap-1 rounded-md bg-slate-700 px-2.5 py-1 text-xs font-semibold text-white shadow-xs hover:bg-slate-800 transition"
             >
               <RotateCcw className="h-3 w-3" />
               Station Default
@@ -198,7 +198,7 @@ export default function UserPermissionsModal({
             <button
               type="button"
               onClick={() => applyPreset('strict_wc')}
-              className="inline-flex items-center gap-1 rounded-md bg-amber-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-amber-700 transition"
+              className="inline-flex items-center gap-1 rounded-md bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white shadow-xs hover:bg-amber-700 transition"
             >
               <Lock className="h-3 w-3" />
               Strict Single Station
@@ -233,22 +233,22 @@ export default function UserPermissionsModal({
                             <div className="flex items-center gap-2">
                               <span className="font-semibold text-xs text-slate-900">{m.label}</span>
                               {currentLevel === 'edit' && (
-                                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
                                   Full Edit
                                 </span>
                               )}
                               {currentLevel === 'view' && (
-                                <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-800">
+                                <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-800">
                                   View Only
                                 </span>
                               )}
                               {currentLevel === 'none' && (
-                                <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
                                   No Access
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] text-slate-500 mt-0.5">{m.description}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{m.description}</p>
                           </div>
 
                           {/* 3-way Segmented Button Group */}
