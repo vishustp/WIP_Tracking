@@ -7,6 +7,7 @@ import {
   mtrFromPcs,
   mtFromMtr,
   calc,
+  calcElongationFactor,
   attachPcsToRemarks,
   extractPcsFromRemarks,
   attachCustomLengthToRemarks,
@@ -196,7 +197,7 @@ describe("Production Utils Unit Tests", () => {
       });
 
       expect(res.pcs).toBe(202);
-      expect(res.rejection_pcs).toBe(2);
+      expect(res.rejectionPcs).toBe(2);
       expect(res.netPcs).toBe(200);
       expect(res.avg).toBe(6.5);
       expect(res.mtr).toBe(1313); // 202 * 6.5 = 1313

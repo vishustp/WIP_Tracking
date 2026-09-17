@@ -474,30 +474,6 @@ export function BandSawCuttingModal({
     setShowBatchSplitTool(false);
     toast.success(`Batch split applied: ${gA_mPcs} pipes @ ${gA_len}m + ${gB_mPcs} pipes @ ${gB_len}m.`);
   };
-    id: string,
-    field: keyof BandSawCutItem,
-    val: string | number | BandSawCutCategory
-  ) => {
-    setCutItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const updated = { ...item, [field]: val };
-        const len = Number(updated.length_mtr || 0);
-        const pcs = Number(updated.cut_pcs || 0);
-        updated.total_mtr = Number((len * pcs).toFixed(2));
-        updated.total_mt = mtFromMtr(updated.total_mtr, pipeOd, pipeWt);
-        return updated;
-      })
-    );
-  };
-
-  const handleRemoveCutItem = (id: string) => {
-    if (cutItems.length === 1) {
-      toast.info('At least one cut length row is required.');
-      return;
-    }
-    setCutItems((prev) => prev.filter((item) => item.id !== id));
-  };
 
   // Submit Cutting Log
   const handleSubmit = async () => {

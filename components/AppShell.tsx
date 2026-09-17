@@ -233,22 +233,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Header Right */}
             <div className="flex items-center gap-3">
-              {/* Design Tab Pill */}
-              <div className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-sky-500/90 hover:bg-sky-500 px-3 py-1 text-xs font-semibold text-white shadow-2xs transition">
-                <Layers size={13} className="text-white" />
-                <span>Design: Variation 5</span>
-                <button type="button" className="ml-1 text-white/80 hover:text-white cursor-pointer">
-                  <X size={12} />
-                </button>
-              </div>
-
               <div className="text-slate-500 hover:text-slate-800 transition cursor-pointer p-1">
                 <AgingNotificationBell currentUser={currentUser} />
               </div>
-
-              <button type="button" className="p-1 text-slate-500 hover:text-slate-800 transition cursor-pointer" title="Layers">
-                <Layers size={17} />
-              </button>
 
               {/* User Avatar Circle 'V' */}
               <div className="relative" ref={dropdownRef}>
