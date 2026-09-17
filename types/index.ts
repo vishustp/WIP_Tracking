@@ -38,6 +38,7 @@ export interface Row {
   l1: number | null;
   l2: number | null;
   avg_length: number | null;
+  len_type?: string | null;
 
   // Mother Hollow dimensions (for Rolling calculations)
   mh_od?: number | null;

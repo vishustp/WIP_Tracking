@@ -563,6 +563,15 @@ export default function BandSawCuttingClient() {
                           WO #{entry.work_order_no}
                           <div className="text-[10px] font-normal text-slate-500">
                             {entry.customer_name || 'Standard'}
+                            {entry.l1 ? (
+                              <span className="ml-1.5 font-mono text-amber-700 font-medium">
+                                (L: {entry.l1}{entry.l2 ? `-${entry.l2}` : ''}m)
+                              </span>
+                            ) : entry.avg_length ? (
+                              <span className="ml-1.5 font-mono text-amber-700 font-medium">
+                                (L: {entry.avg_length}m)
+                              </span>
+                            ) : null}
                           </div>
                         </td>
                         <td className="py-3 px-3 font-mono text-slate-800">

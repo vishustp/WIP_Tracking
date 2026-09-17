@@ -55,10 +55,22 @@ export function BandSawCuttingModal({
   const availMotherMtr = Math.max(0, Number(row.balance_to_make_mtr || 0));
   const availMotherMt = mtFromMtr(availMotherMtr, pipeOd, pipeWt);
 
+  // Order Length specifications from Work Order
+  const l1 = Number(row.l1 || 0);
+  const l2 = Number(row.l2 || 0);
+  const orderLengthStr = (() => {
+    if (l1 > 0 && l2 > 0) {
+      if (l1 === l2) return `${l1.toFixed(2)} MTR`;
+      return `${l1.toFixed(2)} - ${l2.toFixed(2)} MTR`;
+    }
+    if (l1 > 0) return `${l1.toFixed(2)} MTR`;
+    if (row.avg_length) return `${Number(row.avg_length).toFixed(2)} MTR`;
+    return 'Standard Length';
+  })();
+  const lengthTypeStr = row.len_type ? `(${row.len_type})` : '';
+
   // Default initial mother pipe average length
   const defaultMotherLen = (() => {
-    const l1 = Number(row.l1 || 0);
-    const l2 = Number(row.l2 || 0);
     if (l1 > 0 && l2 > 0) return (l1 + l2) / 2;
     if (l1 > 0) return l1;
     if (availMotherPcs > 0 && availMotherMtr > 0) return Number((availMotherMtr / availMotherPcs).toFixed(2));
@@ -350,6 +362,15 @@ export function BandSawCuttingModal({
     );
   };
 
+  const applyOrderTargetCut = () => {
+    const target = l1 > 0 ? l1 : Number(row.avg_length || 6.0);
+    if (target <= 0) {
+      toast.info('No specific order length found on this Work Order.');
+      return;
+    }
+    applyTargetAndRemainder(target);
+  };
+
   const applyTwoCombinationCut = (cut1Len: number, cut2Len: number) => {
     if (motherAvgLenNum <= 0 || cut1Len <= 0 || cut2Len <= 0) return;
     const sumLen = cut1Len + cut2Len;
@@ -589,13 +610,29 @@ export function BandSawCuttingModal({
             </div>
 
             <div className="flex flex-wrap items-center gap-3 text-right">
-              <div className="rounded-lg border border-slate-200/80 bg-white/90 px-3 py-1.5 shadow-2xs">
+              {/* Target Order Length Spec */}
+              <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-1.5 shadow-2xs text-left">
+                <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1">
+                  <span>Order Length</span>
+                  {lengthTypeStr && <span className="text-amber-700 font-normal">{lengthTypeStr}</span>}
+                </div>
+                <div className="font-mono text-xs font-extrabold text-amber-950">
+                  {orderLengthStr}
+                </div>
+                {(l1 > 0 || l2 > 0) && (
+                  <div className="text-[9.5px] font-mono text-amber-700/90">
+                    L1: {l1 > 0 ? `${l1}m` : '-'} {l2 > 0 ? `| L2: ${l2}m` : ''}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-slate-200/80 bg-white/90 px-3 py-1.5 shadow-2xs text-left">
                 <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">Pipe Size (OD × WT)</div>
                 <div className="font-mono text-xs font-bold text-slate-800">
                   {pipeOd} mm × {pipeWt} mm
                 </div>
               </div>
-              <div className="rounded-lg border border-indigo-200 bg-indigo-50/80 px-3 py-1.5 shadow-2xs">
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50/80 px-3 py-1.5 shadow-2xs text-left">
                 <div className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
                   Available to Cut
                 </div>
@@ -744,9 +781,15 @@ export function BandSawCuttingModal({
                   <Scissors size={14} className="text-indigo-600" />
                   2. Multi-Length Cut Schedule &amp; Smart Pattern Builder
                 </h4>
-                <p className="text-[11px] text-slate-500">
-                  Plan multi-length cuts from incoming mother pipe length (<strong>{motherAvgLenNum}m</strong>).
-                </p>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                  <span>
+                    Incoming Mother Length: <strong className="font-mono text-slate-800">{motherAvgLenNum}m</strong>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    Order Spec Length: <strong className="font-mono text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded text-[10.5px]">{orderLengthStr} {lengthTypeStr}</strong>
+                  </span>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -784,6 +827,18 @@ export function BandSawCuttingModal({
                 <Sparkles size={12} className="text-amber-500" />
                 Quick Presets:
               </span>
+
+              {(l1 > 0 || row.avg_length) && (
+                <button
+                  type="button"
+                  onClick={applyOrderTargetCut}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 font-bold text-amber-900 hover:border-amber-400 hover:bg-amber-100 transition-all text-xs shadow-2xs"
+                  title={`Directly cut mother pipes into order target length of ${l1 > 0 ? `${l1}m` : `${row.avg_length}m`}`}
+                >
+                  <Sparkles size={12} className="text-amber-600" />
+                  <span>🎯 Cut to Order Spec ({l1 > 0 ? `${l1}m` : `${row.avg_length}m`})</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -928,11 +983,14 @@ export function BandSawCuttingModal({
             {/* Batch Splitter Tool Panel */}
             {showBatchSplitTool && (
               <div className="rounded-xl border border-purple-200 bg-gradient-to-r from-purple-50/90 via-indigo-50/70 to-slate-50 p-3.5 space-y-3 animate-fadeIn">
-                <div className="flex items-center justify-between border-b border-purple-200/70 pb-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-200/70 pb-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Split size={14} className="text-purple-700" />
                     <span className="text-xs font-bold text-purple-950 uppercase tracking-wider">
-                      Batch Splitter (Divide {availMotherPcs} Available Mother Pipes of {motherAvgLenNum}m)
+                      Batch Splitter ({availMotherPcs} Mother Pipes @ {motherAvgLenNum}m)
+                    </span>
+                    <span className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                      Order Target: {orderLengthStr}
                     </span>
                   </div>
                   <span className="text-[11px] font-semibold text-purple-700">
