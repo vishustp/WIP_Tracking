@@ -378,8 +378,8 @@ export default function SizeGradeWipReportClient() {
               activeOd = orderOd;
               activeWt = orderWt;
             } else if (stage === 'BAND_SAW') {
-              // Mother pipes converted into order pieces via multiple
-              const incomingCutPcs = ledger.htPcs > 0 ? ledger.htPcs * mult : (ledger.drawPcs > 0 ? ledger.drawPcs * mult : 0);
+              // Direct 1:1 incoming mother/drawn pipes to cut at band saw
+              const incomingCutPcs = ledger.htPcs > 0 ? ledger.htPcs : (ledger.drawPcs > 0 ? ledger.drawPcs : 0);
               // Remove/deduct from cutting whichever quantity has completed VDI or finishing
               const downstreamPassed = Math.max(ledger.bandSawPcs, ledger.vdiPcs, ledger.finPcs);
               calculatedPcs = Math.max(0, incomingCutPcs - downstreamPassed);
@@ -414,7 +414,7 @@ export default function SizeGradeWipReportClient() {
               activeWt = mhWt;
             } else if (stage === 'BAND_SAW') {
               const htcNos = ledger.htcOkPcs > 0 ? ledger.htcOkPcs : (ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs);
-              const incomingCutPcs = htcNos * mult;
+              const incomingCutPcs = htcNos;
               // Remove/deduct from cutting whichever quantity has completed VDI or finishing
               const downstreamPassed = Math.max(ledger.bandSawPcs, ledger.vdiPcs, ledger.finPcs);
               calculatedPcs = Math.max(0, incomingCutPcs - downstreamPassed);
