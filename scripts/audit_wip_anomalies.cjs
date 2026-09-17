@@ -279,7 +279,7 @@ async function runAudit() {
     const finOutMtr = sumMtr(finLogs, "output_qty");
     const finOutPcs = sumPcs(finLogs, orderAvg);
 
-    const maxFinPcs = Math.round(qcOkPcs * multiple);
+    const maxFinPcs = Math.round(qcOkPcs);
     if (finLogs.length > 0 && woQc.length > 0 && finOutPcs > (maxFinPcs + 2)) {
       findings.finishingOverVdi.push({
         work_order_no: woNo,

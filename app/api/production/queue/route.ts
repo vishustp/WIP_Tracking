@@ -639,9 +639,9 @@ export async function GET(req: NextRequest) {
       let finIncomingPcs = 0;
 
       if (woQcList.length > 0) {
-        // Strictly from VDI OK Nos * Multiple (accepted good material released to Finishing Line)
-        finIncomingPcs = Math.round(qcOkPcs * multiple);
-        finIncomingMtr = qcOkMtr > 0 ? qcOkMtr * multiple : (avgLength > 0 ? qcOkPcs * avgLength * multiple : 0);
+        // Strictly from VDI OK Nos (already cut in multiple at Band Saw)
+        finIncomingPcs = Math.round(qcOkPcs);
+        finIncomingMtr = qcOkMtr > 0 ? qcOkMtr : (avgLength > 0 ? Number((qcOkPcs * avgLength).toFixed(2)) : 0);
       } else {
         // Feeder source is strictly derived from VDI OK Nos. Uninspected or pending QC material cannot proceed to finishing.
         finIncomingMtr = 0;
