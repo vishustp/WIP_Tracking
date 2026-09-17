@@ -225,6 +225,9 @@ export function ProductionHistoryTable({
 
                 const editCheck = canEditForStage(entry.stage_code);
                 const delCheck = canDeleteForStage(entry.stage_code);
+                const canAdminOverride = isAdmin || isSuperUser;
+                const canEditEntry = canAdminOverride ? editCheck.allowed : (entry.can_modify && editCheck.allowed);
+                const canDeleteEntry = canAdminOverride ? delCheck.allowed : (entry.can_modify && delCheck.allowed);
 
                 return (
                   <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors">
@@ -285,11 +288,13 @@ export function ProductionHistoryTable({
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           type="button"
-                          disabled={!entry.can_modify || !editCheck.allowed}
+                          disabled={!canEditEntry}
                           onClick={() => onOpenEdit(entry)}
                           title={
                             !editCheck.allowed
                               ? editCheck.reason || 'Unauthorized to edit'
+                              : canAdminOverride
+                              ? `Edit Entry (${entry.stage_code} - Admin Authority)`
                               : entry.can_modify
                               ? `Edit Entry (${entry.stage_code})`
                               : 'Locked: subsequent production logs exist for this order'
@@ -303,10 +308,12 @@ export function ProductionHistoryTable({
                         {delCheck.allowed ? (
                           <button
                             type="button"
-                            disabled={!entry.can_modify}
+                            disabled={!canDeleteEntry}
                             onClick={() => onOpenDelete(entry.id)}
                             title={
-                              entry.can_modify
+                              canAdminOverride
+                                ? `Delete Entry (${entry.stage_code} - Admin Authority)`
+                                : entry.can_modify
                                 ? `Delete Entry (${
                                     isAdmin
                                       ? 'Admin Authority'

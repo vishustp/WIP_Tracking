@@ -824,13 +824,31 @@ export default function ProductionEntryGrid() {
       p_heat_lot_no: payload.editHeatLot.trim() || null,
       p_remarks: finalRemarks.trim() || null,
     });
+
     if (rpcError) {
-      throw new Error(rpcError.message || 'Failed to update entry.');
+      console.warn('RPC update_production_entry failed, falling back to direct update:', rpcError.message);
+      const updatePayload: Record<string, any> = {
+        process_date: payload.editDate,
+        output_qty: payload.editMtr,
+        rejection_qty: payload.editRejectionMtr,
+        htc_ok: editing.stage_code === 'ROLLING' ? payload.editHtcMtr : 0,
+        heat_lot_no: payload.editHeatLot.trim() || null,
+        remarks: finalRemarks.trim() || null,
+      };
+
+      const { error: directErr } = await supabase
+        .from('production_logs')
+        .update(updatePayload)
+        .eq('id', editing.id);
+
+      if (directErr) {
+        throw new Error(directErr.message || rpcError.message || 'Failed to update entry.');
+      }
     }
 
     setMessage('Production entry updated successfully.');
     setEditing(null);
-    await Promise.all([reloadQueue(), reloadHistory()]);
+    await Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()]);
   }
 
   // Delete handler execution
@@ -843,7 +861,7 @@ export default function ProductionEntryGrid() {
     const targetEntry = entries.find((e) => e.id === deleteId);
     if (targetEntry) {
       const delCheck = canDeleteForStage(targetEntry.stage_code);
-      if (!delCheck.allowed) {
+      if (!delCheck.allowed && !isAdmin && !isSuperUser) {
         setError(delCheck.reason || 'Permission Denied: Unauthorized to delete this entry.');
         setDeleteBusy(false);
         return;
@@ -854,7 +872,16 @@ export default function ProductionEntryGrid() {
       const { error: rpcError } = await supabase.rpc('delete_production_entry', {
         p_production_id: deleteId,
       });
-      if (rpcError) throw rpcError;
+
+      if (rpcError) {
+        console.warn('RPC delete_production_entry failed, falling back to direct delete:', rpcError.message);
+        const { error: directDelErr } = await supabase
+          .from('production_logs')
+          .delete()
+          .eq('id', deleteId);
+
+        if (directDelErr) throw directDelErr;
+      }
 
       const targetWoNo = targetEntry?.work_order_no;
       if (targetWoNo) {
@@ -887,7 +914,7 @@ export default function ProductionEntryGrid() {
 
       setDeleteId(null);
       setMessage('Production entry deleted successfully.');
-      await Promise.all([reloadQueue(), reloadHistory()]);
+      await Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()]);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to delete.');
     } finally {
