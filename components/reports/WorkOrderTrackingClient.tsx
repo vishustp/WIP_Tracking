@@ -527,22 +527,23 @@ export default function WorkOrderTrackingClient() {
           // RULE 1: WIP is strictly calculated AFTER rolling production is done, and ONLY from HTC OK qty!
           const divIn = getStageDivIn(effectiveMasterWoId, 'ROLLING');
           const divOut = getStageDivOut(effectiveMasterWoId, 'ROLLING');
-          let wipMtr = 0;
+          const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
+          const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
+          const downstreamConsumedPcs = hasHtcInRoute ? (htcOutPcs + htcRejPcs) : (drawOutPcs + drawRejPcs);
+
           let wipPcs = 0;
-          if (rollingOutMtr > 0 || divIn > 0) {
-            const downstreamConsumed = hasHtcInRoute ? (htcOutMtr + htcRejMtr) : (drawOutMtr + drawRejMtr);
-            wipMtr = Math.max(0, rollingHtcOkMtr + divIn - downstreamConsumed - divOut);
-            const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
-            const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
-            const downstreamConsumedPcs = hasHtcInRoute ? (htcOutPcs + htcRejPcs) : (drawOutPcs + drawRejPcs);
-            wipPcs = rollingHtcOkPcs > 0
-              ? Math.max(0, rollingHtcOkPcs + divInPcs - downstreamConsumedPcs - divOutPcs)
-              : (mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0));
+          if (rollingOutPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, rollingHtcOkPcs + divInPcs - downstreamConsumedPcs - divOutPcs);
           }
+          const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
           const mhOd = plan?.mh_od || wo.size_od || 0;
           const mhWt = plan?.mh_wt || wo.size_wt || 0;
           const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
           const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterRollLogs, []);
+
+          const stageOutMtr = mhAvgLen > 0 ? Number((rollingOutPcs * mhAvgLen).toFixed(3)) : rollingOutMtr;
+          const stageRejMtr = mhAvgLen > 0 ? Number((rollingRejPcs * mhAvgLen).toFixed(3)) : rollingRejMtr;
+          const stageHtcOkMtr = mhAvgLen > 0 ? Number((rollingHtcOkPcs * mhAvgLen).toFixed(3)) : rollingHtcOkMtr;
 
           return {
             ...stageDef,
@@ -551,11 +552,11 @@ export default function WorkOrderTrackingClient() {
             targetPcs: rollPlanPcs,
             planMtr: rollPlanMtr,
             planPcs: rollPlanPcs,
-            outMtr: rollingOutMtr,
+            outMtr: stageOutMtr,
             outPcs: rollingOutPcs,
-            rejMtr: rollingRejMtr,
+            rejMtr: stageRejMtr,
             rejPcs: rollingRejPcs,
-            htcOkMtr: rollingHtcOkMtr,
+            htcOkMtr: stageHtcOkMtr,
             htcOkPcs: rollingHtcOkPcs,
             wipMtr,
             wipPcs,
@@ -596,21 +597,23 @@ export default function WorkOrderTrackingClient() {
           }
 
           // Downstream WIP only exists after rolling production is done, and strictly from HTC OK!
-          let wipMtr = 0;
+          const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
+          const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
+          const consumedPcs = htcOutPcs + htcRejPcs;
+
           let wipPcs = 0;
-          if (rollingHtcOkMtr > 0 || divIn > 0) {
-            wipMtr = Math.max(0, rollingHtcOkMtr + divIn - htcOutMtr - htcRejMtr - divOut);
-            const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
-            const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
-            const consumedPcs = htcOutPcs + htcRejPcs;
-            wipPcs = rollingHtcOkPcs > 0
-              ? Math.max(0, rollingHtcOkPcs + divInPcs - consumedPcs - divOutPcs)
-              : (mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0));
+          if (rollingHtcOkPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, rollingHtcOkPcs + divInPcs - consumedPcs - divOutPcs);
           }
+          const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
           const mhOd = plan?.mh_od || wo.size_od || 0;
           const mhWt = plan?.mh_wt || wo.size_wt || 0;
           const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
           const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterHtcLogs, masterRollLogs);
+
+          const stageOutMtr = mhAvgLen > 0 ? Number((htcOutPcs * mhAvgLen).toFixed(3)) : htcOutMtr;
+          const stageRejMtr = mhAvgLen > 0 ? Number((htcRejPcs * mhAvgLen).toFixed(3)) : htcRejMtr;
+          const stageHtcOkMtr = mhAvgLen > 0 ? Number((htcOkPcs * mhAvgLen).toFixed(3)) : htcOkMtr;
 
           return {
             ...stageDef,
@@ -618,12 +621,12 @@ export default function WorkOrderTrackingClient() {
             isNotInRoute: false,
             planMtr: 0,
             planPcs: 0,
-            outMtr: htcOutMtr,
+            outMtr: stageOutMtr,
             outPcs: htcOutPcs,
-            rejMtr: htcRejMtr,
+            rejMtr: stageRejMtr,
             rejPcs: htcRejPcs,
-            htcOkMtr,
-            htcOkPcs,
+            htcOkMtr: stageHtcOkMtr,
+            htcOkPcs: htcOkPcs,
             wipMtr,
             wipPcs,
             wipMt,
@@ -638,38 +641,34 @@ export default function WorkOrderTrackingClient() {
         if (stageCode === 'DRAW') {
           const divIn = getStageDivIn(effectiveMasterWoId, 'DRAW');
           const divOut = getStageDivOut(effectiveMasterWoId, 'DRAW');
-          // If Hollow HT is in route, incoming stock to Draw Bench is strictly Hollow HT net output.
-          // If Hollow HT is not in route (e.g. CDS), incoming stock is directly Rolling HTC OK.
-          const incomingMtr = hasHtcInRoute ? Math.max(0, htcOutMtr - htcRejMtr) : rollingHtcOkMtr;
           const incomingPcs = hasHtcInRoute ? Math.max(0, htcOutPcs - htcRejPcs) : rollingHtcOkPcs;
-          let wipMtr = 0;
+          const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
+          const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
+          const consumedPcs = drawOutPcs + drawRejPcs;
+
           let wipPcs = 0;
-          if (incomingMtr > 0 || divIn > 0) {
-            wipMtr = Math.max(0, incomingMtr + divIn - drawOutMtr - drawRejMtr - divOut);
-            const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
-            const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
-            const consumedPcs = drawOutPcs + drawRejPcs;
-            wipPcs = incomingPcs > 0
-              ? Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs)
-              : (mhAvgLen > 0 ? Math.round(wipMtr / mhAvgLen) : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0));
+          if (incomingPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
           }
-          const mhOd = plan?.mh_od || wo.size_od || 0;
-          const mhWt = plan?.mh_wt || wo.size_wt || 0;
-          const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
+          const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
+          const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
           const { dwellDays, agingSeverity } = getStageAging(
             wipMtr,
             masterDrawLogs,
             hasHtcInRoute ? (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs) : masterRollLogs
           );
 
+          const stageOutMtr = avgLen > 0 ? Number((drawOutPcs * avgLen).toFixed(3)) : drawOutMtr;
+          const stageRejMtr = avgLen > 0 ? Number((drawRejPcs * avgLen).toFixed(3)) : drawRejMtr;
+
           return {
             ...stageDef,
             isBundled: false,
             planMtr: 0,
             planPcs: 0,
-            outMtr: drawOutMtr,
+            outMtr: stageOutMtr,
             outPcs: drawOutPcs,
-            rejMtr: drawRejMtr,
+            rejMtr: stageRejMtr,
             rejPcs: drawRejPcs,
             htcOkMtr: 0,
             htcOkPcs: 0,
@@ -687,30 +686,30 @@ export default function WorkOrderTrackingClient() {
         if (stageCode === 'HEAT_TREATMENT') {
           const divIn = getStageDivIn(effectiveMasterWoId, 'HEAT_TREATMENT');
           const divOut = getStageDivOut(effectiveMasterWoId, 'HEAT_TREATMENT');
-          let wipMtr = 0;
-          let wipPcs = 0;
-          const drawNetMtr = Math.max(0, drawOutMtr - drawRejMtr);
           const drawNetPcs = Math.max(0, drawOutPcs - drawRejPcs);
-          if (drawNetMtr > 0 || divIn > 0) {
-            wipMtr = Math.max(0, drawNetMtr + divIn - htOutMtr - htRejMtr - divOut);
-            const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
-            const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
-            const consumedPcs = htOutPcs + htRejPcs;
-            wipPcs = drawNetPcs > 0
-              ? Math.max(0, drawNetPcs + divInPcs - consumedPcs - divOutPcs)
-              : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
+          const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
+          const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
+          const consumedPcs = htOutPcs + htRejPcs;
+
+          let wipPcs = 0;
+          if (drawNetPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, drawNetPcs + divInPcs - consumedPcs - divOutPcs);
           }
-          const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
+          const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
+          const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
           const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterHtLogs, masterDrawLogs);
+
+          const stageOutMtr = avgLen > 0 ? Number((htOutPcs * avgLen).toFixed(3)) : htOutMtr;
+          const stageRejMtr = avgLen > 0 ? Number((htRejPcs * avgLen).toFixed(3)) : htRejMtr;
 
           return {
             ...stageDef,
             isBundled: false,
             planMtr: 0,
             planPcs: 0,
-            outMtr: htOutMtr,
+            outMtr: stageOutMtr,
             outPcs: htOutPcs,
-            rejMtr: htRejMtr,
+            rejMtr: stageRejMtr,
             rejPcs: htRejPcs,
             htcOkMtr: 0,
             htcOkPcs: 0,
@@ -743,41 +742,32 @@ export default function WorkOrderTrackingClient() {
           ? targetPcs * avgLen
           : Number(wo.ordered_qty);
 
-        const precedingOutMtr = htOutMtr > 0 ? Math.max(0, htOutMtr - htRejMtr) : Math.max(0, drawOutMtr - drawRejMtr);
-        const precedingOutPcs = htOutMtr > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs);
+        const precedingOutPcs = htOutPcs > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs);
 
         const woQcList = qcInspections.filter(
           (q: any) => q.work_order_id === wo.id || (childInfo && q.work_order_id === childInfo.master_wo_id)
         );
         const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
-        const qcSalvagePcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
         const qcPassedPcs = qcOkPcs;
-        const qcPassedMtr = woQcList.reduce(
-          (sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0),
-          0
-        );
 
         const divIn = getStageDivIn(wo.id, 'FINISHING');
         const divOut = getStageDivOut(wo.id, 'FINISHING');
         const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
         const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
 
-        let wipMtr = 0;
         let wipPcs = 0;
+        const consumedPcs = finOutPcs + finRejPcs;
         if (woQcList.length > 0) {
-          // Strictly from VDI OK Nos!
-          const consumedPcs = finOutPcs + finRejPcs;
           wipPcs = Math.max(0, Math.min(targetPcs, qcPassedPcs) + divInPcs - consumedPcs - divOutPcs);
-          wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : Math.max(0, qcPassedMtr + divIn - finOutMtr - finRejMtr - divOut);
-        } else if (precedingOutMtr > 0 || divIn > 0) {
-          wipMtr = Math.max(0, Math.min(targetMtr, precedingOutMtr) + divIn - finOutMtr - finRejMtr - divOut);
-          const consumedPcs = finOutPcs + finRejPcs;
-          wipPcs = precedingOutPcs > 0
-            ? Math.max(0, Math.min(targetPcs, precedingOutPcs) + divInPcs - consumedPcs - divOutPcs)
-            : (avgLen > 0 ? Math.round(wipMtr / avgLen) : 0);
+        } else if (precedingOutPcs > 0 || divInPcs > 0) {
+          wipPcs = Math.max(0, Math.min(targetPcs, precedingOutPcs) + divInPcs - consumedPcs - divOutPcs);
         }
-        const wipMt = mtFromMtr(wipMtr, wo.size_od || 0, wo.size_wt || 0);
+        const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
+        const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
         const { dwellDays, agingSeverity } = getStageAging(wipMtr, finLogs, masterHtLogs.length > 0 ? masterHtLogs : masterDrawLogs);
+
+        const stageFinOutMtr = avgLen > 0 ? Number((finOutPcs * avgLen).toFixed(3)) : finOutMtr;
+        const stageFinRejMtr = avgLen > 0 ? Number((finRejPcs * avgLen).toFixed(3)) : finRejMtr;
 
         return {
           ...stageDef,

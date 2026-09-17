@@ -278,18 +278,21 @@ export default function WorkCenterProductionReportClient() {
 
         const isMhStage = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOLLOW_HEAT_TREATMENT';
         const mhInfo = plan?.mh_od ? plan : (targetWoId ? planMhMap.get(targetWoId) : null) || (e.work_order_no ? planMhMap.get(String(e.work_order_no).trim()) : null);
+        const effAvgLen = isMhStage
+          ? (plan?.mh_l1 && plan?.mh_l2 ? (Number(plan.mh_l1) + Number(plan.mh_l2)) / 2 : Number(plan?.mh_l1 || plan?.mh_l2 || mhInfo?.mh_l1 || mhInfo?.mh_l2 || 6.0))
+          : (woInfo?.l1 && woInfo?.l2 ? (Number(woInfo.l1) + Number(woInfo.l2)) / 2 : Number(woInfo?.l1 || woInfo?.l2 || 6.0));
 
         const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(e.remarks);
         const outPcs = parsedPcs != null ? parsedPcs : (Number(logRow?.output_pcs || e.output_pcs || 0));
         const rejPcs = parsedRejPcs != null ? parsedRejPcs : (Number(logRow?.rejection_pcs || e.rejection_pcs || 0));
-        const outMtr = Number(e.output_mtr || logRow?.output_qty || 0);
-        const rejMtr = Number(e.rejection_mtr || logRow?.rejection_qty || 0);
-        const inMtr = Number(e.input_mtr || logRow?.input_qty || 0) > 0
-          ? Number(e.input_mtr || logRow?.input_qty)
-          : Math.max(outMtr + rejMtr, outMtr);
         const inPcs = Number(e.input_pcs || 0) > 0
           ? Number(e.input_pcs)
           : Math.max(outPcs + rejPcs, outPcs);
+
+        const outMtr = outPcs > 0 && effAvgLen > 0 ? Number((outPcs * effAvgLen).toFixed(3)) : Number(e.output_mtr || logRow?.output_qty || 0);
+        const rejMtr = rejPcs > 0 && effAvgLen > 0 ? Number((rejPcs * effAvgLen).toFixed(3)) : Number(e.rejection_mtr || logRow?.rejection_qty || 0);
+        const inMtr = inPcs > 0 && effAvgLen > 0 ? Number((inPcs * effAvgLen).toFixed(3)) : (Number(e.input_mtr || logRow?.input_qty || 0) > 0 ? Number(e.input_mtr || logRow?.input_qty) : Math.max(outMtr + rejMtr, outMtr));
+
         const od = isMhStage && mhInfo?.mh_od ? Number(mhInfo.mh_od) : Number(e.od || woInfo?.size_od || 0);
         const wl = isMhStage && mhInfo?.mh_wt ? Number(mhInfo.mh_wt) : Number(e.wl || woInfo?.size_wt || 0);
 
@@ -308,10 +311,10 @@ export default function WorkCenterProductionReportClient() {
           revision_no: plan?.revision_no,
           input_pcs: inPcs,
           input_mtr: inMtr,
-          input_mt: isMhStage ? calculatedInMt : (Number(e.input_mt || 0) > 0 ? Number(e.input_mt) : calculatedInMt),
+          input_mt: calculatedInMt,
           output_pcs: outPcs,
           output_mtr: outMtr,
-          output_mt: isMhStage ? calculatedOutMt : (Number(e.output_mt || 0) > 0 ? Number(e.output_mt) : calculatedOutMt),
+          output_mt: calculatedOutMt,
           rejection_pcs: rejPcs,
           rejection_mtr: rejMtr,
           rejection_mt: calculatedRejMt,

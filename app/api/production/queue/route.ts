@@ -339,6 +339,31 @@ export async function GET(req: NextRequest) {
       return 0;
     };
 
+    const getLogHtcOkPcs = (log: any, fallbackAvg: number = 0) => {
+      if (Number(log.htc_ok || 0) > 0) {
+        if (log.output_pcs !== undefined && log.output_pcs !== null && Number(log.output_pcs) > 0) {
+          return Number(log.output_pcs);
+        }
+        const parsed = extractPcsFromRemarks(log.remarks);
+        if (parsed.pcs !== null && parsed.pcs > 0) {
+          return parsed.pcs;
+        }
+        if (fallbackAvg > 0) {
+          return Math.round(Number(log.htc_ok) / fallbackAvg);
+        }
+      }
+      return 0;
+    };
+
+    const sumPcs = (logList: any[], fallbackAvg: number = 0) =>
+      logList.reduce((sum, l) => sum + getLogPcs(l, fallbackAvg), 0);
+
+    const sumRejPcs = (logList: any[], fallbackAvg: number = 0) =>
+      logList.reduce((sum, l) => sum + getLogRejPcs(l, fallbackAvg), 0);
+
+    const sumHtcOkPcs = (logList: any[], fallbackAvg: number = 0) =>
+      logList.reduce((sum, l) => sum + getLogHtcOkPcs(l, fallbackAvg), 0);
+
     // Summary accumulator across all 7 work centers
     const workCenterSummary: Record<
       StageCode,
@@ -438,14 +463,6 @@ export async function GET(req: NextRequest) {
 
       const multiple = Number(campaign?.multiple || plan?.multiple || 1);
 
-      // 1. Rolling Stage Metrics
-      const rollLogs = getStageLogs(woId, rollingStageId);
-      const rollOutMtr = sumQty(rollLogs, "output_qty");
-      const rollRejMtr = sumQty(rollLogs, "rejection_qty");
-      const rollHtcOkMtr = sumQty(rollLogs, "htc_ok");
-      const rollNetMtr = Math.max(0, rollOutMtr - rollRejMtr);
-      const rollTotalLogged = rollOutMtr + rollRejMtr;
-
       const storedPlanPcs = Number(
         campaign?.master_planned_pcs ||
         planInfo?.planned_pcs_sum ||
@@ -462,53 +479,68 @@ export async function GET(req: NextRequest) {
         : (storedPlanPcs > 0 ? storedPlanPcs : (mhAvgLength > 0 ? Math.round(totalCampaignMtr / mhAvgLength) : 0));
 
       const effPlanMhAvg = totalCampaignPcs > 0 && totalCampaignMtr > 0 ? totalCampaignMtr / totalCampaignPcs : mhAvgLength;
+      const effMhAvg = effPlanMhAvg > 0 ? effPlanMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength);
+
+      // 1. Rolling Stage Metrics
+      const rollLogs = getStageLogs(woId, rollingStageId);
+      const rollGrossPcs = sumPcs(rollLogs, effMhAvg);
+      const rollRejPcs = sumRejPcs(rollLogs, effMhAvg);
+      const rollNetPcs = Math.max(0, rollGrossPcs - rollRejPcs);
+      const rollHtcOkPcs = sumHtcOkPcs(rollLogs, effMhAvg);
+
+      const rollOutMtr = effMhAvg > 0 ? Number((rollGrossPcs * effMhAvg).toFixed(3)) : sumQty(rollLogs, "output_qty");
+      const rollRejMtr = effMhAvg > 0 ? Number((rollRejPcs * effMhAvg).toFixed(3)) : sumQty(rollLogs, "rejection_qty");
+      const rollNetMtr = effMhAvg > 0 ? Number((rollNetPcs * effMhAvg).toFixed(3)) : Math.max(0, rollOutMtr - rollRejMtr);
+      const rollHtcOkMtr = effMhAvg > 0 ? Number((rollHtcOkPcs * effMhAvg).toFixed(3)) : sumQty(rollLogs, "htc_ok");
 
       // 1. Rolling Available WIP & Target Tracking
-      // RULE 1: Rolling Production can be more than 10% of the Rolling Plan (no hard 110% ceiling).
       const rollDivIn = getStageDivIn(woId, "ROLLING");
       const rollDivOut = getStageDivOut(woId, "ROLLING");
-      const rollAvailMtr = Math.max(0, totalCampaignMtr + rollDivIn - rollTotalLogged - rollDivOut);
-      const rollAvailPcs = rollTotalLogged <= 0 && totalCampaignPcs > 0
-        ? totalCampaignPcs
-        : (totalCampaignPcs > 0 ? Math.max(0, totalCampaignPcs - (rollTotalLogged > 0 ? Math.round(rollTotalLogged / effPlanMhAvg) : 0)) : (effPlanMhAvg > 0 ? Math.round(rollAvailMtr / effPlanMhAvg) : 0));
+      const rollDivInPcs = effMhAvg > 0 ? Math.round(rollDivIn / effMhAvg) : 0;
+      const rollDivOutPcs = effMhAvg > 0 ? Math.round(rollDivOut / effMhAvg) : 0;
+      const rollTotalLoggedPcs = rollGrossPcs + rollRejPcs;
+
+      const rollAvailPcs = Math.max(0, totalCampaignPcs + rollDivInPcs - rollTotalLoggedPcs - rollDivOutPcs);
+      const rollAvailMtr = effMhAvg > 0 ? Number((rollAvailPcs * effMhAvg).toFixed(3)) : Math.max(0, totalCampaignMtr + rollDivIn - (rollOutMtr + rollRejMtr) - rollDivOut);
       const rollAvailMt = mtFromMtr(rollAvailMtr, mhOd, mhWt);
 
       // 2. Hollow Heat Treatment Stage Metrics (adjusted for HHT Diversions)
-      const rollHtcOkPcs = mhAvgLength > 0 ? Math.round(rollHtcOkMtr / mhAvgLength) : 0;
+      const effHhtAvg = mhAvgLength > 0 ? mhAvgLength : effMhAvg;
       const hollowHtLogs = getStageLogs(woId, hollowHtStageId);
-      const hollowHtOutMtr = sumQty(hollowHtLogs, "output_qty");
-      const hollowHtRejMtr = sumQty(hollowHtLogs, "rejection_qty");
-      const hollowHtNetMtr = Math.max(0, hollowHtOutMtr - hollowHtRejMtr);
-      const hollowHtOutPcs = mhAvgLength > 0 ? Math.round(hollowHtOutMtr / mhAvgLength) : 0;
-      const hollowHtRejPcs = mhAvgLength > 0 ? Math.round(hollowHtRejMtr / mhAvgLength) : 0;
+      const hollowHtOutPcs = sumPcs(hollowHtLogs, effHhtAvg);
+      const hollowHtRejPcs = sumRejPcs(hollowHtLogs, effHhtAvg);
       const hollowHtNetPcs = Math.max(0, hollowHtOutPcs - hollowHtRejPcs);
+      const hollowHtOutMtr = effHhtAvg > 0 ? Number((hollowHtOutPcs * effHhtAvg).toFixed(3)) : sumQty(hollowHtLogs, "output_qty");
+      const hollowHtRejMtr = effHhtAvg > 0 ? Number((hollowHtRejPcs * effHhtAvg).toFixed(3)) : sumQty(hollowHtLogs, "rejection_qty");
+      const hollowHtNetMtr = effHhtAvg > 0 ? Number((hollowHtNetPcs * effHhtAvg).toFixed(3)) : Math.max(0, hollowHtOutMtr - hollowHtRejMtr);
+
       const hhtDivIn = getStageDivIn(woId, "HOLLOW_HEAT_TREATMENT");
       const hhtDivOut = getStageDivOut(woId, "HOLLOW_HEAT_TREATMENT");
-      const hhtDivInPcs = mhAvgLength > 0 ? Math.round(hhtDivIn / mhAvgLength) : 0;
-      const hhtDivOutPcs = mhAvgLength > 0 ? Math.round(hhtDivOut / mhAvgLength) : 0;
+      const hhtDivInPcs = effHhtAvg > 0 ? Math.round(hhtDivIn / effHhtAvg) : 0;
+      const hhtDivOutPcs = effHhtAvg > 0 ? Math.round(hhtDivOut / effHhtAvg) : 0;
 
       // Hollow HT incoming: strictly from Rolling HTC OK pieces!
       const hollowHtAvailPcs = isAlloy
         ? Math.max(0, rollHtcOkPcs + hhtDivInPcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs)
         : 0;
-      const hollowHtAvailMtr = mhAvgLength > 0 ? Number((hollowHtAvailPcs * mhAvgLength).toFixed(3)) : 0;
+      const hollowHtAvailMtr = effHhtAvg > 0 ? Number((hollowHtAvailPcs * effHhtAvg).toFixed(3)) : 0;
       const hollowHtAvailMt = mtFromMtr(hollowHtAvailMtr, mhOd, mhWt);
 
       // 3. Draw Stage Metrics (adjusted for Draw Diversions)
       const drawLogs = getStageLogs(woId, drawStageId);
-      const drawOutMtr = sumQty(drawLogs, "output_qty");
-      const drawRejMtr = sumQty(drawLogs, "rejection_qty");
-      const drawNetMtr = Math.max(0, drawOutMtr - drawRejMtr);
-      const drawOutPcs = avgLength > 0 ? Math.round(drawOutMtr / avgLength) : 0;
-      const drawRejPcs = avgLength > 0 ? Math.round(drawRejMtr / avgLength) : 0;
+      const drawOutPcs = sumPcs(drawLogs, avgLength);
+      const drawRejPcs = sumRejPcs(drawLogs, avgLength);
       const drawNetPcs = Math.max(0, drawOutPcs - drawRejPcs);
+      const drawOutMtr = avgLength > 0 ? Number((drawOutPcs * avgLength).toFixed(3)) : sumQty(drawLogs, "output_qty");
+      const drawRejMtr = avgLength > 0 ? Number((drawRejPcs * avgLength).toFixed(3)) : sumQty(drawLogs, "rejection_qty");
+      const drawNetMtr = avgLength > 0 ? Number((drawNetPcs * avgLength).toFixed(3)) : Math.max(0, drawOutMtr - drawRejMtr);
+
       const drawDivIn = getStageDivIn(woId, "DRAW");
       const drawDivOut = getStageDivOut(woId, "DRAW");
       const drawDivInPcs = avgLength > 0 ? Math.round(drawDivIn / avgLength) : 0;
       const drawDivOutPcs = avgLength > 0 ? Math.round(drawDivOut / avgLength) : 0;
 
       // Draw incoming:
-      // 1 Mother Hollow piece draws into 1 Drawn Tube piece.
       // - CDS route: incoming is Rolling HTC OK pieces
       // - ALLOY_CDS: incoming is Hollow HT Net Output pieces
       const drawIncomingPcs = isAlloy ? hollowHtNetPcs : rollHtcOkPcs;
@@ -520,12 +552,13 @@ export async function GET(req: NextRequest) {
 
       // 4. Heat Treatment Stage Metrics (adjusted for HT Diversions)
       const htLogs = getStageLogs(woId, htStageId);
-      const htOutMtr = sumQty(htLogs, "output_qty");
-      const htRejMtr = sumQty(htLogs, "rejection_qty");
-      const htNetMtr = Math.max(0, htOutMtr - htRejMtr);
-      const htOutPcs = avgLength > 0 ? Math.round(htOutMtr / avgLength) : 0;
-      const htRejPcs = avgLength > 0 ? Math.round(htRejMtr / avgLength) : 0;
+      const htOutPcs = sumPcs(htLogs, avgLength);
+      const htRejPcs = sumRejPcs(htLogs, avgLength);
       const htNetPcs = Math.max(0, htOutPcs - htRejPcs);
+      const htOutMtr = avgLength > 0 ? Number((htOutPcs * avgLength).toFixed(3)) : sumQty(htLogs, "output_qty");
+      const htRejMtr = avgLength > 0 ? Number((htRejPcs * avgLength).toFixed(3)) : sumQty(htLogs, "rejection_qty");
+      const htNetMtr = avgLength > 0 ? Number((htNetPcs * avgLength).toFixed(3)) : Math.max(0, htOutMtr - htRejMtr);
+
       const htDivIn = getStageDivIn(woId, "HEAT_TREATMENT");
       const htDivOut = getStageDivOut(woId, "HEAT_TREATMENT");
       const htDivInPcs = avgLength > 0 ? Math.round(htDivIn / avgLength) : 0;
@@ -548,30 +581,27 @@ export async function GET(req: NextRequest) {
         }
       }
       const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
-      const qcOkMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
       const qcSalvagePcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
-      const qcSalvageMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
       const qcRejPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0), 0);
-      const qcRejMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
       const qcInspectedPcs = woQcList.reduce(
         (sum: number, q: any) =>
           sum + Number(q.inspected_pcs || Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0)),
         0
       );
-      const qcInspectedMtr = woQcList.reduce(
-        (sum: number, q: any) =>
-          sum + Number(q.inspected_mtr || Number(q.vdi_ok_mtr || 0) + Number(q.vdi_salvage_mtr || 0) + Number(q.vdi_rejection_mtr || 0)),
-        0
-      );
+
+      const qcInspectedMtr = avgLength > 0 ? Number((qcInspectedPcs * avgLength).toFixed(3)) : 0;
+      const qcOkMtr = avgLength > 0 ? Number((qcOkPcs * avgLength).toFixed(3)) : 0;
+      const qcSalvageMtr = avgLength > 0 ? Number((qcSalvagePcs * avgLength).toFixed(3)) : 0;
+      const qcRejMtr = avgLength > 0 ? Number((qcRejPcs * avgLength).toFixed(3)) : 0;
 
       // 4.5 Band Saw Stage Metrics (between HT / Hollow HT / Rolling and VDI)
       const bandSawLogs = getStageLogs(woId, bandSawStageId);
-      const bandSawOutMtr = sumQty(bandSawLogs, "output_qty");
-      const bandSawRejMtr = sumQty(bandSawLogs, "rejection_qty");
-      const bandSawOutPcs = sumQty(bandSawLogs, "output_pcs") || (avgLength > 0 ? Math.round(bandSawOutMtr / avgLength) : 0);
-      const bandSawRejPcs = sumQty(bandSawLogs, "rejection_pcs") || (avgLength > 0 ? Math.round(bandSawRejMtr / avgLength) : 0);
-      const bandSawNetMtr = Math.max(0, bandSawOutMtr - bandSawRejMtr);
+      const bandSawOutPcs = sumPcs(bandSawLogs, avgLength);
+      const bandSawRejPcs = sumRejPcs(bandSawLogs, avgLength);
       const bandSawNetPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
+      const bandSawOutMtr = avgLength > 0 ? Number((bandSawOutPcs * avgLength).toFixed(3)) : sumQty(bandSawLogs, "output_qty");
+      const bandSawRejMtr = avgLength > 0 ? Number((bandSawRejPcs * avgLength).toFixed(3)) : sumQty(bandSawLogs, "rejection_qty");
+      const bandSawNetMtr = avgLength > 0 ? Number((bandSawNetPcs * avgLength).toFixed(3)) : Math.max(0, bandSawOutMtr - bandSawRejMtr);
 
       const bandSawDivIn = getStageDivIn(woId, "BAND_SAW");
       const bandSawDivOut = getStageDivOut(woId, "BAND_SAW");
@@ -590,30 +620,27 @@ export async function GET(req: NextRequest) {
 
       // 5. Finishing Stage Metrics (adjusted for Finishing Diversions)
       const finLogs = getStageLogs(woId, finStageId);
-      let finOutMtr = sumQty(finLogs, "output_qty");
-      let finRejMtr = sumQty(finLogs, "rejection_qty");
-      let finOutPcs = avgLength > 0 ? Math.round(finOutMtr / avgLength) : 0;
-      let finRejPcs = avgLength > 0 ? Math.round(finRejMtr / avgLength) : 0;
+      let finOutPcs = sumPcs(finLogs, avgLength);
+      let finRejPcs = sumRejPcs(finLogs, avgLength);
 
       // If this is a master campaign with child orders, also include child finishing production in consumed stock
       if (campaign && Array.isArray(campaign.child_work_orders)) {
         for (const child of campaign.child_work_orders) {
           const cId = child.work_order_id || child.id;
           const childFinLogs = getStageLogs(cId, finStageId);
-          const cOutMtr = sumQty(childFinLogs, "output_qty");
-          const cRejMtr = sumQty(childFinLogs, "rejection_qty");
           const childWo = woMap.get(cId);
           const childL1 = Number(child.l1 || childWo?.l1 || 0);
           const childL2 = Number(child.l2 || childWo?.l2 || 0);
           const childAvg = childL1 > 0 && childL2 > 0 ? (childL1 + childL2) / 2 : childL1 || avgLength;
 
-          finOutMtr += cOutMtr;
-          finRejMtr += cRejMtr;
-          finOutPcs += childAvg > 0 ? Math.round(cOutMtr / childAvg) : 0;
-          finRejPcs += childAvg > 0 ? Math.round(cRejMtr / childAvg) : 0;
+          finOutPcs += sumPcs(childFinLogs, childAvg);
+          finRejPcs += sumRejPcs(childFinLogs, childAvg);
         }
       }
-      const finNetMtr = Math.max(0, finOutMtr - finRejMtr);
+      const finNetPcs = Math.max(0, finOutPcs - finRejPcs);
+      const finOutMtr = avgLength > 0 ? Number((finOutPcs * avgLength).toFixed(3)) : 0;
+      const finRejMtr = avgLength > 0 ? Number((finRejPcs * avgLength).toFixed(3)) : 0;
+      const finNetMtr = avgLength > 0 ? Number((finNetPcs * avgLength).toFixed(3)) : 0;
 
       // VDI Stage WIP (Waiting for QC Inspection)
       const vdiDivIn = getStageDivIn(woId, "VDI");
@@ -628,23 +655,17 @@ export async function GET(req: NextRequest) {
 
       const vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
       const vdiAvailMtr = avgLength > 0
-        ? (vdiAvailPcs > 0 ? Number((vdiAvailPcs * avgLength).toFixed(2)) : 0)
+        ? (vdiAvailPcs > 0 ? Number((vdiAvailPcs * avgLength).toFixed(3)) : 0)
         : 0;
       const vdiAvailMt = mtFromMtr(vdiAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       const finDivIn = getStageDivIn(woId, "FINISHING");
       const finDivOut = getStageDivOut(woId, "FINISHING");
 
-      let finIncomingMtr = 0;
       let finIncomingPcs = 0;
-
       if (woQcList.length > 0) {
-        // Strictly from VDI OK Nos (already cut in multiple at Band Saw)
         finIncomingPcs = Math.round(qcOkPcs);
-        finIncomingMtr = qcOkMtr > 0 ? qcOkMtr : (avgLength > 0 ? Number((qcOkPcs * avgLength).toFixed(2)) : 0);
       } else {
-        // Feeder source is strictly derived from VDI OK Nos. Uninspected or pending QC material cannot proceed to finishing.
-        finIncomingMtr = 0;
         finIncomingPcs = 0;
       }
 
@@ -652,9 +673,7 @@ export async function GET(req: NextRequest) {
       const finDivOutPcs = avgLength > 0 ? Math.round(finDivOut / avgLength) : 0;
 
       const finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finOutPcs - finRejPcs - finDivOutPcs);
-      const finAvailMtr = avgLength > 0
-        ? (finAvailPcs > 0 ? Number((finAvailPcs * avgLength).toFixed(2)) : 0)
-        : Math.max(0, finIncomingMtr + finDivIn - finOutMtr - finRejMtr - finDivOut);
+      const finAvailMtr = avgLength > 0 ? Number((finAvailPcs * avgLength).toFixed(3)) : 0;
       const finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Build WorkCenterWipInfo pipeline for this order
@@ -667,16 +686,16 @@ export async function GET(req: NextRequest) {
           available_pcs: isRollingPlanIssued ? rollAvailPcs : 0,
           available_mt: isRollingPlanIssued ? rollAvailMt : 0,
           gross_output_mtr: rollOutMtr,
-          gross_output_pcs: mhAvgLength > 0 ? Math.round(rollOutMtr / mhAvgLength) : 0,
+          gross_output_pcs: rollGrossPcs,
           gross_output_mt: mtFromMtr(rollOutMtr, mhOd, mhWt),
           rejection_mtr: rollRejMtr,
-          rejection_pcs: mhAvgLength > 0 ? Math.round(rollRejMtr / mhAvgLength) : 0,
+          rejection_pcs: rollRejPcs,
           rejection_mt: mtFromMtr(rollRejMtr, mhOd, mhWt),
           net_output_mtr: rollNetMtr,
-          net_output_pcs: mhAvgLength > 0 ? Math.round(rollNetMtr / mhAvgLength) : 0,
+          net_output_pcs: rollNetPcs,
           net_output_mt: mtFromMtr(rollNetMtr, mhOd, mhWt),
           htc_ok_mtr: rollHtcOkMtr,
-          htc_ok_pcs: mhAvgLength > 0 ? Math.round(rollHtcOkMtr / mhAvgLength) : 0,
+          htc_ok_pcs: rollHtcOkPcs,
           htc_ok_mt: mtFromMtr(rollHtcOkMtr, mhOd, mhWt),
         },
       ];
@@ -690,13 +709,13 @@ export async function GET(req: NextRequest) {
           available_pcs: hollowHtAvailPcs,
           available_mt: hollowHtAvailMt,
           gross_output_mtr: hollowHtOutMtr,
-          gross_output_pcs: mhAvgLength > 0 ? Math.round(hollowHtOutMtr / mhAvgLength) : 0,
+          gross_output_pcs: hollowHtOutPcs,
           gross_output_mt: mtFromMtr(hollowHtOutMtr, mhOd, mhWt),
           rejection_mtr: hollowHtRejMtr,
-          rejection_pcs: mhAvgLength > 0 ? Math.round(hollowHtRejMtr / mhAvgLength) : 0,
+          rejection_pcs: hollowHtRejPcs,
           rejection_mt: mtFromMtr(hollowHtRejMtr, mhOd, mhWt),
           net_output_mtr: hollowHtNetMtr,
-          net_output_pcs: mhAvgLength > 0 ? Math.round(hollowHtNetMtr / mhAvgLength) : 0,
+          net_output_pcs: hollowHtNetPcs,
           net_output_mt: mtFromMtr(hollowHtNetMtr, mhOd, mhWt),
         });
       }
@@ -710,13 +729,13 @@ export async function GET(req: NextRequest) {
           available_pcs: drawAvailPcs,
           available_mt: drawAvailMt,
           gross_output_mtr: drawOutMtr,
-          gross_output_pcs: avgLength > 0 ? Math.round(drawOutMtr / avgLength) : 0,
+          gross_output_pcs: drawOutPcs,
           gross_output_mt: mtFromMtr(drawOutMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
           rejection_mtr: drawRejMtr,
-          rejection_pcs: avgLength > 0 ? Math.round(drawRejMtr / avgLength) : 0,
+          rejection_pcs: drawRejPcs,
           rejection_mt: mtFromMtr(drawRejMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
           net_output_mtr: drawNetMtr,
-          net_output_pcs: avgLength > 0 ? Math.round(drawNetMtr / avgLength) : 0,
+          net_output_pcs: drawNetPcs,
           net_output_mt: mtFromMtr(drawNetMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
         });
 
@@ -728,13 +747,13 @@ export async function GET(req: NextRequest) {
           available_pcs: htAvailPcs,
           available_mt: htAvailMt,
           gross_output_mtr: htOutMtr,
-          gross_output_pcs: avgLength > 0 ? Math.round(htOutMtr / avgLength) : 0,
+          gross_output_pcs: htOutPcs,
           gross_output_mt: mtFromMtr(htOutMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
           rejection_mtr: htRejMtr,
-          rejection_pcs: avgLength > 0 ? Math.round(htRejMtr / avgLength) : 0,
+          rejection_pcs: htRejPcs,
           rejection_mt: mtFromMtr(htRejMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
           net_output_mtr: htNetMtr,
-          net_output_pcs: avgLength > 0 ? Math.round(htNetMtr / avgLength) : 0,
+          net_output_pcs: htNetPcs,
           net_output_mt: mtFromMtr(htNetMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
         });
       }
@@ -783,13 +802,13 @@ export async function GET(req: NextRequest) {
         available_pcs: finAvailPcs,
         available_mt: finAvailMt,
         gross_output_mtr: finOutMtr,
-        gross_output_pcs: avgLength > 0 ? Math.round(finOutMtr / avgLength) : 0,
+        gross_output_pcs: finOutPcs,
         gross_output_mt: mtFromMtr(finOutMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
         rejection_mtr: finRejMtr,
-        rejection_pcs: avgLength > 0 ? Math.round(finRejMtr / avgLength) : 0,
+        rejection_pcs: finRejPcs,
         rejection_mt: mtFromMtr(finRejMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
         net_output_mtr: finNetMtr,
-        net_output_pcs: avgLength > 0 ? Math.round(finNetMtr / avgLength) : 0,
+        net_output_pcs: finNetPcs,
         net_output_mt: mtFromMtr(finNetMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
       });
 
