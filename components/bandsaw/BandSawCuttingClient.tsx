@@ -189,6 +189,29 @@ export default function BandSawCuttingClient() {
       .reduce((sum, e) => sum + mtFromMtr(Number(e.output_mtr || 0), Number(e.od || 0), Number(e.wl || 0)), 0);
   }, [historyEntries]);
 
+  const todayScrapMt = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return historyEntries
+      .filter((e) => e.process_date === todayStr)
+      .reduce((sum, e) => {
+        const { scrapMt } = extractBandSawCutsFromRemarks(e.remarks);
+        if (scrapMt !== null && scrapMt !== undefined) {
+          return sum + Number(scrapMt);
+        }
+        return sum + mtFromMtr(Number(e.rejection_mtr || 0), Number(e.od || 0), Number(e.wl || 0));
+      }, 0);
+  }, [historyEntries]);
+
+  const totalHistoryScrapMt = useMemo(() => {
+    return historyEntries.reduce((sum, e) => {
+      const { scrapMt } = extractBandSawCutsFromRemarks(e.remarks);
+      if (scrapMt !== null && scrapMt !== undefined) {
+        return sum + Number(scrapMt);
+      }
+      return sum + mtFromMtr(Number(e.rejection_mtr || 0), Number(e.od || 0), Number(e.wl || 0));
+    }, 0);
+  }, [historyEntries]);
+
   const avgYieldPct = useMemo(() => {
     const validYields = historyEntries
       .map((e) => extractBandSawCutsFromRemarks(e.remarks).yieldPct)
@@ -260,7 +283,7 @@ export default function BandSawCuttingClient() {
         </div>
 
         {/* Light KPI Metric Cards */}
-        <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="mt-5 grid grid-cols-2 sm:grid-cols-5 gap-3.5">
           {/* Mother Pipes to Cut */}
           <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/50 to-white p-4 shadow-2xs">
             <div className="text-[11px] font-bold text-indigo-800 uppercase tracking-wider">
@@ -290,6 +313,22 @@ export default function BandSawCuttingClient() {
             </div>
             <div className="text-[11px] font-medium text-sky-600 mt-1">
               {fmt(todayCutMt, 2)} MT logged today
+            </div>
+          </div>
+
+          {/* Scrap Generated */}
+          <div className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50/50 to-white p-4 shadow-2xs">
+            <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">
+              Scrap Generated (MT)
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl font-black text-amber-950">
+                {fmt(todayScrapMt, 3)}
+              </span>
+              <span className="text-xs font-bold text-amber-700">MT</span>
+            </div>
+            <div className="text-[11px] font-medium text-amber-600 mt-1">
+              {fmt(totalHistoryScrapMt, 2)} MT total scrap
             </div>
           </div>
 
@@ -506,7 +545,8 @@ export default function BandSawCuttingClient() {
                   </tr>
                 ) : (
                   filteredHistory.map((entry) => {
-                    const { cuts, yieldPct, offcutMtr, motherPcs } = extractBandSawCutsFromRemarks(entry.remarks);
+                    const { cuts, yieldPct, offcutMtr, scrapMtr, scrapMt, scrapPct, motherPcs } =
+                      extractBandSawCutsFromRemarks(entry.remarks);
                     const netPcs =
                       cuts?.reduce((s, c) => s + Number(c.pcs || 0), 0) ||
                       (entry.avg_length && entry.output_mtr ? Math.round(entry.output_mtr / entry.avg_length) : 0);
@@ -530,7 +570,7 @@ export default function BandSawCuttingClient() {
                         </td>
                         <td className="py-3 px-4">
                           {cuts && cuts.length > 0 ? (
-                            <div className="flex flex-wrap gap-1.5">
+                            <div className="flex flex-wrap gap-1.5 items-center">
                               {cuts.map((c, i) => (
                                 <span
                                   key={i}
@@ -540,8 +580,17 @@ export default function BandSawCuttingClient() {
                                 </span>
                               ))}
                               {offcutMtr && offcutMtr > 0 ? (
-                                <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-800">
-                                  Trim: {offcutMtr}m
+                                <span className="inline-flex items-center rounded-md bg-blue-50 border border-blue-200 px-1.5 py-0.5 font-mono text-[10px] font-medium text-blue-800">
+                                  Offcut: {offcutMtr}m
+                                </span>
+                              ) : null}
+                              {scrapMt && scrapMt > 0 ? (
+                                <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-900">
+                                  Scrap: {fmt(scrapMt, 3)} MT {scrapPct ? `(${scrapPct}%)` : ''}
+                                </span>
+                              ) : scrapMtr && scrapMtr > 0 ? (
+                                <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-900">
+                                  Scrap: {scrapMtr}m
                                 </span>
                               ) : null}
                             </div>

@@ -380,7 +380,7 @@ export interface QcSalvageQueueItem {
   inspections: QcInspection[];
 }
 
-export type BandSawCutCategory = 'PRIME' | 'SECONDARY' | 'OFFCUT' | 'SCRAP_TRIM';
+export type BandSawCutCategory = 'PRIME' | 'SECONDARY' | 'OFFCUT' | 'SCRAP_TRIM' | 'SCRAP_NOT_REQUIRED';
 
 export interface BandSawCutItem {
   id: string;

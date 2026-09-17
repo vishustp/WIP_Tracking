@@ -49,6 +49,7 @@ export function BandSawCuttingModal({
   // Available mother pipes from queue
   const availMotherPcs = Math.max(0, Math.round(Number(row.balance_to_make_pcs || 0)));
   const availMotherMtr = Math.max(0, Number(row.balance_to_make_mtr || 0));
+  const availMotherMt = mtFromMtr(availMotherMtr, pipeOd, pipeWt);
 
   // Default initial mother pipe average length
   const defaultMotherLen = (() => {
@@ -97,43 +98,16 @@ export function BandSawCuttingModal({
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Computations
+  // Mother input computations
   const motherPcsNum = Math.max(0, parseInt(motherPcsInput, 10) || 0);
   const motherAvgLenNum = Math.max(0, parseFloat(motherAvgLenInput) || 0);
   const totalMotherMtr = Number((motherPcsNum * motherAvgLenNum).toFixed(2));
   const totalMotherMt = mtFromMtr(totalMotherMtr, pipeOd, pipeWt);
 
-  // Total cuts calculation
-  const { totalPrimeCutPcs, totalPrimeCutMtr, totalPrimeCutMt, totalAllCutMtr, totalOffcutMtr } =
-    useMemo(() => {
-      let primePcs = 0;
-      let primeMtr = 0;
-      let allMtr = 0;
-      let offcutM = 0;
-
-      cutItems.forEach((c) => {
-        const len = Number(c.length_mtr || 0);
-        const pcs = Number(c.cut_pcs || 0);
-        const mtr = Number((len * pcs).toFixed(2));
-        allMtr += mtr;
-
-        if (c.cut_category === 'PRIME' || c.cut_category === 'SECONDARY') {
-          primePcs += pcs;
-          primeMtr += mtr;
-        } else if (c.cut_category === 'OFFCUT' || c.cut_category === 'SCRAP_TRIM') {
-          offcutM += mtr;
-        }
-      });
-
-      const primeMt = mtFromMtr(primeMtr, pipeOd, pipeWt);
-      return {
-        totalPrimeCutPcs: primePcs,
-        totalPrimeCutMtr: Number(primeMtr.toFixed(2)),
-        totalPrimeCutMt: primeMt,
-        totalAllCutMtr: Number(allMtr.toFixed(2)),
-        totalOffcutMtr: Number(offcutM.toFixed(2)),
-      };
-    }, [cutItems, pipeOd, pipeWt]);
+  // Live mother balance remaining
+  const remainingMotherPcs = availMotherPcs - motherPcsNum;
+  const remainingMotherMtr = Number((availMotherMtr - totalMotherMtr).toFixed(2));
+  const remainingMotherMt = mtFromMtr(remainingMotherMtr > 0 ? remainingMotherMtr : 0, pipeOd, pipeWt);
 
   // Rejections
   const nRejPcs = Math.max(0, parseInt(rejCutPcs, 10) || 0);
@@ -143,14 +117,91 @@ export function BandSawCuttingModal({
   );
   const nRejMt = mtFromMtr(nRejMtr, pipeOd, pipeWt);
 
-  // Net good cuts feeding VDI
-  const netVdiFeedPcs = Math.max(0, totalPrimeCutPcs - nRejPcs);
-  const netVdiFeedMtr = Math.max(0, Number((totalPrimeCutMtr - nRejMtr).toFixed(2)));
-  const netVdiFeedMt = mtFromMtr(netVdiFeedMtr, pipeOd, pipeWt);
+  // Total cuts & Scrap calculation breakdown
+  const {
+    totalPrimeCutPcs,
+    totalPrimeCutMtr,
+    totalPrimeCutMt,
+    totalAllCutMtr,
+    usableOffcutMtr,
+    usableOffcutMt,
+    trimNotReqMtr,
+    trimNotReqMt,
+    kerfLossMtr,
+    kerfLossMt,
+    totalScrapMtr,
+    totalScrapMt,
+    scrapPct,
+    netVdiFeedPcs,
+    netVdiFeedMtr,
+    netVdiFeedMt,
+    yieldPct,
+  } = useMemo(() => {
+    let primePcs = 0;
+    let primeM = 0;
+    let allM = 0;
+    let offcutM = 0;
+    let notReqTrimM = 0;
 
-  // Yield calculation
-  const yieldPct = totalMotherMtr > 0 ? Math.min(100, Math.max(0, (netVdiFeedMtr / totalMotherMtr) * 100)) : 100;
-  const unaccountedMtr = Math.max(0, Number((totalMotherMtr - totalAllCutMtr - nRejMtr).toFixed(2)));
+    cutItems.forEach((c) => {
+      const len = Number(c.length_mtr || 0);
+      const pcs = Number(c.cut_pcs || 0);
+      const mtr = Number((len * pcs).toFixed(2));
+      allM += mtr;
+
+      if (c.cut_category === 'PRIME' || c.cut_category === 'SECONDARY') {
+        primePcs += pcs;
+        primeM += mtr;
+      } else if (c.cut_category === 'OFFCUT') {
+        offcutM += mtr;
+      } else {
+        // SCRAP_TRIM or SCRAP_NOT_REQUIRED (not required in order)
+        notReqTrimM += mtr;
+      }
+    });
+
+    const primeMt = mtFromMtr(primeM, pipeOd, pipeWt);
+    const offcutMt = mtFromMtr(offcutM, pipeOd, pipeWt);
+    const trimMt = mtFromMtr(notReqTrimM, pipeOd, pipeWt);
+
+    // Saw Kerf / Unaccounted drop loss
+    const totalCutWithRej = allM + nRejMtr;
+    const kerfM = Math.max(0, Number((totalMotherMtr - totalCutWithRej).toFixed(2)));
+    const kerfMt = mtFromMtr(kerfM, pipeOd, pipeWt);
+
+    // Total Scrap = Not Required/Trims + Kerf Loss + Defect Rejections (All non-order required)
+    const scrapM = Number((notReqTrimM + kerfM + nRejMtr).toFixed(2));
+    const scrapMt = mtFromMtr(scrapM, pipeOd, pipeWt);
+    const scrapPctVal = totalMotherMt > 0 ? Number(((scrapMt / totalMotherMt) * 100).toFixed(1)) : 0;
+
+    // Net good cuts feeding VDI QC
+    const netPcs = Math.max(0, primePcs - nRejPcs);
+    const netMtr = Math.max(0, Number((primeM - nRejMtr).toFixed(2)));
+    const netMt = mtFromMtr(netMtr, pipeOd, pipeWt);
+
+    // Net Cutting Yield
+    const yPct = totalMotherMt > 0 ? Math.min(100, Math.max(0, Number(((netMt / totalMotherMt) * 100).toFixed(1)))) : 100;
+
+    return {
+      totalPrimeCutPcs: primePcs,
+      totalPrimeCutMtr: Number(primeM.toFixed(2)),
+      totalPrimeCutMt: primeMt,
+      totalAllCutMtr: Number(allM.toFixed(2)),
+      usableOffcutMtr: Number(offcutM.toFixed(2)),
+      usableOffcutMt: offcutMt,
+      trimNotReqMtr: Number(notReqTrimM.toFixed(2)),
+      trimNotReqMt: trimMt,
+      kerfLossMtr: kerfM,
+      kerfLossMt: kerfMt,
+      totalScrapMtr: scrapM,
+      totalScrapMt: scrapMt,
+      scrapPct: scrapPctVal,
+      netVdiFeedPcs: netPcs,
+      netVdiFeedMtr: netMtr,
+      netVdiFeedMt: netMt,
+      yieldPct: yPct,
+    };
+  }, [cutItems, pipeOd, pipeWt, nRejMtr, nRejPcs, totalMotherMtr, totalMotherMt]);
 
   // Handlers for Cut Items
   const handleAddCutItem = () => {
@@ -212,13 +263,16 @@ export function BandSawCuttingModal({
 
     setSaving(true);
     try {
-      // Serialize multi-cut JSON into remarks
+      // Serialize multi-cut JSON with scrap metrics into remarks
       const finalRemarks = attachBandSawCutsToRemarks(
         remarks,
         cutItems,
         motherPcsNum,
         yieldPct,
-        totalOffcutMtr + unaccountedMtr,
+        usableOffcutMtr,
+        totalScrapMtr,
+        totalScrapMt,
+        scrapPct,
         row.l1,
         row.l2
       );
@@ -256,7 +310,7 @@ export function BandSawCuttingModal({
       }
 
       toast.success(
-        `Band Saw cut recorded: ${totalPrimeCutPcs} cut pieces (${totalPrimeCutMtr}m) sent to VDI QC queue!`,
+        `Band Saw cut recorded: ${netVdiFeedPcs} prime cut pieces (${netVdiFeedMtr}m / ${fmt(netVdiFeedMt, 3)} MT) sent to VDI QC queue! Scrap: ${fmt(totalScrapMt, 3)} MT (${scrapPct}%).`,
         { duration: 4000 }
       );
       onSuccess();
@@ -321,12 +375,12 @@ export function BandSawCuttingModal({
           </div>
         </div>
 
-        {/* Section 1: Mother Pipe Processing Inputs */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-          <div className="mb-3 flex items-center justify-between">
+        {/* Section 1: Mother Pipe Processing & Live Balance Tracker */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
               <Layers size={14} className="text-indigo-600" />
-              1. Mother Pipes Input (Incoming from Feeder)
+              1. Mother Pipes Input &amp; Live Balance Tracker
             </h4>
             <span className="text-[11px] font-medium text-slate-500">
               Feeder:{' '}
@@ -347,7 +401,7 @@ export function BandSawCuttingModal({
                 max={availMotherPcs > 0 ? availMotherPcs * 2 : 9999}
                 value={motherPcsInput}
                 onChange={(e) => setMotherPcsInput(e.target.value)}
-                className="h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500"
+                className="h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500 bg-white"
                 placeholder="e.g. 10"
               />
             </div>
@@ -362,7 +416,7 @@ export function BandSawCuttingModal({
                 min="0.5"
                 value={motherAvgLenInput}
                 onChange={(e) => setMotherAvgLenInput(e.target.value)}
-                className="h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500"
+                className="h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500 bg-white"
                 placeholder="e.g. 12.00"
               />
             </div>
@@ -378,10 +432,71 @@ export function BandSawCuttingModal({
 
             <div>
               <label className="mb-1 block text-[11px] font-semibold text-slate-500">
-                Total Mother Input Tonnes
+                Total Mother Input Weight
               </label>
               <div className="flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 font-mono text-xs font-bold text-slate-800 shadow-2xs">
                 {fmt(totalMotherMt, 3)} MT
+              </div>
+            </div>
+          </div>
+
+          {/* Live Mother Pipe Balance Card */}
+          <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Mother Pipe Live Balance Status:
+                </span>
+                {remainingMotherPcs > 0 ? (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                    <CheckCircle2 size={11} />
+                    Partial Processing ({remainingMotherPcs} PCS Remaining in Queue)
+                  </span>
+                ) : remainingMotherPcs === 0 ? (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                    <CheckCircle2 size={11} />
+                    100% Mother Pipes Processed in Batch
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                    <AlertCircle size={11} />
+                    Processing {Math.abs(remainingMotherPcs)} Pcs &gt; Available Queue
+                  </span>
+                )}
+              </div>
+              <div className="text-[11px] text-slate-500 font-mono">
+                Available: <strong className="text-slate-800">{availMotherPcs} PCS</strong> ({fmt(availMotherMtr)}m / {fmt(availMotherMt, 3)} MT)
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 text-center text-xs">
+              <div className="rounded-md bg-slate-50 p-2 border border-slate-100">
+                <div className="text-[10px] text-slate-500 font-semibold uppercase">Total Queue Available</div>
+                <div className="font-mono font-bold text-slate-800 text-sm mt-0.5">
+                  {availMotherPcs} PCS <span className="text-xs text-slate-500 font-normal">({fmt(availMotherMt, 3)} MT)</span>
+                </div>
+              </div>
+
+              <div className="rounded-md bg-indigo-50/60 p-2 border border-indigo-100">
+                <div className="text-[10px] text-indigo-700 font-semibold uppercase">Processed This Batch</div>
+                <div className="font-mono font-bold text-indigo-950 text-sm mt-0.5">
+                  {motherPcsNum} PCS <span className="text-xs text-indigo-700 font-normal">({fmt(totalMotherMt, 3)} MT)</span>
+                </div>
+              </div>
+
+              <div className={`rounded-md p-2 border ${
+                remainingMotherPcs >= 0 ? 'bg-emerald-50/60 border-emerald-100' : 'bg-rose-50 border-rose-100'
+              }`}>
+                <div className={`text-[10px] font-semibold uppercase ${
+                  remainingMotherPcs >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                }`}>
+                  Remaining Mother Balance
+                </div>
+                <div className={`font-mono font-bold text-sm mt-0.5 ${
+                  remainingMotherPcs >= 0 ? 'text-emerald-950' : 'text-rose-700'
+                }`}>
+                  {remainingMotherPcs} PCS <span className="text-xs font-normal">({fmt(remainingMotherMt, 3)} MT)</span>
+                </div>
               </div>
             </div>
           </div>
@@ -396,7 +511,7 @@ export function BandSawCuttingModal({
                 2. Multi-Length Cut Schedule
               </h4>
               <p className="text-[11px] text-slate-500">
-                Define the multiple cut segments produced per mother pipe batch.
+                Define the multiple cut segments produced per mother pipe batch. Categorize non-order cuts as scrap.
               </p>
             </div>
             <Button
@@ -418,7 +533,7 @@ export function BandSawCuttingModal({
                   <th className="py-2.5 px-3">#</th>
                   <th className="py-2.5 px-3 min-w-[130px]">Cut Length (Mtr)</th>
                   <th className="py-2.5 px-3 min-w-[110px]">Cut Nos (Pcs)</th>
-                  <th className="py-2.5 px-3 min-w-[130px]">Category</th>
+                  <th className="py-2.5 px-3 min-w-[180px]">Category</th>
                   <th className="py-2.5 px-3 text-right">Total Meters</th>
                   <th className="py-2.5 px-3 text-right">Total Weight (MT)</th>
                   <th className="py-2.5 px-3 text-center w-12">Action</th>
@@ -469,10 +584,11 @@ export function BandSawCuttingModal({
                           }
                           className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-800 shadow-2xs focus:border-indigo-500 focus:outline-hidden"
                         >
-                          <option value="PRIME">Prime Pipe Cut</option>
-                          <option value="SECONDARY">Secondary / Multiple Length</option>
+                          <option value="PRIME">Prime Pipe Cut (Required in Order)</option>
+                          <option value="SECONDARY">Secondary / Multi Cut (Required in Order)</option>
                           <option value="OFFCUT">Usable Off-Cut (≥4m)</option>
-                          <option value="SCRAP_TRIM">End Trim / Scrap (&lt;4m)</option>
+                          <option value="SCRAP_TRIM">End Trim / Saw Scrap (&lt;4m)</option>
+                          <option value="SCRAP_NOT_REQUIRED">Scrap (Not Required in Order)</option>
                         </select>
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800">
@@ -502,21 +618,12 @@ export function BandSawCuttingModal({
           <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/90 px-4 py-3 text-xs">
             <div className="flex items-center gap-4">
               <div>
-                <span className="text-slate-500 font-medium">Total Cut Pieces: </span>
+                <span className="text-slate-500 font-medium">Order Required Cuts: </span>
                 <span className="font-mono font-bold text-indigo-700 text-sm">
                   {totalPrimeCutPcs} PCS
                 </span>
-              </div>
-              <div>
-                <span className="text-slate-500 font-medium">Total Cut Length: </span>
-                <span className="font-mono font-bold text-slate-900 text-sm">
-                  {fmt(totalPrimeCutMtr)} MTR
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 font-medium">Total Cut Weight: </span>
-                <span className="font-mono font-bold text-slate-900 text-sm">
-                  {fmt(totalPrimeCutMt, 3)} MT
+                <span className="font-mono text-slate-600 text-xs ml-1">
+                  ({fmt(totalPrimeCutMtr)} m / {fmt(totalPrimeCutMt, 3)} MT)
                 </span>
               </div>
             </div>
@@ -546,13 +653,13 @@ export function BandSawCuttingModal({
           </div>
         </div>
 
-        {/* Section 3: Rejections, Offcuts & VDI Handover Summary */}
+        {/* Section 3: Rejections, Operator Inputs & Scrap Material Balance Breakdown */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Rejection & Scrap Details */}
+          {/* Left Panel: Defect Rejections & Operator Info */}
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-3">
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
               <AlertCircle size={14} className="text-amber-600" />
-              Rejection & Defect Cuts
+              Rejection Cuts &amp; Process Details
             </h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -633,54 +740,105 @@ export function BandSawCuttingModal({
                 placeholder="e.g. Clean cuts, square ends checked"
               />
             </div>
-          </div>
-
-          {/* VDI Handover Summary Card */}
-          <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/80 to-blue-50/50 p-4 shadow-2xs flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
-                  <ArrowRight size={12} />
-                  Feeds into VDI QC Inspection
-                </span>
-                <span className="text-[11px] font-bold text-indigo-900">Total Cut Net Output</span>
-              </div>
-
-              <div className="rounded-lg border border-indigo-200/80 bg-white p-3.5 shadow-2xs space-y-2">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-xs text-slate-600">Total Cut Pieces (Nos):</span>
-                  <span className="font-mono text-base font-extrabold text-indigo-950">
-                    {netVdiFeedPcs} PCS
-                  </span>
-                </div>
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-xs text-slate-600">Total Cut Length (Mtr):</span>
-                  <span className="font-mono text-xs font-bold text-slate-800">
-                    {fmt(netVdiFeedMtr)} MTR
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-600">Total Cut Weight (MT):</span>
-                  <span className="font-mono text-xs font-bold text-slate-800">
-                    {fmt(netVdiFeedMt, 3)} MT
-                  </span>
-                </div>
-              </div>
-
-              <div className="text-[11px] text-slate-600 bg-white/60 rounded-md p-2 border border-slate-200/50">
-                <p>
-                  ✓ These <strong>{netVdiFeedPcs} Total Cut Nos</strong> will immediately appear in the{' '}
-                  <strong className="text-indigo-800">VDI / QC Inspection Queue</strong> for visual and dimensional check.
-                </p>
-              </div>
-            </div>
 
             {error && (
-              <div className="mt-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-800">
+              <div className="mt-2 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-800">
                 <AlertCircle size={14} className="mt-0.5 text-rose-600 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
+          </div>
+
+          {/* Right Panel: Comprehensive Scrap & Material Balance Breakdown (in MT) */}
+          <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 via-white to-slate-50 p-4 shadow-2xs flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
+                  <ArrowRight size={12} />
+                  Material Recovery &amp; Scrap Balance
+                </span>
+                <span className="text-[11px] font-bold text-indigo-950">
+                  Total Mother Input: {fmt(totalMotherMt, 3)} MT
+                </span>
+              </div>
+
+              {/* Material Balance Rows */}
+              <div className="space-y-1.5 text-xs">
+                {/* 1. Prime / Secondary Good Cuts */}
+                <div className="flex items-center justify-between rounded-md bg-emerald-50/80 px-2.5 py-1.5 border border-emerald-100 text-emerald-950">
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                    <span>Prime Net Cuts (To VDI QC):</span>
+                  </div>
+                  <div className="font-mono font-bold">
+                    {netVdiFeedPcs} PCS • {fmt(netVdiFeedMtr)}m • <span className="text-emerald-700">{fmt(netVdiFeedMt, 3)} MT</span>
+                  </div>
+                </div>
+
+                {/* 2. Usable Offcuts (>=4m) */}
+                {usableOffcutMtr > 0 && (
+                  <div className="flex items-center justify-between rounded-md bg-blue-50/60 px-2.5 py-1.5 border border-blue-100 text-blue-950">
+                    <span className="font-medium text-blue-800">Usable Off-Cuts (≥4m):</span>
+                    <span className="font-mono font-semibold text-blue-900">
+                      {fmt(usableOffcutMtr)}m • {fmt(usableOffcutMt, 3)} MT
+                    </span>
+                  </div>
+                )}
+
+                {/* 3. Scrap Breakdown Items */}
+                <div className="rounded-lg border border-amber-200/80 bg-amber-50/40 p-2.5 space-y-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-amber-900 mb-1">
+                    Scrap Generation Breakdown
+                  </div>
+                  
+                  {trimNotReqMtr > 0 && (
+                    <div className="flex items-center justify-between text-[11px] text-amber-950">
+                      <span>• End Trims &amp; Cuts Not in Order:</span>
+                      <span className="font-mono font-medium">{fmt(trimNotReqMtr)}m ({fmt(trimNotReqMt, 3)} MT)</span>
+                    </div>
+                  )}
+
+                  {kerfLossMtr > 0 && (
+                    <div className="flex items-center justify-between text-[11px] text-amber-950">
+                      <span>• Saw Blade Kerf / Drop Loss:</span>
+                      <span className="font-mono font-medium">{fmt(kerfLossMtr)}m ({fmt(kerfLossMt, 3)} MT)</span>
+                    </div>
+                  )}
+
+                  {nRejMtr > 0 && (
+                    <div className="flex items-center justify-between text-[11px] text-rose-800">
+                      <span>• Defect Cut Rejections ({nRejPcs} pcs):</span>
+                      <span className="font-mono font-medium">{fmt(nRejMtr)}m ({fmt(nRejMt, 3)} MT)</span>
+                    </div>
+                  )}
+
+                  {/* Total Scrap Highlight Card */}
+                  <div className="mt-2 flex items-center justify-between rounded-md bg-white border border-amber-300 p-2 shadow-2xs">
+                    <span className="font-bold text-amber-950 text-xs flex items-center gap-1">
+                      <TrendingUp size={13} className="text-amber-600" />
+                      TOTAL SCRAP GENERATED:
+                    </span>
+                    <div className="text-right">
+                      <span className="font-mono text-sm font-black text-amber-900">
+                        {fmt(totalScrapMt, 3)} MT
+                      </span>
+                      <span className="text-[11px] font-mono text-amber-700 ml-1.5">
+                        ({fmt(totalScrapMtr)}m • {scrapPct}%)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Feed to VDI Notice */}
+              <div className="text-[11px] text-slate-600 bg-white rounded-md p-2 border border-slate-200">
+                <p>
+                  ✓ <strong>{netVdiFeedPcs} Prime Cuts ({fmt(netVdiFeedMt, 3)} MT)</strong> feed into{' '}
+                  <strong className="text-indigo-800">VDI QC Inspection</strong>. Balance scrap of{' '}
+                  <strong className="text-amber-800">{fmt(totalScrapMt, 3)} MT</strong> logged to material ledger.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 

@@ -324,6 +324,9 @@ export function attachBandSawCutsToRemarks(
   motherPcs?: number | null,
   yieldPct?: number | null,
   offcutMtr?: number | null,
+  scrapMtr?: number | null,
+  scrapMt?: number | null,
+  scrapPct?: number | null,
   l1?: number | string | null,
   l2?: number | string | null
 ): string {
@@ -334,6 +337,9 @@ export function attachBandSawCutsToRemarks(
     m_pcs: motherPcs || null,
     yield: yieldPct !== undefined && yieldPct !== null ? Number(yieldPct.toFixed(1)) : null,
     offcut_m: offcutMtr !== undefined && offcutMtr !== null ? Number(offcutMtr.toFixed(2)) : null,
+    scrap_m: scrapMtr !== undefined && scrapMtr !== null ? Number(scrapMtr.toFixed(2)) : null,
+    scrap_mt: scrapMt !== undefined && scrapMt !== null ? Number(scrapMt.toFixed(3)) : null,
+    scrap_pct: scrapPct !== undefined && scrapPct !== null ? Number(scrapPct.toFixed(1)) : null,
     items: cuts.map((c) => ({
       len: Number(c.length_mtr),
       pcs: Number(c.cut_pcs),
@@ -356,14 +362,20 @@ export function extractBandSawCutsFromRemarks(remarks: string | null | undefined
   motherPcs: number | null;
   yieldPct: number | null;
   offcutMtr: number | null;
+  scrapMtr: number | null;
+  scrapMt: number | null;
+  scrapPct: number | null;
   cleanRemarks: string;
 } {
-  if (!remarks) return { cuts: null, motherPcs: null, yieldPct: null, offcutMtr: null, cleanRemarks: "" };
+  if (!remarks) return { cuts: null, motherPcs: null, yieldPct: null, offcutMtr: null, scrapMtr: null, scrapMt: null, scrapPct: null, cleanRemarks: "" };
   const match = remarks.match(/\[CUTS:(\{.*?\})\]/i);
   let cuts: Array<{ len: number; pcs: number; cat: string }> | null = null;
   let motherPcs: number | null = null;
   let yieldPct: number | null = null;
   let offcutMtr: number | null = null;
+  let scrapMtr: number | null = null;
+  let scrapMt: number | null = null;
+  let scrapPct: number | null = null;
 
   if (match && match[1]) {
     try {
@@ -372,6 +384,9 @@ export function extractBandSawCutsFromRemarks(remarks: string | null | undefined
       motherPcs = parsed.m_pcs ?? null;
       yieldPct = parsed.yield ?? null;
       offcutMtr = parsed.offcut_m ?? null;
+      scrapMtr = parsed.scrap_m ?? null;
+      scrapMt = parsed.scrap_mt ?? null;
+      scrapPct = parsed.scrap_pct ?? null;
     } catch {}
   }
 
@@ -384,7 +399,7 @@ export function extractBandSawCutsFromRemarks(remarks: string | null | undefined
     .replace(/\[REJ_PCS:\d+\]/gi, "")
     .trim();
 
-  return { cuts, motherPcs, yieldPct, offcutMtr, cleanRemarks };
+  return { cuts, motherPcs, yieldPct, offcutMtr, scrapMtr, scrapMt, scrapPct, cleanRemarks };
 }
 
 
