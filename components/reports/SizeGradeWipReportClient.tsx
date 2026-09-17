@@ -106,6 +106,26 @@ export default function SizeGradeWipReportClient() {
   const [toRollingDate, setToRollingDate] = useState<string>('');
   const [asOnDate, setAsOnDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
+  // Debounced filters for responsive typing & optimized matrix reduction
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
+  const [debouncedFromOd, setDebouncedFromOd] = useState<string>('');
+  const [debouncedToOd, setDebouncedToOd] = useState<string>('');
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 200);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedFromOd(fromOd);
+      setDebouncedToOd(toOd);
+    }, 200);
+    return () => clearTimeout(t);
+  }, [fromOd, toOd]);
+
   // Expanded groups in matrix
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
 
@@ -463,8 +483,8 @@ export default function SizeGradeWipReportClient() {
 
       // OD Range filter
       const od = Number(r.od || 0);
-      if (fromOd !== '' && !isNaN(Number(fromOd)) && od < Number(fromOd)) return false;
-      if (toOd !== '' && !isNaN(Number(toOd)) && od > Number(toOd)) return false;
+      if (debouncedFromOd !== '' && !isNaN(Number(debouncedFromOd)) && od < Number(debouncedFromOd)) return false;
+      if (debouncedToOd !== '' && !isNaN(Number(debouncedToOd)) && od > Number(debouncedToOd)) return false;
 
       // Rolling Production Date Range Filter
       const rDate = r.rolling_date ? String(r.rolling_date).slice(0, 10) : null;
@@ -476,8 +496,8 @@ export default function SizeGradeWipReportClient() {
       }
 
       // Search
-      if (search.trim()) {
-        const q = search.trim().toLowerCase();
+      if (debouncedSearch.trim()) {
+        const q = debouncedSearch.trim().toLowerCase();
         const matchSize = `${r.od}x${r.wt}`.includes(q) || `${r.od}*${r.wt}`.includes(q);
         const matchGrade = (r.grade || '').toLowerCase().includes(q);
         const matchWo = (r.work_order_no || '').toLowerCase().includes(q);
@@ -488,7 +508,7 @@ export default function SizeGradeWipReportClient() {
 
       return true;
     });
-  }, [rawWipRows, selectedRoute, selectedGrade, fromOd, toOd, search, fromRollingDate, toRollingDate]);
+  }, [rawWipRows, selectedRoute, selectedGrade, debouncedFromOd, debouncedToOd, debouncedSearch, fromRollingDate, toRollingDate]);
 
   // Aggregate into Size & Grade Matrix
   const matrixGroups = useMemo(() => {
@@ -785,30 +805,43 @@ export default function SizeGradeWipReportClient() {
         {/* Header Actions */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Unit Toggle Buttons */}
-          <div className="inline-flex rounded-md border border-slate-300 p-0.5 bg-white text-xs shadow-2xs">
+          <div
+            role="radiogroup"
+            aria-label="Display Unit"
+            className="inline-flex rounded-md border border-slate-300 p-0.5 bg-white text-xs shadow-2xs"
+          >
             <button
               type="button"
+              role="radio"
+              aria-checked={unit === 'MTRS'}
+              aria-label="Display inventory in Meters"
               onClick={() => setUnit('MTRS')}
-              className={`px-2.5 py-1 rounded font-semibold transition ${
-                unit === 'MTRS' ? 'bg-[#0078d4] text-white' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 min-h-[34px] rounded font-semibold transition cursor-pointer ${
+                unit === 'MTRS' ? 'bg-[#0078d4] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Meters (m)
             </button>
             <button
               type="button"
+              role="radio"
+              aria-checked={unit === 'PCS'}
+              aria-label="Display inventory in Pieces"
               onClick={() => setUnit('PCS')}
-              className={`px-2.5 py-1 rounded font-semibold transition ${
-                unit === 'PCS' ? 'bg-[#0078d4] text-white' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 min-h-[34px] rounded font-semibold transition cursor-pointer ${
+                unit === 'PCS' ? 'bg-[#0078d4] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Pieces (pcs)
             </button>
             <button
               type="button"
+              role="radio"
+              aria-checked={unit === 'MT'}
+              aria-label="Display inventory in Metric Tons"
               onClick={() => setUnit('MT')}
-              className={`px-2.5 py-1 rounded font-semibold transition ${
-                unit === 'MT' ? 'bg-[#0078d4] text-white' : 'text-slate-600 hover:text-slate-900'
+              className={`px-3 py-1.5 min-h-[34px] rounded font-semibold transition cursor-pointer ${
+                unit === 'MT' ? 'bg-[#0078d4] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               Weight (MT)
@@ -820,6 +853,7 @@ export default function SizeGradeWipReportClient() {
             variant="outline"
             onClick={loadData}
             disabled={loading}
+            aria-label="Refresh live WIP matrix data"
             className="text-xs h-9 border-slate-300"
           >
             <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
@@ -829,12 +863,18 @@ export default function SizeGradeWipReportClient() {
           <Button
             type="button"
             onClick={exportExcel}
-            className="text-xs h-9 bg-[#107c41] hover:bg-[#0b5a2f] text-white font-semibold flex items-center gap-1.5"
+            aria-label="Export WIP matrix to Excel spreadsheet"
+            className="text-xs h-9 bg-[#107c41] hover:bg-[#0b5a2f] text-white font-semibold flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-transform"
           >
             <Download className="h-3.5 w-3.5" />
             Export Matrix
           </Button>
         </div>
+      </div>
+
+      {/* Screen Reader Live Status Announcement */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {`Displaying ${matrixGroups.length} size-grade combinations. Total plant WIP is ${fmt(kpis.totalWipMtr, 0)} meters, ${fmt(kpis.totalWipPcs, 0)} pieces, and ${fmt(kpis.totalWipMt, 2)} metric tons.`}
       </div>
 
       {/* KPI Cards */}
@@ -849,7 +889,7 @@ export default function SizeGradeWipReportClient() {
             <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{kpis.totalSizes}</span>
             <span className="text-xs text-slate-500 font-medium">OD × WT Combinations</span>
           </div>
-          <div className="mt-1 text-[11px] text-slate-400 truncate">
+          <div className="mt-1 text-[11px] text-slate-500 truncate">
             Top: {kpis.topSize}
           </div>
         </div>
@@ -920,12 +960,16 @@ export default function SizeGradeWipReportClient() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
           {/* Search Size or Grade */}
           <div className="relative lg:col-span-3">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">Search Keywords</label>
+            <label htmlFor="wip-matrix-search" className="block text-[11px] font-bold text-slate-600 mb-1">
+              Search Keywords
+            </label>
             <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
               <Input
+                id="wip-matrix-search"
                 type="text"
                 placeholder="Search Size, Grade, WO, Route..."
+                aria-label="Search by size, grade, work order, or process route"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-8 text-xs h-9"
@@ -935,8 +979,12 @@ export default function SizeGradeWipReportClient() {
 
           {/* Route Dropdown Filter */}
           <div className="lg:col-span-2">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">Process Route</label>
+            <label htmlFor="wip-matrix-route" className="block text-[11px] font-bold text-slate-600 mb-1">
+              Process Route
+            </label>
             <Select
+              id="wip-matrix-route"
+              aria-label="Filter by process route"
               value={selectedRoute}
               onChange={(e) => setSelectedRoute(e.target.value)}
               className="text-xs h-9 font-medium"
@@ -952,8 +1000,12 @@ export default function SizeGradeWipReportClient() {
 
           {/* Grade Dropdown */}
           <div className="lg:col-span-2">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">Material Grade</label>
+            <label htmlFor="wip-matrix-grade" className="block text-[11px] font-bold text-slate-600 mb-1">
+              Material Grade
+            </label>
             <Select
+              id="wip-matrix-grade"
+              aria-label="Filter by material grade"
               value={selectedGrade}
               onChange={(e) => setSelectedGrade(e.target.value)}
               className="text-xs h-9"
@@ -974,14 +1026,16 @@ export default function SizeGradeWipReportClient() {
               <Input
                 type="number"
                 placeholder="Min OD"
+                aria-label="Minimum Outer Diameter in millimeters"
                 value={fromOd}
                 onChange={(e) => setFromOd(e.target.value)}
                 className="text-xs h-9 w-full font-mono"
               />
-              <span className="text-slate-400 text-xs shrink-0">-</span>
+              <span className="text-slate-400 text-xs shrink-0" aria-hidden="true">-</span>
               <Input
                 type="number"
                 placeholder="Max OD"
+                aria-label="Maximum Outer Diameter in millimeters"
                 value={toOd}
                 onChange={(e) => setToOd(e.target.value)}
                 className="text-xs h-9 w-full font-mono"
@@ -993,12 +1047,13 @@ export default function SizeGradeWipReportClient() {
           <div className="lg:col-span-3">
             <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
               <span className="flex items-center gap-1 text-blue-900 font-bold">
-                <Calendar className="h-3 w-3 text-blue-600" />
+                <Calendar className="h-3 w-3 text-blue-600" aria-hidden="true" />
                 Rolling Date Range:
               </span>
               {(fromRollingDate || toRollingDate) && (
                 <button
                   type="button"
+                  aria-label="Clear rolling date range filter"
                   onClick={() => {
                     setFromRollingDate('');
                     setToRollingDate('');
@@ -1013,14 +1068,16 @@ export default function SizeGradeWipReportClient() {
               <Input
                 type="date"
                 title="From Rolling Date"
+                aria-label="From Rolling Production Date"
                 value={fromRollingDate}
                 onChange={(e) => setFromRollingDate(e.target.value)}
                 className="text-[11px] h-9 font-mono px-1.5 w-full bg-blue-50/30 border-blue-200"
               />
-              <span className="text-slate-400 text-xs shrink-0">to</span>
+              <span className="text-slate-400 text-xs shrink-0" aria-hidden="true">to</span>
               <Input
                 type="date"
                 title="To Rolling Date"
+                aria-label="To Rolling Production Date"
                 value={toRollingDate}
                 onChange={(e) => setToRollingDate(e.target.value)}
                 className="text-[11px] h-9 font-mono px-1.5 w-full bg-blue-50/30 border-blue-200"
@@ -1033,25 +1090,33 @@ export default function SizeGradeWipReportClient() {
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500 font-medium">View Mode:</span>
-            <div className="inline-flex rounded-md border border-slate-200 p-0.5 bg-slate-50 text-xs">
+            <div
+              role="tablist"
+              aria-label="Report View Mode"
+              className="inline-flex rounded-md border border-slate-200 p-0.5 bg-slate-50 text-xs"
+            >
               <button
                 type="button"
+                role="tab"
+                aria-selected={viewMode === 'matrix'}
                 onClick={() => setViewMode('matrix')}
-                className={`px-2.5 py-1 rounded font-semibold transition flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 min-h-[34px] rounded font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                   viewMode === 'matrix' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                <LayoutGrid size={13} />
+                <LayoutGrid size={13} aria-hidden="true" />
                 Matrix (OD × WT × Grade)
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={viewMode === 'ledger'}
                 onClick={() => setViewMode('ledger')}
-                className={`px-2.5 py-1 rounded font-semibold transition flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 min-h-[34px] rounded font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                   viewMode === 'ledger' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                <TableIcon size={13} />
+                <TableIcon size={13} aria-hidden="true" />
                 Work Order Ledger
               </button>
             </div>
@@ -1061,7 +1126,8 @@ export default function SizeGradeWipReportClient() {
             <button
               type="button"
               onClick={toggleAll}
-              className="text-xs font-semibold text-[#0078d4] hover:underline"
+              aria-label={matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse all work order details' : 'Expand all work order details'}
+              className="text-xs font-semibold text-[#0078d4] hover:underline cursor-pointer"
             >
               {matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse All Details' : 'Expand All WO Details'}
             </button>
@@ -1074,33 +1140,33 @@ export default function SizeGradeWipReportClient() {
         <div className="rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
           <div className="overflow-auto max-h-[70vh] relative">
             <table className="w-full text-left text-xs border-collapse min-w-[1200px]">
-              <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
+              <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-300 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
                 <tr>
-                  <th className="py-2.5 px-3 w-10 text-center"></th>
-                  <th className="py-2.5 px-3">Size (OD × WT)</th>
-                  <th className="py-2.5 px-3">Material Grade</th>
-                  <th className="py-2.5 px-3 text-right bg-blue-50/60 border-x border-blue-200 text-blue-900">
+                  <th className="py-2.5 px-3 w-10 text-center bg-clip-padding"></th>
+                  <th className="py-2.5 px-3 bg-clip-padding">Size (OD × WT)</th>
+                  <th className="py-2.5 px-3 bg-clip-padding">Material Grade</th>
+                  <th className="py-2.5 px-3 text-right bg-blue-50/60 border-x border-blue-200 text-blue-900 bg-clip-padding">
                     Rolling Mill (MH)
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-amber-50/60 border-r border-amber-200 text-amber-900">
+                  <th className="py-2.5 px-3 text-right bg-amber-50/60 border-r border-amber-200 text-amber-900 bg-clip-padding">
                     Hollow HT (HTC)
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-indigo-50/60 border-r border-indigo-200 text-indigo-900">
+                  <th className="py-2.5 px-3 text-right bg-indigo-50/60 border-r border-indigo-200 text-indigo-900 bg-clip-padding">
                     Cold Draw Bench
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-orange-50/60 border-r border-orange-200 text-orange-900">
+                  <th className="py-2.5 px-3 text-right bg-orange-50/60 border-r border-orange-200 text-orange-900 bg-clip-padding">
                     Final Heat Treatment
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-yellow-50/60 border-r border-yellow-200 text-yellow-900">
+                  <th className="py-2.5 px-3 text-right bg-yellow-50/60 border-r border-yellow-200 text-yellow-900 bg-clip-padding">
                     Band Saw Cutting
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-purple-50/60 border-r border-purple-200 text-purple-900">
+                  <th className="py-2.5 px-3 text-right bg-purple-50/60 border-r border-purple-200 text-purple-900 bg-clip-padding">
                     VDI / QC Inspection
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-emerald-50/60 border-r border-emerald-200 text-emerald-900">
+                  <th className="py-2.5 px-3 text-right bg-emerald-50/60 border-r border-emerald-200 text-emerald-900 bg-clip-padding">
                     Finishing (FG)
                   </th>
-                  <th className="py-2.5 px-3 text-right bg-slate-200/60 font-black text-slate-900">
+                  <th className="py-2.5 px-3 text-right bg-slate-200/60 font-black text-slate-900 bg-clip-padding">
                     Total Physical WIP
                   </th>
                 </tr>
@@ -1131,14 +1197,30 @@ export default function SizeGradeWipReportClient() {
                     return (
                       <React.Fragment key={g.key}>
                         <tr
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={isExpanded}
+                          aria-label={`Toggle work order details for size ${g.od} by ${g.wt} mm grade ${g.grade}`}
                           onClick={() => toggleGroup(g.key)}
-                          className={`transition cursor-pointer hover:bg-blue-50/30 ${
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleGroup(g.key);
+                            }
+                          }}
+                          className={`transition cursor-pointer hover:bg-blue-50/30 focus:outline-none focus-visible:bg-blue-50/50 ${
                             isExpanded ? 'bg-blue-50/20' : ''
                           }`}
                         >
                           {/* Chevron */}
                           <td className="py-2.5 px-3 text-center text-slate-400">
-                            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            <ChevronRight
+                              size={14}
+                              aria-hidden="true"
+                              className={`transition-transform duration-200 ${
+                                isExpanded ? 'rotate-90 text-blue-600' : 'rotate-0 text-slate-400'
+                              }`}
+                            />
                           </td>
 
                           {/* Size (OD × WT) */}
