@@ -485,7 +485,7 @@ function SpecRow({
         </span>
       </td>
       <td className="px-4 py-3 text-center">
-        <button onClick={() => onToggleActive(rec)} title={rec.is_active ? 'Click to deactivate' : 'Click to activate'} className="cursor-pointer">
+        <button onClick={() => onToggleActive(rec)} title={rec.is_active ? 'Click to deactivate' : 'Click to activate'} aria-label={rec.is_active ? `Deactivate spec ${rec.spec_key}` : `Activate spec ${rec.spec_key}`} className="cursor-pointer">
           {rec.is_active ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-600 mx-auto" />
           ) : (
@@ -499,6 +499,7 @@ function SpecRow({
             onClick={() => onEdit(rec)}
             className="p-1.5 rounded-lg hover:bg-indigo-100 text-indigo-600 transition-colors"
             title="Edit"
+            aria-label={`Edit spec ${rec.spec_key}`}
           >
             <Edit2 className="w-3.5 h-3.5" />
           </button>
@@ -506,6 +507,7 @@ function SpecRow({
             onClick={() => onDelete(rec)}
             className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors"
             title="Delete"
+            aria-label={`Delete spec ${rec.spec_key}`}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
