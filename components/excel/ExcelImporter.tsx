@@ -584,6 +584,39 @@ export default function ExcelImporter() {
   const [knownWos, setKnownWos] = useState<Map<string, any>>(new Map());
   const [loadingWos, setLoadingWos] = useState(false);
 
+  // Stage Queue Cache for checking available WIP feeder balances across all work centers
+  const [stageQueueMap, setStageQueueMap] = useState<Map<string, any>>(new Map());
+  const [loadingQueue, setLoadingQueue] = useState(false);
+
+  const fetchStageQueue = async (tab: WorkCenterImportTab) => {
+    if (tab === 'WORK_ORDERS') {
+      setStageQueueMap(new Map());
+      return;
+    }
+    setLoadingQueue(true);
+    try {
+      const res = await fetch(`/api/production/queue?stage=${tab}&nocache=1`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        const map = new Map<string, any>();
+        json.data.forEach((row: any) => {
+          if (row.work_order_no) {
+            map.set(row.work_order_no.toLowerCase().trim(), row);
+          }
+        });
+        setStageQueueMap(map);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingQueue(false);
+    }
+  };
+
+  useEffect(() => {
+    void fetchStageQueue(activeTab);
+  }, [activeTab]);
+
   // Parse & Import state
   const [rawWorkbookSheets, setRawWorkbookSheets] = useState<{ sheetNames: string[]; sheets: Record<string, any[]> } | null>(null);
   const [selectedSheetName, setSelectedSheetName] = useState<string>('');
@@ -777,6 +810,9 @@ export default function ExcelImporter() {
         throw new Error(`Column "Work Order No" or "W.no" was not found in the sheet.\n\nDetected columns:\n${headers.join(', ')}`);
       }
 
+      const runningVdiPcs = new Map<string, number>();
+      const runningVdiMtr = new Map<string, number>();
+
       const parsed = raw.map((record) => {
         const wo = clean(record[cWO]);
         const woObj = knownWos.get(wo.toLowerCase());
@@ -825,6 +861,34 @@ export default function ExcelImporter() {
         if (inspP <= 0 && inspM <= 0) errors.push('Inspected quantity must be > 0');
         if (inspP > 0 && okP + salP + rejP !== inspP) {
           errors.push(`Pieces mismatch: ${inspP} Inspected ≠ ${okP} OK + ${salP} Salvage + ${rejP} Rej`);
+        }
+
+        // Feeder validation for VDI
+        let allowedPcs = 0;
+        let allowedMtr = 0;
+        let feederLabel = 'Band Saw / Heat Treatment Net OK';
+        if (stageQueueMap.size > 0 && wo) {
+          const qRow = stageQueueMap.get(wo.toLowerCase());
+          if (!qRow) {
+            errors.push('No available feeder WIP for VDI Inspection. Preceding stage output not available.');
+          } else {
+            allowedPcs = Number(qRow.max_allowed_pcs ?? qRow.balance_to_make_pcs ?? 0);
+            allowedMtr = Number(qRow.max_allowed_mtr ?? qRow.balance_to_make_mtr ?? 0);
+            feederLabel = qRow.feeder_source_label || feederLabel;
+
+            const cumPcs = (runningVdiPcs.get(wo.toLowerCase()) || 0) + inspP;
+            const cumMtr = (runningVdiMtr.get(wo.toLowerCase()) || 0) + inspM;
+            runningVdiPcs.set(wo.toLowerCase(), cumPcs);
+            runningVdiMtr.set(wo.toLowerCase(), cumMtr);
+
+            if (allowedPcs <= 0 && allowedMtr <= 0) {
+              errors.push(`No available feeder WIP for VDI Inspection. Please record and pass ${feederLabel} first.`);
+            } else if (inspP > 0 && allowedPcs > 0 && cumPcs > allowedPcs) {
+              errors.push(`VDI Inspected (${cumPcs} PCS cumulative) exceeds available ${feederLabel} balance (${allowedPcs} PCS).`);
+            } else if (inspP <= 0 && cumMtr > allowedMtr + 0.5) {
+              errors.push(`VDI Inspected (${cumMtr.toFixed(2)} MTR cumulative) exceeds available ${feederLabel} balance (${allowedMtr.toFixed(2)} MTR).`);
+            }
+          }
         }
 
         const row = {
@@ -917,6 +981,9 @@ export default function ExcelImporter() {
         throw new Error(`Column "Work Order No" or "W.no" was not found in the sheet.\n\nDetected columns:\n${headers.join(', ')}`);
       }
 
+      const runningStdPcs = new Map<string, number>();
+      const runningStdMtr = new Map<string, number>();
+
       const parsed = raw.map((record) => {
         const wo = clean(record[cWO]);
         const woObj = knownWos.get(wo.toLowerCase());
@@ -970,6 +1037,8 @@ export default function ExcelImporter() {
           if (htcMtr === 0 && outMtr > 0) htcMtr = Math.max(0, Number((outMtr - rejMtr).toFixed(2)));
         }
 
+        const effectiveOutPcs = outPcs || htcPcs || (avgLen > 0 && outMtr > 0 ? Math.round(outMtr / avgLen) : 0);
+
         const errors: string[] = [];
         if (!wo) errors.push('Work Order No missing');
         if (knownWos.size > 0 && !woObj) errors.push(`WO "${wo}" not found in database`);
@@ -980,6 +1049,34 @@ export default function ExcelImporter() {
         if (tab === 'ROLLING' && (outPcs > 0 || outMtr > 0 || htcPcs > 0 || htcMtr > 0)) {
           if (htcPcs <= 0 && htcMtr <= 0) {
             errors.push('Rolling requires HTC OK Pcs or Mtr > 0');
+          }
+        }
+
+        // Feeder validation across all work centers
+        let allowedPcs = 0;
+        let allowedMtr = 0;
+        let feederLabel = 'Preceding Stage';
+        if (stageQueueMap.size > 0 && wo) {
+          const qRow = stageQueueMap.get(wo.toLowerCase());
+          if (!qRow) {
+            errors.push(`No available feeder WIP for ${currentTabConfig.shortLabel}. Preceding stage output not available.`);
+          } else {
+            allowedPcs = Number(qRow.max_allowed_pcs ?? qRow.balance_to_make_pcs ?? 0);
+            allowedMtr = Number(qRow.max_allowed_mtr ?? qRow.balance_to_make_mtr ?? 0);
+            feederLabel = qRow.feeder_source_label || feederLabel;
+
+            const cumPcs = (runningStdPcs.get(wo.toLowerCase()) || 0) + effectiveOutPcs;
+            const cumMtr = (runningStdMtr.get(wo.toLowerCase()) || 0) + outMtr;
+            runningStdPcs.set(wo.toLowerCase(), cumPcs);
+            runningStdMtr.set(wo.toLowerCase(), cumMtr);
+
+            if (allowedPcs <= 0 && allowedMtr <= 0) {
+              errors.push(`No available feeder WIP for ${currentTabConfig.shortLabel}. Please record and pass ${feederLabel} first.`);
+            } else if (effectiveOutPcs > 0 && allowedPcs > 0 && cumPcs > allowedPcs) {
+              errors.push(`${currentTabConfig.shortLabel} (${cumPcs} PCS cumulative) exceeds available ${feederLabel} balance (${allowedPcs} PCS).`);
+            } else if (effectiveOutPcs <= 0 && cumMtr > allowedMtr + 0.5) {
+              errors.push(`${currentTabConfig.shortLabel} (${cumMtr.toFixed(2)} MTR cumulative) exceeds available ${feederLabel} balance (${allowedMtr.toFixed(2)} MTR).`);
+            }
           }
         }
 
@@ -1110,6 +1207,14 @@ export default function ExcelImporter() {
       parseRecords(records, sheetName, activeTab);
     }
   };
+
+  // Automatically re-evaluate feeder balances when queue data is fetched
+  useEffect(() => {
+    if (rawWorkbookSheets && selectedSheetName && activeTab !== 'WORK_ORDERS') {
+      const records = rawWorkbookSheets.sheets[selectedSheetName] || [];
+      parseRecords(records, selectedSheetName, activeTab);
+    }
+  }, [stageQueueMap]);
 
   // Clear Import Form
   function clearImport() {
@@ -1858,11 +1963,13 @@ export default function ExcelImporter() {
                           </>
                         )}
 
-                        <td className="py-2 px-3 max-w-[240px] truncate">
+                        <td className="py-2 px-3 max-w-[280px]">
                           {isValid ? (
                             <span className="text-emerald-700 font-medium">Ready for recording</span>
                           ) : (
-                            <span className="text-rose-700 font-medium">{r.error}</span>
+                            <span className="text-rose-700 font-medium leading-snug block" title={r.error}>
+                              {r.error}
+                            </span>
                           )}
                         </td>
                       </tr>

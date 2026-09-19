@@ -675,13 +675,16 @@ export function useQueue(stage: StageCode) {
               availMtr = effLen > 0 ? Number((availPcs * effLen).toFixed(2)) : 0;
             }
 
-            const isMhWip = s === "HOLLOW_HEAT_TREATMENT" || s === "DRAW";
+            const isMhWip = (s as string) === "ROLLING" || s === "HOLLOW_HEAT_TREATMENT" || s === "DRAW";
             const effectiveOd = isMhWip && mhOd > 0 ? mhOd : Number(r.od || 0);
             const effectiveWt = isMhWip && mhWt > 0 ? mhWt : Number(r.wl || 0);
             const availMt = Math.max(effectiveOd - effectiveWt, 0) * Math.max(effectiveWt, 0) * 0.0246615 * 0.001 * availMtr;
 
             const base: Row = {
               ...r,
+              od: effectiveOd,
+              wl: effectiveWt,
+              avg_length: isMhWip && mhAvg > 0 ? mhAvg : Number(r.avg_length || 6.0),
               mh_od: mhOd,
               mh_wt: mhWt,
               mh_l1: mhL1,

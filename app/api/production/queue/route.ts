@@ -632,14 +632,14 @@ export async function GET(req: NextRequest) {
       // - CDS route: incoming is Rolling HTC OK pieces
       // - ALLOY_CDS: incoming is Hollow HT Net Output pieces
       const drawIncomingPcs = isAlloy ? hollowHtNetPcs : rollHtcOkPcs;
-      const drawAvailPcs = isCds
+      let drawAvailPcs = isCds
         ? Math.max(0, drawIncomingPcs + drawDivInPcs - drawOutPcs - drawRejPcs - drawDivOutPcs)
         : 0;
       const effDrawLen = effMhAvg > 0 ? effMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength);
-      const drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;
-      const drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
+      let drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;
+      let drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
-      // 4. Heat Treatment Stage Metrics (adjusted for HT Diversions)
+      // 4. Heat Treatment Stage Metrics (adjusted for HT Diversions & Downstream Consumption)
       const htLogs = getStageLogs(woId, htStageId);
       const htOutPcs = sumPcs(htLogs, avgLength);
       const htRejPcs = sumRejPcs(htLogs, avgLength);
@@ -654,13 +654,6 @@ export async function GET(req: NextRequest) {
       const htDivOut = getStageDivOut(woId, "HEAT_TREATMENT");
       const htDivInPcs = avgLength > 0 ? Math.round(htDivIn / avgLength) : 0;
       const htDivOutPcs = avgLength > 0 ? Math.round(htDivOut / avgLength) : 0;
-
-      // Heat treatment incoming: strictly from Draw net output pieces
-      const htAvailPcs = isCds
-        ? Math.max(0, drawNetPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs)
-        : 0;
-      const htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
-      const htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Check QC Inspections for this WO (or related campaign)
       let woQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
@@ -699,16 +692,6 @@ export async function GET(req: NextRequest) {
       const bandSawDivInPcs = avgLength > 0 ? Math.round(bandSawDivIn / avgLength) : 0;
       const bandSawDivOutPcs = avgLength > 0 ? Math.round(bandSawDivOut / avgLength) : 0;
 
-      const bandSawIncomingPcs = !isCds
-        ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs)
-        : htNetPcs;
-
-      // Deduct whichever is greater: explicit Band Saw cuts, or downstream VDI inspected pieces
-      const bandSawPassedPcs = Math.max(bandSawOutPcs + bandSawRejPcs, qcInspectedPcs);
-      const bandSawAvailPcs = Math.max(0, bandSawIncomingPcs + bandSawDivInPcs - bandSawPassedPcs - bandSawDivOutPcs);
-      const bandSawAvailMtr = avgLength > 0 ? Number((bandSawAvailPcs * avgLength).toFixed(3)) : 0;
-      const bandSawAvailMt = mtFromMtr(bandSawAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
-
       // 5. Finishing Stage Metrics (adjusted for Finishing Diversions)
       const finLogs = getStageLogs(woId, finStageId);
       let finOutPcs = sumPcs(finLogs, avgLength);
@@ -732,6 +715,33 @@ export async function GET(req: NextRequest) {
       const finOutMtr = avgLength > 0 ? Number((finOutPcs * avgLength).toFixed(3)) : 0;
       const finRejMtr = avgLength > 0 ? Number((finRejPcs * avgLength).toFixed(3)) : 0;
       const finNetMtr = avgLength > 0 ? Number((finNetPcs * avgLength).toFixed(3)) : 0;
+
+      // Heat treatment incoming: strictly from Draw net output pieces minus downstream processed
+      const htPassedPcs = Math.max(htOutPcs + htRejPcs, bandSawOutPcs + bandSawRejPcs, qcInspectedPcs, finOutPcs + finRejPcs);
+      const htAvailPcs = isCds
+        ? Math.max(0, drawNetPcs + htDivInPcs - htPassedPcs - htDivOutPcs)
+        : 0;
+      const htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
+      const htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
+      // Apply downstream consumption to Draw availability
+      const downstreamDrawPassed = Math.max(drawOutPcs + drawRejPcs, htPassedPcs);
+      if (isCds) {
+        drawAvailPcs = Math.max(0, drawIncomingPcs + drawDivInPcs - downstreamDrawPassed - drawDivOutPcs);
+        drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;
+        drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
+      }
+
+      const bandSawIncomingPcs = !isCds
+        ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs)
+        : htNetPcs;
+
+      // Deduct whichever is greater: explicit Band Saw cuts, downstream VDI inspected pieces, or downstream Finishing
+      const bandSawPassedPcs = Math.max(bandSawOutPcs + bandSawRejPcs, qcInspectedPcs, finOutPcs + finRejPcs);
+      const bandSawAvailPcs = Math.max(0, bandSawIncomingPcs + bandSawDivInPcs - bandSawPassedPcs - bandSawDivOutPcs);
+      const bandSawAvailMtr = avgLength > 0 ? Number((bandSawAvailPcs * avgLength).toFixed(3)) : 0;
+      const bandSawAvailMt = mtFromMtr(bandSawAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
 
       // VDI Stage WIP (Waiting for QC Inspection)
       const vdiDivIn = getStageDivIn(woId, "VDI");
@@ -1027,6 +1037,9 @@ export async function GET(req: NextRequest) {
           isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)
             ? {
                 ...baseRowData,
+                od: mhOd > 0 ? mhOd : woOd,
+                wl: mhWt > 0 ? mhWt : woWt,
+                avg_length: effMhAvg > 0 ? effMhAvg : avgLength,
                 stage_code: "ROLLING",
                 balance_to_make_mtr: rollAvailMtr,
                 balance_to_make_pcs: rollAvailPcs,
@@ -1043,6 +1056,9 @@ export async function GET(req: NextRequest) {
           isAlloy && (hollowHtAvailMtr >= 1.0 || hollowHtAvailPcs >= 1)
             ? {
                 ...baseRowData,
+                od: mhOd > 0 ? mhOd : woOd,
+                wl: mhWt > 0 ? mhWt : woWt,
+                avg_length: effHhtAvg > 0 ? effHhtAvg : avgLength,
                 stage_code: "HOLLOW_HEAT_TREATMENT",
                 balance_to_make_mtr: hollowHtAvailMtr,
                 balance_to_make_pcs: hollowHtAvailPcs,
@@ -1059,6 +1075,9 @@ export async function GET(req: NextRequest) {
           isCds && (drawAvailMtr >= 1.0 || drawAvailPcs >= 1)
             ? {
                 ...baseRowData,
+                od: mhOd > 0 ? mhOd : woOd,
+                wl: mhWt > 0 ? mhWt : woWt,
+                avg_length: effDrawLen > 0 ? effDrawLen : avgLength,
                 stage_code: "DRAW",
                 balance_to_make_mtr: drawAvailMtr,
                 balance_to_make_pcs: drawAvailPcs,
@@ -1314,6 +1333,9 @@ export async function GET(req: NextRequest) {
             if (plAvailMtr >= 1.0 || plAvailPcs >= 1) {
               rollingPlanRows.push({
                 ...baseRowData,
+                od: plMhOd > 0 ? plMhOd : baseRowData.od,
+                wl: plMhWt > 0 ? plMhWt : baseRowData.wl,
+                avg_length: effPlMhAvg > 0 ? effPlMhAvg : baseRowData.avg_length,
                 stage_code: "ROLLING",
                 plan_id: pl.id,
                 plan_no: pl.plan_no,

@@ -308,6 +308,8 @@ export function useHistory(
           revision_no: plan?.revision_no,
           remarks: cleanRemarks || entry.remarks,
           mh_avg_length: mhLen > 0 ? mhLen : undefined,
+          mh_od: effOd,
+          mh_wt: effWt,
           mh_l1: plan?.mh_l1,
           mh_l2: plan?.mh_l2,
           output_pcs: outputPcs,

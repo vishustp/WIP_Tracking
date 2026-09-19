@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAuth } from '@/lib/supabase/authGuard';
 import { attachPcsToRemarks } from '@/lib/productionUtils';
+import { computeFeederBalanceForWorkOrder, FeederBalance } from '@/lib/feederValidation';
 
 export async function POST(req: NextRequest) {
   try {
@@ -78,6 +79,49 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Load data for upstream feeder balance calculations across all work centers
+    const [allLogsRes, allPlansRes, allQcRes] = await Promise.all([
+      admin
+        .from('production_logs')
+        .select('id, work_order_id, stage_id, process_date, input_qty, output_qty, rejection_qty, htc_ok, remarks, heat_lot_no')
+        .in('work_order_id', woIds),
+      admin
+        .from('rolling_plans')
+        .select('id, work_order_id, planned_qty, status, process_route_id')
+        .in('work_order_id', woIds),
+      admin
+        .from('qc_inspections')
+        .select('id, work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_rejection_pcs')
+        .in('work_order_id', woIds),
+    ]);
+
+    const stageCodeToId = new Map<string, string>();
+    stages.forEach((s) => stageCodeToId.set(s.stage_code, s.id));
+
+    // Initialize running feeder balance per work order
+    const feederBalanceMap = new Map<string, FeederBalance>();
+    (workOrders || []).forEach((wo) => {
+      const routeId = planRouteMap.get(wo.id) || defaultRouteId;
+      const routeObj = routes?.find((r) => r.id === routeId);
+      const routeCode = routeObj?.route_code || 'CDS';
+
+      const bal = computeFeederBalanceForWorkOrder({
+        workOrder: {
+          id: wo.id,
+          work_order_no: wo.work_order_no,
+          l1: wo.l1,
+          l2: wo.l2,
+        },
+        targetStage: work_center,
+        routeCode,
+        logs: allLogsRes.data || [],
+        stageCodeToId,
+        rollingPlans: allPlansRes.data || [],
+        qcInspections: allQcRes.data || [],
+      });
+      feederBalanceMap.set(wo.id, { ...bal });
+    });
+
     const errors: string[] = [];
     let importedCount = 0;
     let skippedDuplicatesCount = 0;
@@ -117,6 +161,25 @@ export async function POST(req: NextRequest) {
         const inspMt = Number(row.inspected_mt || 0);
         const okMtr = Number(row.vdi_ok_mtr || 0);
         const okMt = Number(row.vdi_ok_mt || 0);
+
+        // Feeder WIP capping check for VDI
+        const feederBal = feederBalanceMap.get(wo.id);
+        if (feederBal) {
+          if (feederBal.availPcs <= 0 && feederBal.availMtr <= 0) {
+            errors.push(`Row ${index + 1} (${woNo}): No available feeder WIP for VDI Inspection. Please record and pass ${feederBal.feederLabel} first.`);
+            continue;
+          }
+          if (inspPcs > 0 && feederBal.availPcs > 0 && inspPcs > feederBal.availPcs) {
+            errors.push(`Row ${index + 1} (${woNo}): VDI Inspected (${inspPcs} PCS) exceeds available ${feederBal.feederLabel} feeder balance (${feederBal.availPcs} PCS).`);
+            continue;
+          }
+          if (inspPcs <= 0 && inspMtr > feederBal.availMtr + 0.5) {
+            errors.push(`Row ${index + 1} (${woNo}): VDI Inspected (${inspMtr.toFixed(2)} MTR) exceeds available ${feederBal.feederLabel} feeder balance (${feederBal.availMtr.toFixed(2)} MTR).`);
+            continue;
+          }
+          feederBal.availPcs = Math.max(0, feederBal.availPcs - inspPcs);
+          feederBal.availMtr = Math.max(0, Number((feederBal.availMtr - inspMtr).toFixed(2)));
+        }
 
         const salPcs = Number(row.vdi_salvage_pcs || 0);
         const salMtr = Number(row.vdi_salvage_mtr || 0);
@@ -266,6 +329,29 @@ export async function POST(req: NextRequest) {
         const rowL2 = row.l2 ?? row.input_l2 ?? null;
 
         const effectiveOutPcs = outPcs || htcOkPcs || null;
+
+        // Feeder WIP capping check across all manufacturing stages
+        const feederBal = feederBalanceMap.get(wo.id);
+        if (feederBal) {
+          const avgLen = rowL1 && rowL2 ? (rowL1 + rowL2) / 2 : rowL1 || rowL2 || (wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : 6.0);
+          const reqPcs = effectiveOutPcs || (avgLen > 0 && outMtr > 0 ? Math.round(outMtr / avgLen) : 0);
+          const reqMtr = outMtr;
+
+          if (feederBal.availPcs <= 0 && feederBal.availMtr <= 0) {
+            errors.push(`Row ${index + 1} (${woNo}): No available feeder WIP for ${stageObj?.stage_name || work_center}. Please record and pass ${feederBal.feederLabel} first.`);
+            continue;
+          }
+          if (reqPcs > 0 && feederBal.availPcs > 0 && reqPcs > feederBal.availPcs) {
+            errors.push(`Row ${index + 1} (${woNo}): ${stageObj?.stage_name || work_center} (${reqPcs} PCS) exceeds available ${feederBal.feederLabel} feeder balance (${feederBal.availPcs} PCS).`);
+            continue;
+          }
+          if (reqPcs <= 0 && reqMtr > feederBal.availMtr + 0.5) {
+            errors.push(`Row ${index + 1} (${woNo}): ${stageObj?.stage_name || work_center} (${reqMtr.toFixed(2)} MTR) exceeds available ${feederBal.feederLabel} feeder balance (${feederBal.availMtr.toFixed(2)} MTR).`);
+            continue;
+          }
+          feederBal.availPcs = Math.max(0, feederBal.availPcs - reqPcs);
+          feederBal.availMtr = Math.max(0, Number((feederBal.availMtr - reqMtr).toFixed(2)));
+        }
 
         const opPrefix = row.operator_name ? `[Op: ${String(row.operator_name).trim()}]` : '';
         const userRemarks = row.remarks ? String(row.remarks).trim() : '';
