@@ -1143,20 +1143,63 @@ export async function GET(req: NextRequest) {
           (a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
         );
 
+        // Pre-calculate target planned quantity for each plan
+        const planTargetMtr = new Map<string, number>();
+        const planAccumulatedMtr = new Map<string, number>();
+        sortedPlans.forEach((pl) => {
+          let tMtr = Number(pl.planned_qty || 0);
+          try {
+            const st = typeof pl.status === "string" ? JSON.parse(pl.status) : pl.status || {};
+            tMtr = Number(st.master_planned_mtr || st.planned_mtr || pl.planned_qty || 0);
+          } catch {}
+          planTargetMtr.set(pl.id, tMtr);
+          planAccumulatedMtr.set(pl.id, 0);
+        });
+
+        // First, assign logs that have an explicit rolling_plan_id
+        const unassignedLogs: any[] = [];
         for (const log of rollLogs) {
           if (log.rolling_plan_id && planLogMap.has(log.rolling_plan_id)) {
             planLogMap.get(log.rolling_plan_id)!.push(log);
-          } else if (sortedPlans.length === 1) {
-            planLogMap.get(sortedPlans[0].id)!.push(log);
-          } else if (sortedPlans.length > 1) {
-            const logTime = new Date(log.created_at || log.process_date || 0).getTime();
-            let matchedPlan = sortedPlans[0];
-            for (const pl of sortedPlans) {
-              if (new Date(pl.created_at || 0).getTime() <= logTime) {
-                matchedPlan = pl;
+            const mtr = Number(log.output_qty || 0) + Number(log.rejection_qty || 0);
+            planAccumulatedMtr.set(log.rolling_plan_id, (planAccumulatedMtr.get(log.rolling_plan_id) || 0) + mtr);
+          } else {
+            unassignedLogs.push(log);
+          }
+        }
+
+        // Second, assign unassigned logs FIFO across sortedPlans
+        if (unassignedLogs.length > 0) {
+          if (sortedPlans.length === 1) {
+            planLogMap.get(sortedPlans[0].id)!.push(...unassignedLogs);
+          } else {
+            // Sort unassigned logs chronologically by process_date or created_at
+            unassignedLogs.sort((a, b) => {
+              const ta = new Date(a.process_date || a.created_at || 0).getTime();
+              const tb = new Date(b.process_date || b.created_at || 0).getTime();
+              return ta - tb;
+            });
+
+            let currentPlanIdx = 0;
+            for (const log of unassignedLogs) {
+              const logMtr = Number(log.output_qty || 0) + Number(log.rejection_qty || 0);
+
+              // Advance to next plan if current plan is already filled to its target planned quantity
+              while (currentPlanIdx < sortedPlans.length - 1) {
+                const currPlanId = sortedPlans[currentPlanIdx].id;
+                const target = planTargetMtr.get(currPlanId) || 0;
+                const accumulated = planAccumulatedMtr.get(currPlanId) || 0;
+                if (target > 0 && accumulated >= target) {
+                  currentPlanIdx++;
+                } else {
+                  break;
+                }
               }
+
+              const matchedPlan = sortedPlans[currentPlanIdx];
+              planLogMap.get(matchedPlan.id)!.push(log);
+              planAccumulatedMtr.set(matchedPlan.id, (planAccumulatedMtr.get(matchedPlan.id) || 0) + logMtr);
             }
-            planLogMap.get(matchedPlan.id)!.push(log);
           }
         }
 
