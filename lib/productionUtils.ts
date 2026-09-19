@@ -257,13 +257,14 @@ export function extractPcsFromRemarks(remarks: string | null | undefined): {
   cleanRemarks: string;
 } {
   if (!remarks) return { pcs: null, rejPcs: null, cleanRemarks: "" };
-  const pcsMatch = remarks.match(/\[PCS:(\d+)\]/i);
-  const rejMatch = remarks.match(/\[REJ_PCS:(\d+)\]/i);
+  const pcsMatch = remarks.match(/\[PCS:(\d+)/i);
+  const rejMatch = remarks.match(/(?:\[REJ_PCS:|\[REJ:|[, ]REJ:)(\d+)/i);
   const pcs = pcsMatch ? parseInt(pcsMatch[1], 10) : null;
   const rejPcs = rejMatch ? parseInt(rejMatch[1], 10) : null;
   const cleanRemarks = remarks
-    .replace(/\[PCS:\d+\]/gi, "")
-    .replace(/\[REJ_PCS:\d+\]/gi, "")
+    .replace(/\[PCS:[^\]]+\]/gi, "")
+    .replace(/\[REJ_PCS:[^\]]+\]/gi, "")
+    .replace(/\[REJ:[^\]]+\]/gi, "")
     .replace(/\[L1:[^\]]+\]/gi, "")
     .replace(/\[L2:[^\]]+\]/gi, "")
     .replace(/\[AVG:[^\]]+\]/gi, "")

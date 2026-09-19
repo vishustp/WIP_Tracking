@@ -68,7 +68,8 @@ export async function GET(req: NextRequest) {
         },
         {
           headers: {
-            "Cache-Control": "private, max-age=3, stale-while-revalidate=5",
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
           },
         }
       );
@@ -82,8 +83,27 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Helper to fetch all production logs overcoming 1,000-row default PostgREST limit
+    async function fetchAllLogs(client: any) {
+      const PAGE_SIZE = 1000;
+      const all: any[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await client
+          .from("production_logs")
+          .select("id, work_order_id, rolling_plan_id, stage_id, process_route_id, process_date, input_qty, output_qty, rejection_qty, htc_ok, heat_lot_no, remarks, created_at")
+          .order("created_at", { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+        if (error || !data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+      return all;
+    }
+
     // Fetch plans, stages, logs, work orders, routes, qc, diversions
-    const [plansRes, stagesRes, logsRes, woRes, routesRes, qcRes, divsRes] = await Promise.all([
+    const [plansRes, stagesRes, logs, woRes, routesRes, qcRes, divsRes] = await Promise.all([
       admin
         .from("rolling_plans")
         .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2, multiple, created_at")
@@ -91,11 +111,7 @@ export async function GET(req: NextRequest) {
         .order("created_at", { ascending: false })
         .limit(300),
       admin.from("process_stages").select("id, stage_code, stage_name"),
-      admin
-        .from("production_logs")
-        .select("id, work_order_id, rolling_plan_id, stage_id, process_route_id, process_date, input_qty, output_qty, rejection_qty, htc_ok, heat_lot_no, remarks, created_at")
-        .order("created_at", { ascending: true })
-        .limit(50000),
+      fetchAllLogs(admin),
       admin
         .from("work_orders")
         .select("id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, ordered_qty, ordered_qty_mtr, ordered_qty_pcs, ordered_qty_mt, balance_qty_mtr, balance_qty_pcs, balance_qty_mt"),
@@ -112,7 +128,6 @@ export async function GET(req: NextRequest) {
 
     const plans = plansRes.data || [];
     const stages = stagesRes.data || [];
-    const logs = logsRes.data || [];
     const workOrders = woRes.data || [];
     const routes = routesRes.data || [];
     const qcInspections = qcRes?.data || [];

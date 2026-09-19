@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { StageCode, Row, emptyRow } from "@/types";
+import { extractPcsFromRemarks } from "@/lib/productionUtils";
 
 const clientQueueCache = new Map<string, { timestamp: number; rows: Row[] }>();
 const inflightPromises = new Map<string, Promise<any>>();
-const CLIENT_CACHE_TTL_MS = 3000;
+const CLIENT_CACHE_TTL_MS = 2000;
 
 export function useQueue(stage: StageCode) {
   const [rows, setRows] = useState<Row[]>(() => {
@@ -41,10 +42,10 @@ export function useQueue(stage: StageCode) {
       let fetchPromise = inflightPromises.get(cacheKey);
 
       if (!fetchPromise) {
-        const url = `/api/production/queue?stage=${s}${forceRefresh ? '&nocache=1' : ''}`;
+        const url = `/api/production/queue?stage=${s}&_t=${Date.now()}${forceRefresh ? '&nocache=1' : ''}`;
         fetchPromise = fetch(url, {
-          cache: forceRefresh ? "no-store" : "default",
-          headers: forceRefresh ? { "Pragma": "no-cache", "Cache-Control": "no-cache" } : {},
+          cache: "no-store",
+          headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" },
         }).then(async (res) => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
@@ -83,7 +84,7 @@ export function useQueue(stage: StageCode) {
           .select("id, stage_code"),
         supabase
           .from("production_logs")
-          .select("work_order_id, stage_id, output_qty, rejection_qty, htc_ok")
+          .select("work_order_id, stage_id, output_qty, rejection_qty, htc_ok, remarks")
           .order("created_at", { ascending: false })
           .limit(50000),
         supabase
@@ -290,23 +291,21 @@ export function useQueue(stage: StageCode) {
           const effAvg = mhAvg > 0 ? mhAvg : Number(r.avg_length) || 6;
 
           const loggedOutputPcs = masterLogs.reduce(
-            (sum: number, l: any) =>
-              sum +
-              (Number(l.output_pcs || 0) > 0
-                ? Number(l.output_pcs)
-                : effAvg > 0
-                ? Math.round(Number(l.output_qty || 0) / effAvg)
-                : 0),
+            (sum: number, l: any) => {
+              if (Number(l.output_pcs || 0) > 0) return sum + Number(l.output_pcs);
+              const p = extractPcsFromRemarks(l.remarks).pcs;
+              if (p !== null && p > 0) return sum + p;
+              return sum + (effAvg > 0 ? Math.round(Number(l.output_qty || 0) / effAvg) : 0);
+            },
             0
           );
           const loggedRejPcs = masterLogs.reduce(
-            (sum: number, l: any) =>
-              sum +
-              (Number(l.rejection_pcs || 0) > 0
-                ? Number(l.rejection_pcs)
-                : effAvg > 0
-                ? Math.round(Number(l.rejection_qty || 0) / effAvg)
-                : 0),
+            (sum: number, l: any) => {
+              if (Number(l.rejection_pcs || 0) > 0) return sum + Number(l.rejection_pcs);
+              const rp = extractPcsFromRemarks(l.remarks).rejPcs;
+              if (rp !== null && rp > 0) return sum + rp;
+              return sum + (effAvg > 0 ? Math.round(Number(l.rejection_qty || 0) / effAvg) : 0);
+            },
             0
           );
           const totalLoggedPcs = loggedOutputPcs + loggedRejPcs;
