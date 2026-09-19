@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     const { data: workOrders, error: woErr } = await admin
       .from('work_orders')
-      .select('id, work_order_no, process_route_id, size_od, size_wt, l1, l2, balance_qty_mtr, balance_qty_pcs, customer_name, specification')
+      .select('id, work_order_no, size_od, size_wt, l1, l2, balance_qty_mtr, balance_qty_pcs, customer_name, specification')
       .in('work_order_no', workOrderNos);
 
     if (woErr) {
@@ -53,13 +53,30 @@ export async function POST(req: NextRequest) {
     }
 
     const woMap = new Map<string, any>();
+    const woIds: string[] = [];
     (workOrders || []).forEach((wo) => {
       woMap.set(wo.work_order_no.toLowerCase().trim(), wo);
+      woIds.push(wo.id);
     });
 
     // Default route in case route_id is missing
     const { data: routes } = await admin.from('process_routes').select('id, route_code');
     const defaultRouteId = routes?.find((r) => r.route_code === 'CDS')?.id || routes?.[0]?.id;
+
+    // Resolve process_route_id from rolling_plans if available
+    const planRouteMap = new Map<string, string>();
+    if (woIds.length > 0) {
+      const { data: plans } = await admin
+        .from('rolling_plans')
+        .select('work_order_id, process_route_id')
+        .in('work_order_id', woIds);
+
+      (plans || []).forEach((p) => {
+        if (p.work_order_id && p.process_route_id) {
+          planRouteMap.set(p.work_order_id, p.process_route_id);
+        }
+      });
+    }
 
     const errors: string[] = [];
     let importedCount = 0;
@@ -140,7 +157,7 @@ export async function POST(req: NextRequest) {
           await admin.from('production_logs').insert({
             work_order_id: wo.id,
             stage_id: stageId,
-            process_route_id: wo.process_route_id || defaultRouteId,
+            process_route_id: planRouteMap.get(wo.id) || defaultRouteId,
             process_date: dateStr,
             input_qty: inspMtr,
             output_qty: okMtr,
@@ -197,7 +214,7 @@ export async function POST(req: NextRequest) {
         const logPayload = {
           work_order_id: wo.id,
           stage_id: stageId,
-          process_route_id: wo.process_route_id || defaultRouteId,
+          process_route_id: planRouteMap.get(wo.id) || defaultRouteId,
           process_date: dateStr,
           input_qty: inMtr,
           output_qty: outMtr,
