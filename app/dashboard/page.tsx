@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import DashboardClient from '@/components/dashboard/DashboardClient';
 import { mtFromMtr } from '@/lib/productionUtils';
+import { reconcileWorkOrderWip } from '@/lib/wipReconciliation';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,111 +83,55 @@ export default async function Dashboard() {
     for (const [woId, rows] of wipByWo.entries()) {
       const wo = woMap.get(woId);
       const planMh = mhMap.get(woId);
-      const woOd = Number(wo?.size_od || rows[0]?.od || rows[0]?.size_od || 0);
-      const woWt = Number(wo?.size_wt || rows[0]?.wt || rows[0]?.size_wt || 0);
-      const mhOd = planMh?.mh_od || woOd;
-      const mhWt = planMh?.mh_wt || woWt;
-      const woLen = Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : wo?.l1 || wo?.l2 || 6.0);
-      const mhLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || woLen);
+      const routeCode = rows[0]?.route_code || 'CDS';
 
-      // Sort stages in strict routing order
-      const sorted = [...rows].sort((a, b) => getStageSeq(a.stage_code) - getStageSeq(b.stage_code));
-
-      // Determine charged steel
-      const rollRow = sorted.find((r) => (r.stage_code || '').toUpperCase() === 'ROLLING');
-      let chargedMt = 0;
-      if (rollRow && Number(rollRow.gross_output_mtr || 0) > 0) {
-        chargedMt = mtFromMtr(Number(rollRow.gross_output_mtr), mhOd, mhWt);
-      } else if (planMh?.planned_qty) {
-        chargedMt = mtFromMtr(Number(planMh.planned_qty), mhOd, mhWt);
-      } else if (wo?.ordered_qty_mt) {
-        chargedMt = Number(wo.ordered_qty_mt);
-      }
-
-      // Finished MT and total scrap MT
-      const finRow = sorted.find((r) => (r.stage_code || '').toUpperCase() === 'FINISHING');
-      const finishedMt = finRow ? mtFromMtr(Number(finRow.net_output_mtr || 0), woOd, woWt) : 0;
-      const totalScrapMt = sorted.reduce((sum, r) => {
-        const isMh = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT';
-        return sum + mtFromMtr(Number(r.rejection_mtr || 0), isMh ? mhOd : woOd, isMh ? mhWt : woWt);
-      }, 0);
-
-      const maxPhysicalWipMt = Math.max(0, chargedMt - totalScrapMt - finishedMt);
-
-      // Universal Downstream Deduction across stages
-      const woReconciledRows: any[] = [];
-
-      for (let i = 0; i < sorted.length; i++) {
-        const cur = sorted[i];
-        const sc = (cur.stage_code || '').toUpperCase();
-        const isMh = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT';
-        const curOd = isMh ? mhOd : woOd;
-        const curWt = isMh ? mhWt : woWt;
-        const curLen = isMh ? mhLen : woLen;
-
-        // Calculate highest downstream quantity passed past this stage
-        let maxDownstreamMtr = 0;
-        let maxDownstreamPcs = 0;
-        let maxDownstreamMt = 0;
-
-        for (let j = i + 1; j < sorted.length; j++) {
-          const down = sorted[j];
-          const downGrossMtr = Number(down.gross_output_mtr || 0);
-          const downGrossPcs = Number(down.gross_output_pcs || 0);
-          const downIsMh = down.stage_code === 'ROLLING' || down.stage_code === 'HOLLOW_HEAT_TREATMENT';
-          const downMt = mtFromMtr(downGrossMtr, downIsMh ? mhOd : woOd, downIsMh ? mhWt : woWt);
-          if (downGrossMtr > maxDownstreamMtr) maxDownstreamMtr = downGrossMtr;
-          if (downGrossPcs > maxDownstreamPcs) maxDownstreamPcs = downGrossPcs;
-          if (downMt > maxDownstreamMt) maxDownstreamMt = downMt;
+      const summary = reconcileWorkOrderWip(
+        rows.map((r: any) => ({
+          stage_code: (r.stage_code || '').toUpperCase(),
+          sequence_no: Number(r.sequence_no || 0),
+          gross_output_mtr: Number(r.production_qty || r.gross_output_mtr || 0),
+          gross_output_pcs: Number(r.gross_output_pcs || 0),
+          rejection_mtr: Number(r.rejection_mtr || 0),
+          rejection_pcs: Number(r.rejection_pcs || 0),
+          net_output_mtr: Number(r.net_output_mtr || 0),
+          net_output_pcs: Number(r.net_output_pcs || 0),
+          incoming_mtr: Number(r.incoming_qty || 0),
+          od: Number(r.od || r.size_od || wo?.size_od || 0),
+          wt: Number(r.wt || r.size_wt || wo?.size_wt || 0),
+          avg_length: Number(r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0),
+          mh_od: planMh?.mh_od || undefined,
+          mh_wt: planMh?.mh_wt || undefined,
+          mh_avg_length: planMh?.mh_avg_length || undefined,
+        })),
+        {
+          route_code: routeCode,
+          ordered_qty_mt: Number(wo?.ordered_qty_mt || 0),
+          rolling_plan_qty_mtr: Number(planMh?.planned_qty || 0),
+          mh_od: planMh?.mh_od || undefined,
+          mh_wt: planMh?.mh_wt || undefined,
+          mh_avg_length: planMh?.mh_avg_length || undefined,
         }
+      );
 
-        let recWipMtr = 0;
-        let recWipPcs = 0;
-
-        if (sc === 'ROLLING') {
-          const netMtr = Number(cur.net_output_mtr || cur.production_qty || 0);
-          recWipMtr = Math.max(0, netMtr - maxDownstreamMtr);
-          recWipPcs = curLen > 0 ? Math.round(recWipMtr / curLen) : 0;
-        } else {
-          const incomingMtr = Number(cur.incoming_qty || 0);
-          const curGrossMtr = Number(cur.production_qty || cur.gross_output_mtr || 0);
-          const passedMtr = Math.max(curGrossMtr, maxDownstreamMtr);
-          recWipMtr = Math.max(0, incomingMtr - passedMtr);
-          recWipPcs = curLen > 0 ? Math.round(recWipMtr / curLen) : 0;
-        }
-
-        const recWipMt = mtFromMtr(recWipMtr, curOd, curWt);
-
-        woReconciledRows.push({
-          ...cur,
-          od: curOd,
-          wt: curWt,
-          mh_od: planMh?.mh_od || null,
-          mh_wt: planMh?.mh_wt || null,
-          mh_l1: planMh?.mh_l1 || null,
-          mh_l2: planMh?.mh_l2 || null,
-          mh_avg_length: planMh?.mh_avg_length || null,
-          current_wip: recWipMtr,
-          current_wip_pcs: recWipPcs,
-          current_wip_mt: recWipMt,
-          reconciled_wip_mt: recWipMt,
-        });
-      }
-
-      // Apply mass conservation capping
-      const woTotalRecMt = woReconciledRows.reduce((s, r) => s + r.reconciled_wip_mt, 0);
-      if (chargedMt > 0 && woTotalRecMt > maxPhysicalWipMt && woTotalRecMt > 0) {
-        const factor = maxPhysicalWipMt / woTotalRecMt;
-        for (const r of woReconciledRows) {
-          r.current_wip_mt = Number((r.reconciled_wip_mt * factor).toFixed(3));
-          r.current_wip = Number((r.current_wip * factor).toFixed(2));
-          r.current_wip_pcs = Math.round(r.current_wip_pcs * factor);
-        }
-      }
-
-      for (const r of woReconciledRows) {
-        if (r.current_wip > 0.1 || r.current_wip_pcs > 0) {
-          calculatedWip.push(r);
+      // Add only post-rolling stages with active WIP to the dashboard
+      for (const recStage of summary.stages) {
+        if (recStage.is_feeder_stage) continue; // Rolling is feeder, excluded from Plant WIP
+        if (recStage.capped_wip_pcs > 0 || recStage.capped_wip_mtr > 0) {
+          const originalRow = rows.find((r) => (r.stage_code || '').toUpperCase() === recStage.stage_code) || rows[0];
+          calculatedWip.push({
+            ...originalRow,
+            stage_code: recStage.stage_code,
+            od: recStage.od,
+            wt: recStage.wt,
+            mh_od: planMh?.mh_od || null,
+            mh_wt: planMh?.mh_wt || null,
+            mh_l1: planMh?.mh_l1 || null,
+            mh_l2: planMh?.mh_l2 || null,
+            mh_avg_length: planMh?.mh_avg_length || null,
+            current_wip: recStage.capped_wip_mtr,
+            current_wip_pcs: recStage.capped_wip_pcs,
+            current_wip_mt: recStage.capped_wip_mt,
+          });
         }
       }
     }

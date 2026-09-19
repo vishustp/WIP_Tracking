@@ -1,99 +1,114 @@
 import { describe, it, expect } from 'vitest';
 import { reconcileWorkOrderWip, StageWipInput } from '../lib/wipReconciliation';
 
-describe('WIP Reconciliation & Mass Conservation', () => {
-  it('should automatically deduct downstream finishing from Band Saw and Heat Treatment (WO 6257 scenario)', () => {
-    // WO 6257:
-    // DRAW: 134,657 m out
-    // HT: 90,343 m out (44,314 m left in HT)
-    // BAND SAW: 0 m logged (before: showed full 90,343 m in Band Saw)
-    // FINISHING: 47,915 m out
-    const stages: StageWipInput[] = [
-      {
-        stage_code: 'DRAW',
-        sequence_no: 1,
-        gross_output_mtr: 134657,
-        gross_output_pcs: 22442,
-        rejection_mtr: 0,
-        rejection_pcs: 0,
-        net_output_mtr: 134657,
-        net_output_pcs: 22442,
-        od: 38.1,
-        wt: 3.4,
-        avg_length: 6.0,
-      },
-      {
-        stage_code: 'HEAT_TREATMENT',
-        sequence_no: 2,
-        gross_output_mtr: 90343,
-        gross_output_pcs: 15057,
-        rejection_mtr: 0,
-        rejection_pcs: 0,
-        net_output_mtr: 90343,
-        net_output_pcs: 15057,
-        od: 38.1,
-        wt: 3.4,
-        avg_length: 6.0,
-      },
-      {
-        stage_code: 'BAND_SAW',
-        sequence_no: 3,
-        gross_output_mtr: 0,
-        gross_output_pcs: 0,
-        rejection_mtr: 0,
-        rejection_pcs: 0,
-        net_output_mtr: 0,
-        net_output_pcs: 0,
-        od: 38.1,
-        wt: 3.4,
-        avg_length: 6.0,
-      },
-      {
-        stage_code: 'FINISHING',
-        sequence_no: 4,
-        gross_output_mtr: 47915,
-        gross_output_pcs: 7985,
-        rejection_mtr: 0,
-        rejection_pcs: 0,
-        net_output_mtr: 47915,
-        net_output_pcs: 7985,
-        od: 38.1,
-        wt: 3.4,
-        avg_length: 6.0,
-      },
-    ];
-
-    const result = reconcileWorkOrderWip(stages, {
-      charged_billet_mt: 322.08,
-      ordered_qty_mt: 300.1,
-    });
-
-    // Verify:
-    // 1. Total finished = 47,915 m (~139.4 MT)
-    expect(result.total_finished_mt).toBeGreaterThan(130);
-
-    // 2. Band Saw WIP must NOT be 90,343 m anymore!
-    // Since 47,915 m already passed finishing, remaining in Band Saw queue must be at most 90,343 - 47,915 = 42,428 m
-    const bandSawStage = result.stages.find((s) => s.stage_code === 'BAND_SAW');
-    expect(bandSawStage).toBeDefined();
-    expect(bandSawStage!.reconciled_wip_mtr).toBeLessThanOrEqual(42428);
-
-    // 3. Strict mass capping: Total active WIP MT cannot exceed (Charged MT - Finished MT)
-    expect(result.reconciled_total_wip_mt).toBeLessThanOrEqual(result.max_physical_wip_mt);
-  });
-
-  it('should deduct downstream finishing from Hot Rolling so rolling is not double counted (WO 6279 scenario)', () => {
-    // WO 6279: Rolled 3,387 m, Finished 942 m, Band Saw 0
+describe('PCS-First Route-Aware WIP Reconciliation', () => {
+  it('excludes Rolling from Plant WIP and calculates Standard CDS WIP strictly in PCS', () => {
+    // 100 Mother Hollow pieces rolled (6.0m length)
+    // 40 pieces drawn on Draw Bench (12.0m length)
+    // 30 pieces heat treated at Final HT (12.0m length)
+    // 0 pieces cut at Band Saw yet
     const stages: StageWipInput[] = [
       {
         stage_code: 'ROLLING',
         sequence_no: 1,
-        gross_output_mtr: 3387,
-        gross_output_pcs: 564,
-        rejection_mtr: 128,
-        rejection_pcs: 21,
-        net_output_mtr: 3259,
-        net_output_pcs: 543,
+        gross_output_mtr: 600,
+        gross_output_pcs: 100,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 600,
+        net_output_pcs: 100,
+        od: 60.3,
+        wt: 5.5,
+        avg_length: 6.0,
+      },
+      {
+        stage_code: 'DRAW',
+        sequence_no: 2,
+        gross_output_mtr: 480,
+        gross_output_pcs: 40,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 480,
+        net_output_pcs: 40,
+        od: 38.1,
+        wt: 3.2,
+        avg_length: 6.0,
+      },
+      {
+        stage_code: 'HEAT_TREATMENT',
+        sequence_no: 3,
+        gross_output_mtr: 360,
+        gross_output_pcs: 30,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 360,
+        net_output_pcs: 30,
+        od: 38.1,
+        wt: 3.2,
+        avg_length: 12.0,
+      },
+      {
+        stage_code: 'BAND_SAW',
+        sequence_no: 4,
+        gross_output_mtr: 0,
+        gross_output_pcs: 0,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 0,
+        net_output_pcs: 0,
+        od: 38.1,
+        wt: 3.2,
+        avg_length: 12.0,
+      },
+    ];
+
+    const result = reconcileWorkOrderWip(stages, {
+      route_code: 'CDS',
+      mh_od: 60.3,
+      mh_wt: 5.5,
+      mh_avg_length: 6.0,
+      final_avg_length: 12.0,
+    });
+
+    // 1. Rolling must be marked as feeder stage with 0 Plant WIP
+    const rollStage = result.stages.find((s) => s.stage_code === 'ROLLING');
+    expect(rollStage).toBeDefined();
+    expect(rollStage!.is_feeder_stage).toBe(true);
+    expect(rollStage!.reconciled_wip_pcs).toBe(0);
+
+    // 2. Draw Bench: 100 rolled - 40 drawn = 60 Mother Hollow pieces waiting
+    const drawStage = result.stages.find((s) => s.stage_code === 'DRAW');
+    expect(drawStage!.reconciled_wip_pcs).toBe(60);
+    expect(drawStage!.reconciled_wip_mtr).toBe(360); // 60 pcs * 6m
+
+    // 3. Final Heat Treatment: 40 drawn - 30 heat treated = 10 tubes waiting
+    const htStage = result.stages.find((s) => s.stage_code === 'HEAT_TREATMENT');
+    expect(htStage!.reconciled_wip_pcs).toBe(10);
+    expect(htStage!.reconciled_wip_mtr).toBe(120); // 10 pcs * 12m
+
+    // 4. Band Saw: 30 heat treated - 0 cut = 30 mother tubes waiting
+    const bsStage = result.stages.find((s) => s.stage_code === 'BAND_SAW');
+    expect(bsStage!.reconciled_wip_pcs).toBe(30);
+    expect(bsStage!.reconciled_wip_mtr).toBe(360); // 30 pcs * 12m
+
+    // 5. Total Plant WIP = 60 + 10 + 30 = 100 pieces!
+    expect(result.plant_total_wip_pcs).toBe(100);
+  });
+
+  it('calculates Standard HFS WIP starting directly at Band Saw', () => {
+    // 50 pieces rolled (6.0m length)
+    // HFS route: goes straight from Rolling to Band Saw
+    // 20 pieces cut at Band Saw
+    const stages: StageWipInput[] = [
+      {
+        stage_code: 'ROLLING',
+        sequence_no: 1,
+        gross_output_mtr: 300,
+        gross_output_pcs: 50,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 300,
+        net_output_pcs: 50,
         od: 88.9,
         wt: 11.13,
         avg_length: 6.0,
@@ -101,82 +116,95 @@ describe('WIP Reconciliation & Mass Conservation', () => {
       {
         stage_code: 'BAND_SAW',
         sequence_no: 2,
+        gross_output_mtr: 120,
+        gross_output_pcs: 20,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 120,
+        net_output_pcs: 20,
+        od: 88.9,
+        wt: 11.13,
+        avg_length: 6.0,
+      },
+    ];
+
+    const result = reconcileWorkOrderWip(stages, {
+      route_code: 'HFS',
+      final_avg_length: 6.0,
+    });
+
+    // Rolling is excluded from Plant WIP
+    const rollStage = result.stages.find((s) => s.stage_code === 'ROLLING');
+    expect(rollStage!.is_feeder_stage).toBe(true);
+
+    // Band Saw: 50 incoming from Rolling - 20 cut = 30 pieces waiting
+    const bsStage = result.stages.find((s) => s.stage_code === 'BAND_SAW');
+    expect(bsStage!.reconciled_wip_pcs).toBe(30);
+    expect(bsStage!.reconciled_wip_mtr).toBe(180); // 30 pcs * 6m
+
+    expect(result.plant_total_wip_pcs).toBe(30);
+  });
+
+  it('calculates Option B HFS WIP starting at Heat Treatment', () => {
+    // Option B HFS: Rolling -> Heat Treatment -> Band Saw
+    // 80 pieces rolled
+    // 50 pieces heat-treated
+    const stages: StageWipInput[] = [
+      {
+        stage_code: 'ROLLING',
+        sequence_no: 1,
+        gross_output_mtr: 480,
+        gross_output_pcs: 80,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 480,
+        net_output_pcs: 80,
+        od: 73.0,
+        wt: 7.0,
+        avg_length: 6.0,
+      },
+      {
+        stage_code: 'HEAT_TREATMENT',
+        sequence_no: 2,
+        gross_output_mtr: 300,
+        gross_output_pcs: 50,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 300,
+        net_output_pcs: 50,
+        od: 73.0,
+        wt: 7.0,
+        avg_length: 6.0,
+      },
+      {
+        stage_code: 'BAND_SAW',
+        sequence_no: 3,
         gross_output_mtr: 0,
         gross_output_pcs: 0,
         rejection_mtr: 0,
         rejection_pcs: 0,
         net_output_mtr: 0,
         net_output_pcs: 0,
-        od: 88.9,
-        wt: 11.13,
-        avg_length: 6.0,
-      },
-      {
-        stage_code: 'FINISHING',
-        sequence_no: 3,
-        gross_output_mtr: 942,
-        gross_output_pcs: 157,
-        rejection_mtr: 0,
-        rejection_pcs: 0,
-        net_output_mtr: 942,
-        net_output_pcs: 157,
-        od: 88.9,
-        wt: 11.13,
+        od: 73.0,
+        wt: 7.0,
         avg_length: 6.0,
       },
     ];
 
     const result = reconcileWorkOrderWip(stages, {
-      charged_billet_mt: 67.57,
-      ordered_qty_mt: 40.02,
+      route_code: 'ALLOY_HFS',
+      final_avg_length: 6.0,
     });
 
-    const rollStage = result.stages.find((s) => s.stage_code === 'ROLLING');
-    // Rolling net output was 3259. Since 942 was finished downstream, rolling remaining is at most 3259 - 942 = 2317 m
-    expect(rollStage!.reconciled_wip_mtr).toBeLessThanOrEqual(2317);
+    // Heat Treatment: 80 from rolling - 50 treated = 30 pieces waiting for HT
+    const htStage = result.stages.find((s) => s.stage_code === 'HEAT_TREATMENT');
+    expect(htStage!.reconciled_wip_pcs).toBe(30);
 
-    // Total WIP MT must be <= maxPhysicalWipMt (~45 MT, NOT 158 MT!)
-    expect(result.reconciled_total_wip_mt).toBeLessThanOrEqual(50);
-  });
+    // Band Saw: 50 from HT - 0 cut = 50 pieces waiting for Band Saw
+    const bsStage = result.stages.find((s) => s.stage_code === 'BAND_SAW');
+    expect(bsStage!.reconciled_wip_pcs).toBe(50);
 
-  it('strictly caps active WIP mass by charged billet mass when theoretical WIP expands', () => {
-    // Theoretical scenario: 10 MT charged billet, but due to calculation errors stages sum to 25 MT
-    const stages: StageWipInput[] = [
-      {
-        stage_code: 'DRAW',
-        sequence_no: 1,
-        gross_output_mtr: 5000,
-        gross_output_pcs: 800,
-        rejection_mtr: 0,
-        rejection_pcs: 0,
-        net_output_mtr: 5000,
-        net_output_pcs: 800,
-        od: 60.3,
-        wt: 5.5,
-        avg_length: 6.0,
-      },
-      {
-        stage_code: 'HEAT_TREATMENT',
-        sequence_no: 2,
-        gross_output_mtr: 2000,
-        gross_output_pcs: 300,
-        rejection_mtr: 0,
-        rejection_pcs: 0,
-        net_output_mtr: 2000,
-        net_output_pcs: 300,
-        od: 60.3,
-        wt: 5.5,
-        avg_length: 6.0,
-      },
-    ];
-
-    const result = reconcileWorkOrderWip(stages, {
-      charged_billet_mt: 10.0, // Only 10 MT steel charged
-    });
-
-    // Total active WIP cannot exceed 10.0 MT!
-    expect(result.reconciled_total_wip_mt).toBeLessThanOrEqual(10.0);
-    const sumCappedMt = result.stages.reduce((s, r) => s + r.capped_wip_mt, 0);
-    expect(sumCappedMt).toBeLessThanOrEqual(10.01);
+    // Total Plant WIP = 30 + 50 = 80 pieces
+    expect(result.plant_total_wip_pcs).toBe(80);
   });
 });

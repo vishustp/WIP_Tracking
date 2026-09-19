@@ -110,8 +110,7 @@ with recursive route_base as (
   select dm.*,
     case
       when dm.stage_code <> 'FINISHING' and exists (select 1 from campaign_children cc where cc.work_order_id = dm.work_order_id) then 0
-      when dm.stage_code = 'ROLLING' then
-        greatest(dm.htc_ok_qty - dm.downstream_passed_qty, 0)
+      when dm.stage_code = 'ROLLING' then 0 -- Rolling mill is the upstream feeder; Plant WIP starts at Draw / Band Saw / HT
       else
         greatest(dm.incoming_qty + dm.diversion_in - greatest(dm.production_qty + dm.rejection_qty, dm.downstream_passed_qty) - dm.diversion_out, 0)
     end as current_wip,
@@ -173,15 +172,15 @@ from stage_calculated;
 
 grant select on public.vw_route_stage_wip to anon, authenticated, service_role;
 
--- Recreate public.vw_dashboard_kpis
+-- Recreate public.vw_dashboard_kpis (excluding Rolling from factory WIP)
 create view public.vw_dashboard_kpis as
 select
-  coalesce((select sum(current_wip) from public.vw_route_stage_wip), 0) total_wip,
-  coalesce((select sum(current_wip) from public.vw_route_stage_wip), 0) total_wip_mtr,
-  coalesce((select sum(current_wip_pcs) from public.vw_route_stage_wip), 0) total_wip_pcs,
-  coalesce((select sum(current_wip_mt) from public.vw_route_stage_wip), 0) total_wip_mt,
-  coalesce((select sum(production_qty) from public.vw_route_stage_wip), 0) total_production,
-  coalesce((select sum(rejection_qty) from public.vw_route_stage_wip), 0) total_rejection,
+  coalesce((select sum(current_wip) from public.vw_route_stage_wip where stage_code <> 'ROLLING'), 0) total_wip,
+  coalesce((select sum(current_wip) from public.vw_route_stage_wip where stage_code <> 'ROLLING'), 0) total_wip_mtr,
+  coalesce((select sum(current_wip_pcs) from public.vw_route_stage_wip where stage_code <> 'ROLLING'), 0) total_wip_pcs,
+  coalesce((select sum(current_wip_mt) from public.vw_route_stage_wip where stage_code <> 'ROLLING'), 0) total_wip_mt,
+  coalesce((select sum(production_qty) from public.vw_route_stage_wip where stage_code <> 'ROLLING'), 0) total_production,
+  coalesce((select sum(rejection_qty) from public.vw_route_stage_wip where stage_code <> 'ROLLING'), 0) total_rejection,
   (select count(*) from public.work_orders where status in ('Open', 'Pending', 'In Progress')) active_orders,
   (select count(*) from public.work_orders where target_date < current_date and status in ('Open', 'Pending', 'In Progress')) delayed_orders;
 
