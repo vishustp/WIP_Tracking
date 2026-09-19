@@ -1264,9 +1264,15 @@ export default function ExcelImporter() {
         }
 
         setImportSuccessCount(data.importedCount);
-        setMessage(
-          `✓ Success: ${data.importedCount} production entries recorded into ${currentTabConfig.label}. WIP ledgers and tracking updated.`
-        );
+        if (data.errors && data.errors.length > 0) {
+          setMessage(
+            `⚠ Recorded ${data.importedCount} of ${data.totalRows} rows. Some rows had issues (${data.errors.length}):\n${data.errors.slice(0, 3).join('; ')}`
+          );
+        } else {
+          setMessage(
+            `✓ Success: ${data.importedCount} production entries recorded into ${currentTabConfig.label}. WIP ledgers and tracking updated.`
+          );
+        }
       }
     } catch (error: any) {
       console.error('Import execution error:', error);
