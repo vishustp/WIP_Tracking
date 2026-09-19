@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
+import { reconcileWorkOrderWip } from '@/lib/wipReconciliation';
 
 type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING';
 
@@ -328,145 +329,94 @@ export default function SizeGradeWipReportClient() {
           woPieceLedger.set(qc.work_order_id, entry);
         });
 
-        const mapped = wipRes.data
-          .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
-          .map((r: any) => {
-          const routeInfo = woRouteMap.get(r.work_order_id);
-          const routeCode = r.route_code || routeInfo?.route_code || (r.route_id ? routeMap.get(r.route_id)?.route_code : '') || 'HFS';
-          const routeName = r.route_name || routeInfo?.route_name || (r.route_id ? routeMap.get(r.route_id)?.route_name : '') || routeCode;
-          const isCds = routeCode.toUpperCase().includes('CDS');
-          const stage = (r.stage_code || '').toUpperCase();
+        // Group raw WIP by work order
+        const wipByWo = new Map<string, any[]>();
+        for (const r of (wipRes.data || [])) {
+          if (!wipByWo.has(r.work_order_id)) wipByWo.set(r.work_order_id, []);
+          wipByWo.get(r.work_order_id)!.push(r);
+        }
 
-          const planMh = mhMap.get(r.work_order_id) || mhMap.get(String(r.work_order_no).trim());
-          const wo = woDetailsMap.get(r.work_order_id) || woDetailsMap.get(String(r.work_order_no).trim());
-          const mult = Number(planMh?.multiple || 1) || 1;
+        const mapped: any[] = [];
 
-          const mhOd = Number(planMh?.mh_od || wo?.size_od || r.size_od || 0);
-          const mhWt = Number(planMh?.mh_wt || wo?.size_wt || r.size_wt || 0);
-          const mhAvgLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 6.0);
+        for (const [woId, rows] of wipByWo.entries()) {
+          const wo = woDetailsMap.get(woId) || woDetailsMap.get(String(rows[0]?.work_order_no).trim());
+          const planMh = mhMap.get(woId) || mhMap.get(String(rows[0]?.work_order_no).trim());
+          const routeInfo = woRouteMap.get(woId);
+          const routeCode = (rows[0]?.route_code || routeInfo?.route_code || (rows[0]?.route_id ? routeMap.get(rows[0]?.route_id)?.route_code : '') || 'HFS').toUpperCase();
+          const routeName = rows[0]?.route_name || routeInfo?.route_name || (rows[0]?.route_id ? routeMap.get(rows[0]?.route_id)?.route_name : '') || routeCode;
 
-          const orderOd = Number(wo?.size_od || r.size_od || r.od || 0);
-          const orderWt = Number(wo?.size_wt || r.size_wt || r.wt || 0);
-          const orderAvgLen = Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : (wo?.l1 || wo?.l2 || r.l1 || r.l2 || 6.0));
-
-          const ledger = woPieceLedger.get(r.work_order_id) || { rolledPcs: 0, hhtPcs: 0, drawPcs: 0, htPcs: 0, bandSawPcs: 0, vdiPcs: 0, finPcs: 0, htcOkPcs: 0 };
-
-          let calculatedPcs = 0;
-          let calculatedMtr = 0;
-          let calculatedMt = 0;
-          let activeOd = orderOd;
-          let activeWt = orderWt;
-
-          if (isCds) {
-            if (stage === 'HOLLOW_HEAT_TREATMENT') {
-              calculatedPcs = Math.max(0, ledger.rolledPcs - ledger.hhtPcs);
-              calculatedMtr = calculatedPcs * mhAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
-              activeOd = mhOd;
-              activeWt = mhWt;
-            } else if (stage === 'DRAW') {
-              const incoming = ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs;
-              calculatedPcs = Math.max(0, incoming - ledger.drawPcs);
-              calculatedMtr = calculatedPcs * mhAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
-              activeOd = mhOd;
-              activeWt = mhWt;
-            } else if (stage === 'HEAT_TREATMENT') {
-              calculatedPcs = Math.max(0, ledger.drawPcs - ledger.htPcs);
-              calculatedMtr = calculatedPcs * orderAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
-              activeOd = orderOd;
-              activeWt = orderWt;
-            } else if (stage === 'BAND_SAW') {
-              // Direct 1:1 incoming mother/drawn pipes to cut at band saw
-              const incomingCutPcs = ledger.htPcs > 0 ? ledger.htPcs : (ledger.drawPcs > 0 ? ledger.drawPcs : 0);
-              // Remove/deduct from cutting whichever quantity has completed VDI or finishing
-              const downstreamPassed = Math.max(ledger.bandSawPcs, ledger.vdiPcs, ledger.finPcs);
-              calculatedPcs = Math.max(0, incomingCutPcs - downstreamPassed);
-              calculatedMtr = calculatedPcs * orderAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
-              activeOd = orderOd;
-              activeWt = orderWt;
-            } else if (stage === 'VDI') {
-              // Pieces cut and waiting for inspection
-              const downstreamPassed = Math.max(ledger.bandSawPcs, ledger.vdiPcs, ledger.finPcs);
-              const cutAvailable = ledger.bandSawPcs > 0 ? ledger.bandSawPcs : (downstreamPassed > 0 ? downstreamPassed : 0);
-              calculatedPcs = Math.max(0, cutAvailable - ledger.vdiPcs);
-              calculatedMtr = calculatedPcs * orderAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
-              activeOd = orderOd;
-              activeWt = orderWt;
-            } else if (stage === 'FINISHING' || stage === 'CUTTING') {
-              const incomingFin = ledger.vdiPcs > 0 ? ledger.vdiPcs : 0;
-              calculatedPcs = Math.max(0, incomingFin - ledger.finPcs);
-              calculatedMtr = calculatedPcs * orderAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
-              activeOd = orderOd;
-              activeWt = orderWt;
-            }
-          } else {
-            // HFS Route
-            if (stage === 'HOLLOW_HEAT_TREATMENT') {
-              calculatedPcs = Math.max(0, ledger.rolledPcs - ledger.hhtPcs);
-              calculatedMtr = calculatedPcs * mhAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, mhOd, mhWt);
-              activeOd = mhOd;
-              activeWt = mhWt;
-            } else if (stage === 'BAND_SAW') {
-              const htcNos = ledger.htcOkPcs > 0 ? ledger.htcOkPcs : (ledger.hhtPcs > 0 ? ledger.hhtPcs : ledger.rolledPcs);
-              const incomingCutPcs = htcNos;
-              // Remove/deduct from cutting whichever quantity has completed VDI or finishing
-              const downstreamPassed = Math.max(ledger.bandSawPcs, ledger.vdiPcs, ledger.finPcs);
-              calculatedPcs = Math.max(0, incomingCutPcs - downstreamPassed);
-              calculatedMtr = calculatedPcs * orderAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
-              activeOd = orderOd;
-              activeWt = orderWt;
-            } else if (stage === 'VDI') {
-              const downstreamPassed = Math.max(ledger.bandSawPcs, ledger.vdiPcs, ledger.finPcs);
-              const cutAvailable = ledger.bandSawPcs > 0 ? ledger.bandSawPcs : (downstreamPassed > 0 ? downstreamPassed : 0);
-              calculatedPcs = Math.max(0, cutAvailable - ledger.vdiPcs);
-              calculatedMtr = calculatedPcs * orderAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
-              activeOd = orderOd;
-              activeWt = orderWt;
-            } else if (stage === 'FINISHING' || stage === 'CUTTING') {
-              const incomingFin = ledger.vdiPcs > 0 ? ledger.vdiPcs : 0;
-              calculatedPcs = Math.max(0, incomingFin - ledger.finPcs);
-              calculatedMtr = calculatedPcs * orderAvgLen;
-              calculatedMt = mtFromMtr(calculatedMtr, orderOd, orderWt);
-              activeOd = orderOd;
-              activeWt = orderWt;
-            }
-          }
-
-          const hasLedger = ledger.rolledPcs > 0 || ledger.drawPcs > 0 || ledger.htPcs > 0 || ledger.bandSawPcs > 0 || ledger.vdiPcs > 0 || ledger.finPcs > 0;
-          const finalPcs = hasLedger ? calculatedPcs : Number(r.current_wip_pcs || 0);
-          const finalMtr = hasLedger ? calculatedMtr : Number(r.current_wip || 0);
-          const finalMt = hasLedger ? calculatedMt : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : mtFromMtr(finalMtr, activeOd, activeWt));
-
-          const rollingDate = rollingDateMap.get(r.work_order_id) || null;
+          const rollingDate = rollingDateMap.get(woId) || null;
           const resolvedGrade =
-            gradeMap.get(r.work_order_id) ||
-            gradeMap.get(String(r.work_order_no).trim()) ||
-            r.grade ||
-            r.specification ||
+            gradeMap.get(woId) ||
+            gradeMap.get(String(rows[0]?.work_order_no).trim()) ||
+            wo?.grade ||
+            wo?.specification ||
+            rows[0]?.grade ||
+            rows[0]?.specification ||
             'Standard';
 
-          return {
-            ...r,
-            grade: resolvedGrade,
-            od: activeOd,
-            wt: activeWt,
-            route_code: routeCode,
-            route_name: routeName,
-            rolling_date: rollingDate,
-            current_wip: Number(finalMtr.toFixed(2)),
-            current_wip_pcs: Math.round(finalPcs),
-            available_mt: Number(finalMt.toFixed(2)),
-            current_wip_mt: Number(finalMt.toFixed(2)),
-          };
-        });
+          const mhOd = Number(planMh?.mh_od || wo?.size_od || rows[0]?.size_od || 0);
+          const mhWt = Number(planMh?.mh_wt || wo?.size_wt || rows[0]?.size_wt || 0);
+          const mhAvgLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 6.0);
+
+          const summary = reconcileWorkOrderWip(
+            rows.map((r: any) => ({
+              stage_code: (r.stage_code || '').toUpperCase(),
+              sequence_no: Number(r.sequence_no || 0),
+              gross_output_mtr: Number(r.production_qty || r.gross_output_mtr || 0),
+              gross_output_pcs: Number(r.gross_output_pcs || 0),
+              rejection_mtr: Number(r.rejection_mtr || 0),
+              rejection_pcs: Number(r.rejection_pcs || 0),
+              net_output_mtr: Number(r.net_output_mtr || 0),
+              net_output_pcs: Number(r.net_output_pcs || 0),
+              incoming_mtr: Number(r.incoming_qty || 0),
+              od: Number(r.od || r.size_od || wo?.size_od || 0),
+              wt: Number(r.wt || r.size_wt || wo?.size_wt || 0),
+              avg_length: Number(r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0),
+              mh_od: mhOd > 0 ? mhOd : undefined,
+              mh_wt: mhWt > 0 ? mhWt : undefined,
+              mh_avg_length: mhAvgLen > 0 ? mhAvgLen : undefined,
+            })),
+            {
+              route_code: routeCode,
+              ordered_qty_mt: Number(wo?.ordered_qty_mt || 0),
+              rolling_plan_qty_mtr: Number(planMh?.multiple ? (planMh as any).planned_qty : 0),
+              mh_od: mhOd > 0 ? mhOd : undefined,
+              mh_wt: mhWt > 0 ? mhWt : undefined,
+              mh_avg_length: mhAvgLen > 0 ? mhAvgLen : undefined,
+            }
+          );
+
+          for (const recStage of summary.stages) {
+            if (recStage.is_feeder_stage) continue; // Rolling is strictly raw supply feeder, excluded from Plant WIP
+            if (recStage.capped_wip_pcs > 0 || recStage.capped_wip_mtr > 0) {
+              const originalRow = rows.find((r) => (r.stage_code || '').toUpperCase() === recStage.stage_code) || rows[0];
+              mapped.push({
+                ...originalRow,
+                work_order_id: woId,
+                work_order_no: wo?.work_order_no || originalRow.work_order_no,
+                customer_name: wo?.customer_name || originalRow.customer_name,
+                stage_code: recStage.stage_code,
+                stage_name: recStage.stage_code === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
+                            recStage.stage_code === 'DRAW' ? 'Cold Draw Bench' :
+                            recStage.stage_code === 'HEAT_TREATMENT' ? 'Final Heat Treatment' :
+                            recStage.stage_code === 'BAND_SAW' ? 'Band Saw Cutting' :
+                            recStage.stage_code === 'VDI' ? 'VDI / QC Inspection' :
+                            recStage.stage_code === 'FINISHING' ? 'Finishing & Dispatch' : recStage.stage_code,
+                grade: resolvedGrade,
+                od: recStage.od,
+                wt: recStage.wt,
+                route_code: routeCode,
+                route_name: routeName,
+                rolling_date: rollingDate,
+                current_wip: Number(recStage.capped_wip_mtr.toFixed(2)),
+                current_wip_pcs: Math.round(recStage.capped_wip_pcs),
+                available_mt: Number(recStage.capped_wip_mt.toFixed(2)),
+                current_wip_mt: Number(recStage.capped_wip_mt.toFixed(2)),
+              });
+            }
+          }
+        }
         setRawWipRows(mapped);
       }
     } catch (err) {
@@ -777,6 +727,9 @@ export default function SizeGradeWipReportClient() {
         'Heat Treatment (m)': g.ht_mtr,
         'Heat Treatment (pcs)': g.ht_pcs,
         'Heat Treatment (MT)': g.ht_mt,
+        'Band Saw Cutting (m)': g.band_saw_mtr,
+        'Band Saw Cutting (pcs)': g.band_saw_pcs,
+        'Band Saw Cutting (MT)': g.band_saw_mt,
         'VDI / QC (m)': g.vdi_mtr,
         'VDI / QC (pcs)': g.vdi_pcs,
         'VDI / QC (MT)': g.vdi_mt,
