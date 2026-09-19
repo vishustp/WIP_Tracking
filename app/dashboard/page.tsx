@@ -97,6 +97,27 @@ export default async function Dashboard() {
       };
     });
 
+    const CANONICAL_STAGE_ORDER: Record<string, number> = {
+      ROLLING: 10,
+      HOLLOW_HEAT_TREATMENT: 20,
+      HTC: 20,
+      DRAW: 30,
+      HEAT_TREATMENT: 40,
+      HT: 40,
+      BAND_SAW: 50,
+      CUTTING: 50,
+      VDI: 60,
+      QC: 60,
+      FINISHING: 70,
+    };
+
+    calculatedWip.sort((a: any, b: any) => {
+      const seqA = CANONICAL_STAGE_ORDER[(a.stage_code || '').toUpperCase()] ?? a.sequence_no ?? 99;
+      const seqB = CANONICAL_STAGE_ORDER[(b.stage_code || '').toUpperCase()] ?? b.sequence_no ?? 99;
+      if (seqA !== seqB) return seqA - seqB;
+      return (a.work_order_no || '').localeCompare(b.work_order_no || '');
+    });
+
     const totalWipMtr = calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip) || 0), 0);
     const totalWipPcs = calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip_pcs) || 0), 0);
     const totalWipMt = calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip_mt) || 0), 0);

@@ -168,16 +168,40 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
     };
   };
 
+const CANONICAL_STAGE_ORDER: Record<string, number> = {
+  ROLLING: 10,
+  HOLLOW_HEAT_TREATMENT: 20,
+  HTC: 20,
+  DRAW: 30,
+  HEAT_TREATMENT: 40,
+  HT: 40,
+  BAND_SAW: 50,
+  CUTTING: 50,
+  VDI: 60,
+  QC: 60,
+  FINISHING: 70,
+};
+
   // Unique routes present in WIP data
   const uniqueRoutes = useMemo(() => {
     const routes = Array.from(new Set(wip.map((w) => w.route_code).filter(Boolean)));
     return ['ALL', ...routes];
   }, [wip]);
 
-  // Unique stages for WIP table filtering
+  // Unique stages for WIP table filtering (sorted in canonical manufacturing flow)
   const uniqueStages = useMemo(() => {
-    const stages = Array.from(new Set(wip.map((w) => w.stage_name).filter(Boolean)));
-    return ['ALL', ...stages];
+    const stageMap = new Map<string, number>();
+    wip.forEach((w) => {
+      if (w.stage_name && !stageMap.has(w.stage_name)) {
+        const stageCode = (w.stage_code || '').toUpperCase();
+        const seq = CANONICAL_STAGE_ORDER[stageCode] ?? w.sequence_no ?? 99;
+        stageMap.set(w.stage_name, seq);
+      }
+    });
+    const sorted = Array.from(stageMap.entries())
+      .sort((a, b) => a[1] - b[1])
+      .map(([name]) => name);
+    return ['ALL', ...sorted];
   }, [wip]);
 
   // Aggregated Stage Distribution for the Bottleneck Chart
@@ -199,11 +223,14 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
 
     filteredWip.forEach((item) => {
       const key = item.stage_name;
+      const stageCode = (item.stage_code || '').toUpperCase();
+      const canonicalSeq = CANONICAL_STAGE_ORDER[stageCode] ?? item.sequence_no ?? 99;
+
       if (!stageMap[key]) {
         stageMap[key] = {
           stage: item.stage_name,
           stageCode: item.stage_code || '',
-          sequenceNo: item.sequence_no || 99,
+          sequenceNo: selectedRoute === 'ALL' ? canonicalSeq : (item.sequence_no || canonicalSeq),
           wipMtr: 0,
           wipPcs: 0,
           wipMt: 0,
