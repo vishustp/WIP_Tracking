@@ -203,9 +203,11 @@ export async function POST(req: NextRequest) {
         const rowL1 = row.l1 ?? row.input_l1 ?? null;
         const rowL2 = row.l2 ?? row.input_l2 ?? null;
 
+        const effectiveOutPcs = outPcs || htcOkPcs || null;
+
         const finalRemarks = attachPcsToRemarks(
           row.remarks,
-          outPcs,
+          effectiveOutPcs,
           rejPcs,
           rowL1 ? String(rowL1) : undefined,
           rowL2 ? String(rowL2) : undefined
@@ -220,9 +222,8 @@ export async function POST(req: NextRequest) {
           output_qty: outMtr,
           rejection_qty: rejMtr,
           htc_ok: htcOkMtr,
-          output_pcs: outPcs,
+          output_pcs: effectiveOutPcs,
           rejection_pcs: rejPcs,
-          htc_ok_pcs: htcOkPcs,
           heat_lot_no: row.heat_lot_no || row.heat_no || row.lot_no || null,
           operator_name: row.operator_name || null,
           remarks: finalRemarks || null,

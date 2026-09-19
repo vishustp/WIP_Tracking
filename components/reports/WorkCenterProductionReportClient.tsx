@@ -177,7 +177,7 @@ export default function WorkCenterProductionReportClient() {
         const [{ data: logDetails }, { data: rpData }] = await Promise.all([
           s
             .from('production_logs')
-            .select('id, rolling_plan_id, work_order_id, input_qty, output_qty, rejection_qty, htc_ok, output_pcs, rejection_pcs, htc_ok_pcs, heat_lot_no, remarks, created_at, process_date')
+            .select('id, rolling_plan_id, work_order_id, input_qty, output_qty, rejection_qty, htc_ok, output_pcs, rejection_pcs, heat_lot_no, remarks, created_at, process_date')
             .in('id', entryIds),
           s
             .from('rolling_plans')
