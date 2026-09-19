@@ -1264,13 +1264,14 @@ export default function ExcelImporter() {
         }
 
         setImportSuccessCount(data.importedCount);
+        const dupNotice = data.skippedDuplicatesCount > 0 ? ` (${data.skippedDuplicatesCount} already exist and were skipped)` : '';
         if (data.errors && data.errors.length > 0) {
           setMessage(
-            `⚠ Recorded ${data.importedCount} of ${data.totalRows} rows. Some rows had issues (${data.errors.length}):\n${data.errors.slice(0, 3).join('; ')}`
+            `⚠ Recorded ${data.importedCount} of ${data.totalRows} rows${dupNotice}. Some rows had issues (${data.errors.length}):\n${data.errors.slice(0, 3).join('; ')}`
           );
         } else {
           setMessage(
-            `✓ Success: ${data.importedCount} production entries recorded into ${currentTabConfig.label}. WIP ledgers and tracking updated.`
+            `✓ Success: ${data.importedCount} production entries recorded into ${currentTabConfig.label}${dupNotice}. WIP ledgers and tracking updated.`
           );
         }
       }

@@ -80,9 +80,20 @@ export async function POST(req: NextRequest) {
 
     const errors: string[] = [];
     let importedCount = 0;
+    let skippedDuplicatesCount = 0;
 
     if (work_center === 'VDI') {
       // --- VDI QC Inspection Batch Import ---
+      const { data: existingQc } = await admin
+        .from('qc_inspections')
+        .select('work_order_id, inspection_date, inspected_pcs, vdi_ok_pcs')
+        .in('work_order_id', woIds);
+
+      const existingQcSet = new Set<string>();
+      (existingQc || []).forEach((q: any) => {
+        existingQcSet.add(`${q.work_order_id}_${q.inspection_date}_${Number(q.inspected_pcs || 0)}_${Number(q.vdi_ok_pcs || 0)}`);
+      });
+
       for (const [index, row] of rows.entries()) {
         const woNo = String(row.work_order_no || '').trim();
         const wo = woMap.get(woNo.toLowerCase());
@@ -93,10 +104,17 @@ export async function POST(req: NextRequest) {
 
         const dateStr = row.process_date || new Date().toISOString().slice(0, 10);
         const inspPcs = Number(row.inspected_pcs || 0);
+        const okPcs = Number(row.vdi_ok_pcs || 0);
+
+        const qcSig = `${wo.id}_${dateStr}_${inspPcs}_${okPcs}`;
+        if (existingQcSet.has(qcSig)) {
+          skippedDuplicatesCount++;
+          continue;
+        }
+        existingQcSet.add(qcSig);
+
         const inspMtr = Number(row.inspected_mtr || 0);
         const inspMt = Number(row.inspected_mt || 0);
-
-        const okPcs = Number(row.vdi_ok_pcs || 0);
         const okMtr = Number(row.vdi_ok_mtr || 0);
         const okMt = Number(row.vdi_ok_mt || 0);
 
@@ -123,9 +141,10 @@ export async function POST(req: NextRequest) {
         }
 
         // Insert into qc_inspections
-        const qcPayload = {
+        const { error: qcErr } = await admin.from('qc_inspections').insert({
           work_order_id: wo.id,
           inspection_date: dateStr,
+          inspector_name: row.operator_name || 'QC Inspector (Excel Import)',
           inspected_pcs: inspPcs,
           inspected_mtr: inspMtr,
           inspected_mt: inspMt,
@@ -139,13 +158,12 @@ export async function POST(req: NextRequest) {
           vdi_rejection_mtr: rejMtr,
           vdi_rejection_mt: rejMt,
           salvage_reasons: salvageReasons,
-          remarks: row.remarks || null,
-          created_by: row.operator_name || 'Excel Importer',
-        };
+          disposition: salPcs > 0 ? 'SALVAGE_REQUIRED' : rejPcs > 0 ? 'REJECTED' : 'ACCEPTED',
+          notes: row.remarks || null,
+        });
 
-        const { error: qcErr } = await admin.from('qc_inspections').insert(qcPayload);
         if (qcErr) {
-          errors.push(`Row ${index + 1} (${woNo}): QC Inspection failed: ${qcErr.message}`);
+          errors.push(`Row ${index + 1} (${woNo}): QC insert failed: ${qcErr.message}`);
           continue;
         }
 
@@ -186,6 +204,26 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `Stage ${work_center} is not registered in process_stages.` }, { status: 400 });
       }
 
+      // Pre-load existing logs for candidate work orders at this stage to prevent duplicate bundle imports
+      const existingLogsRes = await admin
+        .from('production_logs')
+        .select('work_order_id, stage_id, remarks, process_date, output_qty, heat_lot_no')
+        .eq('stage_id', stageId)
+        .in('work_order_id', woIds);
+
+      const existingBundleSet = new Set<string>();
+      const existingSignatureSet = new Set<string>();
+
+      (existingLogsRes.data || []).forEach((el: any) => {
+        const bMatch = (el.remarks || '').match(/(?:Bundle:\s*|\[Bundle:\s*)([^\s,\]]+)/i);
+        if (bMatch) {
+          const bCode = bMatch[1].trim().toUpperCase();
+          existingBundleSet.add(`${el.work_order_id}_${bCode}`);
+        }
+        const sig = `${el.work_order_id}_${el.process_date}_${Number(el.output_qty || 0).toFixed(2)}_${(el.heat_lot_no || '').trim().toUpperCase()}`;
+        existingSignatureSet.add(sig);
+      });
+
       for (const [index, row] of rows.entries()) {
         const woNo = String(row.work_order_no || '').trim();
         const wo = woMap.get(woNo.toLowerCase());
@@ -202,6 +240,27 @@ export async function POST(req: NextRequest) {
         const rejPcs = Number(row.rejection_pcs || 0) || null;
         const htcOkMtr = work_center === 'ROLLING' ? Number(row.htc_ok_mtr || row.htc_ok || (outMtr - rejMtr)) : 0;
         const htcOkPcs = work_center === 'ROLLING' ? Number(row.htc_ok_pcs || (outPcs ? Math.max(0, outPcs - (rejPcs || 0)) : null)) : null;
+
+        // Check if bundle already exists in DB or within this batch
+        const incomingBundle = (row.bundle_no || '').trim().toUpperCase() ||
+          ((row.remarks || '').match(/(?:Bundle:\s*|\[Bundle:\s*)([^\s,\]]+)/i)?.[1] || '').trim().toUpperCase();
+
+        if (incomingBundle) {
+          const bKey = `${wo.id}_${incomingBundle}`;
+          if (existingBundleSet.has(bKey)) {
+            skippedDuplicatesCount++;
+            continue;
+          }
+          existingBundleSet.add(bKey);
+        } else {
+          const heatStr = (row.heat_lot_no || row.heat_no || row.lot_no || '').trim().toUpperCase();
+          const sig = `${wo.id}_${dateStr}_${outMtr.toFixed(2)}_${heatStr}`;
+          if (existingSignatureSet.has(sig)) {
+            skippedDuplicatesCount++;
+            continue;
+          }
+          existingSignatureSet.add(sig);
+        }
 
         const rowL1 = row.l1 ?? row.input_l1 ?? null;
         const rowL2 = row.l2 ?? row.input_l2 ?? null;
@@ -239,6 +298,8 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
+        importedCount++;
+
         // Update Work Order lifecycle status if required
         if (work_center === 'FINISHING') {
           const { data: finishingLogs } = await admin
@@ -265,18 +326,17 @@ export async function POST(req: NextRequest) {
             .eq('id', wo.id)
             .in('status', ['Pending Plan', 'Scheduled', 'Pending']);
         }
-
-        importedCount++;
       }
     }
 
-    if (importedCount === 0 && errors.length > 0) {
+    if (importedCount === 0 && skippedDuplicatesCount === 0 && errors.length > 0) {
       return NextResponse.json({ error: errors.join('; ') }, { status: 400 });
     }
 
     return NextResponse.json({
       success: true,
       importedCount,
+      skippedDuplicatesCount,
       totalRows: rows.length,
       errors: errors.length > 0 ? errors : undefined,
     });
