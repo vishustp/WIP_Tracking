@@ -859,32 +859,59 @@ export default function ExcelImporter() {
       setMessage(`Parsed ${parsed.length} VDI QC Inspection rows from "${sourceName}". ${eligible} eligible for database recording.`);
     } else {
       // --- Standard Work Center Parser (ROLLING, HTC, DRAW, HT, BAND_SAW, FINISHING) ---
-      const cWO = findColumn(headers, ['Work Order No', 'Work Order', 'W.no', 'W.no.', 'WO', 'Order No', 'Order Number']);
-      const cDate = findColumn(headers, ['Date', 'Process Date', 'Shift Date', 'Production Date', 'Log Date']);
+      const cWO = findColumn(headers, [
+        'Work Order No', 'Work Order', 'W.no', 'W.no.', 'WO', 'Order No', 'Order Number',
+        'WORK ORDER NO.', 'WORK ORDER NO', 'W.NO.', 'W.NO', 'WO NO', 'WO NO.', 'W_NO'
+      ]);
+      const cDate = findColumn(headers, [
+        'Date', 'Rolling Date', 'ROLLING DATE', 'Grinding Date', 'GRINDING DATE',
+        'Process Date', 'Shift Date', 'Production Date', 'Log Date', 'Entry Date', 'Mfg Date', 'Inspection Date'
+      ]);
       const cShift = findColumn(headers, ['Shift', 'Shift Name', 'Shift (A/B/C)']);
-      const cHeatLot = findColumn(headers, ['Heat / Lot No', 'Heat/Lot No', 'Heat Lot No', 'Heat No', 'Lot No', 'Heat / Lot', 'Heat', 'Lot']);
+      const cHeatLot = findColumn(headers, [
+        'Heat / Lot No', 'Heat/Lot No', 'Heat Lot No', 'Heat No', 'HEAT NO.', 'HEAT NO',
+        'Lot No', 'LOT NO.', 'LOT NO', 'B.NO.', 'B.NO', 'H.NO.', 'H.NO',
+        'Heat / Lot', 'Heat', 'Lot', 'Batch No', 'HEAT'
+      ]);
       
       const cInPcs = findColumn(headers, ['Input Pcs', 'Input PCS', 'Mother Pcs', 'In Pcs']);
       const cInMtr = findColumn(headers, ['Input Mtr', 'Input MTR', 'Mother Mtr', 'In Mtr', 'Input Metre']);
       
       const cOutPcs = findColumn(headers, [
-        'Rolled Gross Pcs', 'Gross Pcs', 'Output Pcs', 'Output PCS', 'Drawn Output Pcs', 'HT Output Pcs',
-        'Cut Output Pcs', 'Finished Output Pcs', 'Produced Pcs', 'Prod Pcs', 'Pcs'
+        'Rolled Gross Pcs', 'Rolled Gross', 'ROLLED GROSS', 'Gross Pcs', 'Gross', 'Rolled Gross (Pcs)',
+        'Output Pcs', 'Output PCS', 'OUTPUT PCS', 'OK', 'OK Pcs', 'Drawn Output Pcs', 'HT Output Pcs',
+        'Cut Output Pcs', 'Finished Output Pcs', 'Produced Pcs', 'Prod Pcs', 'Pcs', 'PCS'
       ]);
       const cOutMtr = findColumn(headers, [
-        'Rolled Gross Mtr', 'Gross Mtr', 'Output Mtr', 'Output MTR', 'Drawn Output Mtr', 'HT Output Mtr',
-        'Cut Output Mtr', 'Finished Output Mtr', 'Produced Mtr', 'Prod Mtr', 'Mtr', 'Metre'
+        'Rolled Gross Mtr', 'ROLLED GROSS MTR', 'Rolled Gross (Mtr)', 'Gross Mtr',
+        'Output Mtr', 'Output MTR', 'OUTPUT MTR', 'OK Mtr', 'Drawn Output Mtr', 'HT Output Mtr',
+        'Cut Output Mtr', 'Finished Output Mtr', 'Produced Mtr', 'Prod Mtr', 'Mtr', 'MTR', 'Metre'
       ]);
 
-      const cHtcPcs = findColumn(headers, ['HTC OK Pcs', 'HTC OK PCS', 'HTC Pcs', 'Hollow OK Pcs', 'Rolling OK Pcs']);
-      const cHtcMtr = findColumn(headers, ['HTC OK Mtr', 'HTC OK MTR', 'HTC Mtr', 'Hollow OK Mtr', 'Rolling OK Mtr']);
+      const cHtcPcs = findColumn(headers, [
+        'HTC OK PCS', 'HTC OK Pcs', 'HTC OK Pcs.', 'HTC OK', 'HTC Pcs',
+        'Hollow OK Pcs', 'Rolling OK Pcs', 'HTC_OK_PCS', 'HTC_OK'
+      ]);
+      const cHtcMtr = findColumn(headers, [
+        'HTC OK MTR', 'HTC OK Mtr', 'HTC OK Mtr.', 'HTC Mtr',
+        'Hollow OK Mtr', 'Rolling OK Mtr', 'HTC_OK_MTR'
+      ]);
 
-      const cRejPcs = findColumn(headers, ['Rejection Pcs', 'Rejection PCS', 'Rej Pcs', 'Scrap Pcs', 'Loss Pcs']);
-      const cRejMtr = findColumn(headers, ['Rejection Mtr', 'Rejection MTR', 'Rej Mtr', 'Scrap Mtr', 'Loss Mtr']);
-      const cScrapMT = findColumn(headers, ['Scrap MT', 'Scrap Mt', 'Scrap Weight MT', 'Crop Scrap MT']);
-      const cBundle = findColumn(headers, ['Bundle No', 'Bundle No.', 'Bundle Number', 'Bundle #', 'Lot Bundle']);
+      const cRejPcs = findColumn(headers, [
+        'Reject', 'REJECT', 'Rejection', 'REJECTION', 'Rejection Pcs', 'Rejection PCS',
+        'Reject Pcs', 'REJECT PCS', 'Rej Pcs', 'Scrap Pcs', 'Loss Pcs', 'Rej'
+      ]);
+      const cRejMtr = findColumn(headers, [
+        'Reject Mtr', 'REJECT MTR', 'Rejection Mtr', 'Rejection MTR', 'Rej Mtr', 'Scrap Mtr', 'Loss Mtr'
+      ]);
+      const cScrapMT = findColumn(headers, [
+        'TOTAL MT', 'Total MT', 'Total Mt', 'Scrap MT', 'Scrap Mt', 'Scrap Weight MT', 'Crop Scrap MT', 'MT', 'Weight MT'
+      ]);
+      const cBundle = findColumn(headers, ['Bundle No', 'Bundle No.', 'Bundle Number', 'Bundle #', 'Lot Bundle', 'B.NO.', 'B.NO']);
       const cOperator = findColumn(headers, ['Operator Name', 'Operator', 'Operated By', 'Supervisor', 'Shift Incharge']);
       const cRemarks = findColumn(headers, ['Remarks', 'Remark', 'Notes', 'Production Notes', 'Reason']);
+      const cDefectReason = findColumn(headers, ['Defect Reason', 'DEFECT REASON', 'Defect', 'Reason', 'Defect Details', 'Salvage Reason']);
+      const cSalvage = findColumn(headers, ['SALVAGE', 'Salvage', 'Salvage Pcs', 'Conditioning Pcs', 'REWORK OK', 'Rework OK']);
 
       if (!cWO) {
         throw new Error(`Column "Work Order No" or "W.no" was not found in the sheet.\n\nDetected columns:\n${headers.join(', ')}`);
@@ -914,15 +941,27 @@ export default function ExcelImporter() {
         const bundleVal = cBundle ? clean(record[cBundle]) : '';
         const operatorVal = cOperator ? clean(record[cOperator]) : '';
         const remarksVal = cRemarks ? clean(record[cRemarks]) : '';
+        const defectReasonVal = cDefectReason ? clean(record[cDefectReason]) : '';
+        const salvageVal = cSalvage ? clean(record[cSalvage]) : '';
+
+        // If HTC OK is given but OutPcs/Mtr was not explicitly separated, derive Gross Output = HTC OK + Rejection
+        if (htcPcs > 0 && outPcs === 0) {
+          outPcs = htcPcs + rejPcs;
+        }
+        if (htcMtr > 0 && outMtr === 0) {
+          outMtr = Number((htcMtr + rejMtr).toFixed(2));
+        }
 
         // Auto calculate meters from pieces if pieces given
         if (outPcs > 0 && outMtr === 0) outMtr = Number((outPcs * avgLen).toFixed(2));
         if (inPcs > 0 && inMtr === 0) inMtr = Number((inPcs * avgLen).toFixed(2));
+        if (htcPcs > 0 && htcMtr === 0) htcMtr = Number((htcPcs * avgLen).toFixed(2));
         if (rejPcs > 0 && rejMtr === 0) rejMtr = Number((rejPcs * avgLen).toFixed(2));
 
         // Auto calculate pieces from meters if only meters given
         if (outMtr > 0 && outPcs === 0 && avgLen > 0) outPcs = Math.round(outMtr / avgLen);
         if (inMtr > 0 && inPcs === 0 && avgLen > 0) inPcs = Math.round(inMtr / avgLen);
+        if (htcMtr > 0 && htcPcs === 0 && avgLen > 0) htcPcs = Math.round(htcMtr / avgLen);
         if (rejMtr > 0 && rejPcs === 0 && avgLen > 0) rejPcs = Math.round(rejMtr / avgLen);
 
         // Rolling Specific: HTC OK defaults to outPcs - rejPcs if not explicitly supplied
@@ -935,19 +974,27 @@ export default function ExcelImporter() {
         if (!wo) errors.push('Work Order No missing');
         if (knownWos.size > 0 && !woObj) errors.push(`WO "${wo}" not found in database`);
         if (!dateVal) errors.push('Date missing or invalid');
-        if (outPcs <= 0 && outMtr <= 0 && inPcs <= 0 && inMtr <= 0) {
-          errors.push('Production Output/Input quantity missing');
+        if (outPcs <= 0 && outMtr <= 0 && inPcs <= 0 && inMtr <= 0 && htcPcs <= 0 && htcMtr <= 0) {
+          errors.push('Production Output/HTC OK quantity missing');
         }
-        if (tab === 'ROLLING' && (outPcs > 0 || outMtr > 0) && htcPcs <= 0 && htcMtr <= 0) {
-          errors.push('Rolling requires HTC OK Pcs or Mtr > 0');
+        if (tab === 'ROLLING' && (outPcs > 0 || outMtr > 0 || htcPcs > 0 || htcMtr > 0)) {
+          if (htcPcs <= 0 && htcMtr <= 0) {
+            errors.push('Rolling requires HTC OK Pcs or Mtr > 0');
+          }
         }
 
         let finalRemarks = remarksVal;
+        if (defectReasonVal) {
+          finalRemarks = finalRemarks ? `${finalRemarks} [Defect: ${defectReasonVal}]` : `Defect: ${defectReasonVal}`;
+        }
+        if (salvageVal && Number(salvageVal) > 0) {
+          finalRemarks = finalRemarks ? `${finalRemarks} [Salvage: ${salvageVal}]` : `Salvage: ${salvageVal}`;
+        }
         if (bundleVal) {
           finalRemarks = finalRemarks ? `${finalRemarks} [Bundle: ${bundleVal}]` : `Bundle: ${bundleVal}`;
         }
         if (scrapMT > 0) {
-          finalRemarks = finalRemarks ? `${finalRemarks} [Scrap: ${scrapMT} MT]` : `Scrap: ${scrapMT} MT`;
+          finalRemarks = finalRemarks ? `${finalRemarks} [MT: ${scrapMT}]` : `MT: ${scrapMT}`;
         }
 
         const row = {
