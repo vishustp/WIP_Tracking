@@ -625,8 +625,9 @@ export async function GET(req: NextRequest) {
       const drawAvailPcs = isCds
         ? Math.max(0, drawIncomingPcs + drawDivInPcs - drawOutPcs - drawRejPcs - drawDivOutPcs)
         : 0;
-      const drawAvailMtr = avgLength > 0 ? Number((drawAvailPcs * avgLength).toFixed(3)) : 0;
-      const drawAvailMt = mtFromMtr(drawAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+      const effDrawLen = effMhAvg > 0 ? effMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength);
+      const drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;
+      const drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
       // 4. Heat Treatment Stage Metrics (adjusted for HT Diversions)
       const htLogs = getStageLogs(woId, htStageId);
