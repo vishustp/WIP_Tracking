@@ -154,6 +154,10 @@ export async function POST(req: NextRequest) {
 
         // Also record in production_logs for unified ledger visibility if stageId exists
         if (stageId) {
+          const opPrefix = row.operator_name ? `[Op: ${String(row.operator_name).trim()}]` : '';
+          const userRemarks = row.remarks ? String(row.remarks).trim() : '';
+          const combinedRemarks = [opPrefix, userRemarks].filter(Boolean).join(' ');
+
           await admin.from('production_logs').insert({
             work_order_id: wo.id,
             stage_id: stageId,
@@ -162,16 +166,15 @@ export async function POST(req: NextRequest) {
             input_qty: inspMtr,
             output_qty: okMtr,
             rejection_qty: rejMtr + salMtr,
-            output_pcs: okPcs || null,
-            rejection_pcs: (rejPcs + salPcs) || null,
+            htc_ok: 0,
+            heat_lot_no: row.heat_lot_no || row.heat_no || row.lot_no || null,
             remarks: attachPcsToRemarks(
-              row.remarks,
+              combinedRemarks,
               okPcs,
               rejPcs + salPcs,
               rowL1 ? String(rowL1) : undefined,
               rowL2 ? String(rowL2) : undefined
             ) || null,
-            operator_name: row.operator_name || null,
           });
         }
 
@@ -205,8 +208,12 @@ export async function POST(req: NextRequest) {
 
         const effectiveOutPcs = outPcs || htcOkPcs || null;
 
+        const opPrefix = row.operator_name ? `[Op: ${String(row.operator_name).trim()}]` : '';
+        const userRemarks = row.remarks ? String(row.remarks).trim() : '';
+        const combinedRemarks = [opPrefix, userRemarks].filter(Boolean).join(' ');
+
         const finalRemarks = attachPcsToRemarks(
-          row.remarks,
+          combinedRemarks,
           effectiveOutPcs,
           rejPcs,
           rowL1 ? String(rowL1) : undefined,
@@ -222,10 +229,7 @@ export async function POST(req: NextRequest) {
           output_qty: outMtr,
           rejection_qty: rejMtr,
           htc_ok: htcOkMtr,
-          output_pcs: effectiveOutPcs,
-          rejection_pcs: rejPcs,
           heat_lot_no: row.heat_lot_no || row.heat_no || row.lot_no || null,
-          operator_name: row.operator_name || null,
           remarks: finalRemarks || null,
         };
 
