@@ -611,8 +611,12 @@ export default function WorkOrderTrackingClient() {
             wipPcs = Math.max(0, rollingHtcOkPcs + divInPcs - consumedPcs - divOutPcs);
           }
           const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
-          const mhOd = plan?.mh_od || wo.size_od || 0;
-          const mhWt = plan?.mh_wt || wo.size_wt || 0;
+          let parsedPlanStatus: any = {};
+          try {
+            parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
+          } catch {}
+          const mhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
+          const mhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
           const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
           const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterHtcLogs, masterRollLogs);
 
@@ -647,16 +651,23 @@ export default function WorkOrderTrackingClient() {
           const divIn = getStageDivIn(effectiveMasterWoId, 'DRAW');
           const divOut = getStageDivOut(effectiveMasterWoId, 'DRAW');
           const incomingPcs = hasHtcInRoute ? Math.max(0, htcOutPcs - htcRejPcs) : rollingHtcOkPcs;
-          const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
-          const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
+          const effDrawLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
+          const divInPcs = effDrawLen > 0 ? Math.round(divIn / effDrawLen) : 0;
+          const divOutPcs = effDrawLen > 0 ? Math.round(divOut / effDrawLen) : 0;
           const consumedPcs = drawOutPcs + drawRejPcs;
 
           let wipPcs = 0;
           if (incomingPcs > 0 || divInPcs > 0) {
             wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
           }
-          const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
-          const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+          const wipMtr = effDrawLen > 0 ? Number((wipPcs * effDrawLen).toFixed(3)) : 0;
+          let parsedPlanStatus: any = {};
+          try {
+            parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
+          } catch {}
+          const drawMhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
+          const drawMhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
+          const wipMt = mtFromMtr(wipMtr, drawMhOd, drawMhWt);
           const { dwellDays, agingSeverity } = getStageAging(
             wipMtr,
             masterDrawLogs,

@@ -143,7 +143,7 @@ export default function WorkCenterProductionReportClient() {
         }),
         s
           .from('work_orders')
-          .select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, avg_length, l1, l2, process_route_id')
+          .select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2')
           .limit(5000),
         s.from('process_routes').select('id, route_code, route_name').eq('active', true),
         (selectedWc === 'VDI' || selectedWc === 'ALL')
@@ -261,12 +261,13 @@ export default function WorkCenterProductionReportClient() {
         const logRow = logMap.get(e.id);
         const targetWoId = logRow?.work_order_id || e.work_order_id;
         const woInfo = targetWoId ? woMap.get(targetWoId) : woMap.get(String(e.work_order_no).trim());
+        const effectiveWoId = targetWoId || woInfo?.id;
 
         let plan: any = null;
         if (logRow?.rolling_plan_id && planByIdMap.has(logRow.rolling_plan_id)) {
           plan = planByIdMap.get(logRow.rolling_plan_id);
-        } else if (targetWoId && plansByWoMap.has(targetWoId)) {
-          const woPlans = plansByWoMap.get(targetWoId) || [];
+        } else if (effectiveWoId && plansByWoMap.has(effectiveWoId)) {
+          const woPlans = plansByWoMap.get(effectiveWoId) || [];
           if (woPlans.length === 1) {
             plan = woPlans[0];
           } else if (woPlans.length > 1) {
@@ -284,8 +285,8 @@ export default function WorkCenterProductionReportClient() {
           }
         }
 
-        const isMhStage = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOLLOW_HEAT_TREATMENT';
-        const mhInfo = plan?.mh_od ? plan : (targetWoId ? planMhMap.get(targetWoId) : null) || (e.work_order_no ? planMhMap.get(String(e.work_order_no).trim()) : null);
+        const isMhStage = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOLLOW_HEAT_TREATMENT' || (e.stage_code || '').toUpperCase() === 'DRAW';
+        const mhInfo = plan?.mh_od ? plan : (effectiveWoId ? planMhMap.get(effectiveWoId) : null) || (e.work_order_no ? planMhMap.get(String(e.work_order_no).trim()) : null);
         const effAvgLen = isMhStage
           ? (plan?.mh_l1 && plan?.mh_l2 ? (Number(plan.mh_l1) + Number(plan.mh_l2)) / 2 : Number(plan?.mh_l1 || plan?.mh_l2 || mhInfo?.mh_l1 || mhInfo?.mh_l2 || 6.0))
           : (woInfo?.l1 && woInfo?.l2 ? (Number(woInfo.l1) + Number(woInfo.l2)) / 2 : Number(woInfo?.l1 || woInfo?.l2 || 6.0));
@@ -312,6 +313,8 @@ export default function WorkCenterProductionReportClient() {
           ...e,
           od,
           wl,
+          mh_od: isMhStage && mhInfo?.mh_od ? Number(mhInfo.mh_od) : undefined,
+          mh_wt: isMhStage && mhInfo?.mh_wt ? Number(mhInfo.mh_wt) : undefined,
           customer_name: e.customer_name || woInfo?.customer_name || 'Standard Stock',
           grade: woInfo?.grade || woInfo?.specification || '—',
           rolling_plan_id: plan?.id || logRow?.rolling_plan_id,
@@ -464,9 +467,9 @@ export default function WorkCenterProductionReportClient() {
         ? Math.round(Number(e.rejection_pcs || 0))
         : Math.round(Number(e.rejection_pcs || 0) > 0 ? Number(e.rejection_pcs) : (effLen > 0 && rMtr > 0 ? rMtr / effLen : 0));
 
-      const isMhStage = e.stage_code === 'ROLLING' || e.stage_code === 'HOLLOW_HEAT_TREATMENT' || selectedWc === 'ROLLING' || selectedWc === 'HOLLOW_HEAT_TREATMENT';
-      const stageOd = isMhStage && e.mh_od ? Number(e.mh_od) : Number(e.od || 0);
-      const stageWt = isMhStage && e.mh_wt ? Number(e.mh_wt) : Number(e.wl || 0);
+      const isMhStage = e.stage_code === 'ROLLING' || e.stage_code === 'HOLLOW_HEAT_TREATMENT' || e.stage_code === 'DRAW' || selectedWc === 'ROLLING' || selectedWc === 'HOLLOW_HEAT_TREATMENT' || selectedWc === 'DRAW';
+      const stageOd = isMhStage && (e.mh_od || e.od) ? Number(e.mh_od || e.od) : Number(e.od || 0);
+      const stageWt = isMhStage && (e.mh_wt || e.wl) ? Number(e.mh_wt || e.wl) : Number(e.wl || 0);
 
       const inMt = isFinishing
         ? mtFromMtr(inMtr, Number(e.od || 0), Number(e.wl || 0)) || Number(e.input_mt || 0)

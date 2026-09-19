@@ -637,16 +637,19 @@ export function useQueue(stage: StageCode) {
             let availMtr = 0;
 
             if (s === "HOLLOW_HEAT_TREATMENT") {
+              const remMtr = Math.max(0, rollingHtcOkMtr + hhtDivIn - hollowHtOutMtr - hollowHtRejMtr - hhtDivOut);
               const hhtDivInPcs = mhAvg > 0 ? Math.round(hhtDivIn / mhAvg) : 0;
               const hhtDivOutPcs = mhAvg > 0 ? Math.round(hhtDivOut / mhAvg) : 0;
-              availPcs = Math.max(0, rollHtcOkPcs + hhtDivInPcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs);
-              availMtr = mhAvg > 0 ? Number((availPcs * mhAvg).toFixed(2)) : 0;
+              const calcPcs = Math.max(0, rollHtcOkPcs + hhtDivInPcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs);
+              availPcs = remMtr >= 1.0 ? Math.max(calcPcs, mhAvg > 0 ? Math.round(remMtr / mhAvg) : 1) : 0;
+              availMtr = availPcs > 0 ? (remMtr >= 1.0 ? Number(remMtr.toFixed(2)) : (mhAvg > 0 ? Number((availPcs * mhAvg).toFixed(2)) : 0)) : 0;
             } else if (s === "DRAW") {
               const incomingPcs = r.route_code === "ALLOY_CDS" ? hollowHtNetPcs : rollHtcOkPcs;
-              const drawDivInPcs = tubeAvg > 0 ? Math.round(drawDivIn / tubeAvg) : (mhAvg > 0 ? Math.round(drawDivIn / mhAvg) : 0);
-              const drawDivOutPcs = tubeAvg > 0 ? Math.round(drawDivOut / tubeAvg) : (mhAvg > 0 ? Math.round(drawDivOut / mhAvg) : 0);
+              const effDrawLen = mhAvg > 0 ? mhAvg : tubeAvg;
+              const drawDivInPcs = effDrawLen > 0 ? Math.round(drawDivIn / effDrawLen) : 0;
+              const drawDivOutPcs = effDrawLen > 0 ? Math.round(drawDivOut / effDrawLen) : 0;
               availPcs = Math.max(0, incomingPcs + drawDivInPcs - drawOutPcs - drawRejPcs - drawDivOutPcs);
-              availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(2)) : 0;
+              availMtr = effDrawLen > 0 ? Number((availPcs * effDrawLen).toFixed(2)) : 0;
             } else if (s === "HEAT_TREATMENT") {
               const htDivInPcs = tubeAvg > 0 ? Math.round(htDivIn / tubeAvg) : 0;
               const htDivOutPcs = tubeAvg > 0 ? Math.round(htDivOut / tubeAvg) : 0;
@@ -672,7 +675,7 @@ export function useQueue(stage: StageCode) {
               availMtr = effLen > 0 ? Number((availPcs * effLen).toFixed(2)) : 0;
             }
 
-            const isMhWip = s === "HOLLOW_HEAT_TREATMENT";
+            const isMhWip = s === "HOLLOW_HEAT_TREATMENT" || s === "DRAW";
             const effectiveOd = isMhWip && mhOd > 0 ? mhOd : Number(r.od || 0);
             const effectiveWt = isMhWip && mhWt > 0 ? mhWt : Number(r.wl || 0);
             const availMt = Math.max(effectiveOd - effectiveWt, 0) * Math.max(effectiveWt, 0) * 0.0246615 * 0.001 * availMtr;

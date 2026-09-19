@@ -228,8 +228,9 @@ export function useHistory(
           }
         }
 
-        const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
-        const mhInfo = plan?.mh_od ? plan : (targetWoId ? planMhMap.get(targetWoId) : null) || (entry.work_order_no ? planMhMap.get(String(entry.work_order_no).trim()) : null);
+        const effectiveWoId = targetWoId || wo?.id;
+        const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT" || entry.stage_code === "DRAW";
+        const mhInfo = plan?.mh_od ? plan : (effectiveWoId ? planMhMap.get(effectiveWoId) : null) || (entry.work_order_no ? planMhMap.get(String(entry.work_order_no).trim()) : null);
 
         const mhLen = Number(plan?.mh_avg_length || plan?.mh_l1 || mhInfo?.mh_l1 || 0);
         const woAvg = Number(

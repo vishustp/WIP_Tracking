@@ -566,10 +566,13 @@ export async function GET(req: NextRequest) {
       const rollNetPcs = Math.max(0, rollGrossPcs - rollRejPcs);
       const rollHtcOkPcs = sumHtcOkPcs(rollLogs, effMhAvg);
 
-      const rollOutMtr = effMhAvg > 0 ? Number((rollGrossPcs * effMhAvg).toFixed(3)) : sumQty(rollLogs, "output_qty");
-      const rollRejMtr = effMhAvg > 0 ? Number((rollRejPcs * effMhAvg).toFixed(3)) : sumQty(rollLogs, "rejection_qty");
-      const rollNetMtr = effMhAvg > 0 ? Number((rollNetPcs * effMhAvg).toFixed(3)) : Math.max(0, rollOutMtr - rollRejMtr);
-      const rollHtcOkMtr = effMhAvg > 0 ? Number((rollHtcOkPcs * effMhAvg).toFixed(3)) : sumQty(rollLogs, "htc_ok");
+      const rawRollOut = sumQty(rollLogs, "output_qty");
+      const rawRollRej = sumQty(rollLogs, "rejection_qty");
+      const rawRollHtc = sumQty(rollLogs, "htc_ok");
+      const rollOutMtr = rawRollOut > 0 ? rawRollOut : (effMhAvg > 0 ? Number((rollGrossPcs * effMhAvg).toFixed(3)) : 0);
+      const rollRejMtr = rawRollRej > 0 ? rawRollRej : (effMhAvg > 0 ? Number((rollRejPcs * effMhAvg).toFixed(3)) : 0);
+      const rollNetMtr = Math.max(0, rollOutMtr - rollRejMtr);
+      const rollHtcOkMtr = rawRollHtc > 0 ? rawRollHtc : (effMhAvg > 0 ? Number((rollHtcOkPcs * effMhAvg).toFixed(3)) : rollNetMtr);
 
       // 1. Rolling Available WIP & Target Tracking
       const rollDivIn = getStageDivIn(woId, "ROLLING");
@@ -588,30 +591,37 @@ export async function GET(req: NextRequest) {
       const hollowHtOutPcs = sumPcs(hollowHtLogs, effHhtAvg);
       const hollowHtRejPcs = sumRejPcs(hollowHtLogs, effHhtAvg);
       const hollowHtNetPcs = Math.max(0, hollowHtOutPcs - hollowHtRejPcs);
-      const hollowHtOutMtr = effHhtAvg > 0 ? Number((hollowHtOutPcs * effHhtAvg).toFixed(3)) : sumQty(hollowHtLogs, "output_qty");
-      const hollowHtRejMtr = effHhtAvg > 0 ? Number((hollowHtRejPcs * effHhtAvg).toFixed(3)) : sumQty(hollowHtLogs, "rejection_qty");
-      const hollowHtNetMtr = effHhtAvg > 0 ? Number((hollowHtNetPcs * effHhtAvg).toFixed(3)) : Math.max(0, hollowHtOutMtr - hollowHtRejMtr);
+      const rawHhtOut = sumQty(hollowHtLogs, "output_qty");
+      const rawHhtRej = sumQty(hollowHtLogs, "rejection_qty");
+      const hollowHtOutMtr = rawHhtOut > 0 ? rawHhtOut : (effHhtAvg > 0 ? Number((hollowHtOutPcs * effHhtAvg).toFixed(3)) : 0);
+      const hollowHtRejMtr = rawHhtRej > 0 ? rawHhtRej : (effHhtAvg > 0 ? Number((hollowHtRejPcs * effHhtAvg).toFixed(3)) : 0);
+      const hollowHtNetMtr = Math.max(0, hollowHtOutMtr - hollowHtRejMtr);
 
       const hhtDivIn = getStageDivIn(woId, "HOLLOW_HEAT_TREATMENT");
       const hhtDivOut = getStageDivOut(woId, "HOLLOW_HEAT_TREATMENT");
       const hhtDivInPcs = effHhtAvg > 0 ? Math.round(hhtDivIn / effHhtAvg) : 0;
       const hhtDivOutPcs = effHhtAvg > 0 ? Math.round(hhtDivOut / effHhtAvg) : 0;
 
-      // Hollow HT incoming: strictly from Rolling HTC OK pieces!
-      const hollowHtAvailPcs = isAlloy
-        ? Math.max(0, rollHtcOkPcs + hhtDivInPcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs)
-        : 0;
-      const hollowHtAvailMtr = effHhtAvg > 0 ? Number((hollowHtAvailPcs * effHhtAvg).toFixed(3)) : 0;
-      const hollowHtAvailMt = mtFromMtr(hollowHtAvailMtr, mhOd, mhWt);
+      // Hollow HT incoming: strictly from Rolling HTC OK!
+      const isHhtRoute = isAlloy || routeCode.includes("ALLOY");
+      const hollowHtRemMtr = Math.max(0, rollHtcOkMtr + hhtDivIn - hollowHtOutMtr - hollowHtRejMtr - hhtDivOut);
+      const hollowHtRemPcs = effHhtAvg > 0 ? Math.round(hollowHtRemMtr / effHhtAvg) : Math.max(0, rollHtcOkPcs + hhtDivInPcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs);
+      const hollowHtAvailPcs = isHhtRoute ? (hollowHtRemMtr >= 1.0 ? Math.max(1, hollowHtRemPcs) : 0) : 0;
+      const hollowHtAvailMtr = isHhtRoute ? (hollowHtAvailPcs > 0 ? Number(hollowHtRemMtr.toFixed(3)) : 0) : 0;
+      const hollowHtEffOd = mhOd > 0 ? mhOd : Number(wo.size_od || 0);
+      const hollowHtEffWt = mhWt > 0 ? mhWt : Number(wo.size_wt || 0);
+      const hollowHtAvailMt = mtFromMtr(hollowHtAvailMtr, hollowHtEffOd, hollowHtEffWt);
 
       // 3. Draw Stage Metrics (adjusted for Draw Diversions)
       const drawLogs = getStageLogs(woId, drawStageId);
       const drawOutPcs = sumPcs(drawLogs, avgLength);
       const drawRejPcs = sumRejPcs(drawLogs, avgLength);
       const drawNetPcs = Math.max(0, drawOutPcs - drawRejPcs);
-      const drawOutMtr = avgLength > 0 ? Number((drawOutPcs * avgLength).toFixed(3)) : sumQty(drawLogs, "output_qty");
-      const drawRejMtr = avgLength > 0 ? Number((drawRejPcs * avgLength).toFixed(3)) : sumQty(drawLogs, "rejection_qty");
-      const drawNetMtr = avgLength > 0 ? Number((drawNetPcs * avgLength).toFixed(3)) : Math.max(0, drawOutMtr - drawRejMtr);
+      const rawDrawOut = sumQty(drawLogs, "output_qty");
+      const rawDrawRej = sumQty(drawLogs, "rejection_qty");
+      const drawOutMtr = rawDrawOut > 0 ? rawDrawOut : (avgLength > 0 ? Number((drawOutPcs * avgLength).toFixed(3)) : 0);
+      const drawRejMtr = rawDrawRej > 0 ? rawDrawRej : (avgLength > 0 ? Number((drawRejPcs * avgLength).toFixed(3)) : 0);
+      const drawNetMtr = Math.max(0, drawOutMtr - drawRejMtr);
 
       const drawDivIn = getStageDivIn(woId, "DRAW");
       const drawDivOut = getStageDivOut(woId, "DRAW");
@@ -634,9 +644,11 @@ export async function GET(req: NextRequest) {
       const htOutPcs = sumPcs(htLogs, avgLength);
       const htRejPcs = sumRejPcs(htLogs, avgLength);
       const htNetPcs = Math.max(0, htOutPcs - htRejPcs);
-      const htOutMtr = avgLength > 0 ? Number((htOutPcs * avgLength).toFixed(3)) : sumQty(htLogs, "output_qty");
-      const htRejMtr = avgLength > 0 ? Number((htRejPcs * avgLength).toFixed(3)) : sumQty(htLogs, "rejection_qty");
-      const htNetMtr = avgLength > 0 ? Number((htNetPcs * avgLength).toFixed(3)) : Math.max(0, htOutMtr - htRejMtr);
+      const rawHtOut = sumQty(htLogs, "output_qty");
+      const rawHtRej = sumQty(htLogs, "rejection_qty");
+      const htOutMtr = rawHtOut > 0 ? rawHtOut : (avgLength > 0 ? Number((htOutPcs * avgLength).toFixed(3)) : 0);
+      const htRejMtr = rawHtRej > 0 ? rawHtRej : (avgLength > 0 ? Number((htRejPcs * avgLength).toFixed(3)) : 0);
+      const htNetMtr = Math.max(0, htOutMtr - htRejMtr);
 
       const htDivIn = getStageDivIn(woId, "HEAT_TREATMENT");
       const htDivOut = getStageDivOut(woId, "HEAT_TREATMENT");
@@ -789,13 +801,13 @@ export async function GET(req: NextRequest) {
           available_mt: hollowHtAvailMt,
           gross_output_mtr: hollowHtOutMtr,
           gross_output_pcs: hollowHtOutPcs,
-          gross_output_mt: mtFromMtr(hollowHtOutMtr, mhOd, mhWt),
+          gross_output_mt: mtFromMtr(hollowHtOutMtr, hollowHtEffOd, hollowHtEffWt),
           rejection_mtr: hollowHtRejMtr,
           rejection_pcs: hollowHtRejPcs,
-          rejection_mt: mtFromMtr(hollowHtRejMtr, mhOd, mhWt),
+          rejection_mt: mtFromMtr(hollowHtRejMtr, hollowHtEffOd, hollowHtEffWt),
           net_output_mtr: hollowHtNetMtr,
           net_output_pcs: hollowHtNetPcs,
-          net_output_mt: mtFromMtr(hollowHtNetMtr, mhOd, mhWt),
+          net_output_mt: mtFromMtr(hollowHtNetMtr, hollowHtEffOd, hollowHtEffWt),
         });
       }
 

@@ -124,7 +124,7 @@ export default function ProductionEntryGrid() {
 
       const [wipRes, plansRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*'),
-        supabase.from('rolling_plans').select('id, status, work_order_id, mh_od, mh_wt, mh_l1, mh_l2').not('status', 'is', null),
+        supabase.from('rolling_plans').select('id, status, work_order_id, mh_od, mh_wt, mh_l1, mh_l2, work_orders(work_order_no)').not('status', 'is', null),
       ]);
       if (wipRes.data) setFactoryWip(wipRes.data);
       if (plansRes.data) {
@@ -143,6 +143,9 @@ export default function ProductionEntryGrid() {
             if (p.work_order_id) {
               mhMap.set(p.work_order_id, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg });
             }
+            if ((p as any).work_orders?.work_order_no) {
+              mhMap.set(String((p as any).work_orders.work_order_no).trim(), { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg });
+            }
 
             if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
               for (const c of parsed.child_work_orders) {
@@ -150,6 +153,9 @@ export default function ProductionEntryGrid() {
                 if (cId) {
                   cIds.add(cId);
                   mhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg });
+                }
+                if (c.work_order_no) {
+                  mhMap.set(String(c.work_order_no).trim(), { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg });
                 }
               }
             } else if (parsed?.is_child && p.work_order_id) {
@@ -348,8 +354,8 @@ export default function ProductionEntryGrid() {
           0
         );
         activeItem.availMt = rows.reduce((sum, r) => {
-          const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
-          const planMh = planMhMap.get(r.work_order_id);
+          const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'DRAW';
+          const planMh = planMhMap.get(r.work_order_id) || (r.work_order_no ? planMhMap.get(String(r.work_order_no).trim()) : undefined);
           const od = isMhStage ? Number(r.mh_od || planMh?.mh_od || r.od || 0) : Number(r.od || 0);
           const wt = isMhStage ? Number(r.mh_wt || planMh?.mh_wt || r.wl || 0) : Number(r.wl || 0);
           const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
@@ -404,8 +410,8 @@ export default function ProductionEntryGrid() {
 
           const mtr = Number(w.current_wip ?? w.available_mtr ?? 0);
           let pcs = Number(w.current_wip_pcs ?? w.available_pcs ?? 0);
-          const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT';
-          const planMh = planMhMap.get(w.work_order_id);
+          const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW';
+          const planMh = planMhMap.get(w.work_order_id) || (w.work_order_no ? planMhMap.get(String(w.work_order_no).trim()) : undefined);
           const mhAvgLen = Number(w.mh_avg_length || w.mh_l1 || planMh?.mh_avg_length || planMh?.mh_l1 || 0);
           const avgLen = isMhStage && mhAvgLen > 0 ? mhAvgLen : Number(w.avg_length || 6.0);
           if (pcs === 0 && mtr > 0 && avgLen > 0) {
@@ -439,8 +445,8 @@ export default function ProductionEntryGrid() {
               }
               const mtr = Number(w.available_mtr || 0);
               const pcs = Number(w.available_pcs || 0);
-              const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT';
-              const planMh = planMhMap.get(r.work_order_id);
+              const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW';
+              const planMh = planMhMap.get(r.work_order_id) || (r.work_order_no ? planMhMap.get(String(r.work_order_no).trim()) : undefined);
               const od = isMhStage ? Number(r.mh_od || planMh?.mh_od || r.od || 0) : Number(r.od || 0);
               const wt = isMhStage ? Number(r.mh_wt || planMh?.mh_wt || r.wl || 0) : Number(r.wl || 0);
               const mt = isMhStage
@@ -469,8 +475,8 @@ export default function ProductionEntryGrid() {
         }, 0);
         const queueTotalMt = rows.reduce((sum, r) => {
           if (r.is_child && r.master_wo_id) return sum;
-          const isMhStage = activeSc === 'ROLLING' || activeSc === 'HOLLOW_HEAT_TREATMENT';
-          const planMh = planMhMap.get(r.work_order_id);
+          const isMhStage = activeSc === 'ROLLING' || activeSc === 'HOLLOW_HEAT_TREATMENT' || activeSc === 'DRAW';
+          const planMh = planMhMap.get(r.work_order_id) || (r.work_order_no ? planMhMap.get(String(r.work_order_no).trim()) : undefined);
           const od = isMhStage ? Number(r.mh_od || planMh?.mh_od || r.od || 0) : Number(r.od || 0);
           const wt = isMhStage ? Number(r.mh_wt || planMh?.mh_wt || r.wl || 0) : Number(r.wl || 0);
           const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
@@ -780,7 +786,7 @@ export default function ProductionEntryGrid() {
 
   const getEntryAvgLength = (entry: ProductionEntry | null) => {
     if (!entry) return 6.0;
-    const isMhStage = entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
+    const isMhStage = entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT' || entry.stage_code === 'DRAW';
     const isDraw = entry.stage_code === 'DRAW';
     const isHeatTreatment = entry.stage_code === 'HEAT_TREATMENT';
     const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no || r.work_order_id === entry.work_order_id);
