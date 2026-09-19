@@ -132,6 +132,9 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
+        const rowL1 = row.l1 ?? row.input_l1 ?? null;
+        const rowL2 = row.l2 ?? row.input_l2 ?? null;
+
         // Also record in production_logs for unified ledger visibility if stageId exists
         if (stageId) {
           await admin.from('production_logs').insert({
@@ -144,7 +147,13 @@ export async function POST(req: NextRequest) {
             rejection_qty: rejMtr + salMtr,
             output_pcs: okPcs || null,
             rejection_pcs: (rejPcs + salPcs) || null,
-            remarks: attachPcsToRemarks(row.remarks, okPcs, rejPcs + salPcs) || null,
+            remarks: attachPcsToRemarks(
+              row.remarks,
+              okPcs,
+              rejPcs + salPcs,
+              rowL1 ? String(rowL1) : undefined,
+              rowL2 ? String(rowL2) : undefined
+            ) || null,
             operator_name: row.operator_name || null,
           });
         }
@@ -174,12 +183,15 @@ export async function POST(req: NextRequest) {
         const htcOkMtr = work_center === 'ROLLING' ? Number(row.htc_ok_mtr || row.htc_ok || (outMtr - rejMtr)) : 0;
         const htcOkPcs = work_center === 'ROLLING' ? Number(row.htc_ok_pcs || (outPcs ? Math.max(0, outPcs - (rejPcs || 0)) : null)) : null;
 
+        const rowL1 = row.l1 ?? row.input_l1 ?? null;
+        const rowL2 = row.l2 ?? row.input_l2 ?? null;
+
         const finalRemarks = attachPcsToRemarks(
           row.remarks,
           outPcs,
           rejPcs,
-          row.input_l1 ? String(row.input_l1) : undefined,
-          row.input_l2 ? String(row.input_l2) : undefined
+          rowL1 ? String(rowL1) : undefined,
+          rowL2 ? String(rowL2) : undefined
         );
 
         const logPayload = {

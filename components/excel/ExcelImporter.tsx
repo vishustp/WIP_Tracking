@@ -79,7 +79,7 @@ const WORK_CENTER_TABS: WorkCenterTabConfig[] = [
     icon: Flame,
     color: 'from-orange-600 to-amber-600',
     description: 'Hot rolling production entries: Mother hollow sizes, gross output, HTC OK, and rejection logging.',
-    requiredFieldsDesc: 'Date, Shift, Work Order No, Heat/Lot No, Mother Hollow OD/WT, Rolled Output Pcs/Mtr, HTC OK Pcs/Mtr',
+    requiredFieldsDesc: 'Date, Shift, Work Order No, Heat/Lot No, Mother Hollow OD/WT, L1, L2, Rolled Output Pcs/Mtr, HTC OK Pcs/Mtr',
   },
   {
     key: 'HOLLOW_HEAT_TREATMENT',
@@ -89,7 +89,7 @@ const WORK_CENTER_TABS: WorkCenterTabConfig[] = [
     icon: Thermometer,
     color: 'from-rose-600 to-red-600',
     description: 'Hollow annealing & normalizing logs before cold drawing.',
-    requiredFieldsDesc: 'Date, Shift, Work Order No, Heat/Lot No, Input Pcs/Mtr, Output Pcs/Mtr, Rejection Pcs/Mtr',
+    requiredFieldsDesc: 'Date, Shift, Work Order No, Heat/Lot No, L1, L2, Input Pcs/Mtr, Output Pcs/Mtr, Rejection Pcs/Mtr',
   },
   {
     key: 'DRAW',
@@ -99,7 +99,7 @@ const WORK_CENTER_TABS: WorkCenterTabConfig[] = [
     icon: Wrench,
     color: 'from-cyan-600 to-teal-600',
     description: 'Plug and mandrel cold drawing production entries, pass outputs, and tag scrap.',
-    requiredFieldsDesc: 'Date, Shift, Work Order No, Heat/Lot No, Drawn Output Pcs/Mtr, Rejection Pcs/Mtr',
+    requiredFieldsDesc: 'Date, Shift, Work Order No, Heat/Lot No, L1, L2, Drawn Output Pcs/Mtr, Rejection Pcs/Mtr',
   },
   {
     key: 'HEAT_TREATMENT',
@@ -109,7 +109,7 @@ const WORK_CENTER_TABS: WorkCenterTabConfig[] = [
     icon: Thermometer,
     color: 'from-purple-600 to-indigo-600',
     description: 'Final stress relieving, quenching & tempering logs.',
-    requiredFieldsDesc: 'Date, Shift, Work Order No, Heat/Lot No, HT Output Pcs/Mtr, Rejection Pcs/Mtr',
+    requiredFieldsDesc: 'Date, Shift, Work Order No, Heat/Lot No, L1, L2, HT Output Pcs/Mtr, Rejection Pcs/Mtr',
   },
   {
     key: 'BAND_SAW',
@@ -119,7 +119,7 @@ const WORK_CENTER_TABS: WorkCenterTabConfig[] = [
     icon: Scissors,
     color: 'from-sky-600 to-blue-600',
     description: 'Mother tube cutting, multi-length splitting, crop ends, and scrap weight in MT.',
-    requiredFieldsDesc: 'Date, Shift, Work Order No, Mother Pcs/Mtr, Cut Output Pcs/Mtr, Scrap MT',
+    requiredFieldsDesc: 'Date, Shift, Work Order No, L1, L2, Mother Pcs/Mtr, Cut Output Pcs/Mtr, Scrap MT',
   },
   {
     key: 'VDI',
@@ -129,7 +129,7 @@ const WORK_CENTER_TABS: WorkCenterTabConfig[] = [
     icon: CheckCheck,
     color: 'from-emerald-600 to-green-600',
     description: 'Visual & Dimensional inspection: Inspected, VDI OK, Salvage/Conditioning, and Rejection logs.',
-    requiredFieldsDesc: 'Inspection Date, Work Order No, Inspected Pcs/Mtr, VDI OK Pcs/Mtr, Salvage Pcs, Rejection Pcs, Salvage Reason',
+    requiredFieldsDesc: 'Inspection Date, Work Order No, L1, L2, Inspected Pcs/Mtr, VDI OK Pcs/Mtr, Salvage Pcs, Rejection Pcs, Salvage Reason',
   },
   {
     key: 'FINISHING',
@@ -139,7 +139,7 @@ const WORK_CENTER_TABS: WorkCenterTabConfig[] = [
     icon: PackageCheck,
     color: 'from-violet-600 to-purple-600',
     description: 'Finishing, anti-rust oiling, bundle identification, and dispatch clearance.',
-    requiredFieldsDesc: 'Date, Shift, Work Order No, Finished Pcs/Mtr, Bundle No, Rejection Pcs/Mtr',
+    requiredFieldsDesc: 'Date, Shift, Work Order No, L1, L2, Finished Pcs/Mtr, Bundle No, Rejection Pcs/Mtr',
   },
 ];
 
@@ -335,6 +335,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       'Heat / Lot No': 'H-77492 / L-01',
       'Mother Hollow OD': 108.0,
       'Mother Hollow WT': 9.5,
+      L1: 6.0,
+      L2: 6.5,
       'Input Pcs': 35,
       'Input Mtr': 210,
       'Rolled Gross Pcs': 34,
@@ -353,6 +355,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       'Heat / Lot No': 'H-88310 / L-02',
       'Mother Hollow OD': 133.0,
       'Mother Hollow WT': 10.5,
+      L1: 5.8,
+      L2: 6.2,
       'Input Pcs': 25,
       'Input Mtr': 150,
       'Rolled Gross Pcs': 25,
@@ -371,6 +375,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       Shift: 'A',
       'Work Order No': 'WO-2026-101',
       'Heat / Lot No': 'H-77492 / L-01',
+      L1: 6.0,
+      L2: 6.5,
       'Input Pcs': 32,
       'Input Mtr': 192,
       'Output Pcs': 32,
@@ -385,6 +391,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       Shift: 'B',
       'Work Order No': 'WO-2026-102',
       'Heat / Lot No': 'H-88310 / L-02',
+      L1: 5.8,
+      L2: 6.2,
       'Input Pcs': 24,
       'Input Mtr': 144,
       'Output Pcs': 23,
@@ -401,6 +409,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       Shift: 'A',
       'Work Order No': 'WO-2026-101',
       'Heat / Lot No': 'H-77492 / L-01',
+      L1: 6.0,
+      L2: 6.5,
       'Input Pcs': 32,
       'Input Mtr': 192,
       'Drawn Output Pcs': 32,
@@ -415,6 +425,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       Shift: 'B',
       'Work Order No': 'WO-2026-103',
       'Heat / Lot No': 'H-99201 / L-01',
+      L1: 6.0,
+      L2: 6.4,
       'Input Pcs': 40,
       'Input Mtr': 240,
       'Drawn Output Pcs': 38,
@@ -431,6 +443,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       Shift: 'A',
       'Work Order No': 'WO-2026-101',
       'Heat / Lot No': 'H-77492 / L-01',
+      L1: 6.0,
+      L2: 6.5,
       'Input Pcs': 32,
       'Input Mtr': 208,
       'HT Output Pcs': 32,
@@ -445,6 +459,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       Shift: 'B',
       'Work Order No': 'WO-2026-102',
       'Heat / Lot No': 'H-88310 / L-02',
+      L1: 5.8,
+      L2: 6.2,
       'Input Pcs': 23,
       'Input Mtr': 138,
       'HT Output Pcs': 23,
@@ -461,6 +477,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       Shift: 'A',
       'Work Order No': 'WO-2026-101',
       'Heat / Lot No': 'H-77492 / L-01',
+      L1: 6.0,
+      L2: 6.5,
       'Mother Pcs': 16,
       'Mother Mtr': 208,
       'Cut Output Pcs': 32,
@@ -474,6 +492,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       Shift: 'B',
       'Work Order No': 'WO-2026-104',
       'Heat / Lot No': 'H-66512 / L-03',
+      L1: 5.8,
+      L2: 6.2,
       'Mother Pcs': 20,
       'Mother Mtr': 240,
       'Cut Output Pcs': 40,
@@ -487,6 +507,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
     {
       'Inspection Date': '2026-09-17',
       'Work Order No': 'WO-2026-101',
+      L1: 6.0,
+      L2: 6.5,
       'Inspected Pcs': 32,
       'Inspected Mtr': 200,
       'VDI OK Pcs': 28,
@@ -502,6 +524,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
     {
       'Inspection Date': '2026-09-17',
       'Work Order No': 'WO-2026-102',
+      L1: 5.8,
+      L2: 6.2,
       'Inspected Pcs': 23,
       'Inspected Mtr': 138,
       'VDI OK Pcs': 21,
@@ -521,6 +545,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       Shift: 'A',
       'Work Order No': 'WO-2026-101',
       'Heat / Lot No': 'H-77492 / L-01',
+      L1: 6.0,
+      L2: 6.5,
       'Finished Output Pcs': 28,
       'Finished Output Mtr': 175,
       'Rejection Pcs': 0,
@@ -534,6 +560,8 @@ const SAMPLE_DATASETS: Record<WorkCenterImportTab, Record<string, any>[]> = {
       Shift: 'B',
       'Work Order No': 'WO-2026-102',
       'Heat / Lot No': 'H-88310 / L-02',
+      L1: 5.8,
+      L2: 6.2,
       'Finished Output Pcs': 21,
       'Finished Output Mtr': 126,
       'Rejection Pcs': 0,
@@ -753,7 +781,11 @@ export default function ExcelImporter() {
         const wo = clean(record[cWO]);
         const woObj = knownWos.get(wo.toLowerCase());
         const dateVal = cDate ? parseExcelDate(record[cDate]) : new Date().toISOString().slice(0, 10);
-        const avgLen = woObj?.l1 && woObj?.l2 ? (woObj.l1 + woObj.l2) / 2 : woObj?.l1 || woObj?.l2 || 6.0;
+        
+        const { l1: parsedL1, l2: parsedL2 } = parseLengthValues(record, headers);
+        const rowL1 = parsedL1 !== null ? parsedL1 : (woObj?.l1 ?? null);
+        const rowL2 = parsedL2 !== null ? parsedL2 : (woObj?.l2 ?? null);
+        const avgLen = rowL1 && rowL2 ? (rowL1 + rowL2) / 2 : rowL1 || rowL2 || (woObj?.l1 && woObj?.l2 ? (woObj.l1 + woObj.l2) / 2 : 6.0);
 
         let inspP = cInspPcs ? num(record[cInspPcs]) : 0;
         let inspM = cInspMtr ? num(record[cInspMtr]) : 0;
@@ -769,6 +801,12 @@ export default function ExcelImporter() {
         if (okP > 0 && okM === 0) okM = Number((okP * avgLen).toFixed(2));
         if (salP > 0 && salM === 0) salM = Number((salP * avgLen).toFixed(2));
         if (rejP > 0 && rejM === 0) rejM = Number((rejP * avgLen).toFixed(2));
+
+        // Auto-calculate missing pieces if only meters provided
+        if (inspM > 0 && inspP === 0 && avgLen > 0) inspP = Math.round(inspM / avgLen);
+        if (okM > 0 && okP === 0 && avgLen > 0) okP = Math.round(okM / avgLen);
+        if (salM > 0 && salP === 0 && avgLen > 0) salP = Math.round(salM / avgLen);
+        if (rejM > 0 && rejP === 0 && avgLen > 0) rejP = Math.round(rejM / avgLen);
 
         // Auto-calculate inspected if ok + sal + rej is provided
         if (inspP === 0 && (okP > 0 || salP > 0 || rejP > 0)) {
@@ -794,6 +832,11 @@ export default function ExcelImporter() {
           work_order_no: wo,
           customer_name: woObj?.customer_name || '',
           specification: woObj?.specification || '',
+          l1: rowL1,
+          l2: rowL2,
+          input_l1: rowL1,
+          input_l2: rowL2,
+          avg_length: Number(avgLen.toFixed(3)),
           process_date: dateVal,
           inspected_pcs: inspP,
           inspected_mtr: inspM,
@@ -853,7 +896,11 @@ export default function ExcelImporter() {
         const dateVal = cDate ? parseExcelDate(record[cDate]) : new Date().toISOString().slice(0, 10);
         const shiftVal = cShift ? clean(record[cShift]) : 'A';
         const heatLotVal = cHeatLot ? clean(record[cHeatLot]) : '';
-        const avgLen = woObj?.l1 && woObj?.l2 ? (woObj.l1 + woObj.l2) / 2 : woObj?.l1 || woObj?.l2 || 6.0;
+        
+        const { l1: parsedL1, l2: parsedL2 } = parseLengthValues(record, headers);
+        const rowL1 = parsedL1 !== null ? parsedL1 : (woObj?.l1 ?? null);
+        const rowL2 = parsedL2 !== null ? parsedL2 : (woObj?.l2 ?? null);
+        const avgLen = rowL1 && rowL2 ? (rowL1 + rowL2) / 2 : rowL1 || rowL2 || (woObj?.l1 && woObj?.l2 ? (woObj.l1 + woObj.l2) / 2 : 6.0);
 
         let inPcs = cInPcs ? num(record[cInPcs]) : 0;
         let inMtr = cInMtr ? num(record[cInMtr]) : 0;
@@ -872,6 +919,11 @@ export default function ExcelImporter() {
         if (outPcs > 0 && outMtr === 0) outMtr = Number((outPcs * avgLen).toFixed(2));
         if (inPcs > 0 && inMtr === 0) inMtr = Number((inPcs * avgLen).toFixed(2));
         if (rejPcs > 0 && rejMtr === 0) rejMtr = Number((rejPcs * avgLen).toFixed(2));
+
+        // Auto calculate pieces from meters if only meters given
+        if (outMtr > 0 && outPcs === 0 && avgLen > 0) outPcs = Math.round(outMtr / avgLen);
+        if (inMtr > 0 && inPcs === 0 && avgLen > 0) inPcs = Math.round(inMtr / avgLen);
+        if (rejMtr > 0 && rejPcs === 0 && avgLen > 0) rejPcs = Math.round(rejMtr / avgLen);
 
         // Rolling Specific: HTC OK defaults to outPcs - rejPcs if not explicitly supplied
         if (tab === 'ROLLING') {
@@ -903,6 +955,11 @@ export default function ExcelImporter() {
           work_order_no: wo,
           customer_name: woObj?.customer_name || '',
           specification: woObj?.specification || '',
+          l1: rowL1,
+          l2: rowL2,
+          input_l1: rowL1,
+          input_l2: rowL2,
+          avg_length: Number(avgLen.toFixed(3)),
           process_date: dateVal,
           shift: shiftVal,
           heat_lot_no: heatLotVal,
@@ -1612,6 +1669,7 @@ export default function ExcelImporter() {
                       <th className="py-2.5 px-3 text-left">Status</th>
                       <th className="py-2.5 px-3 text-left">Work Order</th>
                       <th className="py-2.5 px-3 text-left">Customer / Spec</th>
+                      <th className="py-2.5 px-3 text-right">L1 - L2 (m)</th>
                       <th className="py-2.5 px-3 text-left">Date</th>
                       <th className="py-2.5 px-3 text-right">Inspected (Pcs/Mtr)</th>
                       <th className="py-2.5 px-3 text-right">VDI OK (Pcs/Mtr)</th>
@@ -1626,6 +1684,7 @@ export default function ExcelImporter() {
                       <th className="py-2.5 px-3 text-left">Status</th>
                       <th className="py-2.5 px-3 text-left">Work Order</th>
                       <th className="py-2.5 px-3 text-left">Customer / Spec</th>
+                      <th className="py-2.5 px-3 text-right">L1 - L2 (m)</th>
                       <th className="py-2.5 px-3 text-left">Date / Shift</th>
                       <th className="py-2.5 px-3 text-left">Heat / Lot No</th>
                       <th className="py-2.5 px-3 text-right">Input (Pcs/Mtr)</th>
@@ -1641,6 +1700,7 @@ export default function ExcelImporter() {
                       <th className="py-2.5 px-3 text-left">Status</th>
                       <th className="py-2.5 px-3 text-left">Work Order</th>
                       <th className="py-2.5 px-3 text-left">Customer / Spec</th>
+                      <th className="py-2.5 px-3 text-right">L1 - L2 (m)</th>
                       <th className="py-2.5 px-3 text-left">Date / Shift</th>
                       <th className="py-2.5 px-3 text-left">Heat / Lot No</th>
                       <th className="py-2.5 px-3 text-right">Input (Pcs/Mtr)</th>
@@ -1696,6 +1756,9 @@ export default function ExcelImporter() {
                             <td className="py-2 px-3 text-slate-600 max-w-[140px] truncate">
                               {r.customer_name || r.specification || '—'}
                             </td>
+                            <td className="py-2 px-3 text-right font-mono text-[11px] text-slate-700">
+                              {r.l1 != null && r.l2 != null ? `${r.l1} - ${r.l2}m` : r.l1 != null ? `${r.l1}m` : '—'}
+                            </td>
                             <td className="py-2 px-3 font-mono text-[11px]">{r.process_date}</td>
                             <td className="py-2 px-3 text-right font-mono">{r.inspected_pcs} pcs / {r.inspected_mtr}m</td>
                             <td className="py-2 px-3 text-right font-mono text-emerald-700 font-bold">{r.vdi_ok_pcs} pcs / {r.vdi_ok_mtr}m</td>
@@ -1708,6 +1771,9 @@ export default function ExcelImporter() {
                           <>
                             <td className="py-2 px-3 text-slate-600 max-w-[140px] truncate">
                               {r.customer_name || r.specification || '—'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono text-[11px] text-slate-700">
+                              {r.l1 != null && r.l2 != null ? `${r.l1} - ${r.l2}m` : r.l1 != null ? `${r.l1}m` : '—'}
                             </td>
                             <td className="py-2 px-3 font-mono text-[11px]">{r.process_date} (Shift {r.shift})</td>
                             <td className="py-2 px-3 font-mono text-[11px] text-indigo-700">{r.heat_lot_no || '—'}</td>
@@ -1722,6 +1788,9 @@ export default function ExcelImporter() {
                           <>
                             <td className="py-2 px-3 text-slate-600 max-w-[140px] truncate">
                               {r.customer_name || r.specification || '—'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono text-[11px] text-slate-700">
+                              {r.l1 != null && r.l2 != null ? `${r.l1} - ${r.l2}m` : r.l1 != null ? `${r.l1}m` : '—'}
                             </td>
                             <td className="py-2 px-3 font-mono text-[11px]">{r.process_date} (Shift {r.shift})</td>
                             <td className="py-2 px-3 font-mono text-[11px] text-indigo-700">{r.heat_lot_no || '—'}</td>
