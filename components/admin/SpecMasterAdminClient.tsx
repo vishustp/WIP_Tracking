@@ -233,7 +233,7 @@ function SpecEditModal({
               <p className="text-xs text-indigo-200 mt-0.5">Material Spec Master Table</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white">
+          <button onClick={onClose} aria-label="Close modal" className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -418,6 +418,7 @@ function DeleteModal({
         <div className="flex items-center justify-end gap-3">
           <button
             onClick={onClose}
+            aria-label="Cancel delete"
             className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border-2 border-slate-300 rounded-lg hover:bg-slate-100 transition-colors"
           >
             Cancel
@@ -485,7 +486,7 @@ function SpecRow({
         </span>
       </td>
       <td className="px-4 py-3 text-center">
-        <button onClick={() => onToggleActive(rec)} title={rec.is_active ? 'Click to deactivate' : 'Click to activate'} className="cursor-pointer">
+        <button onClick={() => onToggleActive(rec)} title={rec.is_active ? 'Click to deactivate' : 'Click to activate'} aria-label={rec.is_active ? `Deactivate ${rec.spec_full}` : `Activate ${rec.spec_full}`} className="cursor-pointer">
           {rec.is_active ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-600 mx-auto" />
           ) : (
@@ -499,6 +500,7 @@ function SpecRow({
             onClick={() => onEdit(rec)}
             className="p-1.5 rounded-lg hover:bg-indigo-100 text-indigo-600 transition-colors"
             title="Edit"
+            aria-label={`Edit ${rec.spec_full}`}
           >
             <Edit2 className="w-3.5 h-3.5" />
           </button>
@@ -506,6 +508,7 @@ function SpecRow({
             onClick={() => onDelete(rec)}
             className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors"
             title="Delete"
+            aria-label={`Delete ${rec.spec_full}`}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
