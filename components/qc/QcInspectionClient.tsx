@@ -296,7 +296,7 @@ export default function QcInspectionClient() {
         const sharedAvailMt = mtFromMtr(sharedAvailMtr, od, wt);
 
         // A. Add Master Work Order Row (Parent) with full shared campaign balance
-        if (sharedAvailPcs >= 1 || sharedAvailMtr >= 1.0) {
+        if (sharedAvailPcs >= 1) {
           items.push({
             work_order_id: wo.id,
             work_order_no: wo.work_order_no,
@@ -338,7 +338,7 @@ export default function QcInspectionClient() {
           const childAvg = childL1 > 0 && childL2 > 0 ? (childL1 + childL2) / 2 : (childL1 || childL2 || avgLen);
           const childAvailMt = mtFromMtr(sharedAvailMtr, childOd, childWt);
 
-          if (sharedAvailPcs >= 1 || sharedAvailMtr >= 1.0) {
+          if (sharedAvailPcs >= 1) {
             items.push({
               work_order_id: childId,
               work_order_no: child.work_order_no || childWo?.work_order_no || '—',
@@ -393,7 +393,7 @@ export default function QcInspectionClient() {
         const availableMtr = Math.max(0, bandSawCutMtr - alreadyInspectedMtr);
         const availableMt = mtFromMtr(availableMtr, od, wt);
 
-        if (availablePcs >= 1 || availableMtr >= 1.0) {
+        if (availablePcs >= 1) {
           items.push({
             work_order_id: wo.id,
             work_order_no: wo.work_order_no,
