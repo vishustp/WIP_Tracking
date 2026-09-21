@@ -388,33 +388,42 @@ export default function SizeGradeWipReportClient() {
           );
 
           for (const recStage of summary.stages) {
-            if (recStage.is_feeder_stage) continue; // Rolling is strictly raw supply feeder, excluded from Plant WIP
-            if (recStage.capped_wip_pcs > 0 || recStage.capped_wip_mtr > 0) {
-              const originalRow = rows.find((r) => (r.stage_code || '').toUpperCase() === recStage.stage_code) || rows[0];
-              mapped.push({
-                ...originalRow,
-                work_order_id: woId,
-                work_order_no: wo?.work_order_no || originalRow.work_order_no,
-                customer_name: wo?.customer_name || originalRow.customer_name,
-                stage_code: recStage.stage_code,
-                stage_name: recStage.stage_code === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
-                            recStage.stage_code === 'DRAW' ? 'Cold Draw Bench' :
-                            recStage.stage_code === 'HEAT_TREATMENT' ? 'Final Heat Treatment' :
-                            recStage.stage_code === 'BAND_SAW' ? 'Band Saw Cutting' :
-                            recStage.stage_code === 'VDI' ? 'VDI / QC Inspection' :
-                            recStage.stage_code === 'FINISHING' ? 'Finishing & Dispatch' : recStage.stage_code,
-                grade: resolvedGrade,
-                od: recStage.od,
-                wt: recStage.wt,
-                route_code: routeCode,
-                route_name: routeName,
-                rolling_date: rollingDate,
-                current_wip: Number(recStage.capped_wip_mtr.toFixed(2)),
-                current_wip_pcs: Math.round(recStage.capped_wip_pcs),
-                available_mt: Number(recStage.capped_wip_mt.toFixed(2)),
-                current_wip_mt: Number(recStage.capped_wip_mt.toFixed(2)),
-              });
-            }
+            const isRolling = recStage.stage_code === 'ROLLING';
+            // For plant WIP stages, must have active inventory; for rolling feeder, include if production was logged
+            if (!isRolling && recStage.capped_wip_pcs <= 0 && recStage.capped_wip_mtr <= 0) continue;
+            if (isRolling && recStage.production_pcs <= 0 && recStage.production_mtr <= 0) continue;
+
+            const originalRow = rows.find((r) => (r.stage_code || '').toUpperCase() === recStage.stage_code) || rows[0];
+            const targetOd = Number(wo?.size_od || rows[0]?.size_od || recStage.od || 0);
+            const targetWt = Number(wo?.size_wt || rows[0]?.size_wt || recStage.wt || 0);
+
+            mapped.push({
+              ...originalRow,
+              work_order_id: woId,
+              work_order_no: wo?.work_order_no || originalRow.work_order_no,
+              customer_name: wo?.customer_name || originalRow.customer_name,
+              stage_code: recStage.stage_code,
+              stage_name: recStage.stage_code === 'ROLLING' ? 'Hot Rolling Mill' :
+                          recStage.stage_code === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
+                          recStage.stage_code === 'DRAW' ? 'Cold Draw Bench' :
+                          recStage.stage_code === 'HEAT_TREATMENT' ? 'Final Heat Treatment' :
+                          recStage.stage_code === 'BAND_SAW' ? 'Band Saw Cutting' :
+                          recStage.stage_code === 'VDI' ? 'VDI / QC Inspection' :
+                          recStage.stage_code === 'FINISHING' ? 'Finishing & Dispatch' : recStage.stage_code,
+              grade: resolvedGrade,
+              od: targetOd,
+              wt: targetWt,
+              mh_od: mhOd,
+              mh_wt: mhWt,
+              route_code: routeCode,
+              route_name: routeName,
+              rolling_date: rollingDate,
+              is_feeder_stage: isRolling,
+              current_wip: isRolling ? Number(recStage.production_mtr.toFixed(2)) : Number(recStage.capped_wip_mtr.toFixed(2)),
+              current_wip_pcs: isRolling ? Math.round(recStage.production_pcs) : Math.round(recStage.capped_wip_pcs),
+              available_mt: isRolling ? Number(mtFromMtr(recStage.production_mtr, mhOd, mhWt).toFixed(2)) : Number(recStage.capped_wip_mt.toFixed(2)),
+              current_wip_mt: isRolling ? Number(mtFromMtr(recStage.production_mtr, mhOd, mhWt).toFixed(2)) : Number(recStage.capped_wip_mt.toFixed(2)),
+            });
           }
         }
         setRawWipRows(mapped);
@@ -572,9 +581,11 @@ export default function SizeGradeWipReportClient() {
         group.finishing_mt += mt;
       }
 
-      group.total_mtr += mtr;
-      group.total_pcs += pcs;
-      group.total_mt += mt;
+      if (stage !== 'ROLLING') {
+        group.total_mtr += mtr;
+        group.total_pcs += pcs;
+        group.total_mt += mt;
+      }
 
       group.contributing.push({
         work_order_id: r.work_order_id,
