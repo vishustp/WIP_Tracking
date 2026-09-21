@@ -84,7 +84,9 @@ export default function AgingNotificationBell({
 
       if (wipRes.data) {
         const today = new Date();
-        const fallbackAlerts: AgingAlert[] = wipRes.data.map((r: any) => {
+        const fallbackAlerts: AgingAlert[] = wipRes.data
+          .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
+          .map((r: any) => {
           // Find latest log for this WO and stage
           const matchLog = (prodRes.data || []).find(
             (p: any) => p.work_order_id === r.work_order_id && p.stage_id === r.stage_id

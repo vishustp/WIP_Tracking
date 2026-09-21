@@ -63,6 +63,7 @@ type WipStage = {
   work_order_id?: string;
   work_order_no: string;
   route_code: string;
+  stage_code?: string;
   stage_name: string;
   sequence_no: number;
   input_qty: number;
@@ -807,7 +808,7 @@ export default function WorkOrders() {
                   const wips = wipMap[w.work_order_no] || (w.id ? wipMap[w.id] : []) || [];
                   const isWipExpanded = !!expandedWip[w.id];
                   const avg = w.l1 && w.l2 ? (w.l1 + w.l2) / 2 : w.l1 || w.l2 || 6.0;
-                  const activeWips = wips.filter((wp: WipStage) => Number(wp.current_wip) > 0);
+                  const activeWips = wips.filter((wp: WipStage) => Number(wp.current_wip) > 0 && (wp.stage_code || '').toUpperCase() !== 'ROLLING');
                   const od = w.size_od || 0;
                   const wt = w.size_wt || 0;
 

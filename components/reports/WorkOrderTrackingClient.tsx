@@ -471,6 +471,26 @@ export default function WorkOrderTrackingClient() {
       const htRejPcsLogged = masterHtLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
       const htRejPcs = htRejPcsLogged > 0 ? htRejPcsLogged : (avgLen > 0 ? Math.round(htRejMtr / avgLen) : 0);
 
+      // Band Saw stats
+      const masterBandSawLogs = masterLogs.filter((l) => l.stage_code === 'BAND_SAW');
+      const bandSawOutMtr = masterBandSawLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const bandSawOutPcsLogged = masterBandSawLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const bandSawOutPcs = bandSawOutPcsLogged > 0 ? bandSawOutPcsLogged : (avgLen > 0 ? Math.round(bandSawOutMtr / avgLen) : 0);
+
+      const bandSawRejMtr = masterBandSawLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const bandSawRejPcsLogged = masterBandSawLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const bandSawRejPcs = bandSawRejPcsLogged > 0 ? bandSawRejPcsLogged : (avgLen > 0 ? Math.round(bandSawRejMtr / avgLen) : 0);
+
+      // VDI stats
+      const masterVdiLogs = masterLogs.filter((l) => l.stage_code === 'VDI');
+      const vdiOutMtr = masterVdiLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const vdiOutPcsLogged = masterVdiLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const vdiOutPcs = vdiOutPcsLogged > 0 ? vdiOutPcsLogged : (avgLen > 0 ? Math.round(vdiOutMtr / avgLen) : 0);
+
+      const vdiRejMtr = masterVdiLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const vdiRejPcsLogged = masterVdiLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const vdiRejPcs = vdiRejPcsLogged > 0 ? vdiRejPcsLogged : (avgLen > 0 ? Math.round(vdiRejMtr / avgLen) : 0);
+
       // Finishing stats (tracked PER WORK ORDER)
       const finLogs = woLogs.filter((l) => l.stage_code === 'FINISHING');
       const finOutMtr = finLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
@@ -740,6 +760,118 @@ export default function WorkOrderTrackingClient() {
           };
         }
 
+        if (stageCode === 'BAND_SAW') {
+          const divIn = getStageDivIn(effectiveMasterWoId, 'BAND_SAW');
+          const divOut = getStageDivOut(effectiveMasterWoId, 'BAND_SAW');
+          const isHfs = !hasHtcInRoute && (routeCode.includes('HFS') || !routeCode.includes('CDS'));
+          const incomingPcs = isHfs
+            ? rollingHtcOkPcs
+            : (htOutPcs > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs));
+          const effLen = isHfs && mhAvgLen > 0 ? mhAvgLen : avgLen;
+          const divInPcs = effLen > 0 ? Math.round(divIn / effLen) : 0;
+          const divOutPcs = effLen > 0 ? Math.round(divOut / effLen) : 0;
+          const consumedPcs = bandSawOutPcs + bandSawRejPcs;
+
+          let wipPcs = 0;
+          if (incomingPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
+          }
+          const wipMtr = effLen > 0 ? Number((wipPcs * effLen).toFixed(3)) : 0;
+          let parsedPlanStatus: any = {};
+          try {
+            parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
+          } catch {}
+          const mhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || wo.size_od || 0);
+          const mhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || wo.size_wt || 0);
+          const wipMt = isHfs
+            ? mtFromMtr(wipMtr, mhOd, mhWt)
+            : mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
+          const { dwellDays, agingSeverity } = getStageAging(
+            wipMtr,
+            masterBandSawLogs,
+            masterHtLogs.length > 0 ? masterHtLogs : (masterDrawLogs.length > 0 ? masterDrawLogs : masterRollLogs)
+          );
+
+          const stageOutMtr = avgLen > 0 ? Number((bandSawOutPcs * avgLen).toFixed(3)) : bandSawOutMtr;
+          const stageRejMtr = avgLen > 0 ? Number((bandSawRejPcs * avgLen).toFixed(3)) : bandSawRejMtr;
+
+          return {
+            ...stageDef,
+            isBundled: false,
+            planMtr: 0,
+            planPcs: 0,
+            outMtr: stageOutMtr,
+            outPcs: bandSawOutPcs,
+            rejMtr: stageRejMtr,
+            rejPcs: bandSawRejPcs,
+            htcOkMtr: 0,
+            htcOkPcs: 0,
+            wipMtr,
+            wipPcs,
+            wipMt,
+            logsCount: masterBandSawLogs.length,
+            dwellDays,
+            agingSeverity,
+            divertedInMtr: divIn,
+            divertedOutMtr: divOut,
+          };
+        }
+
+        if (stageCode === 'VDI') {
+          const divIn = getStageDivIn(effectiveMasterWoId, 'VDI');
+          const divOut = getStageDivOut(effectiveMasterWoId, 'VDI');
+          const incomingPcs = bandSawOutPcs > 0 ? Math.max(0, bandSawOutPcs - bandSawRejPcs) : (htOutPcs > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs));
+          const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
+          const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
+
+          const woQcList = qcInspections.filter(
+            (q: any) => q.work_order_id === wo.id || (childInfo && q.work_order_id === childInfo.master_wo_id)
+          );
+          const qcInspectedPcs = woQcList.reduce(
+            (sum: number, q: any) => sum + Number(q.inspected_pcs || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0))),
+            0
+          );
+          const consumedPcs = Math.max(qcInspectedPcs, vdiOutPcs + vdiRejPcs);
+
+          let wipPcs = 0;
+          if (incomingPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
+          }
+          const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
+          const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
+          const { dwellDays, agingSeverity } = getStageAging(
+            wipMtr,
+            masterVdiLogs,
+            masterBandSawLogs.length > 0 ? masterBandSawLogs : masterHtLogs
+          );
+
+          const stageOutMtr = avgLen > 0 ? Number((vdiOutPcs * avgLen).toFixed(3)) : vdiOutMtr;
+          const stageRejMtr = avgLen > 0 ? Number((vdiRejPcs * avgLen).toFixed(3)) : vdiRejMtr;
+
+          return {
+            ...stageDef,
+            isBundled: false,
+            planMtr: 0,
+            planPcs: 0,
+            outMtr: stageOutMtr,
+            outPcs: vdiOutPcs,
+            rejMtr: stageRejMtr,
+            rejPcs: vdiRejPcs,
+            htcOkMtr: 0,
+            htcOkPcs: 0,
+            wipMtr,
+            wipPcs,
+            wipMt,
+            logsCount: masterVdiLogs.length + woQcList.length,
+            dwellDays,
+            agingSeverity,
+            divertedInMtr: divIn,
+            divertedOutMtr: divOut,
+          };
+        }
+
         // FINISHING stage:
         // Target is the actual Customer Ordered Quantity for this work order!
         const isUomPcs = String(wo.uom || '').toUpperCase() === 'PCS';
@@ -958,6 +1090,8 @@ export default function WorkOrderTrackingClient() {
       const rHtc = row.stagesData.find((s) => s.code === 'HOLLOW_HEAT_TREATMENT');
       const rDraw = row.stagesData.find((s) => s.code === 'DRAW');
       const rHt = row.stagesData.find((s) => s.code === 'HEAT_TREATMENT');
+      const rBandSaw = row.stagesData.find((s) => s.code === 'BAND_SAW');
+      const rVdi = row.stagesData.find((s) => s.code === 'VDI');
       const rFin = row.stagesData.find((s) => s.code === 'FINISHING');
 
       return {
@@ -1005,11 +1139,20 @@ export default function WorkOrderTrackingClient() {
         'HT Rejection (Mtr)': rHt?.rejMtr || 0,
         'HT WIP (Pcs)': rHt?.wipPcs || 0,
         'HT WIP (Mtr)': rHt?.wipMtr || 0,
+        // Band Saw Cutting
+        'Band Saw Output (Nos)': rBandSaw?.outPcs || 0,
+        'Band Saw Output (Mtr)': rBandSaw?.outMtr || 0,
+        'Band Saw Rejection (Nos)': rBandSaw?.rejPcs || 0,
+        'Band Saw Rejection (Mtr)': rBandSaw?.rejMtr || 0,
+        'Band Saw WIP (Pcs)': rBandSaw?.wipPcs || 0,
+        'Band Saw WIP (Mtr)': rBandSaw?.wipMtr || 0,
         // QC / VDI Inspection
         'VDI Inspected (Nos)': (row.qcList || []).reduce((sum: number, q: any) => sum + Number(q.inspected_pcs || 0), 0),
         'VDI OK (Nos)': (row.qcList || []).reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0),
         'VDI Salvage (Nos)': (row.qcList || []).reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0),
         'VDI Rejection (Nos)': (row.qcList || []).reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0), 0),
+        'VDI WIP (Pcs)': rVdi?.wipPcs || 0,
+        'VDI WIP (Mtr)': rVdi?.wipMtr || 0,
         // Finishing
         'Finishing Target (Pcs)': rFin?.targetPcs || 0,
         'Finishing Output (Nos)': rFin?.outPcs || 0,

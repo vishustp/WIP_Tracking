@@ -125,7 +125,8 @@ export default function AgingReportClient() {
           const sev: 'NORMAL' | 'WARNING' | 'CRITICAL' =
             diffDays > 5 ? 'CRITICAL' : diffDays >= 3 ? 'WARNING' : 'NORMAL';
 
-          const isMhStage = r.stage_code === 'ROLLING' || r.stage_code === 'HOLLOW_HEAT_TREATMENT' || r.stage_code === 'DRAW';
+          const isHfsBandSaw = r.stage_code === 'BAND_SAW' && (!(r.route_code || '').toUpperCase().includes('CDS'));
+          const isMhStage = r.stage_code === 'HOLLOW_HEAT_TREATMENT' || r.stage_code === 'DRAW' || isHfsBandSaw;
           const planMh = mhMap.get(r.work_order_id);
           const od = Number(isMhStage ? (planMh?.mh_od || r.mh_od || r.od || 0) : (r.od || 0));
           const wt = Number(isMhStage ? (planMh?.mh_wt || r.mh_wt || r.wt || 0) : (r.wt || 0));
