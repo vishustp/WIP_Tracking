@@ -1019,6 +1019,12 @@ export default function ExcelImporter() {
           outMtr = Number((htcMtr + rejMtr).toFixed(2));
         }
 
+        // If OutPcs/Mtr is not supplied, but Input Pcs/Mtr is supplied (common in Heat Treatment / Furnace logs)
+        if (outPcs === 0 && outMtr === 0 && (inPcs > 0 || inMtr > 0)) {
+          if (inPcs > 0) outPcs = Math.max(0, inPcs - rejPcs);
+          if (inMtr > 0) outMtr = Math.max(0, Number((inMtr - rejMtr).toFixed(2)));
+        }
+
         // Auto calculate meters from pieces if pieces given
         if (outPcs > 0 && outMtr === 0) outMtr = Number((outPcs * avgLen).toFixed(2));
         if (inPcs > 0 && inMtr === 0) inMtr = Number((inPcs * avgLen).toFixed(2));
@@ -1369,8 +1375,12 @@ export default function ExcelImporter() {
         }
 
         setImportSuccessCount(data.importedCount);
-        const dupNotice = data.skippedDuplicatesCount > 0 ? ` (${data.skippedDuplicatesCount} already exist and were skipped)` : '';
-        if (data.errors && data.errors.length > 0) {
+        const dupNotice = data.skippedDuplicatesCount > 0 ? ` (${data.skippedDuplicatesCount} already exist in database and were skipped)` : '';
+        if (data.importedCount === 0 && data.skippedDuplicatesCount > 0) {
+          setMessage(
+            `ℹ 0 New Records Added: All ${data.skippedDuplicatesCount} rows are already recorded in the database. Duplicate protection prevented double entries.`
+          );
+        } else if (data.errors && data.errors.length > 0) {
           setMessage(
             `⚠ Recorded ${data.importedCount} of ${data.totalRows} rows${dupNotice}. Some rows had issues (${data.errors.length}):\n${data.errors.slice(0, 3).join('; ')}`
           );
@@ -1593,15 +1603,39 @@ export default function ExcelImporter() {
         </div>
       </div>
 
-      {/* Post-Import Success Banner */}
+      {/* Post-Import Success / Duplicate Notice Banner */}
       {importSuccessCount !== null && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm space-y-3 shadow-xs">
-          <div className="flex items-center gap-2 text-emerald-900 font-bold text-sm">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-            <span>{importSuccessCount} Records Successfully Recorded for {currentTabConfig.label}!</span>
+        <div
+          className={`rounded-xl border p-4 text-sm space-y-3 shadow-xs ${
+            importSuccessCount > 0
+              ? 'border-emerald-200 bg-emerald-50'
+              : 'border-amber-200 bg-amber-50'
+          }`}
+        >
+          <div
+            className={`flex items-center gap-2 font-bold text-sm ${
+              importSuccessCount > 0 ? 'text-emerald-900' : 'text-amber-900'
+            }`}
+          >
+            {importSuccessCount > 0 ? (
+              <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+            ) : (
+              <Info className="h-5 w-5 text-amber-600 shrink-0" />
+            )}
+            <span>
+              {importSuccessCount > 0
+                ? `${importSuccessCount} Records Successfully Recorded for ${currentTabConfig.label}!`
+                : `0 New Records Recorded for ${currentTabConfig.label}`}
+            </span>
           </div>
-          <p className="text-emerald-800 text-xs">
-            The data has been committed to the database. WIP ledgers, route stage balances, and production histories are fully synchronized.
+          <p
+            className={`text-xs ${
+              importSuccessCount > 0 ? 'text-emerald-800' : 'text-amber-800'
+            }`}
+          >
+            {importSuccessCount > 0
+              ? 'The data has been committed to the database. WIP ledgers, route stage balances, and production histories are fully synchronized.'
+              : 'All candidate rows were already recorded in the database or met duplicate safeguards. No duplicate logs were created.'}
           </p>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {activeTab === 'WORK_ORDERS' ? (
@@ -1670,15 +1704,23 @@ export default function ExcelImporter() {
       )}
 
       {/* Messages */}
-      {message && importSuccessCount === null && (
+      {message && (
         <div
           className={`flex items-start gap-2.5 rounded-xl border p-4 text-xs ${
             message.includes('✓') || message.includes('eligible') || message.includes('Parsed')
               ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              : message.includes('ℹ') || message.includes('already exist')
+              ? 'border-amber-200 bg-amber-50 text-amber-900'
               : 'border-slate-200 bg-slate-50 text-slate-800'
           }`}
         >
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+          {message.includes('✓') ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
+          ) : message.includes('ℹ') ? (
+            <Info className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+          ) : (
+            <AlertTriangle className="h-4 w-4 shrink-0 text-slate-600 mt-0.5" />
+          )}
           <div className="leading-relaxed whitespace-pre-line font-medium">{message}</div>
         </div>
       )}

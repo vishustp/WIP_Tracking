@@ -96,20 +96,30 @@ export function computeFeederBalanceForWorkOrder(params: {
   };
 
   const sumStageHtcOkMtr = (stageLogs: ProductionLogRecord[]) => {
-    return stageLogs.reduce((sum, l) => sum + Number(l.htc_ok || 0), 0);
+    return stageLogs.reduce((sum, l) => {
+      const htc = Number(l.htc_ok || 0);
+      if (htc > 0) return sum + htc;
+      const out = Number(l.output_qty || 0);
+      const rej = Number(l.rejection_qty || 0);
+      return sum + Math.max(0, out - rej);
+    }, 0);
   };
 
   const sumStageHtcOkPcs = (stageLogs: ProductionLogRecord[]) => {
     return stageLogs.reduce((sum, l) => {
-      if (Number(l.htc_ok || 0) > 0 && avgLen > 0) {
-        return sum + Math.round(Number(l.htc_ok) / avgLen);
+      const htc = Number(l.htc_ok || 0);
+      if (htc > 0 && avgLen > 0) {
+        return sum + Math.round(htc / avgLen);
       }
       const outP = extractPcsFromRemarks(l.remarks).pcs;
       const rejP = extractPcsFromRemarks(l.remarks).rejPcs;
       if (outP !== null) {
         return sum + Math.max(0, outP - (rejP || 0));
       }
-      return sum + (avgLen > 0 ? Math.round(Number(l.output_qty || 0) / avgLen) : 0);
+      const out = Number(l.output_qty || 0);
+      const rej = Number(l.rejection_qty || 0);
+      const netMtr = Math.max(0, out - rej);
+      return sum + (avgLen > 0 ? Math.round(netMtr / avgLen) : 0);
     }, 0);
   };
 
