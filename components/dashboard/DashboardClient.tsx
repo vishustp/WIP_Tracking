@@ -37,6 +37,20 @@ const formatNum = (v: unknown, decimals = 0) => {
   return num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 };
 
+const CANONICAL_STAGE_ORDER: Record<string, number> = {
+  ROLLING: 10,
+  HOLLOW_HEAT_TREATMENT: 20,
+  HTC: 20,
+  DRAW: 30,
+  HEAT_TREATMENT: 40,
+  HT: 40,
+  BAND_SAW: 50,
+  CUTTING: 50,
+  VDI: 60,
+  QC: 60,
+  FINISHING: 70,
+};
+
 type KPI = {
   active_work_orders: number;
   pending_planning: number;
@@ -167,20 +181,6 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
       isUrgent: false,
     };
   };
-
-const CANONICAL_STAGE_ORDER: Record<string, number> = {
-  ROLLING: 10,
-  HOLLOW_HEAT_TREATMENT: 20,
-  HTC: 20,
-  DRAW: 30,
-  HEAT_TREATMENT: 40,
-  HT: 40,
-  BAND_SAW: 50,
-  CUTTING: 50,
-  VDI: 60,
-  QC: 60,
-  FINISHING: 70,
-};
 
   // Unique routes present in WIP data
   const uniqueRoutes = useMemo(() => {
