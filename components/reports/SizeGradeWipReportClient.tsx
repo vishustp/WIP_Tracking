@@ -28,7 +28,7 @@ import {
   Scissors,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
+import { mtFromMtr, extractPcsFromRemarks, normalizeGrade } from '@/lib/productionUtils';
 import { reconcileWorkOrderWip } from '@/lib/wipReconciliation';
 
 type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING';
@@ -406,8 +406,9 @@ export default function SizeGradeWipReportClient() {
             if (recStage.capped_wip_pcs <= 0 && recStage.capped_wip_mtr <= 0) continue;
 
             const originalRow = rows.find((r) => (r.stage_code || '').toUpperCase() === recStage.stage_code) || rows[0];
-            const targetOd = Number(wo?.size_od || rows[0]?.size_od || recStage.od || 0);
-            const targetWt = Number(wo?.size_wt || rows[0]?.size_wt || recStage.wt || 0);
+            // Strict Final Finished Customer Size (never mother hollow size)
+            const targetOd = Number(wo?.size_od || rows[0]?.size_od || 0);
+            const targetWt = Number(wo?.size_wt || rows[0]?.size_wt || 0);
 
             mapped.push({
               ...originalRow,
@@ -421,7 +422,7 @@ export default function SizeGradeWipReportClient() {
                           recStage.stage_code === 'BAND_SAW' ? 'Band Saw Cutting' :
                           recStage.stage_code === 'VDI' ? 'VDI / QC Inspection' :
                           recStage.stage_code === 'FINISHING' ? 'Finishing & Dispatch' : recStage.stage_code,
-              grade: resolvedGrade,
+              grade: normalizeGrade(resolvedGrade),
               od: targetOd,
               wt: targetWt,
               mh_od: mhOd,

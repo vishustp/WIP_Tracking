@@ -562,5 +562,32 @@ export function extractBundleTypeFromRemarks(
   return 'PRIME';
 }
 
+/**
+ * Standardizes and harmonizes steel grade notations.
+ * Unifies spacing, punctuation, and equivalent ASME / ASTM standard designations.
+ */
+export function normalizeGrade(rawGrade?: string | null): string {
+  if (!rawGrade) return 'Standard';
+  let g = rawGrade.trim().replace(/\s+/g, ' ').replace(/\bGR\.?\b/gi, 'Gr');
 
+  // Normalize ASTM / ASME equivalent notations
+  if (/^(ASTM|ASME)\s*(A|SA)\s*106\s*Gr\s*B$/i.test(g)) return 'ASTM A106 Gr B';
+  if (/^(ASTM|ASME)\s*(A|SA)\s*106\s*Gr\s*C$/i.test(g)) return 'ASTM A106 Gr C';
 
+  if (/^(ASTM|ASME)\s*(A|SA)\s*210\s*Gr\s*A1(\s*\/\s*SAE1018)?$/i.test(g)) return 'ASME SA210 Gr A1';
+  if (/^(ASTM|ASME)\s*(A|SA)\s*210\s*Gr\s*C$/i.test(g)) return 'ASME SA210 Gr C';
+
+  if (/^(ASTM|ASME)\s*(A|SA)\s*213\s*Gr\s*T11$/i.test(g)) return 'ASME SA213 Gr T11';
+  if (/^(ASTM|ASME)\s*(A|SA)\s*213\s*Gr\s*T12$/i.test(g)) return 'ASME SA213 Gr T12';
+  if (/^(ASTM|ASME)\s*(A|SA)\s*213\s*Gr\s*T22$/i.test(g)) return 'ASME SA213 Gr T22';
+
+  if (/^(ASTM|ASME)\s*(A|SA)\s*335\s*Gr\s*P22$/i.test(g)) return 'ASME SA335 Gr P22';
+
+  if (/^ST\s*35(\.8)?$/i.test(g)) return 'ST 35.8';
+  if (/^DIN\s*2391\s*ST\s*52$/i.test(g)) return 'DIN 2391 ST 52';
+
+  if (/^BS\s*3059-?P1\s*Gr\s*320$/i.test(g)) return 'BS 3059-P1 Gr 320';
+  if (/^BS\s*3059-?P2\s*Gr\s*360$/i.test(g)) return 'BS 3059-P2 Gr 360';
+
+  return g;
+}
