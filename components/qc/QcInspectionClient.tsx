@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { fmt, n, mtFromMtr } from '@/lib/productionUtils';
+import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
 import { isUserAuthorizedForQc } from '@/lib/permissions';
 import type { AppUserProfile } from '@/lib/users/types';
@@ -243,33 +243,35 @@ export default function QcInspectionClient() {
       const routeCode = matchedRoute?.route_code || (wo.grade?.toUpperCase().includes('HFS') ? 'HFS' : 'CDS');
       const isHfs = routeCode === 'HFS' || routeCode === 'ALLOY_HFS';
 
-      let feederLabel = isHfs ? 'Rolling HTC OK' : 'Heat Treatment OK';
-      let feederStageCode = isHfs ? 'ROLLING' : 'HEAT_TREATMENT';
+      const bandSawStage = stages.find((s) => s.stage_code === 'BAND_SAW');
+      let feederLabel = 'Band Saw Cut OK';
+      let feederStageCode = 'BAND_SAW';
 
-      // 1. MASTER CAMPAIGN: Split parent and each child into distinct VDI queue rows
+      // Helper to compute cut pieces and cut meters from Band Saw production logs
+      const getBandSawCutStats = (logs: ProductionLog[], defaultAvg: number) => {
+        let cutPcs = 0;
+        let cutMtr = 0;
+        logs.forEach((l) => {
+          const { cuts } = extractBandSawCutsFromRemarks(l.remarks);
+          const primeCuts = cuts?.filter((c) => c.cat === 'PRIME' || !c.cat).reduce((s, c) => s + Number(c.pcs || 0), 0);
+          if (primeCuts && primeCuts > 0) {
+            cutPcs += primeCuts;
+          } else {
+            const totalCuts = cuts?.reduce((s, c) => s + Number(c.pcs || 0), 0);
+            if (totalCuts && totalCuts > 0) {
+              cutPcs += totalCuts;
+            } else {
+              cutPcs += defaultAvg > 0 && l.output_qty ? Math.round(Number(l.output_qty) / defaultAvg) : 0;
+            }
+          }
+          cutMtr += Number(l.output_qty || 0);
+        });
+        return { cutPcs, cutMtr };
+      };
+
+      // 1. MASTER CAMPAIGN: Split parent and each child into distinct VDI queue rows strictly from Band Saw cuts
       if (campaign && Array.isArray(campaign.child_work_orders) && campaign.child_work_orders.length > 0) {
         processedWoIds.add(wo.id);
-
-        let relevantLogs: ProductionLog[] = [];
-        if (isHfs) {
-          relevantLogs = woLogs.filter(
-            (l) => rollingStage && l.stage_id === rollingStage.id && Number(l.htc_ok || 0) > 0
-          );
-        } else {
-          relevantLogs = woLogs.filter((l) => htStage && l.stage_id === htStage.id);
-        }
-
-        const outMtr = relevantLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-        const rejMtr = relevantLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-        const htcOkMtr = relevantLogs.reduce((sum, l) => sum + Number(l.htc_ok || 0), 0);
-
-        const totalCampaignHtOkMtr = isHfs
-          ? htcOkMtr
-          : (htcOkMtr > 0 ? htcOkMtr : Math.max(0, outMtr - rejMtr));
-        const totalCampaignHtOkPcs = avgLen > 0 ? Math.round(totalCampaignHtOkMtr / avgLen) : 0;
-
-        const totalCampaignPcs = campaign.total_campaign_pcs > 0 ? campaign.total_campaign_pcs : totalCampaignHtOkPcs;
-        const totalCampaignMtr = campaign.total_campaign_mtr > 0 ? campaign.total_campaign_mtr : totalCampaignHtOkMtr;
 
         // Collect all work order IDs in this campaign pool (master + all children)
         const allCampaignWoIds = new Set<string>([
@@ -277,14 +279,20 @@ export default function QcInspectionClient() {
           ...campaign.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean),
         ]);
 
+        const campaignBandSawLogs = productionLogs.filter(
+          (l) => allCampaignWoIds.has(l.work_order_id) && bandSawStage && l.stage_id === bandSawStage.id
+        );
+
+        const { cutPcs: totalCampaignCutPcs, cutMtr: totalCampaignCutMtr } = getBandSawCutStats(campaignBandSawLogs, avgLen);
+
         // Total inspected so far across the ENTIRE campaign pool
         const campaignInspections = qcInspections.filter((q) => allCampaignWoIds.has(q.work_order_id));
         const campaignAlreadyInspectedPcs = campaignInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
         const campaignAlreadyInspectedMtr = campaignInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
 
         // Shared total remaining WIP balance at VDI for the entire campaign
-        const sharedAvailPcs = Math.max(0, totalCampaignHtOkPcs - campaignAlreadyInspectedPcs);
-        const sharedAvailMtr = Math.max(0, totalCampaignHtOkMtr - campaignAlreadyInspectedMtr);
+        const sharedAvailPcs = Math.max(0, totalCampaignCutPcs - campaignAlreadyInspectedPcs);
+        const sharedAvailMtr = Math.max(0, totalCampaignCutMtr - campaignAlreadyInspectedMtr);
         const sharedAvailMt = mtFromMtr(sharedAvailMtr, od, wt);
 
         // A. Add Master Work Order Row (Parent) with full shared campaign balance
@@ -303,9 +311,9 @@ export default function QcInspectionClient() {
             route_code: routeCode,
             feeder_source_label: feederLabel,
             feeder_stage_code: feederStageCode,
-            ht_ok_pcs: totalCampaignHtOkPcs,
-            ht_ok_mtr: totalCampaignHtOkMtr,
-            ht_ok_mt: mtFromMtr(totalCampaignHtOkMtr, od, wt),
+            ht_ok_pcs: totalCampaignCutPcs,
+            ht_ok_mtr: totalCampaignCutMtr,
+            ht_ok_mt: mtFromMtr(totalCampaignCutMtr, od, wt),
             already_inspected_pcs: campaignAlreadyInspectedPcs,
             available_ht_ok_pcs: sharedAvailPcs,
             available_ht_ok_mtr: sharedAvailMtr,
@@ -345,9 +353,9 @@ export default function QcInspectionClient() {
               route_code: routeCode,
               feeder_source_label: feederLabel,
               feeder_stage_code: feederStageCode,
-              ht_ok_pcs: totalCampaignHtOkPcs,
-              ht_ok_mtr: totalCampaignHtOkMtr,
-              ht_ok_mt: mtFromMtr(totalCampaignHtOkMtr, childOd, childWt),
+              ht_ok_pcs: totalCampaignCutPcs,
+              ht_ok_mtr: totalCampaignCutMtr,
+              ht_ok_mt: mtFromMtr(totalCampaignCutMtr, childOd, childWt),
               already_inspected_pcs: campaignAlreadyInspectedPcs,
               available_ht_ok_pcs: sharedAvailPcs,
               available_ht_ok_mtr: sharedAvailMtr,
@@ -365,36 +373,24 @@ export default function QcInspectionClient() {
 
         if (woLogs.length === 0) return;
 
-        let relevantLogs: ProductionLog[] = [];
-        if (isHfs) {
-          relevantLogs = woLogs.filter(
-            (l) => rollingStage && l.stage_id === rollingStage.id && Number(l.htc_ok || 0) > 0
-          );
-        } else {
-          relevantLogs = woLogs.filter((l) => htStage && l.stage_id === htStage.id);
-        }
+        const woBandSawLogs = woLogs.filter(
+          (l) => bandSawStage && l.stage_id === bandSawStage.id
+        );
 
-        if (relevantLogs.length === 0) return;
+        if (woBandSawLogs.length === 0) return; // Strict Rule: No VDI queue without Band Saw cut
 
-        const outMtr = relevantLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-        const rejMtr = relevantLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-        const htcOkMtr = relevantLogs.reduce((sum, l) => sum + Number(l.htc_ok || 0), 0);
+        const { cutPcs: bandSawCutPcs, cutMtr: bandSawCutMtr } = getBandSawCutStats(woBandSawLogs, avgLen);
 
-        const effectiveHtOkMtr = isHfs
-          ? htcOkMtr
-          : (htcOkMtr > 0 ? htcOkMtr : Math.max(0, outMtr - rejMtr));
+        if (bandSawCutPcs <= 0 && bandSawCutMtr <= 0) return;
 
-        if (effectiveHtOkMtr <= 0) return;
-
-        const effectiveHtOkPcs = avgLen > 0 ? Math.round(effectiveHtOkMtr / avgLen) : 0;
-        const effectiveHtOkMt = mtFromMtr(effectiveHtOkMtr, od, wt);
+        const effectiveCutMt = mtFromMtr(bandSawCutMtr, od, wt);
 
         const woInspections = qcInspections.filter((q) => q.work_order_id === wo.id);
         const alreadyInspectedPcs = woInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
         const alreadyInspectedMtr = woInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
 
-        const availablePcs = Math.max(0, effectiveHtOkPcs - alreadyInspectedPcs);
-        const availableMtr = Math.max(0, effectiveHtOkMtr - alreadyInspectedMtr);
+        const availablePcs = Math.max(0, bandSawCutPcs - alreadyInspectedPcs);
+        const availableMtr = Math.max(0, bandSawCutMtr - alreadyInspectedMtr);
         const availableMt = mtFromMtr(availableMtr, od, wt);
 
         if (availablePcs >= 1 || availableMtr >= 1.0) {
@@ -412,9 +408,9 @@ export default function QcInspectionClient() {
             route_code: routeCode,
             feeder_source_label: feederLabel,
             feeder_stage_code: feederStageCode,
-            ht_ok_pcs: effectiveHtOkPcs,
-            ht_ok_mtr: effectiveHtOkMtr,
-            ht_ok_mt: effectiveHtOkMt,
+            ht_ok_pcs: bandSawCutPcs,
+            ht_ok_mtr: bandSawCutMtr,
+            ht_ok_mt: effectiveCutMt,
             already_inspected_pcs: alreadyInspectedPcs,
             available_ht_ok_pcs: availablePcs,
             available_ht_ok_mtr: availableMtr,

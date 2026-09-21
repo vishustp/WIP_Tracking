@@ -76,55 +76,24 @@ export default function BandSawCuttingClient() {
         setQueueRows(queueData.data);
       }
 
-      // Fetch stages to find BAND_SAW stage id
-      const { data: stages } = await supabase
-        .from('process_stages')
-        .select('id, stage_code')
-        .eq('stage_code', 'BAND_SAW');
-
-      const bandSawStageId = stages?.[0]?.id;
-
-      if (bandSawStageId) {
-        const { data: logsData, error: logsErr } = await supabase
-          .from('production_logs')
-          .select(
-            `id, work_order_id, stage_id, process_route_id, process_date, input_qty, output_qty, rejection_qty, heat_lot_no, remarks, created_at,
-             work_orders (id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, avg_length),
-             process_routes (id, route_code, route_name)`
-          )
-          .eq('stage_id', bandSawStageId)
-          .order('created_at', { ascending: false })
-          .limit(200);
-
-        if (!logsErr && logsData) {
-          const mapped: ProductionEntry[] = logsData.map((l: any) => {
-            const wo = l.work_orders || {};
-            const pr = l.process_routes || {};
-            return {
-              id: l.id,
-              work_order_id: l.work_order_id,
-              work_order_no: wo.work_order_no || 'N/A',
-              customer_name: wo.customer_name || null,
-              grade: wo.grade || null,
-              specification: wo.grade || null,
-              route_code: pr.route_code || 'CDS',
-              stage_code: 'BAND_SAW',
-              process_date: l.process_date,
-              od: Number(wo.size_od || 0),
-              wl: Number(wo.size_wt || 0),
-              l1: Number(wo.l1 || 0),
-              l2: Number(wo.l2 || 0),
-              avg_length: Number(wo.avg_length || 6),
-              input_qty: Number(l.input_qty || 0),
-              output_mtr: Number(l.output_qty || 0),
-              rejection_mtr: Number(l.rejection_qty || 0),
-              heat_lot_no: l.heat_lot_no,
-              remarks: l.remarks,
-              created_at: l.created_at,
-            };
-          });
-          setHistoryEntries(mapped);
+      // Fetch Band Saw production history via RPC
+      const { data: historyData, error: historyErr } = await supabase.rpc(
+        'get_production_entries',
+        {
+          p_search: null,
+          p_stage_code: 'BAND_SAW',
+          p_route_code: null,
+          p_from_date: null,
+          p_to_date: null,
+          p_limit: 500,
+          p_offset: 0,
         }
+      );
+
+      if (!historyErr && Array.isArray(historyData)) {
+        setHistoryEntries(historyData as ProductionEntry[]);
+      } else if (historyErr) {
+        console.error('Failed to load band saw history:', historyErr);
       }
     } catch (err) {
       console.error('Failed to load band saw data:', err);
