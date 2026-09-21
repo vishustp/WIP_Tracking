@@ -6,6 +6,7 @@ export type WorkCenterCode =
   | 'HOLLOW_HEAT_TREATMENT'
   | 'DRAW'
   | 'HEAT_TREATMENT'
+  | 'BAND_SAW'
   | 'VDI'
   | 'FINISHING'
   | 'QA'
@@ -16,6 +17,7 @@ export type UserRole =
   | 'manager'
   | 'rolling_incharge'
   | 'draw_operator'
+  | 'band_saw_operator'
   | 'qa_inspector'
   | 'finishing_operator'
   | 'auditor';

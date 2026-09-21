@@ -173,6 +173,7 @@ export const WORK_CENTER_LABELS: Record<string, string> = {
   HOLLOW_HEAT_TREATMENT: 'Hollow Heat Treatment & Annealing',
   DRAW: 'Cold Draw Bench & Pilgering',
   HEAT_TREATMENT: 'Final Heat Treatment & QA Lab',
+  BAND_SAW: 'Band Saw Cutting Station',
   VDI: 'Visual Dimension Inspection (VDI / QC)',
   FINISHING: 'Finishing, Straightening & Dispatch',
 };
@@ -212,10 +213,11 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
   }
 
   // User Group (Shop Floor Operator):
-  // ONLY Production Entry, Standard Shop Floor Reports (Pending Orders, WIP, Production), Dashboard, and User Profile are visible.
+  // ONLY Production Entry, Band Saw Cutting, Standard Shop Floor Reports (Pending Orders, WIP, Production), Dashboard, and User Profile are visible.
   // PPC planning forms (Work Orders, Excel Import, Rolling Planning, Diversion Planning), PPC Reports (Rolling Plans, Diversions), and Admin/Settings are strictly RESTRICTED to PPC / Admin group.
   const allowedUserRoutes = [
     '/production',
+    '/band-saw',
     '/qc',
     '/qc/vdi',
     '/vdi',
@@ -266,6 +268,11 @@ export function isUserAuthorizedForStage(user: AppUserProfile | null | undefined
   const userWc = user.work_center;
   const userDef = user.default_stage;
   const userAllowed = Array.isArray(user.allowed_stages) ? user.allowed_stages : [];
+
+  // Global work center assignment
+  if (userWc === 'ALL' || userAllowed.includes('ALL')) {
+    return true;
+  }
 
   // Direct assignment
   if (userWc === stageCode || userDef === stageCode || userAllowed.includes(stageCode)) {
