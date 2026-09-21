@@ -340,4 +340,61 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       expect(result.htcPcs).toBe(18);
     });
   });
+
+  describe("Standard 4-Meter Scrap Rule & Rule 5A Exceptions", () => {
+    it("exempts Mother Hollow from Rolling stage from the 4-meter scrap rule", () => {
+      const rollingRowUnder4m: Row = {
+        ...baseRow,
+        stage_code: "ROLLING",
+        route_code: "CDS",
+        mh_l1: 3.5,
+        mh_l2: 3.5,
+        avg_length: 3.5,
+        pcs: "10",
+        mtr: "35",
+        htc_ok_pcs: "10",
+        htc_ok_mtr: "35",
+        planned_rolling_total: 100,
+        max_allowed_mtr: 110,
+        max_allowed_pcs: 35,
+      };
+      expect(validateProductionEntry(rollingRowUnder4m, "ROLLING")).toHaveLength(0);
+    });
+
+    it("exempts work orders where customer order length is < 4.0m (Rule 5A)", () => {
+      const orderUnder4m: Row = {
+        ...baseRow,
+        work_order_no: "6409",
+        stage_code: "BAND_SAW",
+        route_code: "CDS",
+        l1: 3.5,
+        l2: 3.8,
+        avg_length: 3.65,
+        pcs: "20",
+        mtr: "70", // 3.50 Mtr/pc
+        max_allowed_pcs: 50,
+        max_allowed_mtr: 200,
+      };
+      expect(validateProductionEntry(orderUnder4m, "BAND_SAW")).toHaveLength(0);
+    });
+
+    it("enforces 4-meter scrap rule for standard finished pipes with order length >= 4.0m", () => {
+      const standardOrderUnder4mPiece: Row = {
+        ...baseRow,
+        stage_code: "BAND_SAW",
+        route_code: "CDS",
+        l1: 6.0,
+        l2: 6.5,
+        avg_length: 6.25,
+        pcs: "10",
+        mtr: "35", // 3.50 Mtr/pc (< 4.0m)
+        max_allowed_pcs: 50,
+        max_allowed_mtr: 200,
+      };
+      const errors = validateProductionEntry(standardOrderUnder4mPiece, "BAND_SAW");
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0].message).toContain("Standard 4-Meter Scrap Rule");
+    });
+  });
 });
+

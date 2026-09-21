@@ -45,22 +45,41 @@ export function validateProductionEntry(
     });
   }
 
-  // 4. Standard 4-Meter Scrap Rule (Universal Mill Rule)
-  // Any output quantity yielding an average piece length under 4.0 meters (< 4.0 Mtr/pc or gross length < 4.0 Mtr)
-  // must be rejected as off-cut scrap and cannot be recorded as prime production.
-  if (d.pcs > 0 && d.mtr > 0) {
-    const avgPieceLen = d.mtr / d.pcs;
-    if (avgPieceLen < 3.999) {
+  // 4. Standard 4-Meter Scrap Rule (Universal Mill Rule & Rule 5A)
+  // Standard Rule: Any output quantity yielding an average piece length under 4.0 meters (< 4.0 Mtr/pc or gross length < 4.0 Mtr)
+  // is treated as off-cut scrap and cannot be recorded as prime production.
+  // Exceptions:
+  // 1. Rule 5A: Does NOT apply when the customer work order length is explicitly < 4.0m (e.g. order specified L1/L2 < 4.0m).
+  // 2. Mother Hollow: Does NOT apply for Mother Hollow from Rolling (stage === "ROLLING").
+  const isRollingMotherHollow = stage === "ROLLING";
+  const orderL1 = Number(row.l1 || 0);
+  const orderL2 = Number(row.l2 || 0);
+  const orderAvg = orderL1 > 0 && orderL2 > 0 ? (orderL1 + orderL2) / 2 : (orderL1 || orderL2 || Number(row.avg_length || 0));
+  const inputL1 = Number(row.input_l1 || 0);
+  const inputL2 = Number(row.input_l2 || 0);
+  const inputAvg = inputL1 > 0 && inputL2 > 0 ? (inputL1 + inputL2) / 2 : (inputL1 || inputL2 || 0);
+  const effectiveTargetLen = inputAvg > 0 ? inputAvg : orderAvg;
+
+  const isOrderLenUnder4m =
+    (orderL1 > 0 && orderL1 < 4.0) ||
+    (orderL2 > 0 && orderL2 < 4.0) ||
+    (effectiveTargetLen > 0 && effectiveTargetLen < 4.0);
+
+  if (!isRollingMotherHollow && !isOrderLenUnder4m) {
+    if (d.pcs > 0 && d.mtr > 0) {
+      const avgPieceLen = d.mtr / d.pcs;
+      if (avgPieceLen < 3.999) {
+        errors.push({
+          workOrder: row.work_order_no,
+          message: `Standard 4-Meter Scrap Rule: Output piece length (${avgPieceLen.toFixed(2)} Mtr/pc) is under 4.0 meters. Material below 4.0m is off-cut scrap and cannot be recorded as prime production. Please record this quantity under Rejection.`,
+        });
+      }
+    } else if (d.pcs <= 0 && d.mtr > 0 && d.mtr < 3.999) {
       errors.push({
         workOrder: row.work_order_no,
-        message: `Standard 4-Meter Scrap Rule: Output piece length (${avgPieceLen.toFixed(2)} Mtr/pc) is under 4.0 meters. Material below 4.0m is off-cut scrap and cannot be recorded as prime production. Please record this quantity under Rejection.`,
+        message: `Standard 4-Meter Scrap Rule: Output length (${fmt(d.mtr, " MTR")}) is under 4.0 meters. Material below 4.0m is off-cut scrap and cannot be recorded as prime production. Please record this quantity under Rejection.`,
       });
     }
-  } else if (d.pcs <= 0 && d.mtr > 0 && d.mtr < 3.999) {
-    errors.push({
-      workOrder: row.work_order_no,
-      message: `Standard 4-Meter Scrap Rule: Output length (${fmt(d.mtr, " MTR")}) is under 4.0 meters. Material below 4.0m is off-cut scrap and cannot be recorded as prime production. Please record this quantity under Rejection.`,
-    });
   }
 
   // 5. HTC OK stage-specific checks (Strictly required at Rolling)
