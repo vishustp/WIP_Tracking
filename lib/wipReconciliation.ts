@@ -200,15 +200,18 @@ export function reconcileWorkOrderWip(
       }
       stageLen = finalAvgLen;
     } else if (sc === 'BAND_SAW') {
-      // Standard HFS: Feeder is Rolling HTC OK
+      // Standard HFS: Feeder is Rolling HTC OK (Mother Hollows awaiting cutting)
       // CDS / Option B HFS: Feeder is Final Heat Treatment
-      if (routeCode === 'HFS') {
+      if (routeCode.includes('HFS')) {
         incomingPcs = rollHtcPcs;
+        stageLen = mhAvgLen;
+        stageOd = mhOd > 0 ? mhOd : stageOd;
+        stageWt = mhWt > 0 ? mhWt : stageWt;
       } else {
         const htProd = stageProdMap.get('HEAT_TREATMENT');
         incomingPcs = htProd?.prodPcs || 0;
+        stageLen = finalAvgLen;
       }
-      stageLen = finalAvgLen;
     } else if (sc === 'VDI') {
       // Feeder is cut pieces from Band Saw
       const bsProd = stageProdMap.get('BAND_SAW');
