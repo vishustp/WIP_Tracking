@@ -119,13 +119,16 @@ async function simulate() {
     let woSawPcs = 0, woSawMt = 0, woSawMtr = 0;
 
     if (routeCode === 'ALLOY_CDS') {
-      // Starts at HHT
-      woHhtPcs = Math.max(0, rollHtcPcs - hhtPcs);
-      woHhtMtr = woHhtPcs * mhLen;
-      woHhtMt = mtFromMtr(woHhtMtr, mhOd, mhWt);
+      // If HHT logs exist, route through HHT; otherwise directly from Rolling HTC OK
+      if (hhtPcs > 0) {
+        woHhtPcs = Math.max(0, rollHtcPcs - hhtPcs);
+        woHhtMtr = woHhtPcs * mhLen;
+        woHhtMt = mtFromMtr(woHhtMtr, mhOd, mhWt);
+      }
 
       // Next is Draw
-      woDrawPcs = Math.max(0, hhtPcs - drawPcs);
+      const drawIncoming = hhtPcs > 0 ? hhtPcs : rollHtcPcs;
+      woDrawPcs = Math.max(0, drawIncoming - drawPcs);
       woDrawMtr = woDrawPcs * mhLen;
       woDrawMt = mtFromMtr(woDrawMtr, mhOd, mhWt);
 
