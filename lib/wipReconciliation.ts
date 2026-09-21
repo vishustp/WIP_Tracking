@@ -176,17 +176,16 @@ export function reconcileWorkOrderWip(
     let stageWt = Number(cur.wt || 0);
 
     if (sc === 'HOLLOW_HEAT_TREATMENT') {
-      // Alloy CDS: Feeder is Rolling HTC OK (only active if HHT production was logged)
-      const hhtProd = stageProdMap.get('HOLLOW_HEAT_TREATMENT');
-      incomingPcs = (hhtProd?.prodPcs || 0) > 0 ? rollHtcPcs : 0;
+      // Alloy CDS: Feeder is Rolling HTC OK (awaiting Hollow Heat Treatment)
+      incomingPcs = isAlloy ? rollHtcPcs : 0;
       stageLen = mhAvgLen;
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
     } else if (sc === 'DRAW') {
-      // CDS: Feeder is HHT (if alloy and HHT was logged) or directly Rolling HTC OK
+      // CDS: Feeder is HHT (if alloy) or directly Rolling HTC OK (if carbon CDS)
       const hhtProd = stageProdMap.get('HOLLOW_HEAT_TREATMENT');
       const hhtProdPcs = hhtProd?.prodPcs || 0;
-      incomingPcs = (isAlloy && hhtProdPcs > 0) ? hhtProdPcs : rollHtcPcs;
+      incomingPcs = isAlloy ? hhtProdPcs : rollHtcPcs;
       stageLen = mhAvgLen; // Mother hollow pieces waiting to be drawn
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
