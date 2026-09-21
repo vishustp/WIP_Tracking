@@ -749,10 +749,8 @@ export async function GET(req: NextRequest) {
       const vdiDivInPcs = avgLength > 0 ? Math.round(vdiDivIn / avgLength) : 0;
       const vdiDivOutPcs = avgLength > 0 ? Math.round(vdiDivOut / avgLength) : 0;
 
-      // VDI incoming: strictly from Band Saw Net Output Pieces (or feeder stage if no band saw logged yet for legacy data)
-      const vdiIncomingPcs = bandSawLogs.length > 0
-        ? bandSawNetPcs
-        : (qcInspectedPcs > 0 ? qcInspectedPcs : (!isCds ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs) : htNetPcs));
+      // VDI incoming: strictly from Band Saw Net Output Pieces
+      const vdiIncomingPcs = bandSawLogs.length > 0 ? bandSawNetPcs : 0;
 
       const vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
       const vdiAvailMtr = avgLength > 0
@@ -1134,11 +1132,11 @@ export async function GET(req: NextRequest) {
                 balance_to_make_mt: vdiAvailMt,
                 max_allowed_mtr: vdiAvailMtr,
                 max_allowed_pcs: vdiAvailPcs,
-                prev_stage_code: bandSawLogs.length > 0 ? "BAND_SAW" : (!isCds ? (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING") : "HEAT_TREATMENT"),
-                prev_htc_ok: bandSawLogs.length === 0 && !isCds && !isAlloy ? rollHtcOkMtr : undefined,
-                prev_net_output: bandSawLogs.length > 0 ? bandSawNetMtr : (!isCds ? (isAlloy ? hollowHtNetMtr : undefined) : htNetPcs),
-                feeder_source_label: bandSawLogs.length > 0 ? "Band Saw Net OK" : (!isCds ? (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK") : "Heat Treatment Net OK"),
-                feeder_stage_code: bandSawLogs.length > 0 ? "BAND_SAW" : (!isCds ? (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING") : "HEAT_TREATMENT"),
+                prev_stage_code: "BAND_SAW",
+                prev_htc_ok: undefined,
+                prev_net_output: bandSawNetMtr,
+                feeder_source_label: "Band Saw Net OK",
+                feeder_stage_code: "BAND_SAW",
               }
             : null,
         FINISHING:
@@ -1389,11 +1387,11 @@ export async function GET(req: NextRequest) {
 
       // Remaining to finish for this child order
       const remainingTargetMtr = Math.max(0, childPlannedMtr - childFinOutMtr - childFinRejMtr);
-      // Available WIP is bounded by upstream finishing available stock
-      const childAvailMtr = Math.min(remainingTargetMtr, masterFinishingAvail);
-      const childAvailPcs = (childFinOutMtr <= 0 && childFinRejMtr <= 0 && childPlannedPcs > 0)
-        ? childPlannedPcs
-        : (avgLength > 0 ? Math.round(childAvailMtr / avgLength) : 0);
+      // Available WIP is bounded by upstream finishing available stock (passed QC from VDI)
+      const childAvailMtr = masterFinishingAvail > 0 ? Math.min(remainingTargetMtr, masterFinishingAvail) : 0;
+      const childAvailPcs = masterFinishingAvail > 0 && avgLength > 0
+        ? Math.round(childAvailMtr / avgLength)
+        : 0;
 
       if (childAvailPcs >= 1 || childAvailMtr >= 1.0) {
         const od = Number(child.size_od || childWo?.size_od || 0);
