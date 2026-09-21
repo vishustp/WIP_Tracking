@@ -116,15 +116,23 @@ export const calc = (row: {
   const userEnteredAvg = inputL1 > 0 && inputL2 > 0 ? (inputL1 + inputL2) / 2 : (inputL1 || inputL2 || 0);
 
   const effectiveAvg =
-    userEnteredAvg > 0
-      ? userEnteredAvg
-      : isMhStage && effectiveMhAvg > 0
-      ? effectiveMhAvg
-      : orderAvg > 0
-      ? orderAvg
-      : n(row.avg_length) > 0
-      ? n(row.avg_length)
-      : 6.0;
+    isMhStage
+      ? (effectiveMhAvg > 0
+          ? effectiveMhAvg
+          : userEnteredAvg > 0
+          ? userEnteredAvg
+          : orderAvg > 0
+          ? orderAvg
+          : n(row.avg_length) > 0
+          ? n(row.avg_length)
+          : 6.0)
+      : (userEnteredAvg > 0
+          ? userEnteredAvg
+          : orderAvg > 0
+          ? orderAvg
+          : n(row.avg_length) > 0
+          ? n(row.avg_length)
+          : 6.0);
 
   const effectiveOd =
     isMhStage && row.mh_od && Number(row.mh_od) > 0 ? Number(row.mh_od) : n(row.od);

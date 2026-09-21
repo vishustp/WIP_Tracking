@@ -211,20 +211,25 @@ export const emptyRow = (r: Omit<
   | "ht_input_nos"
   | "input_l1"
   | "input_l2"
->): Row => ({
-  ...r,
-  input_l1: r.l1 ? String(r.l1) : "",
-  input_l2: r.l2 ? String(r.l2) : "",
-  ht_input_nos: "",
-  pcs: "",
-  mtr: "",
-  rejection_pcs: "",
-  rejection_mtr: "",
-  htc_ok_pcs: "",
-  htc_ok_mtr: "",
-  heat_lot_no: "",
-  remarks: "",
-});
+>): Row => {
+  const isMh = r.stage_code === "ROLLING" || r.stage_code === "HOLLOW_HEAT_TREATMENT";
+  const defL1 = isMh && r.mh_l1 ? String(r.mh_l1) : r.l1 ? String(r.l1) : "";
+  const defL2 = isMh && r.mh_l2 ? String(r.mh_l2) : r.l2 ? String(r.l2) : "";
+  return {
+    ...r,
+    input_l1: defL1,
+    input_l2: defL2,
+    ht_input_nos: "",
+    pcs: "",
+    mtr: "",
+    rejection_pcs: "",
+    rejection_mtr: "",
+    htc_ok_pcs: "",
+    htc_ok_mtr: "",
+    heat_lot_no: "",
+    remarks: "",
+  };
+};
 
 export interface WorkOrder {
   id: string;

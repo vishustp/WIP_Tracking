@@ -395,6 +395,10 @@ export function useQueue(stage: StageCode) {
 
             return {
               ...r,
+              mh_od: planInfo?.mh_od ?? plan?.mh_od ?? r.mh_od,
+              mh_wt: planInfo?.mh_wt ?? plan?.mh_wt ?? r.mh_wt,
+              mh_l1: planInfo?.mh_l1 ?? plan?.mh_l1 ?? r.mh_l1,
+              mh_l2: planInfo?.mh_l2 ?? plan?.mh_l2 ?? r.mh_l2,
               mh_avg_length: effPlanLen,
               master_plan_no: planInfo?.plan_no || plan?.plan_no,
               plan_no: planInfo?.plan_no || plan?.plan_no,

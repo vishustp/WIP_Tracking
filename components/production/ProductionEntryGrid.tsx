@@ -247,18 +247,25 @@ export default function ProductionEntryGrid() {
         const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || 0;
         const effectiveMhAvg = Number(r.mh_avg_length || 0) > 0 ? Number(r.mh_avg_length) : computedMhAvg;
 
-        const dynL1 = Number(field === 'input_l1' ? value : (r.input_l1 || r.l1 || 0));
-        const dynL2 = Number(field === 'input_l2' ? value : (r.input_l2 || r.l2 || 0));
-        const orderAvg = dynL1 > 0 && dynL2 > 0 ? (dynL1 + dynL2) / 2 : dynL1 || dynL2 || 0;
+        const dynL1 = Number(field === 'input_l1' ? value : (r.input_l1 || r.mh_l1 || r.l1 || 0));
+        const dynL2 = Number(field === 'input_l2' ? value : (r.input_l2 || r.mh_l2 || r.l2 || 0));
+        const customAvg = dynL1 > 0 && dynL2 > 0 ? (dynL1 + dynL2) / 2 : dynL1 || dynL2 || 0;
 
+        const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
         const effectiveAvg =
-          (stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT') && effectiveMhAvg > 0
-            ? effectiveMhAvg
-            : orderAvg > 0
-            ? orderAvg
-            : n(r.avg_length) > 0
-            ? n(r.avg_length)
-            : 6.0;
+          isMhStage
+            ? (effectiveMhAvg > 0
+                ? effectiveMhAvg
+                : customAvg > 0
+                ? customAvg
+                : n(r.avg_length) > 0
+                ? n(r.avg_length)
+                : 6.0)
+            : (customAvg > 0
+                ? customAvg
+                : n(r.avg_length) > 0
+                ? n(r.avg_length)
+                : 6.0);
 
         const isRollingStage = stage === 'ROLLING';
 
