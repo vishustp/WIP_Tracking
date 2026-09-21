@@ -54,6 +54,12 @@ export default async function Dashboard() {
         if (p.work_order_id) {
           mhMap.set(p.work_order_id, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg, planned_qty: p.planned_qty });
         }
+        if (parsed?.master_wo_id) {
+          mhMap.set(parsed.master_wo_id, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg, planned_qty: p.planned_qty });
+        }
+        if (parsed?.master_wo_no) {
+          mhMap.set(String(parsed.master_wo_no).trim(), { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg, planned_qty: p.planned_qty });
+        }
         if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
           for (const c of parsed.child_work_orders) {
             const cId = c.work_order_id || c.id;
@@ -82,34 +88,47 @@ export default async function Dashboard() {
 
     for (const [woId, rows] of wipByWo.entries()) {
       const wo = woMap.get(woId);
-      const planMh = mhMap.get(woId);
+      const planMh = mhMap.get(woId) || mhMap.get(String(wo?.work_order_no).trim());
       const routeCode = rows[0]?.route_code || 'CDS';
 
+      const rollStage = rows.find((r: any) => (r.stage_code || '').toUpperCase() === 'ROLLING');
+      const rollPcs = Number(rollStage?.gross_output_pcs || 0);
+      const rollMtr = Number(rollStage?.gross_output_mtr || rollStage?.production_qty || 0);
+      const actualMhLen = (rollPcs > 0 && rollMtr > 0)
+        ? Number((rollMtr / rollPcs).toFixed(3))
+        : Number(planMh?.mh_avg_length || 6.0);
+
+      const mhOd = Number(planMh?.mh_od || rollStage?.mh_od || rollStage?.od || wo?.size_od || 0);
+      const mhWt = Number(planMh?.mh_wt || rollStage?.mh_wt || rollStage?.wt || wo?.size_wt || 0);
+
       const summary = reconcileWorkOrderWip(
-        rows.map((r: any) => ({
-          stage_code: (r.stage_code || '').toUpperCase(),
-          sequence_no: Number(r.sequence_no || 0),
-          gross_output_mtr: Number(r.production_qty || r.gross_output_mtr || 0),
-          gross_output_pcs: Number(r.gross_output_pcs || 0),
-          rejection_mtr: Number(r.rejection_mtr || 0),
-          rejection_pcs: Number(r.rejection_pcs || 0),
-          net_output_mtr: Number(r.net_output_mtr || 0),
-          net_output_pcs: Number(r.net_output_pcs || 0),
-          incoming_mtr: Number(r.incoming_qty || 0),
-          od: Number(r.od || r.size_od || wo?.size_od || 0),
-          wt: Number(r.wt || r.size_wt || wo?.size_wt || 0),
-          avg_length: Number(r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0),
-          mh_od: planMh?.mh_od || undefined,
-          mh_wt: planMh?.mh_wt || undefined,
-          mh_avg_length: planMh?.mh_avg_length || undefined,
-        })),
+        rows.map((r: any) => {
+          const isRoll = (r.stage_code || '').toUpperCase() === 'ROLLING';
+          return {
+            stage_code: (r.stage_code || '').toUpperCase(),
+            sequence_no: Number(r.sequence_no || 0),
+            gross_output_mtr: isRoll && rollMtr > 0 ? rollMtr : Number(r.production_qty || r.gross_output_mtr || 0),
+            gross_output_pcs: isRoll && rollPcs > 0 ? rollPcs : Number(r.gross_output_pcs || 0),
+            rejection_mtr: Number(r.rejection_mtr || 0),
+            rejection_pcs: Number(r.rejection_pcs || 0),
+            net_output_mtr: Number(r.net_output_mtr || 0),
+            net_output_pcs: Number(r.net_output_pcs || 0),
+            incoming_mtr: Number(r.incoming_qty || 0),
+            od: Number(r.od || r.size_od || wo?.size_od || 0),
+            wt: Number(r.wt || r.size_wt || wo?.size_wt || 0),
+            avg_length: Number(r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0),
+            mh_od: mhOd > 0 ? mhOd : undefined,
+            mh_wt: mhWt > 0 ? mhWt : undefined,
+            mh_avg_length: actualMhLen > 0 ? actualMhLen : undefined,
+          };
+        }),
         {
           route_code: routeCode,
           ordered_qty_mt: Number(wo?.ordered_qty_mt || 0),
           rolling_plan_qty_mtr: Number(planMh?.planned_qty || 0),
-          mh_od: planMh?.mh_od || undefined,
-          mh_wt: planMh?.mh_wt || undefined,
-          mh_avg_length: planMh?.mh_avg_length || undefined,
+          mh_od: mhOd > 0 ? mhOd : undefined,
+          mh_wt: mhWt > 0 ? mhWt : undefined,
+          mh_avg_length: actualMhLen > 0 ? actualMhLen : undefined,
         }
       );
 

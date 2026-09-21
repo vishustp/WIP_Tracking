@@ -145,14 +145,19 @@ wip_calculated AS (
         -- Stage average length (Physical Actual Length)
         CASE 
             WHEN re.stage_code IN ('HOLLOW_HEAT_TREATMENT', 'DRAW') OR (re.stage_code = 'BAND_SAW' AND re.route_code ~* 'HFS') THEN
-                re.mh_avg_length
+                COALESCE(
+                    NULLIF(ROUND(re.roll_mtr / NULLIF(re.roll_htc_pcs, 0), 3), 0),
+                    re.mh_avg_length
+                )
             WHEN re.stage_code IN ('HEAT_TREATMENT', 'BAND_SAW') AND re.route_code ~* 'CDS' THEN
                 -- Actual physical elongated drawn length from mass conservation
                 COALESCE(
-                    ROUND(re.mh_avg_length * (
-                        ((re.mh_od - re.mh_wt) * re.mh_wt) / 
-                        NULLIF((re.size_od - re.size_wt) * re.size_wt, 0)
-                    ), 2),
+                    ROUND(
+                        COALESCE(NULLIF(ROUND(re.roll_mtr / NULLIF(re.roll_htc_pcs, 0), 3), 0), re.mh_avg_length) * (
+                            ((re.mh_od - re.mh_wt) * re.mh_wt) / 
+                            NULLIF((re.size_od - re.size_wt) * re.size_wt, 0)
+                        ), 3
+                    ),
                     re.final_avg_length
                 )
             ELSE

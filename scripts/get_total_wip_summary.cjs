@@ -33,6 +33,12 @@ async function run() {
       if (p.work_order_id) {
         mhMap.set(p.work_order_id, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg, planned_qty: p.planned_qty, multiple: mult });
       }
+      if (parsed?.master_wo_id) {
+        mhMap.set(parsed.master_wo_id, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg, planned_qty: p.planned_qty, multiple: mult });
+      }
+      if (parsed?.master_wo_no) {
+        mhMap.set(String(parsed.master_wo_no).trim(), { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg, planned_qty: p.planned_qty, multiple: mult });
+      }
       if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
         for (const c of parsed.child_work_orders) {
           const cId = c.work_order_id || c.id;
@@ -66,7 +72,7 @@ async function run() {
 
   for (const [woId, rows] of wipByWo.entries()) {
     const wo = woMap.get(woId);
-    const planMh = mhMap.get(woId);
+    const planMh = mhMap.get(woId) || mhMap.get(String(wo?.work_order_no).trim());
     const routeCode = rows[0]?.route_code || 'CDS';
     const isAlloy = routeCode.includes('ALLOY');
     const isCds = routeCode.includes('CDS');
@@ -74,10 +80,14 @@ async function run() {
     const sortedStages = [...rows].sort((a, b) => (Number(a.sequence_no) || 0) - (Number(b.sequence_no) || 0));
     const rollStage = sortedStages.find(s => s.stage_code === 'ROLLING');
     const rollGrossPcs = rollStage ? Number(rollStage.gross_output_pcs || 0) : 0;
+    const rollGrossMtr = rollStage ? Number(rollStage.gross_output_mtr || rollStage.production_qty || 0) : 0;
     const rollRejPcs = rollStage ? Number(rollStage.rejection_pcs || 0) : 0;
     const rollHtcPcs = Math.max(0, rollGrossPcs - rollRejPcs);
 
-    const mhAvgLen = Number(planMh?.mh_avg_length || rollStage?.mh_avg_length || rollStage?.avg_length || 6.0);
+    // Actual physical Mother Hollow length from mill output
+    const mhAvgLen = (rollGrossPcs > 0 && rollGrossMtr > 0)
+      ? Number((rollGrossMtr / rollGrossPcs).toFixed(3))
+      : Number(planMh?.mh_avg_length || rollStage?.mh_avg_length || rollStage?.avg_length || 6.0);
     const finalAvgLen = Number(sortedStages[sortedStages.length - 1]?.avg_length || (wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : wo?.l1 || wo?.l2 || 6.0));
     const mhOd = Number(planMh?.mh_od || rollStage?.mh_od || rollStage?.od || wo?.size_od || 0);
     const mhWt = Number(planMh?.mh_wt || rollStage?.mh_wt || rollStage?.wt || wo?.size_wt || 0);
@@ -122,7 +132,7 @@ async function run() {
           incomingPcs = drawProd?.prodPcs || 0;
           const finUnitWeight = finOd > finWt && finWt > 0 ? (finOd - finWt) * finWt * 0.0246615 * 0.001 : 0;
           const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
-          stageLen = (finUnitWeight > 0 && mhUnitWeight > 0) ? Number((mhAvgLen * (mhUnitWeight / finUnitWeight)).toFixed(2)) : finalAvgLen;
+          stageLen = (finUnitWeight > 0 && mhUnitWeight > 0) ? Number((mhAvgLen * (mhUnitWeight / finUnitWeight)).toFixed(3)) : finalAvgLen;
         } else {
           incomingPcs = rollHtcPcs;
           stageLen = mhAvgLen;
@@ -131,7 +141,7 @@ async function run() {
         stageWt = finWt;
       } else if (sc === 'BAND_SAW') {
         if (routeCode.includes('HFS')) {
-          incomingPcs = rollHtcPcs;
+          incomingPcs = isAlloy ? (stageProdMap.get('HOLLOW_HEAT_TREATMENT')?.prodPcs || 0) : rollHtcPcs;
           stageLen = mhAvgLen;
           stageOd = mhOd;
           stageWt = mhWt;
@@ -140,7 +150,7 @@ async function run() {
           incomingPcs = htProd?.prodPcs || 0;
           const finUnitWeight = finOd > finWt && finWt > 0 ? (finOd - finWt) * finWt * 0.0246615 * 0.001 : 0;
           const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
-          stageLen = (finUnitWeight > 0 && mhUnitWeight > 0) ? Number((mhAvgLen * (mhUnitWeight / finUnitWeight)).toFixed(2)) : finalAvgLen;
+          stageLen = (finUnitWeight > 0 && mhUnitWeight > 0) ? Number((mhAvgLen * (mhUnitWeight / finUnitWeight)).toFixed(3)) : finalAvgLen;
           stageOd = finOd;
           stageWt = finWt;
         }

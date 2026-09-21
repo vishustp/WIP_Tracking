@@ -95,7 +95,10 @@ export function reconcileWorkOrderWip(
   const rollRejPcs = rollStage ? Number(rollStage.rejection_pcs || 0) : 0;
   const rollHtcPcs = Math.max(0, rollGrossPcs - rollRejPcs);
 
-  const mhAvgLen = Number(options.mh_avg_length || rollStage?.mh_avg_length || rollStage?.avg_length || 6.0);
+  // Actual physical Mother Hollow length from mill production
+  const actualMhLen = (rollStage && rollStage.gross_output_pcs > 0 && rollStage.gross_output_mtr > 0)
+    ? Number((rollStage.gross_output_mtr / rollStage.gross_output_pcs).toFixed(3))
+    : Number(options.mh_avg_length || rollStage?.mh_avg_length || rollStage?.avg_length || 6.0);
   const finalAvgLen = Number(options.final_avg_length || sortedStages[sortedStages.length - 1]?.avg_length || 6.0);
 
   const mhOd = Number(options.mh_od || rollStage?.mh_od || rollStage?.od || 0);
@@ -104,8 +107,8 @@ export function reconcileWorkOrderWip(
   // 2. Determine charged billet MT
   let chargedBilletMt = options.charged_billet_mt || 0;
   if (!chargedBilletMt && rollStage && (rollStage.gross_output_mtr || rollGrossPcs)) {
-    const rollMtr = rollStage.gross_output_mtr > 0 ? rollStage.gross_output_mtr : rollGrossPcs * mhAvgLen;
-    chargedBilletMt = mtFromMtr(rollMtr, mhOd, mhWt);
+    const rollMtr = rollStage.gross_output_mtr > 0 ? rollStage.gross_output_mtr : rollGrossPcs * actualMhLen;
+    chargedBilletMt = mtFromMtr(rollMtr, mhOd > 0 ? mhOd : rollStage.od, mhWt > 0 ? mhWt : rollStage.wt);
   }
   if (!chargedBilletMt && options.rolling_plan_qty_mtr && mhOd && mhWt) {
     chargedBilletMt = mtFromMtr(options.rolling_plan_qty_mtr, mhOd, mhWt);
@@ -143,7 +146,7 @@ export function reconcileWorkOrderWip(
       }
 
       const awaitingHtcPcs = Math.max(0, rollHtcPcs - maxDownstreamPcs);
-      const awaitingHtcMtr = Number((awaitingHtcPcs * mhAvgLen).toFixed(2));
+      const awaitingHtcMtr = Number((awaitingHtcPcs * actualMhLen).toFixed(2));
       const awaitingHtcMt = mtFromMtr(awaitingHtcMtr, mhOd, mhWt);
 
       reconciledStages.push({
@@ -151,11 +154,11 @@ export function reconcileWorkOrderWip(
         sequence_no: cur.sequence_no,
         is_feeder_stage: true,
         incoming_pcs: rollGrossPcs,
-        incoming_mtr: rollStage?.gross_output_mtr || (rollGrossPcs * mhAvgLen),
+        incoming_mtr: rollStage?.gross_output_mtr || (rollGrossPcs * actualMhLen),
         production_pcs: rollHtcPcs,
-        production_mtr: rollStage?.net_output_mtr || (rollHtcPcs * mhAvgLen),
+        production_mtr: rollStage?.net_output_mtr || (rollHtcPcs * actualMhLen),
         rejection_pcs: rollRejPcs,
-        rejection_mtr: rollStage?.rejection_mtr || (rollRejPcs * mhAvgLen),
+        rejection_mtr: rollStage?.rejection_mtr || (rollRejPcs * actualMhLen),
         reconciled_wip_pcs: awaitingHtcPcs,
         reconciled_wip_mtr: awaitingHtcMtr,
         reconciled_wip_mt: awaitingHtcMt,
@@ -164,7 +167,7 @@ export function reconcileWorkOrderWip(
         capped_wip_mt: awaitingHtcMt,
         od: mhOd,
         wt: mhWt,
-        avg_length: mhAvgLen,
+        avg_length: actualMhLen,
       });
       continue;
     }
@@ -178,7 +181,7 @@ export function reconcileWorkOrderWip(
     if (sc === 'HOLLOW_HEAT_TREATMENT') {
       // Alloy CDS: Feeder is Rolling HTC OK (awaiting Hollow Heat Treatment)
       incomingPcs = isAlloy ? rollHtcPcs : 0;
-      stageLen = mhAvgLen;
+      stageLen = actualMhLen;
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
     } else if (sc === 'DRAW') {
@@ -186,7 +189,7 @@ export function reconcileWorkOrderWip(
       const hhtProd = stageProdMap.get('HOLLOW_HEAT_TREATMENT');
       const hhtProdPcs = hhtProd?.prodPcs || 0;
       incomingPcs = isAlloy ? hhtProdPcs : rollHtcPcs;
-      stageLen = mhAvgLen; // Mother hollow pieces waiting to be drawn
+      stageLen = actualMhLen; // Mother hollow pieces waiting to be drawn
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
     } else if (sc === 'HEAT_TREATMENT') {
@@ -195,17 +198,17 @@ export function reconcileWorkOrderWip(
       if (isCds) {
         const drawProd = stageProdMap.get('DRAW');
         incomingPcs = drawProd?.prodPcs || 0;
-        // Actual physical elongated drawn length:
+        // Actual physical elongated drawn length conserving full mass:
         const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
         const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
         if (finUnitWeight > 0 && mhUnitWeight > 0) {
-          stageLen = Number((mhAvgLen * (mhUnitWeight / finUnitWeight)).toFixed(2));
+          stageLen = Number((actualMhLen * (mhUnitWeight / finUnitWeight)).toFixed(3));
         } else {
           stageLen = finalAvgLen;
         }
       } else {
         incomingPcs = rollHtcPcs;
-        stageLen = mhAvgLen;
+        stageLen = actualMhLen;
       }
     } else if (sc === 'BAND_SAW') {
       // Standard HFS: Feeder is Rolling HTC OK
@@ -218,7 +221,7 @@ export function reconcileWorkOrderWip(
         } else {
           incomingPcs = rollHtcPcs;
         }
-        stageLen = mhAvgLen;
+        stageLen = actualMhLen;
         stageOd = mhOd > 0 ? mhOd : stageOd;
         stageWt = mhWt > 0 ? mhWt : stageWt;
       } else {
@@ -228,7 +231,7 @@ export function reconcileWorkOrderWip(
         const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
         const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
         if (finUnitWeight > 0 && mhUnitWeight > 0) {
-          stageLen = Number((mhAvgLen * (mhUnitWeight / finUnitWeight)).toFixed(2));
+          stageLen = Number((actualMhLen * (mhUnitWeight / finUnitWeight)).toFixed(3));
         } else {
           stageLen = finalAvgLen;
         }
@@ -237,6 +240,11 @@ export function reconcileWorkOrderWip(
       // Feeder is cut pieces from Band Saw
       const bsProd = stageProdMap.get('BAND_SAW');
       incomingPcs = bsProd?.prodPcs || 0;
+      stageLen = finalAvgLen;
+    } else if (sc === 'FINISHING') {
+      // Feeder is VDI OK pieces
+      const vdiProd = stageProdMap.get('VDI');
+      incomingPcs = vdiProd?.prodPcs || 0;
       stageLen = finalAvgLen;
     } else if (sc === 'FINISHING') {
       // Feeder is VDI OK pieces
@@ -308,7 +316,7 @@ export function reconcileWorkOrderWip(
 
   const maxPhysicalWipMt = Math.max(0, chargedBilletMt - totalScrapMt - finNetMt);
 
-  if (chargedBilletMt > 0 && totalPlantWipMt > maxPhysicalWipMt && totalPlantWipMt > 0) {
+  if (chargedBilletMt > 0 && totalPlantWipMt > (maxPhysicalWipMt * 1.05) && totalPlantWipMt > 0) {
     const scaleFactor = maxPhysicalWipMt / totalPlantWipMt;
     for (const st of plantStages) {
       st.capped_wip_mt = Number((st.reconciled_wip_mt * scaleFactor).toFixed(3));
