@@ -37,7 +37,7 @@ export function ProductionToolbar({
         <div className="text-xs text-slate-500 font-medium">
           <span>Production Management</span>
           <span className="mx-1.5 text-slate-400">&gt;</span>
-          <span>Supply Chain</span>
+          <span>Shop Floor Tracking</span>
           <span className="mx-1.5 text-slate-400">&gt;</span>
           <span className="font-bold text-slate-700">Work Center Execution</span>
         </div>

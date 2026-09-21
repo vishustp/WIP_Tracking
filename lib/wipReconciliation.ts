@@ -195,22 +195,43 @@ export function reconcileWorkOrderWip(
       if (isCds) {
         const drawProd = stageProdMap.get('DRAW');
         incomingPcs = drawProd?.prodPcs || 0;
+        // Actual physical elongated drawn length:
+        const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
+        const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
+        if (finUnitWeight > 0 && mhUnitWeight > 0) {
+          stageLen = Number((mhAvgLen * (mhUnitWeight / finUnitWeight)).toFixed(2));
+        } else {
+          stageLen = finalAvgLen;
+        }
       } else {
         incomingPcs = rollHtcPcs;
+        stageLen = mhAvgLen;
       }
-      stageLen = finalAvgLen;
     } else if (sc === 'BAND_SAW') {
-      // Standard HFS: Feeder is Rolling HTC OK (Mother Hollows awaiting cutting)
-      // CDS / Option B HFS: Feeder is Final Heat Treatment
+      // Standard HFS: Feeder is Rolling HTC OK
+      // Alloy HFS: Feeder is Hollow Heat Treatment OK
+      // CDS: Feeder is Final Heat Treatment (drawn pipes awaiting cutting)
       if (routeCode.includes('HFS')) {
-        incomingPcs = rollHtcPcs;
+        if (isAlloy) {
+          const hhtProd = stageProdMap.get('HOLLOW_HEAT_TREATMENT');
+          incomingPcs = hhtProd?.prodPcs || 0;
+        } else {
+          incomingPcs = rollHtcPcs;
+        }
         stageLen = mhAvgLen;
         stageOd = mhOd > 0 ? mhOd : stageOd;
         stageWt = mhWt > 0 ? mhWt : stageWt;
       } else {
         const htProd = stageProdMap.get('HEAT_TREATMENT');
         incomingPcs = htProd?.prodPcs || 0;
-        stageLen = finalAvgLen;
+        // Uncut drawn pipes awaiting cutting at Band Saw have actual elongated length:
+        const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
+        const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
+        if (finUnitWeight > 0 && mhUnitWeight > 0) {
+          stageLen = Number((mhAvgLen * (mhUnitWeight / finUnitWeight)).toFixed(2));
+        } else {
+          stageLen = finalAvgLen;
+        }
       }
     } else if (sc === 'VDI') {
       // Feeder is cut pieces from Band Saw
@@ -220,7 +241,7 @@ export function reconcileWorkOrderWip(
     } else if (sc === 'FINISHING') {
       // Feeder is VDI OK pieces
       const vdiProd = stageProdMap.get('VDI');
-      incomingPcs = Math.max(0, (vdiProd?.prodPcs || 0) - (vdiProd?.rejPcs || 0));
+      incomingPcs = vdiProd?.prodPcs || 0;
       stageLen = finalAvgLen;
     } else {
       // Fallback: previous stage production
@@ -234,15 +255,16 @@ export function reconcileWorkOrderWip(
     for (let j = i + 1; j < sortedStages.length; j++) {
       const down = sortedStages[j];
       const downData = stageProdMap.get(down.stage_code);
-      if (downData && (downData.prodPcs + downData.rejPcs) > maxDownstreamPcs) {
-        maxDownstreamPcs = downData.prodPcs + downData.rejPcs;
+      if (downData && downData.prodPcs > maxDownstreamPcs) {
+        maxDownstreamPcs = downData.prodPcs;
       }
     }
 
     const curProd = stageProdMap.get(sc) || { prodPcs: 0, rejPcs: 0, prodMtr: 0, rejMtr: 0 };
-    const effectivePassedPcs = Math.max(curProd.prodPcs + curProd.rejPcs, maxDownstreamPcs);
+    // Option B: Current stage OK production is deducted; rejections stay in active balance until diverted or marked commercial
+    const effectivePassedPcs = Math.max(curProd.prodPcs, maxDownstreamPcs);
 
-    // Core Formula: Queue WIP (PCS) = Incoming - Effective Passed
+    // Core Formula: Queue WIP (PCS) = Incoming - Effective Passed OK
     const wipPcs = Math.max(0, incomingPcs - effectivePassedPcs);
     const wipMtr = stageLen > 0 ? Number((wipPcs * stageLen).toFixed(2)) : 0;
     const wipMt = mtFromMtr(wipMtr, stageOd, stageWt);

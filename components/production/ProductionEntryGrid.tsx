@@ -16,6 +16,7 @@ import {
   extractPcsFromRemarks,
   attachCustomLengthToRemarks,
   extractCustomLengthFromRemarks,
+  attachBundleTypeToRemarks,
 } from '@/lib/productionUtils';
 import { StageCode, STAGES, Row, ProductionEntry } from '@/types';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
@@ -641,7 +642,7 @@ export default function ProductionEntryGrid() {
 
   const updateBundleField = (
     bundleId: string,
-    field: 'bundle_no' | 'pcs' | 'mtr' | 'remarks',
+    field: 'bundle_no' | 'pcs' | 'mtr' | 'remarks' | 'bundle_type',
     val: string,
     avgLen?: number
   ) => {
@@ -728,6 +729,11 @@ export default function ProductionEntryGrid() {
           : b.bundle_no
           ? `Bundle: ${b.bundle_no}`
           : 'Campaign Bundling';
+        const bundleType = b.bundle_type || 'PRIME';
+        const bundleRemarks = attachBundleTypeToRemarks(
+          attachPcsToRemarks(baseRemarks, n(b.pcs), 0),
+          bundleType
+        );
         return {
           work_order_id: b.wo_id,
           route_id: bundlingCampaign.route_id,
@@ -738,7 +744,7 @@ export default function ProductionEntryGrid() {
           htc_ok: 0,
           output_pcs: n(b.pcs) || null,
           heat_lot_no: b.bundle_no || null,
-          remarks: attachPcsToRemarks(baseRemarks, n(b.pcs), 0),
+          remarks: bundleRemarks,
         };
       });
 

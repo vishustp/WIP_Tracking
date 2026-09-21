@@ -12,6 +12,7 @@ import {
   mtrFromPcs,
   attachBandSawCutsToRemarks,
   extractBandSawCutsFromRemarks,
+  classifyPipeCutLength,
 } from '@/lib/productionUtils';
 import {
   Scissors,
@@ -96,18 +97,52 @@ export function BandSawCuttingModal({
     String(defaultMotherLen > 0 ? defaultMotherLen : 6.0)
   );
 
-  // Multi-length cut items list
+  // Multi-length cut items list - Hybrid Pre-fill from Rolling Plan
   const [cutItems, setCutItems] = useState<BandSawCutItem[]>(() => {
-    const defaultCutLen = defaultMotherLen > 0 ? defaultMotherLen : 6.0;
-    return [
+    const planMultiple = Math.max(1, Math.round(Number(row.multiple || 1)));
+    const targetOrderLen = Number(row.l1 || row.avg_length || 0);
+
+    let cutLen = defaultMotherLen > 0 ? defaultMotherLen : 6.0;
+    if (targetOrderLen > 0 && targetOrderLen < defaultMotherLen) {
+      cutLen = targetOrderLen;
+    } else if (planMultiple > 1 && defaultMotherLen > 0) {
+      cutLen = Number((defaultMotherLen / planMultiple).toFixed(2));
+    }
+
+    const mPcs = availMotherPcs > 0 ? availMotherPcs : 1;
+    const primePcs = planMultiple > 1 ? mPcs * planMultiple : mPcs;
+    const totalMtr = Number((cutLen * primePcs).toFixed(2));
+
+    const initialCategory = classifyPipeCutLength(cutLen, targetOrderLen);
+    const mappedCategory: BandSawCutCategory = initialCategory === 'PRIME' ? 'PRIME' : 'OFFCUT';
+
+    const items: BandSawCutItem[] = [
       {
         id: 'cut-1',
-        length_mtr: Number(defaultCutLen.toFixed(2)),
-        cut_pcs: availMotherPcs > 0 ? availMotherPcs : 1,
-        cut_category: 'PRIME',
-        total_mtr: Number((defaultCutLen * (availMotherPcs > 0 ? availMotherPcs : 1)).toFixed(2)),
+        length_mtr: Number(cutLen.toFixed(2)),
+        cut_pcs: primePcs,
+        cut_category: mappedCategory,
+        total_mtr: totalMtr,
+        total_mt: mtFromMtr(totalMtr, pipeOd, pipeWt),
       },
     ];
+
+    // Check for remainder per pipe >= 3.0m (Rule 5C)
+    const totalIncomingMtr = mPcs * (defaultMotherLen > 0 ? defaultMotherLen : 6.0);
+    const remMtr = totalIncomingMtr - totalMtr;
+    const remPerPipe = mPcs > 0 ? remMtr / mPcs : 0;
+    if (remPerPipe >= 3.0) {
+      items.push({
+        id: 'cut-remnant',
+        length_mtr: Number(remPerPipe.toFixed(2)),
+        cut_pcs: mPcs,
+        cut_category: 'OFFCUT',
+        total_mtr: Number(remMtr.toFixed(2)),
+        total_mt: mtFromMtr(remMtr, pipeOd, pipeWt),
+      });
+    }
+
+    return items;
   });
 
   // Batch Splitter Modal & Preset States

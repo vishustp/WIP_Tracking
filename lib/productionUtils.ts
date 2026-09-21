@@ -501,4 +501,66 @@ export function normalizeSpecification(raw: string | null | undefined): string {
   return raw.trim().replace(/\s+/g, ' ');
 }
 
+/**
+ * Pipe Length Scrap & Prime Rules:
+ * Rule 5A: If customer order length is < 4.0m, cut pipe meeting order length is PRIME.
+ * Rule 5B: Remnants < 3.0m are SCRAP (melt loss, cannot be diverted).
+ * Rule 5C: Remnants >= 3.0m are USABLE_OFFCUT eligible for diversion or commercial sale.
+ */
+export function classifyPipeCutLength(
+  lengthMtr: number,
+  orderTargetLen?: number | null
+): 'PRIME' | 'USABLE_OFFCUT' | 'SCRAP' {
+  const len = Number(lengthMtr || 0);
+  const target = Number(orderTargetLen || 0);
+
+  // Rule 5A: Customer order length < 4.0m exception
+  if (target > 0 && target < 4.0 && len >= target * 0.95) {
+    return 'PRIME';
+  }
+
+  // Rule 5B: Hard 3.0-meter scrap floor
+  if (len < 3.0) {
+    return 'SCRAP';
+  }
+
+  // If meets standard order length (>= target or >= 4.0m)
+  if (target > 0 && len >= target * 0.95) {
+    return 'PRIME';
+  }
+  if (!target && len >= 4.0) {
+    return 'PRIME';
+  }
+
+  // Rule 5C: Usable off-cut (>= 3.0m)
+  return 'USABLE_OFFCUT';
+}
+
+/**
+ * Attaches bundle type (PRIME vs COMMERCIAL) to remarks string.
+ */
+export function attachBundleTypeToRemarks(
+  remarks: string | null | undefined,
+  bundleType: 'PRIME' | 'COMMERCIAL'
+): string {
+  const clean = (remarks || '').replace(/\[BUNDLE_TYPE:\s*(PRIME|COMMERCIAL)\]/gi, '').trim();
+  const tag = `[BUNDLE_TYPE: ${bundleType}]`;
+  return clean ? `${clean} ${tag}` : tag;
+}
+
+/**
+ * Extracts bundle type from remarks string (defaults to PRIME).
+ */
+export function extractBundleTypeFromRemarks(
+  remarks: string | null | undefined
+): 'PRIME' | 'COMMERCIAL' {
+  if (!remarks) return 'PRIME';
+  const match = remarks.match(/\[BUNDLE_TYPE:\s*(PRIME|COMMERCIAL)\]/i);
+  if (match && match[1]) {
+    return match[1].toUpperCase() as 'PRIME' | 'COMMERCIAL';
+  }
+  return 'PRIME';
+}
+
+
 

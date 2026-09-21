@@ -13,6 +13,7 @@ export interface CampaignBundle {
   pcs: string;
   mtr: string;
   remarks: string;
+  bundle_type?: 'PRIME' | 'COMMERCIAL';
 }
 
 export interface BundlingCampaignModalProps {
@@ -23,7 +24,7 @@ export interface BundlingCampaignModalProps {
   onRemoveBundle: (bundleId: string) => void;
   onUpdateBundleField: (
     bundleId: string,
-    field: 'bundle_no' | 'pcs' | 'mtr' | 'remarks',
+    field: 'bundle_no' | 'pcs' | 'mtr' | 'remarks' | 'bundle_type',
     val: string,
     avgLen?: number
   ) => void;
@@ -245,6 +246,7 @@ export function BundlingCampaignModal({
                       <tr>
                         <th className="px-3 py-2 font-bold w-12 text-center">#</th>
                         <th className="px-3 py-2 font-bold w-48">Bundle / Lot No.</th>
+                        <th className="px-3 py-2 font-bold w-28 text-center">Type</th>
                         <th className="px-3 py-2 font-bold w-32 text-center bg-blue-50 text-blue-900">
                           Bundle PCS
                         </th>
@@ -271,6 +273,27 @@ export function BundlingCampaignModal({
                               }
                               className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-mono text-slate-800 focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
                             />
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <select
+                              value={b.bundle_type || 'PRIME'}
+                              onChange={(e) =>
+                                onUpdateBundleField(
+                                  b.id,
+                                  'bundle_type',
+                                  e.target.value,
+                                  wo.avg
+                                )
+                              }
+                              className={`rounded-lg border px-2 py-1 text-xs font-semibold cursor-pointer ${
+                                b.bundle_type === 'COMMERCIAL'
+                                  ? 'bg-amber-50 border-amber-300 text-amber-800'
+                                  : 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                              }`}
+                            >
+                              <option value="PRIME">Prime</option>
+                              <option value="COMMERCIAL">Commercial</option>
+                            </select>
                           </td>
                           <td className="px-3 py-2 text-center bg-blue-50/20">
                             <input
