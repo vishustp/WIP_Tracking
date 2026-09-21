@@ -131,9 +131,21 @@ export function reconcileWorkOrderWip(
     const cur = sortedStages[i];
     const sc = cur.stage_code;
 
-    // ROLLING is the feeder mill, excluded from Plant WIP
+    // ROLLING is the feeder mill: WIP represents Mother Hollows Awaiting after HTC OK
     if (sc === 'ROLLING') {
-      const rollNetMtr = rollStage?.net_output_mtr || (rollHtcPcs * mhAvgLen);
+      let maxDownstreamPcs = 0;
+      for (let j = i + 1; j < sortedStages.length; j++) {
+        const down = sortedStages[j];
+        const downData = stageProdMap.get(down.stage_code);
+        if (downData && (downData.prodPcs + downData.rejPcs) > maxDownstreamPcs) {
+          maxDownstreamPcs = downData.prodPcs + downData.rejPcs;
+        }
+      }
+
+      const awaitingHtcPcs = Math.max(0, rollHtcPcs - maxDownstreamPcs);
+      const awaitingHtcMtr = Number((awaitingHtcPcs * mhAvgLen).toFixed(2));
+      const awaitingHtcMt = mtFromMtr(awaitingHtcMtr, mhOd, mhWt);
+
       reconciledStages.push({
         stage_code: 'ROLLING',
         sequence_no: cur.sequence_no,
@@ -141,15 +153,15 @@ export function reconcileWorkOrderWip(
         incoming_pcs: rollGrossPcs,
         incoming_mtr: rollStage?.gross_output_mtr || (rollGrossPcs * mhAvgLen),
         production_pcs: rollHtcPcs,
-        production_mtr: rollNetMtr,
+        production_mtr: rollStage?.net_output_mtr || (rollHtcPcs * mhAvgLen),
         rejection_pcs: rollRejPcs,
         rejection_mtr: rollStage?.rejection_mtr || (rollRejPcs * mhAvgLen),
-        reconciled_wip_pcs: 0,
-        reconciled_wip_mtr: 0,
-        reconciled_wip_mt: 0,
-        capped_wip_pcs: 0,
-        capped_wip_mtr: 0,
-        capped_wip_mt: 0,
+        reconciled_wip_pcs: awaitingHtcPcs,
+        reconciled_wip_mtr: awaitingHtcMtr,
+        reconciled_wip_mt: awaitingHtcMt,
+        capped_wip_pcs: awaitingHtcPcs,
+        capped_wip_mtr: awaitingHtcMtr,
+        capped_wip_mt: awaitingHtcMt,
         od: mhOd,
         wt: mhWt,
         avg_length: mhAvgLen,

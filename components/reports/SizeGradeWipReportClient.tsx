@@ -389,9 +389,8 @@ export default function SizeGradeWipReportClient() {
 
           for (const recStage of summary.stages) {
             const isRolling = recStage.stage_code === 'ROLLING';
-            // For plant WIP stages, must have active inventory; for rolling feeder, include if production was logged
-            if (!isRolling && recStage.capped_wip_pcs <= 0 && recStage.capped_wip_mtr <= 0) continue;
-            if (isRolling && recStage.production_pcs <= 0 && recStage.production_mtr <= 0) continue;
+            // Only include stages that have active WIP inventory
+            if (recStage.capped_wip_pcs <= 0 && recStage.capped_wip_mtr <= 0) continue;
 
             const originalRow = rows.find((r) => (r.stage_code || '').toUpperCase() === recStage.stage_code) || rows[0];
             const targetOd = Number(wo?.size_od || rows[0]?.size_od || recStage.od || 0);
@@ -403,7 +402,7 @@ export default function SizeGradeWipReportClient() {
               work_order_no: wo?.work_order_no || originalRow.work_order_no,
               customer_name: wo?.customer_name || originalRow.customer_name,
               stage_code: recStage.stage_code,
-              stage_name: recStage.stage_code === 'ROLLING' ? 'Hot Rolling Mill' :
+              stage_name: recStage.stage_code === 'ROLLING' ? 'Awaiting after HTC OK' :
                           recStage.stage_code === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
                           recStage.stage_code === 'DRAW' ? 'Cold Draw Bench' :
                           recStage.stage_code === 'HEAT_TREATMENT' ? 'Final Heat Treatment' :
@@ -419,10 +418,10 @@ export default function SizeGradeWipReportClient() {
               route_name: routeName,
               rolling_date: rollingDate,
               is_feeder_stage: isRolling,
-              current_wip: isRolling ? Number(recStage.production_mtr.toFixed(2)) : Number(recStage.capped_wip_mtr.toFixed(2)),
-              current_wip_pcs: isRolling ? Math.round(recStage.production_pcs) : Math.round(recStage.capped_wip_pcs),
-              available_mt: isRolling ? Number(mtFromMtr(recStage.production_mtr, mhOd, mhWt).toFixed(2)) : Number(recStage.capped_wip_mt.toFixed(2)),
-              current_wip_mt: isRolling ? Number(mtFromMtr(recStage.production_mtr, mhOd, mhWt).toFixed(2)) : Number(recStage.capped_wip_mt.toFixed(2)),
+              current_wip: Number(recStage.capped_wip_mtr.toFixed(2)),
+              current_wip_pcs: Math.round(recStage.capped_wip_pcs),
+              available_mt: Number(recStage.capped_wip_mt.toFixed(2)),
+              current_wip_mt: Number(recStage.capped_wip_mt.toFixed(2)),
             });
           }
         }
@@ -726,9 +725,9 @@ export default function SizeGradeWipReportClient() {
         '#': i + 1,
         'Size (OD × WT mm)': `${g.od} × ${g.wt}`,
         'Material Grade': g.grade,
-        'Rolling Mill (m)': g.rolling_mtr,
-        'Rolling Mill (pcs)': g.rolling_pcs,
-        'Rolling Mill (MT)': g.rolling_mt,
+        'Awaiting HTC OK (m)': g.rolling_mtr,
+        'Awaiting HTC OK (pcs)': g.rolling_pcs,
+        'Awaiting HTC OK (MT)': g.rolling_mt,
         'Hollow HT (m)': g.htc_mtr,
         'Hollow HT (pcs)': g.htc_pcs,
         'Hollow HT (MT)': g.htc_mt,
@@ -898,10 +897,10 @@ export default function SizeGradeWipReportClient() {
           </div>
         </div>
 
-        {/* 2. Rolling Mill */}
+        {/* 2. Awaiting HTC OK */}
         <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
           <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Rolling Mill</span>
+            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Awaiting HTC OK</span>
             <Factory className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
           </div>
           <div className="mt-2 space-y-1 font-mono text-[11px]">
@@ -1244,7 +1243,7 @@ export default function SizeGradeWipReportClient() {
                   <th className="py-2.5 px-3 bg-clip-padding">Size (OD × WT)</th>
                   <th className="py-2.5 px-3 bg-clip-padding">Grade</th>
                   <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
-                    Rolling Mill (MH)
+                    Awaiting after HTC OK (MH)
                   </th>
                   <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
                     Hollow HT (HTC)
