@@ -103,19 +103,25 @@ export function useHistory(
       const woNos = Array.from(new Set(rawList.map((e: ProductionEntry) => e.work_order_no).filter(Boolean)));
       const entryIds = rawList.map((e) => e.id).filter(Boolean);
 
-      const [{ data: woData }, { data: logDetails }, { data: rpData }] = await Promise.all([
+      const [{ data: woData }, { data: logDetails }, { data: rpData }, { data: appUsersData }, { data: profilesData }] = await Promise.all([
         supabase
           .from("work_orders")
           .select("id, work_order_no, ordered_qty_mtr, ordered_qty_pcs, l1, l2")
           .in("work_order_no", woNos),
         supabase
           .from("production_logs")
-          .select("id, rolling_plan_id, work_order_id, created_at, process_date")
+          .select("id, rolling_plan_id, work_order_id, created_at, process_date, created_by")
           .in("id", entryIds),
         supabase
           .from("rolling_plans")
           .select("id, plan_no, work_order_id, mh_od, mh_wt, mh_l1, mh_l2, status, created_at")
           .not("status", "is", null),
+        supabase
+          .from("app_users")
+          .select("auth_user_id, employee_name, email, role, department"),
+        supabase
+          .from("profiles")
+          .select("id, full_name, role"),
       ]);
 
       const woMap = new Map<string, any>();
@@ -126,6 +132,27 @@ export function useHistory(
       const logMap = new Map<string, any>();
       ((logDetails as any[]) || []).forEach((l: any) => {
         logMap.set(l.id, l);
+      });
+
+      const userMap = new Map<string, { name: string; email: string; role: string; dept?: string }>();
+      ((appUsersData as any[]) || []).forEach((u: any) => {
+        if (u.auth_user_id) {
+          userMap.set(u.auth_user_id, {
+            name: u.employee_name || u.email?.split('@')[0] || 'User',
+            email: u.email,
+            role: u.role,
+            dept: u.department,
+          });
+        }
+      });
+      ((profilesData as any[]) || []).forEach((p: any) => {
+        if (p.id && !userMap.has(p.id)) {
+          userMap.set(p.id, {
+            name: p.full_name || 'User',
+            email: '',
+            role: p.role || 'Operator',
+          });
+        }
       });
 
       // Build structured plan maps: by plan ID and by work order ID (chronological)
@@ -299,6 +326,11 @@ export function useHistory(
         const rejMt = mtFromMtr(rejMtr, effOd, effWt);
         const htcOkMt = isMhStage ? mtFromMtr(htcOkMtr, effOd, effWt) : 0;
 
+        const createdById = logRow?.created_by || entry.created_by || null;
+        const userDetail = createdById ? userMap.get(createdById) : null;
+        const operatorName = userDetail?.name || null;
+        const operatorRole = userDetail?.role || null;
+
         return {
           ...entry,
           od: effOd,
@@ -321,6 +353,9 @@ export function useHistory(
           input_mt: inMt,
           rejection_mt: rejMt,
           htc_ok_mt: htcOkMt,
+          created_by: createdById,
+          operator_name: operatorName,
+          operator_role: operatorRole,
         };
       });
 

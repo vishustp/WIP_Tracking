@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
     if ('errorResponse' in authCheck && authCheck.errorResponse) {
       return authCheck.errorResponse;
     }
+    const userId = authCheck.auth?.user?.id || null;
 
     const admin = createAdminClient();
     if (!admin) {
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
           ...item,
           route_id: routeId,
           remarks: finalRemarks || null,
+          created_by: userId,
         };
       })
     );
@@ -167,6 +169,7 @@ export async function POST(req: NextRequest) {
             htc_ok: htcOkMtr,
             heat_lot_no: item.heat_lot_no || null,
             remarks: item.remarks || null,
+            created_by: userId || null,
           });
 
         if (insertErr) {

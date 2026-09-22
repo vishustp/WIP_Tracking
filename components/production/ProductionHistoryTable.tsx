@@ -144,6 +144,7 @@ export function ProductionHistoryTable({
                 <th className="py-2.5 px-3 text-right font-semibold">HTC OK</th>
                 <th className="py-2.5 px-3 text-left font-semibold">Heat Lot</th>
                 <th className="py-2.5 px-3 text-left font-semibold">Remarks</th>
+                <th className="py-2.5 px-3 text-left font-semibold">Operator</th>
                 <th className="py-2.5 px-3 text-center font-semibold">Actions</th>
               </tr>
             </thead>
@@ -282,6 +283,18 @@ export function ProductionHistoryTable({
                         </div>
                       ) : (
                         <span className="truncate text-xs">{cleanRemarks || entry.remarks || '—'}</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      {entry.operator_name ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 shadow-2xs">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                            {entry.operator_name}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 font-medium italic">System</span>
                       )}
                     </td>
                     <td className="py-2.5 px-3 text-center">

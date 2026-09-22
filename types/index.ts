@@ -177,6 +177,9 @@ export interface ProductionEntry {
   heat_lot_no: string | null;
   remarks: string | null;
   created_at: string;
+  created_by?: string | null;
+  operator_name?: string | null;
+  operator_role?: string | null;
   can_modify: boolean;
 }
 
