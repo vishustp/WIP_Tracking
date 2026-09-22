@@ -144,6 +144,12 @@ export default function SizeGradeWipReportClient() {
         supabase.from('qc_inspections').select('work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr').limit(5000),
       ]);
 
+      const queryErrors = [wipRes.error, woRes.error, plansRes.error, routesRes.error, prodRes.error, stagesRes.error, qcRes.error].filter(Boolean);
+      if (queryErrors.length > 0) {
+        console.error('Supabase query error in WIP Report:', queryErrors);
+        toast.error('Failed to load WIP report data: ' + queryErrors[0]?.message);
+      }
+
       if (wipRes.data) {
         const stageCodeById = new Map<string, string>();
         (stagesRes.data || []).forEach((s: any) => {
@@ -1421,11 +1427,7 @@ export default function SizeGradeWipReportClient() {
                       Total Plant Inventory:
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
-                      {formatCell(
-                        matrixGroups.reduce((s, g) => s + g.htc_mtr, 0),
-                        matrixGroups.reduce((s, g) => s + g.htc_pcs, 0),
-                        matrixGroups.reduce((s, g) => s + g.htc_mt, 0)
-                      )}
+                      {formatCell(kpis.htcMtr, kpis.htcPcs, kpis.htcMt)}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
                       {formatCell(kpis.drawMtr, kpis.drawPcs, kpis.drawMt)}
