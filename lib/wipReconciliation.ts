@@ -159,12 +159,12 @@ export function reconcileWorkOrderWip(
         production_mtr: rollStage?.net_output_mtr || (rollHtcPcs * actualMhLen),
         rejection_pcs: rollRejPcs,
         rejection_mtr: rollStage?.rejection_mtr || (rollRejPcs * actualMhLen),
-        reconciled_wip_pcs: awaitingHtcPcs,
-        reconciled_wip_mtr: awaitingHtcMtr,
-        reconciled_wip_mt: awaitingHtcMt,
-        capped_wip_pcs: awaitingHtcPcs,
-        capped_wip_mtr: awaitingHtcMtr,
-        capped_wip_mt: awaitingHtcMt,
+        reconciled_wip_pcs: 0,
+        reconciled_wip_mtr: 0,
+        reconciled_wip_mt: 0,
+        capped_wip_pcs: 0,
+        capped_wip_mtr: 0,
+        capped_wip_mt: 0,
         od: mhOd,
         wt: mhWt,
         avg_length: actualMhLen,
@@ -179,13 +179,13 @@ export function reconcileWorkOrderWip(
     let stageWt = Number(cur.wt || 0);
 
     if (sc === 'HOLLOW_HEAT_TREATMENT') {
-      // Alloy CDS: Feeder is Rolling HTC OK (awaiting Hollow Heat Treatment)
+      // Alloy Steel (ALLOY_HFS / ALLOY_CDS): Feeder is Rolling HTC OK
       incomingPcs = isAlloy ? rollHtcPcs : 0;
       stageLen = actualMhLen;
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
     } else if (sc === 'DRAW') {
-      // CDS: Feeder is HHT (if alloy) or directly Rolling HTC OK (if carbon CDS)
+      // CDS: Feeder is Hollow Heat Treatment (if alloy) or directly Rolling HTC OK (if carbon CDS)
       const hhtProd = stageProdMap.get('HOLLOW_HEAT_TREATMENT');
       const hhtProdPcs = hhtProd?.prodPcs || 0;
       incomingPcs = isAlloy ? hhtProdPcs : rollHtcPcs;
@@ -193,8 +193,8 @@ export function reconcileWorkOrderWip(
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
     } else if (sc === 'HEAT_TREATMENT') {
-      // CDS: Feeder is Draw Bench
-      // Option B HFS: Feeder is Rolling HTC OK
+      // Only Cold Drawn routes (CDS / ALLOY_CDS) go to post-draw Heat Treatment (fed from Draw Bench)
+      // Carbon HFS does NOT go through Heat Treatment.
       if (isCds) {
         const drawProd = stageProdMap.get('DRAW');
         incomingPcs = drawProd?.prodPcs || 0;
@@ -207,13 +207,12 @@ export function reconcileWorkOrderWip(
           stageLen = finalAvgLen;
         }
       } else {
-        incomingPcs = rollHtcPcs;
-        stageLen = actualMhLen;
+        incomingPcs = 0;
       }
     } else if (sc === 'BAND_SAW') {
-      // Standard HFS: Feeder is Rolling HTC OK
-      // Alloy HFS: Feeder is Hollow Heat Treatment OK
-      // CDS: Feeder is Final Heat Treatment (drawn pipes awaiting cutting)
+      // Standard HFS: Feeder is Rolling HTC OK (no heat treatment)
+      // Alloy HFS: Feeder is Hollow Heat Treatment OK (post-rolling annealing/normalizing)
+      // CDS / ALLOY_CDS: Feeder is post-draw Heat Treatment (drawn pipes awaiting cutting)
       if (routeCode.includes('HFS')) {
         if (isAlloy) {
           const hhtProd = stageProdMap.get('HOLLOW_HEAT_TREATMENT');
@@ -240,11 +239,6 @@ export function reconcileWorkOrderWip(
       // Feeder is cut pieces from Band Saw
       const bsProd = stageProdMap.get('BAND_SAW');
       incomingPcs = bsProd?.prodPcs || 0;
-      stageLen = finalAvgLen;
-    } else if (sc === 'FINISHING') {
-      // Feeder is VDI OK pieces
-      const vdiProd = stageProdMap.get('VDI');
-      incomingPcs = vdiProd?.prodPcs || 0;
       stageLen = finalAvgLen;
     } else if (sc === 'FINISHING') {
       // Feeder is VDI OK pieces
@@ -305,12 +299,13 @@ export function reconcileWorkOrderWip(
   const totalPlantWipMtr = plantStages.reduce((sum, s) => sum + s.reconciled_wip_mtr, 0);
   let totalPlantWipMt = plantStages.reduce((sum, s) => sum + s.reconciled_wip_mt, 0);
 
-  // 6. Mass Conservation Capping
+  // 6. Mass Conservation Law:
+  // Charged Steel (MT) = Plant Active WIP (MT) + Finished Goods (MT) + Total Scrap (MT)
   const finStage = reconciledStages.find((s) => s.stage_code === 'FINISHING');
   const finNetMt = finStage ? mtFromMtr(finStage.production_mtr, finStage.od, finStage.wt) : 0;
 
-  // Scrap generated at Band Saw / VDI / Finishing
-  const totalScrapMt = plantStages.reduce((sum, s) => {
+  // Total scrap across ALL stages (Rolling + Downstream stages)
+  const totalScrapMt = reconciledStages.reduce((sum, s) => {
     return sum + mtFromMtr(s.rejection_mtr, s.od, s.wt);
   }, 0);
 
@@ -325,6 +320,7 @@ export function reconcileWorkOrderWip(
     }
     totalPlantWipMt = maxPhysicalWipMt;
   }
+
 
   return {
     work_order_id: '',

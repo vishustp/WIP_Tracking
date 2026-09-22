@@ -26,6 +26,8 @@ import {
   AlertTriangle,
   Copy,
   Check,
+  Sparkles,
+  Scale,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
@@ -43,6 +45,9 @@ const EMPTY_RECORD: Omit<SpecMasterRecord, 'id' | 'created_at' | 'updated_at'> =
   straightness: '1:1000',
   color_spec: '',
   rm_color: '',
+  od_tolerance: '',
+  wt_tolerance: '',
+  hydro_pressure: '',
   whf_temp: '',
   induction_temp: '',
   sizing_outlet_temp: '',
@@ -139,6 +144,9 @@ function SpecEditModal({
     straightness: rec.straightness ?? '1:1000',
     color_spec: rec.color_spec ?? '',
     rm_color: rec.rm_color ?? '',
+    od_tolerance: rec.od_tolerance ?? '',
+    wt_tolerance: rec.wt_tolerance ?? '',
+    hydro_pressure: rec.hydro_pressure ?? '',
     whf_temp: rec.whf_temp ?? '',
     induction_temp: rec.induction_temp ?? '',
     sizing_outlet_temp: rec.sizing_outlet_temp ?? '',
@@ -147,13 +155,14 @@ function SpecEditModal({
     ndt: rec.ndt ?? 'UT',
     holding_time_sec: rec.holding_time_sec ?? 5,
     coating: rec.coating ?? 'BLACK VARNISH',
-    end_condition: rec.end_condition ?? 'BEVEL END (30\u00b0-35\u00b0)',
+    end_condition: rec.end_condition ?? 'BEVEL END (30°-35°)',
     bundling: rec.bundling ?? 'HEXAGONAL',
     end_cap: rec.end_cap ?? 'PLASTIC PROTECTOR',
     is_min_wall: rec.is_min_wall ?? false,
     is_active: rec.is_active ?? true,
   });
   const [saving, setSaving] = useState(false);
+  const [fetchingAi, setFetchingAi] = useState(false);
 
   const numericFields = new Set(['smys_mpa', 'uts_mpa', 'elongation_pct', 'holding_time_sec']);
 
@@ -164,6 +173,61 @@ function SpecEditModal({
     }));
   };
 
+  const handleAutoFetchSpec = async () => {
+    const query = form.spec_full.trim() || form.spec_key.trim();
+    if (!query) {
+      toast.error('Please enter a Spec Key or Specification Name first (e.g. A335 P22, A106 Gr B, SA210 A1, API 5L X52)');
+      return;
+    }
+    setFetchingAi(true);
+    try {
+      const res = await fetch('/api/specs/ai-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success || !json.data) {
+        throw new Error(json.error || 'Specification not recognized');
+      }
+      const spec = json.data;
+      setForm((prev) => ({
+        ...prev,
+        spec_key: prev.spec_key || spec.spec_key,
+        spec_full: spec.spec_full || prev.spec_full,
+        steel_grade: spec.steel_grade || prev.steel_grade,
+        smys_mpa: spec.smys_mpa ?? prev.smys_mpa,
+        uts_mpa: spec.uts_mpa ?? prev.uts_mpa,
+        elongation_pct: spec.elongation_pct ?? prev.elongation_pct,
+        hardness: spec.hardness || prev.hardness,
+        straightness: spec.straightness || prev.straightness,
+        color_spec: spec.color_spec || prev.color_spec,
+        rm_color: spec.rm_color || prev.rm_color,
+        od_tolerance: spec.od_tolerance || prev.od_tolerance,
+        wt_tolerance: spec.wt_tolerance || prev.wt_tolerance,
+        hydro_pressure: spec.hydro_pressure || prev.hydro_pressure,
+        whf_temp: spec.whf_temp || prev.whf_temp,
+        induction_temp: spec.induction_temp || prev.induction_temp,
+        sizing_outlet_temp: spec.sizing_outlet_temp || prev.sizing_outlet_temp,
+        ht_cycle: spec.ht_cycle || prev.ht_cycle,
+        ht_condition: spec.ht_condition || prev.ht_condition,
+        ndt: spec.ndt || prev.ndt,
+        holding_time_sec: spec.holding_time_sec ?? prev.holding_time_sec,
+        coating: spec.coating || prev.coating,
+        end_condition: spec.end_condition || prev.end_condition,
+        bundling: spec.bundling || prev.bundling,
+        end_cap: spec.end_cap || prev.end_cap,
+        is_min_wall: spec.is_min_wall !== undefined ? spec.is_min_wall : prev.is_min_wall,
+      }));
+      const sourceBadge = json.source === 'AI_GENERATED' ? 'AI Model' : 'International Standards Database';
+      toast.success(`✨ Loaded ${spec.spec_full} specifications from ${sourceBadge}!`);
+    } catch (err: any) {
+      toast.error(`Auto-fetch failed: ${err.message || err}`);
+    } finally {
+      setFetchingAi(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!form.spec_key.trim() || !form.spec_full.trim()) {
       toast.error('Spec Key and Full Name are required.');
@@ -172,25 +236,43 @@ function SpecEditModal({
     setSaving(true);
     try {
       const s = createClient();
-      const payload = { ...form, updated_at: new Date().toISOString() };
+      const payload: any = { ...form, updated_at: new Date().toISOString() };
 
+      const isUuid = rec.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rec.id);
       let result: any;
-      if (isNew) {
+
+      if (isNew || !isUuid) {
+        // Upsert by spec_key so seed records or new entries insert with clean Postgres UUID
         const { data, error } = await s
           .from('material_spec_master')
-          .insert(payload)
+          .upsert(payload, { onConflict: 'spec_key' })
           .select()
           .single();
+
         if (error) {
           if (error.message?.includes('permission denied') || error.code === '42501') {
-            result = { id: `local-${Date.now()}`, ...payload };
+            result = { id: rec.id || `local-${Date.now()}`, ...payload };
             toast.info('Saved to session. To persist to database, run the SQL permissions fix in Supabase.');
+          } else if (error.message?.includes('column') || error.code === '42703') {
+            // Fallback if custom tolerance/hydro columns are not yet in Supabase table
+            const corePayload = { ...payload };
+            delete corePayload.od_tolerance;
+            delete corePayload.wt_tolerance;
+            delete corePayload.hydro_pressure;
+            const { data: retryData, error: retryError } = await s
+              .from('material_spec_master')
+              .upsert(corePayload, { onConflict: 'spec_key' })
+              .select()
+              .single();
+            if (retryError) throw retryError;
+            result = { ...retryData, ...payload };
+            toast.success(`"${form.spec_full}" saved successfully!`);
           } else {
             throw error;
           }
         } else {
           result = data;
-          toast.success(`"${form.spec_full}" created successfully!`);
+          toast.success(`"${form.spec_full}" saved successfully!`);
         }
       } else {
         const { data, error } = await s
@@ -199,10 +281,25 @@ function SpecEditModal({
           .eq('id', rec.id!)
           .select()
           .single();
+
         if (error) {
           if (error.message?.includes('permission denied') || error.code === '42501') {
             result = { id: rec.id!, ...payload };
             toast.info('Updated in session. To persist to database, run the SQL permissions fix in Supabase.');
+          } else if (error.message?.includes('column') || error.code === '42703') {
+            const corePayload = { ...payload };
+            delete corePayload.od_tolerance;
+            delete corePayload.wt_tolerance;
+            delete corePayload.hydro_pressure;
+            const { data: retryData, error: retryError } = await s
+              .from('material_spec_master')
+              .update(corePayload)
+              .eq('id', rec.id!)
+              .select()
+              .single();
+            if (retryError) throw retryError;
+            result = { ...retryData, ...payload };
+            toast.success(`"${form.spec_full}" updated successfully!`);
           } else {
             throw error;
           }
@@ -243,7 +340,36 @@ function SpecEditModal({
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-2 max-h-[75vh] overflow-y-auto">
+        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* AI Auto-Fetch Banner */}
+          {!readOnly && (
+            <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200/90 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-start sm:items-center gap-2.5">
+                <div className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-xs shrink-0 mt-0.5 sm:mt-0">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-indigo-950">AI & International Standards Auto-Fetch</span>
+                    <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-800 text-[10px] font-bold rounded">ASTM / ASME / API / BS / EN / DIN</span>
+                  </div>
+                  <p className="text-[11px] text-indigo-700 mt-0.5">
+                    Enter any standard (e.g. <b>A335 P22</b>, <b>A106 Gr B</b>, <b>A213 T11</b>, <b>SA210 A1</b>, <b>API 5L X52</b>, <b>ST52</b>) to auto-fill mechanicals, tolerances, thermal cycles & hydro formula.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAutoFetchSpec}
+                disabled={fetchingAi}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50 shrink-0 self-end sm:self-auto"
+              >
+                {fetchingAi ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                {fetchingAi ? 'Fetching Specs...' : '⚡ Auto-Fill from Standards'}
+              </button>
+            </div>
+          )}
+
           {/* Identity */}
           <SectionHeader title="Identification" icon={Layers} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -303,6 +429,48 @@ function SpecEditModal({
                 {form.is_min_wall ? 'Minimum Wall (0% minus tol)' : 'Nominal Wall (-12.5% tol)'}
               </button>
             </div>
+          </div>
+
+          {/* Dimensional Tolerances & Hydrostatic Testing */}
+          <SectionHeader title="Dimensional Tolerances & Hydrostatic Testing" icon={Scale} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FieldInput
+              label="OD Tolerance"
+              value={form.od_tolerance ?? ''}
+              onChange={set('od_tolerance')}
+              placeholder="e.g. ±0.75% (NPS 1/8 to 1-1/2: ±0.40 mm)"
+              disabled={readOnly}
+              hint="Allowed outer diameter variance"
+            />
+            <FieldInput
+              label="WT Tolerance"
+              value={form.wt_tolerance ?? ''}
+              onChange={set('wt_tolerance')}
+              placeholder="e.g. +15% / -12.5% (Nominal) or +28% / -0% (Min Wall)"
+              disabled={readOnly}
+              hint="Allowed wall thickness variance"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
+            <div className="sm:col-span-2">
+              <FieldInput
+                label="Hydrostatic Test Pressure / Formula"
+                value={form.hydro_pressure ?? ''}
+                onChange={set('hydro_pressure')}
+                placeholder="e.g. P = 2*S*t/D (S = 60% SMYS, max 17.2 MPa)"
+                disabled={readOnly}
+                hint="Barlow formula parameter & allowable fiber stress"
+              />
+            </div>
+            <FieldInput
+              label="Hydro Holding Time (sec)"
+              value={form.holding_time_sec}
+              onChange={set('holding_time_sec')}
+              type="number"
+              placeholder="5"
+              disabled={readOnly}
+              hint="Minimum holding duration"
+            />
           </div>
 
           {/* Thermal */}

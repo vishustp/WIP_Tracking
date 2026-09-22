@@ -136,8 +136,8 @@ export default function SizeGradeWipReportClient() {
       // Query view for live stage physical WIP + rolling logs + plans + qc inspections
       const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes, qcRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').limit(5000),
-        supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, process_route_id, size_od, size_wt, l1, l2, ordered_qty_pcs').limit(5000),
-        supabase.from('rolling_plans').select('id, work_order_id, plan_no, multiple, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id, created_at').not('status', 'is', null).limit(5000),
+        supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, process_route_id, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mt').limit(5000),
+        supabase.from('rolling_plans').select('id, work_order_id, plan_no, multiple, planned_qty, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id, created_at').not('status', 'is', null).limit(5000),
         supabase.from('process_routes').select('id, route_code, route_name').eq('active', true),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at, remarks, output_qty, rejection_qty, htc_ok').order('process_date', { ascending: false }).limit(5000),
         supabase.from('process_stages').select('id, stage_code, stage_name'),
@@ -224,7 +224,7 @@ export default function SizeGradeWipReportClient() {
           }
         });
 
-        const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null; multiple?: number }>();
+        const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null; multiple?: number; planned_qty?: number }>();
         (plansRes.data || []).forEach((p: any) => {
           try {
             const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
@@ -239,8 +239,9 @@ export default function SizeGradeWipReportClient() {
             const mhL2 = Number(p.mh_l2 || parsed?.mh_l2 || parsed?.l2 || 0) || null;
             const mhAvg = mhL1 && mhL2 ? (mhL1 + mhL2) / 2 : (mhL1 || mhL2 || null);
             const mult = Number(p.multiple || parsed?.multiple || 1) || 1;
+            const plannedQty = Number(p.planned_qty || parsed?.planned_qty || 0);
 
-            const mhEntry = { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg, multiple: mult };
+            const mhEntry = { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg, multiple: mult, planned_qty: plannedQty };
 
             if (p.work_order_id) {
               mhMap.set(p.work_order_id, mhEntry);
@@ -392,7 +393,7 @@ export default function SizeGradeWipReportClient() {
             {
               route_code: routeCode,
               ordered_qty_mt: Number(wo?.ordered_qty_mt || 0),
-              rolling_plan_qty_mtr: Number(planMh?.multiple ? (planMh as any).planned_qty : 0),
+              rolling_plan_qty_mtr: Number(planMh?.planned_qty || 0),
               mh_od: mhOd > 0 ? mhOd : undefined,
               mh_wt: mhWt > 0 ? mhWt : undefined,
               mh_avg_length: actualMhLen > 0 ? actualMhLen : undefined,

@@ -204,9 +204,9 @@ export function computeFeederBalanceForWorkOrder(params: {
   const htNetMtr = Math.max(0, Number((htOutMtr - htRejMtr).toFixed(2)));
 
   if (targetStage === 'HEAT_TREATMENT') {
-    const htIncomingPcs = isCds ? (drawNetPcs > 0 ? drawNetPcs : rollHtcOkPcs) : (isAlloy ? (hhtNetPcs > 0 ? hhtNetPcs : rollHtcOkPcs) : rollHtcOkPcs);
-    const htIncomingMtr = isCds ? (drawNetMtr > 0 ? drawNetMtr : rollHtcOkMtr) : (isAlloy ? (hhtNetMtr > 0 ? hhtNetMtr : rollHtcOkMtr) : rollHtcOkMtr);
-    const htFeederLabel = isCds && drawNetPcs > 0 ? 'Draw Bench Net OK' : (isAlloy && hhtNetPcs > 0 ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK');
+    const htIncomingPcs = isCds ? drawNetPcs : (isAlloy ? hhtNetPcs : rollHtcOkPcs);
+    const htIncomingMtr = isCds ? drawNetMtr : (isAlloy ? hhtNetMtr : rollHtcOkMtr);
+    const htFeederLabel = isCds ? 'Draw Bench Net OK' : (isAlloy ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK');
 
     const availPcs = Math.max(0, htIncomingPcs - htOutPcs);
     const availMtr = Math.max(0, Number((htIncomingMtr - htOutMtr).toFixed(2)));
