@@ -143,7 +143,6 @@ export function ProductionHistoryTable({
                 <th className="py-2.5 px-3 text-right font-semibold">Rejection (PCS & MTR)</th>
                 <th className="py-2.5 px-3 text-right font-semibold">HTC OK</th>
                 <th className="py-2.5 px-3 text-left font-semibold">Heat Lot</th>
-                <th className="py-2.5 px-3 text-left font-semibold">Remarks</th>
                 <th className="py-2.5 px-3 text-left font-semibold">Operator</th>
                 <th className="py-2.5 px-3 text-center font-semibold">Actions</th>
               </tr>
@@ -273,18 +272,6 @@ export function ProductionHistoryTable({
                       )}
                     </td>
                     <td className="py-2.5 px-3 font-mono text-slate-800">{entry.heat_lot_no || '—'}</td>
-                    <td className="py-2.5 px-3 text-slate-600 max-w-[200px]">
-                      {customLen.l1 != null && customLen.l2 != null ? (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="inline-flex items-center rounded bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.2 text-[10px] font-bold font-mono text-indigo-700">
-                            L: {customLen.l1 === customLen.l2 ? `${customLen.l1}m` : `${customLen.l1}–${customLen.l2}m`}
-                          </span>
-                          {cleanRemarks && <span className="truncate text-xs">{cleanRemarks}</span>}
-                        </div>
-                      ) : (
-                        <span className="truncate text-xs">{cleanRemarks || entry.remarks || '—'}</span>
-                      )}
-                    </td>
                     <td className="py-2.5 px-3">
                       {entry.operator_name ? (
                         <div className="flex items-center gap-1.5">
