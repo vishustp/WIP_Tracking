@@ -125,6 +125,11 @@ export async function GET(req: NextRequest) {
     ]);
 
     if (stagesRes.error) throw stagesRes.error;
+    if (qcRes?.error) {
+      console.error("[production/queue] qcRes error:", qcRes.error);
+    } else {
+      console.log("[production/queue] qcRes count:", qcRes?.data?.length);
+    }
 
     const plans = plansRes.data || [];
     const stages = stagesRes.data || [];
@@ -164,6 +169,82 @@ export async function GET(req: NextRequest) {
     const bandSawStageId = stageCodeToId.get("BAND_SAW");
     const vdiStageId = stageCodeToId.get("VDI");
     const finStageId = stageCodeToId.get("FINISHING");
+
+    // Helper to calculate stage totals for a work order
+    const getStageLogs = (woId: string, stageId?: string) => {
+      if (!stageId) return [];
+      return logs.filter((l) => l.work_order_id === woId && l.stage_id === stageId);
+    };
+
+    const sumQty = (logList: any[], field: string) =>
+      logList.reduce((sum, l) => sum + Number(l[field] || 0), 0);
+
+    const getLogPcs = (log: any, fallbackAvg: number = 0) => {
+      if (log.output_pcs !== undefined && log.output_pcs !== null && Number(log.output_pcs) > 0) {
+        return Number(log.output_pcs);
+      }
+      const parsed = extractPcsFromRemarks(log.remarks);
+      if (parsed.pcs !== null && parsed.pcs > 0) {
+        return parsed.pcs;
+      }
+      if (fallbackAvg > 0 && Number(log.output_qty || 0) > 0) {
+        return Math.round(Number(log.output_qty) / fallbackAvg);
+      }
+      return 0;
+    };
+
+    const getLogRejPcs = (log: any, fallbackAvg: number = 0) => {
+      if (log.rejection_pcs !== undefined && log.rejection_pcs !== null && Number(log.rejection_pcs) > 0) {
+        return Number(log.rejection_pcs);
+      }
+      const parsed = extractPcsFromRemarks(log.remarks);
+      if (parsed.rejPcs !== null && parsed.rejPcs > 0) {
+        return parsed.rejPcs;
+      }
+      if (fallbackAvg > 0 && Number(log.rejection_qty || 0) > 0) {
+        return Math.round(Number(log.rejection_qty) / fallbackAvg);
+      }
+      return 0;
+    };
+
+    const getLogHtcOkPcs = (log: any, fallbackAvg: number = 0) => {
+      if (Number(log.htc_ok || 0) > 0) {
+        if (log.output_pcs !== undefined && log.output_pcs !== null && Number(log.output_pcs) > 0) {
+          return Number(log.output_pcs);
+        }
+        const parsed = extractPcsFromRemarks(log.remarks);
+        if (parsed.pcs !== null && parsed.pcs > 0) {
+          return parsed.pcs;
+        }
+        if (fallbackAvg > 0) {
+          return Math.round(Number(log.htc_ok) / fallbackAvg);
+        }
+      }
+      return 0;
+    };
+
+    const sumPcs = (logList: any[], fallbackAvg: number = 0) =>
+      logList.reduce((sum, l) => sum + getLogPcs(l, fallbackAvg), 0);
+
+    const sumRejPcs = (logList: any[], fallbackAvg: number = 0) =>
+      logList.reduce((sum, l) => sum + getLogRejPcs(l, fallbackAvg), 0);
+
+    const sumHtcOkPcs = (logList: any[], fallbackAvg: number = 0) =>
+      logList.reduce((sum, l) => sum + getLogHtcOkPcs(l, fallbackAvg), 0);
+
+    // Summary accumulator across all 7 work centers
+    const workCenterSummary: Record<
+      StageCode,
+      { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }
+    > = {
+      ROLLING: { label: "Rolling Mill", stage_code: "ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      BAND_SAW: { label: "Band Saw", stage_code: "BAND_SAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      VDI: { label: "VDI / QC Inspection", stage_code: "VDI", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+    };
 
     // Parse multi-WO campaigns from rolling plans
     const masterCampaignMap = new Map<string, any>(); // key: master_wo_id
@@ -379,82 +460,6 @@ export async function GET(req: NextRequest) {
         // text status
       }
     }
-
-    // Helper to calculate stage totals for a work order
-    const getStageLogs = (woId: string, stageId?: string) => {
-      if (!stageId) return [];
-      return logs.filter((l) => l.work_order_id === woId && l.stage_id === stageId);
-    };
-
-    const sumQty = (logList: any[], field: string) =>
-      logList.reduce((sum, l) => sum + Number(l[field] || 0), 0);
-
-    const getLogPcs = (log: any, fallbackAvg: number = 0) => {
-      if (log.output_pcs !== undefined && log.output_pcs !== null && Number(log.output_pcs) > 0) {
-        return Number(log.output_pcs);
-      }
-      const parsed = extractPcsFromRemarks(log.remarks);
-      if (parsed.pcs !== null && parsed.pcs > 0) {
-        return parsed.pcs;
-      }
-      if (fallbackAvg > 0 && Number(log.output_qty || 0) > 0) {
-        return Math.round(Number(log.output_qty) / fallbackAvg);
-      }
-      return 0;
-    };
-
-    const getLogRejPcs = (log: any, fallbackAvg: number = 0) => {
-      if (log.rejection_pcs !== undefined && log.rejection_pcs !== null && Number(log.rejection_pcs) > 0) {
-        return Number(log.rejection_pcs);
-      }
-      const parsed = extractPcsFromRemarks(log.remarks);
-      if (parsed.rejPcs !== null && parsed.rejPcs > 0) {
-        return parsed.rejPcs;
-      }
-      if (fallbackAvg > 0 && Number(log.rejection_qty || 0) > 0) {
-        return Math.round(Number(log.rejection_qty) / fallbackAvg);
-      }
-      return 0;
-    };
-
-    const getLogHtcOkPcs = (log: any, fallbackAvg: number = 0) => {
-      if (Number(log.htc_ok || 0) > 0) {
-        if (log.output_pcs !== undefined && log.output_pcs !== null && Number(log.output_pcs) > 0) {
-          return Number(log.output_pcs);
-        }
-        const parsed = extractPcsFromRemarks(log.remarks);
-        if (parsed.pcs !== null && parsed.pcs > 0) {
-          return parsed.pcs;
-        }
-        if (fallbackAvg > 0) {
-          return Math.round(Number(log.htc_ok) / fallbackAvg);
-        }
-      }
-      return 0;
-    };
-
-    const sumPcs = (logList: any[], fallbackAvg: number = 0) =>
-      logList.reduce((sum, l) => sum + getLogPcs(l, fallbackAvg), 0);
-
-    const sumRejPcs = (logList: any[], fallbackAvg: number = 0) =>
-      logList.reduce((sum, l) => sum + getLogRejPcs(l, fallbackAvg), 0);
-
-    const sumHtcOkPcs = (logList: any[], fallbackAvg: number = 0) =>
-      logList.reduce((sum, l) => sum + getLogHtcOkPcs(l, fallbackAvg), 0);
-
-    // Summary accumulator across all 7 work centers
-    const workCenterSummary: Record<
-      StageCode,
-      { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }
-    > = {
-      ROLLING: { label: "Rolling Mill", stage_code: "ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      BAND_SAW: { label: "Band Saw", stage_code: "BAND_SAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      VDI: { label: "VDI / QC Inspection", stage_code: "VDI", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-    };
 
     // Build complete WIP details for all active work orders / campaigns
     const allCalculatedRows: Map<string, { queueRows: Record<StageCode, Row | null>; pipeline: WorkCenterWipInfo[] }> =
