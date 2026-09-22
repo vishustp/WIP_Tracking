@@ -202,6 +202,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
       .sort((a, b) => a[1] - b[1])
       .map(([name]) => name);
     return ['ALL', ...sorted];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wip]);
 
   // Aggregated Stage Distribution for the Bottleneck Chart
@@ -263,6 +264,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
       return list.sort((a, b) => b.value - a.value);
     }
     return list.sort((a, b) => a.sequenceNo - b.sequenceNo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wip, selectedRoute, chartUnit, chartSort]);
 
   // Identify highest bottleneck stage

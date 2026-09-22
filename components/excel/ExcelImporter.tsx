@@ -1220,6 +1220,7 @@ export default function ExcelImporter() {
       const records = rawWorkbookSheets.sheets[selectedSheetName] || [];
       parseRecords(records, selectedSheetName, activeTab);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stageQueueMap]);
 
   // Clear Import Form

@@ -1,0 +1,3 @@
+## 2024-07-26 - Accessible Icon-Only Buttons in Lists
+**Learning:** Icon-only action buttons (like edit/delete) inside data tables/lists are a common accessibility trap. Even if they have a `title` tooltip for sighted users, screen readers can struggle if the `aria-label` doesn't exist or is static. A static `aria-label="Edit User"` read sequentially down a column is confusing without context.
+**Action:** Always provide an `aria-label` on icon-only buttons. When the button is part of a mapped list or table, dynamically include the item's identifying information in the `aria-label` (e.g., `aria-label={"Edit User Details for " + user.email}`).
