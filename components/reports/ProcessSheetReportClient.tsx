@@ -72,6 +72,8 @@ interface RollingPlanRecord {
   display_label?: string;
 }
 
+import { DEFAULT_SPEC_MASTER_RECORDS } from '@/lib/specMasterDefaults';
+
 interface SpecMasterRecord {
   id: string;
   spec_key: string;
@@ -978,13 +980,15 @@ export default function ProcessSheetReportClient() {
           .select('*')
           .eq('is_active', true)
           .order('spec_full', { ascending: true });
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           setSpecMasterList(data as SpecMasterRecord[]);
         } else {
-          console.warn('Could not load material_spec_master:', error?.message);
+          console.warn('Could not load material_spec_master from DB, using standard specs:', error?.message);
+          setSpecMasterList(DEFAULT_SPEC_MASTER_RECORDS);
         }
       } catch (e) {
-        console.warn('material_spec_master fetch error:', e);
+        console.warn('material_spec_master fetch error, using standard specs:', e);
+        setSpecMasterList(DEFAULT_SPEC_MASTER_RECORDS);
       }
     })();
   }, []);

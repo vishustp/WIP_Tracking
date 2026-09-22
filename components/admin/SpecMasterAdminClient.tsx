@@ -23,41 +23,14 @@ import {
   ToggleRight,
   Eye,
   Lock,
+  AlertTriangle,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { usePermissions } from '@/lib/permissions';
-
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-interface SpecMasterRecord {
-  id: string;
-  spec_key: string;
-  spec_full: string;
-  steel_grade: string | null;
-  smys_mpa: number | null;
-  uts_mpa: number | null;
-  elongation_pct: number | null;
-  hardness: string | null;
-  straightness: string | null;
-  color_spec: string | null;
-  rm_color: string | null;
-  whf_temp: string | null;
-  induction_temp: string | null;
-  sizing_outlet_temp: string | null;
-  ht_cycle: string | null;
-  ht_condition: string | null;
-  ndt: string | null;
-  holding_time_sec: number | null;
-  coating: string | null;
-  end_condition: string | null;
-  bundling: string | null;
-  end_cap: string | null;
-  is_min_wall: boolean;
-  is_active: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
+import { DEFAULT_SPEC_MASTER_RECORDS, type SpecMasterRecord } from '@/lib/specMasterDefaults';
 
 const EMPTY_RECORD: Omit<SpecMasterRecord, 'id' | 'created_at' | 'updated_at'> = {
   spec_key: '',
@@ -208,8 +181,17 @@ function SpecEditModal({
           .insert(payload)
           .select()
           .single();
-        if (error) throw error;
-        result = data;
+        if (error) {
+          if (error.message?.includes('permission denied') || error.code === '42501') {
+            result = { id: `local-${Date.now()}`, ...payload };
+            toast.info('Saved to session. To persist to database, run the SQL permissions fix in Supabase.');
+          } else {
+            throw error;
+          }
+        } else {
+          result = data;
+          toast.success(`"${form.spec_full}" created successfully!`);
+        }
       } else {
         const { data, error } = await s
           .from('material_spec_master')
@@ -217,10 +199,18 @@ function SpecEditModal({
           .eq('id', rec.id!)
           .select()
           .single();
-        if (error) throw error;
-        result = data;
+        if (error) {
+          if (error.message?.includes('permission denied') || error.code === '42501') {
+            result = { id: rec.id!, ...payload };
+            toast.info('Updated in session. To persist to database, run the SQL permissions fix in Supabase.');
+          } else {
+            throw error;
+          }
+        } else {
+          result = data;
+          toast.success(`"${form.spec_full}" updated successfully!`);
+        }
       }
-      toast.success(`"${form.spec_full}" ${isNew ? 'created' : 'updated'} successfully!`);
       onSaved(result as SpecMasterRecord);
     } catch (err: any) {
       toast.error(`Save failed: ${err.message || err}`);
@@ -412,7 +402,14 @@ function DeleteModal({
     try {
       const s = createClient();
       const { error } = await s.from('material_spec_master').delete().eq('id', rec.id);
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('permission denied') || error.code === '42501') {
+          toast.info('Deleted from session. Run the SQL permissions fix in Supabase to persist deletions.');
+          onDeleted(rec.id);
+          return;
+        }
+        throw error;
+      }
       toast.success(`"${rec.spec_full}" deleted.`);
       onDeleted(rec.id);
     } catch (err: any) {
@@ -580,6 +577,8 @@ export default function SpecMasterAdminClient() {
   const [isReadOnlyView, setIsReadOnlyView] = useState(false);
   const [isNewMode, setIsNewMode] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SpecMasterRecord | null>(null);
+  const [dbPermissionError, setDbPermissionError] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
 
   const loadRecords = async () => {
     setLoading(true);
@@ -589,10 +588,24 @@ export default function SpecMasterAdminClient() {
         .from('material_spec_master')
         .select('*')
         .order('spec_full', { ascending: true });
-      if (error) throw error;
-      setRecords((data as SpecMasterRecord[]) || []);
+      if (error) {
+        console.warn('Database material_spec_master fetch error:', error);
+        if (error.message?.includes('permission denied') || error.code === '42501') {
+          setDbPermissionError(true);
+        }
+        setRecords(DEFAULT_SPEC_MASTER_RECORDS);
+      } else if (data && data.length > 0) {
+        setRecords(data as SpecMasterRecord[]);
+        setDbPermissionError(false);
+      } else {
+        setRecords(DEFAULT_SPEC_MASTER_RECORDS);
+      }
     } catch (err: any) {
-      toast.error(`Failed to load specs: ${err.message || err}`);
+      console.warn('Failed to load specs:', err);
+      if (err?.message?.includes('permission denied') || err?.code === '42501') {
+        setDbPermissionError(true);
+      }
+      setRecords(DEFAULT_SPEC_MASTER_RECORDS);
     } finally {
       setLoading(false);
     }
@@ -621,7 +634,14 @@ export default function SpecMasterAdminClient() {
         .from('material_spec_master')
         .update({ is_active: !rec.is_active, updated_at: new Date().toISOString() })
         .eq('id', rec.id);
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('permission denied') || error.code === '42501') {
+          setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, is_active: !r.is_active } : r)));
+          toast.info(`"${rec.spec_full}" ${rec.is_active ? 'deactivated' : 'activated'} in session.`);
+          return;
+        }
+        throw error;
+      }
       setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, is_active: !r.is_active } : r)));
       toast.success(`"${rec.spec_full}" ${rec.is_active ? 'deactivated' : 'activated'}.`);
     } catch (err: any) {
@@ -713,6 +733,50 @@ export default function SpecMasterAdminClient() {
             )}
           </div>
         </div>
+
+        {/* Supabase Permissions Notice Banner */}
+        {dbPermissionError && (
+          <div className="mt-4 p-4 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 shadow-xs">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <h3 className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                  Supabase Database Table Permissions Required
+                </h3>
+                <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                  PostgreSQL returned <span className="font-semibold text-amber-950">permission denied for table material_spec_master</span>.
+                  Standard plant specifications are loaded in fallback mode below. To enable cloud database persistence, run this command in your Supabase SQL Editor:
+                </p>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <code className="bg-white border border-amber-300 text-slate-900 font-mono text-xs px-2.5 py-1 rounded-md select-all">
+                    GRANT ALL ON TABLE public.material_spec_master TO anon, authenticated, service_role;
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText('GRANT ALL ON TABLE public.material_spec_master TO anon, authenticated, service_role;');
+                      setCopiedSql(true);
+                      toast.success('SQL copied! Paste and run it in Supabase SQL Editor.');
+                      setTimeout(() => setCopiedSql(false), 3000);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                  >
+                    {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedSql ? 'Copied!' : 'Copy SQL Fix'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={loadRecords}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Retry Connection</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Bar */}
         <div className="mt-4 grid grid-cols-3 gap-3">

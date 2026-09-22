@@ -47,6 +47,9 @@ CREATE POLICY "spec_master_write" ON material_spec_master
 CREATE POLICY "spec_master_anon_read" ON material_spec_master
   FOR SELECT TO anon USING (true);
 
+-- Grant privileges to Supabase roles
+GRANT ALL ON TABLE material_spec_master TO anon, authenticated, service_role;
+
 -- ============================================================================
 -- Seed Data: 12 Standard Specifications
 -- ============================================================================
