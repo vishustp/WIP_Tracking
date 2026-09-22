@@ -661,7 +661,8 @@ export async function GET(req: NextRequest) {
       const htDivOutPcs = avgLength > 0 ? Math.round(htDivOut / avgLength) : 0;
 
       // Check QC Inspections for this WO (or related campaign)
-      let woQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
+      const directWoQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
+      let woQcList = directWoQcList;
       if (campaign && Array.isArray(campaign.child_work_orders)) {
         const childWoIds = new Set(campaign.child_work_orders.map((c: any) => c.work_order_id || c.id));
         const campaignQcList = qcInspections.filter((q: any) => q.work_order_id === woId || childWoIds.has(q.work_order_id));
@@ -683,6 +684,9 @@ export async function GET(req: NextRequest) {
       const qcSalvageMtr = avgLength > 0 ? Number((qcSalvagePcs * avgLength).toFixed(3)) : 0;
       const qcRejMtr = avgLength > 0 ? Number((qcRejPcs * avgLength).toFixed(3)) : 0;
 
+      // Direct QC for this specific work order
+      const directQcOkPcs = directWoQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+
       // 4.5 Band Saw Stage Metrics (between HT / Hollow HT / Rolling and VDI)
       const bandSawLogs = getStageLogs(woId, bandSawStageId);
       const bandSawOutPcs = sumPcs(bandSawLogs, avgLength);
@@ -699,8 +703,10 @@ export async function GET(req: NextRequest) {
 
       // 5. Finishing Stage Metrics (adjusted for Finishing Diversions)
       const finLogs = getStageLogs(woId, finStageId);
-      let finOutPcs = sumPcs(finLogs, avgLength);
-      let finRejPcs = sumRejPcs(finLogs, avgLength);
+      const directFinOutPcs = sumPcs(finLogs, avgLength);
+      const directFinRejPcs = sumRejPcs(finLogs, avgLength);
+      let finOutPcs = directFinOutPcs;
+      let finRejPcs = directFinRejPcs;
 
       // If this is a master campaign with child orders, also include child finishing production in consumed stock
       if (campaign && Array.isArray(campaign.child_work_orders)) {
@@ -765,18 +771,16 @@ export async function GET(req: NextRequest) {
 
       const finDivIn = getStageDivIn(woId, "FINISHING");
       const finDivOut = getStageDivOut(woId, "FINISHING");
-
-      let finIncomingPcs = 0;
-      if (woQcList.length > 0) {
-        finIncomingPcs = Math.round(qcOkPcs);
-      } else {
-        finIncomingPcs = 0;
-      }
-
       const finDivInPcs = avgLength > 0 ? Math.round(finDivIn / avgLength) : 0;
       const finDivOutPcs = avgLength > 0 ? Math.round(finDivOut / avgLength) : 0;
 
-      const finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finOutPcs - finRejPcs - finDivOutPcs);
+      const isCampaignMaster = Boolean(campaign && Array.isArray(campaign.child_work_orders) && campaign.child_work_orders.length > 0);
+      // For Master campaign WO, finishing WIP only comes from QC records done directly against this master WO.
+      // If all QC was separated against child WOs, child WOs own the finishing WIP in childFinishingRows.
+      const finIncomingPcs = isCampaignMaster ? directQcOkPcs : Math.round(qcOkPcs);
+      const finConsumedPcs = isCampaignMaster ? (directFinOutPcs + directFinRejPcs) : (finOutPcs + finRejPcs);
+
+      const finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finConsumedPcs - finDivOutPcs);
       const finAvailMtr = avgLength > 0 ? Number((finAvailPcs * avgLength).toFixed(3)) : 0;
       const finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
@@ -1379,28 +1383,33 @@ export async function GET(req: NextRequest) {
       const childWo = woMap.get(childId);
       const masterCalc = allCalculatedRows.get(child.master_wo_id);
       const masterPipeline = masterCalc?.pipeline;
-      const masterFinishingAvail =
-        masterPipeline?.find((p) => p.stage_code === "FINISHING")?.available_mtr || 0;
+
+      const l1 = Number(child.l1 || childWo?.l1 || 6);
+      const l2 = Number(child.l2 || childWo?.l2 || 6.5);
+      const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6.25;
+
+      // Child order VDI QC Inspections specifically recorded for this child order
+      const childQc = qcInspections.filter((q: any) => q.work_order_id === childId);
+      const childVdiOkPcs = childQc.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
 
       // Child order finishing logs
       const childFinLogs = logs.filter(
         (l) => l.work_order_id === childId && l.stage_id === finStageId
       );
+      const childFinOutPcs = sumPcs(childFinLogs, avgLength);
+      const childFinRejPcs = sumRejPcs(childFinLogs, avgLength);
       const childFinOutMtr = sumQty(childFinLogs, "output_qty");
       const childFinRejMtr = sumQty(childFinLogs, "rejection_qty");
-      const childPlannedMtr = Number(child.planned_mtr || childWo?.balance_qty_mtr || 0);
-      const l1 = Number(child.l1 || childWo?.l1 || 6);
-      const l2 = Number(child.l2 || childWo?.l2 || 6.5);
-      const avgLength = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6.25;
-      const childPlannedPcs = Number(child.planned_pcs || childWo?.ordered_qty_pcs || (avgLength > 0 ? Math.round(childPlannedMtr / avgLength) : 0));
 
-      // Remaining to finish for this child order
-      const remainingTargetMtr = Math.max(0, childPlannedMtr - childFinOutMtr - childFinRejMtr);
-      // Available WIP is bounded by upstream finishing available stock (passed QC from VDI)
-      const childAvailMtr = masterFinishingAvail > 0 ? Math.min(remainingTargetMtr, masterFinishingAvail) : 0;
-      const childAvailPcs = masterFinishingAvail > 0 && avgLength > 0
-        ? Math.round(childAvailMtr / avgLength)
-        : 0;
+      // Child order diversions in Finishing
+      const childFinDivIn = getStageDivIn(childId, "FINISHING");
+      const childFinDivOut = getStageDivOut(childId, "FINISHING");
+      const childFinDivInPcs = avgLength > 0 ? Math.round(childFinDivIn / avgLength) : 0;
+      const childFinDivOutPcs = avgLength > 0 ? Math.round(childFinDivOut / avgLength) : 0;
+
+      // Available WIP at Finishing for this child work order is strictly its VDI OK pcs (+ diversion) minus finished pcs
+      const childAvailPcs = Math.max(0, childVdiOkPcs + childFinDivInPcs - childFinOutPcs - childFinRejPcs - childFinDivOutPcs);
+      const childAvailMtr = avgLength > 0 ? Number((childAvailPcs * avgLength).toFixed(3)) : (childVdiOkPcs > 0 ? Number((childVdiOkPcs * avgLength).toFixed(3)) : 0);
 
       if (childAvailPcs >= 1 || childAvailMtr >= 1.0) {
         const od = Number(child.size_od || childWo?.size_od || 0);
@@ -1482,14 +1491,10 @@ export async function GET(req: NextRequest) {
           ht_input_nos: "",
         });
 
-        // If this child belongs to a master campaign whose available stock is already in workCenterSummary,
-        // do not double-count it in the workCenterSummary WIP total
-        if (!child.master_wo_id) {
-          workCenterSummary.FINISHING.availMtr += childAvailMtr;
-          workCenterSummary.FINISHING.availPcs += childAvailPcs;
-          workCenterSummary.FINISHING.availMt += childAvailMt;
-          workCenterSummary.FINISHING.count += 1;
-        }
+        workCenterSummary.FINISHING.availMtr += childAvailMtr;
+        workCenterSummary.FINISHING.availPcs += childAvailPcs;
+        workCenterSummary.FINISHING.availMt += childAvailMt;
+        workCenterSummary.FINISHING.count += 1;
       }
     }
 

@@ -746,121 +746,133 @@ export function useQueue(stage: StageCode) {
 
           // Check QC inspections for this WO
           const woQc = qcInspections.filter((q: any) => q.work_order_id === r.work_order_id);
-          let rowToUse = { ...r };
-          if (woQc.length > 0) {
-            const qcOk = woQc.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
-            const finishedLogs = logs.filter(
-              (l: any) =>
-                l.work_order_id === r.work_order_id &&
-                (!finishingStageId || l.stage_id === finishingStageId)
-            );
-            const finishedPcs = finishedLogs.reduce((sum: number, l: any) => {
-              const pcsMatch = l.remarks ? l.remarks.match(/\[PCS:(\d+)\]/i) : null;
-              const rejMatch = l.remarks ? l.remarks.match(/\[REJ_PCS:(\d+)\]/i) : null;
-              const outP = pcsMatch ? parseInt(pcsMatch[1], 10) : (Number(l.output_pcs || 0) > 0 ? Number(l.output_pcs) : (effAvg > 0 ? Math.round(Number(l.output_qty || 0) / effAvg) : 0));
-              const rejP = rejMatch ? parseInt(rejMatch[1], 10) : (Number(l.rejection_pcs || 0) > 0 ? Number(l.rejection_pcs) : (effAvg > 0 ? Math.round(Number(l.rejection_qty || 0) / effAvg) : 0));
-              return sum + outP + rejP;
-            }, 0);
-            const availPcs = Math.max(0, qcOk + finDivInPcs - finishedPcs - finDivOutPcs);
-            const availMtr: number = effAvg > 0 ? Number((availPcs * effAvg).toFixed(2)) : Math.max(0, (Number(r.balance_to_make_mtr) || 0) + finDivIn - finDivOut);
-            const od = Number(r.od || 0);
-            const wt = Number(r.wl || 0);
-            const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
-            rowToUse = {
-              ...rowToUse,
-              balance_to_make_pcs: availPcs,
-              balance_to_make_mtr: availMtr,
-              balance_to_make_mt: Number(availMt.toFixed(2)),
-              max_allowed_pcs: availPcs,
-              max_allowed_mtr: availMtr,
-            };
-          }
+          const qcOk = woQc.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+          const finishedLogs = logs.filter(
+            (l: any) =>
+              l.work_order_id === r.work_order_id &&
+              (!finishingStageId || l.stage_id === finishingStageId)
+          );
+          const finishedPcs = finishedLogs.reduce((sum: number, l: any) => {
+            const pcsMatch = l.remarks ? l.remarks.match(/\[PCS:(\d+)\]/i) : null;
+            const rejMatch = l.remarks ? l.remarks.match(/\[REJ_PCS:(\d+)\]/i) : null;
+            const outP = pcsMatch ? parseInt(pcsMatch[1], 10) : (Number(l.output_pcs || 0) > 0 ? Number(l.output_pcs) : (effAvg > 0 ? Math.round(Number(l.output_qty || 0) / effAvg) : 0));
+            const rejP = rejMatch ? parseInt(rejMatch[1], 10) : (Number(l.rejection_pcs || 0) > 0 ? Number(l.rejection_pcs) : (effAvg > 0 ? Math.round(Number(l.rejection_qty || 0) / effAvg) : 0));
+            return sum + outP + rejP;
+          }, 0);
+          const availPcs = Math.max(0, qcOk + finDivInPcs - finishedPcs - finDivOutPcs);
+          const availMtr: number = effAvg > 0 ? Number((availPcs * effAvg).toFixed(2)) : 0;
+          const od = Number(r.od || 0);
+          const wt = Number(r.wl || 0);
+          const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
+          const rowToUse = {
+            ...r,
+            balance_to_make_pcs: availPcs,
+            balance_to_make_mtr: availMtr,
+            balance_to_make_mt: Number(availMt.toFixed(2)),
+            max_allowed_pcs: availPcs,
+            max_allowed_mtr: availMtr,
+          };
 
           if (campaign) {
-            processedRows.push({
-              ...rowToUse,
-              is_master: true,
-              master_plan_no: campaign.plan_no,
-              campaign_total_mtr: campaign.total_campaign_mtr,
-              campaign_total_pcs: campaign.total_campaign_pcs,
-              child_work_orders: campaign.child_work_orders,
-            });
+            if (availPcs >= 1 || availMtr >= 1.0) {
+              processedRows.push({
+                ...rowToUse,
+                is_master: true,
+                master_plan_no: campaign.plan_no,
+                campaign_total_mtr: campaign.total_campaign_mtr,
+                campaign_total_pcs: campaign.total_campaign_pcs,
+                child_work_orders: campaign.child_work_orders,
+              });
+            }
 
-            // 2. Also ensure every Child WO from this campaign is included in the Finishing queue!
+            // 2. Also ensure Child WOs with VDI OK from this campaign are included in the Finishing queue!
             for (const child of campaign.child_work_orders) {
               const childId = child.work_order_id || child.id;
               if (addedWoIds.has(childId)) continue;
               addedWoIds.add(childId);
 
-              // Calculate finished output so far for this child order
-              const childFinishedMtr = logs
-                .filter(
-                  (l: any) =>
-                    l.work_order_id === childId &&
-                    (!finishingStageId || l.stage_id === finishingStageId)
-                )
-                .reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
-
-              const childDivIn = getStageDivIn(childId, "FINISHING");
-              const childDivOut = getStageDivOut(childId, "FINISHING");
-              const childPlannedMtr = Number(child.planned_mtr || 0);
-              const remainingMtr = Math.max(0, childPlannedMtr + childDivIn - childFinishedMtr - childDivOut);
-
               const l1 = Number(child.l1 || r.l1 || 6);
               const l2 = Number(child.l2 || r.l2 || 6);
               const avgLen = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || 6;
-              const childPlannedPcs = Number(child.planned_pcs || 0);
-              const remainingPcs = childFinishedMtr <= 0 && childPlannedPcs > 0
-                ? childPlannedPcs
-                : (avgLen > 0 ? Math.round(remainingMtr / avgLen) : 0);
 
-              const od = Number(child.size_od || r.od || 0);
-              const wt = Number(child.size_wt || r.wl || 0);
-              const remainingMt =
-                Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * remainingMtr;
+              const childQc = qcInspections.filter((q: any) => q.work_order_id === childId);
+              const childQcOk = childQc.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
 
-              const childRow: Row = emptyRow({
-                work_order_id: childId,
-                work_order_no: child.work_order_no,
-                customer_name: child.customer_name || null,
-                specification: child.grade || r.specification,
-                od,
-                wl: wt,
-                l1,
-                l2,
-                avg_length: avgLen,
-                route_id: r.route_id,
-                route_code: r.route_code,
-                route_name: r.route_name,
-                stage_code: "FINISHING",
-                is_hfs: r.is_hfs,
-                is_cds: r.is_cds,
-                prev_stage_code: r.prev_stage_code,
-                prev_stage_name: r.prev_stage_name,
-                balance_to_make_mtr: remainingMtr,
-                balance_to_make_pcs: remainingPcs,
-                balance_to_make_mt: Number(remainingMt.toFixed(2)),
-                max_allowed_mtr: remainingMtr > 0 ? remainingMtr : r.balance_to_make_mtr,
-                multiple: r.multiple || 1,
-                ht_nos: null,
-                is_child: true,
-                master_wo_id: r.work_order_id,
-                master_wo_no: r.work_order_no,
-                master_plan_no: campaign.plan_no,
-              });
+              const childFinishedLogs = logs.filter(
+                (l: any) =>
+                  l.work_order_id === childId &&
+                  (!finishingStageId || l.stage_id === finishingStageId)
+              );
+              const childFinishedPcs = childFinishedLogs.reduce((sum: number, l: any) => {
+                const pcsMatch = l.remarks ? l.remarks.match(/\[PCS:(\d+)\]/i) : null;
+                const rejMatch = l.remarks ? l.remarks.match(/\[REJ_PCS:(\d+)\]/i) : null;
+                const outP = pcsMatch ? parseInt(pcsMatch[1], 10) : (Number(l.output_pcs || 0) > 0 ? Number(l.output_pcs) : (avgLen > 0 ? Math.round(Number(l.output_qty || 0) / avgLen) : 0));
+                const rejP = rejMatch ? parseInt(rejMatch[1], 10) : (Number(l.rejection_pcs || 0) > 0 ? Number(l.rejection_pcs) : (avgLen > 0 ? Math.round(Number(l.rejection_qty || 0) / avgLen) : 0));
+                return sum + outP + rejP;
+              }, 0);
 
-              processedRows.push(childRow);
+              const childDivIn = getStageDivIn(childId, "FINISHING");
+              const childDivOut = getStageDivOut(childId, "FINISHING");
+              const childDivInPcs = avgLen > 0 ? Math.round(childDivIn / avgLen) : 0;
+              const childDivOutPcs = avgLen > 0 ? Math.round(childDivOut / avgLen) : 0;
+
+              const childAvailPcs = Math.max(0, childQcOk + childDivInPcs - childFinishedPcs - childDivOutPcs);
+              const childAvailMtr = avgLen > 0 ? Number((childAvailPcs * avgLen).toFixed(2)) : 0;
+
+              if (childAvailPcs >= 1 || childAvailMtr >= 1.0) {
+                const cod = Number(child.size_od || r.od || 0);
+                const cwt = Number(child.size_wt || r.wl || 0);
+                const remainingMt =
+                  Math.max(cod - cwt, 0) * Math.max(cwt, 0) * 0.0246615 * 0.001 * childAvailMtr;
+
+                const childRow: Row = emptyRow({
+                  work_order_id: childId,
+                  work_order_no: child.work_order_no,
+                  customer_name: child.customer_name || null,
+                  specification: child.grade || r.specification,
+                  od: cod,
+                  wl: cwt,
+                  l1,
+                  l2,
+                  avg_length: avgLen,
+                  route_id: r.route_id,
+                  route_code: r.route_code,
+                  route_name: r.route_name,
+                  stage_code: "FINISHING",
+                  is_hfs: r.is_hfs,
+                  is_cds: r.is_cds,
+                  prev_stage_code: r.prev_stage_code,
+                  prev_stage_name: r.prev_stage_name,
+                  balance_to_make_mtr: childAvailMtr,
+                  balance_to_make_pcs: childAvailPcs,
+                  balance_to_make_mt: Number(remainingMt.toFixed(2)),
+                  max_allowed_mtr: childAvailMtr,
+                  max_allowed_pcs: childAvailPcs,
+                  multiple: r.multiple || 1,
+                  ht_nos: null,
+                  is_child: true,
+                  master_wo_id: r.work_order_id,
+                  master_wo_no: r.work_order_no,
+                  master_plan_no: campaign.plan_no,
+                });
+
+                processedRows.push(childRow);
+              }
             }
           } else if (childInfo) {
-            processedRows.push({
-              ...rowToUse,
-              is_child: true,
-              master_wo_id: childInfo.master_wo_id,
-              master_wo_no: childInfo.master_wo_no,
-              master_plan_no: childInfo.master_plan_no,
-            });
+            if (availPcs >= 1 || availMtr >= 1.0) {
+              processedRows.push({
+                ...rowToUse,
+                is_child: true,
+                master_wo_id: childInfo.master_wo_id,
+                master_wo_no: childInfo.master_wo_no,
+                master_plan_no: childInfo.master_plan_no,
+              });
+            }
           } else {
-            processedRows.push(rowToUse);
+            if (availPcs >= 1 || availMtr >= 1.0) {
+              processedRows.push(rowToUse);
+            }
           }
         }
 
