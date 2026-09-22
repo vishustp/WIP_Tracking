@@ -21,9 +21,12 @@ import {
   Loader2,
   ToggleLeft,
   ToggleRight,
+  Eye,
+  Lock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import { usePermissions } from '@/lib/permissions';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -92,6 +95,7 @@ function FieldInput({
   placeholder,
   required,
   hint,
+  disabled,
 }: {
   label: string;
   value: string | number | null;
@@ -100,19 +104,25 @@ function FieldInput({
   placeholder?: string;
   required?: boolean;
   hint?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="space-y-1">
       <label className="block text-xs font-bold text-slate-700">
         {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
+        {required && !disabled && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       <input
         type={type}
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-3 py-1.5 text-xs font-semibold text-slate-900 bg-white border-2 border-slate-300 rounded-lg focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition-colors"
+        disabled={disabled}
+        className={`w-full px-3 py-1.5 text-xs font-semibold text-slate-900 border-2 rounded-lg transition-colors ${
+          disabled
+            ? 'bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed'
+            : 'bg-white border-slate-300 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100'
+        }`}
       />
       {hint && <p className="text-[10px] text-slate-500">{hint}</p>}
     </div>
@@ -135,11 +145,13 @@ function SectionHeader({ title, icon: Icon }: { title: string; icon: React.Eleme
 function SpecEditModal({
   rec,
   isNew,
+  readOnly = false,
   onClose,
   onSaved,
 }: {
   rec: Partial<SpecMasterRecord>;
   isNew: boolean;
+  readOnly?: boolean;
   onClose: () => void;
   onSaved: (saved: SpecMasterRecord) => void;
 }) {
@@ -228,9 +240,11 @@ function SpecEditModal({
             </div>
             <div>
               <h2 className="text-sm font-black text-white">
-                {isNew ? 'Add New Specification' : `Edit: ${rec.spec_key}`}
+                {readOnly ? `Specification Details: ${rec.spec_key}` : isNew ? 'Add New Specification' : `Edit: ${rec.spec_key}`}
               </h2>
-              <p className="text-xs text-indigo-200 mt-0.5">Material Spec Master Table</p>
+              <p className="text-xs text-indigo-200 mt-0.5">
+                {readOnly ? 'Material Spec Master (Read-Only Reference)' : 'Material Spec Master Table'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white">
@@ -249,6 +263,7 @@ function SpecEditModal({
               onChange={set('spec_key')}
               placeholder="e.g. A106, A210, BS3059_320"
               required
+              disabled={readOnly}
               hint="Short unique key, no spaces"
             />
             <FieldInput
@@ -257,30 +272,34 @@ function SpecEditModal({
               onChange={set('spec_full')}
               placeholder="e.g. ASTM A106 Gr B (IBR)"
               required
+              disabled={readOnly}
             />
-            <FieldInput label="Steel Grade" value={form.steel_grade} onChange={set('steel_grade')} placeholder="e.g. SAE 1018 / 15C8 RS-03" />
+            <FieldInput label="Steel Grade" value={form.steel_grade} onChange={set('steel_grade')} placeholder="e.g. SAE 1018 / 15C8 RS-03" disabled={readOnly} />
             <div className="grid grid-cols-2 gap-3">
-              <FieldInput label="Pipe Colour Code" value={form.color_spec} onChange={set('color_spec')} placeholder="WHITE" />
-              <FieldInput label="RM Billet Colour" value={form.rm_color} onChange={set('rm_color')} placeholder="YELLOW + WHITE" />
+              <FieldInput label="Pipe Colour Code" value={form.color_spec} onChange={set('color_spec')} placeholder="WHITE" disabled={readOnly} />
+              <FieldInput label="RM Billet Colour" value={form.rm_color} onChange={set('rm_color')} placeholder="YELLOW + WHITE" disabled={readOnly} />
             </div>
           </div>
 
           {/* Mechanical Properties */}
           <SectionHeader title="Mechanical Properties" icon={Gauge} />
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <FieldInput label="SMYS (MPa)" value={form.smys_mpa} onChange={set('smys_mpa')} type="number" placeholder="240" />
-            <FieldInput label="UTS Min (MPa)" value={form.uts_mpa} onChange={set('uts_mpa')} type="number" placeholder="415" />
-            <FieldInput label="Elongation Min (%)" value={form.elongation_pct} onChange={set('elongation_pct')} type="number" placeholder="21" />
-            <FieldInput label="Hardness Max" value={form.hardness} onChange={set('hardness')} placeholder="79 HRB MAX" />
+            <FieldInput label="SMYS (MPa)" value={form.smys_mpa} onChange={set('smys_mpa')} type="number" placeholder="240" disabled={readOnly} />
+            <FieldInput label="UTS Min (MPa)" value={form.uts_mpa} onChange={set('uts_mpa')} type="number" placeholder="415" disabled={readOnly} />
+            <FieldInput label="Elongation Min (%)" value={form.elongation_pct} onChange={set('elongation_pct')} type="number" placeholder="21" disabled={readOnly} />
+            <FieldInput label="Hardness Max" value={form.hardness} onChange={set('hardness')} placeholder="79 HRB MAX" disabled={readOnly} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-            <FieldInput label="Straightness" value={form.straightness} onChange={set('straightness')} placeholder="1:1000" />
+            <FieldInput label="Straightness" value={form.straightness} onChange={set('straightness')} placeholder="1:1000" disabled={readOnly} />
             <div className="space-y-1">
               <label className="block text-xs font-bold text-slate-700">Wall Type</label>
               <button
                 type="button"
-                onClick={() => setForm((p) => ({ ...p, is_min_wall: !p.is_min_wall }))}
+                disabled={readOnly}
+                onClick={() => !readOnly && setForm((p) => ({ ...p, is_min_wall: !p.is_min_wall }))}
                 className={`mt-1.5 flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-xs font-bold transition-all ${
+                  readOnly ? 'cursor-default opacity-80 ' : 'cursor-pointer '
+                }${
                   form.is_min_wall
                     ? 'bg-amber-50 border-amber-500 text-amber-800'
                     : 'bg-slate-50 border-slate-300 text-slate-600'
@@ -299,29 +318,29 @@ function SpecEditModal({
           {/* Thermal */}
           <SectionHeader title="Thermal Parameters" icon={Thermometer} />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <FieldInput label="WHF Temperature" value={form.whf_temp} onChange={set('whf_temp')} placeholder="1220 C (+/- 40 C)" />
-            <FieldInput label="Induction Furnace Temp" value={form.induction_temp} onChange={set('induction_temp')} placeholder="850 C - 880 C" />
-            <FieldInput label="Sizing Mill Outlet Temp" value={form.sizing_outlet_temp} onChange={set('sizing_outlet_temp')} placeholder="880 C TO 900 C" />
+            <FieldInput label="WHF Temperature" value={form.whf_temp} onChange={set('whf_temp')} placeholder="1220 C (+/- 40 C)" disabled={readOnly} />
+            <FieldInput label="Induction Furnace Temp" value={form.induction_temp} onChange={set('induction_temp')} placeholder="850 C - 880 C" disabled={readOnly} />
+            <FieldInput label="Sizing Mill Outlet Temp" value={form.sizing_outlet_temp} onChange={set('sizing_outlet_temp')} placeholder="880 C TO 900 C" disabled={readOnly} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldInput label="HT Cycle" value={form.ht_cycle} onChange={set('ht_cycle')} placeholder="NA / NORMALIZED & TEMPERED" />
-            <FieldInput label="HT Condition" value={form.ht_condition} onChange={set('ht_condition')} placeholder="AS ROLLED / HFS" />
+            <FieldInput label="HT Cycle" value={form.ht_cycle} onChange={set('ht_cycle')} placeholder="NA / NORMALIZED & TEMPERED" disabled={readOnly} />
+            <FieldInput label="HT Condition" value={form.ht_condition} onChange={set('ht_condition')} placeholder="AS ROLLED / HFS" disabled={readOnly} />
           </div>
 
           {/* Testing */}
           <SectionHeader title="Testing & Inspection" icon={ShieldCheck} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldInput label="NDT Method" value={form.ndt} onChange={set('ndt')} placeholder="UT / ET / MT" />
-            <FieldInput label="Holding Time (sec)" value={form.holding_time_sec} onChange={set('holding_time_sec')} type="number" placeholder="5" />
+            <FieldInput label="NDT Method" value={form.ndt} onChange={set('ndt')} placeholder="UT / ET / MT" disabled={readOnly} />
+            <FieldInput label="Holding Time (sec)" value={form.holding_time_sec} onChange={set('holding_time_sec')} type="number" placeholder="5" disabled={readOnly} />
           </div>
 
           {/* Finishing */}
           <SectionHeader title="Coating & Finishing" icon={Package} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldInput label="Coating" value={form.coating} onChange={set('coating')} placeholder="BLACK VARNISH" />
-            <FieldInput label="End Condition" value={form.end_condition} onChange={set('end_condition')} placeholder="BEVEL END (30-35)" />
-            <FieldInput label="Bundling" value={form.bundling} onChange={set('bundling')} placeholder="HEXAGONAL" />
-            <FieldInput label="End Cap" value={form.end_cap} onChange={set('end_cap')} placeholder="PLASTIC PROTECTOR" />
+            <FieldInput label="Coating" value={form.coating} onChange={set('coating')} placeholder="BLACK VARNISH" disabled={readOnly} />
+            <FieldInput label="End Condition" value={form.end_condition} onChange={set('end_condition')} placeholder="BEVEL END (30-35)" disabled={readOnly} />
+            <FieldInput label="Bundling" value={form.bundling} onChange={set('bundling')} placeholder="HEXAGONAL" disabled={readOnly} />
+            <FieldInput label="End Cap" value={form.end_cap} onChange={set('end_cap')} placeholder="PLASTIC PROTECTOR" disabled={readOnly} />
           </div>
 
           {/* Active Flag */}
@@ -332,8 +351,11 @@ function SpecEditModal({
             </div>
             <button
               type="button"
-              onClick={() => setForm((p) => ({ ...p, is_active: !p.is_active }))}
+              disabled={readOnly}
+              onClick={() => !readOnly && setForm((p) => ({ ...p, is_active: !p.is_active }))}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-xs font-bold transition-all ${
+                readOnly ? 'cursor-default opacity-80 ' : 'cursor-pointer '
+              }${
                 form.is_active
                   ? 'bg-emerald-50 border-emerald-500 text-emerald-800'
                   : 'bg-slate-100 border-slate-300 text-slate-500'
@@ -354,16 +376,18 @@ function SpecEditModal({
             onClick={onClose}
             className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border-2 border-slate-300 rounded-lg hover:bg-slate-100 transition-colors"
           >
-            Cancel
+            {readOnly ? 'Close' : 'Cancel'}
           </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-indigo-700 rounded-lg hover:bg-indigo-800 disabled:opacity-60 transition-colors shadow-sm"
-          >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            {saving ? 'Saving...' : isNew ? 'Create Spec' : 'Save Changes'}
-          </button>
+          {!readOnly && (
+            <button
+              onClick={handleSubmit}
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-indigo-700 rounded-lg hover:bg-indigo-800 disabled:opacity-60 transition-colors shadow-sm"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {saving ? 'Saving...' : isNew ? 'Create Spec' : 'Save Changes'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -441,13 +465,17 @@ function DeleteModal({
 function SpecRow({
   rec,
   onEdit,
+  onView,
   onDelete,
   onToggleActive,
+  canModify,
 }: {
   rec: SpecMasterRecord;
   onEdit: (r: SpecMasterRecord) => void;
+  onView: (r: SpecMasterRecord) => void;
   onDelete: (r: SpecMasterRecord) => void;
   onToggleActive: (r: SpecMasterRecord) => void;
+  canModify: boolean;
 }) {
   return (
     <tr className={`border-b border-slate-100 transition-colors hover:bg-slate-50 ${!rec.is_active ? 'opacity-50' : ''}`}>
@@ -485,30 +513,53 @@ function SpecRow({
         </span>
       </td>
       <td className="px-4 py-3 text-center">
-        <button onClick={() => onToggleActive(rec)} title={rec.is_active ? 'Click to deactivate' : 'Click to activate'} className="cursor-pointer">
-          {rec.is_active ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 mx-auto" />
-          ) : (
-            <XCircle className="w-4 h-4 text-slate-400 mx-auto" />
-          )}
-        </button>
+        {canModify ? (
+          <button onClick={() => onToggleActive(rec)} title={rec.is_active ? 'Click to deactivate' : 'Click to activate'} className="cursor-pointer">
+            {rec.is_active ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 mx-auto" />
+            ) : (
+              <XCircle className="w-4 h-4 text-slate-400 mx-auto" />
+            )}
+          </button>
+        ) : (
+          <div title={rec.is_active ? 'Active' : 'Inactive'}>
+            {rec.is_active ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 mx-auto" />
+            ) : (
+              <XCircle className="w-4 h-4 text-slate-400 mx-auto" />
+            )}
+          </div>
+        )}
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2 justify-end">
-          <button
-            onClick={() => onEdit(rec)}
-            className="p-1.5 rounded-lg hover:bg-indigo-100 text-indigo-600 transition-colors"
-            title="Edit"
-          >
-            <Edit2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => onDelete(rec)}
-            className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors"
-            title="Delete"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          {canModify ? (
+            <>
+              <button
+                onClick={() => onEdit(rec)}
+                className="p-1.5 rounded-lg hover:bg-indigo-100 text-indigo-600 transition-colors cursor-pointer"
+                title="Edit specification"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => onDelete(rec)}
+                className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors cursor-pointer"
+                title="Delete specification"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => onView(rec)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-[11px] font-semibold transition-colors cursor-pointer"
+              title="View specification details"
+            >
+              <Eye className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Details</span>
+            </button>
+          )}
         </div>
       </td>
     </tr>
@@ -518,11 +569,15 @@ function SpecRow({
 // â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function SpecMasterAdminClient() {
+  const { isAdmin, isSuperUser } = usePermissions();
+  const canModify = isAdmin || isSuperUser;
+
   const [records, setRecords] = useState<SpecMasterRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [editTarget, setEditTarget] = useState<SpecMasterRecord | null>(null);
+  const [isReadOnlyView, setIsReadOnlyView] = useState(false);
   const [isNewMode, setIsNewMode] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SpecMasterRecord | null>(null);
 
@@ -559,6 +614,7 @@ export default function SpecMasterAdminClient() {
   }, [records, search, showInactive]);
 
   const handleToggleActive = async (rec: SpecMasterRecord) => {
+    if (!canModify) return;
     try {
       const s = createClient();
       const { error } = await s
@@ -585,6 +641,7 @@ export default function SpecMasterAdminClient() {
     });
     setEditTarget(null);
     setIsNewMode(false);
+    setIsReadOnlyView(false);
   };
 
   const handleDeleted = (id: string) => {
@@ -602,7 +659,8 @@ export default function SpecMasterAdminClient() {
         <SpecEditModal
           rec={editTarget ?? EMPTY_RECORD}
           isNew={isNewMode}
-          onClose={() => { setEditTarget(null); setIsNewMode(false); }}
+          readOnly={isReadOnlyView}
+          onClose={() => { setEditTarget(null); setIsNewMode(false); setIsReadOnlyView(false); }}
           onSaved={handleSaved}
         />
       )}
@@ -622,27 +680,37 @@ export default function SpecMasterAdminClient() {
               <Beaker className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-black text-slate-800">Material Spec Master</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-black text-slate-800">Material Spec Master</h1>
+                {!canModify && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                    <Lock className="w-3 h-3 text-amber-600" />
+                    Read-Only
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Manage grades and specifications available in the Process Sheet dropdown
+                Manage grades and specifications available across Process Sheets and Work Orders
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={loadRecords}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-600 bg-white border-2 border-slate-300 rounded-xl hover:bg-slate-100 transition-colors shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-600 bg-white border-2 border-slate-300 rounded-xl hover:bg-slate-100 transition-colors shadow-xs cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-            <button
-              onClick={() => { setEditTarget(null); setIsNewMode(true); }}
-              className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-indigo-700 rounded-xl hover:bg-indigo-800 transition-colors shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add New Spec
-            </button>
+            {canModify && (
+              <button
+                onClick={() => { setEditTarget(null); setIsReadOnlyView(false); setIsNewMode(true); }}
+                className="flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-[#004f84] rounded-xl hover:bg-[#003b63] transition-colors shadow-xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add New Spec
+              </button>
+            )}
           </div>
         </div>
 
@@ -733,7 +801,9 @@ export default function SpecMasterAdminClient() {
                   <SpecRow
                     key={rec.id}
                     rec={rec}
-                    onEdit={(r) => { setEditTarget(r); setIsNewMode(false); }}
+                    canModify={canModify}
+                    onEdit={(r) => { setEditTarget(r); setIsReadOnlyView(false); setIsNewMode(false); }}
+                    onView={(r) => { setEditTarget(r); setIsReadOnlyView(true); setIsNewMode(false); }}
                     onDelete={setDeleteTarget}
                     onToggleActive={handleToggleActive}
                   />

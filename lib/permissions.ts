@@ -208,12 +208,13 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
   }
 
   if (group === 'super_user') {
-    // Super User has visibility to all planning, production, and reporting forms, but not Admin Settings / Admin Panel
+    // Super User has visibility to all planning, production, spec master, and reporting forms, but not Admin Settings / Admin Panel
+    if (href === '/admin/spec-master' || href === '/spec-master') return true;
     return !['/admin', '/settings'].includes(href);
   }
 
   // User Group (Shop Floor Operator):
-  // ONLY Production Entry, Band Saw Cutting, Standard Shop Floor Reports (Pending Orders, WIP, Production), Dashboard, and User Profile are visible.
+  // ONLY Production Entry, Band Saw Cutting, Standard Shop Floor Reports (Pending Orders, WIP, Production), Dashboard, User Profile, and Spec Master are visible.
   // PPC planning forms (Work Orders, Excel Import, Rolling Planning, Diversion Planning), PPC Reports (Rolling Plans, Diversions), and Admin/Settings are strictly RESTRICTED to PPC / Admin group.
   const allowedUserRoutes = [
     '/production',
@@ -223,6 +224,8 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/vdi',
     '/dashboard',
     '/profile',
+    '/admin/spec-master',
+    '/spec-master',
     '/reports/pending-orders',
     '/reports/wip',
     '/reports/production',

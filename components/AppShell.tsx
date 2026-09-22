@@ -58,6 +58,7 @@ const groups = [
     items: [
       { href: '/profile', label: 'User Profile', icon: User },
       { href: '/admin', label: 'Admin Control Panel', icon: ShieldCheck },
+      { href: '/admin/spec-master', label: 'Material Spec Master', icon: Beaker },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },
@@ -280,6 +281,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                           <span>Admin Control Panel</span>
                         </button>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => { router.push('/admin/spec-master'); setUserDropdownOpen(false); }}
+                        className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                      >
+                        <Beaker className="h-4 w-4 text-indigo-600" />
+                        <span>Material Spec Master</span>
+                      </button>
                     </div>
 
                     <div className="pt-1.5 mt-1 border-t border-slate-100">

@@ -8,12 +8,13 @@ import { getCurrentAppUser, getAppUsers } from '@/lib/users/client';
 import { GROUP_CONFIGS, usePermissions, getFormAccess, MODULE_DEFINITIONS, getDefaultPermissions, WORK_CENTER_LABELS } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import UserPermissionsModal from './UserPermissionsModal';
+import Link from 'next/link';
 import {
   ShieldCheck, Users, Sliders, Activity, Database, Plus, Search,
   Edit2, Trash2, CheckCircle2, XCircle, RotateCcw, Download, Upload,
   KeyRound, Shield, AlertTriangle, RefreshCw, Layers, Check, X,
   Save, Filter, Lock, HardHat, Factory, UserCheck, ShieldAlert,
-  Eye, EyeOff, Loader2, Sparkles
+  Eye, EyeOff, Loader2, Sparkles, Beaker
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
@@ -720,6 +721,13 @@ export default function AdminControlPanelClient() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            <Link
+              href="/admin/spec-master"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-sm font-semibold text-indigo-700 shadow-xs hover:bg-indigo-100 transition-colors cursor-pointer"
+            >
+              <Beaker className="h-3.5 w-3.5 text-indigo-600" />
+              <span>Material Spec Master</span>
+            </Link>
             <button
               type="button"
               onClick={handleExportBackup}
@@ -740,7 +748,7 @@ export default function AdminControlPanelClient() {
         </div>
 
         {/* Quick KPI Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-slate-100 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-6 pt-5 border-t border-slate-100 text-sm">
           <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
             <div className="text-sm font-medium text-slate-500">Active Operators & Staff</div>
             <div className="text-lg font-bold text-slate-900 mt-0.5 font-mono">
@@ -765,6 +773,19 @@ export default function AdminControlPanelClient() {
               {auditLogs.length} <span className="text-sm font-normal text-slate-400">Records</span>
             </div>
           </div>
+          <Link
+            href="/admin/spec-master"
+            className="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100 hover:border-indigo-300 transition-colors group cursor-pointer block"
+          >
+            <div className="text-sm font-medium text-indigo-700 flex items-center justify-between">
+              <span>Spec Master</span>
+              <Beaker className="h-3.5 w-3.5 text-indigo-500 group-hover:scale-110 transition-transform" />
+            </div>
+            <div className="text-xs font-bold text-indigo-950 mt-1.5 flex items-center justify-between">
+              <span>Pipe Standards</span>
+              <span className="text-indigo-600 group-hover:translate-x-0.5 transition-transform text-[11px]">Manage →</span>
+            </div>
+          </Link>
         </div>
 
         {/* Tab Navigation */}

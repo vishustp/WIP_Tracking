@@ -1784,9 +1784,15 @@ export default function ProcessSheetReportClient() {
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
                   <label className="font-bold text-slate-700">Material Specification</label>
-                  <span className="text-[10px] font-bold font-mono text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-                    Master
-                  </span>
+                  <a
+                    href="/admin/spec-master"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] font-bold text-indigo-700 hover:text-indigo-900 hover:underline inline-flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 cursor-pointer"
+                    title="Open Material Spec Master in new tab"
+                  >
+                    <span>Spec Master ↗</span>
+                  </a>
                 </div>
                 {specMasterCustom ? (
                   <div className="flex gap-1">
