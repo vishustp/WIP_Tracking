@@ -221,7 +221,7 @@ function SpecEditModal({
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm overflow-y-auto py-6 px-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl border border-slate-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-indigo-700 to-indigo-900 rounded-t-2xl">
+        <div className="flex items-center justify-between px-6 py-4 bg-[#004f84] rounded-t-2xl">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-white/20 rounded-lg">
               <FlaskConical className="w-5 h-5 text-white" />
@@ -618,7 +618,7 @@ export default function SpecMasterAdminClient() {
       <div className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-xl shadow-md">
+            <div className="p-3 bg-[#004f84] rounded-xl shadow-md">
               <Beaker className="w-6 h-6 text-white" />
             </div>
             <div>

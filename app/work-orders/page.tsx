@@ -12,6 +12,7 @@ import { mtFromMtr, fmt, normalizeSpecification } from '@/lib/productionUtils';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import RouteAccessGuard from '@/components/common/RouteAccessGuard';
+import { TableRowSkeleton } from '@/components/ui/Skeleton';
 import {
   Calendar,
   Layers,
@@ -774,6 +775,7 @@ export default function WorkOrders() {
               <Input
                 className="pl-8 text-sm h-9"
                 placeholder="Search WO No, Customer, Grade/Spec..."
+                aria-label="Search work orders"
                 value={q}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQ(e.target.value)}
               />
@@ -788,7 +790,7 @@ export default function WorkOrders() {
             </Select>
             {/* Subtotals strip — live aggregate of the filtered list */}
             {filtered.length > 0 && (
-              <div className="hidden lg:flex items-center gap-0 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden text-xs font-mono divide-x divide-slate-200">
+              <div className="flex flex-wrap items-center gap-0 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden text-xs font-mono divide-x divide-slate-200">
                 <span className="px-2.5 py-1.5 text-slate-500 font-sans font-semibold">{filtered.length} WO</span>
                 <span className="px-2.5 py-1.5 text-slate-700" title="Total Order Pieces">
                   <span className="text-slate-400 font-sans">PCS </span>
@@ -826,15 +828,10 @@ export default function WorkOrders() {
         </div>
 
         <div className="overflow-auto max-h-[70vh] relative">
-          {loading ? (
-            <div className="p-8 text-center text-sm text-slate-500">Loading work orders...</div>
-          ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500">No work orders match the criteria.</div>
-          ) : (
             <table className="min-w-[1400px] w-full text-sm">
               <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 shadow-2xs">
                 <tr>
-                  <th className="py-2.5 px-3 text-left font-semibold">Work Order</th>
+                  <th className="py-2.5 px-3 text-left font-semibold sticky left-0 z-10 bg-slate-100 shadow-[1px_0_0_0_#e2e8f0]">Work Order</th>
                   <th className="py-2.5 px-3 text-left font-semibold">Customer</th>
                   <th className="py-2.5 px-3 text-left font-semibold">Specification</th>
                   <th className="py-2.5 px-3 text-right font-semibold">OD (mm)</th>
@@ -850,7 +847,12 @@ export default function WorkOrders() {
                   <th className="py-2.5 px-3 text-right font-semibold">Quick Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tbody>{Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} columns={14} />)}</tbody>
+              ) : filtered.length === 0 ? (
+                <tbody><tr><td colSpan={14} className="p-8 text-center text-sm text-slate-500">No work orders match the criteria.</td></tr></tbody>
+              ) : (
+                <tbody className="divide-y divide-slate-100">
                 {filtered.map((w: WO) => {
                   const sla = getSLA(w.target_date);
                   const wips = wipMap[w.work_order_no] || (w.id ? wipMap[w.id] : []) || [];
@@ -888,7 +890,7 @@ export default function WorkOrders() {
                   return (
                     <React.Fragment key={w.id}>
                       <tr className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-2.5 px-3 font-bold text-slate-900">
+                        <td className="py-2.5 px-3 font-bold text-slate-900 sticky left-0 z-10 bg-white shadow-[1px_0_0_0_#e2e8f0]">
                           <div className="flex items-center gap-1.5">
                             <span>{w.work_order_no}</span>
                             {wips.length > 0 && (
@@ -896,6 +898,7 @@ export default function WorkOrders() {
                                 type="button"
                                 onClick={() => setExpandedWip((prev: Record<string, boolean>) => ({ ...prev, [w.id]: !prev[w.id] }))}
                                 className="inline-flex items-center gap-0.5 rounded px-2 py-1 text-xs font-semibold border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                aria-label={`${isWipExpanded ? 'Collapse' : 'Expand'} WIP pipeline for ${w.work_order_no}`}
                                 title="Toggle Work Center WIP Pipeline"
                               >
                                 <Layers size={10} />
@@ -1094,10 +1097,10 @@ export default function WorkOrders() {
                     </React.Fragment>
                   );
                 })}
-              </tbody>
+                </tbody>
+              )}
             </table>
-          )}
-        </div>
+          </div>
       </div>
     </div>
     </RouteAccessGuard>

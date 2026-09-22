@@ -10,7 +10,7 @@ import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet, Gauge,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
   User, ShieldCheck, ChevronDown, Check, Sparkles, Lock, Activity, Clock,
-  ClipboardCheck, BookOpen, FileText, Beaker, Search, Layers, Scissors
+  ClipboardCheck, BookOpen, FileText, Beaker, Layers, Scissors
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
@@ -158,7 +158,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex flex-col leading-tight">
               <span className="font-bold tracking-tight text-sm text-white">Seamless WIP</span>
-              <span className="text-[8px] font-semibold tracking-wider text-sky-200 uppercase">Supply Chain Execution</span>
+              <span className="text-[10px] font-semibold tracking-wider text-sky-200 uppercase">Supply Chain</span>
             </div>
           </div>
           <button className="lg:hidden rounded-lg p-1.5 text-sky-200 hover:bg-sky-800 cursor-pointer" onClick={() => setOpen(false)} aria-label="Close menu"><X size={16} /></button>
@@ -176,13 +176,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <button
                       key={item.href}
                       onClick={() => { router.push(item.href); setOpen(false); }}
-                      className={`group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px] font-semibold transition-all duration-150 ease-out cursor-pointer active:scale-[0.97] active:bg-sky-100/70 select-none ${active
-                          ? 'bg-sky-50 text-sky-800 font-bold border-l-4 border-sky-600 rounded-l-none shadow-xs'
+                      aria-current={active ? 'page' : undefined}
+                      className={`group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px] font-semibold transition-all duration-150 ease-out cursor-pointer active:scale-[0.97] select-none ${active
+                          ? 'bg-sky-100 text-sky-900 font-bold shadow-xs'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 hover:translate-x-0.5'
                         }`}
                     >
-                      <Icon className={`h-4 w-4 shrink-0 transition-transform duration-150 group-hover:scale-110 group-active:scale-95 ${active ? 'text-sky-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                      <Icon className={`h-4 w-4 shrink-0 transition-transform duration-150 group-hover:scale-110 group-active:scale-95 ${active ? 'text-sky-700' : 'text-slate-400 group-hover:text-slate-600'}`} />
                       <span>{item.label}</span>
+                      {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-sky-600 shrink-0" />}
                     </button>
                   );
                 })}
@@ -194,11 +196,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Sidebar Footer User Card */}
         {currentUser && (
           <div className="shrink-0 border-t border-slate-200 p-2.5">
-            <div
+            <button
+              type="button"
               onClick={() => { router.push('/profile'); setOpen(false); }}
-              className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-slate-100 transition cursor-pointer group"
+              aria-label={`Go to profile: ${currentUser.name || currentUser.email || 'User'}`}
+              className="flex w-full items-center gap-2.5 rounded-lg p-1.5 hover:bg-slate-100 transition cursor-pointer group text-left"
             >
-              <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${currentUser.avatar_color || 'bg-[#004f84] text-white'}`}>
+              <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${currentUser.avatar_color || 'bg-[#004f84] text-white'}`}>
                 {String(currentUser.name || currentUser.email || 'U').split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -207,7 +211,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   {currentUser.role_title || 'Operator'}
                 </div>
               </div>
-            </div>
+            </button>
           </div>
         )}
       </aside>
@@ -216,19 +220,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Top Header Bar matching Design Variation 5 */}
         <header className="sticky top-0 z-20 flex h-14 items-center border-b border-slate-200 bg-white px-4 sm:px-6 print:hidden">
           <div className="flex flex-1 items-center justify-between gap-4">
-            {/* Left Mobile Menu Toggle & Global Search */}
-            <div className="flex items-center gap-3 flex-1 max-w-lg">
-              <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
+            {/* Left: Mobile Menu Toggle + Page breadcrumb */}
+            <div className="flex items-center gap-3 flex-1">
+              <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open navigation menu">
                 <Menu size={20} />
               </button>
-              <div className="relative w-full">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search orders, customers, items..."
-                  className="h-8 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
+              <span className="hidden sm:block text-sm font-semibold text-slate-700 truncate">
+                {groups.flatMap(g => g.items).find(i => pathname === i.href || (i.href !== '/dashboard' && pathname.startsWith(i.href + '/')))?.label ?? 'Seamless WIP'}
+              </span>
             </div>
 
             {/* Header Right */}
@@ -242,6 +241,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                  aria-label={`User menu for ${currentUser?.name || currentUser?.email || 'user'}`}
+                  aria-expanded={userDropdownOpen}
+                  aria-haspopup="true"
                   className="h-8 w-8 rounded-full bg-[#004f84] text-white flex items-center justify-center text-xs font-extrabold shadow-xs hover:opacity-90 transition cursor-pointer"
                 >
                   {currentUser?.name?.[0]?.toUpperCase() || 'V'}
