@@ -110,6 +110,7 @@ export default function DataReport({ title, view, columns, searchKeys }: Props) 
 
           <Button
             type="button"
+            variant="outline"
             onClick={exportExcel}
             className="inline-flex min-h-[3rem] items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 text-base font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
           >

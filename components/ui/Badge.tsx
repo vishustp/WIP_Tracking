@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 export type BadgeVariant =
   | "default"
@@ -25,7 +26,7 @@ const variantClasses: Record<BadgeVariant, string> = {
 
 export function Badge({ children, className = "", variant = "default" }: BadgeProps) {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${variantClasses[variant]} ${className}`}>
+    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold", variantClasses[variant], className)}>
       {children}
     </span>
   );

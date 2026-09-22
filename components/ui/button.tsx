@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 export type ButtonVariant = "default" | "outline" | "ghost" | "secondary" | "danger" | "primary" | "teal";
 export type ButtonSize = "sm" | "md" | "lg";
@@ -38,7 +39,12 @@ export function Button({
   return (
     <button
       type={type}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/40 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 cursor-pointer ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      className={cn(
+        "inline-flex items-center justify-center gap-1.5 rounded-md font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/40 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
+        variantClasses[variant],
+        sizeClasses[size],
+        className
+      )}
       {...props}
     >
       {children}

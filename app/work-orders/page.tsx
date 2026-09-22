@@ -757,8 +757,8 @@ export default function WorkOrders() {
             ) : <div />}
             <Button
               type="submit"
+              variant={canCreateWO ? 'primary' : 'secondary'}
               disabled={!canCreateWO}
-              className={canCreateWO ? "bg-slate-900 text-white hover:bg-slate-800" : "bg-slate-300 text-slate-500 cursor-not-allowed"}
             >
               {canCreateWO ? 'Save Work Order' : 'Save Work Order (View-Only)'}
             </Button>
@@ -821,7 +821,7 @@ export default function WorkOrders() {
             >
               <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Clear Directory
             </button>
-            <Button type="button" onClick={exportExcel} className="border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-sm h-8">
+            <Button type="button" variant="outline" onClick={exportExcel} className="text-sm h-8">
               Export Excel
             </Button>
           </div>

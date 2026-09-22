@@ -1,4 +1,5 @@
 import { SelectHTMLAttributes } from 'react';
+import { cn } from '@/lib/utils';
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   className?: string;
@@ -8,7 +9,10 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 export function Select({ className = '', ...props }: SelectProps) {
   return (
     <select
-      className={`min-h-[2.5rem] w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 shadow-2xs outline-none transition focus:border-[#0078d4] focus:ring-2 focus:ring-[#0078d4]/20 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed ${className}`}
+      className={cn(
+        "min-h-[2.5rem] w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 shadow-2xs outline-none transition focus:border-[#0078d4] focus:ring-2 focus:ring-[#0078d4]/20 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed",
+        className
+      )}
       {...props}
     />
   );
