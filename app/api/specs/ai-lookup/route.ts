@@ -52,8 +52,12 @@ Return strictly valid JSON with these exact keys:
   "bundling": "bundling style e.g. HEXAGONAL",
   "end_cap": "protective cap e.g. PLASTIC PROTECTOR",
   "is_min_wall": boolean,
-  "od_tolerance": "standard OD tolerance",
-  "wt_tolerance": "standard WT tolerance",
+  "cds_od_tolerance": "Cold Drawn Seamless (CDS) OD tolerance e.g. ±0.10 mm to ±0.20 mm",
+  "cds_wt_tolerance": "Cold Drawn Seamless (CDS) WT tolerance e.g. ±10.0% (Nominal) / +20% -0% (Min Wall)",
+  "hfs_od_tolerance": "Hot Finished Seamless (HFS) OD tolerance e.g. ±0.75% (NPS 1/8 to 1-1/2: ±0.40 mm)",
+  "hfs_wt_tolerance": "Hot Finished Seamless (HFS) WT tolerance e.g. +15.0% / -12.5% (Nominal) / +28% -0% (Min Wall)",
+  "od_tolerance": "General / Combined OD tolerance summary",
+  "wt_tolerance": "General / Combined WT tolerance summary",
   "hydro_pressure": "standard hydrostatic formula and stress level"
 }`;
 
@@ -107,8 +111,12 @@ Return strictly valid JSON with these exact keys:
       bundling: 'HEXAGONAL',
       end_cap: 'PLASTIC PROTECTOR',
       is_min_wall: false,
-      od_tolerance: '±0.75%',
-      wt_tolerance: '+15.0% / -12.5%',
+      cds_od_tolerance: '±0.10 mm to ±0.25 mm (or ±0.50%)',
+      cds_wt_tolerance: '±10.0% of Nominal Wall (+20% / -0% Min Wall)',
+      hfs_od_tolerance: '±0.75% (NPS 1/8 to 1-1/2: ±0.40 mm)',
+      hfs_wt_tolerance: '+15.0% / -12.5% of Nominal Wall',
+      od_tolerance: 'CDS: ±0.15 mm | HFS: ±0.75%',
+      wt_tolerance: 'CDS: ±10.0% | HFS: +15.0% / -12.5%',
       hydro_pressure: 'P = 2*S*t/D (S = 60% SMYS, max 17.2 MPa)',
       source: 'STANDARDS_KNOWLEDGE_BASE',
     };

@@ -45,6 +45,10 @@ const EMPTY_RECORD: Omit<SpecMasterRecord, 'id' | 'created_at' | 'updated_at'> =
   straightness: '1:1000',
   color_spec: '',
   rm_color: '',
+  cds_od_tolerance: '',
+  cds_wt_tolerance: '',
+  hfs_od_tolerance: '',
+  hfs_wt_tolerance: '',
   od_tolerance: '',
   wt_tolerance: '',
   hydro_pressure: '',
@@ -144,6 +148,10 @@ function SpecEditModal({
     straightness: rec.straightness ?? '1:1000',
     color_spec: rec.color_spec ?? '',
     rm_color: rec.rm_color ?? '',
+    cds_od_tolerance: rec.cds_od_tolerance ?? '',
+    cds_wt_tolerance: rec.cds_wt_tolerance ?? '',
+    hfs_od_tolerance: rec.hfs_od_tolerance ?? '',
+    hfs_wt_tolerance: rec.hfs_wt_tolerance ?? '',
     od_tolerance: rec.od_tolerance ?? '',
     wt_tolerance: rec.wt_tolerance ?? '',
     hydro_pressure: rec.hydro_pressure ?? '',
@@ -203,6 +211,10 @@ function SpecEditModal({
         straightness: spec.straightness || prev.straightness,
         color_spec: spec.color_spec || prev.color_spec,
         rm_color: spec.rm_color || prev.rm_color,
+        cds_od_tolerance: spec.cds_od_tolerance || prev.cds_od_tolerance,
+        cds_wt_tolerance: spec.cds_wt_tolerance || prev.cds_wt_tolerance,
+        hfs_od_tolerance: spec.hfs_od_tolerance || prev.hfs_od_tolerance,
+        hfs_wt_tolerance: spec.hfs_wt_tolerance || prev.hfs_wt_tolerance,
         od_tolerance: spec.od_tolerance || prev.od_tolerance,
         wt_tolerance: spec.wt_tolerance || prev.wt_tolerance,
         hydro_pressure: spec.hydro_pressure || prev.hydro_pressure,
@@ -256,6 +268,10 @@ function SpecEditModal({
           } else if (error.message?.includes('column') || error.code === '42703') {
             // Fallback if custom tolerance/hydro columns are not yet in Supabase table
             const corePayload = { ...payload };
+            delete corePayload.cds_od_tolerance;
+            delete corePayload.cds_wt_tolerance;
+            delete corePayload.hfs_od_tolerance;
+            delete corePayload.hfs_wt_tolerance;
             delete corePayload.od_tolerance;
             delete corePayload.wt_tolerance;
             delete corePayload.hydro_pressure;
@@ -288,6 +304,10 @@ function SpecEditModal({
             toast.info('Updated in session. To persist to database, run the SQL permissions fix in Supabase.');
           } else if (error.message?.includes('column') || error.code === '42703') {
             const corePayload = { ...payload };
+            delete corePayload.cds_od_tolerance;
+            delete corePayload.cds_wt_tolerance;
+            delete corePayload.hfs_od_tolerance;
+            delete corePayload.hfs_wt_tolerance;
             delete corePayload.od_tolerance;
             delete corePayload.wt_tolerance;
             delete corePayload.hydro_pressure;
@@ -431,27 +451,64 @@ function SpecEditModal({
             </div>
           </div>
 
-          {/* Dimensional Tolerances & Hydrostatic Testing */}
-          <SectionHeader title="Dimensional Tolerances & Hydrostatic Testing" icon={Scale} />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldInput
-              label="OD Tolerance"
-              value={form.od_tolerance ?? ''}
-              onChange={set('od_tolerance')}
-              placeholder="e.g. ±0.75% (NPS 1/8 to 1-1/2: ±0.40 mm)"
-              disabled={readOnly}
-              hint="Allowed outer diameter variance"
-            />
-            <FieldInput
-              label="WT Tolerance"
-              value={form.wt_tolerance ?? ''}
-              onChange={set('wt_tolerance')}
-              placeholder="e.g. +15% / -12.5% (Nominal) or +28% / -0% (Min Wall)"
-              disabled={readOnly}
-              hint="Allowed wall thickness variance"
-            />
+          {/* Dimensional Tolerances (Route-Specific: CDS vs HFS) & Hydrostatic Testing */}
+          <SectionHeader title="Dimensional Tolerances (Route-Specific: CDS vs HFS)" icon={Scale} />
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Cold Drawn Seamless (CDS) Route Box */}
+            <div className="p-4 rounded-xl bg-blue-50/60 border-2 border-blue-200">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="px-2 py-0.5 text-[10px] font-black uppercase rounded bg-blue-600 text-white tracking-wide">CDS Route</span>
+                <span className="text-xs font-bold text-blue-900">Cold Drawn Seamless Tolerances</span>
+              </div>
+              <div className="space-y-3">
+                <FieldInput
+                  label="CDS OD Tolerance"
+                  value={form.cds_od_tolerance ?? ''}
+                  onChange={set('cds_od_tolerance')}
+                  placeholder="e.g. ±0.10 mm to ±0.20 mm (or ±0.50%)"
+                  disabled={readOnly}
+                  hint="Precision drawn outer diameter tolerance"
+                />
+                <FieldInput
+                  label="CDS WT Tolerance"
+                  value={form.cds_wt_tolerance ?? ''}
+                  onChange={set('cds_wt_tolerance')}
+                  placeholder="e.g. ±10.0% (Nominal) or +20% / -0% (Min Wall)"
+                  disabled={readOnly}
+                  hint="Precision drawn wall thickness tolerance"
+                />
+              </div>
+            </div>
+
+            {/* Hot Finished Seamless (HFS) Route Box */}
+            <div className="p-4 rounded-xl bg-amber-50/60 border-2 border-amber-200">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="px-2 py-0.5 text-[10px] font-black uppercase rounded bg-amber-600 text-white tracking-wide">HFS Route</span>
+                <span className="text-xs font-bold text-amber-900">Hot Finished Seamless Tolerances</span>
+              </div>
+              <div className="space-y-3">
+                <FieldInput
+                  label="HFS OD Tolerance"
+                  value={form.hfs_od_tolerance ?? ''}
+                  onChange={set('hfs_od_tolerance')}
+                  placeholder="e.g. ±0.75% (NPS 1/8 to 1-1/2: +0.40/-0.80 mm)"
+                  disabled={readOnly}
+                  hint="Mill hot sizing outer diameter tolerance"
+                />
+                <FieldInput
+                  label="HFS WT Tolerance"
+                  value={form.hfs_wt_tolerance ?? ''}
+                  onChange={set('hfs_wt_tolerance')}
+                  placeholder="e.g. +15.0% / -12.5% (Nominal) or +28% / -0% (Min Wall)"
+                  disabled={readOnly}
+                  hint="Mill hot sizing wall thickness tolerance"
+                />
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-1">
             <div className="sm:col-span-2">
               <FieldInput
                 label="Hydrostatic Test Pressure / Formula"
@@ -652,6 +709,22 @@ function SpecRow({
       <td className="px-4 py-3">
         <p className="text-xs font-bold text-slate-800">{rec.spec_full}</p>
         <p className="text-[10px] text-slate-500 mt-0.5">{rec.steel_grade || '-'}</p>
+        {(rec.cds_od_tolerance || rec.hfs_od_tolerance) && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+            {rec.cds_od_tolerance && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[9px] font-mono" title={`CDS Route: OD ${rec.cds_od_tolerance} | WT ${rec.cds_wt_tolerance || '±10%'}`}>
+                <span className="font-bold text-blue-800">CDS:</span>
+                <span>OD {rec.cds_od_tolerance.split('(')[0].trim()}</span>
+              </span>
+            )}
+            {rec.hfs_od_tolerance && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[9px] font-mono" title={`HFS Route: OD ${rec.hfs_od_tolerance} | WT ${rec.hfs_wt_tolerance || '+15/-12.5%'}`}>
+                <span className="font-bold text-amber-900">HFS:</span>
+                <span>OD {rec.hfs_od_tolerance.split('(')[0].trim()}</span>
+              </span>
+            )}
+          </div>
+        )}
       </td>
       <td className="px-4 py-3 text-center">
         <span className="text-xs font-bold text-slate-700">{rec.smys_mpa ?? '-'}</span>
