@@ -174,6 +174,32 @@ export default function WorkOrders() {
     [rows, q]
   );
 
+  const subtotals = useMemo(() => {
+    let totalPcs = 0, totalMtr = 0, totalMt = 0, totalBalMtr = 0;
+    for (const w of filtered) {
+      const avg = w.l1 && w.l2 ? (w.l1 + w.l2) / 2 : w.l1 || w.l2 || 6.0;
+      const od = w.size_od || 0;
+      const wt = w.size_wt || 0;
+      const orderMtr = w.ordered_qty_mtr != null && w.ordered_qty_mtr > 0
+        ? w.ordered_qty_mtr
+        : (w.uom === 'Mtrs' ? w.ordered_qty : (avg > 0 ? Number((w.ordered_qty * avg).toFixed(1)) : 0));
+      const orderPcs = Math.round(Number(w.ordered_qty_pcs != null && w.ordered_qty_pcs > 0
+        ? w.ordered_qty_pcs
+        : (w.uom === 'Pcs' ? w.ordered_qty : (avg > 0 && orderMtr > 0 ? Math.round(orderMtr / avg) : 0))));
+      const orderMt = w.ordered_qty_mt != null && w.ordered_qty_mt > 0
+        ? w.ordered_qty_mt
+        : (orderMtr > 0 && od > 0 && wt > 0 ? Number(mtFromMtr(orderMtr, od, wt).toFixed(3)) : 0);
+      const balMtr = w.balance_qty_mtr != null
+        ? w.balance_qty_mtr
+        : (w.status === 'Completed' ? 0 : orderMtr);
+      totalPcs  += orderPcs;
+      totalMtr  += orderMtr;
+      totalMt   += orderMt;
+      totalBalMtr += balMtr;
+    }
+    return { totalPcs, totalMtr: Number(totalMtr.toFixed(2)), totalMt: Number(totalMt.toFixed(3)), totalBalMtr: Number(totalBalMtr.toFixed(2)) };
+  }, [filtered]);
+
   // Auto-calculation helper: dynamically calculate PCS and MT when MTR, OD, WT, L1, L2 change
   const handleMtrChange = (mtrVal: string) => {
     const mtr = parseFloat(mtrVal) || 0;
@@ -760,6 +786,28 @@ export default function WorkOrders() {
               <option>Completed</option>
               <option>Diverted</option>
             </Select>
+            {/* Subtotals strip — live aggregate of the filtered list */}
+            {filtered.length > 0 && (
+              <div className="hidden lg:flex items-center gap-0 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden text-xs font-mono divide-x divide-slate-200">
+                <span className="px-2.5 py-1.5 text-slate-500 font-sans font-semibold">{filtered.length} WO</span>
+                <span className="px-2.5 py-1.5 text-slate-700" title="Total Order Pieces">
+                  <span className="text-slate-400 font-sans">PCS </span>
+                  <span className="font-bold text-slate-900">{subtotals.totalPcs.toLocaleString()}</span>
+                </span>
+                <span className="px-2.5 py-1.5 text-slate-700" title="Total Order Metres">
+                  <span className="text-slate-400 font-sans">MTR </span>
+                  <span className="font-bold text-slate-900">{subtotals.totalMtr.toLocaleString()}</span>
+                </span>
+                <span className="px-2.5 py-1.5 text-slate-700" title="Total Order MT">
+                  <span className="text-slate-400 font-sans">MT </span>
+                  <span className="font-bold text-slate-900">{subtotals.totalMt.toLocaleString()}</span>
+                </span>
+                <span className="px-2.5 py-1.5 bg-amber-50 text-amber-800 border-l border-amber-200" title="Total Balance to Make (MTR)">
+                  <span className="font-sans font-semibold">Bal </span>
+                  <span className="font-bold">{subtotals.totalBalMtr.toLocaleString()} m</span>
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
