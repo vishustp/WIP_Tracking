@@ -250,83 +250,73 @@ function SpecEditModal({
       const s = createClient();
       const payload: any = { ...form, updated_at: new Date().toISOString() };
 
-      const isUuid = rec.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rec.id);
+      // Determine if this is a dummy seed or local id (not an actual Postgres row id)
+      const isSeedRecord =
+        !rec.id ||
+        rec.id.startsWith('00000000-') ||
+        rec.id.startsWith('seed-') ||
+        rec.id.startsWith('local-');
+
       let result: any;
 
-      if (isNew || !isUuid) {
-        // Upsert by spec_key so seed records or new entries insert with clean Postgres UUID
-        const { data, error } = await s
-          .from('material_spec_master')
-          .upsert(payload, { onConflict: 'spec_key' })
-          .select()
-          .single();
-
-        if (error) {
-          if (error.message?.includes('permission denied') || error.code === '42501') {
-            result = { id: rec.id || `local-${Date.now()}`, ...payload };
-            toast.info('Saved to session. To persist to database, run the SQL permissions fix in Supabase.');
-          } else if (error.message?.includes('column') || error.code === '42703') {
-            // Fallback if custom tolerance/hydro columns are not yet in Supabase table
-            const corePayload = { ...payload };
-            delete corePayload.cds_od_tolerance;
-            delete corePayload.cds_wt_tolerance;
-            delete corePayload.hfs_od_tolerance;
-            delete corePayload.hfs_wt_tolerance;
-            delete corePayload.od_tolerance;
-            delete corePayload.wt_tolerance;
-            delete corePayload.hydro_pressure;
-            const { data: retryData, error: retryError } = await s
-              .from('material_spec_master')
-              .upsert(corePayload, { onConflict: 'spec_key' })
-              .select()
-              .single();
-            if (retryError) throw retryError;
-            result = { ...retryData, ...payload };
-            toast.success(`"${form.spec_full}" saved successfully!`);
-          } else {
-            throw error;
-          }
-        } else {
-          result = data;
-          toast.success(`"${form.spec_full}" saved successfully!`);
+      const attemptSave = async (dataPayload: any) => {
+        // If it's a seed or new record, upsert on spec_key (do not pass dummy seed ID)
+        if (isNew || isSeedRecord) {
+          const { data, error } = await s
+            .from('material_spec_master')
+            .upsert(dataPayload, { onConflict: 'spec_key' })
+            .select()
+            .maybeSingle();
+          return { data, error };
         }
-      } else {
-        const { data, error } = await s
+
+        // Otherwise try updating by id
+        const updateRes = await s
           .from('material_spec_master')
-          .update(payload)
+          .update(dataPayload)
           .eq('id', rec.id!)
           .select()
-          .single();
+          .maybeSingle();
 
-        if (error) {
-          if (error.message?.includes('permission denied') || error.code === '42501') {
-            result = { id: rec.id!, ...payload };
-            toast.info('Updated in session. To persist to database, run the SQL permissions fix in Supabase.');
-          } else if (error.message?.includes('column') || error.code === '42703') {
-            const corePayload = { ...payload };
-            delete corePayload.cds_od_tolerance;
-            delete corePayload.cds_wt_tolerance;
-            delete corePayload.hfs_od_tolerance;
-            delete corePayload.hfs_wt_tolerance;
-            delete corePayload.od_tolerance;
-            delete corePayload.wt_tolerance;
-            delete corePayload.hydro_pressure;
-            const { data: retryData, error: retryError } = await s
-              .from('material_spec_master')
-              .update(corePayload)
-              .eq('id', rec.id!)
-              .select()
-              .single();
-            if (retryError) throw retryError;
-            result = { ...retryData, ...payload };
-            toast.success(`"${form.spec_full}" updated successfully!`);
-          } else {
-            throw error;
-          }
-        } else {
-          result = data;
-          toast.success(`"${form.spec_full}" updated successfully!`);
+        // If 0 rows updated (e.g. ID not in DB), fallback to upsert on spec_key
+        if (!updateRes.error && !updateRes.data) {
+          return await s
+            .from('material_spec_master')
+            .upsert(dataPayload, { onConflict: 'spec_key' })
+            .select()
+            .maybeSingle();
         }
+
+        return updateRes;
+      };
+
+      let { data, error } = await attemptSave(payload);
+
+      if (error) {
+        if (error.message?.includes('permission denied') || error.code === '42501') {
+          result = { id: rec.id || `local-${Date.now()}`, ...payload };
+          toast.info('Saved to session. To persist to database, run the SQL permissions fix in Supabase.');
+        } else if (error.message?.includes('column') || error.code === '42703') {
+          // Fallback if custom tolerance/hydro columns are not yet in Supabase table
+          const corePayload = { ...payload };
+          delete corePayload.cds_od_tolerance;
+          delete corePayload.cds_wt_tolerance;
+          delete corePayload.hfs_od_tolerance;
+          delete corePayload.hfs_wt_tolerance;
+          delete corePayload.od_tolerance;
+          delete corePayload.wt_tolerance;
+          delete corePayload.hydro_pressure;
+
+          const { data: retryData, error: retryError } = await attemptSave(corePayload);
+          if (retryError) throw retryError;
+          result = { ...(retryData || {}), ...payload, id: retryData?.id || rec.id };
+          toast.success(`"${form.spec_full}" saved successfully!`);
+        } else {
+          throw error;
+        }
+      } else {
+        result = { ...(data || {}), ...payload, id: data?.id || rec.id };
+        toast.success(`"${form.spec_full}" saved successfully!`);
       }
       onSaved(result as SpecMasterRecord);
     } catch (err: any) {
@@ -892,7 +882,7 @@ export default function SpecMasterAdminClient() {
 
   const handleSaved = (saved: SpecMasterRecord) => {
     setRecords((prev) => {
-      const idx = prev.findIndex((r) => r.id === saved.id);
+      const idx = prev.findIndex((r) => r.id === saved.id || r.spec_key === saved.spec_key);
       if (idx >= 0) {
         const copy = [...prev];
         copy[idx] = saved;
