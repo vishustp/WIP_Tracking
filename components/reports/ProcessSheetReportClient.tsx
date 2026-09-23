@@ -115,21 +115,28 @@ function buildMarkingString(
   }
 ): string {
   const rCode = (params.routeCode || 'HFS').toUpperCase().includes('CDS') ? 'CDS' : 'HFS';
-  const odVal = Number(params.sizeOd || 73.0);
-  const wtVal = Number(params.sizeWt || 7.01);
-  const odStr = (Number.isFinite(odVal) && odVal > 0 ? odVal : 73.0).toFixed(2);
-  const wtStr = (Number.isFinite(wtVal) && wtVal > 0 ? wtVal : 7.01).toFixed(2);
+  const odVal = Number(params.sizeOd || 0);
+  const wtVal = Number(params.sizeWt || 0);
+  const odStr = Number.isFinite(odVal) && odVal > 0 ? odVal.toFixed(2) : '';
+  const wtStr = Number.isFinite(wtVal) && wtVal > 0 ? wtVal.toFixed(2) : '';
   const hydroStr = params.hydroPsi
     ? (params.hydroPsi.includes('PSI') ? params.hydroPsi : `${params.hydroPsi} PSI`)
-    : '2500 PSI';
+    : '';
+
+  if (!params.specification && !params.grade && odVal === 0) {
+    return '';
+  }
+
+  const sizePart = odStr && wtStr ? `OD ${odStr} MM X WT ${wtStr} MM` : '';
+  const hydroPart = hydroStr ? `HYDRO TESTED ${hydroStr}` : 'HYDRO TESTED';
 
   if (type === 'triple') {
-    return `(IBR) RASHMI SMLS / LOGO / ${rCode} /ASTM A106 Gr B /ASME SA106 GR B/ASTM A53 GR B/ API 5L GR B/ NACE MR0103/MR0175 OD ${odStr} MM X WT ${wtStr} MM / HYDRO TESTED ${hydroStr} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
+    return `(IBR) RASHMI SMLS / LOGO / ${rCode} /ASTM A106 Gr B /ASME SA106 GR B/ASTM A53 GR B/ API 5L GR B/ NACE MR0103/MR0175${sizePart ? ` / ${sizePart}` : ''} / ${hydroPart} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
   }
 
   // Single Marking
-  const specGrade = params.specification || params.grade || 'ASME SA210 Gr.A1';
-  return `(IBR) RASHMI SMLS / LOGO / ${rCode} / ${specGrade} / OD ${odStr} MM X WT ${wtStr} MM / HYDRO TESTED ${hydroStr} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
+  const specGrade = params.specification || params.grade || '';
+  return `(IBR) RASHMI SMLS / LOGO / ${rCode}${specGrade ? ` / ${specGrade}` : ''}${sizePart ? ` / ${sizePart}` : ''} / ${hydroPart} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
 }
 
 // Reusable Form UI Components
@@ -250,12 +257,12 @@ export default function ProcessSheetReportClient() {
     return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
   });
   const [orderQty, setOrderQty] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState('IMMEDIATE');
+  const [deliveryDate, setDeliveryDate] = useState('');
   const [materialCode, setMaterialCode] = useState('');
-  const [priority, setPriority] = useState('1');
+  const [priority, setPriority] = useState('');
   const [materialSpec, setMaterialSpec] = useState('');
-  const [pipeColorCode, setPipeColorCode] = useState('WHITE');
-  const [rmColorCode, setRmColorCode] = useState('YELLOW + WHITE');
+  const [pipeColorCode, setPipeColorCode] = useState('');
+  const [rmColorCode, setRmColorCode] = useState('');
   const [steelGrade, setSteelGrade] = useState('');
   const [heatNo, setHeatNo] = useState('');
 
@@ -265,12 +272,12 @@ export default function ProcessSheetReportClient() {
   const [totalWeightMt, setTotalWeightMt] = useState('');
   const [billetLength, setBilletLength] = useState('');
   const [cuttingTol, setCuttingTol] = useState('+5/-0 MM');
-  const [multiple, setMultiple] = useState('1');
+  const [multiple, setMultiple] = useState('');
 
   // Temperatures
-  const [whfTemp, setWhfTemp] = useState('1220° C (+/- 40° C)');
-  const [inductionTemp, setInductionTemp] = useState('850 °C - 880° C');
-  const [sizingOutletTemp, setSizingOutletTemp] = useState('880° C TO 900° C');
+  const [whfTemp, setWhfTemp] = useState('');
+  const [inductionTemp, setInductionTemp] = useState('');
+  const [sizingOutletTemp, setSizingOutletTemp] = useState('');
 
   // Piercer & Mother Hollow
   const [piercerOd, setPiercerOd] = useState('');
@@ -294,10 +301,8 @@ export default function ProcessSheetReportClient() {
   const [planQtyNos, setPlanQtyNos] = useState('');
   const [planQtyMtrs, setPlanQtyMtrs] = useState('');
   const [planQtyMt, setPlanQtyMt] = useState('');
-  const [inspection, setInspection] = useState('IBR');
-  const [processRouteStr, setProcessRouteStr] = useState(
-    'BILLET CUTTING # WHF # PIERCER # SIZING # STRA # CUTTING # UT # HYDRO # VDI # BLACK VARNISH # MARKING # BUNDLING'
-  );
+  const [inspection, setInspection] = useState('');
+  const [processRouteStr, setProcessRouteStr] = useState('');
 
   // Cold Mill & Final
   const [custOd, setCustOd] = useState('');
@@ -312,48 +317,48 @@ export default function ProcessSheetReportClient() {
   const [finalTolOdMax, setFinalTolOdMax] = useState('');
   const [finalTolWtMin, setFinalTolWtMin] = useState('');
   const [finalTolWtMax, setFinalTolWtMax] = useState('');
-  const [finalLenTol, setFinalLenTol] = useState('+10MM');
+  const [finalLenTol, setFinalLenTol] = useState('');
 
   // Inter Pass
-  const [p1Od, setP1Od] = useState('NA');
-  const [p1Wt, setP1Wt] = useState('NA');
-  const [p2Od, setP2Od] = useState('NA');
-  const [p2Wt, setP2Wt] = useState('NA');
-  const [p3Od, setP3Od] = useState('NA');
-  const [p3Wt, setP3Wt] = useState('NA');
+  const [p1Od, setP1Od] = useState('');
+  const [p1Wt, setP1Wt] = useState('');
+  const [p2Od, setP2Od] = useState('');
+  const [p2Wt, setP2Wt] = useState('');
+  const [p3Od, setP3Od] = useState('');
+  const [p3Wt, setP3Wt] = useState('');
 
   // Heat Treatment
-  const [htCycle, setHtCycle] = useState('NA');
-  const [htCondition, setHtCondition] = useState('NA');
-  const [straightness, setStraightness] = useState('1:1000');
-  const [hardness, setHardness] = useState('79 HRB MAX');
+  const [htCycle, setHtCycle] = useState('');
+  const [htCondition, setHtCondition] = useState('');
+  const [straightness, setStraightness] = useState('');
+  const [hardness, setHardness] = useState('');
 
   // Mechanical Properties
-  const [ystMin, setYstMin] = useState('240');
-  const [ystMax, setYstMax] = useState('NOT SPECIFIED');
-  const [utsMin, setUtsMin] = useState('415');
-  const [utsMax, setUtsMax] = useState('NOT SPECIFIED');
-  const [elongationMin, setElongationMin] = useState('21');
-  const [elongationMax, setElongationMax] = useState('NOT SPECIFIED');
+  const [ystMin, setYstMin] = useState('');
+  const [ystMax, setYstMax] = useState('');
+  const [utsMin, setUtsMin] = useState('');
+  const [utsMax, setUtsMax] = useState('');
+  const [elongationMin, setElongationMin] = useState('');
+  const [elongationMax, setElongationMax] = useState('');
 
   // Testing & Inspection
-  const [ndt, setNdt] = useState('UT');
-  const [hydroPressurePsi, setHydroPressurePsi] = useState('2500 PSI');
-  const [holdingTime, setHoldingTime] = useState('5 SEC');
+  const [ndt, setNdt] = useState('');
+  const [hydroPressurePsi, setHydroPressurePsi] = useState('');
+  const [holdingTime, setHoldingTime] = useState('');
 
   // Coating & Finishing
-  const [coating, setCoating] = useState('BLACK VARNISH');
-  const [endCondition, setEndCondition] = useState('BEVEL END (30°-35°) ROOT FACE (0.8 - 2.4MM)');
-  const [bundling, setBundling] = useState('HEXAGONAL');
-  const [bundleQtyPcs, setBundleQtyPcs] = useState('-');
-  const [bundleWeightMt, setBundleWeightMt] = useState('-');
-  const [endCap, setEndCap] = useState('PLASTIC PROTECTOR');
+  const [coating, setCoating] = useState('');
+  const [endCondition, setEndCondition] = useState('');
+  const [bundling, setBundling] = useState('');
+  const [bundleQtyPcs, setBundleQtyPcs] = useState('');
+  const [bundleWeightMt, setBundleWeightMt] = useState('');
+  const [endCap, setEndCap] = useState('');
 
   const [specialReq, setSpecialReq] = useState('');
   const [markingType, setMarkingType] = useState<'single' | 'triple'>('single');
   const markingTypeRef = useRef<'single' | 'triple'>('single');
   markingTypeRef.current = markingType;
-  const [marking, setMarking] = useState('(IBR) RASHMI SMLS / LOGO / CDS / ASME SA210 Gr.A1 / OD 63.50 MM X WT 4.06 MM / HYDRO TESTED 2500 PSI / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............');
+  const [marking, setMarking] = useState('');
 
   // Signatures
   const [preparedBy] = useState('PPC EXEC');
@@ -730,10 +735,10 @@ export default function ProcessSheetReportClient() {
           } catch {}
         }
 
-        const finalOd = Number(wo.size_od ?? 88.9);
-        const finalWt = Number(wo.size_wt ?? 5.49);
-        const finalL1 = Number(wo.l1 ?? 4.0);
-        const finalL2 = Number(wo.l2 ?? 7.0);
+        const finalOd = Number(wo.size_od ?? 0);
+        const finalWt = Number(wo.size_wt ?? 0);
+        const finalL1 = Number(wo.l1 ?? 0);
+        const finalL2 = Number(wo.l2 ?? 0);
 
         if (parentPlan) {
           // RULE: Rolling plan for child work order will be the SAME as parent work order
@@ -742,8 +747,8 @@ export default function ProcessSheetReportClient() {
           const effRollingDate = parentPlan.planned_rolling_date || wo.target_date || new Date().toISOString().split('T')[0];
           const effMhOd = Number(parentPlan.mh_od ?? finalOd);
           const effMhWt = Number(parentPlan.mh_wt ?? finalWt);
-          const effMhL1 = Number(parentPlan.mh_l1 ?? 5.533);
-          const effMhL2 = Number(parentPlan.mh_l2 ?? 5.533);
+          const effMhL1 = Number(parentPlan.mh_l1 ?? finalL1 ?? 0);
+          const effMhL2 = Number(parentPlan.mh_l2 ?? finalL2 ?? 0);
           const effPass = Number(parentPlan.pass_required ?? 1);
           const effMultiple = Number(parentPlan.multiple ?? 1);
 
@@ -772,30 +777,30 @@ export default function ProcessSheetReportClient() {
             target_mother_size: parentPlan.target_mother_size || null,
             multiple: effMultiple,
             status: mergedStatus,
-            mh_od: effMhOd,
-            mh_wt: effMhWt,
-            mh_l1: effMhL1,
-            mh_l2: effMhL2,
+            mh_od: effMhOd || null,
+            mh_wt: effMhWt || null,
+            mh_l1: effMhL1 || null,
+            mh_l2: effMhL2 || null,
             pass_required: effPass,
-            work_order_no: wo.work_order_no || 'WO-UNKNOWN',
-            customer_name: wo.customer_name || 'Standard Customer',
+            work_order_no: wo.work_order_no || '',
+            customer_name: wo.customer_name || '',
             grade: wo.grade || parentParsedSt.grade || '',
             specification: wo.specification || parentParsedSt.spec || wo.grade || '',
-            size_od: finalOd,
-            size_wt: finalWt,
-            l1: finalL1,
-            l2: finalL2,
+            size_od: finalOd || null,
+            size_wt: finalWt || null,
+            l1: finalL1 || null,
+            l2: finalL2 || null,
             ordered_qty: Number(wo.ordered_qty || 0),
             ordered_qty_pcs: Number(wo.ordered_qty_pcs || 0),
             ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
             route_code: parentRoute.route_code || 'HFS',
-            route_name: parentRoute.route_name || 'Standard HFS',
+            route_name: parentRoute.route_name || parentRoute.route_code || 'HFS',
             po_no: wo.po_no || wo.purchase_order_no || mergedStatus.po_no || null,
             po_date: wo.po_date || wo.purchase_order_date || mergedStatus.po_date || null,
             material_code: wo.material_code || wo.item_code || mergedStatus.material_code || null,
             destination: wo.destination || mergedStatus.destination || null,
             is_diversion: false,
-            display_label: wo.work_order_no || 'WO-UNKNOWN',
+            display_label: wo.work_order_no || '',
           });
         } else if (associatedRps.length > 0) {
           // If work order has one or more rolling plans, generate a record for each plan
@@ -808,7 +813,7 @@ export default function ProcessSheetReportClient() {
 
             mappedWoPlans.push({
               id: `rp-${r.id}-wo-${wo.id}`,
-              plan_no: parsedSt.master_plan_no || r.plan_no || 'Standard Plan',
+              plan_no: parsedSt.master_plan_no || r.plan_no || 'Plan',
               work_order_id: wo.id,
               planned_rolling_date: r.planned_rolling_date || wo.target_date || new Date().toISOString().split('T')[0],
               planned_qty: Number(r.planned_qty ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0),
@@ -816,30 +821,30 @@ export default function ProcessSheetReportClient() {
               target_mother_size: r.target_mother_size || null,
               multiple: Number(r.multiple ?? 1),
               status: parsedSt,
-              mh_od: Number(r.mh_od ?? finalOd),
-              mh_wt: Number(r.mh_wt ?? finalWt),
-              mh_l1: Number(r.mh_l1 ?? 5.533),
-              mh_l2: Number(r.mh_l2 ?? 5.533),
+              mh_od: Number(r.mh_od ?? finalOd) || null,
+              mh_wt: Number(r.mh_wt ?? finalWt) || null,
+              mh_l1: Number(r.mh_l1 ?? finalL1) || null,
+              mh_l2: Number(r.mh_l2 ?? finalL2) || null,
               pass_required: Number(r.pass_required ?? 1),
-              work_order_no: wo.work_order_no || 'WO-UNKNOWN',
-              customer_name: wo.customer_name || 'Standard Customer',
+              work_order_no: wo.work_order_no || '',
+              customer_name: wo.customer_name || '',
               grade: wo.grade || parsedSt.grade || '',
               specification: wo.specification || parsedSt.spec || wo.grade || '',
-              size_od: finalOd,
-              size_wt: finalWt,
-              l1: finalL1,
-              l2: finalL2,
+              size_od: finalOd || null,
+              size_wt: finalWt || null,
+              l1: finalL1 || null,
+              l2: finalL2 || null,
               ordered_qty: Number(wo.ordered_qty || 0),
               ordered_qty_pcs: Number(wo.ordered_qty_pcs || 0),
               ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
               route_code: route.route_code || 'HFS',
-              route_name: route.route_name || 'Standard HFS',
+              route_name: route.route_name || route.route_code || 'HFS',
               po_no: wo.po_no || wo.purchase_order_no || parsedSt.po_no || null,
               po_date: wo.po_date || wo.purchase_order_date || parsedSt.po_date || null,
               material_code: wo.material_code || wo.item_code || parsedSt.material_code || null,
               destination: wo.destination || parsedSt.destination || null,
               is_diversion: false,
-              display_label: wo.work_order_no || 'WO-UNKNOWN',
+              display_label: wo.work_order_no || '',
             });
           });
         } else {
@@ -854,30 +859,30 @@ export default function ProcessSheetReportClient() {
             target_mother_size: null,
             multiple: 1,
             status: { work_order_status: wo.status },
-            mh_od: finalOd,
-            mh_wt: finalWt,
-            mh_l1: 5.533,
-            mh_l2: 5.533,
+            mh_od: finalOd || null,
+            mh_wt: finalWt || null,
+            mh_l1: finalL1 || null,
+            mh_l2: finalL2 || null,
             pass_required: 1,
-            work_order_no: wo.work_order_no || 'WO-UNKNOWN',
-            customer_name: wo.customer_name || 'Standard Customer',
+            work_order_no: wo.work_order_no || '',
+            customer_name: wo.customer_name || '',
             grade: wo.grade || '',
             specification: wo.specification || wo.grade || '',
-            size_od: finalOd,
-            size_wt: finalWt,
-            l1: finalL1,
-            l2: finalL2,
+            size_od: finalOd || null,
+            size_wt: finalWt || null,
+            l1: finalL1 || null,
+            l2: finalL2 || null,
             ordered_qty: Number(wo.ordered_qty || 0),
             ordered_qty_pcs: Number(wo.ordered_qty_pcs || 0),
             ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
             route_code: 'HFS',
-            route_name: 'Standard HFS',
+            route_name: 'HFS',
             po_no: wo.po_no || wo.purchase_order_no || null,
             po_date: wo.po_date || wo.purchase_order_date || null,
             material_code: wo.material_code || wo.item_code || null,
             destination: wo.destination || null,
             is_diversion: false,
-            display_label: wo.work_order_no || 'WO-UNKNOWN',
+            display_label: wo.work_order_no || '',
           });
         }
       });
@@ -897,16 +902,16 @@ export default function ProcessSheetReportClient() {
         const routeId = d.route_id || d.process_route_id;
         const route = routeMap.get(routeId) || {};
 
-        const finalOd = Number(wo.size_od ?? (d.target_size ? parseFloat(d.target_size) : 88.9));
+        const finalOd = Number(wo.size_od ?? (d.target_size ? parseFloat(d.target_size) : 0));
         const finalWt = Number(
           wo.size_wt ??
             (d.target_size
-              ? parseFloat(d.target_size.split('×')[1] || d.target_size.split('x')[1] || '5.49')
-              : 5.49)
+              ? parseFloat(d.target_size.split('×')[1] || d.target_size.split('x')[1] || '0')
+              : 0)
         );
-        const finalL1 = Number(wo.l1 ?? 4.0);
-        const finalL2 = Number(wo.l2 ?? 7.0);
-        const baseWoNo = wo.work_order_no || d.target_wo_no || d.source_wo_no || 'WO-DIV';
+        const finalL1 = Number(wo.l1 ?? 0);
+        const finalL2 = Number(wo.l2 ?? 0);
+        const baseWoNo = wo.work_order_no || d.target_wo_no || d.source_wo_no || '';
 
         return {
           id: `div-${d.id}`,
@@ -918,30 +923,30 @@ export default function ProcessSheetReportClient() {
           target_mother_size: null,
           multiple: Number(d.multiple ?? 1),
           status: { is_diversion: true, diversion_reason: d.reason, work_center: d.work_center },
-          mh_od: finalOd,
-          mh_wt: finalWt,
-          mh_l1: 5.533,
-          mh_l2: 5.533,
+          mh_od: finalOd || null,
+          mh_wt: finalWt || null,
+          mh_l1: finalL1 || null,
+          mh_l2: finalL2 || null,
           pass_required: 1,
           work_order_no: baseWoNo,
-          customer_name: wo.customer_name || d.target_customer || d.source_customer || 'Standard Customer',
+          customer_name: wo.customer_name || d.target_customer || d.source_customer || '',
           grade: wo.grade || d.target_grade || d.source_grade || '',
           specification: wo.specification || d.target_grade || '',
-          size_od: finalOd,
-          size_wt: finalWt,
-          l1: finalL1,
-          l2: finalL2,
+          size_od: finalOd || null,
+          size_wt: finalWt || null,
+          l1: finalL1 || null,
+          l2: finalL2 || null,
           ordered_qty: Number(wo.ordered_qty || d.diverted_qty || 0),
           ordered_qty_pcs: Number(wo.ordered_qty_pcs || d.diverted_pcs || 0),
           ordered_qty_mtr: Number(wo.ordered_qty_mtr || d.diverted_qty || 0),
           route_code: route.route_code || d.route_code || 'HFS',
-          route_name: route.route_name || d.route_name || 'Diversion Route',
+          route_name: route.route_name || d.route_name || 'Diversion',
           po_no: wo.po_no || wo.purchase_order_no || null,
           po_date: wo.po_date || wo.purchase_order_date || null,
           material_code: wo.material_code || wo.item_code || null,
           destination: wo.destination || null,
           is_diversion: true,
-          display_label: `${baseWoNo}-Div`,
+          display_label: baseWoNo ? `${baseWoNo}-Div` : 'Diversion',
         };
       });
 
@@ -1023,7 +1028,7 @@ export default function ProcessSheetReportClient() {
         setWoDate(plan.planned_rolling_date);
       }
     }
-    setCustomer(plan.customer_name || 'Standard Client');
+    setCustomer(plan.customer_name || '');
     // 2. Destination from Work Order table
     setDestination(plan.destination || parsedSt.destination || '');
 
@@ -1035,16 +1040,16 @@ export default function ProcessSheetReportClient() {
     setHeatNo(parsedSt.heat_no || '');
     setSteelGrade(plan.grade || parsedSt.grade || '');
     setMaterialSpec(plan.specification || parsedSt.spec || '');
-    setInspection(parsedSt.ibr_status || 'IBR');
+    setInspection(parsedSt.ibr_status || '');
 
-    const targetOd = Number(plan.size_od) || 88.9;
-    const targetWt = Number(plan.size_wt) || 5.49;
-    const l1Val = Number(plan.l1) || 4.0;
-    const l2Val = Number(plan.l2) || 7.0;
-    const avgLen = (l1Val + l2Val) / 2 || 6.0;
+    const targetOd = Number(plan.size_od) || 0;
+    const targetWt = Number(plan.size_wt) || 0;
+    const l1Val = Number(plan.l1) || 0;
+    const l2Val = Number(plan.l2) || 0;
+    const avgLen = (l1Val > 0 && l2Val > 0) ? (l1Val + l2Val) / 2 : l1Val || l2Val || 0;
 
-    setCustOd(targetOd.toFixed(2));
-    setCustWt(targetWt.toFixed(2));
+    setCustOd(targetOd > 0 ? targetOd.toFixed(2) : '');
+    setCustWt(targetWt > 0 ? targetWt.toFixed(2) : '');
 
     // 6. Process Wall: For material without negative tolerance -> Customer WT * 1.05; For rest -> Customer WT * 0.97
     const specUpper = `${plan.specification || ''} ${plan.grade || ''} ${parsedSt.spec || ''}`.toUpperCase();
@@ -1056,85 +1061,133 @@ export default function ProcessSheetReportClient() {
       specUpper.includes('210') ||
       specUpper.includes('213') ||
       specUpper.includes('192') ||
-      specUpper.includes('179') ||
-      specUpper.includes('3059');
+      specUpper.includes('179');
 
-    const calcProcessWt = isNoNegativeTol
-      ? Number((targetWt * 1.05).toFixed(2))
-      : Number((targetWt * 0.97).toFixed(2));
-    setProcessWt(calcProcessWt.toFixed(2));
+    const calcProcessWt = targetWt > 0
+      ? (isNoNegativeTol ? Number((targetWt * 1.05).toFixed(2)) : Number((targetWt * 0.97).toFixed(2)))
+      : 0;
+    setProcessWt(calcProcessWt > 0 ? calcProcessWt.toFixed(2) : '');
 
-    const isFixedLength = Math.abs(l1Val - l2Val) < 0.05 || l1Val === l2Val;
-    setFinalOrderLen1(l1Val.toFixed(3));
-    setFinalOrderLen2(isFixedLength ? `${l2Val.toFixed(3)} +10MM` : l2Val.toFixed(3));
-    setFinalLength(avgLen.toFixed(2));
+    const isFixedLength = l1Val > 0 && l2Val > 0 && (Math.abs(l1Val - l2Val) < 0.05 || l1Val === l2Val);
+    setFinalOrderLen1(l1Val > 0 ? l1Val.toFixed(3) : '');
+    setFinalOrderLen2(l2Val > 0 ? (isFixedLength ? `${l2Val.toFixed(3)} +10MM` : l2Val.toFixed(3)) : '');
+    setFinalLength(avgLen > 0 ? avgLen.toFixed(2) : '');
     if (isFixedLength) {
       setFinalLenTol('+10MM');
     }
 
     // Calculate pipe weight in kg/mtr: (OD - WT) * WT * 0.0246615
-    const kgMtr = Math.max(targetOd - targetWt, 0) * Math.max(targetWt, 0) * 0.0246615;
-    setFinalPipeWeight(kgMtr.toFixed(2));
-    setMotherHollowKgMtr(kgMtr.toFixed(2));
+    const kgMtr = (targetOd > targetWt && targetWt > 0) ? (targetOd - targetWt) * targetWt * 0.0246615 : 0;
+    setFinalPipeWeight(kgMtr > 0 ? kgMtr.toFixed(2) : '');
+    setMotherHollowKgMtr(kgMtr > 0 ? kgMtr.toFixed(2) : '');
 
     // 5. BUNDLE QTY. (PCS) calculated based on Bundle weight Fixed to 2 MT (2000 kg)
     const wtPerPieceKg = kgMtr * avgLen;
     const calcBundleQtyPcs = wtPerPieceKg > 0 ? Math.round(2000 / wtPerPieceKg) : 0;
-    setBundleQtyPcs(calcBundleQtyPcs > 0 ? calcBundleQtyPcs.toString() : '-');
-    setBundleWeightMt('2 MT');
+    setBundleQtyPcs(calcBundleQtyPcs > 0 ? calcBundleQtyPcs.toString() : '');
+    setBundleWeightMt(calcBundleQtyPcs > 0 ? '2 MT' : '');
 
     // Rolling / Piercer Hollow values
-    const mhOd = Number(parsedSt.sizing_mill?.cust_od || plan.mh_od || targetOd);
-    const mhWt = Number(parsedSt.sizing_mill?.rolling_wt || plan.mh_wt || targetWt);
-    setMotherHollowOd(mhOd.toFixed(2));
-    setMotherHollowWt(mhWt.toFixed(2));
-    setRollingWt(mhWt.toFixed(2));
-    setSmLength((parsedSt.sizing_mill?.sm_len || plan.mh_l1 || 5.533).toString());
-    setHfsFinalLength((plan.mh_l2 || 5.533).toString());
+    const mhOd = Number(parsedSt.sizing_mill?.cust_od || plan.mh_od || targetOd || 0);
+    const mhWt = Number(parsedSt.sizing_mill?.rolling_wt || plan.mh_wt || targetWt || 0);
+    setMotherHollowOd(mhOd > 0 ? mhOd.toFixed(2) : '');
+    setMotherHollowWt(mhWt > 0 ? mhWt.toFixed(2) : '');
+    setRollingWt(mhWt > 0 ? mhWt.toFixed(2) : '');
+    const smLen = parsedSt.sizing_mill?.sm_len || plan.mh_l1 || (avgLen > 0 ? avgLen.toFixed(3) : '');
+    setSmLength(smLen ? smLen.toString() : '');
+    const hfsLen = plan.mh_l2 || (avgLen > 0 ? avgLen.toFixed(3) : '');
+    setHfsFinalLength(hfsLen ? hfsLen.toString() : '');
 
     // Piercer values from plan metadata or computed dynamically
-    const piercOd = Number(parsedSt.piercer_mill?.pm_od || (mhOd * 1.08).toFixed(2));
-    const piercWt = Number(parsedSt.piercer_mill?.pm_wt || (mhWt * 1.04).toFixed(2));
-    setPiercerOd(piercOd.toFixed(2));
-    setPiercerWt(piercWt.toFixed(2));
-    setPiercerShellLen((parsedSt.piercer_mill?.pm_len || (avgLen * 0.88)).toFixed(2));
-    setShellWeight((parsedSt.piercer_mill?.pm_kg_mtr || (kgMtr * 1.13)).toFixed(2));
+    const piercOd = Number(parsedSt.piercer_mill?.pm_od || (mhOd > 0 ? (mhOd * 1.08).toFixed(2) : 0));
+    const piercWt = Number(parsedSt.piercer_mill?.pm_wt || (mhWt > 0 ? (mhWt * 1.04).toFixed(2) : 0));
+    setPiercerOd(piercOd > 0 ? piercOd.toFixed(2) : '');
+    setPiercerWt(piercWt > 0 ? piercWt.toFixed(2) : '');
+    setPiercerShellLen(parsedSt.piercer_mill?.pm_len ? String(parsedSt.piercer_mill.pm_len) : (avgLen > 0 ? (avgLen * 0.88).toFixed(2) : ''));
+    setShellWeight(parsedSt.piercer_mill?.pm_kg_mtr ? String(parsedSt.piercer_mill.pm_kg_mtr) : (kgMtr > 0 ? (kgMtr * 1.13).toFixed(2) : ''));
 
     // Billet values from plan metadata or computed dynamically
-    const bDia = Number(parsedSt.billet?.rm_od || (mhOd > 75 ? 90.0 : 63.0));
-    setBilletDia(bDia.toFixed(2));
-    const bSect = Number(parsedSt.billet?.weight_kg || (((bDia * bDia * 3.14159 * 0.007856) / 4).toFixed(2)));
-    setBilletSectWt(bSect.toFixed(2));
-    setBilletLength((parsedSt.billet?.rm_len_min || 1290).toString());
-    setTotalWeightMt((parsedSt.billet?.billet_wt_whf || ((bSect * 1.29) / 1000)).toFixed(2));
+    const bDia = Number(parsedSt.billet?.rm_od || (mhOd > 75 ? 90.0 : mhOd > 0 ? 63.0 : 0));
+    setBilletDia(bDia > 0 ? bDia.toFixed(2) : '');
+    const bSect = bDia > 0 ? Number(parsedSt.billet?.weight_kg || (((bDia * bDia * 3.14159 * 0.007856) / 4).toFixed(2))) : 0;
+    setBilletSectWt(bSect > 0 ? bSect.toFixed(2) : '');
+    setBilletLength(parsedSt.billet?.rm_len_min ? String(parsedSt.billet.rm_len_min) : '');
+    setTotalWeightMt(bSect > 0 ? (parsedSt.billet?.billet_wt_whf || ((bSect * 1.29) / 1000)).toFixed(2) : '');
 
     setMultiple((plan.multiple || parsedSt.multiple || 1).toString());
     const plannedMtr = plan.planned_qty || parsedSt.rolling_mtr || plan.ordered_qty_mtr || 0;
     setPlanQtyMtrs(plannedMtr ? plannedMtr.toString() : '');
-    const nosCalc = Math.round(Number(plannedMtr || 0) / avgLen);
+    const nosCalc = avgLen > 0 ? Math.round(Number(plannedMtr || 0) / avgLen) : 0;
     setPlanQtyNos(nosCalc > 0 ? nosCalc.toString() : '');
-    setPlanQtyMt(((kgMtr * Number(plannedMtr || 0)) / 1000).toFixed(2));
+    setPlanQtyMt(kgMtr > 0 ? ((kgMtr * Number(plannedMtr || 0)) / 1000).toFixed(2) : '');
     setOrderQty(plan.ordered_qty_mtr ? `${plan.ordered_qty_mtr} MTR` : plannedMtr ? `${plannedMtr} MTR` : '');
 
     // Combine spec & grade so minimum wall and standard matching (e.g. SA210, A210, A106) always match
-    const fullSpecGrade = `${plan.specification || parsedSt.spec || ''} ${plan.grade || parsedSt.grade || ''}`.trim() || 'ASTM A106 Gr B';
+    const fullSpecGrade = `${plan.specification || parsedSt.spec || ''} ${plan.grade || parsedSt.grade || ''}`.trim();
 
-    // Immediate synchronous tolerance calculation using metallurgy engine
-    const initialTols = calculateStandardTolerances(
-      targetOd,
-      targetWt,
-      fullSpecGrade,
-      rCode
-    );
-    setFinalTolOdMin(initialTols.od_min.toFixed(2));
-    setFinalTolOdMax(initialTols.od_max.toFixed(2));
-    setFinalTolWtMin(initialTols.wt_min.toFixed(2));
-    setFinalTolWtMax(initialTols.wt_max.toFixed(2));
+    // Look up matching record in specMasterList
+    const matchedMaster = specMasterList.find((r) => {
+      if (!fullSpecGrade) return false;
+      const sp = (r.spec_full || '').toUpperCase();
+      const sk = (r.spec_key || '').toUpperCase();
+      const target = fullSpecGrade.toUpperCase();
+      return target.includes(sk) || target.includes(sp) || sp.includes(target);
+    });
 
-    setMhTolOdMin((initialTols.od_min + 0.01).toFixed(2));
-    setMhTolOdMax((initialTols.od_max - 0.01).toFixed(2));
-    setMhTolWtMin(initialTols.wt_min.toFixed(2));
-    setMhTolWtMax((initialTols.wt_max - 0.28).toFixed(2));
+    if (matchedMaster) {
+      setPipeColorCode(matchedMaster.color_spec || '');
+      setRmColorCode(matchedMaster.rm_color || '');
+      setWhfTemp(matchedMaster.whf_temp || '');
+      setInductionTemp(matchedMaster.induction_temp || '');
+      setSizingOutletTemp(matchedMaster.sizing_outlet_temp || '');
+      setHtCycle(matchedMaster.ht_cycle || '');
+      setHtCondition(matchedMaster.ht_condition || '');
+      setNdt(matchedMaster.ndt || '');
+      setHoldingTime(matchedMaster.holding_time_sec ? `${matchedMaster.holding_time_sec} SEC` : '');
+      setCoating(matchedMaster.coating || '');
+      setEndCondition(matchedMaster.end_condition || '');
+      setBundling(matchedMaster.bundling || '');
+      setEndCap(matchedMaster.end_cap || '');
+      setHardness(matchedMaster.hardness || '');
+      setStraightness(matchedMaster.straightness || '');
+      setYstMin(matchedMaster.smys_mpa ? String(matchedMaster.smys_mpa) : '');
+      setUtsMin(matchedMaster.uts_mpa ? String(matchedMaster.uts_mpa) : '');
+      setElongationMin(matchedMaster.elongation_pct ? String(matchedMaster.elongation_pct) : '');
+    }
+
+    // Immediate synchronous tolerance and hydro calculation using metallurgy engine
+    let calcHydroStr = '';
+    if (targetOd > 0 && targetWt > 0) {
+      const initialTols = calculateStandardTolerances(
+        targetOd,
+        targetWt,
+        fullSpecGrade || matchedMaster?.spec_full || '',
+        rCode
+      );
+      setFinalTolOdMin(initialTols.od_min.toFixed(2));
+      setFinalTolOdMax(initialTols.od_max.toFixed(2));
+      setFinalTolWtMin(initialTols.wt_min.toFixed(2));
+      setFinalTolWtMax(initialTols.wt_max.toFixed(2));
+
+      setMhTolOdMin((initialTols.od_min + 0.01).toFixed(2));
+      setMhTolOdMax((initialTols.od_max - 0.01).toFixed(2));
+      setMhTolWtMin(initialTols.wt_min.toFixed(2));
+      setMhTolWtMax((initialTols.wt_max - 0.28).toFixed(2));
+
+      const hydroRes = calculateHydroPressurePsi(targetOd, targetWt, matchedMaster?.smys_mpa || 240);
+      calcHydroStr = `${hydroRes.pressurePsi} PSI`;
+      setHydroPressurePsi(calcHydroStr);
+    } else {
+      setFinalTolOdMin('');
+      setFinalTolOdMax('');
+      setFinalTolWtMin('');
+      setFinalTolWtMax('');
+      setMhTolOdMin('');
+      setMhTolOdMax('');
+      setMhTolWtMin('');
+      setMhTolWtMax('');
+      setHydroPressurePsi('');
+    }
 
     // Reset marking string for the newly selected Work Order based on active markingType
     setMarking(
@@ -1142,27 +1195,29 @@ export default function ProcessSheetReportClient() {
         routeCode: rCode,
         specification: plan.specification || parsedSt.spec,
         grade: plan.grade || parsedSt.grade,
-        sizeOd: targetOd,
-        sizeWt: targetWt,
-        hydroPsi: undefined,
+        sizeOd: targetOd > 0 ? targetOd : undefined,
+        sizeWt: targetWt > 0 ? targetWt : undefined,
+        hydroPsi: calcHydroStr || undefined,
         woNo: plan.work_order_no,
         poNo: plan.po_no || parsedSt.po_no || '',
       })
     );
 
     // Fetch mechanical & tolerances automatically specifically for this work order
-    fetchAiSpecs({
-      planId: plan.id,
-      grade: plan.grade || parsedSt.grade,
-      specification: fullSpecGrade,
-      size_od: targetOd,
-      size_wt: targetWt,
-      route_code: rCode,
-      customer_name: plan.customer_name,
-      wo_no: plan.work_order_no,
-      po_no: plan.po_no || parsedSt.po_no || '',
-      heat_no: parsedSt.heat_no || '',
-    });
+    if (fullSpecGrade || targetOd > 0) {
+      fetchAiSpecs({
+        planId: plan.id,
+        grade: plan.grade || parsedSt.grade,
+        specification: fullSpecGrade,
+        size_od: targetOd > 0 ? targetOd : undefined,
+        size_wt: targetWt > 0 ? targetWt : undefined,
+        route_code: rCode,
+        customer_name: plan.customer_name,
+        wo_no: plan.work_order_no,
+        po_no: plan.po_no || parsedSt.po_no || '',
+        heat_no: parsedSt.heat_no || '',
+      });
+    }
 
     // Check if custom Process Sheet has been saved for this Work Order in database
     (async () => {
@@ -1204,72 +1259,85 @@ export default function ProcessSheetReportClient() {
     // Auto-populate Material Specification & Steel Grade
     setMaterialSpec(rec.spec_full);
     setSteelGrade(rec.steel_grade || '');
-    setPipeColorCode(rec.color_spec || 'WHITE');
-    setRmColorCode(rec.rm_color || 'YELLOW + WHITE');
+    setPipeColorCode(rec.color_spec || '');
+    setRmColorCode(rec.rm_color || '');
 
     // Mechanical Properties
-    setYstMin(String(rec.smys_mpa ?? 240));
-    setYstMax('NOT SPECIFIED');
-    setUtsMin(String(rec.uts_mpa ?? 415));
-    setUtsMax('NOT SPECIFIED');
-    setElongationMin(String(rec.elongation_pct ?? 21));
-    setElongationMax('NOT SPECIFIED');
-    setHardness(rec.hardness || '79 HRB MAX');
-    setStraightness(rec.straightness || '1:1000');
+    setYstMin(rec.smys_mpa ? String(rec.smys_mpa) : '');
+    setYstMax('');
+    setUtsMin(rec.uts_mpa ? String(rec.uts_mpa) : '');
+    setUtsMax('');
+    setElongationMin(rec.elongation_pct ? String(rec.elongation_pct) : '');
+    setElongationMax('');
+    setHardness(rec.hardness || '');
+    setStraightness(rec.straightness || '');
 
     // Thermal Parameters
-    setWhfTemp(rec.whf_temp || '1220° C (+/- 40° C)');
-    setInductionTemp(rec.induction_temp || '850 °C - 880° C');
-    setSizingOutletTemp(rec.sizing_outlet_temp || '880° C TO 900° C');
-    setHtCycle(rec.ht_cycle || 'NA');
-    setHtCondition(rec.ht_condition || 'AS ROLLED / HFS');
+    setWhfTemp(rec.whf_temp || '');
+    setInductionTemp(rec.induction_temp || '');
+    setSizingOutletTemp(rec.sizing_outlet_temp || '');
+    setHtCycle(rec.ht_cycle || '');
+    setHtCondition(rec.ht_condition || '');
 
     // Testing
-    setNdt(rec.ndt || 'UT');
-    setHoldingTime(`${rec.holding_time_sec || 5} SEC`);
+    setNdt(rec.ndt || '');
+    setHoldingTime(rec.holding_time_sec ? `${rec.holding_time_sec} SEC` : '');
 
     // Coating & Finishing
-    setCoating(rec.coating || 'BLACK VARNISH');
-    setEndCondition(rec.end_condition || 'BEVEL END (30°-35°)');
-    setBundling(rec.bundling || 'HEXAGONAL');
-    setEndCap(rec.end_cap || 'PLASTIC PROTECTOR');
+    setCoating(rec.coating || '');
+    setEndCondition(rec.end_condition || '');
+    setBundling(rec.bundling || '');
+    setEndCap(rec.end_cap || '');
 
     // Calculate Dimensional Tolerances using current OD/WT
-    const od = Number(custOd) || 88.9;
-    const wt = Number(custWt) || 5.49;
-    const route = (routeType || orderType || 'HFS').toUpperCase();
-    const tols = calculateStandardTolerances(od, wt, rec.spec_full, route);
-    setFinalTolOdMin(tols.od_min.toFixed(2));
-    setFinalTolOdMax(tols.od_max.toFixed(2));
-    setFinalTolWtMin(tols.wt_min.toFixed(2));
-    setFinalTolWtMax(tols.wt_max.toFixed(2));
-    setMhTolOdMin((tols.od_min + 0.01).toFixed(2));
-    setMhTolOdMax((tols.od_max - 0.01).toFixed(2));
-    setMhTolWtMin(tols.wt_min.toFixed(2));
-    setMhTolWtMax((tols.wt_max - 0.28).toFixed(2));
+    const od = Number(custOd) || Number(activePlan?.size_od) || 0;
+    const wt = Number(custWt) || Number(activePlan?.size_wt) || 0;
+    if (od > 0 && wt > 0) {
+      const route = (routeType || orderType || 'HFS').toUpperCase();
+      const tols = calculateStandardTolerances(od, wt, rec.spec_full, route);
+      setFinalTolOdMin(tols.od_min.toFixed(2));
+      setFinalTolOdMax(tols.od_max.toFixed(2));
+      setFinalTolWtMin(tols.wt_min.toFixed(2));
+      setFinalTolWtMax(tols.wt_max.toFixed(2));
+      setMhTolOdMin((tols.od_min + 0.01).toFixed(2));
+      setMhTolOdMax((tols.od_max - 0.01).toFixed(2));
+      setMhTolWtMin(tols.wt_min.toFixed(2));
+      setMhTolWtMax((tols.wt_max - 0.28).toFixed(2));
 
-    // Process Wall
-    const isNoNeg = rec.is_min_wall || tols.wt_min >= wt - 0.01;
-    const calcProcWt = isNoNeg ? Number((wt * 1.05).toFixed(2)) : Number((wt * 0.97).toFixed(2));
-    setProcessWt(calcProcWt.toFixed(2));
+      // Process Wall
+      const isNoNeg = rec.is_min_wall || tols.wt_min >= wt - 0.01;
+      const calcProcWt = isNoNeg ? Number((wt * 1.05).toFixed(2)) : Number((wt * 0.97).toFixed(2));
+      setProcessWt(calcProcWt.toFixed(2));
 
-    // Hydro Pressure
-    const hydroRes = calculateHydroPressurePsi(od, wt, rec.smys_mpa || 240);
-    setHydroPressurePsi(`${hydroRes.pressurePsi} PSI`);
+      // Hydro Pressure
+      const hydroRes = calculateHydroPressurePsi(od, wt, rec.smys_mpa || 240);
+      setHydroPressurePsi(`${hydroRes.pressurePsi} PSI`);
 
-    // Update Marking
-    setMarking(
-      buildMarkingString(markingTypeRef.current, {
-        routeCode: route,
-        specification: rec.spec_full,
-        grade: rec.steel_grade,
-        sizeOd: od,
-        sizeWt: wt,
-        hydroPsi: `${hydroRes.pressurePsi} PSI`,
-        woNo,
-        poNo,
-      })
-    );
+      // Update Marking
+      setMarking(
+        buildMarkingString(markingTypeRef.current, {
+          routeCode: route,
+          specification: rec.spec_full,
+          grade: rec.steel_grade,
+          sizeOd: od,
+          sizeWt: wt,
+          hydroPsi: `${hydroRes.pressurePsi} PSI`,
+          woNo,
+          poNo,
+        })
+      );
+    } else {
+      setFinalTolOdMin('');
+      setFinalTolOdMax('');
+      setFinalTolWtMin('');
+      setFinalTolWtMax('');
+      setMhTolOdMin('');
+      setMhTolOdMax('');
+      setMhTolWtMin('');
+      setMhTolWtMax('');
+      setProcessWt('');
+      setHydroPressurePsi('');
+    }
 
     setSpecSource('engine');
     toast.success(`Loaded specs for ${rec.spec_full} from Master Table`);
@@ -1284,23 +1352,23 @@ export default function ProcessSheetReportClient() {
         customParams?.grade ||
         steelGrade ||
         activePlan?.grade ||
-        'SAE 1018';
+        '';
       const targetSpec =
         customParams?.specification ||
         materialSpec ||
         activePlan?.specification ||
-        'ASTM A106 Gr B';
+        '';
       const targetOd = Number(
         customParams?.size_od ||
         custOd ||
         activePlan?.size_od ||
-        88.9
+        0
       );
       const targetWt = Number(
         customParams?.size_wt ||
         custWt ||
         activePlan?.size_wt ||
-        5.49
+        0
       );
       const targetRoute =
         customParams?.route_code ||
@@ -1319,6 +1387,11 @@ export default function ProcessSheetReportClient() {
         '';
       const targetPoNo = customParams?.po_no ?? poNo;
       const targetHeatNo = customParams?.heat_no ?? heatNo;
+
+      if (!targetSpec && !targetGrade && targetOd === 0) {
+        setAiLoading(false);
+        return;
+      }
 
       const payload = {
         grade: targetGrade,

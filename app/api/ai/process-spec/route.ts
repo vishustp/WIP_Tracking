@@ -28,22 +28,22 @@ export async function POST(req: NextRequest) {
       heat_no,
     } = body;
 
-    const od = Number(size_od) || 88.9;
-    const wt = Number(size_wt) || 5.49;
+    const od = Number(size_od) || 0;
+    const wt = Number(size_wt) || 0;
     const route = String(route_code || 'HFS').toUpperCase();
     const apiKey = process.env.GEMINI_API_KEY?.trim();
 
     // 1. If Gemini API key is available, attempt AI structured extraction
-    if (apiKey) {
+    if (apiKey && (specification || grade || od > 0)) {
       try {
         const prompt = `You are a Senior Metallurgist and Quality Assurance Engineer for a seamless steel pipe and tube mill.
 Given the following pipe order parameters:
-- Specification / Standard: ${specification || 'ASTM A106 Gr B'}
-- Steel Grade: ${grade || 'SAE 1018 / 15C8'}
-- Size: OD ${od} mm x WT ${wt} mm
+- Specification / Standard: ${specification || 'Standard Pipe'}
+- Steel Grade: ${grade || ''}
+- Size: OD ${od > 0 ? od : ''} mm x WT ${wt > 0 ? wt : ''} mm
 - Route / Process: ${route} (e.g. HFS = Hot Finished Seamless, CDS = Cold Drawn Seamless)
-- Customer: ${customer_name || 'Standard Industrial'}
-- Work Order: ${wo_no || 'DOM-BPCL-05000'}
+- Customer: ${customer_name || ''}
+- Work Order: ${wo_no || ''}
 
 IMPORTANT METALLURGICAL RULES:
 - If standard or grade is ASTM A210 / ASME SA210 (Gr A-1 or Gr C), A192, A213, or specified as MIN WALL:
@@ -170,42 +170,42 @@ Respond ONLY with a valid JSON object matching this structure:
 
             const result: ProcessSpecResult = {
               source: 'ai',
-              reference_standard: parsedData.reference_standard || specification || 'ASTM Standard',
-              steel_grade: parsedData.steel_grade || grade || 'Standard Grade',
-              material_spec: parsedData.material_spec || specification || 'Standard Spec',
-              color_code_spec: parsedData.color_code_spec || 'WHITE',
-              rm_color_code: parsedData.rm_color_code || 'YELLOW + WHITE',
+              reference_standard: parsedData.reference_standard || specification || '',
+              steel_grade: parsedData.steel_grade || grade || '',
+              material_spec: parsedData.material_spec || specification || '',
+              color_code_spec: parsedData.color_code_spec || '',
+              rm_color_code: parsedData.rm_color_code || '',
               mechanical: {
-                yst_min_mpa: parsedData.mechanical?.yst_min_mpa ?? 240,
-                yst_max_mpa: parsedData.mechanical?.yst_max_mpa ?? 'NOT SPECIFIED',
-                uts_min_mpa: parsedData.mechanical?.uts_min_mpa ?? 415,
-                uts_max_mpa: parsedData.mechanical?.uts_max_mpa ?? 'NOT SPECIFIED',
-                elongation_min_pct: parsedData.mechanical?.elongation_min_pct ?? 21,
-                elongation_max_pct: parsedData.mechanical?.elongation_max_pct ?? 'NOT SPECIFIED',
-                hardness_max: parsedData.mechanical?.hardness_max ?? '79 HRB MAX',
-                straightness: parsedData.mechanical?.straightness ?? '1:1000',
+                yst_min_mpa: parsedData.mechanical?.yst_min_mpa ?? 0,
+                yst_max_mpa: parsedData.mechanical?.yst_max_mpa ?? '',
+                uts_min_mpa: parsedData.mechanical?.uts_min_mpa ?? 0,
+                uts_max_mpa: parsedData.mechanical?.uts_max_mpa ?? '',
+                elongation_min_pct: parsedData.mechanical?.elongation_min_pct ?? 0,
+                elongation_max_pct: parsedData.mechanical?.elongation_max_pct ?? '',
+                hardness_max: parsedData.mechanical?.hardness_max ?? '',
+                straightness: parsedData.mechanical?.straightness ?? '',
               },
               tolerances,
               testing: {
-                ndt: parsedData.testing?.ndt || 'UT',
+                ndt: parsedData.testing?.ndt || '',
                 hydro_pressure_psi: Number(parsedData.testing?.hydro_pressure_psi) || hydroVerified.pressurePsi,
                 holding_time_sec: Number(parsedData.testing?.holding_time_sec) || 5,
                 calculation_basis: parsedData.testing?.calculation_basis || hydroVerified.formulaNote,
               },
               thermal: {
-                whf_temp: parsedData.thermal?.whf_temp || '1220° C (+/- 40° C)',
-                induction_furnace_temp: parsedData.thermal?.induction_furnace_temp || '850 °C - 880° C',
-                sizing_mill_outlet_temp: parsedData.thermal?.sizing_mill_outlet_temp || '880° C TO 900° C',
-                ht_cycle: parsedData.thermal?.ht_cycle || 'NA',
-                ht_condition: parsedData.thermal?.ht_condition || 'AS ROLLED',
+                whf_temp: parsedData.thermal?.whf_temp || '',
+                induction_furnace_temp: parsedData.thermal?.induction_furnace_temp || '',
+                sizing_mill_outlet_temp: parsedData.thermal?.sizing_mill_outlet_temp || '',
+                ht_cycle: parsedData.thermal?.ht_cycle || '',
+                ht_condition: parsedData.thermal?.ht_condition || '',
               },
-              coating: parsedData.coating || 'BLACK VARNISH',
-              end_condition: parsedData.end_condition || 'BEVEL END (30°-35°)',
-              bundling: parsedData.bundling || 'HEXAGONAL',
-              end_cap: parsedData.end_cap || 'PLASTIC PROTECTOR',
+              coating: parsedData.coating || '',
+              end_condition: parsedData.end_condition || '',
+              bundling: parsedData.bundling || '',
+              end_cap: parsedData.end_cap || '',
               suggested_marking:
                 parsedData.suggested_marking ||
-                `RASHMI SMLS / LOGO / ${route} / ${specification || 'ASTM A106 GR.B'} / OD ${od.toFixed(2)} MM X WT ${wt.toFixed(2)} MM / HYDRO TESTED ${hydroVerified.pressurePsi} PSI / NDE`,
+                `RASHMI SMLS / LOGO / ${route} / ${specification || ''}${od > 0 && wt > 0 ? ` / OD ${od.toFixed(2)} MM X WT ${wt.toFixed(2)} MM` : ''}${hydroVerified.pressurePsi > 0 ? ` / HYDRO TESTED ${hydroVerified.pressurePsi} PSI` : ''} / NDE`,
             };
 
             return NextResponse.json({ success: true, data: result, source: 'ai' });

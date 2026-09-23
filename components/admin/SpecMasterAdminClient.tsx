@@ -28,6 +28,7 @@ import {
   Check,
   Sparkles,
   Scale,
+  Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
@@ -45,13 +46,13 @@ const EMPTY_RECORD: Omit<SpecMasterRecord, 'id' | 'created_at' | 'updated_at'> =
   straightness: '1:1000',
   color_spec: '',
   rm_color: '',
-  cds_od_tolerance: '±0.10 mm to ±0.20 mm (or ±0.50%)',
-  cds_wt_tolerance: '+15.0% / -12.5% of Nominal Wall',
-  hfs_od_tolerance: '±0.75% (NPS 1/8 to 1-1/2: +0.40/-0.80 mm)',
-  hfs_wt_tolerance: '+15.0% / -12.5% of Nominal Wall',
-  od_tolerance: 'CDS: ±0.15 mm | HFS: ±0.75%',
-  wt_tolerance: 'HFS / CDS: +15.0% / -12.5% of Nominal Wall',
-  hydro_pressure: 'P = 2*S*t/D (S = 60% SMYS, max 17.2 MPa)',
+  cds_od_tolerance: null,
+  cds_wt_tolerance: null,
+  hfs_od_tolerance: null,
+  hfs_wt_tolerance: null,
+  od_tolerance: null,
+  wt_tolerance: null,
+  hydro_pressure: null,
   whf_temp: '',
   induction_temp: '',
   sizing_outlet_temp: '',
@@ -441,83 +442,15 @@ function SpecEditModal({
             </div>
           </div>
 
-          {/* Dimensional Tolerances (Route-Specific: CDS vs HFS) & Hydrostatic Testing */}
-          <SectionHeader title="Dimensional Tolerances (Route-Specific: CDS vs HFS)" icon={Scale} />
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Cold Drawn Seamless (CDS) Route Box */}
-            <div className="p-4 rounded-xl bg-blue-50/60 border-2 border-blue-200">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="px-2 py-0.5 text-[10px] font-black uppercase rounded bg-blue-600 text-white tracking-wide">CDS Route</span>
-                <span className="text-xs font-bold text-blue-900">Cold Drawn Seamless Tolerances</span>
-              </div>
-              <div className="space-y-3">
-                <FieldInput
-                  label="CDS OD Tolerance"
-                  value={form.cds_od_tolerance ?? ''}
-                  onChange={set('cds_od_tolerance')}
-                  placeholder="e.g. ±0.10 mm to ±0.20 mm (or ±0.50%)"
-                  disabled={readOnly}
-                  hint="Precision drawn outer diameter tolerance"
-                />
-                <FieldInput
-                  label="CDS WT Tolerance"
-                  value={form.cds_wt_tolerance ?? ''}
-                  onChange={set('cds_wt_tolerance')}
-                  placeholder="e.g. ±10.0% (Nominal) or +20% / -0% (Min Wall)"
-                  disabled={readOnly}
-                  hint="Precision drawn wall thickness tolerance"
-                />
-              </div>
+          {/* Dimensional Tolerances Notice (Option B: Dynamic Calculation in Process Sheet) */}
+          <div className="p-3.5 rounded-xl bg-blue-50/80 border border-blue-200 text-xs text-blue-900 flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-bold text-blue-950">Dynamic Sizing & Tolerances</p>
+              <p className="text-[11px] text-blue-800 mt-0.5 leading-relaxed">
+                Per seamless mill standards, dimensional tolerances (OD & WT limits in mm), wall thickness expansion margins, and hydrostatic test pressures depend on size (OD × WT) and are dynamically calculated in the <strong>Process Sheet</strong> per route (CDS / HFS).
+              </p>
             </div>
-
-            {/* Hot Finished Seamless (HFS) Route Box */}
-            <div className="p-4 rounded-xl bg-amber-50/60 border-2 border-amber-200">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="px-2 py-0.5 text-[10px] font-black uppercase rounded bg-amber-600 text-white tracking-wide">HFS Route</span>
-                <span className="text-xs font-bold text-amber-900">Hot Finished Seamless Tolerances</span>
-              </div>
-              <div className="space-y-3">
-                <FieldInput
-                  label="HFS OD Tolerance"
-                  value={form.hfs_od_tolerance ?? ''}
-                  onChange={set('hfs_od_tolerance')}
-                  placeholder="e.g. ±0.75% (NPS 1/8 to 1-1/2: +0.40/-0.80 mm)"
-                  disabled={readOnly}
-                  hint="Mill hot sizing outer diameter tolerance"
-                />
-                <FieldInput
-                  label="HFS WT Tolerance"
-                  value={form.hfs_wt_tolerance ?? ''}
-                  onChange={set('hfs_wt_tolerance')}
-                  placeholder="e.g. +15.0% / -12.5% (Nominal) or +28% / -0% (Min Wall)"
-                  disabled={readOnly}
-                  hint="Mill hot sizing wall thickness tolerance"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-1">
-            <div className="sm:col-span-2">
-              <FieldInput
-                label="Hydrostatic Test Pressure / Formula"
-                value={form.hydro_pressure ?? ''}
-                onChange={set('hydro_pressure')}
-                placeholder="e.g. P = 2*S*t/D (S = 60% SMYS, max 17.2 MPa)"
-                disabled={readOnly}
-                hint="Barlow formula parameter & allowable fiber stress"
-              />
-            </div>
-            <FieldInput
-              label="Hydro Holding Time (sec)"
-              value={form.holding_time_sec}
-              onChange={set('holding_time_sec')}
-              type="number"
-              placeholder="5"
-              disabled={readOnly}
-              hint="Minimum holding duration"
-            />
           </div>
 
           {/* Thermal */}

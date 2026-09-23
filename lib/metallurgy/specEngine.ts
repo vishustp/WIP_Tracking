@@ -78,7 +78,7 @@ export function calculateHydroPressurePsi(
   maxCapPsi: number = 2500
 ): { pressurePsi: number; formulaNote: string } {
   if (!odMm || !wtMm || odMm <= 0 || wtMm <= 0) {
-    return { pressurePsi: 2500, formulaNote: 'Default standard test pressure: 2500 PSI' };
+    return { pressurePsi: 0, formulaNote: 'No dimensions provided' };
   }
 
   // Convert mm to inches (1 inch = 25.4 mm)
@@ -570,11 +570,11 @@ export function getDeterministicProcessSpec(params: {
   const tolerances = calculateStandardTolerances(od, wt, refStd, route);
 
   // Generate Suggested Marking String following Rashmi standard
-  const custWoNo = params.wo_no || 'DOM-BPCL-05000';
-  const custPoNo = params.po_no || 'GEMC-511687748165300';
-  const heatVal = params.heat_no || '25D05457';
+  const custWoNo = params.wo_no || '';
+  const custPoNo = params.po_no || '';
+  const heatVal = params.heat_no || '';
 
-  const suggestedMarking = `RASHMI SMLS / LOGO / ${route} / ${params.specification || matchedLib.spec_full} / NACE MR0103 / MR0175 / OD ${od.toFixed(2)} MM X WT ${wt.toFixed(2)} MM / HYDRO TESTED ${hydroRes.pressurePsi} PSI / NDE / PO NO -${custPoNo} / WO NO -${custWoNo} / H.NO - ${heatVal} + LENGTH + BUNDLE NO`;
+  const suggestedMarking = `RASHMI SMLS / LOGO / ${route} / ${params.specification || matchedLib.spec_full} / NACE MR0103 / MR0175 / OD ${od.toFixed(2)} MM X WT ${wt.toFixed(2)} MM / HYDRO TESTED ${hydroRes.pressurePsi} PSI / NDE${custPoNo ? ` / PO NO -${custPoNo}` : ''}${custWoNo ? ` / WO NO -${custWoNo}` : ''}${heatVal ? ` / H.NO - ${heatVal}` : ''} + LENGTH + BUNDLE NO`;
 
   return {
     source: 'engine',
