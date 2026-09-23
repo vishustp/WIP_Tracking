@@ -837,35 +837,25 @@ export default function ProductionEntryGrid() {
     if (!editing) return;
     const finalRemarks = attachPcsToRemarks(payload.editRemarks, n(payload.editPcs), n(payload.editRejectionPcs));
 
-    const { error: rpcError } = await supabase.rpc('update_production_entry', {
-      p_production_id: editing.id,
-      p_process_date: payload.editDate,
-      p_output_qty: payload.editMtr,
-      p_rejection_qty: payload.editRejectionMtr,
-      p_htc_ok: editing.stage_code === 'ROLLING' ? payload.editHtcMtr : 0,
-      p_heat_lot_no: payload.editHeatLot.trim() || null,
-      p_remarks: finalRemarks.trim() || null,
-    });
-
-    if (rpcError) {
-      console.warn('RPC update_production_entry failed, falling back to direct update:', rpcError.message);
-      const updatePayload: Record<string, any> = {
+    const res = await fetch('/api/production/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: editing.id,
         process_date: payload.editDate,
         output_qty: payload.editMtr,
+        output_pcs: n(payload.editPcs) || null,
         rejection_qty: payload.editRejectionMtr,
+        rejection_pcs: n(payload.editRejectionPcs) || null,
         htc_ok: editing.stage_code === 'ROLLING' ? payload.editHtcMtr : 0,
         heat_lot_no: payload.editHeatLot.trim() || null,
         remarks: finalRemarks.trim() || null,
-      };
+      }),
+    });
 
-      const { error: directErr } = await supabase
-        .from('production_logs')
-        .update(updatePayload)
-        .eq('id', editing.id);
-
-      if (directErr) {
-        throw new Error(directErr.message || rpcError.message || 'Failed to update entry.');
-      }
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      throw new Error(data.error || 'Failed to update entry.');
     }
 
     setMessage('Production entry updated successfully.');
@@ -891,51 +881,18 @@ export default function ProductionEntryGrid() {
     }
 
     try {
-      const { error: rpcError } = await supabase.rpc('delete_production_entry', {
-        p_production_id: deleteId,
+      const res = await fetch('/api/production/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deleteId }),
       });
-
-      if (rpcError) {
-        console.warn('RPC delete_production_entry failed, falling back to direct delete:', rpcError.message);
-        const { error: directDelErr } = await supabase
-          .from('production_logs')
-          .delete()
-          .eq('id', deleteId);
-
-        if (directDelErr) throw directDelErr;
-      }
-
-      const targetWoNo = targetEntry?.work_order_no;
-      if (targetWoNo) {
-        const { data: woData } = await supabase
-          .from('work_orders')
-          .select('id')
-          .eq('work_order_no', targetWoNo)
-          .maybeSingle();
-
-        const woId = targetEntry?.work_order_id || woData?.id;
-        if (woId) {
-          const { data: remainingLogs } = await supabase
-            .from('production_logs')
-            .select('id')
-            .eq('work_order_id', woId)
-            .limit(1);
-
-          if (!remainingLogs || remainingLogs.length === 0) {
-            const { data: plans } = await supabase
-              .from('rolling_plans')
-              .select('id')
-              .eq('work_order_id', woId)
-              .limit(1);
-
-            const newStatus = plans && plans.length > 0 ? 'Scheduled' : 'Pending Plan';
-            await supabase.from('work_orders').update({ status: newStatus }).eq('id', woId);
-          }
-        }
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete entry.');
       }
 
       setDeleteId(null);
-      setMessage('Production entry deleted successfully.');
+      setMessage(data.message || 'Production entry deleted successfully.');
       await Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()]);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to delete.');

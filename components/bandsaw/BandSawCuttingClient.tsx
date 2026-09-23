@@ -27,6 +27,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { BandSawCuttingModal } from '@/components/production/modals/BandSawCuttingModal';
+import { BandSawEditModal } from '@/components/bandsaw/BandSawEditModal';
 import { DeleteEntryModal } from '@/components/production/modals/DeleteEntryModal';
 import { toast } from 'sonner';
 
@@ -45,7 +46,8 @@ export default function BandSawCuttingClient() {
   const [selectedRowForCut, setSelectedRowForCut] = useState<Row | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Delete modal state
+  // Edit & Delete modal state
+  const [editingEntry, setEditingEntry] = useState<ProductionEntry | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<ProductionEntry | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -218,11 +220,18 @@ export default function BandSawCuttingClient() {
     if (!deletingEntry) return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from('production_logs').delete().eq('id', deletingEntry.id);
-      if (error) throw error;
-      toast.success('Band Saw cut log deleted successfully.');
+      const res = await fetch('/api/production/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deletingEntry.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete cut entry.');
+      }
+      toast.success(data.message || 'Band Saw cut log deleted successfully.');
       setDeletingEntry(null);
-      fetchData();
+      await fetchData();
     } catch (err: any) {
       console.error('Delete error:', err);
       toast.error(err?.message || 'Failed to delete cut entry.');
@@ -230,6 +239,7 @@ export default function BandSawCuttingClient() {
       setIsDeleting(false);
     }
   };
+
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
@@ -661,15 +671,33 @@ export default function BandSawCuttingClient() {
                           )}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {currentUser?.group === 'admin' || currentUser?.group === 'super_user' || currentUser?.role === 'admin' ? (
-                            <button
-                              type="button"
-                              onClick={() => setDeletingEntry(entry)}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-                              title="Delete entry"
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                          {currentUser?.group === 'admin' ||
+                          currentUser?.group === 'super_user' ||
+                          currentUser?.role === 'admin' ||
+                          currentUser?.work_center === 'BAND_SAW' ||
+                          currentUser?.work_center === 'ALL' ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setEditingEntry(entry)}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                                title="Edit cut entry"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              {(currentUser?.group === 'admin' ||
+                                currentUser?.group === 'super_user' ||
+                                currentUser?.role === 'admin') && (
+                                <button
+                                  type="button"
+                                  onClick={() => setDeletingEntry(entry)}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                  title="Delete entry"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-slate-300">—</span>
                           )}
@@ -693,6 +721,16 @@ export default function BandSawCuttingClient() {
             setModalOpen(false);
             setSelectedRowForCut(null);
           }}
+          onSuccess={fetchData}
+        />
+      )}
+
+      {/* Edit Cut Entry Modal */}
+      {editingEntry && (
+        <BandSawEditModal
+          entry={editingEntry}
+          isOpen={!!editingEntry}
+          onClose={() => setEditingEntry(null)}
           onSuccess={fetchData}
         />
       )}
