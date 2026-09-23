@@ -3,6 +3,85 @@
 -- When QC inspections are logged (either on master or child work orders), the inspected quantity must deduct from
 -- the master campaign's VDI queue, and flow into the respective child work orders' Finishing stage queues.
 
+-- Helper 1: Average finished tube length
+CREATE OR REPLACE FUNCTION public.wo_avg_length(p_work_order_id uuid)
+RETURNS numeric LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT COALESCE(
+    NULLIF((COALESCE(l1, 0) + COALESCE(l2, 0)) / 2, 0),
+    CASE WHEN COALESCE(ordered_qty_pcs, 0) > 0 AND COALESCE(ordered_qty_mtr, 0) > 0
+         THEN ordered_qty_mtr / ordered_qty_pcs
+         ELSE NULL
+    END,
+    6.0
+  )
+  FROM public.work_orders WHERE id = p_work_order_id;
+$$;
+GRANT EXECUTE ON FUNCTION public.wo_avg_length(uuid) TO authenticated, anon, service_role;
+
+-- Helper 2: Stage-aware average length (Mother Hollow for Rolling & Hollow HT; finished length downstream)
+CREATE OR REPLACE FUNCTION public.wo_stage_avg_length(p_work_order_id uuid, p_stage_code text DEFAULT null)
+RETURNS numeric LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT CASE
+    WHEN p_stage_code IN ('ROLLING', 'HOLLOW_HEAT_TREATMENT') THEN
+      COALESCE(
+        (SELECT NULLIF((COALESCE(rp.mh_l1, 0) + COALESCE(rp.mh_l2, 0)) / 2, 0)
+         FROM public.rolling_plans rp
+         WHERE rp.work_order_id = p_work_order_id
+         ORDER BY rp.created_at DESC LIMIT 1),
+        (SELECT NULLIF(rp.mh_l1, 0)
+         FROM public.rolling_plans rp
+         WHERE rp.work_order_id = p_work_order_id
+         ORDER BY rp.created_at DESC LIMIT 1),
+        public.wo_avg_length(p_work_order_id),
+        6.0
+      )
+    ELSE
+      public.wo_avg_length(p_work_order_id)
+  END;
+$$;
+GRANT EXECUTE ON FUNCTION public.wo_stage_avg_length(uuid, text) TO authenticated, anon, service_role;
+
+-- Helper 3: Convert meters to pieces
+CREATE OR REPLACE FUNCTION public.mtr_to_pcs(p_work_order_id uuid, p_mtr numeric)
+RETURNS numeric LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT CASE
+    WHEN COALESCE(public.wo_avg_length(p_work_order_id), 0) <= 0 THEN 0
+    ELSE ROUND(GREATEST(COALESCE(p_mtr, 0), 0) / public.wo_avg_length(p_work_order_id))
+  END;
+$$;
+GRANT EXECUTE ON FUNCTION public.mtr_to_pcs(uuid, numeric) TO authenticated, anon, service_role;
+
+-- Helper 4: Stage-aware Metric Ton (MT) calculation
+CREATE OR REPLACE FUNCTION public.wo_stage_mtr_to_mt(
+  p_work_order_id uuid,
+  p_stage_code text DEFAULT null,
+  p_mtr numeric DEFAULT 0
+)
+RETURNS numeric LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT CASE
+    WHEN p_stage_code IN ('ROLLING', 'HOLLOW_HEAT_TREATMENT') THEN
+      COALESCE(
+        (SELECT GREATEST(COALESCE(rp.mh_od, w.size_od, 0) - COALESCE(rp.mh_wt, w.size_wt, 0), 0)
+              * GREATEST(COALESCE(rp.mh_wt, w.size_wt, 0), 0)
+              * 0.0246615 * 0.001 * GREATEST(COALESCE(p_mtr, 0), 0)
+         FROM public.rolling_plans rp
+         WHERE rp.work_order_id = p_work_order_id
+           AND COALESCE(rp.mh_od, 0) > 0 AND COALESCE(rp.mh_wt, 0) > 0
+         ORDER BY rp.created_at DESC LIMIT 1),
+        GREATEST(COALESCE(w.size_od, 0) - COALESCE(w.size_wt, 0), 0)
+        * GREATEST(COALESCE(w.size_wt, 0), 0)
+        * 0.0246615 * 0.001 * GREATEST(COALESCE(p_mtr, 0), 0)
+      )
+    ELSE
+      GREATEST(COALESCE(w.size_od, 0) - COALESCE(w.size_wt, 0), 0)
+      * GREATEST(COALESCE(w.size_wt, 0), 0)
+      * 0.0246615 * 0.001 * GREATEST(COALESCE(p_mtr, 0), 0)
+  END
+  FROM public.work_orders w WHERE w.id = p_work_order_id;
+$$;
+GRANT EXECUTE ON FUNCTION public.wo_stage_mtr_to_mt(uuid, text, numeric) TO authenticated, anon, service_role;
+
+-- Drop and recreate views
 DROP VIEW IF EXISTS public.vw_dashboard_kpis;
 DROP VIEW IF EXISTS public.vw_route_stage_wip;
 
@@ -126,7 +205,7 @@ WITH RECURSIVE route_base AS (
   SELECT dm.*,
     CASE
       WHEN dm.stage_code <> 'FINISHING' AND EXISTS (SELECT 1 FROM campaign_children cc WHERE cc.work_order_id = dm.work_order_id) THEN 0
-      WHEN dm.stage_code = 'ROLLING' THEN 0 -- Rolling mill is the upstream feeder; Plant WIP starts at Draw / Band Saw / HT
+      WHEN dm.stage_code = 'ROLLING' THEN 0
       ELSE
         GREATEST(dm.incoming_qty + dm.diversion_in - GREATEST(dm.production_qty + dm.rejection_qty, dm.downstream_passed_qty) - dm.diversion_out, 0)
     END AS current_wip,
