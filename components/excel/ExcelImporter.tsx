@@ -652,7 +652,7 @@ export default function ExcelImporter() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('work_orders')
-        .select('id, work_order_no, customer_name, specification, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mtr, balance_qty_pcs, balance_qty_mtr, process_route_id');
+        .select('id, work_order_no, customer_name, specification, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mtr, balance_qty_pcs, balance_qty_mtr');
       if (!error && data) {
         const map = new Map<string, any>();
         data.forEach((w: any) => map.set(w.work_order_no.toLowerCase().trim(), w));

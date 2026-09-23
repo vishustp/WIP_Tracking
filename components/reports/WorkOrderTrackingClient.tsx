@@ -404,6 +404,11 @@ export default function WorkOrderTrackingClient() {
       const masterLogs = productionLogs.filter((l) => l.work_order_id === effectiveMasterWoId);
       const woLogs = productionLogs.filter((l) => l.work_order_id === wo.id);
 
+      const campaignChildWoIds: string[] = isMaster && masterInfo?.child_work_orders
+        ? masterInfo.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean)
+        : [];
+      const campaignWoIdSet = new Set<string>([wo.id, ...campaignChildWoIds]);
+
       // Diversions helper for this work order / master
       const getStageDivIn = (wId: string, stageCode: string) =>
         diversionPlans
@@ -481,15 +486,31 @@ export default function WorkOrderTrackingClient() {
       const bandSawRejPcsLogged = masterBandSawLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
       const bandSawRejPcs = bandSawRejPcsLogged > 0 ? bandSawRejPcsLogged : (avgLen > 0 ? Math.round(bandSawRejMtr / avgLen) : 0);
 
-      // VDI stats
-      const masterVdiLogs = masterLogs.filter((l) => l.stage_code === 'VDI');
-      const vdiOutMtr = masterVdiLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const vdiOutPcsLogged = masterVdiLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
-      const vdiOutPcs = vdiOutPcsLogged > 0 ? vdiOutPcsLogged : (avgLen > 0 ? Math.round(vdiOutMtr / avgLen) : 0);
+      // VDI stats from production_logs AND qc_inspections
+      const relevantVdiQcList = qcInspections.filter((q: any) =>
+        isMaster ? campaignWoIdSet.has(q.work_order_id) : q.work_order_id === wo.id
+      );
+      const qcVdiOkMtr = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+      const qcVdiOkPcs = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+      const qcVdiRejMtr = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0), 0);
+      const qcVdiRejPcs = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0), 0);
 
-      const vdiRejMtr = masterVdiLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const vdiRejPcsLogged = masterVdiLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
-      const vdiRejPcs = vdiRejPcsLogged > 0 ? vdiRejPcsLogged : (avgLen > 0 ? Math.round(vdiRejMtr / avgLen) : 0);
+      const masterVdiLogs = isMaster
+        ? productionLogs.filter((l) => campaignWoIdSet.has(l.work_order_id) && l.stage_code === 'VDI')
+        : woLogs.filter((l) => l.stage_code === 'VDI');
+
+      const logVdiOutMtr = masterVdiLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const logVdiOutPcsLogged = masterVdiLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const logVdiOutPcs = logVdiOutPcsLogged > 0 ? logVdiOutPcsLogged : (avgLen > 0 ? Math.round(logVdiOutMtr / avgLen) : 0);
+
+      const logVdiRejMtr = masterVdiLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const logVdiRejPcsLogged = masterVdiLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const logVdiRejPcs = logVdiRejPcsLogged > 0 ? logVdiRejPcsLogged : (avgLen > 0 ? Math.round(logVdiRejMtr / avgLen) : 0);
+
+      const vdiOutMtr = Math.max(logVdiOutMtr, qcVdiOkMtr);
+      const vdiOutPcs = Math.max(logVdiOutPcs, qcVdiOkPcs);
+      const vdiRejMtr = Math.max(logVdiRejMtr, qcVdiRejMtr);
+      const vdiRejPcs = Math.max(logVdiRejPcs, qcVdiRejPcs);
 
       // Finishing stats (tracked PER WORK ORDER)
       const finLogs = woLogs.filter((l) => l.stage_code === 'FINISHING');
@@ -528,6 +549,32 @@ export default function WorkOrderTrackingClient() {
 
         // RULE 2: Child work orders in campaigns are bundled under master for pre-finishing stages
         if (childInfo && stageCode !== 'FINISHING') {
+          // If VDI stage, show child's own QC inspection output, while uninspected queue WIP stays pooled under master
+          if (stageCode === 'VDI') {
+            const childQcList = qcInspections.filter((q: any) => q.work_order_id === wo.id);
+            const childQcOkMtr = childQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+            const childQcOkPcs = childQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+            const childQcRejMtr = childQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0), 0);
+            const childQcRejPcs = childQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0), 0);
+            return {
+              ...stageDef,
+              isBundled: true,
+              planMtr: Number(childInfo.planned_mtr || wo.ordered_qty),
+              planPcs: 0,
+              outMtr: childQcOkMtr,
+              outPcs: childQcOkPcs,
+              rejMtr: childQcRejMtr,
+              rejPcs: childQcRejPcs,
+              htcOkMtr: 0,
+              htcOkPcs: 0,
+              wipMtr: 0,
+              wipPcs: 0,
+              wipMt: 0,
+              logsCount: childQcList.length,
+              dwellDays: 0,
+              agingSeverity: 'NORMAL',
+            };
+          }
           return {
             ...stageDef,
             isBundled: true,
@@ -825,10 +872,7 @@ export default function WorkOrderTrackingClient() {
           const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
           const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
 
-          const woQcList = qcInspections.filter(
-            (q: any) => q.work_order_id === wo.id || (childInfo && q.work_order_id === childInfo.master_wo_id)
-          );
-          const qcInspectedPcs = woQcList.reduce(
+          const qcInspectedPcs = relevantVdiQcList.reduce(
             (sum: number, q: any) => sum + Number(q.inspected_pcs || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0))),
             0
           );
@@ -864,7 +908,7 @@ export default function WorkOrderTrackingClient() {
             wipMtr,
             wipPcs,
             wipMt,
-            logsCount: masterVdiLogs.length + woQcList.length,
+            logsCount: masterVdiLogs.length + relevantVdiQcList.length,
             dwellDays,
             agingSeverity,
             divertedInMtr: divIn,
@@ -892,10 +936,8 @@ export default function WorkOrderTrackingClient() {
 
         const precedingOutPcs = htOutPcs > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs);
 
-        const woQcList = qcInspections.filter(
-          (q: any) => q.work_order_id === wo.id || (childInfo && q.work_order_id === childInfo.master_wo_id)
-        );
-        const qcOkPcs = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
+        const thisWoQcList = qcInspections.filter((q: any) => q.work_order_id === wo.id);
+        const qcOkPcs = thisWoQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
         const qcPassedPcs = qcOkPcs;
 
         const divIn = getStageDivIn(wo.id, 'FINISHING');
@@ -905,9 +947,9 @@ export default function WorkOrderTrackingClient() {
 
         let wipPcs = 0;
         const consumedPcs = finOutPcs + finRejPcs;
-        if (woQcList.length > 0) {
+        if (thisWoQcList.length > 0) {
           wipPcs = Math.max(0, Math.min(targetPcs, qcPassedPcs) + divInPcs - consumedPcs - divOutPcs);
-        } else if (precedingOutPcs > 0 || divInPcs > 0) {
+        } else if (!childInfo && !isMaster && (precedingOutPcs > 0 || divInPcs > 0)) {
           wipPcs = Math.max(0, Math.min(targetPcs, precedingOutPcs) + divInPcs - consumedPcs - divOutPcs);
         }
         const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
@@ -958,7 +1000,7 @@ export default function WorkOrderTrackingClient() {
           : 100;
 
       const woQcList = qcInspections.filter(
-        (q: any) => q.work_order_id === wo.id || (childInfo && q.work_order_id === childInfo.master_wo_id)
+        (q: any) => q.work_order_id === wo.id || (isMaster && campaignWoIdSet.has(q.work_order_id))
       );
 
       return {

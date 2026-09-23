@@ -63,6 +63,7 @@ export default function QcInspectionClient() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingInspection, setEditingInspection] = useState<QcInspection | null>(null);
   const [selectedQueueItem, setSelectedQueueItem] = useState<QcQueueItem | null>(null);
+  const [targetWorkOrderId, setTargetWorkOrderId] = useState<string>('');
 
   // Form inputs
   const [formDate, setFormDate] = useState(() => getYesterdayDateStr());
@@ -269,7 +270,7 @@ export default function QcInspectionClient() {
         return { cutPcs, cutMtr };
       };
 
-      // 1. MASTER CAMPAIGN: Split parent and each child into distinct VDI queue rows strictly from Band Saw cuts
+      // 1. MASTER CAMPAIGN: Represent unified cutting pool as a single master campaign row
       if (campaign && Array.isArray(campaign.child_work_orders) && campaign.child_work_orders.length > 0) {
         processedWoIds.add(wo.id);
 
@@ -278,6 +279,12 @@ export default function QcInspectionClient() {
           wo.id,
           ...campaign.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean),
         ]);
+
+        // Mark all child orders as processed so they are not duplicated as standalone rows with duplicate balance
+        for (const child of campaign.child_work_orders) {
+          const childId = child.work_order_id || child.id;
+          if (childId) processedWoIds.add(childId);
+        }
 
         const campaignBandSawLogs = productionLogs.filter(
           (l) => allCampaignWoIds.has(l.work_order_id) && bandSawStage && l.stage_id === bandSawStage.id
@@ -295,7 +302,7 @@ export default function QcInspectionClient() {
         const sharedAvailMtr = Math.max(0, totalCampaignCutMtr - campaignAlreadyInspectedMtr);
         const sharedAvailMt = mtFromMtr(sharedAvailMtr, od, wt);
 
-        // A. Add Master Work Order Row (Parent) with full shared campaign balance
+        // Add Single Master Work Order Row representing the entire campaign pool
         if (sharedAvailPcs >= 1) {
           items.push({
             work_order_id: wo.id,
@@ -322,50 +329,6 @@ export default function QcInspectionClient() {
             master_plan_no: campaign.plan_no,
             child_work_orders: campaign.child_work_orders,
           });
-        }
-
-        // B. Add Every Child Work Order Row with full shared campaign balance
-        for (const child of campaign.child_work_orders) {
-          const childId = child.work_order_id || child.id;
-          if (!childId) continue;
-          processedWoIds.add(childId);
-
-          const childWo = workOrders.find((w) => w.id === childId);
-          const childOd = Number(child.size_od || childWo?.size_od || od);
-          const childWt = Number(child.size_wt || childWo?.size_wt || wt);
-          const childL1 = Number(child.l1 || childWo?.l1 || l1);
-          const childL2 = Number(child.l2 || childWo?.l2 || l2);
-          const childAvg = childL1 > 0 && childL2 > 0 ? (childL1 + childL2) / 2 : (childL1 || childL2 || avgLen);
-          const childAvailMt = mtFromMtr(sharedAvailMtr, childOd, childWt);
-
-          if (sharedAvailPcs >= 1) {
-            items.push({
-              work_order_id: childId,
-              work_order_no: child.work_order_no || childWo?.work_order_no || '—',
-              customer_name: child.customer_name || childWo?.customer_name || null,
-              specification: child.grade || childWo?.specification || childWo?.grade || wo.specification || null,
-              size_od: childOd,
-              size_wt: childWt,
-              l1: childL1,
-              l2: childL2,
-              avg_length: childAvg,
-              process_route_id: childWo?.process_route_id || routeId || null,
-              route_code: routeCode,
-              feeder_source_label: feederLabel,
-              feeder_stage_code: feederStageCode,
-              ht_ok_pcs: totalCampaignCutPcs,
-              ht_ok_mtr: totalCampaignCutMtr,
-              ht_ok_mt: mtFromMtr(totalCampaignCutMtr, childOd, childWt),
-              already_inspected_pcs: campaignAlreadyInspectedPcs,
-              available_ht_ok_pcs: sharedAvailPcs,
-              available_ht_ok_mtr: sharedAvailMtr,
-              available_ht_ok_mt: childAvailMt,
-              is_child: true,
-              master_wo_id: wo.id,
-              master_wo_no: wo.work_order_no,
-              master_plan_no: campaign.plan_no,
-            });
-          }
         }
       } else {
         // 2. STANDALONE WORK ORDER (OR STANDALONE CHILD)
@@ -629,6 +592,7 @@ export default function QcInspectionClient() {
       return;
     }
     setSelectedQueueItem(item);
+    setTargetWorkOrderId(item.work_order_id);
     setEditingInspection(null);
     setFormDate(getYesterdayDateStr());
     setInspectedPcs(String(item.available_ht_ok_pcs));
@@ -674,6 +638,7 @@ export default function QcInspectionClient() {
     };
 
     setSelectedQueueItem(queueItem);
+    setTargetWorkOrderId(inspection.work_order_id);
     setEditingInspection(inspection);
     setFormDate(inspection.inspection_date.slice(0, 10));
     setInspectedPcs(String(inspection.inspected_pcs));
@@ -737,9 +702,15 @@ export default function QcInspectionClient() {
   const formMetrics = useMemo(() => {
     if (!selectedQueueItem) return { inspMtr: 0, inspMt: 0, okMtr: 0, okMt: 0, salMtr: 0, salMt: 0, rejMtr: 0, rejMt: 0, totalSalvageReasonPcs: 0, isSalvageBalanced: true, isPcsBalanced: true };
 
-    const avg = selectedQueueItem.avg_length || 6.0;
-    const od = selectedQueueItem.size_od || 0;
-    const wt = selectedQueueItem.size_wt || 0;
+    const effectiveWoId = targetWorkOrderId || selectedQueueItem.work_order_id;
+    const targetChild = selectedQueueItem.child_work_orders?.find((c: any) => (c.work_order_id || c.id) === effectiveWoId);
+    const targetWo = workOrders.find((w) => w.id === effectiveWoId);
+
+    const avg = targetChild?.l1 && targetChild?.l2
+      ? (Number(targetChild.l1) + Number(targetChild.l2)) / 2
+      : Number(targetChild?.l1 || targetWo?.l1 || selectedQueueItem.avg_length || 6.0);
+    const od = Number(targetChild?.size_od || targetWo?.size_od || selectedQueueItem.size_od || 0);
+    const wt = Number(targetChild?.size_wt || targetWo?.size_wt || selectedQueueItem.size_wt || 0);
 
     const inspP = n(inspectedPcs);
     const okP = n(vdiOkPcs);
@@ -773,7 +744,7 @@ export default function QcInspectionClient() {
       isSalvageBalanced,
       isPcsBalanced,
     };
-  }, [selectedQueueItem, inspectedPcs, vdiOkPcs, vdiSalvagePcs, vdiRejectionPcs, salvageReasons]);
+  }, [selectedQueueItem, targetWorkOrderId, workOrders, inspectedPcs, vdiOkPcs, vdiSalvagePcs, vdiRejectionPcs, salvageReasons]);
 
   // Save QC Inspection Entry
   const handleSave = async (e: React.FormEvent) => {
@@ -804,11 +775,16 @@ export default function QcInspectionClient() {
       return;
     }
 
+    const effectiveWoId = targetWorkOrderId || selectedQueueItem.work_order_id;
+    const targetChild = selectedQueueItem.child_work_orders?.find((c: any) => (c.work_order_id || c.id) === effectiveWoId);
+    const targetWo = workOrders.find((w) => w.id === effectiveWoId);
+    const displayWoNo = targetChild?.work_order_no || targetWo?.work_order_no || selectedQueueItem.work_order_no;
+
     setSaving(true);
     try {
       const payload = {
-        work_order_id: selectedQueueItem.work_order_id,
-        process_route_id: selectedQueueItem.process_route_id || null,
+        work_order_id: effectiveWoId,
+        process_route_id: targetWo?.process_route_id || selectedQueueItem.process_route_id || null,
         inspection_date: formDate,
         inspected_pcs: inspP,
         inspected_mtr: formMetrics.inspMtr,
@@ -834,11 +810,11 @@ export default function QcInspectionClient() {
           .update(payload)
           .eq('id', editingInspection.id);
         if (error) throw error;
-        toast.success(`Updated QC Inspection for WO ${selectedQueueItem.work_order_no}`);
+        toast.success(`Updated QC Inspection for WO ${displayWoNo}`);
       } else {
         const { error } = await supabase.from('qc_inspections').insert([payload]);
         if (error) throw error;
-        toast.success(`Recorded QC Inspection for WO ${selectedQueueItem.work_order_no}: ${okP} OK, ${salP} Salvage`);
+        toast.success(`Recorded QC Inspection for WO ${displayWoNo}: ${okP} OK, ${salP} Salvage`);
       }
 
       setModalOpen(false);
@@ -1334,6 +1310,13 @@ export default function QcInspectionClient() {
                               )}
                             </div>
                           )}
+                          {item.is_master && Array.isArray(item.child_work_orders) && item.child_work_orders.length > 0 && (
+                            <div className="mt-1 flex items-center gap-1 flex-wrap">
+                              <span className="inline-flex items-center gap-1 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 text-[10px] font-semibold">
+                                Child Orders ({item.child_work_orders.length}): {item.child_work_orders.map((c: any) => c.work_order_no).filter(Boolean).join(', ')}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-3 text-slate-700 max-w-[150px] truncate">
                           {item.customer_name || '—'}
@@ -1702,29 +1685,71 @@ export default function QcInspectionClient() {
 
             {/* Form */}
             <form onSubmit={handleSave} className="p-6 space-y-5">
+              {/* Campaign Work Order Selection */}
+              {selectedQueueItem.is_master && Array.isArray(selectedQueueItem.child_work_orders) && selectedQueueItem.child_work_orders.length > 0 && !editingInspection && (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 space-y-1.5">
+                  <label className="block text-xs font-bold text-indigo-950">
+                    Assign Inspection to Work Order *
+                  </label>
+                  <select
+                    value={targetWorkOrderId}
+                    onChange={(e) => setTargetWorkOrderId(e.target.value)}
+                    className="w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-xs font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                  >
+                    <option value={selectedQueueItem.work_order_id}>
+                      Master WO #{selectedQueueItem.work_order_no} — {selectedQueueItem.customer_name || 'Commercial Tube'}
+                    </option>
+                    {selectedQueueItem.child_work_orders.map((c: any) => {
+                      const cId = c.work_order_id || c.id;
+                      const matchedWo = workOrders.find((w) => w.id === cId);
+                      return (
+                        <option key={cId} value={cId}>
+                          Child WO #{c.work_order_no || matchedWo?.work_order_no} — {c.customer_name || matchedWo?.customer_name || 'Commercial Tube'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="text-[11px] text-indigo-700 font-medium">
+                    This rolling campaign includes {selectedQueueItem.child_work_orders.length} child orders. Select which order these inspected cut pieces belong to.
+                  </p>
+                </div>
+              )}
+
               {/* Order Info Badge */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 rounded-xl bg-blue-50/50 border border-blue-100 p-3 text-xs">
-                <div>
-                  <span className="text-slate-500 block">Specification:</span>
-                  <span className="font-bold text-slate-800">{selectedQueueItem.specification || '—'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Dimensions:</span>
-                  <span className="font-bold font-mono text-slate-800">
-                    {selectedQueueItem.size_od} × {selectedQueueItem.size_wt} mm
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Length:</span>
-                  <span className="font-bold font-mono text-slate-800">{selectedQueueItem.avg_length} m</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Available {selectedQueueItem.feeder_source_label || 'Feeder OK'}:</span>
-                  <span className="font-black font-mono text-blue-900 text-sm">
-                    {selectedQueueItem.available_ht_ok_pcs} Nos
-                  </span>
-                </div>
-              </div>
+              {(() => {
+                const effectiveWoId = targetWorkOrderId || selectedQueueItem.work_order_id;
+                const targetChild = selectedQueueItem.child_work_orders?.find((c: any) => (c.work_order_id || c.id) === effectiveWoId);
+                const targetWo = workOrders.find((w) => w.id === effectiveWoId);
+                const dispSpec = targetChild?.grade || targetWo?.specification || targetWo?.grade || selectedQueueItem.specification || '—';
+                const dispOd = targetChild?.size_od || targetWo?.size_od || selectedQueueItem.size_od;
+                const dispWt = targetChild?.size_wt || targetWo?.size_wt || selectedQueueItem.size_wt;
+                const dispAvg = targetChild?.l1 && targetChild?.l2 ? (Number(targetChild.l1) + Number(targetChild.l2)) / 2 : Number(targetChild?.l1 || targetWo?.l1 || selectedQueueItem.avg_length || 6.0);
+
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 rounded-xl bg-blue-50/50 border border-blue-100 p-3 text-xs">
+                    <div>
+                      <span className="text-slate-500 block">Specification:</span>
+                      <span className="font-bold text-slate-800">{dispSpec}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Dimensions:</span>
+                      <span className="font-bold font-mono text-slate-800">
+                        {dispOd} × {dispWt} mm
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Length:</span>
+                      <span className="font-bold font-mono text-slate-800">{dispAvg} m</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Available {selectedQueueItem.feeder_source_label || 'Feeder OK'}:</span>
+                      <span className="font-black font-mono text-blue-900 text-sm">
+                        {selectedQueueItem.available_ht_ok_pcs} Nos
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Date Input */}
               <div>

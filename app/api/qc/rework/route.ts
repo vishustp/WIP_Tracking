@@ -60,13 +60,21 @@ export async function POST(req: NextRequest) {
     // 1. Fetch Source Work Order Details
     const { data: wo, error: woErr } = await admin
       .from('work_orders')
-      .select('id, work_order_no, customer_name, size_od, size_wt, l1, l2, process_route_id')
+      .select('id, work_order_no, customer_name, size_od, size_wt, l1, l2')
       .eq('id', work_order_id)
       .single();
 
     if (woErr || !wo) {
       return NextResponse.json({ error: 'Work Order not found.' }, { status: 404 });
     }
+
+    const { data: sourcePlan } = await admin
+      .from('rolling_plans')
+      .select('process_route_id')
+      .eq('work_order_id', work_order_id)
+      .limit(1)
+      .maybeSingle();
+    const sourceRouteId = sourcePlan?.process_route_id || null;
 
     const od = Number(wo.size_od || 0);
     const wt = Number(wo.size_wt || 0);
@@ -111,7 +119,7 @@ export async function POST(req: NextRequest) {
     if (divPcs > 0) {
       const { data: targetWo, error: targetErr } = await admin
         .from('work_orders')
-        .select('id, work_order_no, process_route_id')
+        .select('id, work_order_no')
         .eq('id', target_work_order_id)
         .single();
 
@@ -120,7 +128,13 @@ export async function POST(req: NextRequest) {
       }
       targetWoNo = targetWo.work_order_no;
       if (!targetRoute) {
-        targetRoute = targetWo.process_route_id || wo.process_route_id;
+        const { data: targetPlan } = await admin
+          .from('rolling_plans')
+          .select('process_route_id')
+          .eq('work_order_id', target_work_order_id)
+          .limit(1)
+          .maybeSingle();
+        targetRoute = targetPlan?.process_route_id || sourceRouteId;
       }
     }
 
@@ -219,7 +233,7 @@ export async function POST(req: NextRequest) {
         target_wo_id: target_work_order_id,
         diverted_qty: divertedMtr,
         work_center: 'FINISHING',
-        route_id: targetRoute || wo.process_route_id,
+        route_id: targetRoute || sourceRouteId,
         multiple: 1,
         reason: diversion_reason
           ? `VDI Salvage Rework: ${diversion_reason}`

@@ -178,7 +178,10 @@ export function reconcileWorkOrderWip(
     let stageOd = Number(cur.od || 0);
     let stageWt = Number(cur.wt || 0);
 
-    if (sc === 'HOLLOW_HEAT_TREATMENT') {
+    if (cur.incoming_pcs !== undefined) {
+      incomingPcs = Number(cur.incoming_pcs);
+      stageLen = finalAvgLen;
+    } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
       // Alloy Steel (ALLOY_HFS / ALLOY_CDS): Feeder is Rolling HTC OK
       incomingPcs = isAlloy ? rollHtcPcs : 0;
       stageLen = actualMhLen;
