@@ -118,9 +118,16 @@ export function calculateStandardTolerances(
     stdUpper.includes('213') ||
     stdUpper.includes('192') ||
     stdUpper.includes('179') ||
-    stdUpper.includes('3059') ||
     stdUpper.includes('MIN') ||
     stdUpper.includes('MW');
+
+  const isPipeStandard =
+    stdUpper.includes('106') ||
+    stdUpper.includes('53') ||
+    stdUpper.includes('335') ||
+    stdUpper.includes('333') ||
+    stdUpper.includes('API') ||
+    stdUpper.includes('312');
 
   let odMin = odMm;
   let odMax = odMm;
@@ -128,7 +135,7 @@ export function calculateStandardTolerances(
 
   let wtMin = wtMm;
   let wtMax = wtMm;
-  let wtTolStr = '+20% / -12.5%';
+  let wtTolStr = '+15% / -12.5%';
 
   if (isCds) {
     // Cold Drawn Seamless tolerances (ASTM A450 / ASME SA450 Table 1 / ASTM A1016)
@@ -166,8 +173,14 @@ export function calculateStandardTolerances(
       wtMin = Number(wtMm.toFixed(2)); // 0% minus tolerance
       wtMax = Number((wtMm * 1.20).toFixed(2)); // +20% max
       wtTolStr = '+20% / -0% (MIN WALL)';
+    } else if (isPipeStandard) {
+      // ASTM Pipe Standard (ASTM A106 / A530 Table 1):
+      // Minimum wall thickness at any point shall not be more than 12.5% under nominal wall
+      wtMin = Number((wtMm * 0.875).toFixed(2));
+      wtMax = Number((wtMm * 1.15).toFixed(2));
+      wtTolStr = '+15% / -12.5%';
     } else {
-      // Nominal wall for CDS: +15% / -10% (or ±10%)
+      // Nominal wall for CDS boiler / precision tubes: +15% / -10% (or ±10%)
       wtMin = Number((wtMm * 0.90).toFixed(2));
       wtMax = Number((wtMm * 1.15).toFixed(2));
       wtTolStr = '+15% / -10%';
@@ -195,10 +208,10 @@ export function calculateStandardTolerances(
       wtMax = Number((wtMm * 1.28).toFixed(2)); // +28% max
       wtTolStr = '+28% / -0% (MIN WALL)';
     } else {
-      // Nominal wall for HFS: Typically +20% / -12.5% per ASTM A530
+      // Nominal wall for HFS: +15% / -12.5% per ASTM A530
       wtMin = Number((wtMm * 0.875).toFixed(2)); // -12.5%
-      wtMax = Number((wtMm * 1.20).toFixed(2));  // +20%
-      wtTolStr = '+20% / -12.5%';
+      wtMax = Number((wtMm * 1.15).toFixed(2));  // +15%
+      wtTolStr = '+15% / -12.5%';
     }
   }
 
