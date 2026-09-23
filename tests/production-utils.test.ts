@@ -13,6 +13,7 @@ import {
   attachCustomLengthToRemarks,
   extractCustomLengthFromRemarks,
   normalizeSpecification,
+  calcElongationFactor,
 } from "../lib/productionUtils";
 
 describe("Production Utils Unit Tests", () => {

@@ -1678,6 +1678,7 @@ export default function QcInspectionClient() {
                 type="button"
                 onClick={() => setModalOpen(false)}
                 className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                aria-label="Close modal"
               >
                 <X size={18} />
               </button>
@@ -2025,6 +2026,7 @@ export default function QcInspectionClient() {
                 type="button"
                 onClick={() => setReworkModalOpen(false)}
                 className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                aria-label="Close modal"
               >
                 <X size={18} />
               </button>
