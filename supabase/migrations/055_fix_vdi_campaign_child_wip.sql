@@ -276,7 +276,7 @@ SELECT
   COALESCE((SELECT SUM(current_wip_mt) FROM public.vw_route_stage_wip WHERE stage_code <> 'ROLLING'), 0) AS total_wip_mt,
   COALESCE((SELECT SUM(production_qty) FROM public.vw_route_stage_wip WHERE stage_code <> 'ROLLING'), 0) AS total_production,
   COALESCE((SELECT SUM(rejection_qty) FROM public.vw_route_stage_wip WHERE stage_code <> 'ROLLING'), 0) AS total_rejection,
-  (SELECT COUNT(*) FROM public.work_orders WHERE status IN ('Open', 'Pending', 'In Progress')) AS active_orders,
-  (SELECT COUNT(*) FROM public.work_orders WHERE target_date < current_date AND status IN ('Open', 'Pending', 'In Progress')) AS delayed_orders;
+  (SELECT COUNT(*) FROM public.work_orders WHERE status::text IN ('Pending Plan', 'Scheduled', 'In Progress')) AS active_orders,
+  (SELECT COUNT(*) FROM public.work_orders WHERE target_date < CURRENT_DATE AND status::text IN ('Pending Plan', 'Scheduled', 'In Progress')) AS delayed_orders;
 
 GRANT SELECT ON public.vw_dashboard_kpis TO anon, authenticated, service_role;
