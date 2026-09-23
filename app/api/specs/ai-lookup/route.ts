@@ -51,7 +51,7 @@ Return strictly valid JSON with these exact keys:
   "end_condition": "end preparation e.g. BEVEL END (30°-35°)",
   "bundling": "bundling style e.g. HEXAGONAL",
   "end_cap": "protective cap e.g. PLASTIC PROTECTOR",
-  "is_min_wall": boolean,
+  "is_min_wall": boolean (true ONLY for standards explicitly ordered as Minimum Wall like ASTM A213/SA210 min wall; false for BS 3059, ASTM A106, A53, A335, API 5L, IS 1239 which are standard Nominal Wall),
   "cds_od_tolerance": "Cold Drawn Seamless (CDS) OD tolerance e.g. ±0.10 mm to ±0.20 mm",
   "cds_wt_tolerance": "Cold Drawn Seamless (CDS) WT tolerance e.g. ±10.0% (Nominal) / +20% -0% (Min Wall)",
   "hfs_od_tolerance": "Hot Finished Seamless (HFS) OD tolerance e.g. ±0.75% (NPS 1/8 to 1-1/2: ±0.40 mm)",
