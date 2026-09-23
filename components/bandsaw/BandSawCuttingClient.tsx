@@ -78,41 +78,13 @@ export default function BandSawCuttingClient() {
         setQueueRows(queueData.data);
       }
 
-      // Fetch Band Saw production history via RPC
-      const [{ data: historyData, error: historyErr }, { data: logDetails }, { data: appUsersData }] = await Promise.all([
-        supabase.rpc('get_production_entries', {
-          p_search: null,
-          p_stage_code: 'BAND_SAW',
-          p_route_code: null,
-          p_from_date: null,
-          p_to_date: null,
-          p_limit: 500,
-          p_offset: 0,
-        }),
-        supabase.from('production_logs').select('id, created_by, created_at'),
-        supabase.from('app_users').select('auth_user_id, employee_name, email'),
-      ]);
-
-      if (!historyErr && Array.isArray(historyData)) {
-        const userMap = new Map<string, string>();
-        (appUsersData || []).forEach((u: any) => {
-          if (u.auth_user_id) userMap.set(u.auth_user_id, u.employee_name || u.email?.split('@')[0]);
-        });
-        const logMap = new Map<string, any>();
-        (logDetails || []).forEach((l: any) => logMap.set(l.id, l));
-
-        const enriched = (historyData as ProductionEntry[]).map((e) => {
-          const l = logMap.get(e.id);
-          const opName = l?.created_by ? userMap.get(l.created_by) : null;
-          return {
-            ...e,
-            created_by: l?.created_by,
-            operator_name: opName,
-          };
-        });
-        setHistoryEntries(enriched);
-      } else if (historyErr) {
-        console.error('Failed to load band saw history:', historyErr);
+      // Fetch Band Saw production history from /api/production/history
+      const histRes = await fetch('/api/production/history?stage=BAND_SAW', {
+        cache: 'no-store',
+      });
+      const histJson = await histRes.json();
+      if (histJson?.success && Array.isArray(histJson.data)) {
+        setHistoryEntries(histJson.data);
       }
     } catch (err) {
       console.error('Failed to load band saw data:', err);
@@ -661,13 +633,13 @@ export default function BandSawCuttingClient() {
                           </span>
                         </td>
                         <td className="py-3 px-3">
-                          {entry.operator_name ? (
+                          {entry.operator_name || currentUser?.name ? (
                             <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 shadow-2xs">
                               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                              {entry.operator_name}
+                              {entry.operator_name || currentUser?.name}
                             </span>
                           ) : (
-                            <span className="text-[11px] text-slate-400 font-medium italic">System</span>
+                            <span className="text-[11px] text-slate-400 font-medium italic">Operator</span>
                           )}
                         </td>
                         <td className="py-3 px-4 text-center">

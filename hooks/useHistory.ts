@@ -136,14 +136,14 @@ export function useHistory(
 
       const userMap = new Map<string, { name: string; email: string; role: string; dept?: string }>();
       ((appUsersData as any[]) || []).forEach((u: any) => {
-        if (u.auth_user_id) {
-          userMap.set(u.auth_user_id, {
-            name: u.employee_name || u.email?.split('@')[0] || 'User',
-            email: u.email,
-            role: u.role,
-            dept: u.department,
-          });
-        }
+        const info = {
+          name: u.employee_name || u.name || u.email?.split('@')[0] || 'User',
+          email: u.email,
+          role: u.role,
+          dept: u.department,
+        };
+        if (u.auth_user_id) userMap.set(u.auth_user_id, info);
+        if (u.id) userMap.set(u.id, info);
       });
       ((profilesData as any[]) || []).forEach((p: any) => {
         if (p.id && !userMap.has(p.id)) {

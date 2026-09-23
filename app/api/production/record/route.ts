@@ -123,6 +123,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const resolvedUserId =
+      body.operator_id ||
+      body.created_by ||
+      userId ||
+      authCheck.auth?.appUser?.auth_user_id ||
+      authCheck.auth?.appUser?.id ||
+      null;
+
     // Try using record_production_batch first for standard execution
     const { error: rpcError } = await admin.rpc('record_production_batch', {
       entries: sanitizedEntries,
@@ -130,6 +138,15 @@ export async function POST(req: NextRequest) {
     });
 
     if (!rpcError) {
+      // Ensure newly inserted logs have created_by set to the logged-in operator
+      if (resolvedUserId) {
+        const woIds = sanitizedEntries.map((e: any) => e.work_order_id);
+        await admin
+          .from('production_logs')
+          .update({ created_by: resolvedUserId })
+          .in('work_order_id', woIds)
+          .is('created_by', null);
+      }
       return NextResponse.json({ success: true, count: sanitizedEntries.length, method: 'rpc' });
     }
 

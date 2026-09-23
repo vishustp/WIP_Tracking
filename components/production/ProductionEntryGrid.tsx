@@ -546,12 +546,25 @@ export default function ProductionEntryGrid() {
         };
       });
 
+      let sessionToken: string | null = null;
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        sessionToken = sessionData?.session?.access_token || null;
+      } catch {}
+
+      const currentUserId = user?.auth_user_id || user?.id || null;
+
       const res = await fetch('/api/production/record', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        },
         body: JSON.stringify({
           entries: payload,
           p_process_date: date,
+          operator_id: currentUserId,
+          created_by: currentUserId,
         }),
       });
 

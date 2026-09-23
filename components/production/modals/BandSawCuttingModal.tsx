@@ -593,6 +593,17 @@ export function BandSawCuttingModal({
         row.l2
       );
 
+      let sessionUserId: string | null = null;
+      let sessionToken: string | null = null;
+      try {
+        const { createClient } = await import('@/lib/supabase/client');
+        const supabase = createClient();
+        const { data: authData } = await supabase.auth.getUser();
+        sessionUserId = authData?.user?.id || null;
+        const { data: sessionData } = await supabase.auth.getSession();
+        sessionToken = sessionData?.session?.access_token || null;
+      } catch {}
+
       const payload = {
         entries: [
           {
@@ -609,14 +620,20 @@ export function BandSawCuttingModal({
             remarks: finalRemarks,
             input_l1: row.l1 ? String(row.l1) : null,
             input_l2: row.l2 ? String(row.l2) : null,
+            created_by: sessionUserId,
           },
         ],
         p_process_date: date,
+        operator_id: sessionUserId,
+        created_by: sessionUserId,
       };
 
       const res = await fetch('/api/production/record', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        },
         body: JSON.stringify(payload),
       });
 
