@@ -633,13 +633,13 @@ export default function BandSawCuttingClient() {
                           </span>
                         </td>
                         <td className="py-3 px-3">
-                          {entry.operator_name || currentUser?.name ? (
+                          {entry.operator_name ? (
                             <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 shadow-2xs">
                               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                              {entry.operator_name || currentUser?.name}
+                              {entry.operator_name}
                             </span>
                           ) : (
-                            <span className="text-[11px] text-slate-400 font-medium italic">Operator</span>
+                            <span className="text-[11px] text-slate-400 font-medium italic">Unassigned</span>
                           )}
                         </td>
                         <td className="py-3 px-4 text-center">

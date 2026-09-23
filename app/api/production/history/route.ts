@@ -35,12 +35,12 @@ export async function GET(req: NextRequest) {
     // 2. Fetch created_by from production_logs and operators from app_users
     const [{ data: logs }, { data: appUsers }] = await Promise.all([
       admin.from('production_logs').select('id, created_by, created_at'),
-      admin.from('app_users').select('id, auth_user_id, employee_name, name, email'),
+      admin.from('app_users').select('id, auth_user_id, employee_name, email'),
     ]);
 
     const userMap = new Map<string, string>();
     (appUsers || []).forEach((u: any) => {
-      const displayName = u.employee_name || u.name || u.email?.split('@')[0] || 'Operator';
+      const displayName = u.employee_name || u.email?.split('@')[0] || 'Operator';
       if (u.auth_user_id) userMap.set(u.auth_user_id, displayName);
       if (u.id) userMap.set(u.id, displayName);
       if (u.email) userMap.set(u.email.toLowerCase(), displayName);

@@ -281,7 +281,7 @@ export function ProductionHistoryTable({
                           </span>
                         </div>
                       ) : (
-                        <span className="text-[11px] text-slate-400 font-medium italic">System</span>
+                        <span className="text-[11px] text-slate-400 font-medium italic">Unassigned</span>
                       )}
                     </td>
                     <td className="py-2.5 px-3 text-center">
