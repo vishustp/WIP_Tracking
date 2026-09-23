@@ -494,6 +494,226 @@ export const KNOWN_STANDARDS_LIBRARY: Record<string, any> = {
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
   },
+  'SA106_C': {
+    spec_full: 'ASME SA106 Gr C (IBR) / ASTM A106 Gr C',
+    steel_grade: 'High-Strength Carbon Steel (SA106 Gr.C)',
+    smys_mpa: 275,
+    uts_mpa: 485,
+    elongation_pct: 20,
+    hardness: '85 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'WHITE + BROWN',
+    rm_color: 'YELLOW + BROWN',
+    whf_temp: '1220° C (+/- 40° C)',
+    induction_temp: '860 °C - 890° C',
+    sizing_outlet_temp: '880° C TO 920° C',
+    ht_cycle: 'NORMALIZED',
+    ht_condition: 'NORMALIZE 900°C - 940°C AIR COOL',
+    ndt: 'UT',
+    holding_time_sec: 5,
+    coating: 'BLACK VARNISH',
+    end_condition: 'BEVEL END (30°-35°)',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
+  'SA192': {
+    spec_full: 'ASME SA 192 (IBR) / ASTM A192',
+    steel_grade: 'Seamless Carbon Steel Boiler Tubes (SA192)',
+    smys_mpa: 180,
+    uts_mpa: 325,
+    elongation_pct: 35,
+    hardness: '77 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'YELLOW + BLUE',
+    rm_color: 'YELLOW + BLUE',
+    whf_temp: '1200° C - 1240° C',
+    induction_temp: '860 °C - 890° C',
+    sizing_outlet_temp: '880° C TO 920° C',
+    ht_cycle: 'SUB-CRITICAL ANNEALED / NORMALIZED',
+    ht_condition: 'SUB-CRITICAL ANNEAL (650°C - 700°C) AFTER COLD FINISHING',
+    ndt: 'UT / ET',
+    holding_time_sec: 5,
+    coating: 'RUST PREVENTIVE OIL / CLEAR VARNISH',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
+  'SA179': {
+    spec_full: 'ASME SA 179 (IBR) / ASTM A179',
+    steel_grade: 'Seamless Cold-Drawn Low-Carbon Steel (SA179)',
+    smys_mpa: 180,
+    uts_mpa: 325,
+    elongation_pct: 35,
+    hardness: '72 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'WHITE + BLACK',
+    rm_color: 'YELLOW + BLACK',
+    whf_temp: '1200° C - 1240° C',
+    induction_temp: '860 °C - 890° C',
+    sizing_outlet_temp: '880° C TO 920° C',
+    ht_cycle: 'SUB-CRITICAL ANNEALED / NORMALIZED',
+    ht_condition: 'HEAT TREATED AFTER FINAL COLD DRAW PASS AT 650°C MIN',
+    ndt: 'UT / ET',
+    holding_time_sec: 5,
+    coating: 'RUST PREVENTIVE OIL',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
+  'A213_T12': {
+    spec_full: 'ASME SA213 GR.T12 (IBR) / ASTM A213 T12',
+    steel_grade: '1Cr - 0.5Mo Alloy Steel (SA213 Gr.T12)',
+    smys_mpa: 220,
+    uts_mpa: 415,
+    elongation_pct: 30,
+    hardness: '85 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'ORANGE + GREEN',
+    rm_color: 'ORANGE + GREEN',
+    whf_temp: '1200° C - 1250° C',
+    induction_temp: '900 °C - 950° C',
+    sizing_outlet_temp: '900° C',
+    ht_cycle: 'NORMALIZED & TEMPERED',
+    ht_condition: 'NORMALIZE 900-940°C, TEMPER 650-710°C',
+    ndt: 'UT + MT',
+    holding_time_sec: 5,
+    coating: 'RUST PREVENTIVE OIL',
+    end_condition: 'PLAIN END / BEVEL END (30°-35°)',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC CAP',
+  },
+  'A213_T22': {
+    spec_full: 'ASME SA213 GR.T22 (IBR) / ASTM A213 T22',
+    steel_grade: '2.25Cr - 1Mo Alloy Steel (SA213 Gr.T22)',
+    smys_mpa: 205,
+    uts_mpa: 415,
+    elongation_pct: 30,
+    hardness: '85 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'RED + WHITE',
+    rm_color: 'RED + WHITE',
+    whf_temp: '1220° C - 1260° C',
+    induction_temp: '920 °C - 960° C',
+    sizing_outlet_temp: '920° C',
+    ht_cycle: 'NORMALIZED & TEMPERED',
+    ht_condition: 'NORMALIZE 920-960°C, TEMPER 680-720°C',
+    ndt: 'UT + MT',
+    holding_time_sec: 5,
+    coating: 'BLACK VARNISH / RUST OIL',
+    end_condition: 'PLAIN END / BEVEL END (30°-35°)',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC CAP',
+  },
+  'A335_P11': {
+    spec_full: 'ASME A335 GR P11 (IBR) / ASME SA335 GR P11',
+    steel_grade: '1.25Cr - 0.5Mo Alloy Steel (P11 Pipe)',
+    smys_mpa: 205,
+    uts_mpa: 415,
+    elongation_pct: 30,
+    hardness: '85 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'ORANGE',
+    rm_color: 'ORANGE + WHITE',
+    whf_temp: '1200° C - 1250° C',
+    induction_temp: '900 °C - 950° C',
+    sizing_outlet_temp: '900° C',
+    ht_cycle: 'NORMALIZED & TEMPERED',
+    ht_condition: 'NORMALIZE 900-940°C, TEMPER 650-700°C',
+    ndt: 'UT + MT',
+    holding_time_sec: 5,
+    coating: 'BLACK VARNISH / RUST OIL',
+    end_condition: 'BEVEL END (30°-35°)',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC CAP',
+  },
+  'ST35_8': {
+    spec_full: 'DIN 17175 St 35.8 (IBR) / ST 35.8',
+    steel_grade: 'Heat-Resistant Carbon Steel (St 35.8 III)',
+    smys_mpa: 235,
+    uts_mpa: 420,
+    elongation_pct: 25,
+    hardness: '78 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'WHITE + BROWN',
+    rm_color: 'YELLOW + BROWN',
+    whf_temp: '1200° C - 1240° C',
+    induction_temp: '860 °C - 890° C',
+    sizing_outlet_temp: '880° C TO 920° C',
+    ht_cycle: 'NORMALIZED',
+    ht_condition: 'NORMALIZE 890°C - 930°C AIR COOL',
+    ndt: 'UT / ET',
+    holding_time_sec: 5,
+    coating: 'BLACK VARNISH / RUST OIL',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
+  'DIN2391_ST52': {
+    spec_full: 'DIN 2391 ST 52 / EN 10305-1 E355',
+    steel_grade: 'High-Yield Precision Carbon Steel (St 52 / E355)',
+    smys_mpa: 355,
+    uts_mpa: 520,
+    elongation_pct: 22,
+    hardness: '85 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'BLUE + WHITE',
+    rm_color: 'BLUE + WHITE',
+    whf_temp: '1200° C - 1240° C',
+    induction_temp: '880 °C - 920° C',
+    sizing_outlet_temp: '890° C TO 930° C',
+    ht_cycle: 'STRESS RELIEVED / NORMALIZED (+SR / +N)',
+    ht_condition: 'STRESS RELIEF 550-600°C OR NORMALIZE 890-930°C',
+    ndt: 'UT / ET',
+    holding_time_sec: 5,
+    coating: 'LIGHT RUST PREVENTIVE OIL',
+    end_condition: 'PLAIN END / SQUARE CUT DEBURRED',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
+  'MS_900DP': {
+    spec_full: 'MS 900DP Dual Phase High Strength Tubing',
+    steel_grade: 'Dual Phase High-Strength Steel (DP 900)',
+    smys_mpa: 650,
+    uts_mpa: 900,
+    elongation_pct: 14,
+    hardness: '95 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'VIOLET',
+    rm_color: 'VIOLET + WHITE',
+    whf_temp: '1200° C - 1250° C',
+    induction_temp: '900 °C - 950° C',
+    sizing_outlet_temp: '920° C',
+    ht_cycle: 'CONTROLLED INTERCRITICAL ANNEAL + QUENCH',
+    ht_condition: 'INTERCRITICAL DUAL-PHASE HEAT TREATMENT (780-820°C WATER QUENCH)',
+    ndt: 'UT + FLUX LEAKAGE',
+    holding_time_sec: 5,
+    coating: 'RUST PREVENTIVE OIL',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
+  'SAE_1010': {
+    spec_full: 'SAE 1010 Mechanical Tubing (ASTM A519)',
+    steel_grade: 'Low Carbon Mechanical Steel (SAE 1010)',
+    smys_mpa: 205,
+    uts_mpa: 365,
+    elongation_pct: 20,
+    hardness: '70 HRB MAX',
+    straightness: '1:1000',
+    color_spec: 'GREEN + WHITE',
+    rm_color: 'GREEN + WHITE',
+    whf_temp: '1180° C - 1220° C',
+    induction_temp: '850 °C - 880° C',
+    sizing_outlet_temp: '870° C TO 900° C',
+    ht_cycle: 'ANNEALED / STRESS RELIEVED (+A / +SR)',
+    ht_condition: 'SUB-CRITICAL ANNEAL 620-680°C',
+    ndt: 'UT / ET',
+    holding_time_sec: 5,
+    coating: 'LIGHT RUST PREVENTIVE OIL',
+    end_condition: 'PLAIN END / SQUARE CUT',
+    bundling: 'HEXAGONAL',
+    end_cap: 'PLASTIC PROTECTOR',
+  },
 };
 
 /**
@@ -535,6 +755,12 @@ export function getDeterministicProcessSpec(params: {
       matchedLib = KNOWN_STANDARDS_LIBRARY['BS3059_360'];
       refStd = 'BS 3059 Part 2 Gr 360 (IBR)';
     }
+  } else if (specText.includes('192') || gradeText.includes('192')) {
+    matchedLib = KNOWN_STANDARDS_LIBRARY['SA192'];
+    refStd = 'ASME SA 192 (IBR)';
+  } else if (specText.includes('179') || gradeText.includes('179')) {
+    matchedLib = KNOWN_STANDARDS_LIBRARY['SA179'];
+    refStd = 'ASME SA 179 (IBR)';
   } else if (specText.includes('210') || gradeText.includes('210')) {
     if (specText.includes('GR C') || specText.includes('GR.C') || gradeText.includes('GR C') || gradeText.includes('GR.C')) {
       matchedLib = KNOWN_STANDARDS_LIBRARY['A210_C'];
@@ -549,18 +775,48 @@ export function getDeterministicProcessSpec(params: {
   } else if (specText.includes('304') || gradeText.includes('304')) {
     matchedLib = KNOWN_STANDARDS_LIBRARY['A312_304L'];
     refStd = 'ASTM A312 TP304L';
-  } else if (specText.includes('213') || specText.includes('T11') || gradeText.includes('T11')) {
-    matchedLib = KNOWN_STANDARDS_LIBRARY['A213_T11'];
-    refStd = 'ASTM A213 T11';
-  } else if (specText.includes('335') || specText.includes('P22') || gradeText.includes('P22')) {
-    matchedLib = KNOWN_STANDARDS_LIBRARY['A335_P22'];
-    refStd = 'ASTM A335 P22';
+  } else if (specText.includes('213') || specText.includes('T11') || specText.includes('T12') || specText.includes('T22') || gradeText.includes('T11') || gradeText.includes('T12') || gradeText.includes('T22')) {
+    if (specText.includes('T22') || gradeText.includes('T22')) {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['A213_T22'];
+      refStd = 'ASME SA213 GR.T22 (IBR)';
+    } else if (specText.includes('T12') || gradeText.includes('T12')) {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['A213_T12'];
+      refStd = 'ASME SA213 GR.T12 (IBR)';
+    } else {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['A213_T11'];
+      refStd = 'ASME SA213 Gr.T11 (IBR)';
+    }
+  } else if (specText.includes('335') || specText.includes('P22') || specText.includes('P11') || gradeText.includes('P22') || gradeText.includes('P11')) {
+    if (specText.includes('P11') || gradeText.includes('P11')) {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['A335_P11'];
+      refStd = 'ASME A335 GR P11 (IBR)';
+    } else {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['A335_P22'];
+      refStd = 'ASME SA335 GR P22 (IBR)';
+    }
+  } else if (specText.includes('35.8') || gradeText.includes('35.8') || specText.includes('ST 35') || gradeText.includes('ST 35')) {
+    matchedLib = KNOWN_STANDARDS_LIBRARY['ST35_8'];
+    refStd = 'DIN 17175 St 35.8 (IBR)';
+  } else if (specText.includes('2391') || gradeText.includes('2391') || specText.includes('ST 52') || gradeText.includes('ST 52') || specText.includes('ST52') || gradeText.includes('ST52')) {
+    matchedLib = KNOWN_STANDARDS_LIBRARY['DIN2391_ST52'];
+    refStd = 'DIN 2391 ST 52';
+  } else if (specText.includes('900DP') || gradeText.includes('900DP') || specText.includes('MS 900') || gradeText.includes('MS 900')) {
+    matchedLib = KNOWN_STANDARDS_LIBRARY['MS_900DP'];
+    refStd = 'MS 900DP';
+  } else if (specText.includes('1010') || gradeText.includes('1010')) {
+    matchedLib = KNOWN_STANDARDS_LIBRARY['SAE_1010'];
+    refStd = 'SAE 1010';
   } else if (specText.includes('A53') || gradeText.includes('A53')) {
     matchedLib = KNOWN_STANDARDS_LIBRARY['A53'];
     refStd = 'ASTM A53 Gr B';
   } else if (specText.includes('106') || gradeText.includes('106') || gradeText.includes('1018')) {
-    matchedLib = KNOWN_STANDARDS_LIBRARY['A106'];
-    refStd = 'ASTM A106 Gr B (IBR)';
+    if (specText.includes('GR C') || specText.includes('GR.C') || gradeText.includes('GR C') || gradeText.includes('GR.C')) {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['SA106_C'];
+      refStd = 'ASME SA106 Gr C (IBR)';
+    } else {
+      matchedLib = KNOWN_STANDARDS_LIBRARY['A106'];
+      refStd = 'ASTM A106 Gr B (IBR)';
+    }
   }
 
   // Calculate Hydro Pressure PSI

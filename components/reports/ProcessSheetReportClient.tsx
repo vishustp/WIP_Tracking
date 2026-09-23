@@ -1051,9 +1051,31 @@ export default function ProcessSheetReportClient() {
     setCustOd(targetOd > 0 ? targetOd.toFixed(2) : '');
     setCustWt(targetWt > 0 ? targetWt.toFixed(2) : '');
 
+    // Combine spec & grade so minimum wall and standard matching always match
+    const fullSpecGrade = `${plan.specification || parsedSt.spec || ''} ${plan.grade || parsedSt.grade || ''}`.trim();
+    const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const cleanTarget = norm(fullSpecGrade);
+
+    // Look up matching record in specMasterList
+    const matchedMaster = specMasterList.find((r) => {
+      if (!fullSpecGrade) return false;
+      const sp = (r.spec_full || '').toUpperCase();
+      const sk = (r.spec_key || '').toUpperCase();
+      const sg = (r.steel_grade || '').toUpperCase();
+      const target = fullSpecGrade.toUpperCase();
+      if (target.includes(sk) || target.includes(sp) || sp.includes(target)) return true;
+      if (sg && (target.includes(sg) || sg.includes(target))) return true;
+
+      const nSp = norm(sp);
+      const nSk = norm(sk);
+      const nSg = norm(sg);
+      return cleanTarget.includes(nSk) || cleanTarget.includes(nSp) || nSp.includes(cleanTarget) || (nSg && (cleanTarget.includes(nSg) || nSg.includes(cleanTarget)));
+    });
+
     // 6. Process Wall: For material without negative tolerance -> Customer WT * 1.05; For rest -> Customer WT * 0.97
     const specUpper = `${plan.specification || ''} ${plan.grade || ''} ${parsedSt.spec || ''}`.toUpperCase();
     const isNoNegativeTol =
+      Boolean(matchedMaster?.is_min_wall) ||
       specUpper.includes('MIN') ||
       specUpper.includes('MW') ||
       specUpper.includes('MIN WALL') ||
@@ -1121,18 +1143,6 @@ export default function ProcessSheetReportClient() {
     setPlanQtyNos(nosCalc > 0 ? nosCalc.toString() : '');
     setPlanQtyMt(kgMtr > 0 ? ((kgMtr * Number(plannedMtr || 0)) / 1000).toFixed(2) : '');
     setOrderQty(plan.ordered_qty_mtr ? `${plan.ordered_qty_mtr} MTR` : plannedMtr ? `${plannedMtr} MTR` : '');
-
-    // Combine spec & grade so minimum wall and standard matching (e.g. SA210, A210, A106) always match
-    const fullSpecGrade = `${plan.specification || parsedSt.spec || ''} ${plan.grade || parsedSt.grade || ''}`.trim();
-
-    // Look up matching record in specMasterList
-    const matchedMaster = specMasterList.find((r) => {
-      if (!fullSpecGrade) return false;
-      const sp = (r.spec_full || '').toUpperCase();
-      const sk = (r.spec_key || '').toUpperCase();
-      const target = fullSpecGrade.toUpperCase();
-      return target.includes(sk) || target.includes(sp) || sp.includes(target);
-    });
 
     if (matchedMaster) {
       setPipeColorCode(matchedMaster.color_spec || '');

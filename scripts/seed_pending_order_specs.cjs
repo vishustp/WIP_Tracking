@@ -1,43 +1,16 @@
-export interface SpecMasterRecord {
-  id: string;
-  spec_key: string;
-  spec_full: string;
-  steel_grade: string | null;
-  smys_mpa: number | null;
-  uts_mpa: number | null;
-  elongation_pct: number | null;
-  hardness: string | null;
-  straightness: string | null;
-  color_spec: string | null;
-  rm_color: string | null;
-  whf_temp: string | null;
-  induction_temp: string | null;
-  sizing_outlet_temp: string | null;
-  ht_cycle: string | null;
-  ht_condition: string | null;
-  ndt: string | null;
-  holding_time_sec: number | null;
-  coating: string | null;
-  end_condition: string | null;
-  bundling: string | null;
-  end_cap: string | null;
-  is_min_wall: boolean;
-  is_active: boolean;
-  // Route-Specific Dimensional Tolerances (optional / dynamic in Process Sheet)
-  cds_od_tolerance?: string | null;
-  cds_wt_tolerance?: string | null;
-  hfs_od_tolerance?: string | null;
-  hfs_wt_tolerance?: string | null;
-  od_tolerance?: string | null;
-  wt_tolerance?: string | null;
-  hydro_pressure?: string | null;
-  created_at?: string;
-  updated_at?: string;
-}
+// scripts/seed_pending_order_specs.cjs
+const SUPABASE_URL = "https://dzhvbftmuwfyuaarsxtk.supabase.co/rest/v1";
+const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6aHZiZnRtdXdmeXVhYXJzeHRrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzUwOTYzNywiZXhwIjoyMTAzMDg1NjM3fQ.jtkcZxBOmgEEHvBzGIHYdPpzJf2zA5xfdJZ6XuDSmds";
 
-export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
+const headers = {
+  apikey: KEY,
+  Authorization: `Bearer ${KEY}`,
+  "Content-Type": "application/json",
+  Prefer: "resolution=merge-duplicates"
+};
+
+const SPECIFICATIONS = [
   {
-    id: '00000000-0000-0000-0000-000000000001',
     spec_key: 'A106',
     spec_full: 'ASTM A106 Gr B (IBR) / ASME SA106 Gr B',
     steel_grade: 'Carbon Steel (SAE 1018 / 15C8 RS-03)',
@@ -60,10 +33,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000002',
     spec_key: 'SA106_C',
     spec_full: 'ASME SA106 Gr C (IBR) / ASTM A106 Gr C',
     steel_grade: 'High-Strength Carbon Steel (SA106 Gr.C)',
@@ -86,10 +58,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000003',
     spec_key: 'A53',
     spec_full: 'ASTM A53 Gr B (Type S)',
     steel_grade: 'IS 2062 / SAE 1020',
@@ -112,10 +83,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000004',
     spec_key: 'A210',
     spec_full: 'ASME SA210 Gr A-1 (IBR) / ASTM A210 Gr A-1',
     steel_grade: 'Medium-Carbon Steel (SA210 Gr.A1)',
@@ -138,10 +108,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: true,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000005',
     spec_key: 'A210_C',
     spec_full: 'ASME SA210 Gr C (IBR) / ASTM A210 Gr C',
     steel_grade: 'Medium-Carbon Steel (SA210 Gr.C)',
@@ -164,10 +133,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: true,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000006',
     spec_key: 'SA192',
     spec_full: 'ASME SA 192 (IBR) / ASTM A192',
     steel_grade: 'Seamless Carbon Steel Boiler Tubes (SA192)',
@@ -190,10 +158,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: true,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000007',
     spec_key: 'SA179',
     spec_full: 'ASME SA 179 (IBR) / ASTM A179',
     steel_grade: 'Seamless Cold-Drawn Low-Carbon Steel (SA179)',
@@ -216,10 +183,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: true,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000008',
     spec_key: 'A213_T11',
     spec_full: 'ASME SA213 Gr.T11 (IBR) / ASTM A213 T11',
     steel_grade: '1.25Cr - 0.5Mo Alloy Steel (SA213 Gr.T11)',
@@ -242,10 +208,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC CAP',
     is_min_wall: true,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000009',
     spec_key: 'A213_T12',
     spec_full: 'ASME SA213 GR.T12 (IBR) / ASTM A213 T12',
     steel_grade: '1Cr - 0.5Mo Alloy Steel (SA213 Gr.T12)',
@@ -268,10 +233,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC CAP',
     is_min_wall: true,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000010',
     spec_key: 'A213_T22',
     spec_full: 'ASME SA213 GR.T22 (IBR) / ASTM A213 T22',
     steel_grade: '2.25Cr - 1Mo Alloy Steel (SA213 Gr.T22)',
@@ -294,10 +258,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC CAP',
     is_min_wall: true,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000011',
     spec_key: 'A335_P11',
     spec_full: 'ASME A335 GR P11 (IBR) / ASME SA335 GR P11',
     steel_grade: '1.25Cr - 0.5Mo Alloy Steel (P11 Pipe)',
@@ -320,10 +283,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC CAP',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000012',
     spec_key: 'A335_P22',
     spec_full: 'ASME SA335 GR P22 (IBR) / ASME A335 GR P22',
     steel_grade: '2.25Cr - 1Mo Alloy Steel (P22 Pipe)',
@@ -346,10 +308,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC CAP',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000013',
     spec_key: 'BS3059_320',
     spec_full: 'BS 3059-P1 GR320 (IBR)',
     steel_grade: 'Carbon Steel (BS 3059 Gr.320)',
@@ -372,10 +333,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000014',
     spec_key: 'BS3059_360',
     spec_full: 'BS 3059-P2 GR360 (IBR)',
     steel_grade: 'Carbon Steel (BS 3059 Gr.360)',
@@ -398,10 +358,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000015',
     spec_key: 'BS3059_440',
     spec_full: 'BS 3059 Part 2 Gr 440 (IBR)',
     steel_grade: 'Carbon Steel (BS 3059 Gr.440)',
@@ -424,10 +383,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000016',
     spec_key: 'BS3059_620',
     spec_full: 'BS 3059 Part 2 Gr 620 / 622 (IBR)',
     steel_grade: 'Alloy Steel (BS 3059 Gr.620/622)',
@@ -450,10 +408,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000017',
     spec_key: 'ST35_8',
     spec_full: 'DIN 17175 St 35.8 (IBR) / ST 35.8',
     steel_grade: 'Heat-Resistant Carbon Steel (St 35.8 III)',
@@ -476,10 +433,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000018',
     spec_key: 'DIN2391_ST52',
     spec_full: 'DIN 2391 ST 52 / EN 10305-1 E355',
     steel_grade: 'High-Yield Precision Carbon Steel (St 52 / E355)',
@@ -502,10 +458,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000019',
     spec_key: 'MS_900DP',
     spec_full: 'MS 900DP Dual Phase High Strength Tubing',
     steel_grade: 'Dual Phase High-Strength Steel (DP 900)',
@@ -528,10 +483,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000020',
     spec_key: 'SAE_1010',
     spec_full: 'SAE 1010 Mechanical Tubing (ASTM A519)',
     steel_grade: 'Low Carbon Mechanical Steel (SAE 1010)',
@@ -554,10 +508,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC PROTECTOR',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000021',
     spec_key: 'A312_304L',
     spec_full: 'ASTM A312 TP304L',
     steel_grade: 'AISI 304L / UNS S30403',
@@ -580,10 +533,9 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC CAP',
     is_min_wall: false,
-    is_active: true,
+    is_active: true
   },
   {
-    id: '00000000-0000-0000-0000-000000000022',
     spec_key: 'A312_316L',
     spec_full: 'ASTM A312 TP316L',
     steel_grade: 'AISI 316L / UNS S31603',
@@ -606,6 +558,34 @@ export const DEFAULT_SPEC_MASTER_RECORDS: SpecMasterRecord[] = [
     bundling: 'HEXAGONAL',
     end_cap: 'PLASTIC CAP',
     is_min_wall: false,
-    is_active: true,
-  },
+    is_active: true
+  }
 ];
+
+async function seed() {
+  console.log(`Seeding ${SPECIFICATIONS.length} specifications into material_spec_master...`);
+  
+  for (const s of SPECIFICATIONS) {
+    const res = await fetch(`${SUPABASE_URL}/material_spec_master?on_conflict=spec_key`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(s)
+    });
+    
+    if (res.ok || res.status === 201) {
+      console.log(`[OK] ${s.spec_key} -> ${s.spec_full}`);
+    } else {
+      const err = await res.text();
+      console.error(`[FAIL] ${s.spec_key}:`, res.status, err);
+    }
+  }
+  
+  // Verify final count
+  const verifyRes = await fetch(`${SUPABASE_URL}/material_spec_master?select=id,spec_key,spec_full,is_min_wall`, {
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}` }
+  });
+  const allSpecs = await verifyRes.json();
+  console.log(`\nSuccessfully populated material_spec_master! Total rows: ${allSpecs.length}`);
+}
+
+seed();
