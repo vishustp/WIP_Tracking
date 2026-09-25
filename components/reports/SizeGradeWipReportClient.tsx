@@ -728,6 +728,26 @@ export default function SizeGradeWipReportClient() {
     return <span className="text-slate-500 font-normal">0</span>;
   };
 
+  const clearAllFilters = useCallback(() => {
+    setSearch('');
+    setSelectedRoute('ALL');
+    setSelectedGrade('ALL');
+    setFromOd('');
+    setToOd('');
+    setFromRollingDate('');
+    setToRollingDate('');
+  }, []);
+
+  const hasActiveFilters = Boolean(
+    search ||
+    selectedRoute !== 'ALL' ||
+    selectedGrade !== 'ALL' ||
+    fromOd ||
+    toOd ||
+    fromRollingDate ||
+    toRollingDate
+  );
+
   const toggleGroup = (key: string) => {
     setExpandedKeys((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -1217,16 +1237,27 @@ export default function SizeGradeWipReportClient() {
             </div>
           </div>
 
-          {viewMode === 'matrix' && (
-            <button
-              type="button"
-              onClick={toggleAll}
-              aria-label={matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse all work order details' : 'Expand all work order details'}
-              className="text-xs font-medium text-slate-600 hover:text-slate-900 hover:underline cursor-pointer"
-            >
-              {matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse All Details' : 'Expand All WO Details'}
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="text-xs font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
+              >
+                Clear All Filters
+              </button>
+            )}
+            {viewMode === 'matrix' && (
+              <button
+                type="button"
+                onClick={toggleAll}
+                aria-label={matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse all work order details' : 'Expand all work order details'}
+                className="text-xs font-medium text-slate-600 hover:text-slate-900 hover:underline cursor-pointer"
+              >
+                {matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse All Details' : 'Expand All WO Details'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1237,9 +1268,9 @@ export default function SizeGradeWipReportClient() {
             <table className="w-full text-left text-xs border-collapse min-w-[1200px]">
               <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
                 <tr>
-                  <th className="py-2.5 px-3 w-10 text-center bg-clip-padding"></th>
-                  <th className="py-2.5 px-3 bg-clip-padding">Size (OD × WT)</th>
-                  <th className="py-2.5 px-3 bg-clip-padding">Grade</th>
+                  <th className="sticky left-0 top-0 z-30 bg-slate-50 py-2.5 px-3 w-10 text-center bg-clip-padding"></th>
+                  <th className="sticky left-10 top-0 z-30 bg-slate-50 py-2.5 px-3 bg-clip-padding min-w-[120px]">Size (OD × WT)</th>
+                  <th className="sticky left-[160px] top-0 z-30 bg-slate-50 py-2.5 px-3 bg-clip-padding border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[100px]">Grade</th>
                   <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
                     Hollow HT (HTC)
                   </th>
@@ -1278,8 +1309,23 @@ export default function SizeGradeWipReportClient() {
                       <CheckCircle2 className="h-8 w-8 text-slate-300 mx-auto mb-2" />
                       <div className="font-semibold text-slate-700">No matching WIP inventory found</div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
-                        Try clearing OD or Grade filters to see available stock.
+                        {hasActiveFilters
+                          ? 'Try clearing active filters to see available physical inventory.'
+                          : 'No active physical WIP currently recorded in the plant.'}
                       </div>
+                      {hasActiveFilters && (
+                        <div className="mt-3">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={clearAllFilters}
+                            className="text-xs h-8 border-slate-300 bg-white hover:bg-slate-50 font-semibold"
+                          >
+                            Clear All Filters
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -1300,12 +1346,12 @@ export default function SizeGradeWipReportClient() {
                               toggleGroup(g.key);
                             }
                           }}
-                          className={`transition cursor-pointer hover:bg-slate-50/80 focus:outline-none focus-visible:bg-slate-100/80 ${
+                          className={`group transition cursor-pointer hover:bg-slate-50/80 focus:outline-none focus-visible:bg-slate-100/80 ${
                             isExpanded ? 'bg-slate-50/50' : ''
                           }`}
                         >
-                          {/* Chevron */}
-                          <td className="py-2.5 px-3 text-center text-slate-400">
+                          {/* Chevron (Sticky Left) */}
+                          <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2.5 px-3 text-center text-slate-400 w-10">
                             <ChevronRight
                               size={14}
                               aria-hidden="true"
@@ -1315,13 +1361,13 @@ export default function SizeGradeWipReportClient() {
                             />
                           </td>
 
-                          {/* Size (OD × WT) */}
-                          <td className="py-2.5 px-3 font-mono font-bold text-slate-800 text-[12px]">
+                          {/* Size (OD × WT) (Sticky Left) */}
+                          <td className="sticky left-10 z-10 bg-white group-hover:bg-slate-50 py-2.5 px-3 font-mono font-bold text-slate-800 text-[12px] min-w-[120px]">
                             {g.od} × {g.wt} <span className="text-[11px] text-slate-400 font-normal">mm</span>
                           </td>
 
-                          {/* Grade */}
-                          <td className="py-2.5 px-3">
+                          {/* Grade (Sticky Left) */}
+                          <td className="sticky left-[160px] z-10 bg-white group-hover:bg-slate-50 py-2.5 px-3 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[100px]">
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200/80 font-mono">
                               {g.grade}
                             </span>

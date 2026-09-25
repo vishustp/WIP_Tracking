@@ -44,7 +44,11 @@ function getYesterdayDateStr(): string {
   return `${year}-${month}-${day}`;
 }
 
-export default function ProductionEntryGrid() {
+export interface ProductionEntryGridProps {
+  initialStage?: string;
+}
+
+export default function ProductionEntryGrid({ initialStage }: ProductionEntryGridProps = {}) {
   const supabase = useMemo(() => createClient(), []);
   const {
     user,
@@ -59,8 +63,22 @@ export default function ProductionEntryGrid() {
     isSuperUser,
   } = usePermissions();
 
+  const validInitial = useMemo<StageCode>(() => {
+    if (initialStage && STAGES.some((s) => s.code === initialStage)) {
+      return initialStage as StageCode;
+    }
+    return 'ROLLING';
+  }, [initialStage]);
+
   // --- State ---
-  const [stage, setStage] = useState<StageCode>('ROLLING');
+  const [stage, setStage] = useState<StageCode>(validInitial);
+
+  useEffect(() => {
+    if (initialStage && STAGES.some((s) => s.code === initialStage)) {
+      setStage(initialStage as StageCode);
+    }
+  }, [initialStage]);
+
   const [date, setDate] = useState(() => getYesterdayDateStr());
 
   const [search, setSearch] = useState('');

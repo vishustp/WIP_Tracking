@@ -402,7 +402,7 @@ export default function BandSawCuttingClient() {
             <table className="w-full text-left text-xs">
               <thead className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                 <tr>
-                  <th className="py-3 px-4">Work Order</th>
+                  <th className="sticky left-0 top-0 z-20 bg-slate-50 py-3 px-4 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[180px]">Work Order</th>
                   <th className="py-3 px-3">Customer / Grade</th>
                   <th className="py-3 px-3">Pipe Size (OD × WT)</th>
                   <th className="py-3 px-3">Target Length (L1/L2)</th>
@@ -410,7 +410,7 @@ export default function BandSawCuttingClient() {
                   <th className="py-3 px-3 text-right">Available to Cut (Pcs)</th>
                   <th className="py-3 px-3 text-right">Available Meters</th>
                   <th className="py-3 px-3 text-right">Weight (MT)</th>
-                  <th className="py-3 px-4 text-center">Action</th>
+                  <th className="sticky right-0 top-0 z-20 bg-slate-50 py-3 px-4 text-center border-l border-slate-200 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[140px]">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -424,7 +424,21 @@ export default function BandSawCuttingClient() {
                   <tr>
                     <td colSpan={9} className="py-12 text-center text-slate-500">
                       <Scissors size={24} className="mx-auto mb-2 text-slate-300 rotate-90" />
-                      No work orders currently awaiting cutting in the Band Saw queue.
+                      <div className="font-semibold text-slate-700">
+                        {searchTerm ? `No work orders match "${searchTerm}"` : 'No work orders currently awaiting cutting in the Band Saw queue.'}
+                      </div>
+                      {searchTerm && (
+                        <div className="mt-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSearchTerm('')}
+                            className="text-xs h-8 border-slate-300"
+                          >
+                            Clear Search Filter
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -434,8 +448,8 @@ export default function BandSawCuttingClient() {
                     const lenLabel = l1 > 0 && l2 > 0 ? `${l1}m - ${l2}m` : l1 > 0 ? `${l1}m` : '6.0m';
 
                     return (
-                      <tr key={row.work_order_id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                      <tr key={row.work_order_id} className="group hover:bg-slate-50/70 transition-colors">
+                        <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-3.5 px-4 font-mono font-bold text-slate-900 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[180px]">
                           <div className="flex items-center gap-1.5">
                             <span>WO #{row.work_order_no}</span>
                             {row.route_code && (
@@ -489,7 +503,7 @@ export default function BandSawCuttingClient() {
                         <td className="py-3 px-3 text-right font-mono text-slate-700">
                           {fmt(Number(row.balance_to_make_mt || 0), 3)} MT
                         </td>
-                        <td className="py-3 px-4 text-center">
+                        <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-3 px-4 text-center border-l border-slate-200 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[140px]">
                           <Button
                             size="sm"
                             onClick={() => handleOpenCutModal(row)}

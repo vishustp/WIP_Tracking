@@ -1,9 +1,14 @@
 import ProductionEntryGrid from "@/components/production/ProductionEntryGrid";
 
-export default function ProductionPage() {
+export default async function ProductionPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ stage?: string }>;
+}) {
+  const resolvedParams = searchParams ? await searchParams : undefined;
   return (
     <div className="w-full">
-      <ProductionEntryGrid />
+      <ProductionEntryGrid initialStage={resolvedParams?.stage} />
     </div>
   );
 }

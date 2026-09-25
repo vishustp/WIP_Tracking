@@ -1457,7 +1457,9 @@ export default function WorkOrderTrackingClient() {
             <table className="min-w-full text-xs">
               <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 shadow-2xs">
                 <tr>
-                  <th className="py-3 px-3 text-left font-bold min-w-[200px]">Work Order & Specs</th>
+                  <th className="sticky left-0 top-0 z-30 bg-slate-100 py-3 px-3 text-left font-bold min-w-[200px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">
+                    Work Order & Specs
+                  </th>
                   <th className="py-3 px-3 text-center font-bold min-w-[130px] bg-blue-50/70 border-x border-blue-100 text-blue-900">
                     1. Rolling Mill
                   </th>
@@ -1489,9 +1491,9 @@ export default function WorkOrderTrackingClient() {
 
                   return (
                     <React.Fragment key={wo.id}>
-                      <tr className="hover:bg-slate-50/50 transition-colors">
-                        {/* Work Order Info */}
-                        <td className="py-3 px-3 align-top">
+                      <tr className="group hover:bg-slate-50/50 transition-colors">
+                        {/* Work Order Info (Sticky Left Column) */}
+                        <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-3 px-3 align-top border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[200px]">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-bold text-slate-900 font-mono text-sm">{wo.work_order_no}</span>
                             <span

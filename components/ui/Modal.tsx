@@ -123,7 +123,7 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 transition cursor-pointer"
+            className="rounded-lg p-2 sm:p-1.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-slate-400 hover:bg-slate-200/70 hover:text-slate-700 transition cursor-pointer"
             aria-label="Close modal"
           >
             <X size={18} />

@@ -655,19 +655,27 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
                 </ResponsiveContainer>
               </div>
 
-              {/* Station Indicators: Detailed Chips with PCS, MT, MTR */}
+              {/* Station Indicators: Detailed Chips with PCS, MT, MTR & Drilldown Link */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-3 border-t border-slate-100">
                 {stageDistribution.map((s) => {
                   const isHighest = maxWipStage?.stage === s.stage && s.value > 0;
+                  const targetUrl = s.stageCode ? `/production?stage=${encodeURIComponent(s.stageCode)}` : '/production';
                   return (
-                    <div
+                    <Link
                       key={s.stage}
-                      className={`rounded-lg border p-3 transition-colors ${
-                        isHighest ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200/90 bg-slate-50/60'
+                      href={targetUrl}
+                      title={`Open ${s.stage} queue in Production Entry`}
+                      className={`group rounded-lg border p-3 transition-all hover:shadow-xs active:scale-[0.98] block cursor-pointer ${
+                        isHighest
+                          ? 'border-rose-300 bg-rose-50/40 hover:border-rose-400 hover:bg-rose-50/70'
+                          : 'border-slate-200/90 bg-slate-50/60 hover:border-blue-400 hover:bg-blue-50/30'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-bold text-slate-800 truncate">{s.stage}</span>
+                        <span className="text-xs font-bold text-slate-800 group-hover:text-blue-900 truncate flex items-center gap-1">
+                          {s.stage}
+                          <ArrowRight size={11} className="opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-blue-600" />
+                        </span>
                         {isHighest && (
                           <span className="shrink-0 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-black text-rose-700">
                             Bottleneck
@@ -677,7 +685,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
 
                       {/* Primary Focus value based on active unit */}
                       <div className="mt-1.5 flex items-baseline gap-1">
-                        <span className="text-lg font-black font-mono text-slate-950">
+                        <span className="text-lg font-black font-mono text-slate-950 group-hover:text-blue-950">
                           {chartUnit === 'PCS'
                             ? formatNum(s.wipPcs, 0)
                             : chartUnit === 'MT'
@@ -696,7 +704,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
                         {chartUnit !== 'MTR' && <span>{formatNum(s.wipMtr, 0)} m · </span>}
                         <span>{s.orderCount} WOs</span>
                       </div>
-                    </div>
+                    </Link>
                   );
                 })}
               </div>

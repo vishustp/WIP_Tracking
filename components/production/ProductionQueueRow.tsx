@@ -278,8 +278,8 @@ export function ProductionQueueRow({
         </td>
       )}
 
-      {/* Actions */}
-      <td className="py-2.5 px-3 align-middle text-center">
+      {/* Actions (Sticky Right Column) */}
+      <td className="sticky right-0 z-10 py-2.5 px-3 align-middle text-center bg-white group-hover:bg-slate-50 border-l border-slate-200 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-center gap-1.5">
           <button
             type="button"

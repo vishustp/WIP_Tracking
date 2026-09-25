@@ -1669,16 +1669,23 @@ export function BandSawCuttingModal({
         </div>
 
         {/* Modal Actions */}
-        <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
-          <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={saving}>
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-4">
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
+            className="min-h-[40px] px-4 text-xs font-semibold"
+            onClick={onClose}
+            disabled={saving}
+          >
             Cancel
           </Button>
           <Button
             type="button"
-            size="sm"
+            size="md"
             onClick={handleSubmit}
             disabled={saving || totalPrimeCutPcs <= 0}
-            className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs font-semibold px-4"
+            className="min-h-[40px] gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs font-bold text-xs px-5"
           >
             {saving ? (
               'Recording Cutting...'
