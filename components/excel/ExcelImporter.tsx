@@ -681,7 +681,7 @@ export default function ExcelImporter() {
   );
 
   // General Parse Logic for Work Orders or Work Centers
-  const parseRecords = (raw: Record<string, unknown>[], sourceName: string, tab: WorkCenterImportTab = activeTab) => {
+  const parseRecords = useCallback((raw: Record<string, unknown>[], sourceName: string, tab: WorkCenterImportTab = activeTab) => {
     if (!raw.length) {
       setMessage(`Worksheet "${sourceName}" is empty.`);
       setParsedRows([]);
@@ -1134,7 +1134,7 @@ export default function ExcelImporter() {
       const eligible = parsed.filter((r) => !r.error).length;
       setMessage(`Parsed ${parsed.length} rows for ${currentTabConfig.label} from "${sourceName}". ${eligible} eligible for recording.`);
     }
-  };
+  }, [activeTab, stageQueueMap, currentTabConfig.label, currentTabConfig.shortLabel, knownWos]);
 
   // Process File Upload (single or multi-sheet)
   async function parseFile(file: File) {
@@ -1220,7 +1220,7 @@ export default function ExcelImporter() {
       const records = rawWorkbookSheets.sheets[selectedSheetName] || [];
       parseRecords(records, selectedSheetName, activeTab);
     }
-  }, [stageQueueMap]);
+  }, [stageQueueMap, activeTab, parseRecords, rawWorkbookSheets, selectedSheetName]);
 
   // Clear Import Form
   function clearImport() {

@@ -168,7 +168,7 @@ export default function DashboardClient({ kpi, wip, pending }: Props) {
     };
   };
 
-const CANONICAL_STAGE_ORDER: Record<string, number> = {
+const CANONICAL_STAGE_ORDER = useMemo<Record<string, number>>(() => ({
   ROLLING: 10,
   HOLLOW_HEAT_TREATMENT: 20,
   HTC: 20,
@@ -180,7 +180,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
   VDI: 60,
   QC: 60,
   FINISHING: 70,
-};
+}), []);
 
   // Unique routes present in WIP data
   const uniqueRoutes = useMemo(() => {
@@ -202,7 +202,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
       .sort((a, b) => a[1] - b[1])
       .map(([name]) => name);
     return ['ALL', ...sorted];
-  }, [wip]);
+  }, [wip, CANONICAL_STAGE_ORDER]);
 
   // Aggregated Stage Distribution for the Bottleneck Chart
   const stageDistribution = useMemo(() => {
@@ -263,7 +263,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
       return list.sort((a, b) => b.value - a.value);
     }
     return list.sort((a, b) => a.sequenceNo - b.sequenceNo);
-  }, [wip, selectedRoute, chartUnit, chartSort]);
+  }, [wip, selectedRoute, chartUnit, chartSort, CANONICAL_STAGE_ORDER]);
 
   // Identify highest bottleneck stage
   const maxWipStage = useMemo(() => {
