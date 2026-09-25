@@ -29,7 +29,7 @@ export function buildCampaignHierarchyMaps(rollingPlans: any[]): CampaignHierarc
   for (const p of rollingPlans) {
     try {
       const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
-      if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
+      if (parsed?.is_master && Array.isArray(parsed?.child_work_orders) && parsed.child_work_orders.length > 0) {
         const members = new Set<string>();
         if (p.work_order_id) members.add(p.work_order_id);
         for (const c of parsed.child_work_orders) {
@@ -135,6 +135,21 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
     }
   });
 
+  // Direct Finishing production logs for this specific work order
+  let directFinMtr = 0;
+  let directFinPcs = 0;
+  productionLogs.forEach((l: any) => {
+    if (l.work_order_id === woId) {
+      const sc = (l.process_stages?.stage_code || l.stage_code || '').toUpperCase();
+      const isFinLog = (finishingStageId && l.stage_id === finishingStageId) || sc === 'FINISHING' || sc === 'CUTTING';
+      if (isFinLog) {
+        directFinMtr += Number(l.output_qty || 0);
+        const { pcs: pPcs } = extractPcsFromRemarks(l.remarks);
+        directFinPcs += pPcs || 0;
+      }
+    }
+  });
+
   // Campaign aggregation for Master work orders
   const campaignMembers = campaignMembersMap.get(woId);
   let campaignVdiOkMtr = directVdiOkMtr;
@@ -144,7 +159,7 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
   let campaignFinMtr = 0;
   let campaignFinPcs = 0;
 
-  if (campaignMembers && campaignMembers.size > 0) {
+  if (campaignMembers && campaignMembers.size > 1) {
     qcInspections.forEach((qc: any) => {
       if (qc.work_order_id !== woId && campaignMembers.has(qc.work_order_id)) {
         campaignVdiOkMtr += Number(qc.vdi_ok_mtr || 0);
@@ -165,7 +180,7 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
   }
 
   const isChild = childToMasterMap.has(woId);
-  const isMaster = Boolean(campaignMembers && campaignMembers.size > 0);
+  const isMaster = Boolean(campaignMembers && campaignMembers.size > 1);
 
   // Ensure finishing stage is present if child order has VDI output
   let stageRows = [...rows];
@@ -233,23 +248,24 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
           }
         }
       } else if (isFin) {
-        if (isMaster) {
-          grossMtr = Math.max(rawMtr, campaignFinMtr);
-          grossPcs = Math.max(rawPcs, campaignFinPcs);
+        if (isMaster && campaignMembers && campaignMembers.size > 1) {
+          // In a master-child rolling campaign, finishing bundling is tracked under individual child work orders.
+          // The master work order itself has no active finishing queue to prevent double-counting.
+          grossMtr = 0;
+          grossPcs = 0;
+          rejMtr = 0;
+          rejPcs = 0;
+          netMtr = 0;
+          netPcs = 0;
+          incomingPcsOverride = 0;
+          incomingMtrOverride = 0;
+        } else {
+          grossMtr = Math.max(rawMtr, directFinMtr);
+          grossPcs = Math.max(rawPcs, directFinPcs);
           netMtr = Math.max(0, grossMtr - rejMtr);
           netPcs = Math.max(0, grossPcs - rejPcs);
           incomingPcsOverride = directVdiOkPcs;
           incomingMtrOverride = directVdiOkMtr;
-        } else if (isChild) {
-          incomingPcsOverride = directVdiOkPcs;
-          incomingMtrOverride = directVdiOkMtr;
-          netMtr = Math.max(0, grossMtr - rejMtr);
-          netPcs = Math.max(0, grossPcs - rejPcs);
-        } else if (directVdiOkPcs > 0) {
-          incomingPcsOverride = directVdiOkPcs;
-          incomingMtrOverride = directVdiOkMtr;
-          netMtr = Math.max(0, grossMtr - rejMtr);
-          netPcs = Math.max(0, grossPcs - rejPcs);
         }
       }
 

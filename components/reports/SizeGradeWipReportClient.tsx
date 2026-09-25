@@ -427,6 +427,9 @@ export default function SizeGradeWipReportClient() {
             if (recStage.is_feeder_stage || recStage.stage_code === 'ROLLING') continue;
             // Child work orders in a master campaign are bundled under master for pre-finishing stages
             if (childToMasterMap.has(woId) && recStage.stage_code !== 'FINISHING') continue;
+            // Master work orders in a campaign do NOT have finishing; finishing is on child orders
+            const campMembers = campaignMembersMap.get(woId);
+            if (campMembers && campMembers.size > 1 && recStage.stage_code === 'FINISHING') continue;
             // Only include stages that have active physical WIP inventory
             if (recStage.capped_wip_pcs <= 0 && recStage.capped_wip_mtr <= 0) continue;
 

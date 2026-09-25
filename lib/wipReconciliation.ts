@@ -374,8 +374,10 @@ export function reconcileWorkOrderWip(
     const scaleFactor = maxPhysicalWipMt / totalPlantWipMt;
     for (const st of plantStages) {
       st.capped_wip_mt = Number((st.reconciled_wip_mt * scaleFactor).toFixed(3));
-      st.capped_wip_mtr = Number((st.reconciled_wip_mtr * scaleFactor).toFixed(2));
-      st.capped_wip_pcs = Math.round(st.reconciled_wip_pcs * scaleFactor);
+      // Discrete physical pipe pieces are governed by direct stage balancing (AGENTS.md Rule 1 & 4)
+      // and must never be fractionally shrunk by theoretical billet mass calculations
+      st.capped_wip_pcs = st.reconciled_wip_pcs;
+      st.capped_wip_mtr = st.reconciled_wip_mtr;
     }
     totalPlantWipMt = maxPhysicalWipMt;
   }

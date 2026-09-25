@@ -76,6 +76,8 @@ export default async function Dashboard() {
       for (const recStage of summary.stages) {
         if (recStage.is_feeder_stage) continue; // Rolling is feeder, excluded from Plant WIP
         if (isChild && recStage.stage_code !== 'FINISHING') continue; // Child orders bundled under master
+        const campMembers = hierarchyMaps.campaignMembersMap.get(woId);
+        if (campMembers && campMembers.size > 1 && recStage.stage_code === 'FINISHING') continue; // Finishing tracked on child orders
         if (recStage.capped_wip_pcs > 0 || recStage.capped_wip_mtr > 0) {
           const originalRow = rows.find((r) => (r.stage_code || '').toUpperCase() === recStage.stage_code) || rows[0];
           calculatedWip.push({

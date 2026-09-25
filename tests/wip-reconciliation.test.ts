@@ -438,4 +438,77 @@ describe('PCS-First Route-Aware WIP Reconciliation', () => {
     // Total Plant WIP: 20 (Draw) + 20 (HT) + 20 (Band Saw) + 30 (VDI) + 20 (Finishing) = 110 pieces
     expect(result.plant_total_wip_pcs).toBe(110);
   });
+
+  it('preserves exact discrete cut piece counts at Finishing without fractional mass damping', () => {
+    // Stage test reflecting physical ground truth:
+    // 840 VDI OK cut pieces incoming to Finishing
+    // 754 Cut pieces bundled at Finishing
+    // Expected Finishing Queue WIP = 840 - 754 = 86 cut pieces
+    const stages: StageWipInput[] = [
+      {
+        stage_code: 'ROLLING',
+        sequence_no: 1,
+        gross_output_mtr: 4876.05,
+        gross_output_pcs: 1261,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 4876.05,
+        net_output_pcs: 1261,
+        od: 114.3,
+        wt: 6.02,
+        avg_length: 3.867,
+      },
+      {
+        stage_code: 'BAND_SAW',
+        sequence_no: 2,
+        gross_output_mtr: 4597,
+        gross_output_pcs: 1261,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 4597,
+        net_output_pcs: 1261,
+        od: 114.3,
+        wt: 6.02,
+        avg_length: 3.645,
+      },
+      {
+        stage_code: 'VDI',
+        sequence_no: 3,
+        gross_output_mtr: 3000,
+        gross_output_pcs: 932,
+        rejection_mtr: 300,
+        rejection_pcs: 92,
+        net_output_mtr: 2700,
+        net_output_pcs: 840,
+        incoming_pcs: 1261,
+        od: 114.3,
+        wt: 6.02,
+        avg_length: 3.5,
+      },
+      {
+        stage_code: 'FINISHING',
+        sequence_no: 4,
+        gross_output_mtr: 2551.58,
+        gross_output_pcs: 754,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 2551.58,
+        net_output_pcs: 754,
+        incoming_pcs: 840,
+        od: 114.3,
+        wt: 6.02,
+        avg_length: 3.5,
+      },
+    ];
+
+    const result = reconcileWorkOrderWip(stages, {
+      route_code: 'HFS',
+      ordered_qty_mt: 100,
+    });
+
+    const fin = result.stages.find((s) => s.stage_code === 'FINISHING');
+    expect(fin).toBeDefined();
+    expect(fin!.reconciled_wip_pcs).toBe(86);
+    expect(fin!.capped_wip_pcs).toBe(86); // Must not be shrunk by mass clamp
+  });
 });
