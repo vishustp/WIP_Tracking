@@ -2,7 +2,7 @@
 
 import { Search, Edit2, Trash2, Lock, RefreshCw } from 'lucide-react';
 import { ProductionEntry, Row, STAGES } from '@/types';
-import { fmt, extractPcsFromRemarks, extractCustomLengthFromRemarks } from '@/lib/productionUtils';
+import { fmt, extractPcsFromRemarks, extractCustomLengthFromRemarks, extractBundleTypeFromRemarks } from '@/lib/productionUtils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -271,7 +271,30 @@ export function ProductionHistoryTable({
                         '—'
                       )}
                     </td>
-                    <td className="py-2.5 px-3 font-mono text-slate-800">{entry.heat_lot_no || '—'}</td>
+                    <td className="py-2.5 px-3 font-mono text-slate-800">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-semibold">{entry.heat_lot_no || '—'}</span>
+                        {(() => {
+                          const bType = extractBundleTypeFromRemarks(entry.remarks);
+                          const isCommercial = bType === 'COMMERCIAL' || (entry.remarks && /commercial/i.test(entry.remarks));
+                          if (isCommercial) {
+                            return (
+                              <span className="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-300 text-amber-800 text-[10px] font-bold px-1.5 py-0.2 w-fit">
+                                Commercial
+                              </span>
+                            );
+                          }
+                          if (entry.stage_code === 'FINISHING' && entry.heat_lot_no) {
+                            return (
+                              <span className="inline-flex items-center gap-1 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-semibold px-1.5 py-0.2 w-fit">
+                                Prime
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    </td>
                     <td className="py-2.5 px-3">
                       {entry.operator_name ? (
                         <div className="flex items-center gap-1.5">

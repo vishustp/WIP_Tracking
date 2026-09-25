@@ -134,13 +134,19 @@ export function BundlingCampaignModal({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-slate-900">Finishing Multi-WO Bundler</h3>
-              <span className="rounded-full bg-indigo-100 text-indigo-800 px-2 py-0.5 text-[11px] font-bold">
-                Master: {bundlingCampaign.work_order_no}
+              <h3 className="text-base font-bold text-slate-900">
+                {ordersList.length > 1 ? 'Finishing Multi-WO Bundler' : 'Finishing Bundler & Commercial Classification'}
+              </h3>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                ordersList.length > 1 ? 'bg-indigo-100 text-indigo-800' : 'bg-teal-100 text-teal-800'
+              }`}>
+                {ordersList.length > 1 ? `Master: ${bundlingCampaign.work_order_no}` : `WO: ${bundlingCampaign.work_order_no}`}
               </span>
             </div>
             <p className="text-xs text-slate-500 font-normal mt-0.5">
-              Enter multiple bundles across Master and Child work orders. Finishing production equals the sum of bundles.
+              {ordersList.length > 1
+                ? 'Enter bundles across Master and Child work orders. Classify each bundle as Prime or Commercial.'
+                : 'Create individual bundles and designate as Prime or Commercial secondary disposition per Rule 2.'}
             </p>
           </div>
         </div>

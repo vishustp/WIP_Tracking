@@ -298,12 +298,12 @@ export function ProductionQueueRow({
               <Scissors size={12} className="rotate-90" /> Cut Form
             </button>
           )}
-          {stage === 'FINISHING' && (row.is_master || (row.child_work_orders && row.child_work_orders.length > 0)) && onOpenBundling && (
+          {stage === 'FINISHING' && onOpenBundling && (
             <button
               type="button"
               onClick={() => onOpenBundling(row)}
               className="inline-flex items-center gap-1 rounded border border-teal-300 bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800 shadow-2xs hover:bg-teal-100 transition cursor-pointer"
-              title="Open Campaign Multi-WO Bundling Dialog"
+              title="Open Bundling & Commercial Disposition Dialog"
             >
               <Package size={12} /> Bundles
             </button>

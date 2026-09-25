@@ -90,4 +90,29 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
     // Sum of material across plant is conserved
     expect(sourceRemainingMtr + targetNewWipMtr).toBe(sourceInitialBalanceMtr + targetInitialWipMtr);
   });
+
+  describe('Commercial Bundling & Secondary Disposition (Rule 2 Option B)', () => {
+    it('correctly tags commercial vs prime bundles in production remarks', async () => {
+      const { attachBundleTypeToRemarks, extractBundleTypeFromRemarks } = await import('@/lib/productionUtils');
+
+      const initialRemarks = 'Bundle BDL-05: 12 PCS';
+      const commercialRemarks = attachBundleTypeToRemarks(initialRemarks, 'COMMERCIAL');
+
+      expect(commercialRemarks).toContain('[BUNDLE_TYPE: COMMERCIAL]');
+      expect(extractBundleTypeFromRemarks(commercialRemarks)).toBe('COMMERCIAL');
+
+      const primeRemarks = attachBundleTypeToRemarks(initialRemarks, 'PRIME');
+      expect(primeRemarks).toContain('[BUNDLE_TYPE: PRIME]');
+      expect(extractBundleTypeFromRemarks(primeRemarks)).toBe('PRIME');
+    });
+
+    it('defaults to PRIME when no bundle type is explicitly specified', async () => {
+      const { extractBundleTypeFromRemarks } = await import('@/lib/productionUtils');
+
+      expect(extractBundleTypeFromRemarks('Standard Finishing Log')).toBe('PRIME');
+      expect(extractBundleTypeFromRemarks(null)).toBe('PRIME');
+      expect(extractBundleTypeFromRemarks(undefined)).toBe('PRIME');
+    });
+  });
 });
+

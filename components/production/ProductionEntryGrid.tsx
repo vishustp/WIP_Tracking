@@ -720,14 +720,24 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         const sumPcs = bundlesForWo.reduce((s, b) => s + n(b.pcs), 0);
         const sumMtr = bundlesForWo.reduce((s, b) => s + n(b.mtr), 0);
         const bundleNos = bundlesForWo.map((b) => b.bundle_no).filter(Boolean).join(', ');
-        const baseRemarks =
-          bundlesForWo.length > 1 ? `Multi-Bundle (${bundlesForWo.length} bundles: ${sumPcs} PCS)` : r.remarks;
+        const hasCommercial = bundlesForWo.some((b) => b.bundle_type === 'COMMERCIAL');
+        const allCommercial = bundlesForWo.every((b) => b.bundle_type === 'COMMERCIAL');
+        const bundleType = allCommercial ? 'COMMERCIAL' : hasCommercial ? 'COMMERCIAL' : 'PRIME';
+        let baseRemarks = r.remarks || '';
+        if (bundlesForWo.length > 1) {
+          const commCount = bundlesForWo.filter((b) => b.bundle_type === 'COMMERCIAL').length;
+          baseRemarks = commCount > 0
+            ? `Multi-Bundle (${bundlesForWo.length} bdl: ${sumPcs} PCS, ${commCount} Commercial)`
+            : `Multi-Bundle (${bundlesForWo.length} bundles: ${sumPcs} PCS)`;
+        }
+        const remarksWithPcs = attachPcsToRemarks(baseRemarks, sumPcs, 0);
+        const remarksWithBundleType = attachBundleTypeToRemarks(remarksWithPcs, bundleType);
         return {
           ...r,
           pcs: String(sumPcs),
           mtr: String(Number(sumMtr.toFixed(2))),
           heat_lot_no: bundleNos || r.heat_lot_no,
-          remarks: attachPcsToRemarks(baseRemarks, sumPcs, 0),
+          remarks: remarksWithBundleType,
         };
       })
     );
