@@ -146,7 +146,7 @@ type WipViewRow = {
 
 async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: string, wo: WO): Promise<WoWipSummary> {
   // Query actual production logs, diversion plans, rolling plans, routes, and QC inspections
-  const [logsRes, divRes, plansRes, routesRes, qcRes] = await Promise.all([
+  const [logsRes, divRes, plansRes, routesRes, qcRes, stageWipRes] = await Promise.all([
     supabase
       .from('production_logs')
       .select('*, process_stages(stage_code, stage_name)')
@@ -166,6 +166,11 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
       .from('qc_inspections')
       .select('work_order_id, inspected_mtr, vdi_ok_mtr, vdi_salvage_mtr, vdi_rejection_mtr')
       .eq('work_order_id', id),
+    supabase
+      .from('vw_route_stage_wip')
+      .select('*')
+      .eq('work_order_id', id)
+      .order('sequence_no', { ascending: true }),
   ]);
 
   const logs = logsRes.data || [];
@@ -173,6 +178,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const plans = plansRes.data || [];
   const routes = routesRes.data || [];
   const qcList = qcRes.data || [];
+  const stageRows = stageWipRes.data || [];
 
   // Determine active route for this work order
   const plan = plans.find((p: any) => p.work_order_id === id);
@@ -283,40 +289,50 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const finishingShippedMtr = finOutMtr; // Only actual dispatched finished goods leave the plant
   const totalRejectionSalvageMtr = Math.max(0, qcVdiRejMtr + rollingRejMtr + htcRejMtr + drawRejMtr + htRejMtr + finRejMtr);
 
-  // Total physical WIP eligible for diversion: Prime + Salvage/Rejection
-  const totalWipAcrossStagesMtr = Math.max(
-    0,
-    effectiveHtcOkFinishedMtr + totalDivertedInMtr - finishingShippedMtr - totalDivertedOutMtr
-  );
-  const salvageAvailableMtr = Math.min(totalWipAcrossStagesMtr, totalRejectionSalvageMtr);
-  const primeAvailableMtr = Math.max(0, totalWipAcrossStagesMtr - salvageAvailableMtr);
+  let stageBreakdown: any[] = [];
 
-  const totalWipAcrossStagesPcs = avgLength > 0 ? Math.round(totalWipAcrossStagesMtr / avgLength) : 0;
-  const totalWipAcrossStagesMt = totalWipAcrossStagesMtr * mtPerMtr;
+  if (stageRows.length > 0) {
+    stageBreakdown = stageRows.map((stg: any) => {
+      const sc = stg.stage_code;
+      const curWipMtr = Number(stg.current_wip || 0);
+      const curWipPcs = Number(stg.current_wip_pcs ?? (avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0));
+      const curWipMt = Number(stg.current_wip_mt ?? (curWipMtr * mtPerMtr));
 
-  const stageDefinitions = [
-    { stage_code: 'ROLLING', stage_name: 'Rolling Mill (Mother Hollow)', sequence_no: 1, is_in_route: true },
-    { stage_code: 'HOLLOW_HEAT_TREATMENT', stage_name: 'Hollow Heat Treatment', sequence_no: 2, is_in_route: hasHtcInRoute },
-    { stage_code: 'DRAW', stage_name: 'Cold Draw Bench', sequence_no: 3, is_in_route: hasDrawInRoute },
-    { stage_code: 'HEAT_TREATMENT', stage_name: 'Final Heat Treatment', sequence_no: 4, is_in_route: hasHtInRoute },
-    { stage_code: 'FINISHING', stage_name: 'Finishing & Inspection', sequence_no: 5, is_in_route: true },
-  ];
-
-  const stageBreakdown = stageDefinitions.map((stg) => {
-    const sc = stg.stage_code;
-    const divOut = getDivOut(sc);
-    const divIn = getDivIn(sc);
-
-    let inputQty = 0;
-    let outputQty = 0;
-    let rejectionQty = 0;
-
-    if (!stg.is_in_route) {
+      return {
+        stage_code: sc,
+        stage_name: stg.stage_name || WORK_CENTERS.find(w => w.code === sc)?.name || sc,
+        sequence_no: Number(stg.sequence_no || 0),
+        is_in_route: true,
+        available_mtr: curWipMtr,
+        available_pcs: curWipPcs,
+        available_mt: curWipMt,
+        diverted_out_mtr: Number(stg.diversion_out || 0),
+        diverted_in_mtr: Number(stg.diversion_in || 0),
+        input_qty: Number(stg.incoming_qty || 0),
+        output_qty: Number(stg.production_qty || 0),
+        rejection_qty: Number(stg.rejection_qty || 0),
+        net_output_qty: Number(stg.net_output_mtr || Math.max(0, Number(stg.production_qty || 0) - Number(stg.rejection_qty || 0))),
+      };
+    });
+  } else {
+    const stageDefinitions = [
+      { stage_code: 'ROLLING', stage_name: 'Rolling Mill (Mother Hollow)', sequence_no: 1, is_in_route: true },
+      { stage_code: 'HOLLOW_HEAT_TREATMENT', stage_name: 'Hollow Heat Treatment', sequence_no: 2, is_in_route: hasHtcInRoute },
+      { stage_code: 'DRAW', stage_name: 'Cold Draw Bench', sequence_no: 3, is_in_route: hasDrawInRoute },
+      { stage_code: 'HEAT_TREATMENT', stage_name: 'Final Heat Treatment', sequence_no: 4, is_in_route: hasHtInRoute },
+      { stage_code: 'BAND_SAW', stage_name: 'Band Saw Cutting', sequence_no: 5, is_in_route: isHfs },
+      { stage_code: 'VDI', stage_name: 'VDI / QC Inspection', sequence_no: 6, is_in_route: true },
+      { stage_code: 'FINISHING', stage_name: 'Finishing & Inspection', sequence_no: 7, is_in_route: true },
+    ];
+    stageBreakdown = stageDefinitions.map((stg) => {
+      const sc = stg.stage_code;
+      const divOut = getDivOut(sc);
+      const divIn = getDivIn(sc);
       return {
         stage_code: sc,
         stage_name: stg.stage_name,
         sequence_no: stg.sequence_no,
-        is_in_route: false,
+        is_in_route: stg.is_in_route,
         available_mtr: 0,
         available_pcs: 0,
         available_mt: 0,
@@ -327,46 +343,16 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
         rejection_qty: 0,
         net_output_qty: 0,
       };
-    }
+    });
+  }
 
-    if (sc === 'ROLLING') {
-      inputQty = rollingGrossMtr;
-      outputQty = rollingGrossMtr;
-      rejectionQty = rollingRejMtr;
-    } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
-      inputQty = rollingHtcOkMtr;
-      outputQty = htcOutMtr;
-      rejectionQty = htcRejMtr;
-    } else if (sc === 'DRAW') {
-      inputQty = hasHtcInRoute ? htcNetMtr : rollingHtcOkMtr;
-      outputQty = drawOutMtr;
-      rejectionQty = drawRejMtr;
-    } else if (sc === 'HEAT_TREATMENT') {
-      inputQty = drawNetMtr;
-      outputQty = htOutMtr;
-      rejectionQty = htRejMtr;
-    } else if (sc === 'FINISHING') {
-      inputQty = qcList.length > 0 ? (qcOkMtr + qcSalvageMtr) : (hasHtInRoute ? htNetMtr : hasHtcInRoute ? htcNetMtr : rollingHtcOkMtr);
-      outputQty = finOutMtr;
-      rejectionQty = finRejMtr;
-    }
+  // Active WIP currently sitting in the mill (sum of physical stage queues)
+  const totalActiveWipMtr = stageBreakdown.reduce((sum: number, s: any) => sum + Number(s.available_mtr || 0), 0);
+  const totalActiveWipPcs = stageBreakdown.reduce((sum: number, s: any) => sum + Number(s.available_pcs || 0), 0);
+  const totalActiveWipMt = stageBreakdown.reduce((sum: number, s: any) => sum + Number(s.available_mt || 0), 0);
 
-    return {
-      stage_code: sc,
-      stage_name: stg.stage_name,
-      sequence_no: stg.sequence_no,
-      is_in_route: true,
-      available_mtr: totalWipAcrossStagesMtr,
-      available_pcs: totalWipAcrossStagesPcs,
-      available_mt: totalWipAcrossStagesMt,
-      diverted_out_mtr: divOut,
-      diverted_in_mtr: divIn,
-      input_qty: inputQty,
-      output_qty: outputQty,
-      rejection_qty: rejectionQty,
-      net_output_qty: Math.max(0, outputQty - rejectionQty),
-    };
-  });
+  const salvageAvailableMtr = Math.min(totalActiveWipMtr, totalRejectionSalvageMtr);
+  const primeAvailableMtr = Math.max(0, totalActiveWipMtr - salvageAvailableMtr);
 
   return {
     wo,
@@ -396,11 +382,11 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     divertedInMtr: totalDivertedInMtr,
     divertedInPcs: avgLength > 0 ? totalDivertedInMtr / avgLength : 0,
     divertedInMt: totalDivertedInMtr * mtPerMtr,
-    physicalAvailableMtr: totalWipAcrossStagesMtr,
+    physicalAvailableMtr: totalActiveWipMtr,
     unplannedOrderMtr: Math.max(0, orderedMtr - rollingGrossMtr),
-    balanceWipMtr: totalWipAcrossStagesMtr,
-    balanceWipPcs: totalWipAcrossStagesPcs,
-    balanceWipMt: totalWipAcrossStagesMt,
+    balanceWipMtr: totalActiveWipMtr,
+    balanceWipPcs: totalActiveWipPcs,
+    balanceWipMt: totalActiveWipMt,
     stageBreakdown,
   };
 }
@@ -410,6 +396,8 @@ const WORK_CENTERS = [
   { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow Heat Treatment' },
   { code: 'DRAW', name: 'Cold Draw Bench' },
   { code: 'HEAT_TREATMENT', name: 'Final Heat Treatment' },
+  { code: 'BAND_SAW', name: 'Band Saw Cutting' },
+  { code: 'VDI', name: 'VDI / QC Inspection' },
   { code: 'FINISHING', name: 'Finishing & Inspection' },
 ];
 
@@ -577,12 +565,17 @@ export default function DiversionForm() {
     });
   }, [sourceWip]);
 
-  // If current workCenter is not valid for this route, default to first valid stage
+  // If current workCenter is not valid or has 0 WIP, default to the first stage with active WIP
   useEffect(() => {
-    if (availableWorkCenters.length > 0 && !availableWorkCenters.some((wc) => wc.code === workCenter)) {
-      setWorkCenter(availableWorkCenters[0].code);
+    if (sourceWip?.stageBreakdown?.length) {
+      const stageWithWip = sourceWip.stageBreakdown.find((s) => s.available_mtr > 0);
+      if (stageWithWip) {
+        setWorkCenter(stageWithWip.stage_code);
+      } else if (availableWorkCenters.length > 0 && !availableWorkCenters.some((wc) => wc.code === workCenter)) {
+        setWorkCenter(availableWorkCenters[0].code);
+      }
     }
-  }, [availableWorkCenters, workCenter]);
+  }, [sourceWip, availableWorkCenters, workCenter]);
 
   // Selected Work Center WIP for Source
   const sourceStageWip = useMemo(() => {
@@ -590,24 +583,25 @@ export default function DiversionForm() {
     return sourceWip.stageBreakdown.find(s => s.stage_code === workCenter);
   }, [sourceWip, workCenter]);
 
-  // Available WIP across stages for diversion: (HTC OK * Multiple) - Finishing done - VDI Rejection
+  // Physical WIP available at the selected work center (Rule 1 & 2)
   const availableAtWorkCenterMtr = useMemo(() => {
     if (!sourceWip) return 0;
-    return Math.max(0, sourceWip.balanceWipMtr || 0);
-  }, [sourceWip]);
+    if (sourceStageWip) return Math.max(0, sourceStageWip.available_mtr || 0);
+    return 0;
+  }, [sourceWip, sourceStageWip]);
 
   const availableAtWorkCenterPcs = useMemo(() => {
-    if (sourceWip && sourceWip.balanceWipPcs >= 0) return sourceWip.balanceWipPcs;
+    if (sourceStageWip && sourceStageWip.available_pcs >= 0) return sourceStageWip.available_pcs;
     const avg = sourceWip?.avgLength || 6.0;
-    return avg > 0 ? availableAtWorkCenterMtr / avg : 0;
-  }, [sourceWip, availableAtWorkCenterMtr]);
+    return avg > 0 ? Math.round(availableAtWorkCenterMtr / avg) : 0;
+  }, [sourceStageWip, availableAtWorkCenterMtr, sourceWip]);
 
   const availableAtWorkCenterMt = useMemo(() => {
-    if (sourceWip && sourceWip.balanceWipMt >= 0) return sourceWip.balanceWipMt;
+    if (sourceStageWip && sourceStageWip.available_mt >= 0) return sourceStageWip.available_mt;
     const od = sourceWip?.od || 0;
     const wt = sourceWip?.wt || 0;
     return od > wt ? (od - wt) * wt * 0.0246615 * 0.001 * availableAtWorkCenterMtr : 0;
-  }, [sourceWip, availableAtWorkCenterMtr]);
+  }, [sourceStageWip, availableAtWorkCenterMtr, sourceWip]);
 
   // Calculations for Transfer Impact (Rule 2)
   const diversionMtr = Number(qty) || 0;
@@ -992,14 +986,14 @@ export default function DiversionForm() {
               }`}>
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-[#0078d4] uppercase tracking-wider">
-                    Available WIP for Diversion
+                    Available WIP at {selectedWorkCenterObj?.name.split(' ')[0] || workCenter}
                   </span>
                   <span className={`rounded text-[10px] font-bold px-1.5 py-0.5 ${
                     availableAtWorkCenterMtr > 0
                       ? 'bg-[#0078d4] text-white'
                       : 'bg-amber-600 text-white'
                   }`}>
-                    {availableAtWorkCenterMtr > 0 ? `${fmt(availableAtWorkCenterPcs, 0)} Pcs Available` : '0 Pcs (No WIP)'}
+                    {availableAtWorkCenterMtr > 0 ? `${fmt(availableAtWorkCenterPcs, 0)} Pcs Available` : '0 Pcs at Stage'}
                   </span>
                 </div>
                 <div className="mt-1.5">
@@ -1011,7 +1005,7 @@ export default function DiversionForm() {
                   <span className={`text-xs font-bold ml-1 uppercase ${
                     availableAtWorkCenterMtr > 0 ? 'text-[#0078d4]' : 'text-amber-700'
                   }`}>
-                    Pcs Available to Divert
+                    Pcs at Selected Stage
                   </span>
                 </div>
                 <div className="mt-1 flex items-center gap-2 text-xs text-slate-600 font-mono">
@@ -1020,23 +1014,24 @@ export default function DiversionForm() {
                   <span>{fmt(availableAtWorkCenterMt, 3)} MT</span>
                 </div>
                 <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-1.5">
-                  <span className="inline-flex items-center gap-1 rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    Prime: {fmt(sourceAvgLen > 0 ? Math.round((sourceWip.primeAvailableMtr || 0) / sourceAvgLen) : 0, 0)} Pcs ({fmt(sourceWip.primeAvailableMtr || 0)} m)
+                  <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800">
+                    Total Order WIP: {fmt(sourceWip.balanceWipPcs, 0)} Pcs ({fmt(sourceWip.balanceWipMtr)} m)
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="Universal Rejection Handling (Option B): Salvage and rejections remain active WIP and are divertible to other work orders.">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                    Salvage/Rej: {fmt(sourceAvgLen > 0 ? Math.round((sourceWip.salvageAvailableMtr || 0) / sourceAvgLen) : 0, 0)} Pcs ({fmt(sourceWip.salvageAvailableMtr || 0)} m)
-                  </span>
+                  {sourceWip.salvageAvailableMtr != null && sourceWip.salvageAvailableMtr > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="Universal Rejection Handling: Salvage and rejections remain active WIP and are divertible.">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      Salvage: {fmt(sourceAvgLen > 0 ? Math.round(sourceWip.salvageAvailableMtr / sourceAvgLen) : 0, 0)} Pcs ({fmt(sourceWip.salvageAvailableMtr)} m)
+                    </span>
+                  )}
                 </div>
                 <div className="mt-1.5 text-[10px] text-slate-500 font-mono">
-                  Formula: (HTC OK × {sourceWip.planMultiple || 1}) + Diverted In − Shipped FG (Rule 2: Prime & Salvage divertible)
+                  Formula: Stage Active WIP = Preceding Stage OK − Current Stage OK
                 </div>
                 {availableAtWorkCenterMtr <= 0 && (
                   <p className="mt-1.5 text-[11px] text-amber-700 font-medium leading-tight">
-                    {sourceWip.rollingGrossMtr === 0
-                      ? 'No physical rolling completed yet. Unrolled orders cannot be diverted.'
-                      : 'All produced WIP for this work order has been finished or diverted.'}
+                    {sourceWip.balanceWipMtr > 0
+                      ? `0 physical WIP currently at ${selectedWorkCenterObj?.name || workCenter}. Material has moved downstream (${fmt(sourceWip.balanceWipPcs, 0)} Pcs / ${fmt(sourceWip.balanceWipMtr)} m active in mill).`
+                      : 'No physical WIP remaining for this work order.'}
                   </p>
                 )}
               </div>
@@ -1055,10 +1050,13 @@ export default function DiversionForm() {
                   <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">
                     {fmt(sourceWip.rollingHtcOkPcs || (sourceAvgLen > 0 ? Math.round((sourceWip.rollingHtcOkMtr || sourceWip.rollingNetMtr) / sourceAvgLen) : 0), 0)}
                   </span>
-                  <span className="text-xs font-bold text-slate-600 ml-1 uppercase">Pcs</span>
+                  <span className="text-xs font-bold text-slate-600 ml-1 uppercase">Pcs Rolled</span>
                 </div>
                 <div className="mt-1 text-xs text-slate-500 font-mono">
                   {fmt(sourceWip.rollingHtcOkMtr || sourceWip.rollingNetMtr)} Mtrs · {fmt(sourceWip.rollingHtcOkMt, 3)} MT
+                </div>
+                <div className="mt-2 text-[10px] text-slate-400">
+                  Initial feeder output from Hot Rolling Mill
                 </div>
               </div>
 
@@ -1076,10 +1074,16 @@ export default function DiversionForm() {
                     <span className="text-slate-500">Diverted Out:</span>
                     <strong>{fmt(sourceWip.divertedOutMtr || 0)} m</strong>
                   </div>
-                  <div className="flex justify-between items-center bg-amber-50/80 rounded px-1.5 py-0.5 border border-amber-200/60 text-amber-800">
-                    <span className="text-[11px] font-sans font-semibold">Salvage / Rej Pool:</span>
-                    <strong className="font-mono text-xs">{fmt(sourceWip.qcVdiRejMtr || 0)} m (Divertible)</strong>
+                  <div className="flex justify-between items-center bg-blue-50/80 rounded px-1.5 py-0.5 border border-blue-200/60 text-blue-900">
+                    <span className="text-[11px] font-sans font-semibold">Active Mill WIP:</span>
+                    <strong className="font-mono text-xs">{fmt(sourceWip.balanceWipMtr || 0)} m</strong>
                   </div>
+                  {sourceWip.salvageAvailableMtr != null && sourceWip.salvageAvailableMtr > 0 && (
+                    <div className="flex justify-between items-center bg-amber-50/80 rounded px-1.5 py-0.5 border border-amber-200/60 text-amber-800">
+                      <span className="text-[11px] font-sans font-semibold">Salvage Pool:</span>
+                      <strong className="font-mono text-xs">{fmt(sourceWip.salvageAvailableMtr)} m (Divertible)</strong>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
