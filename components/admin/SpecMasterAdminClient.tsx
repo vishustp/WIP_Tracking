@@ -345,7 +345,7 @@ function SpecEditModal({
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white">
+          <button onClick={onClose} aria-label="Close modal" title="Close modal" className="p-2 hover:bg-white/20 rounded-lg transition-colors text-white">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -675,7 +675,7 @@ function SpecRow({
       </td>
       <td className="px-4 py-3 text-center">
         {canModify ? (
-          <button onClick={() => onToggleActive(rec)} title={rec.is_active ? 'Click to deactivate' : 'Click to activate'} className="cursor-pointer">
+          <button onClick={() => onToggleActive(rec)} title={rec.is_active ? 'Click to deactivate' : 'Click to activate'} aria-label={rec.is_active ? `Deactivate spec ${rec.spec_key}` : `Activate spec ${rec.spec_key}`} className="cursor-pointer">
             {rec.is_active ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-600 mx-auto" />
             ) : (
@@ -700,6 +700,7 @@ function SpecRow({
                 onClick={() => onEdit(rec)}
                 className="p-1.5 rounded-lg hover:bg-indigo-100 text-indigo-600 transition-colors cursor-pointer"
                 title="Edit specification"
+                aria-label={`Edit spec ${rec.spec_key}`}
               >
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
@@ -707,6 +708,7 @@ function SpecRow({
                 onClick={() => onDelete(rec)}
                 className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors cursor-pointer"
                 title="Delete specification"
+                aria-label={`Delete spec ${rec.spec_key}`}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -716,6 +718,7 @@ function SpecRow({
               onClick={() => onView(rec)}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-[11px] font-semibold transition-colors cursor-pointer"
               title="View specification details"
+              aria-label={`View spec ${rec.spec_key} details`}
             >
               <Eye className="w-3.5 h-3.5 text-indigo-600" />
               <span>Details</span>
