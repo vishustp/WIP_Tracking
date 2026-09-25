@@ -22,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://dzhvbftmuwfyuaarsxtk.supabase.co" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://dzhvbftmuwfyuaarsxtk.supabase.co" />
       </head>
-      <body className={`${inter.className} antialiased bg-slate-50 text-slate-900`}>
+      <body className={`${inter.className} antialiased bg-canvas-pattern min-h-screen text-slate-900`}>
         <AppShell>{children}</AppShell>
         <Toaster richColors position="top-right" closeButton duration={4500} />
       </body>

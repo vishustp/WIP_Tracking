@@ -32,8 +32,18 @@ export default {
         },
       },
       boxShadow: {
-        'subtle': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        '2xs': '0 1px 2px 0 rgba(0, 0, 0, 0.04)',
+        'subtle': '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
         'elevated': '0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
+      },
+      backgroundImage: {
+        'grid-pattern': 'radial-gradient(circle at 1px 1px, var(--grid-pattern-dot, rgba(148, 163, 184, 0.28)) 1px, transparent 0)',
+        'blueprint-cross': 'linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px)',
+      },
+      backgroundSize: {
+        'grid-sm': '16px 16px',
+        'grid-md': '24px 24px',
+        'grid-lg': '32px 32px',
       },
       borderRadius: {
         'panel': '0.625rem',

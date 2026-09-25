@@ -5,6 +5,20 @@
 :root {
   color-scheme: light;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Industrial Canvas & Surface Tokens */
+  --bg-canvas: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-surface-subtle: #f1f5f9;
+
+  /* Border Tokens */
+  --border-subtle: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --border-focus: #0078d4;
+
+  /* Engineering Blueprint Dot Matrix */
+  --grid-pattern-dot: rgba(148, 163, 184, 0.28);
 }
 
 * {
@@ -119,6 +133,13 @@ input.bg-slate-900:-webkit-autofill:active {
   transition: background-color 5000s ease-in-out 0s;
 }
 
+/* Industrial CAD / Blueprint Grid Canvas */
+.bg-canvas-pattern {
+  background-color: var(--bg-canvas);
+  background-image: radial-gradient(circle at 1px 1px, var(--grid-pattern-dot) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
 @media print {
   header,
   aside,
@@ -126,11 +147,13 @@ input.bg-slate-900:-webkit-autofill:active {
   .print\:hidden {
     display: none !important;
   }
-  body, html {
+  body, html, .bg-canvas-pattern {
     background: #ffffff !important;
+    background-image: none !important;
     color: #000000 !important;
     padding: 0 !important;
     margin: 0 !important;
+    box-shadow: none !important;
   }
 }
 

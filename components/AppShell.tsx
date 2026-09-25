@@ -139,7 +139,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     .filter((group) => group.items.length > 0);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+    <div className="min-h-screen bg-canvas-pattern text-slate-900 font-sans">
       <GlobalKeyboardNavigation />
       {/* Mobile overlay */}
       {open && (
@@ -219,7 +219,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="lg:pl-60 print:pl-0">
         {/* Top Header Bar matching Design Variation 5 */}
-        <header className="sticky top-0 z-20 flex h-14 items-center border-b border-slate-200 bg-white px-4 sm:px-6 print:hidden">
+        <header className="sticky top-0 z-20 flex h-14 items-center border-b border-slate-200/80 bg-white/90 backdrop-blur-md px-4 sm:px-6 print:hidden">
           <div className="flex flex-1 items-center justify-between gap-4">
             {/* Left: Mobile Menu Toggle + Page breadcrumb */}
             <div className="flex items-center gap-3 flex-1">
