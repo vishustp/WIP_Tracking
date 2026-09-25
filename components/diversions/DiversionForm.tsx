@@ -123,6 +123,8 @@ type WoWipSummary = {
   effectiveHtcOkFinishedMtr?: number;
   finishingDoneMtr?: number;
   qcVdiRejMtr?: number;
+  primeAvailableMtr?: number;
+  salvageAvailableMtr?: number;
 };
 
 type WipViewRow = {
@@ -274,15 +276,21 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     .filter((d: any) => d.target_wo_id === id)
     .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
-  // FORMULA: (HTC OK * Multiple) + Diverted In - Finishing done - VDI Rejection - Diverted Out
+  // FORMULA (RULE 2): ALL material (Prime or Salvage/Rejected) can be diverted!
+  // Rejections do NOT vanish as dead scrap and are NOT deducted from the diversion pool.
   const rollingHtcOkBaseMtr = rollingHtcOkMtr > 0 ? rollingHtcOkMtr : rollingNetMtr;
   const effectiveHtcOkFinishedMtr = rollingHtcOkBaseMtr * planMultiple;
-  const finishingDoneMtr = finOutMtr + finRejMtr;
+  const finishingShippedMtr = finOutMtr; // Only actual dispatched finished goods leave the plant
+  const totalRejectionSalvageMtr = Math.max(0, qcVdiRejMtr + rollingRejMtr + htcRejMtr + drawRejMtr + htRejMtr + finRejMtr);
 
+  // Total physical WIP eligible for diversion: Prime + Salvage/Rejection
   const totalWipAcrossStagesMtr = Math.max(
     0,
-    effectiveHtcOkFinishedMtr + totalDivertedInMtr - finishingDoneMtr - qcVdiRejMtr - totalDivertedOutMtr
+    effectiveHtcOkFinishedMtr + totalDivertedInMtr - finishingShippedMtr - totalDivertedOutMtr
   );
+  const salvageAvailableMtr = Math.min(totalWipAcrossStagesMtr, totalRejectionSalvageMtr);
+  const primeAvailableMtr = Math.max(0, totalWipAcrossStagesMtr - salvageAvailableMtr);
+
   const totalWipAcrossStagesPcs = avgLength > 0 ? Math.round(totalWipAcrossStagesMtr / avgLength) : 0;
   const totalWipAcrossStagesMt = totalWipAcrossStagesMtr * mtPerMtr;
 
@@ -378,8 +386,10 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     rollingHtcOkMt,
     planMultiple,
     effectiveHtcOkFinishedMtr,
-    finishingDoneMtr,
+    finishingDoneMtr: finishingShippedMtr,
     qcVdiRejMtr,
+    primeAvailableMtr,
+    salvageAvailableMtr,
     divertedOutMtr: totalDivertedOutMtr,
     divertedOutPcs: avgLength > 0 ? totalDivertedOutMtr / avgLength : 0,
     divertedOutMt: totalDivertedOutMtr * mtPerMtr,
@@ -670,11 +680,11 @@ export default function DiversionForm() {
           target_wo_id: target,
           diverted_qty: diversionMtr,
           work_center: workCenter,
-          route_id: route,
+          process_route_id: route,
           multiple: numMultiple,
-          reason: reason || null,
+          reason: reason?.trim() || 'Material Diversion Transfer',
+          approved_by: user?.id || null,
           diversion_date: date,
-          status: 'ISSUED',
         });
         if (insertErr) throw new Error(insertErr.message);
       }
@@ -1009,14 +1019,24 @@ export default function DiversionForm() {
                   <span>•</span>
                   <span>{fmt(availableAtWorkCenterMt, 3)} MT</span>
                 </div>
+                <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Prime: {fmt(sourceAvgLen > 0 ? Math.round((sourceWip.primeAvailableMtr || 0) / sourceAvgLen) : 0, 0)} Pcs ({fmt(sourceWip.primeAvailableMtr || 0)} m)
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="Universal Rejection Handling (Option B): Salvage and rejections remain active WIP and are divertible to other work orders.">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    Salvage/Rej: {fmt(sourceAvgLen > 0 ? Math.round((sourceWip.salvageAvailableMtr || 0) / sourceAvgLen) : 0, 0)} Pcs ({fmt(sourceWip.salvageAvailableMtr || 0)} m)
+                  </span>
+                </div>
                 <div className="mt-1.5 text-[10px] text-slate-500 font-mono">
-                  Formula: (HTC OK × {sourceWip.planMultiple || 1}) − Finishing Done − VDI Rej
+                  Formula: (HTC OK × {sourceWip.planMultiple || 1}) + Diverted In − Shipped FG (Rule 2: Prime & Salvage divertible)
                 </div>
                 {availableAtWorkCenterMtr <= 0 && (
                   <p className="mt-1.5 text-[11px] text-amber-700 font-medium leading-tight">
                     {sourceWip.rollingGrossMtr === 0
                       ? 'No physical rolling completed yet. Unrolled orders cannot be diverted.'
-                      : 'All produced WIP for this work order has been finished, rejected, or diverted.'}
+                      : 'All produced WIP for this work order has been finished or diverted.'}
                   </p>
                 )}
               </div>
@@ -1042,23 +1062,23 @@ export default function DiversionForm() {
                 </div>
               </div>
 
-              {/* Deductions: Finishing Done, VDI Rejection, Diversions */}
+              {/* Deductions & Material Disposition */}
               <div className="rounded-md border border-slate-300 bg-white p-3 shadow-2xs">
                 <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
-                  Deductions & Finishing Done
+                  Deductions & Dispositions
                 </span>
-                <div className="mt-1.5 space-y-0.5 text-xs font-mono">
+                <div className="mt-1.5 space-y-1 text-xs font-mono">
                   <div className="flex justify-between text-slate-700">
-                    <span>Finishing Done:</span>
+                    <span className="text-slate-500">Shipped / FG Done:</span>
                     <strong className="text-slate-900">{fmt(sourceWip.finishingDoneMtr || 0)} m</strong>
                   </div>
-                  <div className="flex justify-between text-rose-700">
-                    <span>VDI Rejection:</span>
-                    <strong>{fmt(sourceWip.qcVdiRejMtr || 0)} m</strong>
-                  </div>
                   <div className="flex justify-between text-amber-700">
-                    <span>Diverted Out:</span>
+                    <span className="text-slate-500">Diverted Out:</span>
                     <strong>{fmt(sourceWip.divertedOutMtr || 0)} m</strong>
+                  </div>
+                  <div className="flex justify-between items-center bg-amber-50/80 rounded px-1.5 py-0.5 border border-amber-200/60 text-amber-800">
+                    <span className="text-[11px] font-sans font-semibold">Salvage / Rej Pool:</span>
+                    <strong className="font-mono text-xs">{fmt(sourceWip.qcVdiRejMtr || 0)} m (Divertible)</strong>
                   </div>
                 </div>
               </div>
@@ -1148,16 +1168,42 @@ export default function DiversionForm() {
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-            Reason / Engineering Justification <span className="text-red-500">*</span>
-          </label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Reason / Engineering Justification <span className="text-red-500">*</span>
+            </label>
+            <span className="text-[11px] text-slate-400">Select standard reason or type custom</span>
+          </div>
           <Input
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             required
             disabled={!canManagePlans}
-            placeholder="e.g. Urgent customer dispatch, mother pipe size pairing"
+            placeholder="e.g. Urgent customer dispatch, mother pipe size pairing, salvage disposition"
           />
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {[
+              'Prime Material Reallocation',
+              'Salvage / QC Rejection Diversion',
+              'Off-cut Remnant Diversion (≥ 3.0m)',
+              'Commercial Secondary Downgrade',
+              'Urgent Customer Dispatch Pairing',
+            ].map((tag) => (
+              <button
+                type="button"
+                key={tag}
+                onClick={() => setReason(tag)}
+                disabled={!canManagePlans}
+                className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${
+                  reason === tag
+                    ? 'bg-blue-100 text-blue-800 border-blue-300 font-semibold'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800'
+                }`}
+              >
+                + {tag}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ========================================================================= */}
