@@ -320,4 +320,122 @@ describe('PCS-First Route-Aware WIP Reconciliation', () => {
     expect(plantWipMt + finishedMt + scrapMt).toBeLessThanOrEqual(chargedMt * 1.02); // within 2% rounding margin
     expect(result.max_physical_wip_mt).toBeGreaterThanOrEqual(0);
   });
+
+  it('correctly handles Piece Multiplier across Band Saw without corrupting upstream mother hollow WIP', () => {
+    // 100 Mother Pipes rolled (12.0m length)
+    // 80 Mother Pipes drawn (12.0m length) -> 20 Mother Pipes waiting at Draw Bench
+    // 60 Mother Pipes heat treated (12.0m length) -> 20 Mother Pipes waiting at Heat Treatment
+    // 40 Mother Pipes cut at Band Saw with Multiple=2 (produces 80 cut pieces of 6.0m) -> 20 Mother Pipes waiting at Band Saw
+    // 60 Cut Pieces inspected at VDI -> 20 Cut Pieces waiting at VDI (80 cut - 60 inspected)
+    // 30 Cut Pieces bundled at Finishing -> 20 Cut Pieces waiting at Finishing (50 OK - 30 bundled)
+    const stages: StageWipInput[] = [
+      {
+        stage_code: 'ROLLING',
+        sequence_no: 1,
+        gross_output_mtr: 1200,
+        gross_output_pcs: 100,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 1200,
+        net_output_pcs: 100,
+        od: 60.3,
+        wt: 5.5,
+        avg_length: 12.0,
+      },
+      {
+        stage_code: 'DRAW',
+        sequence_no: 2,
+        gross_output_mtr: 960,
+        gross_output_pcs: 80,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 960,
+        net_output_pcs: 80,
+        od: 60.3,
+        wt: 5.5,
+        avg_length: 12.0,
+      },
+      {
+        stage_code: 'HEAT_TREATMENT',
+        sequence_no: 3,
+        gross_output_mtr: 720,
+        gross_output_pcs: 60,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 720,
+        net_output_pcs: 60,
+        od: 60.3,
+        wt: 5.5,
+        avg_length: 12.0,
+      },
+      {
+        stage_code: 'BAND_SAW',
+        sequence_no: 4,
+        gross_output_mtr: 480,
+        gross_output_pcs: 80, // 80 cut pieces from 40 mother pipes
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 480,
+        net_output_pcs: 80,
+        od: 60.3,
+        wt: 5.5,
+        avg_length: 6.0,
+      },
+      {
+        stage_code: 'VDI',
+        sequence_no: 5,
+        gross_output_mtr: 300,
+        gross_output_pcs: 50, // 50 OK cut pieces
+        rejection_mtr: 60,
+        rejection_pcs: 10,   // 10 rejected cut pieces -> 60 total inspected
+        net_output_mtr: 300,
+        net_output_pcs: 50,
+        od: 60.3,
+        wt: 5.5,
+        avg_length: 6.0,
+      },
+      {
+        stage_code: 'FINISHING',
+        sequence_no: 6,
+        gross_output_mtr: 180,
+        gross_output_pcs: 30, // 30 cut pieces bundled
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 180,
+        net_output_pcs: 30,
+        od: 60.3,
+        wt: 5.5,
+        avg_length: 6.0,
+      },
+    ];
+
+    const result = reconcileWorkOrderWip(stages, {
+      route_code: 'CDS',
+      mh_od: 60.3,
+      mh_wt: 5.5,
+      mh_avg_length: 12.0,
+      final_avg_length: 6.0,
+      multiple: 2,
+    });
+
+    const drawStage = result.stages.find((s) => s.stage_code === 'DRAW');
+    const htStage = result.stages.find((s) => s.stage_code === 'HEAT_TREATMENT');
+    const bsStage = result.stages.find((s) => s.stage_code === 'BAND_SAW');
+    const vdiStage = result.stages.find((s) => s.stage_code === 'VDI');
+    const finStage = result.stages.find((s) => s.stage_code === 'FINISHING');
+
+    // Draw Bench: 100 rolled - 80 drawn = 20 Mother Pipes waiting
+    expect(drawStage!.reconciled_wip_pcs).toBe(20);
+    // Heat Treatment: 80 drawn - 60 treated = 20 Mother Pipes waiting
+    expect(htStage!.reconciled_wip_pcs).toBe(20);
+    // Band Saw: 60 treated - 40 cut (480m / 12m) = 20 Mother Pipes waiting
+    expect(bsStage!.reconciled_wip_pcs).toBe(20);
+    // VDI: 80 cut pieces from Band Saw - 50 OK (Option B keeps 10 salvage/rej in WIP until diverted) = 30 Cut Pieces waiting
+    expect(vdiStage!.reconciled_wip_pcs).toBe(30);
+    // Finishing: 50 VDI OK cut pieces - 30 bundled = 20 Cut Pieces waiting
+    expect(finStage!.reconciled_wip_pcs).toBe(20);
+
+    // Total Plant WIP: 20 (Draw) + 20 (HT) + 20 (Band Saw) + 30 (VDI) + 20 (Finishing) = 110 pieces
+    expect(result.plant_total_wip_pcs).toBe(110);
+  });
 });

@@ -780,11 +780,14 @@ export default function QcInspectionClient() {
     const targetWo = workOrders.find((w) => w.id === effectiveWoId);
     const displayWoNo = targetChild?.work_order_no || targetWo?.work_order_no || selectedQueueItem.work_order_no;
 
+    const targetChildPlan = rollingPlans.find((p) => p.work_order_id === effectiveWoId);
+    const targetRouteId = targetChildPlan?.process_route_id || selectedQueueItem.process_route_id || null;
+
     setSaving(true);
     try {
       const payload = {
         work_order_id: effectiveWoId,
-        process_route_id: targetWo?.process_route_id || selectedQueueItem.process_route_id || null,
+        process_route_id: targetRouteId,
         inspection_date: formDate,
         inspected_pcs: inspP,
         inspected_mtr: formMetrics.inspMtr,

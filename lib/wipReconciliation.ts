@@ -81,6 +81,7 @@ export function reconcileWorkOrderWip(
     mh_wt?: number;
     mh_avg_length?: number;
     final_avg_length?: number;
+    multiple?: number;
   } = {}
 ): WorkOrderWipSummary {
   const routeCode = (options.route_code || 'CDS').toUpperCase();
@@ -103,6 +104,27 @@ export function reconcileWorkOrderWip(
 
   const mhOd = Number(options.mh_od || rollStage?.mh_od || rollStage?.od || 0);
   const mhWt = Number(options.mh_wt || rollStage?.mh_wt || rollStage?.wt || 0);
+
+  // Determine piece multiple at Band Saw cutting
+  const pieceMultiple = Number(options.multiple) > 0
+    ? Number(options.multiple)
+    : (finalAvgLen > 0 && actualMhLen > 0 && actualMhLen > finalAvgLen * 1.3
+        ? Math.max(1, Math.round(actualMhLen / finalAvgLen))
+        : 1);
+
+  // Unit weights for drawn mass conservation:
+  const finOd = Number(sortedStages[sortedStages.length - 1]?.od || mhOd);
+  const finWt = Number(sortedStages[sortedStages.length - 1]?.wt || mhWt);
+  const finUnitWeight = finOd > finWt && finWt > 0 ? (finOd - finWt) * finWt * 0.0246615 * 0.001 : 0;
+  const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
+  const elongatedDrawnLen = (finUnitWeight > 0 && mhUnitWeight > 0)
+    ? Number((actualMhLen * (mhUnitWeight / finUnitWeight)).toFixed(3))
+    : actualMhLen;
+  const drawnMultiple = Number(options.multiple) > 0
+    ? Number(options.multiple)
+    : (finalAvgLen > 0 && elongatedDrawnLen > 0 && elongatedDrawnLen > finalAvgLen * 1.3
+        ? Math.max(1, Math.round(elongatedDrawnLen / finalAvgLen))
+        : pieceMultiple);
 
   // 2. Determine charged billet MT
   let chargedBilletMt = options.charged_billet_mt || 0;
@@ -140,8 +162,18 @@ export function reconcileWorkOrderWip(
       for (let j = i + 1; j < sortedStages.length; j++) {
         const down = sortedStages[j];
         const downData = stageProdMap.get(down.stage_code);
-        if (downData && (downData.prodPcs + downData.rejPcs) > maxDownstreamPcs) {
-          maxDownstreamPcs = downData.prodPcs + downData.rejPcs;
+        if (!downData) continue;
+        const isDownCut = down.stage_code === 'BAND_SAW' || down.stage_code === 'VDI' || down.stage_code === 'FINISHING';
+        let effDown = downData.prodPcs + downData.rejPcs;
+        if (isDownCut) {
+          if (actualMhLen > 0 && (downData.prodMtr + downData.rejMtr) > 0) {
+            effDown = Math.round((downData.prodMtr + downData.rejMtr) / actualMhLen);
+          } else if (pieceMultiple > 1) {
+            effDown = Math.round(effDown / pieceMultiple);
+          }
+        }
+        if (effDown > maxDownstreamPcs) {
+          maxDownstreamPcs = effDown;
         }
       }
 
@@ -257,17 +289,41 @@ export function reconcileWorkOrderWip(
 
     // Downstream passed pcs: maximum quantity processed by any downstream stage
     let maxDownstreamPcs = 0;
+    const isCurrentUpstreamOfCut = sc !== 'VDI' && sc !== 'FINISHING';
+
     for (let j = i + 1; j < sortedStages.length; j++) {
       const down = sortedStages[j];
       const downData = stageProdMap.get(down.stage_code);
-      if (downData && downData.prodPcs > maxDownstreamPcs) {
-        maxDownstreamPcs = downData.prodPcs;
+      if (!downData) continue;
+
+      let effectiveDownPcs = downData.prodPcs;
+      const isDownCut = down.stage_code === 'BAND_SAW' || down.stage_code === 'VDI' || down.stage_code === 'FINISHING';
+
+      if (isCurrentUpstreamOfCut && isDownCut) {
+        if (stageLen > 0 && downData.prodMtr > 0) {
+          effectiveDownPcs = Math.round(downData.prodMtr / stageLen);
+        } else if (isCds ? drawnMultiple > 1 : pieceMultiple > 1) {
+          effectiveDownPcs = Math.round(downData.prodPcs / (isCds ? drawnMultiple : pieceMultiple));
+        }
+      }
+
+      if (effectiveDownPcs > maxDownstreamPcs) {
+        maxDownstreamPcs = effectiveDownPcs;
       }
     }
 
     const curProd = stageProdMap.get(sc) || { prodPcs: 0, rejPcs: 0, prodMtr: 0, rejMtr: 0 };
+    let curPassedPcs = curProd.prodPcs;
+    if (sc === 'BAND_SAW') {
+      if (stageLen > 0 && curProd.prodMtr > 0) {
+        curPassedPcs = Math.round(curProd.prodMtr / stageLen);
+      } else if (isCds ? drawnMultiple > 1 : pieceMultiple > 1) {
+        curPassedPcs = Math.round(curProd.prodPcs / (isCds ? drawnMultiple : pieceMultiple));
+      }
+    }
+
     // Option B: Current stage OK production is deducted; rejections stay in active balance until diverted or marked commercial
-    const effectivePassedPcs = Math.max(curProd.prodPcs, maxDownstreamPcs);
+    const effectivePassedPcs = Math.max(curPassedPcs, maxDownstreamPcs);
 
     // Core Formula: Queue WIP (PCS) = Incoming - Effective Passed OK
     const wipPcs = Math.max(0, incomingPcs - effectivePassedPcs);

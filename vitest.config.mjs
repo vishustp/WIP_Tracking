@@ -9,7 +9,12 @@ const __dirname = path.dirname(__filename);
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: "jsdom",
+    environment: "node",
+    include: ["tests/**/*.test.{ts,tsx}"],
+    exclude: ["**/node_modules/**", "**/.agents/**", "**/.next/**"],
+    environmentMatchGlobs: [
+      ["tests/**/*.test.tsx", "happy-dom"],
+    ],
   },
   resolve: {
     alias: {

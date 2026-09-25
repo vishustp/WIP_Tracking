@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { mtFromMtr, extractPcsFromRemarks, normalizeGrade } from '@/lib/productionUtils';
-import { reconcileWorkOrderWip } from '@/lib/wipReconciliation';
+import { reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
 
 type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING';
 
@@ -157,6 +157,7 @@ export default function SizeGradeWipReportClient() {
         });
 
         const rollingStageId = (stagesRes.data || []).find((s: any) => (s.stage_code || '').toUpperCase() === 'ROLLING')?.id;
+        const finishingStageId = (stagesRes.data || []).find((s: any) => (s.stage_code || '').toUpperCase() === 'FINISHING')?.id;
 
         // Build rolling date map per work order ID
         const rollingDateMap = new Map<string, string>();
@@ -406,166 +407,20 @@ export default function SizeGradeWipReportClient() {
           const mhOd = Number(planMh?.mh_od || rollStage?.mh_od || wo?.size_od || rows[0]?.size_od || 0);
           const mhWt = Number(planMh?.mh_wt || rollStage?.mh_wt || wo?.size_wt || rows[0]?.size_wt || 0);
 
-          // Direct QC inspections for this specific work order
-          let directVdiOkMtr = 0;
-          let directVdiOkPcs = 0;
-          let directVdiRejMtr = 0;
-          let directVdiRejPcs = 0;
-          (qcRes.data || []).forEach((qc: any) => {
-            if (qc.work_order_id === woId) {
-              directVdiOkMtr += Number(qc.vdi_ok_mtr || 0);
-              directVdiOkPcs += Number(qc.vdi_ok_pcs || 0);
-              directVdiRejMtr += Number(qc.vdi_rejection_mtr || 0) + Number(qc.vdi_salvage_mtr || 0);
-              directVdiRejPcs += Number(qc.vdi_rejection_pcs || 0) + Number(qc.vdi_salvage_pcs || 0);
-            }
+          const finStageId = (stagesRes.data || []).find((s: any) => (s.stage_code || '').toUpperCase() === 'FINISHING')?.id;
+          const { summary } = reconcileCampaignWorkOrderWip({
+            woId,
+            wo,
+            rows,
+            qcInspections: qcRes.data || [],
+            productionLogs: prodRes.data || [],
+            hierarchyMaps: {
+              campaignMembersMap,
+              childToMasterMap,
+              mhMap,
+            },
+            finishingStageId,
           });
-
-          // Campaign aggregation for Master work orders: include QC inspections & Finishing from child orders
-          const campaignMembers = campaignMembersMap.get(woId);
-          let campaignVdiOkMtr = directVdiOkMtr;
-          let campaignVdiOkPcs = directVdiOkPcs;
-          let campaignVdiRejMtr = directVdiRejMtr;
-          let campaignVdiRejPcs = directVdiRejPcs;
-          let campaignFinMtr = 0;
-          let campaignFinPcs = 0;
-
-          if (campaignMembers && campaignMembers.size > 0) {
-            (qcRes.data || []).forEach((qc: any) => {
-              if (qc.work_order_id !== woId && campaignMembers.has(qc.work_order_id)) {
-                campaignVdiOkMtr += Number(qc.vdi_ok_mtr || 0);
-                campaignVdiOkPcs += Number(qc.vdi_ok_pcs || 0);
-                campaignVdiRejMtr += Number(qc.vdi_rejection_mtr || 0) + Number(qc.vdi_salvage_mtr || 0);
-                campaignVdiRejPcs += Number(qc.vdi_rejection_pcs || 0) + Number(qc.vdi_salvage_pcs || 0);
-              }
-            });
-            const finStageId = (stagesRes.data || []).find((s: any) => (s.stage_code || '').toUpperCase() === 'FINISHING')?.id;
-            (prodRes.data || []).forEach((l: any) => {
-              if (campaignMembers.has(l.work_order_id) && l.stage_id === finStageId) {
-                campaignFinMtr += Number(l.output_qty || 0);
-                const { pcs: pPcs } = extractPcsFromRemarks(l.remarks);
-                campaignFinPcs += pPcs || (actualMhLen > 0 ? Math.round(Number(l.output_qty || 0) / actualMhLen) : 0);
-              }
-            });
-          }
-
-          const isChild = childToMasterMap.has(woId);
-          const isMaster = Boolean(campaignMembers && campaignMembers.size > 0);
-
-          // Ensure finishing stage is present if child order has VDI output
-          let stageRows = [...rows];
-          if (isChild && directVdiOkPcs > 0 && !stageRows.some((r) => (r.stage_code || '').toUpperCase() === 'FINISHING')) {
-            const maxSeq = Math.max(...stageRows.map((r) => Number(r.sequence_no || 0)), 6);
-            stageRows.push({
-              work_order_id: woId,
-              stage_code: 'FINISHING',
-              sequence_no: maxSeq + 1,
-              gross_output_mtr: 0,
-              gross_output_pcs: 0,
-              rejection_mtr: 0,
-              rejection_pcs: 0,
-              net_output_mtr: 0,
-              net_output_pcs: 0,
-            });
-          }
-
-          const summary = reconcileWorkOrderWip(
-            stageRows.map((r: any) => {
-              const sc = (r.stage_code || '').toUpperCase();
-              const isRoll = sc === 'ROLLING';
-              const isVdi = sc === 'VDI';
-              const isFin = sc === 'FINISHING';
-
-              const rawMtr = Number(r.production_qty || r.gross_output_mtr || 0);
-              const rawPcs = Number(r.gross_output_pcs || 0);
-              const rawRejMtr = Number(r.rejection_mtr || 0);
-              const rawRejPcs = Number(r.rejection_pcs || 0);
-
-              let grossMtr = rawMtr;
-              let grossPcs = rawPcs;
-              let rejMtr = rawRejMtr;
-              let rejPcs = rawRejPcs;
-              let netMtr = Number(r.net_output_mtr || 0);
-              let netPcs = Number(r.net_output_pcs || 0);
-              let incomingPcsOverride: number | undefined = undefined;
-              let incomingMtrOverride: number | undefined = undefined;
-
-              if (isRoll) {
-                grossMtr = rollMtr > 0 ? rollMtr : rawMtr;
-                grossPcs = rollPcs > 0 ? rollPcs : rawPcs;
-                rejMtr = rawRejMtr;
-                rejPcs = rawRejPcs;
-                netMtr = Math.max(0, grossMtr - rejMtr);
-                netPcs = Math.max(0, grossPcs - rejPcs);
-              } else if (isVdi) {
-                if (isMaster) {
-                  grossMtr = Math.max(rawMtr, campaignVdiOkMtr + campaignVdiRejMtr);
-                  grossPcs = Math.max(rawPcs, campaignVdiOkPcs + campaignVdiRejPcs);
-                  rejMtr = Math.max(rawRejMtr, campaignVdiRejMtr);
-                  rejPcs = Math.max(rawRejPcs, campaignVdiRejPcs);
-                  netMtr = campaignVdiOkMtr;
-                  netPcs = campaignVdiOkPcs;
-                } else {
-                  grossMtr = Math.max(rawMtr, directVdiOkMtr + directVdiRejMtr);
-                  grossPcs = Math.max(rawPcs, directVdiOkPcs + directVdiRejPcs);
-                  rejMtr = Math.max(rawRejMtr, directVdiRejMtr);
-                  rejPcs = Math.max(rawRejPcs, directVdiRejPcs);
-                  netMtr = directVdiOkMtr;
-                  netPcs = directVdiOkPcs;
-                  if (isChild) {
-                    incomingPcsOverride = 0; // Cut pieces are pooled under Master
-                    incomingMtrOverride = 0;
-                  }
-                }
-              } else if (isFin) {
-                if (isMaster) {
-                  grossMtr = Math.max(rawMtr, campaignFinMtr);
-                  grossPcs = Math.max(rawPcs, campaignFinPcs);
-                  netMtr = Math.max(0, grossMtr - rejMtr);
-                  netPcs = Math.max(0, grossPcs - rejPcs);
-                  // Pieces going into Master's finishing queue should only be pieces directly inspected for Master
-                  incomingPcsOverride = directVdiOkPcs;
-                  incomingMtrOverride = directVdiOkMtr;
-                } else if (isChild) {
-                  incomingPcsOverride = directVdiOkPcs;
-                  incomingMtrOverride = directVdiOkMtr;
-                  netMtr = Math.max(0, grossMtr - rejMtr);
-                  netPcs = Math.max(0, grossPcs - rejPcs);
-                } else if (directVdiOkPcs > 0) {
-                  incomingPcsOverride = directVdiOkPcs;
-                  incomingMtrOverride = directVdiOkMtr;
-                  netMtr = Math.max(0, grossMtr - rejMtr);
-                  netPcs = Math.max(0, grossPcs - rejPcs);
-                }
-              }
-
-              return {
-                stage_code: sc,
-                sequence_no: Number(r.sequence_no || 0),
-                gross_output_mtr: grossMtr,
-                gross_output_pcs: grossPcs,
-                rejection_mtr: rejMtr,
-                rejection_pcs: rejPcs,
-                net_output_mtr: netMtr,
-                net_output_pcs: netPcs,
-                incoming_pcs: incomingPcsOverride,
-                incoming_mtr: incomingMtrOverride !== undefined ? incomingMtrOverride : Number(r.incoming_qty || 0),
-                od: Number(r.od || r.size_od || wo?.size_od || 0),
-                wt: Number(r.wt || r.size_wt || wo?.size_wt || 0),
-                avg_length: Number(r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0),
-                mh_od: mhOd > 0 ? mhOd : undefined,
-                mh_wt: mhWt > 0 ? mhWt : undefined,
-                mh_avg_length: actualMhLen > 0 ? actualMhLen : undefined,
-              };
-            }),
-            {
-              route_code: routeCode,
-              ordered_qty_mt: Number(wo?.ordered_qty_mt || 0),
-              rolling_plan_qty_mtr: Number(planMh?.planned_qty || 0),
-              mh_od: mhOd > 0 ? mhOd : undefined,
-              mh_wt: mhWt > 0 ? mhWt : undefined,
-              mh_avg_length: actualMhLen > 0 ? actualMhLen : undefined,
-            }
-          );
 
           for (const recStage of summary.stages) {
             // Rolling is strictly raw upstream feeder, excluded from post-rolling station columns
