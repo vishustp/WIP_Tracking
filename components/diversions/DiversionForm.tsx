@@ -68,6 +68,8 @@ type DiversionPlanItem = {
   diverted_mt: number;
   work_center: string;
   work_center_name: string;
+  source_work_center?: string;
+  target_work_center?: string;
   route_id: string;
   route_code: string;
   route_name: string;
@@ -78,6 +80,20 @@ type DiversionPlanItem = {
   created_at: string;
   updated_at?: string;
   can_modify: boolean;
+};
+
+const getWcShortName = (code?: string) => {
+  if (!code) return '—';
+  const map: Record<string, string> = {
+    ROLLING: 'Rolling',
+    HOLLOW_HEAT_TREATMENT: 'Hollow HT',
+    DRAW: 'Draw',
+    HEAT_TREATMENT: 'Heat Treatment',
+    BAND_SAW: 'Band Saw',
+    VDI: 'VDI',
+    FINISHING: 'Finishing',
+  };
+  return map[code] || code.replace(/_/g, ' ');
 };
 
 type WoWipSummary = {
@@ -413,7 +429,9 @@ export default function DiversionForm() {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [source, setSource] = useState('');
   const [target, setTarget] = useState('');
-  const [workCenter, setWorkCenter] = useState('ROLLING');
+  const [sourceWorkCenter, setSourceWorkCenter] = useState('ROLLING');
+  const [targetWorkCenter, setTargetWorkCenter] = useState('ROLLING');
+  const workCenter = targetWorkCenter;
   const [qty, setQty] = useState('');
   const [route, setRoute] = useState('');
   const [multiple, setMultiple] = useState('1');
@@ -445,7 +463,9 @@ export default function DiversionForm() {
   // Editing modal states
   const [editing, setEditing] = useState<DiversionPlanItem | null>(null);
   const [editQty, setEditQty] = useState('');
-  const [editWorkCenter, setEditWorkCenter] = useState('ROLLING');
+  const [editSourceWorkCenter, setEditSourceWorkCenter] = useState('ROLLING');
+  const [editTargetWorkCenter, setEditTargetWorkCenter] = useState('ROLLING');
+  const editWorkCenter = editTargetWorkCenter;
   const [editRoute, setEditRoute] = useState('');
   const [editMultiple, setEditMultiple] = useState('1');
   const [editDate, setEditDate] = useState('');
@@ -494,7 +514,18 @@ export default function DiversionForm() {
       });
 
       if (error) throw new Error(error.message);
-      setPlans((data ?? []) as DiversionPlanItem[]);
+      const mapped = ((data ?? []) as any[]).map((p) => {
+        const fromMatch = p.reason?.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i);
+        const toMatch = p.reason?.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i);
+        const src = fromMatch ? fromMatch[1].toUpperCase() : (p.work_center || 'ROLLING');
+        const tgt = toMatch ? toMatch[1].toUpperCase() : (p.work_center || 'ROLLING');
+        return {
+          ...p,
+          source_work_center: src,
+          target_work_center: tgt,
+        };
+      });
+      setPlans(mapped as DiversionPlanItem[]);
     } catch (error) {
       setPlans([]);
       toast.error(error instanceof Error ? error.message : 'Failed to load diversion plans.');
@@ -554,7 +585,9 @@ export default function DiversionForm() {
   const selectedSource = useMemo(() => wos.find((x) => x.id === source), [wos, source]);
   const selectedTarget = useMemo(() => wos.find((x) => x.id === target), [wos, target]);
   const selectedRouteObj = useMemo(() => routes.find(r => r.id === route), [routes, route]);
-  const selectedWorkCenterObj = useMemo(() => WORK_CENTERS.find(w => w.code === workCenter), [workCenter]);
+  const selectedSourceWcObj = useMemo(() => WORK_CENTERS.find(w => w.code === sourceWorkCenter), [sourceWorkCenter]);
+  const selectedTargetWcObj = useMemo(() => WORK_CENTERS.find(w => w.code === targetWorkCenter), [targetWorkCenter]);
+  const selectedWorkCenterObj = selectedTargetWcObj;
 
   // Work centers available for the selected Source Work Order (only active stages in its route)
   const availableWorkCenters = useMemo(() => {
@@ -565,23 +598,25 @@ export default function DiversionForm() {
     });
   }, [sourceWip]);
 
-  // If current workCenter is not valid or has 0 WIP, default to the first stage with active WIP
+  // If current sourceWorkCenter is not valid or has 0 WIP, default to the first stage with active WIP
   useEffect(() => {
     if (sourceWip?.stageBreakdown?.length) {
       const stageWithWip = sourceWip.stageBreakdown.find((s) => s.available_mtr > 0);
       if (stageWithWip) {
-        setWorkCenter(stageWithWip.stage_code);
-      } else if (availableWorkCenters.length > 0 && !availableWorkCenters.some((wc) => wc.code === workCenter)) {
-        setWorkCenter(availableWorkCenters[0].code);
+        setSourceWorkCenter(stageWithWip.stage_code);
+        setTargetWorkCenter(stageWithWip.stage_code === 'VDI' ? 'FINISHING' : stageWithWip.stage_code);
+      } else if (availableWorkCenters.length > 0 && !availableWorkCenters.some((wc) => wc.code === sourceWorkCenter)) {
+        setSourceWorkCenter(availableWorkCenters[0].code);
+        setTargetWorkCenter(availableWorkCenters[0].code);
       }
     }
-  }, [sourceWip, availableWorkCenters, workCenter]);
+  }, [sourceWip, availableWorkCenters, sourceWorkCenter]);
 
-  // Selected Work Center WIP for Source
+  // Selected Work Center WIP for Source (where material will be deducted)
   const sourceStageWip = useMemo(() => {
     if (!sourceWip?.stageBreakdown?.length) return null;
-    return sourceWip.stageBreakdown.find(s => s.stage_code === workCenter);
-  }, [sourceWip, workCenter]);
+    return sourceWip.stageBreakdown.find(s => s.stage_code === sourceWorkCenter);
+  }, [sourceWip, sourceWorkCenter]);
 
   // Physical WIP available at the selected work center (Rule 1 & 2)
   const availableAtWorkCenterMtr = useMemo(() => {
@@ -659,12 +694,18 @@ export default function DiversionForm() {
       );
     }
 
+    const cleanedUserReason = reason
+      .replace(/\[FROM_STAGE:\s*[A-Z_]+\]/gi, '')
+      .replace(/\[TO_STAGE:\s*[A-Z_]+\]/gi, '')
+      .trim();
+    const finalReason = `${cleanedUserReason} [FROM_STAGE: ${sourceWorkCenter}] [TO_STAGE: ${targetWorkCenter}]`.trim();
+
     setBusy(true);
     let success = false;
     try {
       const { error } = await createClient().rpc('create_diversion', {
-        p_source: source, p_target: target, p_qty: diversionMtr, p_work_center: workCenter,
-        p_route: route, p_multiple: numMultiple, p_reason: reason, p_date: date,
+        p_source: source, p_target: target, p_qty: diversionMtr, p_work_center: targetWorkCenter,
+        p_route: route, p_multiple: numMultiple, p_reason: finalReason, p_date: date,
       });
       if (error) {
         console.warn('RPC create_diversion error, attempting direct insert:', error.message);
@@ -673,10 +714,10 @@ export default function DiversionForm() {
           source_wo_id: source,
           target_wo_id: target,
           diverted_qty: diversionMtr,
-          work_center: workCenter,
+          work_center: targetWorkCenter,
           process_route_id: route,
           multiple: numMultiple,
-          reason: reason?.trim() || 'Material Diversion Transfer',
+          reason: finalReason,
           approved_by: user?.id || null,
           diversion_date: date,
         });
@@ -689,7 +730,9 @@ export default function DiversionForm() {
 
     setBusy(false);
     if (success) {
-      toast.success(`Diversion of ${fmt(diversionMtr)} Mtrs at ${selectedWorkCenterObj?.name || workCenter} successfully issued!`);
+      toast.success(
+        `Diversion of ${fmt(diversionMtr)} Mtrs from ${getWcShortName(sourceWorkCenter)} to ${getWcShortName(targetWorkCenter)} successfully issued!`
+      );
       setQty('');
       setReason('');
       setMultiple('1');
@@ -704,11 +747,18 @@ export default function DiversionForm() {
   const startEdit = (p: DiversionPlanItem) => {
     setEditing(p);
     setEditQty(String(p.diverted_qty));
-    setEditWorkCenter(p.work_center || 'ROLLING');
+    const fromMatch = p.reason?.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i);
+    const toMatch = p.reason?.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i);
+    const srcWc = fromMatch ? fromMatch[1].toUpperCase() : (p.source_work_center || p.work_center || 'ROLLING');
+    const tgtWc = toMatch ? toMatch[1].toUpperCase() : (p.target_work_center || p.work_center || 'ROLLING');
+    setEditSourceWorkCenter(srcWc);
+    setEditTargetWorkCenter(tgtWc);
     setEditRoute(p.route_id);
     setEditMultiple(String(p.multiple || 1));
     setEditDate(p.diversion_date || new Date().toISOString().slice(0, 10));
-    setEditReason(p.reason || '');
+    setEditReason(
+      p.reason ? p.reason.replace(/\[FROM_STAGE:\s*[A-Z_]+\]/gi, '').replace(/\[TO_STAGE:\s*[A-Z_]+\]/gi, '').trim() : ''
+    );
   };
 
   // Save Edit Modal
@@ -725,17 +775,23 @@ export default function DiversionForm() {
       return;
     }
 
+    const cleanedReason = editReason
+      .replace(/\[FROM_STAGE:\s*[A-Z_]+\]/gi, '')
+      .replace(/\[TO_STAGE:\s*[A-Z_]+\]/gi, '')
+      .trim();
+    const finalReason = `${cleanedReason} [FROM_STAGE: ${editSourceWorkCenter}] [TO_STAGE: ${editTargetWorkCenter}]`.trim();
+
     setEditSaving(true);
     let editSuccess = false;
     try {
       const { error } = await createClient().rpc('update_diversion', {
         p_diversion_id: editing.id,
         p_qty: qtyVal,
-        p_work_center: editWorkCenter,
+        p_work_center: editTargetWorkCenter,
         p_route: editRoute,
         p_multiple: multVal,
         p_date: editDate,
-        p_reason: editReason,
+        p_reason: finalReason,
       });
       if (error) throw new Error(error.message);
       editSuccess = true;
@@ -863,18 +919,18 @@ export default function DiversionForm() {
           </div>
         </div>
 
-        {/* Work Center Field (User Request 3) */}
-        <div className="grid gap-4 md:grid-cols-3">
+        {/* Work Center Fields: Divert From Stage (Source WO) and Divert To Stage (Target WO) */}
+        <div className="grid gap-4 md:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Diversion to Work Center <span className="text-red-500">*</span>
+              Divert From (Source WO) <span className="text-red-500">*</span>
             </label>
             <Select
-              value={workCenter}
-              onChange={(e) => setWorkCenter(e.target.value)}
+              value={sourceWorkCenter}
+              onChange={(e) => setSourceWorkCenter(e.target.value)}
               required
               disabled={!canManagePlans}
-              className="font-semibold text-slate-900 border-[#0078d4]/50 bg-blue-50/20"
+              className="font-semibold text-slate-900 border-amber-400 bg-amber-50/20"
             >
               {availableWorkCenters.map((wc) => {
                 const stg = sourceWip?.stageBreakdown?.find((s) => s.stage_code === wc.code);
@@ -882,13 +938,35 @@ export default function DiversionForm() {
                 const availPcs = stg ? stg.available_pcs : (sourceAvgLen > 0 && availMtr != null ? Math.round(availMtr / sourceAvgLen) : null);
                 return (
                   <option key={wc.code} value={wc.code}>
-                    {wc.name} {availMtr != null ? `(${fmt(availPcs, 0)} Pcs / ${fmt(availMtr)} Mtr available)` : ''}
+                    {wc.name} {availMtr != null ? `(${fmt(availPcs, 0)} Pcs / ${fmt(availMtr)} Mtr)` : ''}
                   </option>
                 );
               })}
             </Select>
             <span className="text-[11px] text-slate-500 mt-1 block">
-              Stage at which material will be transferred
+              Stage deducted on source WO
+            </span>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Divert To (Target WO) <span className="text-red-500">*</span>
+            </label>
+            <Select
+              value={targetWorkCenter}
+              onChange={(e) => setTargetWorkCenter(e.target.value)}
+              required
+              disabled={!canManagePlans}
+              className="font-semibold text-slate-900 border-emerald-400 bg-emerald-50/20"
+            >
+              {WORK_CENTERS.map((wc) => (
+                <option key={wc.code} value={wc.code}>
+                  {wc.name}
+                </option>
+              ))}
+            </Select>
+            <span className="text-[11px] text-slate-500 mt-1 block">
+              Stage credited on target WO
             </span>
           </div>
 
@@ -1595,9 +1673,21 @@ export default function DiversionForm() {
                       </td>
 
                       <td className="px-3 py-2 border-r border-slate-200 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-[#0078d4] border border-blue-200">
-                          {p.work_center_name || p.work_center}
-                        </span>
+                        {p.source_work_center && p.target_work_center && p.source_work_center !== p.target_work_center ? (
+                          <div className="flex items-center gap-1 font-semibold text-[11px]">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200" title={`Deducted from ${getWcShortName(p.source_work_center)} on WO ${p.source_wo_no}`}>
+                              {getWcShortName(p.source_work_center)}
+                            </span>
+                            <span className="text-slate-400 font-bold">→</span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200" title={`Credited to ${getWcShortName(p.target_work_center)} on WO ${p.target_wo_no}`}>
+                              {getWcShortName(p.target_work_center)}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-[#0078d4] border border-blue-200">
+                            {p.work_center_name || getWcShortName(p.target_work_center || p.work_center)}
+                          </span>
+                        )}
                       </td>
 
                       <td className="px-3 py-2 font-mono font-semibold text-slate-800 border-r border-slate-200">
@@ -1621,7 +1711,10 @@ export default function DiversionForm() {
                       </td>
 
                       <td className="max-w-[160px] truncate px-3 py-2 text-slate-600 border-r border-slate-200" title={p.reason}>
-                        {p.reason || '—'}
+                        {(p.reason || '—')
+                          .replace(/\[FROM_STAGE:\s*[A-Z_]+\]/gi, '')
+                          .replace(/\[TO_STAGE:\s*[A-Z_]+\]/gi, '')
+                          .trim() || '—'}
                       </td>
 
                       <td className="px-3 py-2 text-slate-700 border-r border-slate-200 whitespace-nowrap">
@@ -1710,11 +1803,29 @@ export default function DiversionForm() {
 
               <div>
                 <label className="mb-1 block font-bold text-slate-700 uppercase">
-                  Diversion to Work Center *
+                  Deduct From (Source WO Stage) *
                 </label>
                 <Select
-                  value={editWorkCenter}
-                  onChange={(e) => setEditWorkCenter(e.target.value)}
+                  value={editSourceWorkCenter}
+                  onChange={(e) => setEditSourceWorkCenter(e.target.value)}
+                  className="border-amber-400 bg-amber-50/20"
+                >
+                  {WORK_CENTERS.map((wc) => (
+                    <option key={wc.code} value={wc.code}>
+                      {wc.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <div>
+                <label className="mb-1 block font-bold text-slate-700 uppercase">
+                  Credit To (Target WO Stage) *
+                </label>
+                <Select
+                  value={editTargetWorkCenter}
+                  onChange={(e) => setEditTargetWorkCenter(e.target.value)}
+                  className="border-emerald-400 bg-emerald-50/20"
                 >
                   {WORK_CENTERS.map((wc) => (
                     <option key={wc.code} value={wc.code}>

@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
         .select("id, work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr"),
       admin
         .from("diversion_plans")
-        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id"),
+        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id, reason"),
     ]);
 
     if (stagesRes.error) throw stagesRes.error;
@@ -142,14 +142,22 @@ export async function GET(req: NextRequest) {
     const hasQcTable = !qcRes?.error;
     const diversions = divsRes?.data || [];
 
+    const parseDivStages = (d: any) => {
+      const fromMatch = typeof d.reason === "string" ? d.reason.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i) : null;
+      const toMatch = typeof d.reason === "string" ? d.reason.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i) : null;
+      const sourceStage = fromMatch ? fromMatch[1].toUpperCase() : (d.work_center || "ROLLING");
+      const targetStage = toMatch ? toMatch[1].toUpperCase() : (d.work_center || "ROLLING");
+      return { sourceStage, targetStage };
+    };
+
     const getStageDivIn = (wId: string, stageCode: string) =>
       diversions
-        .filter((d: any) => d.target_wo_id === wId && (d.work_center || "ROLLING") === stageCode)
+        .filter((d: any) => d.target_wo_id === wId && parseDivStages(d).targetStage === stageCode)
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
     const getStageDivOut = (wId: string, stageCode: string) =>
       diversions
-        .filter((d: any) => d.source_wo_id === wId && (d.work_center || "ROLLING") === stageCode)
+        .filter((d: any) => d.source_wo_id === wId && parseDivStages(d).sourceStage === stageCode)
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
     const stageCodeToId = new Map<string, string>();
@@ -791,7 +799,11 @@ export async function GET(req: NextRequest) {
       const finConsumedPcs = isCampaignMaster ? (directFinOutPcs + directFinRejPcs) : (finOutPcs + finRejPcs);
 
       const finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finConsumedPcs - finDivOutPcs);
-      const finAvailMtr = avgLength > 0 ? Number((finAvailPcs * avgLength).toFixed(3)) : 0;
+      const finIncomingMtr = avgLength > 0 ? Number((finIncomingPcs * avgLength).toFixed(3)) : 0;
+      let finAvailMtr = Math.max(0, Number((finIncomingMtr + finDivIn - (finOutMtr + finRejMtr) - finDivOut).toFixed(3)));
+      if (finAvailMtr === 0 && finAvailPcs > 0 && avgLength > 0) {
+        finAvailMtr = Number((finAvailPcs * avgLength).toFixed(3));
+      }
       const finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Build WorkCenterWipInfo pipeline for this order
@@ -1174,7 +1186,7 @@ export async function GET(req: NextRequest) {
                 max_allowed_pcs: avgLength > 0 ? Math.round(Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)) / avgLength) : finAvailPcs,
                 prev_stage_code: "VDI",
                 prev_net_output: qcOkMtr,
-                feeder_source_label: "VDI QC Passed",
+                feeder_source_label: finDivIn > 0 && finIncomingPcs === 0 ? "Diverted Material In" : "VDI QC Passed",
                 feeder_stage_code: "VDI",
               }
             : null,

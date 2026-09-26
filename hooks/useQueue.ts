@@ -92,7 +92,7 @@ export function useQueue(stage: StageCode) {
           .select("work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr"),
         supabase
           .from("diversion_plans")
-          .select("source_wo_id, target_wo_id, diverted_qty, work_center"),
+          .select("source_wo_id, target_wo_id, diverted_qty, work_center, reason"),
       ]);
 
       let rawQueueData = queueRes.data;
@@ -139,14 +139,22 @@ export function useQueue(stage: StageCode) {
       const qcInspections: any[] = qcRes?.data || [];
       const diversions: any[] = divsRes?.data || [];
 
+      const parseDivStages = (d: any) => {
+        const fromMatch = typeof d.reason === "string" ? d.reason.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i) : null;
+        const toMatch = typeof d.reason === "string" ? d.reason.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i) : null;
+        const sourceStage = fromMatch ? fromMatch[1].toUpperCase() : (d.work_center || "ROLLING");
+        const targetStage = toMatch ? toMatch[1].toUpperCase() : (d.work_center || "ROLLING");
+        return { sourceStage, targetStage };
+      };
+
       const getStageDivIn = (wId: string, stageCode: string) =>
         diversions
-          .filter((d: any) => d.target_wo_id === wId && (d.work_center || "ROLLING") === stageCode)
+          .filter((d: any) => d.target_wo_id === wId && parseDivStages(d).targetStage === stageCode)
           .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
       const getStageDivOut = (wId: string, stageCode: string) =>
         diversions
-          .filter((d: any) => d.source_wo_id === wId && (d.work_center || "ROLLING") === stageCode)
+          .filter((d: any) => d.source_wo_id === wId && parseDivStages(d).sourceStage === stageCode)
           .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
       const rollingStageId = stages.find((st: any) => st.stage_code === "ROLLING")?.id;

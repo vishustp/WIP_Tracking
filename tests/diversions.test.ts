@@ -143,6 +143,107 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
       const qualifiesForQueue = vdiAvailMtr >= 1.0 || vdiAvailPcs >= 1;
       expect(qualifiesForQueue).toBe(true);
     });
+
+    it('correctly handles cross-stage diversion: deducts from source stage (e.g. VDI) and credits target stage (e.g. FINISHING)', async () => {
+      const { parseDiversionStages, formatDiversionReason, cleanDiversionReason } = await import('@/lib/productionUtils');
+
+      // Test reason formatting & parsing
+      const formattedReason = formatDiversionReason('Prime Material Reallocation', 'VDI', 'FINISHING');
+      expect(formattedReason).toContain('[FROM_STAGE: VDI]');
+      expect(formattedReason).toContain('[TO_STAGE: FINISHING]');
+      expect(cleanDiversionReason(formattedReason)).toBe('Prime Material Reallocation');
+
+      const planWithTags = {
+        reason: formattedReason,
+        work_center: 'FINISHING',
+      };
+      const parsedStages = parseDiversionStages(planWithTags);
+      expect(parsedStages.sourceStage).toBe('VDI');
+      expect(parsedStages.targetStage).toBe('FINISHING');
+
+      // Fallback for legacy plans without tags
+      const legacyPlan = {
+        reason: 'Legacy Transfer',
+        work_center: 'DRAW',
+      };
+      const parsedLegacy = parseDiversionStages(legacyPlan);
+      expect(parsedLegacy.sourceStage).toBe('DRAW');
+      expect(parsedLegacy.targetStage).toBe('DRAW');
+
+      // Scenario:
+      // Source WO 6186 had 2,057 m of VDI WIP (from band saw cuts, 0 QC done).
+      // WO 6186 has 0 Finishing WIP.
+      // Target WO 1451 has 0 VDI WIP and 0 Finishing WIP initially.
+      // Material is diverted FROM WO 6186 VDI TO WO 1451 FINISHING.
+      const diversionQty = 2057;
+
+      const sourceWo = { id: 'wo-6186' };
+      const targetWo = { id: 'wo-1451' };
+
+      const diversions = [
+        {
+          source_wo_id: sourceWo.id,
+          target_wo_id: targetWo.id,
+          diverted_qty: diversionQty,
+          reason: formattedReason,
+          work_center: 'FINISHING',
+        },
+      ];
+
+      const getStageDivIn = (wId: string, stageCode: string) =>
+        diversions
+          .filter((d) => d.target_wo_id === wId && parseDiversionStages(d).targetStage === stageCode)
+          .reduce((sum, d) => sum + d.diverted_qty, 0);
+
+      const getStageDivOut = (wId: string, stageCode: string) =>
+        diversions
+          .filter((d) => d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode)
+          .reduce((sum, d) => sum + d.diverted_qty, 0);
+
+      // Source WO 6186:
+      const sourceVdiIncoming = 2057;
+      const sourceVdiInspected = 0;
+      const sourceVdiDivOut = getStageDivOut(sourceWo.id, 'VDI');
+      const sourceVdiAvail = Math.max(0, sourceVdiIncoming - sourceVdiInspected - sourceVdiDivOut);
+
+      const sourceFinIncoming = 0;
+      const sourceFinProduced = 0;
+      const sourceFinDivOut = getStageDivOut(sourceWo.id, 'FINISHING');
+      const sourceFinAvail = Math.max(0, sourceFinIncoming - sourceFinProduced - sourceFinDivOut);
+
+      // Target WO 1451:
+      const targetVdiIncoming = 0;
+      const targetVdiInspected = 0;
+      const targetVdiDivIn = getStageDivIn(targetWo.id, 'VDI');
+      const targetVdiAvail = Math.max(0, targetVdiIncoming + targetVdiDivIn - targetVdiInspected);
+
+      const targetFinIncoming = 0;
+      const targetFinProduced = 0;
+      const targetFinDivIn = getStageDivIn(targetWo.id, 'FINISHING');
+      const targetFinAvail = Math.max(0, targetFinIncoming + targetFinDivIn - targetFinProduced);
+
+      // Verifications:
+      // 1. Source WO has 2057 m deducted from VDI -> VDI WIP drops to 0!
+      expect(sourceVdiDivOut).toBe(2057);
+      expect(sourceVdiAvail).toBe(0);
+
+      // 2. Source WO Finishing is NOT deducted (was not taken from finishing)
+      expect(sourceFinDivOut).toBe(0);
+      expect(sourceFinAvail).toBe(0);
+
+      // 3. Target WO VDI is NOT credited (was received at finishing)
+      expect(targetVdiDivIn).toBe(0);
+      expect(targetVdiAvail).toBe(0);
+
+      // 4. Target WO Finishing is credited with 2057 m!
+      expect(targetFinDivIn).toBe(2057);
+      expect(targetFinAvail).toBe(2057);
+
+      // 5. Total plant WIP conservation:
+      // Initial total = 2057 (at source VDI) + 0 (at target FINISHING) = 2057
+      // Final total = 0 (at source VDI) + 2057 (at target FINISHING) = 2057
+      expect(sourceVdiAvail + targetFinAvail).toBe(2057);
+    });
   });
 });
 

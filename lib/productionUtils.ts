@@ -599,3 +599,40 @@ export function normalizeGrade(rawGrade?: string | null): string {
 
   return g;
 }
+
+/**
+ * Parses source and target work centers / stages from a diversion plan.
+ * Recognizes [FROM_STAGE: <stage>] and [TO_STAGE: <stage>] tags in reason,
+ * falling back gracefully to d.work_center when either tag is absent.
+ */
+export function parseDiversionStages(d: { reason?: string | null; work_center?: string | null }): {
+  sourceStage: string;
+  targetStage: string;
+} {
+  const reason = d.reason || '';
+  const fromMatch = reason.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i);
+  const toMatch = reason.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i);
+  const sourceStage = (fromMatch ? fromMatch[1] : d.work_center || '').toUpperCase();
+  const targetStage = (toMatch ? toMatch[1] : d.work_center || '').toUpperCase();
+  return { sourceStage, targetStage };
+}
+
+/**
+ * Encodes source and target stage tags into diversion plan reason.
+ */
+export function formatDiversionReason(
+  cleanReason: string,
+  sourceStage: string,
+  targetStage: string
+): string {
+  const base = cleanReason.replace(/\[FROM_STAGE:[^\]]*\]/gi, '').replace(/\[TO_STAGE:[^\]]*\]/gi, '').trim();
+  const tags = `[FROM_STAGE: ${sourceStage.toUpperCase()}] [TO_STAGE: ${targetStage.toUpperCase()}]`;
+  return base ? `${base} ${tags}` : tags;
+}
+
+/**
+ * Strips internal stage routing tags from diversion reason for clean UI display.
+ */
+export function cleanDiversionReason(reason: string | null | undefined): string {
+  return (reason || '').replace(/\[FROM_STAGE:[^\]]*\]/gi, '').replace(/\[TO_STAGE:[^\]]*\]/gi, '').trim();
+}
