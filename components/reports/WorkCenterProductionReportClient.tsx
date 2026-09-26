@@ -618,7 +618,7 @@ export default function WorkCenterProductionReportClient() {
               <Factory className="h-3.5 w-3.5 text-blue-700" />
               SHOP FLOOR CIRCULATION
             </span>
-            <span className="text-xs font-semibold text-slate-500">Document Ref: STP/PRD-SOP-03</span>
+            <span className="text-xs font-semibold text-slate-500">Document Ref: RGHS/PRD-SOP-03</span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 mt-1">
             Work Center Shift Production Report
@@ -685,15 +685,15 @@ export default function WorkCenterProductionReportClient() {
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs print:border-black print:p-3 print:shadow-none">
         <div className="flex items-start justify-between border-b border-slate-200 pb-4 print:border-black print:pb-2">
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-xl bg-blue-800 text-white flex items-center justify-center font-black text-lg print:border print:border-black">
-              STP
+            <div className="h-11 w-11 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-lg print:border print:border-black">
+              RG
             </div>
             <div>
               <h2 className="text-base font-black uppercase tracking-wide text-slate-900 print:text-black">
-                SEAMLESS TUBULAR PRODUCTS LTD.
+                RASHMI GREEN HYDROGEN STEEL PVT. LTD.
               </h2>
-              <div className="text-xs font-bold text-blue-700 print:text-black uppercase">
-                {activeWcConfig.label} · Daily Shift Production Log
+              <div className="text-xs font-bold text-slate-700 print:text-black uppercase">
+                (SEAMLESS DIVISION) · {activeWcConfig.label} · Daily Shift Production Log
               </div>
               <div className="text-[11px] text-slate-500 print:text-black">
                 {activeWcConfig.description}
@@ -702,7 +702,7 @@ export default function WorkCenterProductionReportClient() {
           </div>
 
           <div className="text-right text-xs space-y-0.5 print:text-black">
-            <div className="font-mono font-bold text-slate-900">DOC: STP/PRD-LOG/03</div>
+            <div className="font-mono font-bold text-slate-900">DOC: RGHS/PRD-LOG/03</div>
             <div className="text-slate-500">Work Center Code: {activeWcConfig.code}</div>
             <div className="text-slate-500 font-mono">
               Period: {fromDate} to {toDate}

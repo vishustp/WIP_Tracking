@@ -158,17 +158,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-slate-200 bg-white transition-transform duration-200 ease-out lg:translate-x-0 print:hidden ${open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
         {/* Brand Block */}
-        <div className="flex h-14 shrink-0 items-center justify-between bg-[#004f84] px-4 text-white">
-          <div className="flex items-center gap-2.5">
-            <div className="h-7 w-7 rounded-md bg-white text-[#004f84] flex items-center justify-center font-extrabold text-xs shadow-xs">
-              SW
+        <div className="flex h-16 shrink-0 items-center justify-between bg-[#004f84] px-3.5 text-white">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-8 w-8 rounded-lg bg-white text-[#004f84] flex items-center justify-center font-black text-xs shadow-xs shrink-0">
+              RG
             </div>
-            <div className="flex flex-col leading-tight">
-              <span className="font-bold tracking-tight text-sm text-white">Seamless WIP</span>
-              <span className="text-[10px] font-semibold tracking-wider text-sky-200 uppercase">Supply Chain</span>
+            <div className="flex flex-col leading-tight min-w-0">
+              <span className="font-extrabold tracking-tight text-xs text-white uppercase truncate" title="RASHMI GREEN HYDROGEN STEEL PVT. LTD.">
+                RASHMI GREEN HYDROGEN STEEL PVT. LTD.
+              </span>
+              <span className="text-[10px] font-semibold tracking-wider text-sky-200 uppercase truncate">
+                Seamless Pipe Division
+              </span>
             </div>
           </div>
-          <button className="lg:hidden rounded-lg p-1.5 text-sky-200 hover:bg-sky-800 cursor-pointer" onClick={() => setOpen(false)} aria-label="Close menu"><X size={16} /></button>
+          <button className="lg:hidden rounded-lg p-1.5 text-sky-200 hover:bg-sky-800 cursor-pointer shrink-0 ml-1" onClick={() => setOpen(false)} aria-label="Close menu"><X size={16} /></button>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2 py-4">
@@ -233,7 +237,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <Menu size={20} />
               </button>
               <span className="hidden sm:block text-sm font-semibold text-slate-700 truncate">
-                {groups.flatMap(g => g.items).find(i => pathname === i.href || (i.href !== '/dashboard' && pathname.startsWith(i.href + '/')))?.label ?? 'Seamless WIP'}
+                {groups.flatMap(g => g.items).find(i => pathname === i.href || (i.href !== '/dashboard' && pathname.startsWith(i.href + '/')))?.label ?? 'RASHMI GREEN HYDROGEN STEEL PVT. LTD.'}
               </span>
             </div>
 

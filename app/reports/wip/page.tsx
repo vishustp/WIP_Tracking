@@ -1,7 +1,7 @@
 import SizeGradeWipReportClient from '@/components/reports/SizeGradeWipReportClient';
 
 export const metadata = {
-  title: 'OD & WT Grade-Wise Station-Wise WIP Status | Seamless WIP Planning Suite',
+  title: 'OD & WT Grade-Wise Station-Wise WIP Status | RASHMI GREEN HYDROGEN STEEL PVT. LTD.',
   description: 'Plant-wide physical inventory matrix cross-tabulated across manufacturing work centers by pipe size and specification.',
 };
 

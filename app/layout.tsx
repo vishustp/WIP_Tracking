@@ -11,8 +11,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Seamless WIP Planning',
-  description: 'Production and Work Order WIP Tracking with route-aware stages, rolling plans, diversion management, user profiles, and admin control panel.',
+  title: 'RASHMI GREEN HYDROGEN STEEL PVT. LTD. | Seamless WIP Tracking',
+  description: 'Rashmi Green Hydrogen Steel Pvt. Ltd. (Seamless Division) — Production and Work Order WIP Tracking with route-aware stages, rolling plans, diversion management, user profiles, and admin control panel.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

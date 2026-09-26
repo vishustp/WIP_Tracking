@@ -107,8 +107,12 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-400 shadow-xs mb-1">
             <Factory className="w-6 h-6" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Seamless WIP</h1>
-          <p className="text-sm text-slate-400">PPC Planning, Pipe Diversion & Production WIP Tracking</p>
+          <h1 className="text-lg font-black tracking-tight text-white uppercase leading-snug">
+            RASHMI GREEN HYDROGEN STEEL PVT. LTD.
+          </h1>
+          <p className="text-xs font-semibold text-sky-400 tracking-wider uppercase">
+            Seamless Pipe Division · WIP Tracking System
+          </p>
         </div>
 
         <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-7 shadow-2xl backdrop-blur-sm space-y-6">

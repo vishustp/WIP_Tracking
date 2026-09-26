@@ -2,7 +2,7 @@ import WorkOrderTrackingClient from '@/components/reports/WorkOrderTrackingClien
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Work Order Tracking Sheet | Seamless WIP Tracking',
+  title: 'Work Order Tracking Sheet | RASHMI GREEN HYDROGEN STEEL PVT. LTD.',
   description: 'Live multi-station tracking sheet tracing work orders from Rolling Mill through Finishing Line with OD, Date, and WO filters.',
 };
 

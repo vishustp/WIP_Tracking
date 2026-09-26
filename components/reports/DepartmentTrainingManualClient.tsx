@@ -123,8 +123,8 @@ export default function DepartmentTrainingManualClient() {
         <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs print:border-none print:shadow-none print:p-0 print:mb-6">
           <div className="border-b-2 border-slate-900 pb-4 mb-4 flex items-start justify-between">
             <div>
-              <div className="text-xs font-black tracking-widest uppercase text-blue-700">
-                Precision Seamless Steel Tube Plant · Quality & Operations Manual
+              <div className="text-xs font-black tracking-widest uppercase text-sky-800">
+                RASHMI GREEN HYDROGEN STEEL PVT. LTD. · SEAMLESS PIPE DIVISION
               </div>
               <h1 className="text-2xl font-black text-slate-900 mt-1">
                 WIP TRACKING & MANUFACTURING EXECUTION SYSTEM (MES)
