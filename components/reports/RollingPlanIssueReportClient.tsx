@@ -54,7 +54,7 @@ export type Plan = {
 };
 
 export interface FactoryPlanRow {
-  // 35-Column Manufacturing Schedule Fields
+  // 32-Column Factory Production Schedule Fields (Matching F-PROD-01A exact layout)
   srNo: number;            // 1. Sr No.
   catg: string;            // 2. Catg
   customer: string;        // 3. Customer
@@ -63,40 +63,50 @@ export interface FactoryPlanRow {
   grade: string;           // 6. Grade
   ibr: string;             // 7. IBR/NIBR
   rollingMtr: number;      // 8. Rolling mtr
+
+  // Billet Dimensions (cols 9-11)
   rmOd: number;            // 9. RM OD (mm)
   rmLenMin: number;        // 10. RM Len Min
   rmLenMax: number;        // 11. RM Len Max
-  weightKg: number;        // 12. Weight (Kgs)
-  planQtyNos: number;      // 13. Nos
-  planQtyMton: number;     // 14. Mton
-  billetWtWhf: number;     // 15. Billet Wt. After WHF
-  pmOd: number;            // 16. PM OD
-  pmWt: number;            // 17. PM Wt
-  pmKgMtr: number;         // 18. PM Kg/Mtr
-  pmLen: number;           // 19. PM Length
-  wtWbf: number;           // 20. Wt. After WBF
-  custOd: number;          // 21. Cust. OD
-  custWt: number;          // 22. Cust. WT
-  rollingWt: number;       // 23. Rolling WT
-  smKgMtr: number;         // 24. SM Kg/Mtr
-  smLen: number;           // 25. SM Length
-  feLen: number;           // 26. FE Lg (Mtr)
-  feWg: number;            // 27. FE Wg(Kgs)
-  beLen: number;           // 28. BE Lg (Mtr)
-  beWg: number;            // 29. BE Wg(Kgs)
-  effectiveWg: number;     // 30. Effective Wg (Kg)
-  effLen: number;          // 31. Effective Length
-  reqLenEr: string;        // 32. E/R
-  reqLenMin: number;       // 33. Min
-  reqLenMax: number;       // 34. Max
-  mult: string;            // 35. Multi
 
-  // Tolerances & Yield
-  tolOdMin?: number;
-  tolOdMax?: number;
-  tolWtMin?: number;
-  tolWtMax?: number;
-  processYieldPct?: number;
+  // Plan qty (cols 12-13)
+  planQtyNos: number;      // 12. Nos
+  planQtyMton: number;     // 13. Mton
+
+  // Piercer Mill (cols 14-16)
+  pmOd: number;            // 14. PM OD
+  pmWthk: number;          // 15. PM Wthk
+  pmLen: number;           // 16. PM Length
+
+  // SM (cols 17-20)
+  custOd: number;          // 17. Cust. OD
+  custWt: number;          // 18. Cust. WT
+  rollingWt: number;       // 19. Rolling WT
+  smLen: number;           // 20. SM Length
+
+  // Thicken Ends (cols 21-23)
+  feLen: number;           // 21. FE Lg (Mtr)
+  beLen: number;           // 22. BE Lg (Mtr)
+  effLen: number;          // 23. Effective Length
+
+  // Final Length Reqd. (cols 24-27)
+  reqLenEr: string;        // 24. E/R
+  reqLenMin: number;       // 25. Min
+  reqLenMax: number;       // 26. Max
+  mult: string | number;   // 27. Multi
+
+  // Dimenstion Tolerances (cols 28-32)
+  tolOdMin: number;        // 28. OD Min.
+  tolOdMax: number;        // 29. OD Max
+  tolWtMin: number;        // 30. Thk. Min
+  tolWtMax: number;        // 31. Thk. Max
+  processYieldPct: number; // 32. Process Yld %
+
+  // Banner & calculation helpers
+  reductionPct: string;    // e.g. "40.36%"
+  sectionTitle: string;    // e.g. "SS Rolling", "SS Rolling - Ex.PM"
+  multiBanner: string;     // e.g. "2-Multi"
+  ratePerHour: number;     // e.g. 20, 27, 35
 
   // Header & Linking Metadata
   campaignPlanNo: string;
@@ -106,6 +116,7 @@ export interface FactoryPlanRow {
   prevPlanNo: string;
   plan?: Plan;
   childSubRows: Array<{
+    workOrderId?: string;
     catg: string;
     finishSize: string;
     finalLen: string;
@@ -113,7 +124,10 @@ export interface FactoryPlanRow {
     customer: string;
     hollowLen: string;
     htcMtr: number;
+    nos?: number;
+    mton?: number;
     isParent?: boolean;
+    customNote?: string;
   }>;
 }
 
@@ -564,7 +578,10 @@ export default function RollingPlanIssueReportClient() {
         customer: string;
         hollowLen: string;
         htcMtr: number;
+        nos?: number;
+        mton?: number;
         isParent?: boolean;
+        customNote?: string;
       }> = [
         {
           workOrderId: p.work_order_id,
@@ -736,17 +753,17 @@ export default function RollingPlanIssueReportClient() {
       const parsedPmOd = parsed.pm_od != null ? Number(parsed.pm_od) : (parsed.piercer_mill?.pm_od != null ? Number(parsed.piercer_mill.pm_od) : null);
       const pmOd = parsedPmOd != null && (parsedPmOd !== 68 || rmOd !== 63) ? parsedPmOd : 66.0;
 
-      // 17. PM Wt = Rolling WT - 0.25
-      const pmWt = parsed.pm_wt != null ? Number(parsed.pm_wt) : (parsed.piercer_mill?.pm_wt != null ? Number(parsed.piercer_mill.pm_wt) : (rollingWt > 0.25 ? Number((rollingWt - 0.25).toFixed(2)) : 6.00));
+      // 15. PM Wthk = Rolling WT - 0.25 (or parsed)
+      const parsedPmWthk = parsed.pm_wthk != null ? Number(parsed.pm_wthk) : (parsed.pm_wt != null ? Number(parsed.pm_wt) : (parsed.piercer_mill?.pm_wt != null ? Number(parsed.piercer_mill.pm_wt) : null));
+      const pmWthk = parsedPmWthk != null ? parsedPmWthk : (rollingWt > 0.25 ? Number((rollingWt - 0.25).toFixed(2)) : 3.25);
+      const pmWt = pmWthk;
 
-      // 18. PM Kg/Mtr = (PM OD - PM WT) * PM WT * 0.02467
+      // 16. PM Length = Billet Wt. After WHF / PM KG/MTR
       const pmKgMtr = (pmOd > pmWt && pmWt > 0) ? Number(((pmOd - pmWt) * pmWt * 0.02467).toFixed(3)) : 8.88;
-
-      // 19. PM Length = Billet Wt. After WHF / PM KG/MTR
       const parsedPmLen = parsed.pm_len != null ? Number(parsed.pm_len) : (parsed.piercer_mill?.pm_len != null ? Number(parsed.piercer_mill.pm_len) : null);
       const pmLen = parsedPmLen != null && parsedPmLen < 50
         ? parsedPmLen
-        : (pmKgMtr > 0 ? Number((billetWtWhf / pmKgMtr).toFixed(2)) : 5.37);
+        : (pmKgMtr > 0 ? Number((billetWtWhf / pmKgMtr).toFixed(2)) : 4.43);
 
       // 8. Rolling mtr = Calculated from sum of childSubRows HTC mtr or planned_mtr
       const subRowsTotalMtr = childSubRows.reduce((sum, r) => sum + r.htcMtr, 0);
@@ -754,31 +771,62 @@ export default function RollingPlanIssueReportClient() {
         ? subRowsTotalMtr
         : (parsed.rolling_mtr != null && Number(parsed.rolling_mtr) < 100000 ? Number(parsed.rolling_mtr) : Number(p.planned_mtr || 0));
 
-      // 13. Nos
+      // 12. Nos
       const parsedNos = parsed.plan_qty?.nos != null ? Number(parsed.plan_qty.nos) : (parsed.plan_qty_nos != null ? Number(parsed.plan_qty_nos) : null);
       const planQtyNos = parsedNos != null && parsedNos > 0
         ? parsedNos
         : (effLen > 0 ? Math.round(rollingMtr / effLen) : Number(p.planned_pcs || 0));
 
-      // 14. Mton = (Weight (Kgs) * Nos) / 1000
+      // 13. Mton = (Weight (Kgs) * Nos) / 1000
       const planQtyMton = Number(((weightKg * planQtyNos) / 1000).toFixed(1));
 
-      // 35. Multi
-      const mult = parsed.multiple_str || (p.multiple > 1 ? `${p.multiple}-Multi` : '1');
-      const tolOdMin = parsed.tol_od_min != null ? Number(parsed.tol_od_min) : (custOd - 0.4);
-      const tolOdMax = parsed.tol_od_max != null ? Number(parsed.tol_od_max) : (custOd + 0.4);
-      const tolWtMin = parsed.tol_wt_min != null ? Number(parsed.tol_wt_min) : (custWt * 0.92);
-      const tolWtMax = parsed.tol_wt_max != null ? Number(parsed.tol_wt_max) : (custWt * 1.1);
-      const processYieldPct = parsed.process_yield_pct != null ? Number(parsed.process_yield_pct) : 95.50;
+      // 27. Multi
+      const multipleNum = Number(p.multiple) || 1;
+      const mult = multipleNum;
+      const multiBanner = multipleNum > 1 ? `${multipleNum}-Multi` : (parsed.multiple_str?.includes('Multi') ? parsed.multiple_str : '');
+
+      // Sizing Mill OD Reduction % = ((PM OD - Cust OD) / PM OD) * 100
+      const reductionPctVal = pmOd > 0 ? ((pmOd - custOd) / pmOd) * 100 : 0;
+      const reductionPct = Math.max(0, reductionPctVal).toFixed(2) + '%';
+
+      // Section classification (e.g. SS Rolling, SS Rolling - Ex.PM)
+      const isStainless = /304|316|321|347|SS|STAINLESS/i.test(`${grade} ${spec} ${catg}`);
+      let sectionTitle = '';
+      if (isStainless) {
+        sectionTitle = Math.abs(pmOd - custOd) < 0.05 ? 'SS Rolling - Ex.PM' : 'SS Rolling';
+      } else if (/ALLOY|T11|T22|T91|P11|P22|P91/i.test(`${grade} ${spec}`)) {
+        sectionTitle = 'Alloy Rolling';
+      }
+
+      // Mill standard rolling speed/rate per hour based on OD
+      const defaultRate = custOd >= 56 ? 35 : (custOd >= 42 ? 27 : 20);
+      const ratePerHour = parsed.rate_per_hour != null ? Number(parsed.rate_per_hour) : defaultRate;
+
+      // 28-32. Tolerances & Process Yield
+      const tolOdMin = parsed.tol_od_min != null ? Number(parsed.tol_od_min) : Number((custOd - 0.30).toFixed(2));
+      const tolOdMax = parsed.tol_od_max != null ? Number(parsed.tol_od_max) : Number((custOd + 0.30).toFixed(2));
+      const tolWtMin = parsed.tol_wt_min != null ? Number(parsed.tol_wt_min) : Number((custWt * 0.925).toFixed(2));
+      const tolWtMax = parsed.tol_wt_max != null ? Number(parsed.tol_wt_max) : Number((custWt * 1.10).toFixed(2));
+      const processYieldPct = parsed.process_yield_pct != null ? Number(parsed.process_yield_pct) : (isStainless ? 97.33 : 95.22);
 
       const campaignPlanNo = parsed.campaign_plan_no || p.plan_no;
       const millName = parsed.mill_name || 'Production Plan-Hot Mill-02';
       const monthStr = parsed.month_str || 'Sep-26';
-      const issueDate = p.planned_rolling_date || '7-Sep';
-      const prevPlanNo = parsed.prev_plan_no || '01';
+      const issueDate = p.planned_rolling_date || '24-Sep';
+      const prevPlanNo = parsed.prev_plan_no || '05';
+
+      // Ensure childSubRows have piece counts and MT
+      childSubRows.forEach((c) => {
+        if (c.nos == null) c.nos = planQtyNos;
+        if (c.mton == null) c.mton = planQtyMton;
+      });
+
+      if (childSubRows.length === 1 && childSubRows[0].isParent && Math.abs(pmOd - custOd) < 0.05 && isStainless) {
+        childSubRows[0].customNote = 'Final Size - ';
+      }
 
       return {
-        // Exact 35 Columns
+        // Exact 32 Columns (F-PROD-01A)
         srNo: idx + 1,        // 1. Sr No.
         catg,                 // 2. Catg
         customer,             // 3. Customer
@@ -790,37 +838,35 @@ export default function RollingPlanIssueReportClient() {
         rmOd,                 // 9. RM OD (mm)
         rmLenMin,             // 10. RM Len Min
         rmLenMax,             // 11. RM Len Max
-        weightKg,             // 12. Weight (Kgs)
-        planQtyNos,           // 13. Nos
-        planQtyMton,          // 14. Mton
-        billetWtWhf,          // 15. Billet Wt. After WHF
-        pmOd,                 // 16. PM OD
-        pmWt,                 // 17. PM Wt
-        pmKgMtr,              // 18. PM Kg/Mtr
-        pmLen,                // 19. PM Length
-        wtWbf,                // 20. Wt. After WBF
-        custOd,               // 21. Cust. OD
-        custWt,               // 22. Cust. WT
-        rollingWt,            // 23. Rolling WT
-        smKgMtr,              // 24. SM Kg/Mtr
-        smLen,                // 25. SM Length
-        feLen,                // 26. FE Lg (Mtr)
-        feWg,                 // 27. FE Wg(Kgs)
-        beLen,                // 28. BE Lg (Mtr)
-        beWg,                 // 29. BE Wg(Kgs)
-        effectiveWg,          // 30. Effective Wg (Kg)
-        effLen,               // 31. Effective Length
-        reqLenEr,             // 32. E/R
-        reqLenMin,            // 33. Min
-        reqLenMax,            // 34. Max
-        mult,                 // 35. Multi
+        planQtyNos,           // 12. Nos
+        planQtyMton,          // 13. Mton
+        pmOd,                 // 14. PM OD
+        pmWthk,               // 15. PM Wthk
+        pmLen,                // 16. PM Length
+        custOd,               // 17. Cust. OD
+        custWt,               // 18. Cust. WT
+        rollingWt,            // 19. Rolling WT
+        smLen,                // 20. SM Length
+        feLen,                // 21. FE Lg (Mtr)
+        beLen,                // 22. BE Lg (Mtr)
+        effLen,               // 23. Effective Length
+        reqLenEr,             // 24. E/R
+        reqLenMin,            // 25. Min
+        reqLenMax,            // 26. Max
+        mult,                 // 27. Multi
+        tolOdMin,             // 28. OD Min.
+        tolOdMax,             // 29. OD Max
+        tolWtMin,             // 30. Thk. Min
+        tolWtMax,             // 31. Thk. Max
+        processYieldPct,      // 32. Process Yld %
+
+        // Banner & calculation helpers
+        reductionPct,
+        sectionTitle,
+        multiBanner,
+        ratePerHour,
 
         // Metadata & linking
-        tolOdMin,
-        tolOdMax,
-        tolWtMin,
-        tolWtMax,
-        processYieldPct,
         campaignPlanNo,
         millName,
         monthStr,
@@ -911,6 +957,23 @@ export default function RollingPlanIssueReportClient() {
     };
   }, [filteredPlans]);
 
+  // OD Group Totals & Grand Totals for 32-column factory sheet
+  const factoryTotals = useMemo(() => {
+    let grandTotalNos = 0;
+    let grandTotalMton = 0;
+    const odGroupTotals: Record<number, { nos: number; mton: number }> = {};
+    factoryRows.forEach((r) => {
+      grandTotalNos += r.planQtyNos;
+      grandTotalMton += r.planQtyMton;
+      if (!odGroupTotals[r.custOd]) {
+        odGroupTotals[r.custOd] = { nos: 0, mton: 0 };
+      }
+      odGroupTotals[r.custOd].nos += r.planQtyNos;
+      odGroupTotals[r.custOd].mton += r.planQtyMton;
+    });
+    return { grandTotalNos, grandTotalMton, odGroupTotals };
+  }, [factoryRows]);
+
   const toggleExpand = (id: string) => {
     setExpandedMasters((prev) => ({ ...prev, [id]: !prev[id] }));
   };
@@ -933,30 +996,27 @@ export default function RollingPlanIssueReportClient() {
         'RM OD (mm)',
         'RM Len Min',
         'RM Len Max',
-        'Weight (Kgs)',
         'Nos',
         'Mton',
-        'Billet Wt. After WHF',
         'PM OD',
-        'PM Wt',
-        'PM Kg/Mtr',
+        'PM Wthk',
         'PM Length',
-        'Wt. After WBF',
         'Cust. OD',
         'Cust. WT',
         'Rolling WT',
-        'SM Kg/Mtr',
         'SM Length',
         'FE Lg (Mtr)',
-        'FE Wg(Kgs)',
         'BE Lg (Mtr)',
-        'BE Wg(Kgs)',
-        'Effective Wg (Kg)',
         'Effective Length',
         'E/R',
         'Min',
         'Max',
         'Multi',
+        'OD Min.',
+        'OD Max',
+        'Thk. Min',
+        'Thk. Max',
+        'Process Yld %',
       ];
       const rows = factoryRows.map((r) => [
         r.srNo,
@@ -970,40 +1030,37 @@ export default function RollingPlanIssueReportClient() {
         r.rmOd,
         r.rmLenMin,
         r.rmLenMax,
-        r.weightKg,
         r.planQtyNos,
         r.planQtyMton,
-        r.billetWtWhf,
         r.pmOd,
-        r.pmWt,
-        r.pmKgMtr,
+        r.pmWthk,
         r.pmLen,
-        r.wtWbf,
         r.custOd,
         r.custWt,
         r.rollingWt,
-        r.smKgMtr,
         r.smLen,
         r.feLen,
-        r.feWg,
         r.beLen,
-        r.beWg,
-        r.effectiveWg,
         r.effLen,
         r.reqLenEr,
         r.reqLenMin,
         r.reqLenMax,
         r.mult,
+        r.tolOdMin,
+        r.tolOdMax,
+        r.tolWtMin,
+        r.tolWtMax,
+        r.processYieldPct,
       ]);
       const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement('a');
       link.setAttribute('href', encodedUri);
-      link.setAttribute('download', `Rolling_Plan_35Col_Schedule_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute('download', `Rolling_Plan_Mill02_Schedule_${new Date().toISOString().slice(0, 10)}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success('35-Column Factory Schedule exported to CSV.');
+      toast.success('32-Column Factory Production Schedule exported to CSV.');
       return;
     }
 
@@ -1067,7 +1124,7 @@ export default function RollingPlanIssueReportClient() {
         @media print {
           @page {
             size: A4 landscape;
-            margin: 4mm 5mm 4mm 5mm;
+            margin: 3mm 4mm 3mm 4mm;
           }
           html, body {
             width: 100% !important;
@@ -1076,7 +1133,7 @@ export default function RollingPlanIssueReportClient() {
             background: #ffffff !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
-            font-size: 10px !important;
+            font-size: 8px !important;
           }
           main {
             max-width: 100% !important;
@@ -1100,7 +1157,7 @@ export default function RollingPlanIssueReportClient() {
           }
           th, td {
             border: 1px solid #000000 !important;
-            padding: 2px 3px !important;
+            padding: 1px 2px !important;
           }
           tr {
             break-inside: avoid !important;
@@ -1290,13 +1347,28 @@ export default function RollingPlanIssueReportClient() {
         <div className={`space-y-3 ${viewMode === 'factory' ? 'block' : 'hidden print:block'} factory-print-sheet`}>
           <div className="rounded-xl border-2 border-black bg-white p-3 shadow-md print:border-black print:p-2 print:shadow-none">
             {/* Header: Company Title & Document Name (Exact match from photo) */}
-            <div className="flex items-center justify-between border-b-2 border-black pb-2">
-              <div className="flex items-center gap-3">
-                {/* Rashmi Seamless Logo Representation */}
-                <div className="border-2 border-black px-2 py-1 text-center font-black">
-                  <div className="text-base tracking-tight text-slate-900 leading-none">RASHMI</div>
-                  <div className="text-[8px] tracking-widest text-slate-700 font-bold border-t border-black mt-0.5 pt-0.5">
-                    SEAMLESS
+            <div className="flex items-center justify-between border-b border-black pb-2">
+              <div className="flex items-center gap-2.5">
+                {/* Rashmi Seamless Official Spark Logo */}
+                <div className="flex items-center gap-2">
+                  <div className="relative w-8 h-8 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="4" fill="currentColor" />
+                      <line x1="12" y1="2" x2="12" y2="5" />
+                      <line x1="12" y1="19" x2="12" y2="22" />
+                      <line x1="4.22" y1="4.22" x2="6.34" y2="6.34" />
+                      <line x1="17.66" y1="17.66" x2="19.78" y2="19.78" />
+                      <line x1="2" y1="12" x2="5" y2="12" />
+                      <line x1="19" y1="12" x2="22" y2="12" />
+                      <line x1="4.22" y1="19.78" x2="6.34" y2="17.66" />
+                      <line x1="17.66" y1="6.34" x2="19.78" y2="4.22" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-xl font-black tracking-tight text-black leading-none">RASHMI</div>
+                    <div className="bg-black text-white text-[7px] font-black tracking-widest px-1 py-0.2 mt-0.5 text-center uppercase">
+                      SEAMLESS
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1313,17 +1385,12 @@ export default function RollingPlanIssueReportClient() {
                 </h3>
               </div>
 
-              <div className="text-right text-[10px] font-mono text-black">
-                <div className="font-bold">{activeSheetMeta.millName.toLowerCase().includes('03') ? 'MILL - 03' : 'MILL - 02'}</div>
-                <div>DOC: F-PROD-01A</div>
-                <div>REV. NO: {String(activeSheetMeta.revisionNo).padStart(2, '0')}</div>
-                <div>REV. DT: {activeSheetMeta.revisionDate}</div>
-              </div>
+              <div className="w-20"></div>
             </div>
 
             {/* Sub-Header Bar: Production Plan-Hot Mill-02 | Month | Plan No | Issue Date */}
-            <div className="grid grid-cols-4 border-b border-black text-xs font-bold text-black py-1 px-1 bg-slate-50 print:bg-white text-center items-center">
-              <div className="border-r border-black">{activeSheetMeta.millName}</div>
+            <div className="grid grid-cols-4 border-b border-black text-xs font-bold text-black py-1 px-1 bg-white text-center items-center">
+              <div className="border-r border-black text-left pl-1 font-bold">{activeSheetMeta.millName}</div>
               <div className="border-r border-black">Month: <span className="font-mono">{activeSheetMeta.monthStr}</span></div>
               <div className="border-r border-black">
                 Plan No :- <span className="font-mono">{activeSheetMeta.planNo}</span>
@@ -1333,7 +1400,7 @@ export default function RollingPlanIssueReportClient() {
                   </span>
                 )}
               </div>
-              <div>
+              <div className="text-right pr-1">
                 Issue Date: <span className="font-mono">{activeSheetMeta.issueDate}</span>
                 {activeSheetMeta.lifecycleStatus === 'DRAFT' && (
                   <span className="ml-1 px-1 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold">
@@ -1358,276 +1425,291 @@ export default function RollingPlanIssueReportClient() {
               )}
             </div>
 
-            {/* Main Production Plan Table (35 Columns - Exact 2-Tier Header) */}
-            <div className="overflow-x-auto mt-1">
-              <table className="w-full text-left text-[11px] border-collapse border border-black font-sans">
+            {/* Main Production Plan Table (Exact 32 Columns - Exact 2-Tier Header) */}
+            <div className="overflow-x-auto mt-0.5">
+              <table className="w-full text-left text-[9.5px] print:text-[8px] border-collapse border border-black font-sans">
                 <thead>
                   {/* Tier 1 Header */}
-                  <tr className="bg-slate-100 print:bg-white text-center font-bold text-black border-b border-black text-[10px]">
-                    <th rowSpan={2} className="border border-black px-1 py-1 w-6">Sr No.</th>
-                    <th rowSpan={2} className="border border-black px-1 py-1 w-10">Catg</th>
-                    <th rowSpan={2} className="border border-black px-1.5 py-1">Customer</th>
-                    <th rowSpan={2} className="border border-black px-1.5 py-1 whitespace-nowrap">W.O. / S.O. No.</th>
-                    <th rowSpan={2} className="border border-black px-1 py-1">Spec</th>
-                    <th rowSpan={2} className="border border-black px-1 py-1">Grade</th>
-                    <th rowSpan={2} className="border border-black px-1 py-1 w-12">IBR/NIBR</th>
-                    <th rowSpan={2} className="border border-black px-1.5 py-1 whitespace-nowrap">Rolling mtr</th>
-                    
-                    {/* Billet Dimensions & Weight (4 cols) */}
-                    <th colSpan={4} className="border border-black px-1 py-0.5">Billet Dimensions & Weight</th>
-                    
-                    {/* Plan qty & WHF (3 cols) */}
-                    <th colSpan={3} className="border border-black px-1 py-0.5">Plan Qty & WHF</th>
-                    
-                    {/* Piercer Mill (4 cols) */}
-                    <th colSpan={4} className="border border-black px-1 py-0.5">Piercer Mill</th>
-                    
-                    {/* Sizing Mill (SM) / Hollow (6 cols) */}
-                    <th colSpan={6} className="border border-black px-1 py-0.5">Sizing Mill (SM) / Hot Hollow</th>
-                    
-                    {/* Thicken Ends & Effective (6 cols) */}
-                    <th colSpan={6} className="border border-black px-1 py-0.5">Thicken Ends & Effective</th>
-                    
-                    {/* Final Length Reqd & Multi (4 cols) */}
-                    <th colSpan={4} className="border border-black px-1 py-0.5">Final Length Reqd & Multi</th>
+                  <tr className="bg-white text-center font-bold text-black border-b border-black text-[9px] print:text-[7.5px] leading-tight">
+                    <th rowSpan={2} className="border border-black px-1 py-1 w-6">Sr<br />No.</th>
+                    <th rowSpan={2} className="border border-black px-1 py-1 w-8">Catg</th>
+                    <th rowSpan={2} className="border border-black px-1.5 py-1 text-left min-w-[85px]">Customer</th>
+                    <th rowSpan={2} className="border border-black px-1.5 py-1 whitespace-nowrap min-w-[95px]">W.O. / S.O. No.</th>
+                    <th rowSpan={2} className="border border-black px-1 py-1 whitespace-nowrap">Spec</th>
+                    <th rowSpan={2} className="border border-black px-1 py-1 whitespace-nowrap">Grade</th>
+                    <th rowSpan={2} className="border border-black px-1 py-1 w-10">IBR/NI<br />BR</th>
+                    <th rowSpan={2} className="border border-black px-1 py-1 whitespace-nowrap">Rolling<br />mtr</th>
+
+                    {/* Billet Dimensions (3 cols) */}
+                    <th colSpan={3} className="border border-black px-1 py-0.5">Billet Dimensions</th>
+
+                    {/* Plan qty (2 cols) */}
+                    <th colSpan={2} className="border border-black px-1 py-0.5">Plan qty</th>
+
+                    {/* Piercer Mill (3 cols) */}
+                    <th colSpan={3} className="border border-black px-1 py-0.5">Piercer Mill</th>
+
+                    {/* SM (4 cols) */}
+                    <th colSpan={4} className="border border-black px-1 py-0.5">SM</th>
+
+                    {/* Thicken Ends (3 cols) */}
+                    <th colSpan={3} className="border border-black px-1 py-0.5">Thicken Ends</th>
+
+                    {/* Final Length Reqd. (4 cols) */}
+                    <th colSpan={4} className="border border-black px-1 py-0.5">Final Length Reqd.</th>
+
+                    {/* Dimenstion Tolerances (5 cols) */}
+                    <th colSpan={5} className="border border-black px-1 py-0.5">Dimenstion Tolerances</th>
                   </tr>
 
-                  {/* Tier 2 Header (35 Columns Detailed Names) */}
-                  <tr className="bg-slate-100 print:bg-white text-center font-bold text-black border-b border-black text-[9px]">
-                    {/* 9-12. Billet Dimensions & Weight */}
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">RM OD (mm)</th>
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">RM Len Min</th>
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">RM Len Max</th>
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">Weight (Kgs)</th>
-                    
-                    {/* 13-15. Plan qty & WHF */}
-                    <th className="border border-black px-1 py-0.5">Nos</th>
-                    <th className="border border-black px-1 py-0.5">Mton</th>
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">Billet Wt. After WHF</th>
-                    
-                    {/* 16-19. Piercer Mill */}
-                    <th className="border border-black px-1 py-0.5">PM OD</th>
-                    <th className="border border-black px-1 py-0.5">PM Wt</th>
-                    <th className="border border-black px-1 py-0.5">PM Kg/Mtr</th>
-                    <th className="border border-black px-1 py-0.5">PM Length</th>
-                    
-                    {/* 20-25. Sizing Mill (SM) / Hollow */}
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">Wt. After WBF</th>
-                    <th className="border border-black px-1 py-0.5">Cust. OD</th>
-                    <th className="border border-black px-1 py-0.5">Cust. WT</th>
-                    <th className="border border-black px-1 py-0.5">Rolling WT</th>
-                    <th className="border border-black px-1 py-0.5">SM Kg/Mtr</th>
-                    <th className="border border-black px-1 py-0.5">SM Length</th>
-                    
-                    {/* 26-31. Thicken Ends & Effective */}
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">FE Lg (Mtr)</th>
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">FE Wg (Kgs)</th>
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">BE Lg (Mtr)</th>
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">BE Wg (Kgs)</th>
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">Effective Wg (Kg)</th>
-                    <th className="border border-black px-1 py-0.5 whitespace-nowrap">Effective Length</th>
-                    
-                    {/* 32-35. Final Length Reqd & Multi */}
-                    <th className="border border-black px-1 py-0.5">E/R</th>
-                    <th className="border border-black px-1 py-0.5">Min</th>
-                    <th className="border border-black px-1 py-0.5">Max</th>
-                    <th className="border border-black px-1 py-0.5">Multi</th>
+                  {/* Tier 2 Header (32 Columns Exact Names matching photo) */}
+                  <tr className="bg-white text-center font-bold text-black border-b border-black text-[8.5px] print:text-[7px] leading-tight">
+                    {/* Billet Dimensions (cols 9-11) */}
+                    <th className="border border-black px-0.5 py-0.5 whitespace-nowrap">RM OD<br />(mm)</th>
+                    <th className="border border-black px-0.5 py-0.5 whitespace-nowrap">RM<br />Len<br />Min</th>
+                    <th className="border border-black px-0.5 py-0.5 whitespace-nowrap">RM<br />Len<br />Max</th>
+
+                    {/* Plan qty (cols 12-13) */}
+                    <th className="border border-black px-0.5 py-0.5">Nos</th>
+                    <th className="border border-black px-0.5 py-0.5">Mton</th>
+
+                    {/* Piercer Mill (cols 14-16) */}
+                    <th className="border border-black px-0.5 py-0.5">PM OD</th>
+                    <th className="border border-black px-0.5 py-0.5">PM<br />Wthk</th>
+                    <th className="border border-black px-0.5 py-0.5">PM<br />Length</th>
+
+                    {/* SM (cols 17-20) */}
+                    <th className="border border-black px-0.5 py-0.5">Cust.<br />OD</th>
+                    <th className="border border-black px-0.5 py-0.5">Cust.<br />WT</th>
+                    <th className="border border-black px-0.5 py-0.5">Rolling<br />WT</th>
+                    <th className="border border-black px-0.5 py-0.5">SM Length</th>
+
+                    {/* Thicken Ends (cols 21-23) */}
+                    <th className="border border-black px-0.5 py-0.5">FE Lg<br />(Mtr)</th>
+                    <th className="border border-black px-0.5 py-0.5">BE Lg<br />(Mtr)</th>
+                    <th className="border border-black px-0.5 py-0.5">Effecti<br />ve<br />Length</th>
+
+                    {/* Final Length Reqd. (cols 24-27) */}
+                    <th className="border border-black px-0.5 py-0.5">E/R</th>
+                    <th className="border border-black px-0.5 py-0.5">Min</th>
+                    <th className="border border-black px-0.5 py-0.5">Max</th>
+                    <th className="border border-black px-0.5 py-0.5">M<br />ul<br />ti</th>
+
+                    {/* Dimenstion Tolerances (cols 28-32) */}
+                    <th className="border border-black px-0.5 py-0.5">OD Min.</th>
+                    <th className="border border-black px-0.5 py-0.5">OD Max</th>
+                    <th className="border border-black px-0.5 py-0.5">Thk.<br />Min</th>
+                    <th className="border border-black px-0.5 py-0.5">Thk.<br />Max</th>
+                    <th className="border border-black px-0.5 py-0.5">Process Yld<br />%</th>
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-black text-black">
+                <tbody className="text-black">
                   {loading ? (
                     <tr>
-                      <td colSpan={35} className="p-8 text-center text-slate-500 border border-black">
+                      <td colSpan={32} className="p-8 text-center text-slate-500 border border-black">
                         <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                         Loading factory cutting plan schedule...
                       </td>
                     </tr>
                   ) : factoryRows.length === 0 ? (
                     <tr>
-                      <td colSpan={35} className="p-8 text-center text-slate-500 border border-black">
+                      <td colSpan={32} className="p-8 text-center text-slate-500 border border-black">
                         No active cutting plan records found. Create or select a plan above.
                       </td>
                     </tr>
                   ) : (
-                    factoryRows.map((row) => (
-                      <React.Fragment key={`setup-${row.srNo}-${row.woNo}`}>
-                        {/* Optional Multi Header row */}
-                        {row.mult.includes('Multi') && (
-                          <tr className="bg-slate-50 print:bg-white text-center font-bold text-xs border border-black">
-                            <td colSpan={35} className="py-0.5 text-center font-black border border-black">
-                              <span className="inline-block px-3 py-0.5 rounded bg-slate-200 border border-black font-mono">
-                                {row.mult}
-                              </span>
+                    factoryRows.map((row, idx) => {
+                      const isLastOfOdGroup = idx === factoryRows.length - 1 || factoryRows[idx + 1].custOd !== row.custOd;
+                      const odGroup = factoryTotals.odGroupTotals[row.custOd] || { nos: row.planQtyNos, mton: row.planQtyMton };
+
+                      return (
+                        <React.Fragment key={`setup-${row.srNo}-${row.woNo}`}>
+                          {/* Section Header Row (e.g. 2-Multi  40.36%, SS Rolling  2-Multi  24.64%, SS Rolling - Ex.PM  0.00%) */}
+                          <tr className="bg-white font-bold text-[9.5px] print:text-[8px] border-t border-b border-black">
+                            <td colSpan={32} className="px-2 py-0.5 border border-black">
+                              <div className="flex items-center justify-between font-bold">
+                                <div className="flex items-center gap-6">
+                                  {row.sectionTitle && (
+                                    <span className="font-extrabold uppercase tracking-wide">
+                                      {row.sectionTitle}
+                                    </span>
+                                  )}
+                                  {row.multiBanner && (
+                                    <span className="font-bold">
+                                      {row.multiBanner}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="font-bold font-mono text-right">
+                                  {row.reductionPct}
+                                </div>
+                              </div>
                             </td>
                           </tr>
-                        )}
 
-                        {/* Main Master Setup Row - All 35 Columns */}
-                        <tr className="hover:bg-slate-50/60 print:hover:bg-transparent font-medium border-t border-black text-[10px]">
-                          {/* 1. Sr No */}
-                          <td className="border border-black px-1 py-1 text-center font-bold">{row.srNo}</td>
-                          
-                          {/* 2. Catg */}
-                          <td className="border border-black px-1 py-1 text-center font-semibold">{row.catg}</td>
-                          
-                          {/* 3. Customer */}
-                          <td className="border border-black px-1.5 py-1 font-semibold max-w-[140px] truncate" title={row.customer}>
-                            {row.customer}
-                          </td>
-                          
-                          {/* 4. W.O. / S.O. No */}
-                          <td className="border border-black px-1.5 py-1 font-bold font-mono whitespace-nowrap">
-                            <div className="flex items-center justify-between gap-1">
-                              <span>{row.woNo}</span>
-                              {row.plan && (
-                                <button
-                                  type="button"
-                                  onClick={() => openEditSpecs(row.plan!)}
-                                  aria-label={`Edit Setup Specs & Tolerances for ${row.woNo}`}
-                                  className="print:hidden p-1 min-h-[28px] min-w-[28px] inline-flex items-center justify-center rounded text-amber-800 hover:text-amber-950 hover:bg-amber-100 transition cursor-pointer"
-                                  title="Edit Setup Specs & Tolerances"
-                                >
-                                  <Edit2 className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                          
-                          {/* 5. Spec */}
-                          <td className="border border-black px-1 py-1 text-center whitespace-nowrap">{row.spec}</td>
-                          
-                          {/* 6. Grade */}
-                          <td className="border border-black px-1 py-1 text-center font-mono whitespace-nowrap">{row.grade}</td>
-                          
-                          {/* 7. IBR/NIBR */}
-                          <td className="border border-black px-1 py-1 text-center font-bold">{row.ibr}</td>
-                          
-                          {/* 8. Rolling mtr */}
-                          <td className="border border-black px-1.5 py-1 text-right font-mono font-black">
-                            {fmt(row.rollingMtr, 0)}
-                          </td>
-                          
-                          {/* 9. RM OD (mm) */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rmOd, 2)}</td>
-                          
-                          {/* 10. RM Len Min */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rmLenMin, 3)}</td>
-                          
-                          {/* 11. RM Len Max */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rmLenMax, 3)}</td>
-                          
-                          {/* 12. Weight (Kgs) */}
-                          <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.weightKg, 2)}</td>
-                          
-                          {/* 13. Nos */}
-                          <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.planQtyNos, 0)}</td>
-                          
-                          {/* 14. Mton */}
-                          <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.planQtyMton, 2)}</td>
-                          
-                          {/* 15. Billet Wt. After WHF */}
-                          <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.billetWtWhf, 2)}</td>
-                          
-                          {/* 16. PM OD */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmOd, 1)}</td>
-                          
-                          {/* 17. PM Wt */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmWt, 2)}</td>
-                          
-                          {/* 18. PM Kg/Mtr */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmKgMtr, 3)}</td>
-                          
-                          {/* 19. PM Length */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.pmLen, 2)}</td>
-                          
-                          {/* 20. Wt. After WBF */}
-                          <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.wtWbf, 2)}</td>
-                          
-                          {/* 21. Cust. OD */}
-                          <td className="border border-black px-1 py-1 text-right font-mono font-bold">{fmt(row.custOd, 2)}</td>
-                          
-                          {/* 22. Cust. WT */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.custWt, 2)}</td>
-                          
-                          {/* 23. Rolling WT */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.rollingWt, 2)}</td>
-                          
-                          {/* 24. SM Kg/Mtr */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.smKgMtr, 3)}</td>
-                          
-                          {/* 25. SM Length */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.smLen, 2)}</td>
-                          
-                          {/* 26. FE Lg (Mtr) */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.feLen, 3)}</td>
-                          
-                          {/* 27. FE Wg(Kgs) */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.feWg, 2)}</td>
-                          
-                          {/* 28. BE Lg (Mtr) */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.beLen, 3)}</td>
-                          
-                          {/* 29. BE Wg(Kgs) */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.beWg, 2)}</td>
-                          
-                          {/* 30. Effective Wg (Kg) */}
-                          <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.effectiveWg, 2)}</td>
-                          
-                          {/* 31. Effective Length */}
-                          <td className="border border-black px-1 py-1 text-right font-mono font-semibold">{fmt(row.effLen, 2)}</td>
-                          
-                          {/* 32. E/R */}
-                          <td className="border border-black px-1 py-1 text-center font-bold">{row.reqLenEr}</td>
-                          
-                          {/* 33. Min */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.reqLenMin, 2)}</td>
-                          
-                          {/* 34. Max */}
-                          <td className="border border-black px-1 py-1 text-right font-mono">{fmt(row.reqLenMax, 2)}</td>
-                          
-                          {/* 35. Multi */}
-                          <td className="border border-black px-1 py-1 text-center font-mono font-bold">{row.mult}</td>
-                        </tr>
-
-                        {/* Sub-Rows: Exact child order breakdown lines matching the photo */}
-                        {row.childSubRows.map((child, cIdx) => (
-                          <tr key={`sub-${row.srNo}-${cIdx}`} className="bg-white text-[9.5px] border-b border-black">
-                            <td colSpan={35} className="px-3 py-0.5 border border-black font-mono text-black leading-tight">
-                              <span className="font-bold">
-                                {child.catg}(finish size-{child.finishSize})(Final len - {child.finalLen})(OA-{child.woNo})(Cust.- {child.customer})(Hollow len-{child.hollowLen})(HTC mtr-{fmt(child.htcMtr, 0)})
-                              </span>
+                          {/* Main Master Setup Row - All 32 Columns */}
+                          <tr className="hover:bg-slate-50/60 print:hover:bg-transparent font-medium border-t border-black text-[9.5px] print:text-[8px]">
+                            {/* 1. Sr No */}
+                            <td className="border border-black px-0.5 py-0.5 text-center font-bold">{row.srNo}</td>
+                            {/* 2. Catg */}
+                            <td className="border border-black px-0.5 py-0.5 text-center font-semibold">{row.catg}</td>
+                            {/* 3. Customer */}
+                            <td className="border border-black px-1 py-0.5 font-semibold max-w-[120px] truncate" title={row.customer}>{row.customer}</td>
+                            {/* 4. WO */}
+                            <td className="border border-black px-1 py-0.5 font-bold font-mono whitespace-nowrap">
+                              <div className="flex items-center justify-between gap-1">
+                                <span>{row.woNo}</span>
+                                {row.plan && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditSpecs(row.plan!)}
+                                    aria-label={`Edit Setup Specs & Tolerances for ${row.woNo}`}
+                                    className="print:hidden p-0.5 rounded text-amber-800 hover:text-amber-950 hover:bg-amber-100 transition cursor-pointer"
+                                    title="Edit Setup Specs & Tolerances"
+                                  >
+                                    <Edit2 className="h-3 w-3" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
+                            {/* 5. Spec */}
+                            <td className="border border-black px-0.5 py-0.5 text-center whitespace-nowrap">{row.spec}</td>
+                            {/* 6. Grade */}
+                            <td className="border border-black px-0.5 py-0.5 text-center font-mono whitespace-nowrap">{row.grade}</td>
+                            {/* 7. IBR/NIBR */}
+                            <td className="border border-black px-0.5 py-0.5 text-center font-bold">{row.ibr}</td>
+                            {/* 8. Rolling mtr */}
+                            <td className="border border-black px-1 py-0.5 text-right font-mono font-black">{fmt(row.rollingMtr, 0)}</td>
+                            {/* 9. RM OD (mm) */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.rmOd, 2)}</td>
+                            {/* 10. RM Len Min */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.rmLenMin, 3)}</td>
+                            {/* 11. RM Len Max */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.rmLenMax, 3)}</td>
+                            {/* 12. Nos */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">{fmt(row.planQtyNos, 0)}</td>
+                            {/* 13. Mton */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">{fmt(row.planQtyMton, 1)}</td>
+                            {/* 14. PM OD */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.pmOd, 1)}</td>
+                            {/* 15. PM Wthk */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.pmWthk, 2)}</td>
+                            {/* 16. PM Length */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.pmLen, 2)}</td>
+                            {/* 17. Cust. OD */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">{fmt(row.custOd, 2)}</td>
+                            {/* 18. Cust. WT */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.custWt, 2)}</td>
+                            {/* 19. Rolling WT */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.rollingWt, 2)}</td>
+                            {/* 20. SM Length */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.smLen, 2)}</td>
+                            {/* 21. FE Lg (Mtr) */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.feLen, 3)}</td>
+                            {/* 22. BE Lg (Mtr) */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.beLen, 3)}</td>
+                            {/* 23. Effective Length */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono font-semibold">{fmt(row.effLen, 2)}</td>
+                            {/* 24. E/R */}
+                            <td className="border border-black px-0.5 py-0.5 text-center font-bold">{row.reqLenEr}</td>
+                            {/* 25. Min */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.reqLenMin, 2)}</td>
+                            {/* 26. Max */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.reqLenMax, 2)}</td>
+                            {/* 27. Multi */}
+                            <td className="border border-black px-0.5 py-0.5 text-center font-mono font-bold">{row.mult}</td>
+                            {/* 28. OD Min. */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.tolOdMin, 2)}</td>
+                            {/* 29. OD Max */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.tolOdMax, 2)}</td>
+                            {/* 30. Thk. Min */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.tolWtMin, 2)}</td>
+                            {/* 31. Thk. Max */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono">{fmt(row.tolWtMax, 2)}</td>
+                            {/* 32. Process Yld % */}
+                            <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">{fmt(row.processYieldPct, 2)}</td>
                           </tr>
-                        ))}
-                      </React.Fragment>
-                    ))
+
+                          {/* Sub-Rows: Order breakdown lines matching photo */}
+                          {row.childSubRows.map((child, cIdx) => (
+                            <tr key={`sub-${row.srNo}-${cIdx}`} className="bg-white text-[9px] print:text-[7.5px] border-b border-black">
+                              <td colSpan={11} className="border border-black px-1 py-0.5"></td>
+                              <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">
+                                {fmt(child.nos || row.planQtyNos, 0)}
+                              </td>
+                              <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">
+                                {Math.round(child.mton || row.planQtyMton)}
+                              </td>
+                              <td colSpan={19} className="border border-black px-2 py-0.5 font-mono text-black leading-tight text-[9px] print:text-[7.5px]">
+                                {child.customNote ? (
+                                  <span className="font-bold">{child.customNote}</span>
+                                ) : (
+                                  <span className="font-bold">
+                                    {child.catg}(finish size-{child.finishSize})( Final len - {child.finalLen})( OA-{child.woNo})(Cust.- {child.customer})(Hollow len-{child.hollowLen})(HTC mtr-{fmt(child.htcMtr, 0)})
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+
+                          {/* OD Group Subtotal Row */}
+                          {isLastOfOdGroup && (
+                            <tr className="bg-white font-bold text-[9.5px] print:text-[8px] border-b border-black">
+                              <td colSpan={11} className="border border-black px-2 py-0.5 text-right font-bold">
+                                Total In {fmt(row.custOd, 2)} MM ==&gt;
+                              </td>
+                              <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">
+                                {fmt(odGroup.nos, 0)}
+                              </td>
+                              <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">
+                                {Math.round(odGroup.mton)}
+                              </td>
+                              <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">
+                                {row.ratePerHour}
+                              </td>
+                              <td colSpan={18} className="border border-black px-0.5 py-0.5"></td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
+
+                  {/* Grand Total Row */}
+                  {factoryRows.length > 0 && (
+                    <tr className="bg-white font-bold text-[10px] print:text-[8.5px] border-t-2 border-b-2 border-black">
+                      <td colSpan={11} className="border border-black px-2 py-1 text-right font-black">
+                        Total ==&gt;
+                      </td>
+                      <td className="border border-black px-0.5 py-1 text-right font-mono font-black text-xs">
+                        {fmt(factoryTotals.grandTotalNos, 0)}
+                      </td>
+                      <td className="border border-black px-0.5 py-1 text-right font-mono font-black text-xs">
+                        {Math.round(factoryTotals.grandTotalMton)}
+                      </td>
+                      <td className="border border-black px-0.5 py-1 text-right font-mono font-black">
+                        {factoryRows[0]?.ratePerHour || 20}
+                      </td>
+                      <td colSpan={18} className="border border-black px-0.5 py-1"></td>
+                    </tr>
                   )}
                 </tbody>
               </table>
             </div>
 
             {/* Footer with Document Control & Official Signature Blocks (From photo) */}
-            <div className="mt-3 pt-2 border-t-2 border-black flex flex-col sm:flex-row items-end justify-between text-xs text-black break-inside-avoid">
-              <div className="text-[10px] font-mono space-y-0.5">
-                <div className="font-bold">F-PROD-01A, EFF. Date: 01.04.2023, Rev.02, Rev Dt. 01.04.2024 / PPC</div>
-                <div className="text-slate-600">Confidential Shop Floor Copy · Rashmi Green Hydrogen Steel Pvt. Ltd.</div>
+            <div className="mt-8 pt-3 border-t-2 border-black flex flex-col gap-6 text-xs text-black break-inside-avoid">
+              {/* Signatures Area matching photo exactly */}
+              <div className="flex items-center justify-around font-bold text-xs tracking-wider">
+                <div>&#123;PREPARED BY&#125;</div>
+                <div>&#123;REVIEWED BY&#125;</div>
               </div>
 
-              {/* Signatures Area */}
-              <div className="flex items-center gap-12 my-2 sm:my-0">
-                <div className="text-center">
-                  <div className="h-8 border-b border-dashed border-black w-28 mb-1"></div>
-                  <span className="text-[10px] font-bold block">Prepared by (PPC)</span>
-                </div>
-                <div className="text-center">
-                  <div className="h-8 border-b border-dashed border-black w-32 mb-1"></div>
-                  <span className="text-[10px] font-bold block">Checked by (Hot Mill Incharge)</span>
-                </div>
-              </div>
-
-              <div className="text-[10px] font-mono font-bold">
-                Page 1 of 1
+              {/* Footer document revision code & page */}
+              <div className="flex items-center justify-between text-[10px] font-mono border-t border-black pt-1">
+                <div>F-PROD-01A, EFF. Date:01.04.2023, Rev.02, Rev. Dt. 01.04.2024 / PPC</div>
+                <div className="font-bold">Page 1 of 1</div>
               </div>
             </div>
           </div>
