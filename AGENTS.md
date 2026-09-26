@@ -47,3 +47,8 @@ These rules apply to:
 - All Reports (`/reports/wip`, Size-Grade WIP Matrix, Work Order Tracking, Aging)
 - Executive Dashboard KPIs (`/dashboard`)
 - Database Views & Stored Functions (`vw_route_stage_wip`, `get_production_entry_queue`)
+
+## 7. UI/UX & Frontend Standards
+All frontend features, dashboards, production entry consoles, and report tables must adhere strictly to [.agents/rules/ui-ux-standards.md](file:///.agents/rules/ui-ux-standards.md).
+- Follow the skills `impeccable` and `frontend-ui-engineering` for design hierarchy, contrast ratios ($\ge 4.5:1$), tabular number formatting (`font-mono tabular-nums text-right`), and WCAG 2.1 AA accessibility.
+- Eliminate generic "AI aesthetic" gradients in favor of high-density industrial steel mill typography and clear semantic state indicators.
