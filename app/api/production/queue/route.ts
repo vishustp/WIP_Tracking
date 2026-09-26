@@ -121,10 +121,13 @@ export async function GET(req: NextRequest) {
         .select("id, work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr"),
       admin
         .from("diversion_plans")
-        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, status"),
+        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id"),
     ]);
 
     if (stagesRes.error) throw stagesRes.error;
+    if (divsRes?.error) {
+      console.error("[production/queue] divsRes error:", divsRes.error);
+    }
     if (qcRes?.error) {
       console.error("[production/queue] qcRes error:", qcRes.error);
     } else {
@@ -475,6 +478,10 @@ export async function GET(req: NextRequest) {
     logs.forEach((l) => {
       if (!childWoMap.has(l.work_order_id)) candidateWoIds.add(l.work_order_id);
     });
+    diversions.forEach((d: any) => {
+      if (d.target_wo_id && !childWoMap.has(d.target_wo_id)) candidateWoIds.add(d.target_wo_id);
+      if (d.source_wo_id && !childWoMap.has(d.source_wo_id)) candidateWoIds.add(d.source_wo_id);
+    });
 
     for (const woId of candidateWoIds) {
       const wo = woMap.get(woId);
@@ -485,7 +492,8 @@ export async function GET(req: NextRequest) {
       const planInfo = planByWoMap.get(woId);
       const isRollingPlanIssued = campaign ? Boolean(campaign.is_issued) : Boolean(planInfo?.is_issued);
 
-      const routeId = campaign?.route_id || plan?.process_route_id || routes[0]?.id;
+      const targetDiv = diversions.find((d: any) => d.target_wo_id === woId);
+      const routeId = campaign?.route_id || plan?.process_route_id || targetDiv?.process_route_id || routes[0]?.id;
       const route = routeMap.get(routeId);
       const routeCode = route?.route_code || "CDS";
       const routeName = route?.route_name || "Standard CDS";
@@ -544,7 +552,7 @@ export async function GET(req: NextRequest) {
         0
       );
 
-      const multiple = Number(campaign?.multiple || plan?.multiple || 1);
+      const multiple = Number(campaign?.multiple || plan?.multiple || targetDiv?.multiple || 1);
 
       const storedPlanPcs = Number(
         campaign?.master_planned_pcs ||
@@ -762,11 +770,13 @@ export async function GET(req: NextRequest) {
 
       // VDI incoming: strictly from Band Saw Net Output Pieces
       const vdiIncomingPcs = bandSawLogs.length > 0 ? bandSawNetPcs : 0;
+      const vdiIncomingMtr = bandSawLogs.length > 0 ? bandSawNetMtr : 0;
 
       const vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
-      const vdiAvailMtr = avgLength > 0
-        ? (vdiAvailPcs > 0 ? Number((vdiAvailPcs * avgLength).toFixed(3)) : 0)
-        : 0;
+      let vdiAvailMtr = Math.max(0, Number((vdiIncomingMtr + vdiDivIn - qcInspectedMtr - vdiDivOut).toFixed(3)));
+      if (vdiAvailMtr === 0 && vdiAvailPcs > 0 && avgLength > 0) {
+        vdiAvailMtr = Number((vdiAvailPcs * avgLength).toFixed(3));
+      }
       const vdiAvailMt = mtFromMtr(vdiAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       const finDivIn = getStageDivIn(woId, "FINISHING");
@@ -1148,7 +1158,7 @@ export async function GET(req: NextRequest) {
                 prev_stage_code: "BAND_SAW",
                 prev_htc_ok: undefined,
                 prev_net_output: bandSawNetMtr,
-                feeder_source_label: "Band Saw Net OK",
+                feeder_source_label: vdiDivIn > 0 && bandSawLogs.length === 0 ? "Diverted Material In" : "Band Saw Net OK",
                 feeder_stage_code: "BAND_SAW",
               }
             : null,

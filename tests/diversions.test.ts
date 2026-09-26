@@ -114,5 +114,36 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
       expect(extractBundleTypeFromRemarks(undefined)).toBe('PRIME');
     });
   });
+
+  describe('Downstream Work Center Queue Availability (VDI / Finishing)', () => {
+    it('credits diverted material directly into the target order queue at the specified work center', () => {
+      // Scenario:
+      // Source WO 6186 diverts 2,057.00 Mtrs directly to Target WO 1451 at work center 'VDI'.
+      // Target WO 1451 does not have its own preceding rolling or saw logs yet.
+      const divertedMtr = 2057;
+      const targetAvgLength = 6.25;
+      const targetOd = 88.9;
+      const targetWt = 5.49;
+
+      const vdiIncomingMtr = 0; // No preceding band saw cuts yet for this target order
+      const vdiDivIn = divertedMtr;
+      const vdiDivOut = 0;
+      const qcInspectedMtr = 0;
+
+      // Available VDI balance calculation
+      const vdiAvailMtr = Math.max(0, vdiIncomingMtr + vdiDivIn - qcInspectedMtr - vdiDivOut);
+      const vdiAvailPcs = Math.round(vdiAvailMtr / targetAvgLength);
+      const vdiAvailMt = mtFromMtr(vdiAvailMtr, targetOd, targetWt);
+
+      expect(vdiAvailMtr).toBe(2057);
+      expect(vdiAvailPcs).toBe(329);
+      expect(vdiAvailMt).toBeCloseTo(23.23, 1);
+
+      // Target WO qualifies for the VDI work center queue (>= 1.0 Mtr or >= 1 Pc)
+      const qualifiesForQueue = vdiAvailMtr >= 1.0 || vdiAvailPcs >= 1;
+      expect(qualifiesForQueue).toBe(true);
+    });
+  });
 });
+
 

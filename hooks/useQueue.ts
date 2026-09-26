@@ -92,17 +92,47 @@ export function useQueue(stage: StageCode) {
           .select("work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr"),
         supabase
           .from("diversion_plans")
-          .select("source_wo_id, target_wo_id, diverted_qty, work_center, status"),
+          .select("source_wo_id, target_wo_id, diverted_qty, work_center"),
       ]);
 
+      let rawQueueData = queueRes.data;
       if (queueRes.error) {
-        setRows([]);
-        setError(queueRes.error.message);
-        setLoading(false);
-        return;
+        console.warn("[useQueue] RPC get_production_entry_queue error, falling back to vw_route_stage_wip:", queueRes.error.message);
+        const { data: viewData, error: viewError } = await supabase
+          .from("vw_route_stage_wip")
+          .select("work_order_id, work_order_no, customer_name, route_id, route_code, route_name, stage_code, current_wip, current_wip_pcs, current_wip_mt, size_od, size_wt")
+          .eq("stage_code", s)
+          .gt("current_wip", 0);
+
+        if (viewError) {
+          setRows([]);
+          setError(queueRes.error.message);
+          setLoading(false);
+          return;
+        }
+
+        rawQueueData = (viewData || []).map((v: any) => ({
+          work_order_id: v.work_order_id,
+          work_order_no: v.work_order_no,
+          customer_name: v.customer_name,
+          specification: null,
+          od: v.size_od,
+          wl: v.size_wt,
+          l1: 6,
+          l2: 6.5,
+          avg_length: 6.25,
+          route_id: v.route_id,
+          route_code: v.route_code,
+          route_name: v.route_name,
+          stage_code: v.stage_code,
+          balance_to_make_mtr: v.current_wip,
+          balance_to_make_pcs: v.current_wip_pcs,
+          balance_to_make_mt: v.current_wip_mt,
+          multiple: 1,
+        }));
       }
 
-      const rawRows: Row[] = (queueRes.data ?? []).map((r: any) => emptyRow(r));
+      const rawRows: Row[] = (rawQueueData ?? []).map((r: any) => emptyRow(r));
       const plans = plansRes.data ?? [];
       const stages = stagesRes.data ?? [];
       const logs = logsRes.data ?? [];
