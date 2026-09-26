@@ -352,19 +352,19 @@ function SpecEditModal({
 
         {/* Body */}
         <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-          {/* AI Auto-Fetch Banner */}
+          {/* Standards Auto-Fetch Banner */}
           {!readOnly && (
-            <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200/90 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
               <div className="flex items-start sm:items-center gap-2.5">
-                <div className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-xs shrink-0 mt-0.5 sm:mt-0">
+                <div className="p-1.5 bg-slate-800 text-white rounded-lg shadow-xs shrink-0 mt-0.5 sm:mt-0">
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-indigo-950">AI & International Standards Auto-Fetch</span>
-                    <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-800 text-[10px] font-bold rounded">ASTM / ASME / API / BS / EN / DIN</span>
+                    <span className="text-xs font-bold text-slate-900">International Standards Specification Auto-Fill</span>
+                    <span className="px-1.5 py-0.5 bg-slate-200 text-slate-800 text-xs font-bold rounded">ASTM / ASME / API / BS / EN / DIN</span>
                   </div>
-                  <p className="text-[11px] text-indigo-700 mt-0.5">
+                  <p className="text-xs text-slate-600 mt-0.5">
                     Enter any standard (e.g. <b>A335 P22</b>, <b>A106 Gr B</b>, <b>A213 T11</b>, <b>SA210 A1</b>, <b>API 5L X52</b>, <b>ST52</b>) to auto-fill mechanicals, tolerances, thermal cycles & hydro formula.
                   </p>
                 </div>
@@ -697,15 +697,19 @@ function SpecRow({
           {canModify ? (
             <>
               <button
+                type="button"
                 onClick={() => onEdit(rec)}
-                className="p-1.5 rounded-lg hover:bg-indigo-100 text-indigo-600 transition-colors cursor-pointer"
+                aria-label={`Edit specification ${rec.spec_key || ''}`}
+                className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 transition-colors shadow-2xs cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500"
                 title="Edit specification"
               >
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
               <button
+                type="button"
                 onClick={() => onDelete(rec)}
-                className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors cursor-pointer"
+                aria-label={`Delete specification ${rec.spec_key || ''}`}
+                className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-rose-50 text-rose-600 hover:text-rose-800 hover:border-rose-300 transition-colors shadow-2xs cursor-pointer focus-visible:ring-2 focus-visible:ring-rose-500"
                 title="Delete specification"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -713,11 +717,13 @@ function SpecRow({
             </>
           ) : (
             <button
+              type="button"
               onClick={() => onView(rec)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-[11px] font-semibold transition-colors cursor-pointer"
+              aria-label={`View specification details for ${rec.spec_key || ''}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] sm:min-h-[36px] rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 text-xs font-semibold transition-colors cursor-pointer"
               title="View specification details"
             >
-              <Eye className="w-3.5 h-3.5 text-indigo-600" />
+              <Eye className="w-3.5 h-3.5 text-slate-600" />
               <span>Details</span>
             </button>
           )}

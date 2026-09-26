@@ -263,17 +263,17 @@ export default function BandSawCuttingClient() {
         {/* Light KPI Metric Cards */}
         <div className="mt-5 grid grid-cols-2 sm:grid-cols-5 gap-3.5">
           {/* Mother Pipes to Cut */}
-          <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/50 to-white p-4 shadow-2xs">
-            <div className="text-[11px] font-bold text-indigo-800 uppercase tracking-wider">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">
               Mother Pipes to Cut
             </div>
             <div className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-mono text-2xl font-black text-indigo-950">
+              <span className="font-mono text-2xl font-black text-slate-900">
                 {totalAvailablePcs}
               </span>
-              <span className="text-xs font-bold text-indigo-700">PCS</span>
+              <span className="text-xs font-bold text-slate-600">PCS</span>
             </div>
-            <div className="text-[11px] font-medium text-indigo-600 mt-1">
+            <div className="text-xs font-medium text-slate-500 mt-1">
               {fmt(totalAvailableMt, 2)} MT available
             </div>
           </div>
@@ -662,14 +662,15 @@ export default function BandSawCuttingClient() {
                           currentUser?.role === 'admin' ||
                           currentUser?.work_center === 'BAND_SAW' ||
                           currentUser?.work_center === 'ALL' ? (
-                            <div className="flex items-center justify-center gap-1">
+                            <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => setEditingEntry(entry)}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                                aria-label={`Edit cut entry for ${entry.work_order_no || 'entry'}`}
                                 title="Edit cut entry"
+                                className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition-colors shadow-2xs focus-visible:ring-2 focus-visible:ring-blue-500"
                               >
-                                <Edit2 size={13} />
+                                <Edit2 size={14} />
                               </button>
                               {(currentUser?.group === 'admin' ||
                                 currentUser?.group === 'super_user' ||
@@ -677,10 +678,11 @@ export default function BandSawCuttingClient() {
                                 <button
                                   type="button"
                                   onClick={() => setDeletingEntry(entry)}
-                                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                                  aria-label={`Delete cut entry for ${entry.work_order_no || 'entry'}`}
                                   title="Delete entry"
+                                  className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-rose-600 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-300 transition-colors shadow-2xs focus-visible:ring-2 focus-visible:ring-rose-500"
                                 >
-                                  <Trash2 size={13} />
+                                  <Trash2 size={14} />
                                 </button>
                               )}
                             </div>

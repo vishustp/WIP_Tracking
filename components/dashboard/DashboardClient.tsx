@@ -488,7 +488,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
                     <div className={`text-2xl font-black font-mono tracking-tight ${c.color}`}>
                       {c.value}
                     </div>
-                    <div className="mt-1 text-[11px] text-slate-400 truncate">{c.subtext}</div>
+                    <div className="mt-1 text-xs text-slate-500 font-medium truncate">{c.subtext}</div>
                   </div>
                 </CardContent>
               </Card>
@@ -513,26 +513,32 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
           {/* Controls: Unit Toggle + Sort Mode + Route Filter */}
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Unit Toggle */}
-            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-semibold">
+            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-semibold" role="group" aria-label="Chart unit selection">
               <button
+                type="button"
                 onClick={() => setChartUnit('MTR')}
-                className={`px-2.5 py-1 rounded-md transition-all duration-150 active:scale-[0.96] cursor-pointer select-none ${
+                aria-pressed={chartUnit === 'MTR'}
+                className={`min-h-[36px] px-3 py-1.5 rounded-md transition-all duration-150 active:scale-[0.96] cursor-pointer select-none inline-flex items-center justify-center ${
                   chartUnit === 'MTR' ? 'bg-white shadow-2xs text-blue-700 font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 MTR
               </button>
               <button
+                type="button"
                 onClick={() => setChartUnit('PCS')}
-                className={`px-2.5 py-1 rounded-md transition-all duration-150 active:scale-[0.96] cursor-pointer select-none ${
+                aria-pressed={chartUnit === 'PCS'}
+                className={`min-h-[36px] px-3 py-1.5 rounded-md transition-all duration-150 active:scale-[0.96] cursor-pointer select-none inline-flex items-center justify-center ${
                   chartUnit === 'PCS' ? 'bg-indigo-600 shadow-2xs text-white font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 PCS ★
               </button>
               <button
+                type="button"
                 onClick={() => setChartUnit('MT')}
-                className={`px-2.5 py-1 rounded-md transition-all duration-150 active:scale-[0.96] cursor-pointer select-none ${
+                aria-pressed={chartUnit === 'MT'}
+                className={`min-h-[36px] px-3 py-1.5 rounded-md transition-all duration-150 active:scale-[0.96] cursor-pointer select-none inline-flex items-center justify-center ${
                   chartUnit === 'MT' ? 'bg-emerald-600 shadow-2xs text-white font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -541,10 +547,12 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
             </div>
 
             {/* Sort Toggle */}
-            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-semibold">
+            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-semibold" role="group" aria-label="Chart sort mode">
               <button
+                type="button"
                 onClick={() => setChartSort('SEQUENCE')}
-                className={`px-2.5 py-1 rounded-md transition-all duration-150 active:scale-[0.96] cursor-pointer select-none ${
+                aria-pressed={chartSort === 'SEQUENCE'}
+                className={`min-h-[36px] px-3 py-1.5 rounded-md transition-all duration-150 active:scale-[0.96] cursor-pointer select-none inline-flex items-center justify-center ${
                   chartSort === 'SEQUENCE' ? 'bg-white shadow-2xs text-slate-900 font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
                 title="Process sequence order (Rolling -> Finishing)"
@@ -552,8 +560,10 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
                 Process Flow
               </button>
               <button
+                type="button"
                 onClick={() => setChartSort('BOTTLENECK')}
-                className={`px-2.5 py-1 rounded-md transition-all duration-150 active:scale-[0.96] cursor-pointer select-none ${
+                aria-pressed={chartSort === 'BOTTLENECK'}
+                className={`min-h-[36px] px-3 py-1.5 rounded-md transition-all duration-150 active:scale-[0.96] cursor-pointer select-none inline-flex items-center justify-center ${
                   chartSort === 'BOTTLENECK' ? 'bg-white shadow-2xs text-rose-700 font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
                 title="Ranked by highest WIP volume"
@@ -737,24 +747,29 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
           </CardHeader>
 
           {/* Search & Filter Bar */}
-          <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row gap-2 items-center justify-between">
+          <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row gap-2.5 items-center justify-between">
             <div className="relative w-full sm:w-64">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Search className="absolute left-2.5 top-3 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Search WO, customer, size..."
+                aria-label="Search work orders, customer, or size"
                 value={wipSearch}
                 onChange={(e) => setWipSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1 text-xs rounded-md border border-slate-200 bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full pl-8 pr-3 py-1.5 min-h-[36px] text-xs rounded-md border border-slate-200 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900"
               />
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              <span className="text-[11px] font-medium text-slate-500">Station:</span>
+              <label htmlFor="wip-station-filter" className="text-xs font-semibold text-slate-700 shrink-0">
+                Station:
+              </label>
               <select
+                id="wip-station-filter"
+                aria-label="Filter WIP by manufacturing station"
                 value={wipStageFilter}
                 onChange={(e) => setWipStageFilter(e.target.value)}
-                className="text-xs rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-700 focus:outline-none"
+                className="text-xs rounded-md border border-slate-200 bg-white px-2.5 py-1.5 min-h-[36px] text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 {uniqueStages.map((s) => (
                   <option key={s} value={s}>
@@ -852,7 +867,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
                           <td className="py-2.5 px-3 text-center whitespace-nowrap">
                             <Link
                               href="/production"
-                              className="inline-flex rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs hover:bg-slate-100 hover:text-slate-900 active:scale-[0.96] transition-all duration-150 select-none"
+                              className="inline-flex items-center justify-center min-h-[36px] rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-100 hover:text-slate-900 active:scale-[0.96] transition-all duration-150 select-none"
                             >
                               Log Entry
                             </Link>
@@ -893,7 +908,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
                 <Clock className="h-4 w-4 text-indigo-600" />
                 Priority Orders & Delivery SLA
               </h2>
-              <p className="text-[11px] text-slate-500">Unfulfilled balances & dispatch deadlines</p>
+              <p className="text-xs text-slate-500">Unfulfilled balances & dispatch deadlines</p>
             </div>
             <Link
               href="/reports/pending-orders"
@@ -929,11 +944,11 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
                         <div>
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold text-sm text-slate-900 font-mono">{x.work_order_no}</span>
-                            <span className={`inline-flex rounded border px-2 py-0.2 text-[11px] ${sla.color}`}>
+                            <span className={`inline-flex rounded border px-2 py-0.5 text-xs font-semibold ${sla.color}`}>
                               {sla.label}
                             </span>
                           </div>
-                          <div className="text-[11px] text-slate-500 mt-0.5">
+                          <div className="text-xs text-slate-600 mt-0.5">
                             {x.customer ?? 'Customer Unspecified'}
                             {x.grade ? ` · ${x.grade}` : ''}
                             {x.od && x.wt ? ` (${x.od} × ${x.wt} mm)` : ''}
@@ -941,16 +956,16 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
                         </div>
 
                         {/* Action buttons */}
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <Link
                             href={`/rolling-plans?wo=${x.work_order_id}`}
-                            className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                            className="inline-flex items-center justify-center min-h-[32px] sm:min-h-[36px] rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900"
                           >
                             Plan
                           </Link>
                           <Link
                             href={`/reports/tracking?search=${encodeURIComponent(x.work_order_no)}`}
-                            className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                            className="inline-flex items-center justify-center min-h-[32px] sm:min-h-[36px] rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                           >
                             Track
                           </Link>
@@ -978,7 +993,7 @@ const CANONICAL_STAGE_ORDER: Record<string, number> = {
                       {/* Bottom progress bar: Ordered vs Planned vs Produced */}
                       {ordered > 0 && (
                         <div className="space-y-1 pt-1">
-                          <div className="flex justify-between text-[10px] text-slate-400">
+                          <div className="flex justify-between text-xs text-slate-500 font-medium">
                             <span>Produced: {formatNum(produced, 0)} m ({percentProduced}%)</span>
                             <span>Planned: {formatNum(planned, 0)} m ({percentPlanned}%)</span>
                             <span>Total: {formatNum(ordered, 0)} m</span>

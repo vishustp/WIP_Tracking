@@ -32,7 +32,7 @@ export default async function Dashboard() {
       supabase
         .from('work_orders')
         .select('id,work_order_no,ordered_qty_mt,ordered_qty_mtr,size_od,size_wt,l1,l2'),
-      supabase.from('qc_inspections').select('*'),
+      supabase.from('qc_inspections').select('work_order_id,vdi_ok_mtr,vdi_ok_pcs,vdi_rejection_mtr,vdi_salvage_mtr,vdi_rejection_pcs,vdi_salvage_pcs'),
       supabase.from('production_logs').select('work_order_id,stage_id,output_qty,rejection_qty,remarks,process_stages(stage_code)'),
     ]);
 

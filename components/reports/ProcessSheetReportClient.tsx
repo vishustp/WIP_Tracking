@@ -208,8 +208,8 @@ function FormInput({
           disabled
             ? 'bg-slate-100 text-slate-500 border-2 border-slate-200'
             : highlight
-            ? 'bg-amber-50 text-slate-950 border-2 border-amber-500 focus:border-amber-600 focus:ring-2 focus:ring-amber-200'
-            : 'bg-white text-slate-950 border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200'
+            ? 'bg-amber-50 text-amber-950 border-2 border-amber-500 focus:border-amber-600 focus:ring-2 focus:ring-amber-200'
+            : 'bg-white text-slate-900 border-2 border-slate-300 hover:border-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-200'
         }`}
       />
     </div>
@@ -1645,7 +1645,7 @@ export default function ProcessSheetReportClient() {
               type="button"
               onClick={() => fetchAiSpecs()}
               disabled={aiLoading || !selectedPlanId}
-              className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50 cursor-pointer"
+              className="px-3.5 py-1.5 min-h-[36px] rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
             >
               {aiLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-300" />}
               {aiLoading ? 'Analyzing...' : 'Fetch AI Specs'}
@@ -1725,7 +1725,7 @@ export default function ProcessSheetReportClient() {
               </select>
 
               {activePlan?.is_diversion && (
-                <span className="shrink-0 px-2 py-1 rounded text-[10px] font-black bg-amber-500 text-slate-950">
+                <span className="shrink-0 px-2 py-1 rounded text-xs font-black bg-amber-100 text-amber-950 border border-amber-300">
                   DIVERSION
                 </span>
               )}
@@ -1888,12 +1888,12 @@ export default function ProcessSheetReportClient() {
                       value={materialSpec}
                       onChange={(e) => setMaterialSpec(e.target.value)}
                       placeholder="Enter custom specification..."
-                      className="flex-1 px-3 py-1.5 font-bold text-xs rounded-lg bg-amber-50 text-slate-950 border-2 border-amber-500 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none shadow-xs"
+                      className="flex-1 px-3 py-1.5 font-bold text-xs rounded-lg bg-amber-50 text-amber-950 border-2 border-amber-500 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none shadow-xs"
                     />
                     <button
                       type="button"
                       onClick={() => setSpecMasterCustom(false)}
-                      className="px-2 py-1 text-[10px] font-bold bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                      className="px-2 py-1 text-xs font-bold bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors cursor-pointer"
                       title="Switch back to dropdown"
                     >
                       ✕
@@ -1903,7 +1903,7 @@ export default function ProcessSheetReportClient() {
                   <select
                     value={specMasterList.find((r) => r.spec_full === materialSpec)?.spec_key || ''}
                     onChange={(e) => handleSpecMasterSelect(e.target.value)}
-                    className="w-full px-3 py-1.5 font-bold text-xs rounded-lg bg-amber-50 text-slate-950 border-2 border-amber-500 hover:border-amber-600 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none shadow-xs cursor-pointer"
+                    className="w-full px-3 py-1.5 font-bold text-xs rounded-lg bg-amber-50 text-amber-950 border-2 border-amber-500 hover:border-amber-600 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none shadow-xs cursor-pointer"
                   >
                     <option value="">— Select Specification —</option>
                     {specMasterList.map((spec) => (
@@ -2611,7 +2611,7 @@ export default function ProcessSheetReportClient() {
                 type="button"
                 onClick={() => fetchAiSpecs()}
                 disabled={aiLoading || !selectedPlanId}
-                className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50"
+                className="px-3.5 py-1.5 min-h-[36px] rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
               >
                 {aiLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-300" />}
                 {aiLoading ? 'Analyzing...' : 'Fetch AI Specs'}

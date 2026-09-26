@@ -140,6 +140,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-canvas-pattern text-slate-900 font-sans">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-sky-800 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-400"
+      >
+        Skip to main content
+      </a>
       <GlobalKeyboardNavigation />
       {/* Mobile overlay */}
       {open && (
@@ -245,7 +251,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   aria-label={`User menu for ${currentUser?.name || currentUser?.email || 'user'}`}
                   aria-expanded={userDropdownOpen}
                   aria-haspopup="true"
-                  className="h-8 w-8 rounded-full bg-[#004f84] text-white flex items-center justify-center text-xs font-extrabold shadow-xs hover:opacity-90 transition cursor-pointer"
+                  className="h-9 w-9 rounded-full bg-[#004f84] text-white flex items-center justify-center text-xs font-extrabold shadow-xs hover:opacity-90 focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 transition cursor-pointer"
                 >
                   {currentUser?.name?.[0]?.toUpperCase() || 'V'}
                 </button>
@@ -309,7 +315,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 print:p-0 print:m-0 print:max-w-none">{children}</main>
+        <main id="main-content" className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 print:p-0 print:m-0 print:max-w-none">{children}</main>
       </div>
     </div>
   );

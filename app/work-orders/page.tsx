@@ -1022,10 +1022,11 @@ export default function WorkOrders() {
                               <button
                                 type="button"
                                 onClick={() => handleDeleteWO(w)}
-                                className="inline-flex items-center rounded border border-slate-200 bg-white p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors"
+                                aria-label={`Delete work order ${w.work_order_no}`}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-rose-600 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-300 transition-colors shadow-2xs focus-visible:ring-2 focus-visible:ring-rose-500"
                                 title={`Delete ${w.work_order_no}`}
                               >
-                                <Trash2 className="h-3 w-3" />
+                                <Trash2 className="h-3.5 w-3.5" />
                               </button>
                             )}
                           </div>

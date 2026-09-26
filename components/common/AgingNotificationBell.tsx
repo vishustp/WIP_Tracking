@@ -230,7 +230,10 @@ export default function AgingNotificationBell({
         type="button"
         onClick={() => setOpen(!open)}
         title={totalCount > 0 ? `${totalCount} material stagnation alert(s)` : 'No stagnant WIP alerts'}
-        className={`relative flex h-9 w-9 items-center justify-center rounded-full border transition cursor-pointer ${
+        aria-label={totalCount > 0 ? `${totalCount} material stagnation alerts` : 'No stagnant WIP alerts'}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className={`relative flex h-9 w-9 items-center justify-center rounded-full border transition cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 ${
           totalCount > 0
             ? criticalCount > 0
               ? 'border-red-300 bg-red-50/80 text-red-600 hover:bg-red-100 hover:border-red-400'
@@ -243,7 +246,7 @@ export default function AgingNotificationBell({
         {/* Pulsing indicator if critical */}
         {criticalCount > 0 && (
           <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+            <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-4 w-4 bg-red-600 text-[10px] font-bold text-white items-center justify-center font-mono leading-none">
               {totalCount > 9 ? '9+' : totalCount}
             </span>

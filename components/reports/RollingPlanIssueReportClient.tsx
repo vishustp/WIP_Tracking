@@ -1484,10 +1484,11 @@ export default function RollingPlanIssueReportClient() {
                                 <button
                                   type="button"
                                   onClick={() => openEditSpecs(row.plan!)}
-                                  className="print:hidden p-0.5 rounded text-slate-400 hover:text-amber-700 hover:bg-amber-100 transition cursor-pointer"
+                                  aria-label={`Edit Setup Specs & Tolerances for ${row.woNo}`}
+                                  className="print:hidden p-1 min-h-[28px] min-w-[28px] inline-flex items-center justify-center rounded text-amber-800 hover:text-amber-950 hover:bg-amber-100 transition cursor-pointer"
                                   title="Edit Setup Specs & Tolerances"
                                 >
-                                  <Edit2 className="h-3 w-3" />
+                                  <Edit2 className="h-3.5 w-3.5" />
                                 </button>
                               )}
                             </div>

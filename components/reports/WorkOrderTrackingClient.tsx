@@ -1296,11 +1296,11 @@ export default function WorkOrderTrackingClient() {
           </CardContent>
         </Card>
 
-        <Card className="border-indigo-200 bg-indigo-50/50">
+        <Card className="border-slate-200 bg-slate-50/60">
           <CardContent className="p-4">
-            <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Rolled Stock WIP</div>
-            <div className="mt-1 text-2xl font-bold text-indigo-900 font-mono">{fmt(kpis.totalRolledStockWipPcs)} Pcs</div>
-            <div className="text-[11px] text-indigo-600 mt-0.5">{fmt(kpis.totalRolledStockWipMt.toFixed(2), ' MT')} ({fmt(kpis.totalRolledStockWipMtr, 'm')}) inventory</div>
+            <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Rolled Stock WIP</div>
+            <div className="mt-1 text-2xl font-bold text-slate-900 font-mono">{fmt(kpis.totalRolledStockWipPcs)} Pcs</div>
+            <div className="text-xs text-slate-500 mt-0.5">{fmt(kpis.totalRolledStockWipMt.toFixed(2), ' MT')} ({fmt(kpis.totalRolledStockWipMtr, 'm')}) inventory</div>
           </CardContent>
         </Card>
 
@@ -2464,19 +2464,19 @@ function FinishingQcModal({ data, onClose }: FinishingQcModalProps) {
               </div>
 
               {/* 5. Finishing Done */}
-              <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-3.5 flex flex-col justify-between">
-                <div className="flex items-center justify-between text-indigo-900 mb-1">
+              <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3.5 flex flex-col justify-between">
+                <div className="flex items-center justify-between text-emerald-900 mb-1">
                   <span className="text-xs font-bold uppercase tracking-wider">Finishing Done</span>
-                  <PackageCheck size={16} className="text-indigo-600" />
+                  <PackageCheck size={16} className="text-emerald-600" />
                 </div>
                 <div>
-                  <div className="text-2xl font-extrabold font-mono text-indigo-950">
-                    {fmt(finishingDonePcs)} <span className="text-sm font-semibold font-sans text-indigo-700">Nos</span>
+                  <div className="text-2xl font-extrabold font-mono text-emerald-950">
+                    {fmt(finishingDonePcs)} <span className="text-sm font-semibold font-sans text-emerald-700">Nos</span>
                   </div>
-                  <div className="text-xs font-medium text-indigo-800 mt-0.5">
+                  <div className="text-xs font-medium text-emerald-800 mt-0.5">
                     {fmt(finishingDoneMt)} MT
                   </div>
-                  <div className="text-[11px] text-indigo-600/80 font-mono">
+                  <div className="text-xs text-emerald-600/90 font-mono">
                     {fmt(finishingDoneMtr)} Mtr
                   </div>
                 </div>

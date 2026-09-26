@@ -1427,10 +1427,11 @@ export function BandSawCuttingModal({
                         <button
                           type="button"
                           onClick={() => handleRemoveCutItem(item.id)}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                          aria-label="Remove cut row"
                           title="Remove cut row"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-rose-600 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-300 transition-colors shadow-2xs focus-visible:ring-2 focus-visible:ring-rose-500"
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={14} />
                         </button>
                       </td>
                     </tr>

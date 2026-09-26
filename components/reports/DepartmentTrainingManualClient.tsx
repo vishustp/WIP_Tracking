@@ -183,9 +183,9 @@ export default function DepartmentTrainingManualClient() {
             </div>
 
             {/* Role & Objective */}
-            <div className="mb-4 text-xs leading-relaxed text-slate-700 bg-indigo-50/40 border border-indigo-100 rounded-xl p-3.5">
-              <h3 className="font-bold text-indigo-950 text-sm mb-1 flex items-center gap-1.5">
-                <Info className="h-4 w-4 text-indigo-600" /> Department Role & Objectives
+            <div className="mb-4 text-xs leading-relaxed text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3.5">
+              <h3 className="font-bold text-slate-900 text-sm mb-1 flex items-center gap-1.5">
+                <Info className="h-4 w-4 text-sky-700" /> Department Role & Objectives
               </h3>
               PPC acts as the master brain of factory scheduling. The department is responsible for registering customer sales contracts into Work Orders, planning Mother Hollow & Billet sizes, grouping related orders into Multi-Work Order Campaigns (Form F-PROD-01A), officially issuing plans to the Hot Rolling Mill, managing revisions, and executing partial plan short-closing.
             </div>
@@ -299,11 +299,11 @@ export default function DepartmentTrainingManualClient() {
               </div>
 
               {/* Critical Guardrails & Rules */}
-              <div className="border-l-4 border-amber-500 bg-amber-50/60 p-3 rounded-r-lg text-amber-900">
-                <div className="font-bold flex items-center gap-1 text-xs">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600" /> Critical PPC Rules:
+              <div className="border border-amber-200 bg-amber-50/70 p-3.5 rounded-xl text-amber-950 shadow-2xs">
+                <div className="font-bold flex items-center gap-1.5 text-xs text-amber-900">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" /> Critical PPC Rules:
                 </div>
-                <ul className="list-disc list-inside mt-1 space-y-0.5 text-[11px]">
+                <ul className="list-disc list-inside mt-1.5 space-y-1 text-xs text-amber-950">
                   <li>Plans remain completely <strong>invisible</strong> in the Rolling Mill queue until clicked <strong>&ldquo;Issue&rdquo;</strong>.</li>
                   <li>Revisions increment revision counter (Rev.01, Rev.02) and print with revision notes on Form F-PROD-01A.</li>
                   <li>Closing a plan for partial quantity releases unrolled balance back to the work order balance.</li>
@@ -419,11 +419,11 @@ export default function DepartmentTrainingManualClient() {
                 </div>
               </div>
 
-              <div className="border-l-4 border-rose-500 bg-rose-50/60 p-3 rounded-r-lg text-rose-900">
-                <div className="font-bold flex items-center gap-1 text-xs">
-                  <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> Rolling Guardrails:
+              <div className="border border-rose-200 bg-rose-50/70 p-3.5 rounded-xl text-rose-950 shadow-2xs">
+                <div className="font-bold flex items-center gap-1.5 text-xs text-rose-900">
+                  <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" /> Rolling Guardrails:
                 </div>
-                <ul className="list-disc list-inside mt-1 space-y-0.5 text-[11px]">
+                <ul className="list-disc list-inside mt-1.5 space-y-1 text-xs text-rose-950">
                   <li><strong>110% Over-Rolling Capping:</strong> Rolling output cannot exceed 110% of total planned campaign meters.</li>
                   <li><strong>HTC OK Limit:</strong> HTC OK cannot exceed Net Output (<code>Production − Rejection</code>).</li>
                   <li>Entering 0 for HTC OK means zero stock will be available for downstream draw benches!</li>
@@ -891,9 +891,9 @@ export default function DepartmentTrainingManualClient() {
               </span>
             </div>
 
-            <div className="mb-4 text-xs leading-relaxed text-slate-700 bg-purple-50/40 border border-purple-100 rounded-xl p-3.5">
-              <h3 className="font-bold text-purple-950 text-sm mb-1 flex items-center gap-1.5">
-                <Info className="h-4 w-4 text-purple-600" /> Administrative Governance & Master Control
+            <div className="mb-4 text-xs leading-relaxed text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-3.5">
+              <h3 className="font-bold text-slate-900 text-sm mb-1 flex items-center gap-1.5">
+                <Info className="h-4 w-4 text-sky-700" /> Administrative Governance & Master Control
               </h3>
               Plant Administrators and Super Users govern user access, enforce strict work center isolation, approve cross-order pipe diversions, investigate entry corrections, and generate plant-wide reconciliation reports.
             </div>
