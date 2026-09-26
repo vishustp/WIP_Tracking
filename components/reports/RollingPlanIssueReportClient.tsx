@@ -815,11 +815,18 @@ export default function RollingPlanIssueReportClient() {
       const issueDate = p.planned_rolling_date || '24-Sep';
       const prevPlanNo = parsed.prev_plan_no || '05';
 
-      // Ensure childSubRows have piece counts and MT
-      childSubRows.forEach((c) => {
-        if (c.nos == null) c.nos = planQtyNos;
-        if (c.mton == null) c.mton = planQtyMton;
-      });
+      // In F-PROD-01A, sub-rows represent finished tube / OA breakdown specifications.
+      // Master row holds the cutting plan total Nos and Mton. Sub-rows must NEVER repeat master totals.
+      if (childSubRows.length > 1) {
+        childSubRows.forEach((c) => {
+          if (c.nos == null && rollingMtr > 0 && c.htcMtr > 0 && c.htcMtr < rollingMtr) {
+            c.nos = effLen > 0 ? Math.round(c.htcMtr / effLen) : Math.round(planQtyNos * (c.htcMtr / rollingMtr));
+          }
+          if (c.mton == null && c.nos != null && c.nos < planQtyNos) {
+            c.mton = Number(((weightKg * c.nos) / 1000).toFixed(1));
+          }
+        });
+      }
 
       if (childSubRows.length === 1 && childSubRows[0].isParent && Math.abs(pmOd - custOd) < 0.05 && isStainless) {
         childSubRows[0].customNote = 'Final Size - ';
@@ -1631,27 +1638,33 @@ export default function RollingPlanIssueReportClient() {
                             <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">{fmt(row.processYieldPct, 2)}</td>
                           </tr>
 
-                          {/* Sub-Rows: Order breakdown lines matching photo */}
-                          {row.childSubRows.map((child, cIdx) => (
-                            <tr key={`sub-${row.srNo}-${cIdx}`} className="bg-white text-[9px] print:text-[7.5px] border-b border-black">
-                              <td colSpan={11} className="border border-black px-1 py-0.5"></td>
-                              <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">
-                                {fmt(child.nos || row.planQtyNos, 0)}
-                              </td>
-                              <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">
-                                {Math.round(child.mton || row.planQtyMton)}
-                              </td>
-                              <td colSpan={19} className="border border-black px-2 py-0.5 font-mono text-black leading-tight text-[9px] print:text-[7.5px]">
-                                {child.customNote ? (
-                                  <span className="font-bold">{child.customNote}</span>
-                                ) : (
-                                  <span className="font-bold">
-                                    {child.catg}(finish size-{child.finishSize})( Final len - {child.finalLen})( OA-{child.woNo})(Cust.- {child.customer})(Hollow len-{child.hollowLen})(HTC mtr-{fmt(child.htcMtr, 0)})
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                          {/* Sub-Rows: Order breakdown lines matching photo (totals never repeated) */}
+                          {row.childSubRows.map((child, cIdx) => {
+                            // Sub-rows must never repeat master row totals
+                            const hasValidChildNos = child.nos != null && child.nos !== row.planQtyNos && row.childSubRows.length > 1;
+                            const hasValidChildMton = child.mton != null && Math.round(child.mton) !== Math.round(row.planQtyMton) && row.childSubRows.length > 1;
+
+                            return (
+                              <tr key={`sub-${row.srNo}-${cIdx}`} className="bg-white text-[9px] print:text-[7.5px] border-b border-black">
+                                <td colSpan={11} className="border border-black px-1 py-0.5"></td>
+                                <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">
+                                  {hasValidChildNos ? fmt(child.nos!, 0) : ''}
+                                </td>
+                                <td className="border border-black px-0.5 py-0.5 text-right font-mono font-bold">
+                                  {hasValidChildMton ? Math.round(child.mton!) : ''}
+                                </td>
+                                <td colSpan={19} className="border border-black px-2 py-0.5 font-mono text-black leading-tight text-[9px] print:text-[7.5px]">
+                                  {child.customNote ? (
+                                    <span className="font-bold">{child.customNote}</span>
+                                  ) : (
+                                    <span className="font-bold">
+                                      {child.catg}(finish size-{child.finishSize})( Final len - {child.finalLen})( OA-{child.woNo})(Cust.- {child.customer})(Hollow len-{child.hollowLen})(HTC mtr-{fmt(child.htcMtr, 0)})
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
 
                           {/* OD Group Subtotal Row */}
                           {isLastOfOdGroup && (
