@@ -1,0 +1,3 @@
+## 2026-09-26 - Added ARIA labels to icon-only buttons
+**Learning:** Icon-only action buttons (e.g., 'X'/close buttons) in this project often lack accessibility attributes. Always pair title (for visual tooltips) with a descriptive aria-label (for screen readers), as title alone is insufficient. When adding aria-label attributes to elements that already possess dynamic title tooltips, ensure the aria-label incorporates the dynamic data so screen readers do not lose important contextual information.
+**Action:** Always add aria-label attributes incorporating the user-specific data to icon-only buttons like Edit, Delete, and Configure permissions in the admin UI.
