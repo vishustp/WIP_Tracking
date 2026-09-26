@@ -220,6 +220,8 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
       let incomingPcsOverride: number | undefined = undefined;
       let incomingMtrOverride: number | undefined = undefined;
 
+      const stageAvgLen = Number(r.avg_length || (r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0));
+
       if (isRoll) {
         grossMtr = rollMtr > 0 ? rollMtr : rawMtr;
         grossPcs = rollPcs > 0 ? rollPcs : rawPcs;
@@ -233,15 +235,15 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
           grossPcs = Math.max(rawPcs, campaignVdiOkPcs + campaignVdiRejPcs);
           rejMtr = Math.max(rawRejMtr, campaignVdiRejMtr);
           rejPcs = Math.max(rawRejPcs, campaignVdiRejPcs);
-          netMtr = campaignVdiOkMtr;
-          netPcs = campaignVdiOkPcs;
+          netMtr = campaignVdiOkMtr > 0 ? campaignVdiOkMtr : Math.max(0, rawMtr - rawRejMtr);
+          netPcs = campaignVdiOkPcs > 0 ? campaignVdiOkPcs : Math.max(0, rawPcs - rawRejPcs);
         } else {
           grossMtr = Math.max(rawMtr, directVdiOkMtr + directVdiRejMtr);
           grossPcs = Math.max(rawPcs, directVdiOkPcs + directVdiRejPcs);
           rejMtr = Math.max(rawRejMtr, directVdiRejMtr);
           rejPcs = Math.max(rawRejPcs, directVdiRejPcs);
-          netMtr = directVdiOkMtr;
-          netPcs = directVdiOkPcs;
+          netMtr = directVdiOkMtr > 0 ? directVdiOkMtr : Math.max(0, rawMtr - rawRejMtr);
+          netPcs = directVdiOkPcs > 0 ? directVdiOkPcs : Math.max(0, rawPcs - rawRejPcs);
           if (isChild) {
             incomingPcsOverride = 0; // Cut pieces are pooled under Master
             incomingMtrOverride = 0;
@@ -264,10 +266,17 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
           grossPcs = Math.max(rawPcs, directFinPcs);
           netMtr = Math.max(0, grossMtr - rejMtr);
           netPcs = Math.max(0, grossPcs - rejPcs);
-          incomingPcsOverride = directVdiOkPcs;
-          incomingMtrOverride = directVdiOkMtr;
+          const vdiPassedPcs = isMaster ? campaignVdiOkPcs : directVdiOkPcs;
+          const vdiPassedMtr = isMaster ? campaignVdiOkMtr : directVdiOkMtr;
+          incomingPcsOverride = vdiPassedPcs > 0 ? vdiPassedPcs : Number(r.incoming_qty_pcs || (stageAvgLen > 0 ? Math.round(Number(r.incoming_qty || 0) / stageAvgLen) : 0));
+          incomingMtrOverride = vdiPassedMtr > 0 ? vdiPassedMtr : Number(r.incoming_qty || 0);
         }
       }
+
+      const divInMtr = Number(r.diversion_in || 0);
+      const divOutMtr = Number(r.diversion_out || 0);
+      const divInPcs = stageAvgLen > 0 ? Math.round(divInMtr / stageAvgLen) : 0;
+      const divOutPcs = stageAvgLen > 0 ? Math.round(divOutMtr / stageAvgLen) : 0;
 
       return {
         stage_code: sc,
@@ -280,9 +289,13 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
         net_output_pcs: netPcs,
         incoming_pcs: incomingPcsOverride,
         incoming_mtr: incomingMtrOverride !== undefined ? incomingMtrOverride : Number(r.incoming_qty || 0),
+        diversion_in_mtr: divInMtr,
+        diversion_in_pcs: divInPcs,
+        diversion_out_mtr: divOutMtr,
+        diversion_out_pcs: divOutPcs,
         od: Number(r.od || r.size_od || wo?.size_od || 0),
         wt: Number(r.wt || r.size_wt || wo?.size_wt || 0),
-        avg_length: Number(r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0),
+        avg_length: stageAvgLen,
         mh_od: mhOd > 0 ? mhOd : undefined,
         mh_wt: mhWt > 0 ? mhWt : undefined,
         mh_avg_length: actualMhLen > 0 ? actualMhLen : undefined,

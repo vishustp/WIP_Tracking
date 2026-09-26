@@ -12,6 +12,10 @@ export interface StageWipInput {
   net_output_pcs: number;
   incoming_mtr?: number;
   incoming_pcs?: number;
+  diversion_in_mtr?: number;
+  diversion_in_pcs?: number;
+  diversion_out_mtr?: number;
+  diversion_out_pcs?: number;
   od: number;
   wt: number;
   avg_length: number;
@@ -26,6 +30,10 @@ export interface ReconciledStageWip {
   is_feeder_stage: boolean;
   incoming_pcs: number;
   incoming_mtr: number;
+  diversion_in_pcs?: number;
+  diversion_in_mtr?: number;
+  diversion_out_pcs?: number;
+  diversion_out_mtr?: number;
   production_pcs: number;
   production_mtr: number;
   rejection_pcs: number;
@@ -325,9 +333,26 @@ export function reconcileWorkOrderWip(
     // Option B: Current stage OK production is deducted; rejections stay in active balance until diverted or marked commercial
     const effectivePassedPcs = Math.max(curPassedPcs, maxDownstreamPcs);
 
-    // Core Formula: Queue WIP (PCS) = Incoming - Effective Passed OK
-    const wipPcs = Math.max(0, incomingPcs - effectivePassedPcs);
-    const wipMtr = stageLen > 0 ? Number((wipPcs * stageLen).toFixed(2)) : 0;
+    // Diversion adjustments for this specific stage (Rule 1 & Rule 2)
+    const divInPcs = Number(cur.diversion_in_pcs || 0);
+    const divOutPcs = Number(cur.diversion_out_pcs || 0);
+    const divInMtr = Number(cur.diversion_in_mtr || (stageLen > 0 ? Number((divInPcs * stageLen).toFixed(2)) : 0));
+    const divOutMtr = Number(cur.diversion_out_mtr || (stageLen > 0 ? Number((divOutPcs * stageLen).toFixed(2)) : 0));
+
+    // Core Formula (Rule 1 & Rule 2 Option B):
+    // Queue WIP (PCS) = Incoming Feeder + Diversion In - Effective Passed OK - Diversion Out
+    const totalIncomingPcs = incomingPcs + divInPcs;
+    const wipPcs = Math.max(0, totalIncomingPcs - effectivePassedPcs - divOutPcs);
+
+    // Meters WIP balance
+    const incMtr = cur.incoming_mtr !== undefined ? Number(cur.incoming_mtr) : (stageLen > 0 ? Number((incomingPcs * stageLen).toFixed(2)) : 0);
+    const totalIncomingMtr = incMtr + divInMtr;
+    const effPassedMtr = Math.max(curProd.prodMtr, stageLen > 0 ? Number((maxDownstreamPcs * stageLen).toFixed(2)) : 0);
+    const rawWipMtr = Math.max(0, Number((totalIncomingMtr - effPassedMtr - divOutMtr).toFixed(2)));
+
+    const wipMtr = wipPcs > 0
+      ? (stageLen > 0 ? Number((wipPcs * stageLen).toFixed(2)) : rawWipMtr)
+      : (rawWipMtr >= (stageLen > 0 ? stageLen * 0.5 : 1.0) ? rawWipMtr : 0);
     const wipMt = mtFromMtr(wipMtr, stageOd, stageWt);
 
     reconciledStages.push({
@@ -335,7 +360,11 @@ export function reconcileWorkOrderWip(
       sequence_no: cur.sequence_no,
       is_feeder_stage: false,
       incoming_pcs: incomingPcs,
-      incoming_mtr: stageLen > 0 ? Number((incomingPcs * stageLen).toFixed(2)) : 0,
+      incoming_mtr: incMtr,
+      diversion_in_pcs: divInPcs,
+      diversion_in_mtr: divInMtr,
+      diversion_out_pcs: divOutPcs,
+      diversion_out_mtr: divOutMtr,
       production_pcs: curProd.prodPcs,
       production_mtr: curProd.prodMtr,
       rejection_pcs: curProd.rejPcs,

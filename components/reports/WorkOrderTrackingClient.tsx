@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { mtFromMtr, fmt } from '@/lib/productionUtils';
+import { mtFromMtr, fmt, parseDiversionStages } from '@/lib/productionUtils';
 import { exportJsonToExcel } from '@/lib/excelUtils';
 import {
   Search,
@@ -202,7 +202,7 @@ export default function WorkOrderTrackingClient() {
           .limit(10000),
         supabase.from('process_routes').select('id, route_code, route_name'),
         supabase.from('qc_inspections').select('*').order('inspection_date', { ascending: false }),
-        supabase.from('diversion_plans').select('source_wo_id, target_wo_id, diverted_qty, work_center, status'),
+        supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, reason'),
       ]);
 
       if (woRes.data) setWorkOrders(woRes.data);
@@ -320,6 +320,12 @@ export default function WorkOrderTrackingClient() {
       }
     }
 
+    // 1.5. Work orders with active material diversions (incoming or outgoing)
+    for (const div of diversionPlans) {
+      if (div.target_wo_id) rolledSet.add(div.target_wo_id);
+      if (div.source_wo_id) rolledSet.add(div.source_wo_id);
+    }
+
     // 2. Multi-WO campaigns: In a campaign, rolling is performed under the master work order.
     // If the master campaign has had rolling done, all linked child work orders are also considered rolled.
     campaignMeta.childMap.forEach((childMeta, childWoId) => {
@@ -338,7 +344,7 @@ export default function WorkOrderTrackingClient() {
     });
 
     return rolledSet;
-  }, [productionLogs, campaignMeta]);
+  }, [productionLogs, campaignMeta, diversionPlans]);
 
   // Total rolled orders count in database
   const totalRolledCount = useMemo(() => {
@@ -412,12 +418,12 @@ export default function WorkOrderTrackingClient() {
       // Diversions helper for this work order / master
       const getStageDivIn = (wId: string, stageCode: string) =>
         diversionPlans
-          .filter((d: any) => d.target_wo_id === wId && (d.work_center || 'ROLLING') === stageCode)
+          .filter((d: any) => d.target_wo_id === wId && parseDiversionStages(d).targetStage === stageCode)
           .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
       const getStageDivOut = (wId: string, stageCode: string) =>
         diversionPlans
-          .filter((d: any) => d.source_wo_id === wId && (d.work_center || 'ROLLING') === stageCode)
+          .filter((d: any) => d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode)
           .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
       // Route determination: check stageWip (from vw_route_stage_wip) or rolling plan route
@@ -951,6 +957,8 @@ export default function WorkOrderTrackingClient() {
           wipPcs = Math.max(0, Math.min(targetPcs, qcPassedPcs) + divInPcs - consumedPcs - divOutPcs);
         } else if (!childInfo && !isMaster && (precedingOutPcs > 0 || divInPcs > 0)) {
           wipPcs = Math.max(0, Math.min(targetPcs, precedingOutPcs) + divInPcs - consumedPcs - divOutPcs);
+        } else if (divInPcs > 0) {
+          wipPcs = Math.max(0, divInPcs - consumedPcs - divOutPcs);
         }
         const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
         const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));

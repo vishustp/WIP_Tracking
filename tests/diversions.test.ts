@@ -244,6 +244,132 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
       // Final total = 0 (at source VDI) + 2057 (at target FINISHING) = 2057
       expect(sourceVdiAvail + targetFinAvail).toBe(2057);
     });
+
+    it('updates Dashboard and Report WIP correctly before and after bundling of diverted material', async () => {
+      const { reconcileWorkOrderWip } = await import('@/lib/wipReconciliation');
+
+      // Scenario:
+      // Source WO 6186 had 919 pieces cut at Band Saw.
+      // 549 pieces were inspected OK at VDI.
+      // 343 pieces (2057m) were diverted from VDI to Target WO 1451 FINISHING.
+      // 27 pieces (162m) were rejected at VDI.
+      const sourceStages = [
+        {
+          stage_code: 'ROLLING',
+          sequence_no: 1,
+          gross_output_mtr: 4985,
+          gross_output_pcs: 946,
+          rejection_mtr: 0,
+          rejection_pcs: 0,
+          net_output_mtr: 4985,
+          net_output_pcs: 946,
+          od: 114.3,
+          wt: 6.02,
+          avg_length: 6.0,
+        },
+        {
+          stage_code: 'BAND_SAW',
+          sequence_no: 2,
+          gross_output_mtr: 5513,
+          gross_output_pcs: 919,
+          rejection_mtr: 0,
+          rejection_pcs: 0,
+          net_output_mtr: 5513,
+          net_output_pcs: 919,
+          od: 114.3,
+          wt: 6.02,
+          avg_length: 6.0,
+        },
+        {
+          stage_code: 'VDI',
+          sequence_no: 3,
+          gross_output_mtr: 3294,
+          gross_output_pcs: 549,
+          rejection_mtr: 162,
+          rejection_pcs: 27,
+          net_output_mtr: 3132,
+          net_output_pcs: 522,
+          diversion_out_mtr: 2057,
+          diversion_out_pcs: 343,
+          od: 114.3,
+          wt: 6.02,
+          avg_length: 6.0,
+        },
+        {
+          stage_code: 'FINISHING',
+          sequence_no: 4,
+          gross_output_mtr: 0,
+          gross_output_pcs: 0,
+          rejection_mtr: 0,
+          rejection_pcs: 0,
+          net_output_mtr: 0,
+          net_output_pcs: 0,
+          od: 114.3,
+          wt: 6.02,
+          avg_length: 6.0,
+        },
+      ];
+
+      const sourceWip = reconcileWorkOrderWip(sourceStages, { route_code: 'HFS', final_avg_length: 6.0 });
+      const sourceVdi = sourceWip.stages.find((s) => s.stage_code === 'VDI');
+
+      // In source WO: 919 incoming - 549 passed OK - 343 diverted out = 27 pcs remaining (the un-diverted rejection)
+      expect(sourceVdi!.reconciled_wip_pcs).toBe(27);
+      expect(sourceVdi!.reconciled_wip_mtr).toBe(162);
+
+      // Phase 1: Target WO 1451 BEFORE bundling
+      const targetStagesBeforeBundling = [
+        {
+          stage_code: 'FINISHING',
+          sequence_no: 6,
+          gross_output_mtr: 0,
+          gross_output_pcs: 0,
+          rejection_mtr: 0,
+          rejection_pcs: 0,
+          net_output_mtr: 0,
+          net_output_pcs: 0,
+          incoming_pcs: 0,
+          incoming_mtr: 0,
+          diversion_in_mtr: 2057,
+          diversion_in_pcs: 329,
+          od: 88.9,
+          wt: 5.49,
+          avg_length: 6.25,
+        },
+      ];
+      const targetWipBefore = reconcileWorkOrderWip(targetStagesBeforeBundling, { route_code: 'CDS', final_avg_length: 6.25 });
+      const targetFinBefore = targetWipBefore.stages.find((s) => s.stage_code === 'FINISHING');
+      expect(targetFinBefore!.reconciled_wip_pcs).toBe(329);
+      expect(targetFinBefore!.reconciled_wip_mtr).toBe(2056.25);
+
+      // Phase 2: Target WO 1451 AFTER bundling 329 pcs (2056.25m)
+      const targetStagesAfterBundling = [
+        {
+          stage_code: 'FINISHING',
+          sequence_no: 6,
+          gross_output_mtr: 2056.25,
+          gross_output_pcs: 329,
+          rejection_mtr: 0,
+          rejection_pcs: 0,
+          net_output_mtr: 2056.25,
+          net_output_pcs: 329,
+          incoming_pcs: 0,
+          incoming_mtr: 0,
+          diversion_in_mtr: 2057,
+          diversion_in_pcs: 329,
+          od: 88.9,
+          wt: 5.49,
+          avg_length: 6.25,
+        },
+      ];
+      const targetWipAfter = reconcileWorkOrderWip(targetStagesAfterBundling, { route_code: 'CDS', final_avg_length: 6.25 });
+      const targetFinAfter = targetWipAfter.stages.find((s) => s.stage_code === 'FINISHING');
+
+      // After bundling, target finishing WIP is completely cleared!
+      expect(targetFinAfter!.reconciled_wip_pcs).toBe(0);
+      expect(targetFinAfter!.reconciled_wip_mtr).toBe(0);
+      expect(targetFinAfter!.reconciled_wip_mt).toBe(0);
+    });
   });
 });
 
