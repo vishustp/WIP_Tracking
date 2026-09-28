@@ -52,3 +52,9 @@ These rules apply to:
 All frontend features, dashboards, production entry consoles, and report tables must adhere strictly to [.agents/rules/ui-ux-standards.md](file:///.agents/rules/ui-ux-standards.md).
 - Follow the skills `impeccable` and `frontend-ui-engineering` for design hierarchy, contrast ratios ($\ge 4.5:1$), tabular number formatting (`font-mono tabular-nums text-right`), and WCAG 2.1 AA accessibility.
 - Eliminate generic "AI aesthetic" gradients in favor of high-density industrial steel mill typography and clear semantic state indicators.
+
+## 8. Role-Based Access Control & Mutual Work Center Permissions
+- **Joint Band Saw & Finishing Rule**: Band Saw (`BAND_SAW`) and Finishing Line (`FINISHING`) share mutual operational authority. An operator assigned to either station possesses mutual recording and editing permissions across both Band Saw Cutting and Finishing Bundling.
+- **Joint Furnace Rule**: Hollow Heat Treatment (`HOLLOW_HEAT_TREATMENT`) and Final Heat Treatment (`HEAT_TREATMENT`) share mutual furnace permissions.
+- **Granular Custom Permissions**: Custom access levels (`view`, `edit`, `none`) configured via the Admin Control Panel dynamically determine sidebar route visibility (`isRouteVisible`) and form execution rights (`getFormAccess`, `checkCanManagePlans`), superseding static group whitelist filters.
+

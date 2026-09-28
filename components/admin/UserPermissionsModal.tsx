@@ -56,10 +56,23 @@ export default function UserPermissionsModal({
   const wcLabel = WORK_CENTER_LABELS[user.work_center] || user.work_center;
 
   const handleLevelChange = (key: keyof FormPermissions, level: AccessLevel) => {
-    setPermissions((prev) => ({
-      ...prev,
-      [key]: level,
-    }));
+    setPermissions((prev) => {
+      const next = {
+        ...prev,
+        [key]: level,
+      };
+      // Mutual synchronization: Band Saw and Finishing share permissions for the same operator
+      if (key === 'production_band_saw' || key === 'production_finishing') {
+        next.production_band_saw = level;
+        next.production_finishing = level;
+      }
+      // Mutual synchronization: Hollow HT & Final HT share furnace permissions
+      if (key === 'production_hollow_ht' || key === 'production_ht') {
+        next.production_hollow_ht = level;
+        next.production_ht = level;
+      }
+      return next;
+    });
   };
 
   const applyPreset = (type: 'all_edit' | 'all_view' | 'wc_default' | 'strict_wc') => {
@@ -89,12 +102,16 @@ export default function UserPermissionsModal({
       });
       // Allow edit on assigned work center and view on reports
       if (user.work_center === 'ROLLING') p.production_rolling = 'edit';
-      else if (user.work_center === 'HOLLOW_HEAT_TREATMENT') p.production_hollow_ht = 'edit';
+      else if (user.work_center === 'HOLLOW_HEAT_TREATMENT' || user.work_center === 'HEAT_TREATMENT') {
+        p.production_hollow_ht = 'edit';
+        p.production_ht = 'edit';
+      }
       else if (user.work_center === 'DRAW') p.production_draw = 'edit';
-      else if (user.work_center === 'HEAT_TREATMENT') p.production_ht = 'edit';
-      else if (user.work_center === 'BAND_SAW') p.production_band_saw = 'edit';
+      else if (user.work_center === 'BAND_SAW' || user.work_center === 'FINISHING') {
+        p.production_band_saw = 'edit';
+        p.production_finishing = 'edit';
+      }
       else if (user.work_center === 'VDI' || user.work_center === 'QA') p.production_vdi = 'edit';
-      else if (user.work_center === 'FINISHING') p.production_finishing = 'edit';
       p.reports = 'view';
       setPermissions(p);
       toast.success('Applied "Strict Single Station" preset.');
@@ -245,6 +262,16 @@ export default function UserPermissionsModal({
                               {currentLevel === 'none' && (
                                 <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
                                   No Access
+                                </span>
+                              )}
+                              {(m.key === 'production_band_saw' || m.key === 'production_finishing') && (
+                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                                  Shared (Band Saw & Finishing)
+                                </span>
+                              )}
+                              {(m.key === 'production_hollow_ht' || m.key === 'production_ht') && (
+                                <span className="inline-flex items-center gap-1 rounded bg-purple-50 border border-purple-200/80 px-1.5 py-0.5 text-[10px] font-semibold text-purple-800">
+                                  Shared (Joint Furnace)
                                 </span>
                               )}
                             </div>

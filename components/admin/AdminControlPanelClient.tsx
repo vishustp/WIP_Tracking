@@ -49,9 +49,9 @@ export const WORK_CENTER_OPTIONS: { value: WorkCenterCode; label: string; stages
   { value: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment (Furnace)', stages: ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'] },
   { value: 'DRAW', label: 'Cold Draw Bench & Pilgering', stages: ['DRAW'] },
   { value: 'HEAT_TREATMENT', label: 'Final Heat Treatment (Furnace)', stages: ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'] },
-  { value: 'BAND_SAW', label: 'Band Saw Cutting Station', stages: ['BAND_SAW'] },
+  { value: 'BAND_SAW', label: 'Band Saw Cutting Station', stages: ['BAND_SAW', 'FINISHING'] },
   { value: 'VDI', label: 'Visual Dimension Inspection (VDI / QC)', stages: ['VDI'] },
-  { value: 'FINISHING', label: 'Finishing & NDT Inspection', stages: ['FINISHING'] },
+  { value: 'FINISHING', label: 'Finishing & NDT Inspection', stages: ['BAND_SAW', 'FINISHING'] },
   { value: 'QA', label: 'Quality Assurance & Metallurgical Lab', stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'] },
   { value: 'AUDIT', label: 'Audit & Compliance (Read-only)', stages: [] },
 ];

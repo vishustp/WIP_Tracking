@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { AppUserProfile, UserGroup } from '@/lib/users/types';
 import { getCurrentAppUser } from '@/lib/users/client';
-import { isRouteVisibleForGroup } from '@/lib/permissions';
+import { isRouteVisible, isRouteVisibleForGroup } from '@/lib/permissions';
 import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
@@ -272,7 +272,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const visibleSections = navSections
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => isRouteVisibleForGroup(userGroup, item.href)),
+      items: section.items.filter((item) => isRouteVisible(currentUser, item.href)),
     }))
     .filter((section) => section.items.length > 0);
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAuth } from '@/lib/supabase/authGuard';
+import { attachPcsToRemarks } from '@/lib/productionUtils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,7 +60,34 @@ export async function POST(req: NextRequest) {
       const userWc = appUser?.work_center;
       const allowedStages: string[] = Array.isArray(appUser?.allowed_stages) ? appUser.allowed_stages : [];
 
-      if (userWc && userWc !== 'ALL' && userWc !== stageCode && !allowedStages.includes(stageCode)) {
+      const isFurnaceStage = stageCode === 'HOLLOW_HEAT_TREATMENT' || stageCode === 'HEAT_TREATMENT';
+      const hasFurnacePrivilege = isFurnaceStage && (
+        userWc === 'HOLLOW_HEAT_TREATMENT' || userWc === 'HEAT_TREATMENT' ||
+        allowedStages.includes('HOLLOW_HEAT_TREATMENT') || allowedStages.includes('HEAT_TREATMENT') ||
+        appUser?.permissions?.production_hollow_ht === 'edit' || appUser?.permissions?.production_ht === 'edit'
+      );
+
+      const isBandSawOrFinishingStage = stageCode === 'BAND_SAW' || stageCode === 'FINISHING';
+      const hasBandSawOrFinishingPrivilege = isBandSawOrFinishingStage && (
+        userWc === 'BAND_SAW' || userWc === 'FINISHING' ||
+        allowedStages.includes('BAND_SAW') || allowedStages.includes('FINISHING') ||
+        appUser?.permissions?.production_band_saw === 'edit' || appUser?.permissions?.production_finishing === 'edit'
+      );
+
+      const isCustomStageAllowed =
+        (stageCode === 'ROLLING' && appUser?.permissions?.production_rolling === 'edit') ||
+        (stageCode === 'DRAW' && appUser?.permissions?.production_draw === 'edit') ||
+        (stageCode === 'VDI' && appUser?.permissions?.production_vdi === 'edit');
+
+      const isAuthorized =
+        userWc === 'ALL' ||
+        userWc === stageCode ||
+        allowedStages.includes(stageCode) ||
+        hasFurnacePrivilege ||
+        hasBandSawOrFinishingPrivilege ||
+        isCustomStageAllowed;
+
+      if (!isAuthorized) {
         return NextResponse.json(
           { error: `Access Denied: You are only authorized to edit data from your assigned work center (${userWc}).` },
           { status: 403 }
@@ -83,21 +111,30 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Prepare updated fields
+    let updatedRemarks = remarks !== undefined ? (remarks?.trim() || null) : targetLog.remarks;
+
+    // Ensure pieces are encoded into remarks if passed explicitly and not yet tagged
+    if (output_pcs !== undefined || rejection_pcs !== undefined) {
+      const hasCuts = updatedRemarks && updatedRemarks.includes('[CUTS:');
+      const hasPcs = updatedRemarks && updatedRemarks.includes('[PCS:');
+      if (!hasCuts && !hasPcs) {
+        updatedRemarks = attachPcsToRemarks(
+          updatedRemarks,
+          output_pcs !== undefined && output_pcs !== null ? Number(output_pcs) : null,
+          rejection_pcs !== undefined && rejection_pcs !== null ? Number(rejection_pcs) : null
+        );
+      }
+    }
+
     const updatePayload: Record<string, any> = {
       process_date: process_date || targetLog.process_date,
       output_qty: output_qty !== undefined ? Number(output_qty) : targetLog.output_qty,
       input_qty: output_qty !== undefined ? Number(output_qty) : targetLog.input_qty,
       rejection_qty: rejection_qty !== undefined ? Number(rejection_qty) : targetLog.rejection_qty,
       heat_lot_no: heat_lot_no !== undefined ? (heat_lot_no?.trim() || null) : targetLog.heat_lot_no,
-      remarks: remarks !== undefined ? (remarks?.trim() || null) : targetLog.remarks,
+      remarks: updatedRemarks,
     };
 
-    if (output_pcs !== undefined) {
-      updatePayload.output_pcs = output_pcs ? Number(output_pcs) : null;
-    }
-    if (rejection_pcs !== undefined) {
-      updatePayload.rejection_pcs = rejection_pcs ? Number(rejection_pcs) : null;
-    }
     if (stageCode === 'ROLLING' && htc_ok !== undefined) {
       updatePayload.htc_ok = Number(htc_ok || 0);
     }

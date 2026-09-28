@@ -194,7 +194,7 @@ export async function GET(request: NextRequest) {
         user_group: uGroup,
         role_title: u.role_title || meta.role_title || '',
         shift: u.shift || meta.shift || '',
-        allowed_stages: u.allowed_stages || meta.allowed_stages || (u.work_center === 'ALL' ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING'] : [u.work_center]),
+        allowed_stages: u.allowed_stages || meta.allowed_stages || (u.work_center === 'ALL' ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'] : u.work_center === 'BAND_SAW' || u.work_center === 'FINISHING' ? ['BAND_SAW', 'FINISHING'] : u.work_center === 'HOLLOW_HEAT_TREATMENT' || u.work_center === 'HEAT_TREATMENT' ? ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'] : [u.work_center]),
         default_stage: u.default_stage || meta.default_stage || (u.work_center === 'ALL' ? 'ROLLING' : u.work_center),
         permissions: u.permissions || meta.permissions || undefined,
       };
@@ -249,14 +249,21 @@ export async function POST(request: NextRequest) {
         ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
         : workCenter === 'QA'
           ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
-          : workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT'
+        : workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT'
             ? ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT']
-            : [workCenter];
+            : workCenter === 'BAND_SAW' || workCenter === 'FINISHING'
+              ? ['BAND_SAW', 'FINISHING']
+              : [workCenter];
     const allowedStages = [...rawAllowed];
     if (allowedStages.includes('HOLLOW_HEAT_TREATMENT') && !allowedStages.includes('HEAT_TREATMENT')) {
       allowedStages.push('HEAT_TREATMENT');
     } else if (allowedStages.includes('HEAT_TREATMENT') && !allowedStages.includes('HOLLOW_HEAT_TREATMENT')) {
       allowedStages.push('HOLLOW_HEAT_TREATMENT');
+    }
+    if (allowedStages.includes('BAND_SAW') && !allowedStages.includes('FINISHING')) {
+      allowedStages.push('FINISHING');
+    } else if (allowedStages.includes('FINISHING') && !allowedStages.includes('BAND_SAW')) {
+      allowedStages.push('BAND_SAW');
     }
     const defaultStage = String(body.default_stage ?? (workCenter === 'ALL' ? 'ROLLING' : workCenter));
     const shift = String(body.shift ?? '');
@@ -266,7 +273,17 @@ export async function POST(request: NextRequest) {
     if (!email || !name || !employeeCode) return bad('Name, email and employee code are required');
     if (!password || password.length < 8) return bad('Password must be at least 8 characters');
 
-    const permissions = body.permissions || undefined;
+    const permissions = body.permissions ? { ...body.permissions } : undefined;
+    if (permissions) {
+      if (permissions.production_band_saw === 'edit' || permissions.production_finishing === 'edit') {
+        permissions.production_band_saw = 'edit';
+        permissions.production_finishing = 'edit';
+      }
+      if (permissions.production_hollow_ht === 'edit' || permissions.production_ht === 'edit') {
+        permissions.production_hollow_ht = 'edit';
+        permissions.production_ht = 'edit';
+      }
+    }
 
     // Check if user already exists in auth
     const { data: created, error: authError } = await admin.auth.admin.createUser({
@@ -449,14 +466,21 @@ export async function PUT(request: NextRequest) {
         ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
         : workCenter === 'QA'
           ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
-          : workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT'
-            ? ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT']
+        : workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT'
+          ? ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT']
+          : workCenter === 'BAND_SAW' || workCenter === 'FINISHING'
+            ? ['BAND_SAW', 'FINISHING']
             : [workCenter];
     const allowedStages = [...rawAllowed];
     if (allowedStages.includes('HOLLOW_HEAT_TREATMENT') && !allowedStages.includes('HEAT_TREATMENT')) {
       allowedStages.push('HEAT_TREATMENT');
     } else if (allowedStages.includes('HEAT_TREATMENT') && !allowedStages.includes('HOLLOW_HEAT_TREATMENT')) {
       allowedStages.push('HOLLOW_HEAT_TREATMENT');
+    }
+    if (allowedStages.includes('BAND_SAW') && !allowedStages.includes('FINISHING')) {
+      allowedStages.push('FINISHING');
+    } else if (allowedStages.includes('FINISHING') && !allowedStages.includes('BAND_SAW')) {
+      allowedStages.push('BAND_SAW');
     }
 
     const baseUpdate: Record<string, unknown> = {
@@ -536,7 +560,17 @@ export async function PUT(request: NextRequest) {
           return bad(`User saved, but password reset failed: ${authErr.message}`, 400);
         }
       } else if (newPassword && newPassword.length >= 8) {
-        const permissions = body.permissions !== undefined ? body.permissions : undefined;
+        const permissions = body.permissions !== undefined ? { ...body.permissions } : undefined;
+        if (permissions) {
+          if (permissions.production_band_saw === 'edit' || permissions.production_finishing === 'edit') {
+            permissions.production_band_saw = 'edit';
+            permissions.production_finishing = 'edit';
+          }
+          if (permissions.production_hollow_ht === 'edit' || permissions.production_ht === 'edit') {
+            permissions.production_hollow_ht = 'edit';
+            permissions.production_ht = 'edit';
+          }
+        }
         // Create user in auth if none existed yet
         const { data: newAuth, error: createAuthErr } = await adminClient.auth.admin.createUser({
           email,

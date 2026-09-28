@@ -64,6 +64,15 @@ export default function BandSawCuttingClient() {
     loadUser();
   }, []);
 
+  const canOperateBandSaw = useMemo(() => {
+    if (!currentUser) return false;
+    if (currentUser.group === 'admin' || currentUser.group === 'super_user' || currentUser.role === 'admin') return true;
+    if (currentUser.work_center === 'BAND_SAW' || currentUser.work_center === 'FINISHING' || currentUser.work_center === 'ALL') return true;
+    if (currentUser.allowed_stages?.includes('BAND_SAW') || currentUser.allowed_stages?.includes('FINISHING')) return true;
+    if (currentUser.permissions?.production_band_saw === 'edit' || currentUser.permissions?.production_finishing === 'edit') return true;
+    return false;
+  }, [currentUser]);
+
   // Fetch Band Saw Queue and Production History
   const fetchData = useCallback(async () => {
     try {
@@ -504,14 +513,18 @@ export default function BandSawCuttingClient() {
                           {fmt(Number(row.balance_to_make_mt || 0), 3)} MT
                         </td>
                         <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-3 px-4 text-center border-l border-slate-200 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[140px]">
-                          <Button
-                            size="sm"
-                            onClick={() => handleOpenCutModal(row)}
-                            className="h-8 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-2xs"
-                          >
-                            <Scissors size={13} className="rotate-90" />
-                            Record Cutting
-                          </Button>
+                          {canOperateBandSaw ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handleOpenCutModal(row)}
+                              className="h-8 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-2xs"
+                            >
+                              <Scissors size={13} className="rotate-90" />
+                              Record Cutting
+                            </Button>
+                          ) : (
+                            <span className="text-[11px] font-medium text-slate-400 italic">View Only</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -657,11 +670,7 @@ export default function BandSawCuttingClient() {
                           )}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {currentUser?.group === 'admin' ||
-                          currentUser?.group === 'super_user' ||
-                          currentUser?.role === 'admin' ||
-                          currentUser?.work_center === 'BAND_SAW' ||
-                          currentUser?.work_center === 'ALL' ? (
+                          {canOperateBandSaw ? (
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"

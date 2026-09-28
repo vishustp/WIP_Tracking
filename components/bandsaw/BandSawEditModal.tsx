@@ -52,9 +52,18 @@ export function BandSawEditModal({
     return extractBandSawCutsFromRemarks(entry.remarks);
   }, [entry.remarks]);
 
+  const initialPrimePcs = useMemo(() => {
+    if (parsed.cuts && parsed.cuts.length > 0) {
+      return parsed.cuts
+        .filter((c) => (c.cat as any) === 'PRIME' || !c.cat || (c.cat as any) === 'SECONDARY')
+        .reduce((sum, c) => sum + Number(c.pcs || 0), 0);
+    }
+    return entry.output_pcs ? Number(entry.output_pcs) : 0;
+  }, [parsed.cuts, entry.output_pcs]);
+
   const [processDate, setProcessDate] = useState(entry.process_date.slice(0, 10));
   const [motherPcs, setMotherPcs] = useState<number>(
-    parsed.motherPcs || (entry.output_pcs ? Number(entry.output_pcs) : 1)
+    parsed.motherPcs || initialPrimePcs || (entry.output_pcs ? Number(entry.output_pcs) : 1)
   );
 
   // Initialize cut items
@@ -69,7 +78,7 @@ export function BandSawEditModal({
     }
     // Fallback if no JSON cut tag exists
     const avgLen = Number(entry.avg_length || entry.l1 || 6.0);
-    const pcs = entry.output_pcs ? Number(entry.output_pcs) : 1;
+    const pcs = initialPrimePcs || (entry.output_pcs ? Number(entry.output_pcs) : 1);
     return [
       {
         id: `cut-default`,
@@ -265,7 +274,7 @@ export function BandSawEditModal({
           <div>
             <span className="text-[11px] text-slate-500 font-medium block">Initial Logged Qty</span>
             <span className="font-mono font-bold text-slate-800">
-              {entry.output_mtr}m ({entry.output_pcs || 0} pcs)
+              {entry.output_mtr}m ({initialPrimePcs || entry.output_pcs || 0} pcs)
             </span>
           </div>
         </div>

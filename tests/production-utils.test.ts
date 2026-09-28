@@ -12,6 +12,8 @@ import {
   extractPcsFromRemarks,
   attachCustomLengthToRemarks,
   extractCustomLengthFromRemarks,
+  attachBandSawCutsToRemarks,
+  extractBandSawCutsFromRemarks,
   normalizeSpecification,
 } from "../lib/productionUtils";
 
@@ -239,6 +241,49 @@ describe("Production Utils Unit Tests", () => {
       expect(extracted.l2).toBe(8.5);
       expect(extracted.avg).toBe(8.0);
       expect(extracted.cleanRemarks).toBe("Pass 1 drawn");
+    });
+
+    it("attachBandSawCutsToRemarks() and extractBandSawCutsFromRemarks() handle nested JSON cut items and clean remarks", () => {
+      const cuts = [
+        { length_mtr: 5.8, cut_pcs: 25, cut_category: "PRIME" },
+      ];
+      const tagged = attachBandSawCutsToRemarks(
+        "Tubes India Order 6430",
+        cuts,
+        25,
+        96.3,
+        0,
+        5.0,
+        0.03,
+        3.7,
+        6.0,
+        6.0
+      );
+
+      const parsed = extractBandSawCutsFromRemarks(tagged);
+      expect(parsed.cuts).toHaveLength(1);
+      expect(parsed.cuts![0].len).toBe(5.8);
+      expect(parsed.cuts![0].pcs).toBe(25);
+      expect(parsed.cuts![0].cat).toBe("PRIME");
+      expect(parsed.motherPcs).toBe(25);
+      expect(parsed.yieldPct).toBe(96.3);
+      expect(parsed.scrapMtr).toBe(5.0);
+      expect(parsed.cleanRemarks).toBe("Tubes India Order 6430");
+
+      // Verify extractPcsFromRemarks correctly extracts pieces and does not leave stray brackets
+      const pcsData = extractPcsFromRemarks(tagged);
+      expect(pcsData.pcs).toBe(25);
+      expect(pcsData.cleanRemarks).toBe("Tubes India Order 6430");
+    });
+
+    it("extractBandSawCutsFromRemarks() cleans any leftover '}]' from previously corrupted remarks", () => {
+      const corruptedRemarks = "}] [L1:6] [L2:6] [PCS:25]";
+      const parsed = extractBandSawCutsFromRemarks(corruptedRemarks);
+      expect(parsed.cleanRemarks).toBe("");
+
+      const userTextCorrupted = "Smooth cut }] [L1:6] [L2:6] [PCS:25]";
+      const parsedUser = extractBandSawCutsFromRemarks(userTextCorrupted);
+      expect(parsedUser.cleanRemarks).toBe("Smooth cut");
     });
   });
 });

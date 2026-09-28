@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
+import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, extractPcsFromRemarks } from '@/lib/productionUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
 import { isUserAuthorizedForQc } from '@/lib/permissions';
 import type { AppUserProfile } from '@/lib/users/types';
@@ -254,7 +254,7 @@ export default function QcInspectionClient() {
         let cutMtr = 0;
         logs.forEach((l) => {
           const { cuts } = extractBandSawCutsFromRemarks(l.remarks);
-          const primeCuts = cuts?.filter((c) => c.cat === 'PRIME' || !c.cat).reduce((s, c) => s + Number(c.pcs || 0), 0);
+          const primeCuts = cuts?.filter((c) => c.cat === 'PRIME' || !c.cat || c.cat === 'SECONDARY').reduce((s, c) => s + Number(c.pcs || 0), 0);
           if (primeCuts && primeCuts > 0) {
             cutPcs += primeCuts;
           } else {
@@ -262,7 +262,12 @@ export default function QcInspectionClient() {
             if (totalCuts && totalCuts > 0) {
               cutPcs += totalCuts;
             } else {
-              cutPcs += defaultAvg > 0 && l.output_qty ? Math.round(Number(l.output_qty) / defaultAvg) : 0;
+              const { pcs } = extractPcsFromRemarks(l.remarks);
+              if (pcs !== null && pcs > 0) {
+                cutPcs += pcs;
+              } else {
+                cutPcs += defaultAvg > 0 && l.output_qty ? Math.round(Number(l.output_qty) / defaultAvg) : 0;
+              }
             }
           }
           cutMtr += Number(l.output_qty || 0);

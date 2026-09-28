@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { extractBandSawCutsFromRemarks, extractPcsFromRemarks } from '@/lib/productionUtils';
 
 export async function GET(req: NextRequest) {
   try {
@@ -52,8 +53,25 @@ export async function GET(req: NextRequest) {
     const enriched = (entries || []).map((e: any) => {
       const l = logMap.get(e.id);
       const opName = l?.created_by ? userMap.get(l.created_by) : null;
+      let outputPcs = e.output_pcs;
+      let rejPcs = e.rejection_pcs;
+      if (e.remarks) {
+        const { cuts } = extractBandSawCutsFromRemarks(e.remarks);
+        if (cuts && cuts.length > 0) {
+          const primePcs = cuts
+            .filter((c: any) => (c.cat || "PRIME") === "PRIME" || c.cat === "SECONDARY")
+            .reduce((s: number, c: any) => s + Number(c.pcs || 0), 0);
+          if (primePcs > 0) outputPcs = primePcs;
+        } else {
+          const { pcs, rejPcs: parsedRej } = extractPcsFromRemarks(e.remarks);
+          if (pcs !== null && pcs > 0) outputPcs = pcs;
+          if (parsedRej !== null) rejPcs = parsedRej;
+        }
+      }
       return {
         ...e,
+        output_pcs: outputPcs,
+        rejection_pcs: rejPcs,
         created_by: l?.created_by,
         operator_name: opName,
       };

@@ -708,9 +708,11 @@ export async function GET(req: NextRequest) {
       const bandSawOutPcs = sumPcs(bandSawLogs, avgLength);
       const bandSawRejPcs = sumRejPcs(bandSawLogs, avgLength);
       const bandSawNetPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
-      const bandSawOutMtr = avgLength > 0 ? Number((bandSawOutPcs * avgLength).toFixed(3)) : sumQty(bandSawLogs, "output_qty");
-      const bandSawRejMtr = avgLength > 0 ? Number((bandSawRejPcs * avgLength).toFixed(3)) : sumQty(bandSawLogs, "rejection_qty");
-      const bandSawNetMtr = avgLength > 0 ? Number((bandSawNetPcs * avgLength).toFixed(3)) : Math.max(0, bandSawOutMtr - bandSawRejMtr);
+      const rawBandSawOutMtr = sumQty(bandSawLogs, "output_qty");
+      const rawBandSawRejMtr = sumQty(bandSawLogs, "rejection_qty");
+      const bandSawOutMtr = rawBandSawOutMtr > 0 ? rawBandSawOutMtr : (avgLength > 0 ? Number((bandSawOutPcs * avgLength).toFixed(3)) : 0);
+      const bandSawRejMtr = rawBandSawRejMtr > 0 ? rawBandSawRejMtr : (avgLength > 0 ? Number((bandSawRejPcs * avgLength).toFixed(3)) : 0);
+      const bandSawNetMtr = Math.max(0, bandSawOutMtr - bandSawRejMtr);
 
       const bandSawDivIn = getStageDivIn(woId, "BAND_SAW");
       const bandSawDivOut = getStageDivOut(woId, "BAND_SAW");

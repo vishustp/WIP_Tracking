@@ -267,15 +267,31 @@ export function extractPcsFromRemarks(remarks: string | null | undefined): {
   if (!remarks) return { pcs: null, rejPcs: null, cleanRemarks: "" };
   const pcsMatch = remarks.match(/\[PCS:(\d+)/i);
   const rejMatch = remarks.match(/(?:\[REJ_PCS:|\[REJ:|[, ]REJ:)(\d+)/i);
-  const pcs = pcsMatch ? parseInt(pcsMatch[1], 10) : null;
+  let pcs = pcsMatch ? parseInt(pcsMatch[1], 10) : null;
   const rejPcs = rejMatch ? parseInt(rejMatch[1], 10) : null;
+
+  // If [PCS:...] was not found or was 0, fallback to prime cuts from [CUTS:...]
+  if (pcs === null || pcs <= 0) {
+    const { cuts } = extractBandSawCutsFromRemarks(remarks);
+    if (cuts && cuts.length > 0) {
+      const primePcs = cuts
+        .filter((c) => (c.cat || "PRIME") === "PRIME" || c.cat === "SECONDARY")
+        .reduce((sum, c) => sum + Number(c.pcs || 0), 0);
+      if (primePcs > 0) pcs = primePcs;
+    }
+  }
+
   const cleanRemarks = remarks
+    .replace(/\[CUTS:\{[\s\S]*?\}\](?=\s*(?:\[|$))/gi, "")
+    .replace(/\[CUTS:[^\]]+\]/gi, "")
     .replace(/\[PCS:[^\]]+\]/gi, "")
     .replace(/\[REJ_PCS:[^\]]+\]/gi, "")
     .replace(/\[REJ:[^\]]+\]/gi, "")
     .replace(/\[L1:[^\]]+\]/gi, "")
     .replace(/\[L2:[^\]]+\]/gi, "")
     .replace(/\[AVG:[^\]]+\]/gi, "")
+    .replace(/^\s*\}\]\s*/, "")
+    .replace(/\s*\}\]\s*$/, "")
     .trim();
   return { pcs, rejPcs, cleanRemarks };
 }
@@ -317,12 +333,16 @@ export function extractCustomLengthFromRemarks(remarks: string | null | undefine
   const l2 = l2Match ? parseFloat(l2Match[1]) : null;
   const avg = avgMatch ? parseFloat(avgMatch[1]) : null;
   const cleanRemarks = remarks
+    .replace(/\[CUTS:\{[\s\S]*?\}\](?=\s*(?:\[|$))/gi, "")
+    .replace(/\[CUTS:[^\]]+\]/gi, "")
     .replace(/\[L1:[^\]]+\]/gi, "")
     .replace(/\[L2:[^\]]+\]/gi, "")
     .replace(/\[AVG:[^\]]+\]/gi, "")
-    .replace(/\[PCS:\d+\]/gi, "")
-    .replace(/\[REJ_PCS:\d+\]/gi, "")
-    .replace(/\[CUTS:[^\]]+\]/gi, "")
+    .replace(/\[PCS:[^\]]+\]/gi, "")
+    .replace(/\[REJ_PCS:[^\]]+\]/gi, "")
+    .replace(/\[REJ:[^\]]+\]/gi, "")
+    .replace(/^\s*\}\]\s*/, "")
+    .replace(/\s*\}\]\s*$/, "")
     .trim();
   return { l1, l2, avg, cleanRemarks };
 }
@@ -340,7 +360,8 @@ export function attachBandSawCutsToRemarks(
   l2?: number | string | null
 ): string {
   let base = (remarks || "").trim();
-  base = base.replace(/\[CUTS:[^\]]+\]/gi, "").trim();
+  const existing = extractBandSawCutsFromRemarks(base);
+  base = existing.cleanRemarks;
 
   const cutsData = {
     m_pcs: motherPcs || null,
@@ -377,7 +398,7 @@ export function extractBandSawCutsFromRemarks(remarks: string | null | undefined
   cleanRemarks: string;
 } {
   if (!remarks) return { cuts: null, motherPcs: null, yieldPct: null, offcutMtr: null, scrapMtr: null, scrapMt: null, scrapPct: null, cleanRemarks: "" };
-  const match = remarks.match(/\[CUTS:(\{.*?\})\]/i);
+
   let cuts: Array<{ len: number; pcs: number; cat: string }> | null = null;
   let motherPcs: number | null = null;
   let yieldPct: number | null = null;
@@ -386,9 +407,53 @@ export function extractBandSawCutsFromRemarks(remarks: string | null | undefined
   let scrapMt: number | null = null;
   let scrapPct: number | null = null;
 
-  if (match && match[1]) {
+  let rawJson: string | null = null;
+  const cutsIdx = remarks.indexOf('[CUTS:');
+  if (cutsIdx !== -1) {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let start = -1;
+
+    for (let i = cutsIdx; i < remarks.length; i++) {
+      const ch = remarks[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+
+      if (ch === '{') {
+        if (depth === 0) start = i;
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          rawJson = remarks.substring(start, i + 1);
+          break;
+        }
+      }
+    }
+  }
+
+  if (!rawJson) {
+    const match = remarks.match(/\[CUTS:(\{[\s\S]*?\})\](?=\s*(?:\[|$))/i) || remarks.match(/\[CUTS:(\{.*\})\]/i);
+    if (match && match[1]) {
+      rawJson = match[1];
+    }
+  }
+
+  if (rawJson) {
     try {
-      const parsed = JSON.parse(match[1]);
+      const parsed = JSON.parse(rawJson);
       cuts = Array.isArray(parsed.items) ? parsed.items : null;
       motherPcs = parsed.m_pcs ?? null;
       yieldPct = parsed.yield ?? null;
@@ -399,13 +464,22 @@ export function extractBandSawCutsFromRemarks(remarks: string | null | undefined
     } catch {}
   }
 
-  const cleanRemarks = remarks
+  let clean = remarks;
+  if (rawJson) {
+    clean = clean.replace(`[CUTS:${rawJson}]`, "");
+  }
+
+  const cleanRemarks = clean
+    .replace(/\[CUTS:\{[\s\S]*?\}\](?=\s*(?:\[|$))/gi, "")
     .replace(/\[CUTS:[^\]]+\]/gi, "")
     .replace(/\[L1:[^\]]+\]/gi, "")
     .replace(/\[L2:[^\]]+\]/gi, "")
     .replace(/\[AVG:[^\]]+\]/gi, "")
-    .replace(/\[PCS:\d+\]/gi, "")
-    .replace(/\[REJ_PCS:\d+\]/gi, "")
+    .replace(/\[PCS:[^\]]+\]/gi, "")
+    .replace(/\[REJ_PCS:[^\]]+\]/gi, "")
+    .replace(/\[REJ:[^\]]+\]/gi, "")
+    .replace(/^\s*\}\]\s*/, "")
+    .replace(/\s*\}\]\s*$/, "")
     .trim();
 
   return { cuts, motherPcs, yieldPct, offcutMtr, scrapMtr, scrapMt, scrapPct, cleanRemarks };

@@ -100,6 +100,17 @@ export async function getAuthenticatedUser(request: NextRequest): Promise<AuthCo
         String(user.user_metadata?.user_group || '').toLowerCase() === 'admin' ||
         user.user_metadata?.is_admin === true;
     }
+
+    if (appUser) {
+      const meta = user.user_metadata || {};
+      appUser = {
+        ...meta,
+        ...appUser,
+        allowed_stages: appUser.allowed_stages || meta.allowed_stages,
+        user_group: appUser.user_group || meta.user_group,
+        permissions: appUser.permissions || meta.permissions,
+      };
+    }
   } catch (err) {
     console.error('Error resolving user admin status:', err);
   }

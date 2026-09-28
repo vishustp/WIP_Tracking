@@ -85,9 +85,9 @@ export function getDefaultPermissions(group: UserGroup, workCenter: string): For
     production_hollow_ht: workCenter === 'ALL' || workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT' ? 'edit' : 'view',
     production_draw: workCenter === 'ALL' || workCenter === 'DRAW' ? 'edit' : 'view',
     production_ht: workCenter === 'ALL' || workCenter === 'HEAT_TREATMENT' || workCenter === 'HOLLOW_HEAT_TREATMENT' ? 'edit' : 'view',
-    production_band_saw: workCenter === 'ALL' || workCenter === 'BAND_SAW' ? 'edit' : 'view',
+    production_band_saw: workCenter === 'ALL' || workCenter === 'BAND_SAW' || workCenter === 'FINISHING' ? 'edit' : 'view',
     production_vdi: workCenter === 'ALL' || workCenter === 'VDI' || workCenter === 'QA' ? 'edit' : 'view',
-    production_finishing: workCenter === 'ALL' || workCenter === 'FINISHING' ? 'edit' : 'view',
+    production_finishing: workCenter === 'ALL' || workCenter === 'FINISHING' || workCenter === 'BAND_SAW' ? 'edit' : 'view',
     work_order: 'view',
     rolling_plan: 'view',
     diversion: 'view',
@@ -240,6 +240,60 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
 }
 
 /**
+ * Checks if a specific sidebar/navigation route is visible for a user profile
+ * Respects custom permissions set by Admin in the Control Center
+ */
+export function isRouteVisible(user: AppUserProfile | null | undefined, href: string): boolean {
+  if (!user) return false;
+  const group: UserGroup = user.group || (user.role === 'admin' ? 'admin' : user.role === 'manager' ? 'super_user' : 'user');
+  if (group === 'admin') return true;
+
+  if (['/dashboard', '/profile'].includes(href)) return true;
+  if (href === '/admin/spec-master' || href === '/spec-master') return true;
+
+  const perms = user.permissions || getDefaultPermissions(group, user.work_center);
+
+  // Check specific route mappings against user's custom permissions or defaults
+  if (href === '/work-orders' || href.startsWith('/work-orders/')) {
+    return perms.work_order === 'edit' || perms.work_order === 'view';
+  }
+  if (href === '/rolling-plans' || href.startsWith('/rolling-plans/')) {
+    return perms.rolling_plan === 'edit' || perms.rolling_plan === 'view';
+  }
+  if (href === '/diversions' || href.startsWith('/diversions/')) {
+    return perms.diversion === 'edit' || perms.diversion === 'view';
+  }
+  if (href === '/excel-import' || href.startsWith('/excel-import/')) {
+    return perms.excel_import === 'edit' || perms.excel_import === 'view';
+  }
+  if (href === '/band-saw' || href.startsWith('/band-saw/')) {
+    return perms.production_band_saw !== 'none' || isUserAuthorizedForStage(user, 'BAND_SAW');
+  }
+  if (href === '/qc' || href.startsWith('/qc/')) {
+    return perms.production_vdi !== 'none' || isUserAuthorizedForStage(user, 'VDI');
+  }
+  if (href === '/production' || href.startsWith('/production/')) {
+    return (
+      perms.production_rolling !== 'none' ||
+      perms.production_hollow_ht !== 'none' ||
+      perms.production_draw !== 'none' ||
+      perms.production_ht !== 'none' ||
+      perms.production_finishing !== 'none' ||
+      perms.production_band_saw !== 'none' ||
+      perms.production_vdi !== 'none'
+    );
+  }
+  if (href.startsWith('/reports/')) {
+    return perms.reports !== 'none';
+  }
+  if (href === '/admin' || href === '/settings') {
+    return perms.admin_panel === 'edit' || perms.admin_panel === 'view';
+  }
+
+  return isRouteVisibleForGroup(group, href);
+}
+
+/**
  * Checks whether user has full access (create/edit/delete) to the QC / VDI inspection form.
  * PPC, QC, Admin, and Super User have full access. Other users have read-only access.
  */
@@ -296,6 +350,20 @@ export function isUserAuthorizedForStage(user: AppUserProfile | null | undefined
     if (hasFurnacePrivilege) return true;
   }
 
+  // Joint Band Saw & Finishing Work Centers Rule:
+  // Band Saw (BAND_SAW) & Finishing (FINISHING) operators have mutual permissions to work on BOTH work centers
+  const isTargetBandSawOrFinishing = stageCode === 'BAND_SAW' || stageCode === 'FINISHING';
+  if (isTargetBandSawOrFinishing) {
+    const hasBandSawOrFinishingPrivilege =
+      userWc === 'BAND_SAW' ||
+      userWc === 'FINISHING' ||
+      userDef === 'BAND_SAW' ||
+      userDef === 'FINISHING' ||
+      userAllowed.includes('BAND_SAW') ||
+      userAllowed.includes('FINISHING');
+    if (hasBandSawOrFinishingPrivilege) return true;
+  }
+
   return false;
 }
 
@@ -321,10 +389,14 @@ export function checkCanDelete(user: AppUserProfile | null | undefined, stageCod
     if (isAssigned) {
       const isJointFurnace = (stageCode === 'HOLLOW_HEAT_TREATMENT' || stageCode === 'HEAT_TREATMENT') &&
         user.work_center !== stageCode;
+      const isJointBandSawFinishing = (stageCode === 'BAND_SAW' || stageCode === 'FINISHING') &&
+        user.work_center !== stageCode;
       return {
         allowed: true,
         reason: isJointFurnace
           ? `User Group operator authorized for ${WORK_CENTER_LABELS[stageCode] || stageCode} (Joint Furnace authorization).`
+          : isJointBandSawFinishing
+          ? `User Group operator authorized for ${WORK_CENTER_LABELS[stageCode] || stageCode} (Joint Band Saw & Finishing authorization).`
           : `User Group operator authorized for ${WORK_CENTER_LABELS[stageCode] || stageCode}.`,
       };
     }
@@ -433,9 +505,16 @@ export function checkCanManagePlans(user: AppUserProfile | null | undefined): {
   if (user?.group === 'admin' || user?.group === 'super_user') {
     return { allowed: true };
   }
+  if (
+    user?.permissions?.rolling_plan === 'edit' ||
+    user?.permissions?.diversion === 'edit' ||
+    user?.permissions?.work_order === 'edit'
+  ) {
+    return { allowed: true };
+  }
   return {
     allowed: false,
-    reason: 'Rolling plans and diversions require Admin Group or Super User Group authorization.',
+    reason: 'Rolling plans, diversions, and work order operations require Admin Group, Super User Group, or custom Admin edit permissions.',
   };
 }
 
@@ -479,7 +558,24 @@ export function getFormAccess(
     const targetStage = stageCode || 'ROLLING';
     const targetStageLabel = WORK_CENTER_LABELS[targetStage] || targetStage;
     const stagePermKey = STAGE_TO_PERMISSION_KEY[targetStage] || 'production_rolling';
-    const customAccess = customPerms ? customPerms[stagePermKey] : undefined;
+    let customAccess = customPerms ? customPerms[stagePermKey] : undefined;
+
+    // Joint Band Saw & Finishing Rule: If one has 'edit' permission, both get 'edit'
+    if (targetStage === 'BAND_SAW' || targetStage === 'FINISHING') {
+      const bandSawAccess = customPerms?.production_band_saw;
+      const finishingAccess = customPerms?.production_finishing;
+      if (bandSawAccess === 'edit' || finishingAccess === 'edit') {
+        customAccess = 'edit';
+      }
+    }
+    // Joint Furnace Rule: If one furnace stage has 'edit', both get 'edit'
+    if (targetStage === 'HOLLOW_HEAT_TREATMENT' || targetStage === 'HEAT_TREATMENT') {
+      const hhtAccess = customPerms?.production_hollow_ht;
+      const htAccess = customPerms?.production_ht;
+      if (hhtAccess === 'edit' || htAccess === 'edit') {
+        customAccess = 'edit';
+      }
+    }
 
     if (customAccess !== undefined) {
       const isAllowed = customAccess === 'edit';
@@ -516,6 +612,9 @@ export function getFormAccess(
     const isJointFurnace = (targetStage === 'HOLLOW_HEAT_TREATMENT' || targetStage === 'HEAT_TREATMENT') &&
       user?.work_center !== targetStage &&
       (user?.work_center === 'HOLLOW_HEAT_TREATMENT' || user?.work_center === 'HEAT_TREATMENT');
+    const isJointBandSawFinishing = (targetStage === 'BAND_SAW' || targetStage === 'FINISHING') &&
+      user?.work_center !== targetStage &&
+      (user?.work_center === 'BAND_SAW' || user?.work_center === 'FINISHING');
 
     return {
       formKey,
@@ -533,11 +632,15 @@ export function getFormAccess(
       bannerTitle: isAllowed
         ? isJointFurnace
           ? 'Work Center Operator Access (Joint Furnace Permission)'
+          : isJointBandSawFinishing
+          ? 'Work Center Operator Access (Joint Band Saw & Finishing Permission)'
           : 'Work Center Operator Access'
         : 'View-Only Accessibility Mode',
       bannerMessage: isAllowed
         ? isJointFurnace
           ? `Authorized to record shift production, log rejections, and save batches for ${targetStageLabel} via Joint Furnace access.`
+          : isJointBandSawFinishing
+          ? `Authorized to record shift production, cut pieces, log rejections, and save batches for ${targetStageLabel} via Joint Band Saw & Finishing access.`
           : `Authorized to record shift production, log rejections, and save batches for ${targetStageLabel}.`
         : isAuditor
         ? 'Auditor role is in read-only inspection mode across all production stages.'
@@ -877,10 +980,34 @@ export function usePermissions() {
           return group === 'admin' ? { allowed: true } : { allowed: false, reason: 'Admin panel is restricted to Admin Group' };
         case 'create_rolling_plan':
         case 'edit_rolling_plan':
-        case 'delete_rolling_plan':
+        case 'delete_rolling_plan': {
+          const custom = user?.permissions?.rolling_plan;
+          if (custom !== undefined) {
+            return custom === 'edit'
+              ? { allowed: true }
+              : { allowed: false, reason: 'Rolling plans permission is view-only or restricted by Admin' };
+          }
+          return checkCanManagePlans(user);
+        }
         case 'create_diversion':
-        case 'delete_diversion':
-        case 'import_work_orders': return checkCanManagePlans(user);
+        case 'delete_diversion': {
+          const custom = user?.permissions?.diversion;
+          if (custom !== undefined) {
+            return custom === 'edit'
+              ? { allowed: true }
+              : { allowed: false, reason: 'Diversion permission is view-only or restricted by Admin' };
+          }
+          return checkCanManagePlans(user);
+        }
+        case 'import_work_orders': {
+          const custom = user?.permissions?.excel_import || user?.permissions?.work_order;
+          if (custom !== undefined) {
+            return custom === 'edit'
+              ? { allowed: true }
+              : { allowed: false, reason: 'Import work orders permission is restricted by Admin' };
+          }
+          return checkCanManagePlans(user);
+        }
         case 'view_audit_logs': return { allowed: true };
         default: return { allowed: false, reason: 'Action not allowed' };
       }
@@ -915,10 +1042,15 @@ export function usePermissions() {
     canDeleteGlobal: group === 'admin' || group === 'super_user',
     canManageUsers: group === 'admin',
     canModifySettings: group === 'admin',
-    canManagePlans: group === 'admin' || group === 'super_user',
+    canManagePlans:
+      group === 'admin' ||
+      group === 'super_user' ||
+      user?.permissions?.rolling_plan === 'edit' ||
+      user?.permissions?.diversion === 'edit' ||
+      user?.permissions?.work_order === 'edit',
     canSwitchProfile: canSwitchProfile(user),
     canEditProfile: canEditProfile(user),
-    isRouteVisible: (href: string) => isRouteVisibleForGroup(group, href),
+    isRouteVisible: (href: string) => isRouteVisible(user, href),
     refreshUser,
   };
 }

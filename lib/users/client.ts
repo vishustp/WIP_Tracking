@@ -38,6 +38,8 @@ export function mapAppUser(row: any): AppUserProfile {
         stages = [...ALL_STAGES];
       } else if (wc === 'HOLLOW_HEAT_TREATMENT' || wc === 'HEAT_TREATMENT') {
         stages = ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'];
+      } else if (wc === 'BAND_SAW' || wc === 'FINISHING') {
+        stages = ['BAND_SAW', 'FINISHING'];
       } else {
         stages = [wc];
       }
@@ -46,6 +48,12 @@ export function mapAppUser(row: any): AppUserProfile {
         stages.push('HEAT_TREATMENT');
       } else if (stages.includes('HEAT_TREATMENT') && !stages.includes('HOLLOW_HEAT_TREATMENT')) {
         stages.push('HOLLOW_HEAT_TREATMENT');
+      }
+      // Business rule: Band Saw and Finishing operators have mutual permissions to work on both work centers
+      if (stages.includes('BAND_SAW') && !stages.includes('FINISHING')) {
+        stages.push('FINISHING');
+      } else if (stages.includes('FINISHING') && !stages.includes('BAND_SAW')) {
+        stages.push('BAND_SAW');
       }
       return stages;
     })(),
@@ -124,6 +132,10 @@ export async function getCurrentAppUser(forceRefresh = false): Promise<AppUserPr
       role: isAdmin ? 'Admin' : (meta.role || 'Viewer'),
       user_group: isAdmin ? 'admin' : (meta.user_group || 'user'),
       work_center: meta.work_center || 'ALL',
+      permissions: meta.permissions,
+      allowed_stages: meta.allowed_stages,
+      default_stage: meta.default_stage,
+      user_metadata: meta,
       active: true,
     });
     cachedUser = profile;
@@ -135,7 +147,28 @@ export async function getCurrentAppUser(forceRefresh = false): Promise<AppUserPr
     cachedUser = null;
     return null;
   }
-  const profile = mapAppUser(data);
+
+  // Merge app_users table row with auth user_metadata so permissions and custom assignments are fully retained
+  const meta = auth.user.user_metadata || {};
+  const appMeta = auth.user.app_metadata || {};
+  const isAdmin =
+    data.role === 'Admin' ||
+    data.user_group === 'admin' ||
+    meta.role === 'Admin' ||
+    meta.user_group === 'admin' ||
+    appMeta.role === 'Admin' ||
+    appMeta.role === 'admin' ||
+    meta.is_admin === true;
+
+  const profile = mapAppUser({
+    ...meta,
+    ...data,
+    user_metadata: meta,
+    user_group: isAdmin ? 'admin' : (data.user_group || meta.user_group),
+    permissions: data.permissions || meta.permissions,
+    allowed_stages: data.allowed_stages || meta.allowed_stages,
+    default_stage: data.default_stage || meta.default_stage,
+  });
   cachedUser = profile;
   cachedUserTimestamp = Date.now();
   return profile;
