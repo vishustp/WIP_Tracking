@@ -196,13 +196,13 @@ export default async function Dashboard() {
       const rejMt = od > 0 && wt > 0 ? mtFromMtr(rejMtr, od, wt) : 0;
 
       const dateObj = new Date(pl.created_at || pl.process_date);
-      const timeStr = !isNaN(dateObj.getTime())
-        ? dateObj.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-        : '—';
+      const dateStr = !isNaN(dateObj.getTime())
+        ? dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }).replace(/ /g, '-')
+        : (pl.process_date || '—');
 
       return {
         id: pl.id,
-        time: timeStr,
+        date: dateStr,
         stage: pl.process_stages?.stage_name || pl.process_stages?.stage_code || 'Stage',
         woNo: wo?.work_order_no || '—',
         qtyMt: outMt > 0 ? outMt.toFixed(1) : String(outMtr),

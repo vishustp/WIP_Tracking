@@ -97,7 +97,7 @@ type PendingRow = {
 
 export type RecentProductionItem = {
   id: string;
-  time: string;
+  date: string;
   stage: string;
   woNo: string;
   qtyMt: string;
@@ -124,9 +124,8 @@ interface Props {
   trendData?: TrendDataPoint[];
 }
 
-// 7 Real Canonical Work Centers in the Project Flow
-const CANONICAL_WORK_CENTERS = [
-  { code: 'ROLLING', name: 'Rolling', fullName: 'Hot Rolling Mill', icon: Flame, color: '#ef4444', badgeBg: 'bg-rose-50/90 border-rose-200 text-rose-900' },
+// 6 Real Canonical Post-Rolling WIP Work Centers (Rolling is feeder stage, WIP can't be at Rolling)
+const CANONICAL_WIP_WORK_CENTERS = [
   { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow HT', fullName: 'Hollow Heat Treatment', icon: Flame, color: '#f97316', badgeBg: 'bg-orange-50/90 border-orange-200 text-orange-900' },
   { code: 'DRAW', name: 'Draw', fullName: 'Cold Draw Bench', icon: Wrench, color: '#3b82f6', badgeBg: 'bg-blue-50/90 border-blue-200 text-blue-900' },
   { code: 'HEAT_TREATMENT', name: 'Heat Treatment', fullName: 'Final Heat Treatment', icon: Flame, color: '#10b981', badgeBg: 'bg-emerald-50/90 border-emerald-200 text-emerald-900' },
@@ -136,9 +135,11 @@ const CANONICAL_WORK_CENTERS = [
 ];
 
 export default function DashboardClient({ kpi, wip, pending, recentProduction = [], trendData = [] }: Props) {
-  // 1. Calculate Real Total Plant WIP MT strictly from active data
+  // 1. Calculate Real Total Plant WIP MT strictly from active post-rolling data
   const totalPlantWipMt = useMemo(() => {
     const rawSum = wip.reduce((acc, r) => {
+      const stage = (r.stage_code || '').toUpperCase();
+      if (stage.includes('ROLL')) return acc; // Exclude rolling
       const mtr = Number(r.current_wip || 0);
       const od = Number(r.size_od || 0);
       const wt = Number(r.size_wt || 0);
@@ -147,10 +148,9 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
     return Number(kpi?.total_wip_mt ?? rawSum);
   }, [kpi, wip]);
 
-  // 2. Real WIP by Stage strictly across the 7 Project Work Centers
+  // 2. Real WIP by Stage strictly across the 6 Post-Rolling Work Centers
   const stageWipMap = useMemo(() => {
     const map: Record<string, { mt: number; pcs: number; mtr: number }> = {
-      ROLLING: { mt: 0, pcs: 0, mtr: 0 },
       HOLLOW_HEAT_TREATMENT: { mt: 0, pcs: 0, mtr: 0 },
       DRAW: { mt: 0, pcs: 0, mtr: 0 },
       HEAT_TREATMENT: { mt: 0, pcs: 0, mtr: 0 },
@@ -162,8 +162,7 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
     for (const r of wip) {
       const rawCode = (r.stage_code || '').toUpperCase();
       let key = '';
-      if (rawCode.includes('ROLL')) key = 'ROLLING';
-      else if (rawCode.includes('HOLLOW') || rawCode === 'HTC') key = 'HOLLOW_HEAT_TREATMENT';
+      if (rawCode.includes('HOLLOW') || rawCode === 'HTC') key = 'HOLLOW_HEAT_TREATMENT';
       else if (rawCode.includes('DRAW') || rawCode.includes('PILGER')) key = 'DRAW';
       else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') key = 'HEAT_TREATMENT';
       else if (rawCode.includes('SAW') || rawCode.includes('CUT')) key = 'BAND_SAW';
@@ -178,7 +177,6 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
         const mt = Number(r.current_wip_mt ?? (od > 0 && wt > 0 ? mtFromMtr(mtr, od, wt) : 0));
         map[key].mt += mt;
         map[key].pcs += pcs;
-        map[key].mtr += mtr;
       }
     }
     return map;
@@ -240,9 +238,9 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
     ];
   }, [totalPlantWipMt, kpi, pending]);
 
-  // 4. Row 2: 7 Real Work Centers in Pipe Manufacturing Sequence
+  // 4. Row 2: 6 Real Post-Rolling Work Centers in Pipe Manufacturing Sequence
   const pipelineStages = useMemo(() => {
-    return CANONICAL_WORK_CENTERS.map((wc) => {
+    return CANONICAL_WIP_WORK_CENTERS.map((wc) => {
       const data = stageWipMap[wc.code] || { mt: 0, pcs: 0, mtr: 0 };
       return {
         ...wc,
@@ -253,10 +251,10 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
     });
   }, [stageWipMap]);
 
-  // 5. Row 3: Donut Chart Data (Distribution across project work centers)
+  // 5. Row 3: Donut Chart Data (Distribution across post-rolling WIP work centers)
   const distributionData = useMemo(() => {
     const totalMt = totalPlantWipMt > 0 ? totalPlantWipMt : 1;
-    return CANONICAL_WORK_CENTERS.map((wc) => {
+    return CANONICAL_WIP_WORK_CENTERS.map((wc) => {
       const stageMt = stageWipMap[wc.code]?.mt || 0;
       const pctNum = (stageMt / totalMt) * 100;
       return {
@@ -269,9 +267,9 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
     }).filter((d) => totalPlantWipMt === 0 || d.mt > 0);
   }, [stageWipMap, totalPlantWipMt]);
 
-  // 6. Row 3: Ranked Top Bottlenecks among Project Work Centers
+  // 6. Row 3: Ranked Top Bottlenecks among Post-Rolling Work Centers
   const rankedBottlenecks = useMemo(() => {
-    const sorted = [...CANONICAL_WORK_CENTERS]
+    const sorted = [...CANONICAL_WIP_WORK_CENTERS]
       .map((wc) => ({
         stage: wc.fullName,
         shortStage: wc.name,
@@ -397,7 +395,7 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
             <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
               <span>WIP by Process Stage</span>
               <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-                7 Canonical Work Centers
+                6 Post-Rolling Work Centers
               </span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -531,10 +529,10 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
                     contentStyle={{ borderRadius: '8px', fontSize: '11px', border: '1px solid #e2e8f0' }}
                     formatter={(v: any, n: any) => [`${formatNum(v, 1)} MT`, n]}
                   />
-                  <Line type="monotone" dataKey="rolling" name="Rolling" stroke="#ef4444" strokeWidth={2} dot={{ r: 2.5 }} />
                   <Line type="monotone" dataKey="hollowHt" name="Hollow HT" stroke="#f97316" strokeWidth={2} dot={{ r: 2.5 }} />
                   <Line type="monotone" dataKey="draw" name="Draw" stroke="#3b82f6" strokeWidth={2} dot={{ r: 2.5 }} />
                   <Line type="monotone" dataKey="heatTreatment" name="Heat Treatment" stroke="#10b981" strokeWidth={2} dot={{ r: 2.5 }} />
+                  <Line type="monotone" dataKey="bandSaw" name="Bandsaw" stroke="#eab308" strokeWidth={2} dot={{ r: 2.5 }} />
                   <Line type="monotone" dataKey="finishing" name="Finishing" stroke="#06b6d4" strokeWidth={2} dot={{ r: 2.5 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -548,10 +546,10 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
           </div>
 
           <div className="pt-2 border-t border-slate-100 flex items-center justify-center gap-4 text-[11px] font-semibold text-slate-600 flex-wrap">
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#ef4444]" />Rolling</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#f97316]" />Hollow HT</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#3b82f6]" />Draw</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#10b981]" />Heat Treatment</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#eab308]" />Bandsaw</span>
             <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#06b6d4]" />Finishing</span>
           </div>
         </div>
@@ -680,7 +678,7 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-tight bg-slate-50/70">
-                  <th className="py-2 px-2.5">Time</th>
+                  <th className="py-2 px-2.5">Date</th>
                   <th className="py-2 px-2">Stage</th>
                   <th className="py-2 px-2">WO No</th>
                   <th className="py-2 px-2 text-right">Qty (MT)</th>
@@ -692,7 +690,7 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
                 {recentProduction.length > 0 ? (
                   recentProduction.map((row) => (
                     <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-2 px-2.5 font-mono text-slate-500 whitespace-nowrap">{row.time}</td>
+                      <td className="py-2 px-2.5 font-mono text-slate-600 whitespace-nowrap">{row.date}</td>
                       <td className="py-2 px-2 font-medium text-slate-800 whitespace-nowrap">{row.stage}</td>
                       <td className="py-2 px-2 font-mono font-bold text-slate-900 whitespace-nowrap">{row.woNo}</td>
                       <td className="py-2 px-2 text-right font-mono font-bold text-emerald-600">{row.qtyMt}</td>
