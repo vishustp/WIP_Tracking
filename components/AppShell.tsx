@@ -144,13 +144,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     router.push(`/reports/tracking?search=${encodeURIComponent(searchQuery.trim())}`);
   };
 
-  // Formatted date widget (matching 27 Sep 2026 / Sunday)
+  // Formatted real-time date widget
   const now = new Date();
-  const formattedDate = '27 Sep 2026';
-  const formattedDay = 'Sunday';
+  const formattedDate = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const formattedDay = now.toLocaleDateString('en-GB', { weekday: 'long' });
 
   return (
-    <div className="min-h-screen bg-[#f4f6fa] text-slate-900 font-sans flex flex-col">
+    <div className="min-h-screen bg-[#f4f6fa] text-slate-900 font-sans flex flex-col antialiased">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -159,13 +159,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </a>
       <GlobalKeyboardNavigation />
 
-      {/* Top Header Bar matching Reference Screenshot */}
+      {/* Top Header Bar matching Reference Screenshot with High-Contrast Typography */}
       <header className="sticky top-0 z-50 flex h-16 w-full items-center justify-between bg-[#0B132B] px-4 sm:px-6 border-b border-slate-800 text-white shrink-0 print:hidden">
         {/* Left: Brand Logo & Title */}
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-3.5 min-w-0">
           <button
             type="button"
-            className="lg:hidden rounded-lg p-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+            className="lg:hidden rounded-lg p-1.5 text-slate-200 hover:bg-slate-800 hover:text-white transition"
             onClick={() => setOpen(true)}
             aria-label="Open navigation menu"
           >
@@ -173,19 +173,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </button>
 
           {/* RASHMI GROUP Logo */}
-          <div className="flex flex-col items-start leading-none shrink-0 cursor-pointer" onClick={() => router.push('/dashboard')}>
-            <span className="text-red-500 font-black text-lg tracking-wider">RASHMI</span>
-            <span className="text-white text-[9px] font-bold tracking-widest pl-0.5">GROUP</span>
+          <div className="flex flex-col items-start leading-none shrink-0 cursor-pointer select-none" onClick={() => router.push('/dashboard')}>
+            <span className="text-red-500 font-black text-xl tracking-wider leading-none">RASHMI</span>
+            <span className="text-white text-[10px] font-bold tracking-widest pl-0.5 mt-0.5">GROUP</span>
           </div>
 
-          <div className="h-7 w-[1px] bg-slate-700 mx-2 hidden sm:block shrink-0" />
+          <div className="h-8 w-[1px] bg-slate-700/80 mx-2 hidden sm:block shrink-0" />
 
           {/* Title & Division */}
           <div className="hidden sm:flex flex-col min-w-0">
-            <span className="font-bold text-sm text-white tracking-tight leading-tight truncate">
+            <span className="font-bold text-base text-white tracking-tight leading-tight truncate">
               Seamless WIP Tracking
             </span>
-            <span className="text-[11px] text-slate-400 font-normal leading-tight truncate">
+            <span className="text-xs text-slate-300 font-normal leading-tight truncate">
               Rashmi Green Hydrogen Steel Pvt. Ltd.
             </span>
           </div>
@@ -194,20 +194,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Center: Global Search Input Pill */}
         <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center justify-center flex-1 max-w-md mx-6">
           <div className="relative w-full">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 pointer-events-none" />
             <input
               type="text"
               placeholder="Search Work Order / Grade / Size / Heat / Customer..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-800/90 text-slate-100 placeholder:text-slate-400 text-xs rounded-lg pl-9 pr-8 py-2 border border-slate-700/80 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition"
+              className="w-full bg-slate-800/90 text-white placeholder:text-slate-300 text-sm rounded-lg pl-9 pr-8 py-2 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-normal"
             />
             <button
               type="submit"
-              className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-200"
+              className="absolute right-2.5 top-2.5 text-slate-300 hover:text-white"
               aria-label="Submit search"
             >
-              <Search className="h-3.5 w-3.5" />
+              <Search className="h-4 w-4" />
             </button>
           </div>
         </form>
@@ -215,11 +215,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Right: Date Widget + Notification Bell + User Profile */}
         <div className="flex items-center gap-4 shrink-0">
           {/* Calendar Widget */}
-          <div className="hidden lg:flex items-center gap-2 text-right">
-            <Calendar className="h-4 w-4 text-slate-300" />
+          <div className="hidden lg:flex items-center gap-2.5 text-right">
+            <Calendar className="h-4 w-4 text-blue-400 shrink-0" />
             <div className="flex flex-col leading-tight">
-              <span className="text-xs font-bold text-slate-100">{formattedDate}</span>
-              <span className="text-[10px] text-slate-400">{formattedDay}</span>
+              <span className="text-xs font-bold text-white tracking-tight">{formattedDate}</span>
+              <span className="text-xs text-slate-300 font-medium">{formattedDay}</span>
             </div>
           </div>
 
@@ -233,31 +233,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-              className="flex items-center gap-2 rounded-lg p-1 hover:bg-slate-800/80 transition cursor-pointer text-left"
+              className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-slate-800/90 transition cursor-pointer text-left"
               aria-expanded={userDropdownOpen}
               aria-label="User account menu"
             >
-              <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">
+              <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs ring-1 ring-white/20">
                 {currentUser?.name?.[0]?.toUpperCase() || 'F'}
               </div>
               <div className="hidden xl:flex flex-col leading-tight">
-                <span className="text-xs font-bold text-white truncate max-w-[100px]">
+                <span className="text-xs font-bold text-white leading-tight">
                   {currentUser?.name || 'Finishing'}
                 </span>
-                <span className="text-[10px] text-slate-400 truncate max-w-[100px]">
+                <span className="text-xs text-slate-300 font-medium leading-tight">
                   {currentUser?.role_title || 'Production'}
                 </span>
               </div>
-              <ChevronDown className="h-3.5 w-3.5 text-slate-400 hidden xl:block" />
+              <ChevronDown className="h-3.5 w-3.5 text-slate-300 hidden xl:block" />
             </button>
 
             {/* User Dropdown */}
             {userDropdownOpen && (
               <div className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-800 bg-[#0F172A] p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95 text-xs text-white">
                 <div className="px-2.5 py-2 border-b border-slate-800">
-                  <div className="font-bold text-white">{currentUser?.name || currentUser?.email || 'Finishing Operator'}</div>
-                  <div className="text-[11px] text-slate-400 font-mono">{currentUser?.email || 'finishing@rashmigroup.com'}</div>
-                  <div className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-800">
+                  <div className="font-bold text-white text-sm">{currentUser?.name || currentUser?.email || 'Finishing Operator'}</div>
+                  <div className="text-xs text-slate-300 font-mono mt-0.5">{currentUser?.email || 'finishing@rashmigroup.com'}</div>
+                  <div className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-950 text-blue-300 border border-blue-800">
                     {currentUser?.role_title || 'Production'} ({userGroup.toUpperCase()})
                   </div>
                 </div>
@@ -266,7 +266,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <button
                     type="button"
                     onClick={() => { router.push('/profile'); setUserDropdownOpen(false); }}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition cursor-pointer"
+                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-200 hover:bg-slate-800 hover:text-white transition cursor-pointer text-xs"
                   >
                     <User className="h-4 w-4 text-blue-400" />
                     <span>User Profile & Security</span>
@@ -276,7 +276,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <button
                       type="button"
                       onClick={() => { router.push('/admin'); setUserDropdownOpen(false); }}
-                      className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition cursor-pointer"
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-200 hover:bg-slate-800 hover:text-white transition cursor-pointer text-xs"
                     >
                       <ShieldCheck className="h-4 w-4 text-emerald-400" />
                       <span>Admin Control Panel</span>
@@ -286,7 +286,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <button
                     type="button"
                     onClick={() => { router.push('/admin/spec-master'); setUserDropdownOpen(false); }}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition cursor-pointer"
+                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-200 hover:bg-slate-800 hover:text-white transition cursor-pointer text-xs"
                   >
                     <Beaker className="h-4 w-4 text-amber-400" />
                     <span>Material Spec Master</span>
@@ -297,7 +297,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <button
                     type="button"
                     onClick={signOut}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 transition cursor-pointer font-medium"
+                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-300 hover:bg-rose-950/40 hover:text-rose-200 transition cursor-pointer font-semibold text-xs"
                   >
                     <LogOut className="h-4 w-4" />
                     <span>Sign Out</span>
@@ -314,38 +314,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Mobile backdrop */}
         {open && (
           <div
-            className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden"
+            className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-xs lg:hidden"
             onClick={() => setOpen(false)}
             aria-hidden="true"
           />
         )}
 
-        {/* Sidebar matching Dark Navy reference image */}
+        {/* Sidebar matching Dark Navy reference image with enhanced width & clear fonts */}
         <aside
-          className={`fixed top-16 bottom-0 left-0 z-40 flex w-60 flex-col bg-[#0B132B] border-r border-slate-800/90 text-white transition-transform duration-200 ease-out lg:translate-x-0 print:hidden ${
+          className={`fixed top-16 bottom-0 left-0 z-40 flex w-64 flex-col bg-[#0B132B] border-r border-slate-800/90 text-white transition-transform duration-200 ease-out lg:translate-x-0 print:hidden ${
             open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
           }`}
         >
-          <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 lg:hidden">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Navigation Menu</span>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 lg:hidden">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Navigation Menu</span>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded p-1 text-slate-400 hover:text-white hover:bg-slate-800"
+              className="rounded p-1 text-slate-300 hover:text-white hover:bg-slate-800"
             >
-              <X size={16} />
+              <X size={18} />
             </button>
           </div>
 
-          <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-4 text-xs font-medium">
+          <nav className="flex-1 overflow-y-auto px-3.5 py-3 space-y-4 text-sm font-medium">
             {visibleSections.map((section, sIdx) => (
               <div key={section.label || `sec-${sIdx}`} className="space-y-1">
                 {section.label && (
-                  <div className="px-3 pt-2 pb-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+                  <div className="px-3 pt-2.5 pb-1 text-xs font-bold tracking-wider text-slate-300 uppercase">
                     {section.label}
                   </div>
                 )}
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   {section.items.map((item) => {
                     const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
                     const Icon = item.icon;
@@ -354,14 +354,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         key={item.href}
                         onClick={() => { router.push(item.href); setOpen(false); }}
                         aria-current={active ? 'page' : undefined}
-                        className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                        className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 cursor-pointer ${
                           active
-                            ? 'bg-blue-600 text-white shadow-sm font-bold'
-                            : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                            ? 'bg-blue-600 text-white shadow-sm font-semibold'
+                            : 'text-slate-200 hover:bg-slate-800/90 hover:text-white'
                         }`}
                       >
-                        <Icon className={`h-4 w-4 shrink-0 transition-transform ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`} />
-                        <span className="truncate">{item.label}</span>
+                        <Icon className={`h-4 w-4 shrink-0 transition-transform ${active ? 'text-white' : 'text-slate-300 group-hover:text-white'}`} />
+                        <span className="truncate font-medium">{item.label}</span>
                       </button>
                     );
                   })}
@@ -371,17 +371,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           {/* Sidebar Footer */}
-          <div className="p-3 border-t border-slate-800/80 text-[11px] text-slate-500 font-mono flex items-center justify-between">
-            <span>RASHMI STEEL MILL</span>
-            <span className="text-emerald-400 flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="p-3 border-t border-slate-800/80 text-xs text-slate-300 font-mono flex items-center justify-between">
+            <span className="font-semibold text-slate-200">RASHMI STEEL MILL</span>
+            <span className="text-emerald-400 font-bold flex items-center gap-1.5 text-xs">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
               ONLINE
             </span>
           </div>
         </aside>
 
         {/* Content Area */}
-        <div className="flex-1 lg:pl-60 min-w-0 flex flex-col bg-[#f4f6fa]">
+        <div className="flex-1 lg:pl-64 min-w-0 flex flex-col bg-[#f4f6fa]">
           <main id="main-content" className="flex-1 w-full p-4 sm:p-5 lg:p-6 print:p-0 print:m-0 print:bg-white">
             {children}
           </main>
