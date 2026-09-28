@@ -35,6 +35,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 interface WorkOrder {
   id: string;
@@ -244,14 +245,15 @@ export default function WorkOrderTrackingClient() {
     void fetchData();
   }, [fetchData]);
 
-  // Read URL search query param if opened from Aging or Dashboard
+  const searchParams = useSearchParams();
+
+  // Read URL search query param whenever searchParams changes or on mount
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const q = params.get('wo') || params.get('search');
-      if (q) setFilterWo(q);
+    const q = searchParams?.get('wo') || searchParams?.get('search');
+    if (q) {
+      setFilterWo(q);
     }
-  }, []);
+  }, [searchParams]);
 
   // Campaign Mapping
   const campaignMeta = useMemo(() => {
@@ -351,18 +353,23 @@ export default function WorkOrderTrackingClient() {
     return workOrders.filter((wo) => rolledWoIdSet.has(wo.id)).length;
   }, [workOrders, rolledWoIdSet]);
 
-  // Filtered Work Orders: ONLY work for which rolling has been done will be shown
+  // Filtered Work Orders: ONLY work for which rolling has been done will be shown (unless explicitly searched)
   const filteredWorkOrders = useMemo(() => {
+    const isExplicitSearch = Boolean(deferredFilterWo.trim());
+
     return workOrders.filter((wo) => {
-      // MANDATORY RULE: ONLY work for which rolling has been done will be shown
-      if (!rolledWoIdSet.has(wo.id)) {
+      // If user is explicitly searching, allow finding matching orders across the whole catalog
+      if (!isExplicitSearch && !rolledWoIdSet.has(wo.id)) {
         return false;
       }
 
-      // 1. Work Order No Filter
+      // 1. Work Order / Customer / Grade Search Filter
       if (deferredFilterWo.trim()) {
-        const match = wo.work_order_no.toLowerCase().includes(deferredFilterWo.trim().toLowerCase());
-        if (!match) return false;
+        const query = deferredFilterWo.trim().toLowerCase();
+        const matchWo = wo.work_order_no.toLowerCase().includes(query);
+        const matchCust = (wo.customer_name || '').toLowerCase().includes(query);
+        const matchGrade = (wo.grade || '').toLowerCase().includes(query);
+        if (!matchWo && !matchCust && !matchGrade) return false;
       }
 
       // 2. Customer Filter
