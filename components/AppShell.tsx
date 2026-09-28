@@ -159,13 +159,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </a>
       <GlobalKeyboardNavigation />
 
-      {/* Top Header Bar matching Reference Screenshot with High-Contrast Typography */}
-      <header className="sticky top-0 z-50 flex h-16 w-full items-center justify-between bg-[#0B132B] px-4 sm:px-6 border-b border-slate-800 text-white shrink-0 print:hidden">
+      {/* Top Header Bar: Sleek Steel-Blue Theme */}
+      <header className="sticky top-0 z-50 flex h-16 w-full items-center justify-between bg-[#16325C] px-4 sm:px-6 border-b border-[#204377] text-white shrink-0 shadow-xs print:hidden">
         {/* Left: Brand Logo & Title */}
         <div className="flex items-center gap-3.5 min-w-0">
           <button
             type="button"
-            className="lg:hidden rounded-lg p-1.5 text-slate-200 hover:bg-slate-800 hover:text-white transition"
+            className="lg:hidden rounded-lg p-1.5 text-blue-100 hover:bg-white/10 hover:text-white transition"
             onClick={() => setOpen(true)}
             aria-label="Open navigation menu"
           >
@@ -178,14 +178,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-white text-[10px] font-bold tracking-widest pl-0.5 mt-0.5">GROUP</span>
           </div>
 
-          <div className="h-8 w-[1px] bg-slate-700/80 mx-2 hidden sm:block shrink-0" />
+          <div className="h-8 w-[1px] bg-blue-300/30 mx-2 hidden sm:block shrink-0" />
 
           {/* Title & Division */}
           <div className="hidden sm:flex flex-col min-w-0">
             <span className="font-bold text-base text-white tracking-tight leading-tight truncate">
               Seamless WIP Tracking
             </span>
-            <span className="text-xs text-slate-300 font-normal leading-tight truncate">
+            <span className="text-xs text-blue-100 font-normal leading-tight truncate">
               Rashmi Green Hydrogen Steel Pvt. Ltd.
             </span>
           </div>
@@ -194,17 +194,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Center: Global Search Input Pill */}
         <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center justify-center flex-1 max-w-md mx-6">
           <div className="relative w-full">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 pointer-events-none" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-blue-200 pointer-events-none" />
             <input
               type="text"
               placeholder="Search Work Order / Grade / Size / Heat / Customer..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-800/90 text-white placeholder:text-slate-300 text-sm rounded-lg pl-9 pr-8 py-2 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition font-normal"
+              className="w-full bg-[#0F2444]/70 text-white placeholder:text-blue-200/80 text-sm rounded-lg pl-9 pr-8 py-2 border border-blue-400/30 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-sky-400 transition font-normal"
             />
             <button
               type="submit"
-              className="absolute right-2.5 top-2.5 text-slate-300 hover:text-white"
+              className="absolute right-2.5 top-2.5 text-blue-200 hover:text-white"
               aria-label="Submit search"
             >
               <Search className="h-4 w-4" />
@@ -216,10 +216,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-4 shrink-0">
           {/* Calendar Widget */}
           <div className="hidden lg:flex items-center gap-2.5 text-right">
-            <Calendar className="h-4 w-4 text-blue-400 shrink-0" />
+            <Calendar className="h-4 w-4 text-sky-300 shrink-0" />
             <div className="flex flex-col leading-tight">
               <span className="text-xs font-bold text-white tracking-tight">{formattedDate}</span>
-              <span className="text-xs text-slate-300 font-medium">{formattedDay}</span>
+              <span className="text-xs text-blue-100 font-medium">{formattedDay}</span>
             </div>
           </div>
 
@@ -233,31 +233,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-              className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-slate-800/90 transition cursor-pointer text-left"
+              className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-white/10 transition cursor-pointer text-left"
               aria-expanded={userDropdownOpen}
               aria-label="User account menu"
             >
-              <div className="h-8 w-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs ring-1 ring-white/20">
+              <div className="h-8 w-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs ring-2 ring-white/20">
                 {currentUser?.name?.[0]?.toUpperCase() || 'F'}
               </div>
               <div className="hidden xl:flex flex-col leading-tight">
                 <span className="text-xs font-bold text-white leading-tight">
                   {currentUser?.name || 'Finishing'}
                 </span>
-                <span className="text-xs text-slate-300 font-medium leading-tight">
+                <span className="text-xs text-blue-100 font-medium leading-tight">
                   {currentUser?.role_title || 'Production'}
                 </span>
               </div>
-              <ChevronDown className="h-3.5 w-3.5 text-slate-300 hidden xl:block" />
+              <ChevronDown className="h-3.5 w-3.5 text-blue-200 hidden xl:block" />
             </button>
 
             {/* User Dropdown */}
             {userDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-800 bg-[#0F172A] p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95 text-xs text-white">
-                <div className="px-2.5 py-2 border-b border-slate-800">
-                  <div className="font-bold text-white text-sm">{currentUser?.name || currentUser?.email || 'Finishing Operator'}</div>
-                  <div className="text-xs text-slate-300 font-mono mt-0.5">{currentUser?.email || 'finishing@rashmigroup.com'}</div>
-                  <div className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-950 text-blue-300 border border-blue-800">
+              <div className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95 text-xs text-slate-800">
+                <div className="px-2.5 py-2 border-b border-slate-100">
+                  <div className="font-bold text-slate-900 text-sm">{currentUser?.name || currentUser?.email || 'Finishing Operator'}</div>
+                  <div className="text-xs text-slate-500 font-mono mt-0.5">{currentUser?.email || 'finishing@rashmigroup.com'}</div>
+                  <div className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
                     {currentUser?.role_title || 'Production'} ({userGroup.toUpperCase()})
                   </div>
                 </div>
@@ -266,9 +266,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <button
                     type="button"
                     onClick={() => { router.push('/profile'); setUserDropdownOpen(false); }}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-200 hover:bg-slate-800 hover:text-white transition cursor-pointer text-xs"
+                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer text-xs"
                   >
-                    <User className="h-4 w-4 text-blue-400" />
+                    <User className="h-4 w-4 text-blue-600" />
                     <span>User Profile & Security</span>
                   </button>
 
@@ -276,9 +276,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <button
                       type="button"
                       onClick={() => { router.push('/admin'); setUserDropdownOpen(false); }}
-                      className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-200 hover:bg-slate-800 hover:text-white transition cursor-pointer text-xs"
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer text-xs"
                     >
-                      <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                      <ShieldCheck className="h-4 w-4 text-emerald-600" />
                       <span>Admin Control Panel</span>
                     </button>
                   )}
@@ -286,18 +286,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   <button
                     type="button"
                     onClick={() => { router.push('/admin/spec-master'); setUserDropdownOpen(false); }}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-200 hover:bg-slate-800 hover:text-white transition cursor-pointer text-xs"
+                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer text-xs"
                   >
-                    <Beaker className="h-4 w-4 text-amber-400" />
+                    <Beaker className="h-4 w-4 text-amber-600" />
                     <span>Material Spec Master</span>
                   </button>
                 </div>
 
-                <div className="pt-1.5 mt-1 border-t border-slate-800">
+                <div className="pt-1.5 mt-1 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={signOut}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-300 hover:bg-rose-950/40 hover:text-rose-200 transition cursor-pointer font-semibold text-xs"
+                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition cursor-pointer font-semibold text-xs"
                   >
                     <LogOut className="h-4 w-4" />
                     <span>Sign Out</span>
@@ -314,34 +314,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Mobile backdrop */}
         {open && (
           <div
-            className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-xs lg:hidden"
+            className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs lg:hidden"
             onClick={() => setOpen(false)}
             aria-hidden="true"
           />
         )}
 
-        {/* Sidebar matching Dark Navy reference image with enhanced width & clear fonts */}
+        {/* Sidebar: Crisp White Theme with Royal Blue Active Highlights */}
         <aside
-          className={`fixed top-16 bottom-0 left-0 z-40 flex w-64 flex-col bg-[#0B132B] border-r border-slate-800/90 text-white transition-transform duration-200 ease-out lg:translate-x-0 print:hidden ${
+          className={`fixed top-16 bottom-0 left-0 z-40 flex w-64 flex-col bg-white border-r border-slate-200/90 text-slate-800 transition-transform duration-200 ease-out lg:translate-x-0 print:hidden ${
             open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
           }`}
         >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 lg:hidden">
-            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Navigation Menu</span>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50/70 lg:hidden">
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Navigation Menu</span>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded p-1 text-slate-300 hover:text-white hover:bg-slate-800"
+              className="rounded p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-200"
             >
               <X size={18} />
             </button>
           </div>
 
-          <nav className="flex-1 overflow-y-auto px-3.5 py-3 space-y-4 text-sm font-medium">
+          <nav className="flex-1 overflow-y-auto px-3.5 py-3.5 space-y-4 text-sm font-medium">
             {visibleSections.map((section, sIdx) => (
               <div key={section.label || `sec-${sIdx}`} className="space-y-1">
                 {section.label && (
-                  <div className="px-3 pt-2.5 pb-1 text-xs font-bold tracking-wider text-slate-300 uppercase">
+                  <div className="px-3 pt-2.5 pb-1 text-xs font-bold tracking-wider text-slate-400 uppercase">
                     {section.label}
                   </div>
                 )}
@@ -356,11 +356,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         aria-current={active ? 'page' : undefined}
                         className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 cursor-pointer ${
                           active
-                            ? 'bg-blue-600 text-white shadow-sm font-semibold'
-                            : 'text-slate-200 hover:bg-slate-800/90 hover:text-white'
+                            ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                            : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                         }`}
                       >
-                        <Icon className={`h-4 w-4 shrink-0 transition-transform ${active ? 'text-white' : 'text-slate-300 group-hover:text-white'}`} />
+                        <Icon className={`h-4 w-4 shrink-0 transition-transform ${active ? 'text-white' : 'text-slate-500 group-hover:text-slate-800'}`} />
                         <span className="truncate font-medium">{item.label}</span>
                       </button>
                     );
@@ -371,10 +371,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           {/* Sidebar Footer */}
-          <div className="p-3 border-t border-slate-800/80 text-xs text-slate-300 font-mono flex items-center justify-between">
-            <span className="font-semibold text-slate-200">RASHMI STEEL MILL</span>
-            <span className="text-emerald-400 font-bold flex items-center gap-1.5 text-xs">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="p-3.5 border-t border-slate-200 bg-slate-50/80 text-xs text-slate-600 font-mono flex items-center justify-between">
+            <span className="font-semibold text-slate-700">RASHMI STEEL MILL</span>
+            <span className="text-emerald-600 font-bold flex items-center gap-1.5 text-xs">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               ONLINE
             </span>
           </div>
