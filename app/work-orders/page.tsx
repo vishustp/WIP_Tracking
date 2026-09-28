@@ -455,7 +455,7 @@ export default function WorkOrders() {
   };
 
   return (
-    <RouteAccessGuard allowedGroups={['admin', 'super_user']} formTitle="Work Orders Directory">
+    <RouteAccessGuard allowedGroups={['admin', 'super_user', 'user']} formTitle="Work Orders Directory">
       <div className="space-y-5">
       {/* Top Header */}
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">

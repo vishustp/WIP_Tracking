@@ -128,6 +128,14 @@ describe('Permissions & Form Visibility Suite', () => {
       expect(access.isAllowed).toBe(true);
       expect(access.canEdit).toBe(true);
     });
+
+    it('resolves FormAccessResult with full edit access for Diversion Plan form', () => {
+      const access = getFormAccess(finishingUser, 'diversion');
+      expect(access.isAllowed).toBe(true);
+      expect(access.mode).toBe('full');
+      expect(access.canSubmit).toBe(true);
+      expect(access.canEdit).toBe(true);
+    });
   });
 
   describe('Joint Furnace Work Centers Rule', () => {

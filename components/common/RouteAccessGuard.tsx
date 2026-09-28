@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
-import { usePermissions, GROUP_CONFIGS } from '@/lib/permissions';
+import { useRouter, usePathname } from 'next/navigation';
+import { usePermissions, GROUP_CONFIGS, isRouteVisible } from '@/lib/permissions';
 import { ShieldAlert, Factory, BarChart3, Lock, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -18,9 +18,12 @@ export default function RouteAccessGuard({
   formTitle = 'This Form',
 }: RouteAccessGuardProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, group, isUserGroup } = usePermissions();
 
-  const isAllowed = allowedGroups.includes(group);
+  // Dynamic granular permission check: custom permissions supersede static group whitelist
+  const isPermittedByRoute = user && pathname ? isRouteVisible(user, pathname) : false;
+  const isAllowed = isPermittedByRoute || allowedGroups.includes(group);
 
   if (isAllowed) {
     return <>{children}</>;
