@@ -5,6 +5,7 @@ import type { AppUserProfile, UserGroup, UserRole, AccessLevel, FormPermissions 
 import { getCurrentAppUser } from './users/client';
 import { createClient } from './supabase/client';
 import { StageCode } from '@/types';
+import { useOptionalUserSession } from '@/contexts/UserSessionContext';
 
 export const STAGE_TO_PERMISSION_KEY: Record<string, keyof FormPermissions> = {
   ROLLING: 'production_rolling',
@@ -939,24 +940,34 @@ export function getFormAccess(
 }
 
 export function usePermissions() {
-  const [user, setUser] = useState<AppUserProfile | null>(null);
+  const session = useOptionalUserSession();
 
-  const refreshUser = useCallback(async () => {
+  const [fallbackUser, setFallbackUser] = useState<AppUserProfile | null>(null);
+  const [fallbackLoading, setFallbackLoading] = useState(true);
+
+  const refreshFallbackUser = useCallback(async () => {
     try {
-      setUser(await getCurrentAppUser());
+      setFallbackUser(await getCurrentAppUser());
     } catch {
-      setUser(null);
+      setFallbackUser(null);
+    } finally {
+      setFallbackLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void refreshUser();
+    if (session) return;
+    void refreshFallbackUser();
     const supabase = createClient();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      void refreshUser();
+      void refreshFallbackUser();
     });
     return () => subscription.unsubscribe();
-  }, [refreshUser]);
+  }, [session, refreshFallbackUser]);
+
+  const user = session ? session.profile : fallbackUser;
+  const isLoading = session ? session.isLoading : fallbackLoading;
+  const refreshUser = session ? session.refreshUser : refreshFallbackUser;
 
   const group = (user?.group || (user?.role === 'admin' ? 'admin' : user?.role === 'manager' ? 'super_user' : 'user')) as UserGroup;
   const groupConfig = getGroupConfig(group);
@@ -1034,6 +1045,7 @@ export function usePermissions() {
     isAdmin: group === 'admin',
     isSuperUser: group === 'super_user',
     isUserGroup: group === 'user',
+    isLoading,
     canDeleteForStage,
     canEditForStage,
     canCreateForStage,

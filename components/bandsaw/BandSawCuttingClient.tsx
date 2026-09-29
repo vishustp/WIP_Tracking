@@ -102,7 +102,7 @@ export default function BandSawCuttingClient() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     fetchData();

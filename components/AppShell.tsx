@@ -4,15 +4,15 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { AppUserProfile, UserGroup } from '@/lib/users/types';
-import { getCurrentAppUser } from '@/lib/users/client';
 import { isRouteVisible, isRouteVisibleForGroup } from '@/lib/permissions';
+import { useUserSession } from '@/contexts/UserSessionContext';
 import {
   BarChart3, ClipboardList, Factory, FileSpreadsheet,
   LayoutDashboard, LogOut, Menu, Settings, Shuffle, X, CalendarClock,
   User, ShieldCheck, ChevronDown, Activity, Clock,
   ClipboardCheck, FileText, Beaker, Layers, Scissors, History,
   Search, Calendar, Bell, Users, SlidersHorizontal, AlertTriangle, ScrollText,
-  Palette, Check, Loader2, ChevronRight
+  Palette, Check, Loader2, ChevronRight, Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
@@ -120,7 +120,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
   const [theme, setTheme] = useState<AppTheme>('light');
-  const [currentUser, setCurrentUser] = useState<AppUserProfile | null>(null);
+  const { profile: currentUser, signOut } = useUserSession();
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -133,17 +133,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const themeDropdownRef = useRef<HTMLDivElement>(null);
   const searchContainerRef = useRef<HTMLFormElement>(null);
 
-  const loadUserData = async (force = false) => {
-    try {
-      const u = await getCurrentAppUser(force);
-      setCurrentUser(u);
-    } catch {
-      setCurrentUser(null);
-    }
-  };
-
   useEffect(() => {
-    void loadUserData();
 
     // Load saved theme preference
     try {
@@ -227,17 +217,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [searchQuery]);
 
   if (pathname === '/login') return <>{children}</>;
-
-  const signOut = async () => {
-    try {
-      await createClient().auth.signOut();
-      toast.info('Signed out successfully');
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to sign out');
-    }
-    router.replace('/login');
-    router.refresh();
-  };
 
   const handleSelectTheme = (newTheme: AppTheme) => {
     setTheme(newTheme);

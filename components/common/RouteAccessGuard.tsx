@@ -19,7 +19,19 @@ export default function RouteAccessGuard({
 }: RouteAccessGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, group, isUserGroup } = usePermissions();
+  const { user, group, isUserGroup, isLoading } = usePermissions();
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-4xl py-12 px-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-xs text-center animate-pulse space-y-4">
+          <div className="mx-auto h-12 w-12 rounded-xl bg-slate-100" />
+          <div className="h-6 w-48 bg-slate-200 rounded mx-auto" />
+          <div className="h-4 w-72 bg-slate-100 rounded mx-auto" />
+        </div>
+      </div>
+    );
+  }
 
   // Dynamic granular permission check: custom permissions supersede static group whitelist
   const isPermittedByRoute = user && pathname ? isRouteVisible(user, pathname) : false;

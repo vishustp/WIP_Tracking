@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from 'sonner';
 import AppShell from '@/components/AppShell';
+import { UserSessionProvider } from '@/contexts/UserSessionContext';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -23,7 +24,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="dns-prefetch" href="https://dzhvbftmuwfyuaarsxtk.supabase.co" />
       </head>
       <body className={`${inter.className} antialiased bg-canvas-pattern min-h-screen text-slate-900`}>
-        <AppShell>{children}</AppShell>
+        <UserSessionProvider>
+          <AppShell>{children}</AppShell>
+        </UserSessionProvider>
         <Toaster richColors position="top-right" closeButton duration={4500} />
       </body>
     </html>
