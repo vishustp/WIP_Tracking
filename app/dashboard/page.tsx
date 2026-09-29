@@ -166,7 +166,7 @@ export default async function Dashboard() {
       const avgLen = isRolling
         ? Number(planMh?.mh_avg_length || 4.49)
         : Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : wo?.l1 || 6.0);
-      const calcPcs = pPcs > 0 ? pPcs : (outMtr > 0 && avgLen > 0 ? Math.round(outMtr / avgLen) : 0);
+      const calcPcs = pPcs !== null && pPcs > 0 ? pPcs : (outMtr > 0 && avgLen > 0 ? Math.round(outMtr / avgLen) : 0);
 
       totalProdMt += outMt;
       totalRejMt += rejMt;
