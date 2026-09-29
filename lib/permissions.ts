@@ -228,6 +228,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/admin/spec-master',
     '/spec-master',
     '/reports/pending-orders',
+    '/reports/process-sheet',
     '/reports/wip',
     '/reports/production',
     '/reports/tracking',

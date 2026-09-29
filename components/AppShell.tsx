@@ -76,8 +76,6 @@ const navSections = [
     label: 'OPERATIONS',
     items: [
       { href: '/production', label: 'Production Entry', icon: ClipboardCheck },
-      { href: '/reports/wip', label: 'WIP', icon: Layers },
-      { href: '/reports/production', label: 'Production History', icon: History },
       { href: '/band-saw', label: 'Band Saw Cutting', icon: Scissors },
       { href: '/qc/vdi', label: 'VDI Entries', icon: ClipboardList },
     ],
@@ -94,10 +92,13 @@ const navSections = [
   {
     label: 'REPORTS',
     items: [
-      { href: '/reports/wip', label: 'WIP Matrix', icon: BarChart3 },
+      { href: '/reports/process-sheet', label: 'Process Sheets', icon: ScrollText },
+      { href: '/reports/pending-orders', label: 'Pending Orders', icon: ClipboardList },
+      { href: '/reports/rolling-plans', label: 'Rolling Plan Schedule', icon: CalendarClock },
+      { href: '/reports/wip', label: 'WIP Matrix', icon: Layers },
       { href: '/reports/tracking', label: 'Work Order Tracking', icon: Activity },
-      { href: '/reports/aging', label: 'Aging Report', icon: Clock },
       { href: '/reports/production', label: 'Production Report', icon: Factory },
+      { href: '/reports/aging', label: 'Aging Report', icon: Clock },
       { href: '/reports/diversions', label: 'Rejection Report', icon: AlertTriangle },
     ],
   },
@@ -106,7 +107,6 @@ const navSections = [
     items: [
       { href: '/admin', label: 'Users', icon: Users },
       { href: '/admin/spec-master', label: 'Masters', icon: SlidersHorizontal },
-      { href: '/settings', label: 'Audit Log', icon: ScrollText },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },
