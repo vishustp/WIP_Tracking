@@ -285,5 +285,27 @@ describe("Production Utils Unit Tests", () => {
       const parsedUser = extractBandSawCutsFromRemarks(userTextCorrupted);
       expect(parsedUser.cleanRemarks).toBe("Smooth cut");
     });
+
+    it("Draw mass conservation: conserved drawn MT equals mother hollow rolled MT for equivalent pieces", () => {
+      // 338 pieces drawn from MH 70 x 5.25 at 4.40m length
+      const mhOd = 70;
+      const mhWt = 5.25;
+      const mhLen = 4.40;
+      const pcs = 338;
+      const totalMhMtr = pcs * mhLen;
+      const totalConservedMt = mtFromMtr(totalMhMtr, mhOd, mhWt);
+      expect(totalConservedMt).toBe(12.47);
+
+      // When drawn to 60.3 x 3.91, mass conservation yields elongated length
+      const finOd = 60.3;
+      const finWt = 3.91;
+      const factor = calcElongationFactor(mhOd, mhWt, finOd, finWt);
+      const elongatedLen = Number((mhLen * factor).toFixed(3));
+      const totalDrawnMtr = pcs * elongatedLen;
+      const totalDrawnPipeMt = mtFromMtr(totalDrawnMtr, finOd, finWt);
+      // Drawn pipe MT matches mother hollow MT to within rounding precision
+      expect(totalDrawnPipeMt).toBe(12.47);
+      expect(totalConservedMt).toBe(totalDrawnPipeMt);
+    });
   });
 });

@@ -159,14 +159,28 @@ export default async function Dashboard() {
       const wt = isRolling && planMh?.mh_wt ? Number(planMh.mh_wt) : Number(wo?.size_wt || 0);
       const outMtr = Number(pl.output_qty || 0);
       const rejMtr = Number(pl.rejection_qty || 0);
-      const outMt = od > 0 && wt > 0 ? mtFromMtr(outMtr, od, wt) : 0;
-      const rejMt = od > 0 && wt > 0 ? mtFromMtr(rejMtr, od, wt) : 0;
+      let outMt = od > 0 && wt > 0 ? mtFromMtr(outMtr, od, wt) : 0;
+      let rejMt = od > 0 && wt > 0 ? mtFromMtr(rejMtr, od, wt) : 0;
 
       const { pcs: pPcs } = extractPcsFromRemarks(pl.remarks);
       const avgLen = isRolling
         ? Number(planMh?.mh_avg_length || 4.49)
         : Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : wo?.l1 || 6.0);
       const calcPcs = pPcs !== null && pPcs > 0 ? pPcs : (outMtr > 0 && avgLen > 0 ? Math.round(outMtr / avgLen) : 0);
+
+      // Cold Drawing Elongation & Mass Conservation (AGENTS.md Rule 3):
+      // Each drawn pipe conserves the full steel mass of its rolled mother hollow (Mass_In = Mass_Out).
+      if (isDraw && planMh?.mh_od && planMh?.mh_wt) {
+        const mhOd = Number(planMh.mh_od);
+        const mhWt = Number(planMh.mh_wt);
+        const mhLen = Number(planMh.mh_avg_length || (planMh.mh_l1 && planMh.mh_l2 ? (Number(planMh.mh_l1) + Number(planMh.mh_l2)) / 2 : planMh.mh_l1 || 4.49));
+        if (calcPcs > 0 && mhLen > 0) {
+          const drawnConservedMt = mtFromMtr(calcPcs * mhLen, mhOd, mhWt);
+          if (drawnConservedMt > outMt) {
+            outMt = drawnConservedMt;
+          }
+        }
+      }
 
       totalProdMt += outMt;
       totalRejMt += rejMt;
@@ -232,12 +246,27 @@ export default async function Dashboard() {
 
     recentProduction = sortedLogs.slice(0, 8).map((pl: any) => {
       const wo = woMap.get(pl.work_order_id);
-      const od = Number(wo?.size_od || 0);
-      const wt = Number(wo?.size_wt || 0);
+      const planMh = hierarchyMaps.mhMap.get(pl.work_order_id) || hierarchyMaps.mhMap.get(String(wo?.work_order_no).trim());
+      const rawCode = (pl.process_stages?.stage_code || pl.stage_code || '').toUpperCase();
+      const isRolling = rawCode.includes('ROLL');
+      const isDraw = rawCode.includes('DRAW') || rawCode.includes('PILGER');
+      const od = isRolling && planMh?.mh_od ? Number(planMh.mh_od) : Number(wo?.size_od || 0);
+      const wt = isRolling && planMh?.mh_wt ? Number(planMh.mh_wt) : Number(wo?.size_wt || 0);
       const outMtr = Number(pl.output_qty || 0);
       const rejMtr = Number(pl.rejection_qty || 0);
-      const outMt = od > 0 && wt > 0 ? mtFromMtr(outMtr, od, wt) : 0;
-      const rejMt = od > 0 && wt > 0 ? mtFromMtr(rejMtr, od, wt) : 0;
+      let outMt = od > 0 && wt > 0 ? mtFromMtr(outMtr, od, wt) : 0;
+      let rejMt = od > 0 && wt > 0 ? mtFromMtr(rejMtr, od, wt) : 0;
+
+      const { pcs: pPcs } = extractPcsFromRemarks(pl.remarks);
+      if (isDraw && pPcs !== null && pPcs > 0 && planMh?.mh_od && planMh?.mh_wt) {
+        const mhLen = Number(planMh.mh_avg_length || (planMh.mh_l1 && planMh.mh_l2 ? (Number(planMh.mh_l1) + Number(planMh.mh_l2)) / 2 : planMh.mh_l1 || 4.49));
+        if (mhLen > 0) {
+          const drawnConservedMt = mtFromMtr(pPcs * mhLen, Number(planMh.mh_od), Number(planMh.mh_wt));
+          if (drawnConservedMt > outMt) {
+            outMt = drawnConservedMt;
+          }
+        }
+      }
 
       const dateObj = new Date(pl.created_at || pl.process_date);
       const dateStr = !isNaN(dateObj.getTime())
@@ -293,10 +322,23 @@ export default async function Dashboard() {
 
         if (code && stageTotals[code] !== undefined) {
           const wo = woMap.get(pl.work_order_id);
-          const od = Number(wo?.size_od || 0);
-          const wt = Number(wo?.size_wt || 0);
+          const planMh = hierarchyMaps.mhMap.get(pl.work_order_id) || hierarchyMaps.mhMap.get(String(wo?.work_order_no).trim());
+          const isRolling = code === 'ROLLING';
+          const isDraw = code === 'DRAW';
+          const od = isRolling && planMh?.mh_od ? Number(planMh.mh_od) : Number(wo?.size_od || 0);
+          const wt = isRolling && planMh?.mh_wt ? Number(planMh.mh_wt) : Number(wo?.size_wt || 0);
           const outMtr = Number(pl.output_qty || 0);
-          const outMt = od > 0 && wt > 0 ? mtFromMtr(outMtr, od, wt) : 0;
+          let outMt = od > 0 && wt > 0 ? mtFromMtr(outMtr, od, wt) : 0;
+          const { pcs: pPcs } = extractPcsFromRemarks(pl.remarks);
+          if (isDraw && pPcs !== null && pPcs > 0 && planMh?.mh_od && planMh?.mh_wt) {
+            const mhLen = Number(planMh.mh_avg_length || (planMh.mh_l1 && planMh.mh_l2 ? (Number(planMh.mh_l1) + Number(planMh.mh_l2)) / 2 : planMh.mh_l1 || 4.49));
+            if (mhLen > 0) {
+              const drawnConservedMt = mtFromMtr(pPcs * mhLen, Number(planMh.mh_od), Number(planMh.mh_wt));
+              if (drawnConservedMt > outMt) {
+                outMt = drawnConservedMt;
+              }
+            }
+          }
           stageTotals[code] += outMt;
         }
       }

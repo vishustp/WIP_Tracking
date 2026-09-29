@@ -8,6 +8,7 @@ import { useHistory } from '@/hooks/useHistory';
 import { validateProductionEntry } from '@/lib/productionValidation';
 import {
   calc,
+  calcElongationFactor,
   fmt,
   n,
   mtrFromPcs,
@@ -270,18 +271,28 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         const customAvg = dynL1 > 0 && dynL2 > 0 ? (dynL1 + dynL2) / 2 : dynL1 || dynL2 || 0;
 
         const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
+        const isDrawStage = stage === 'DRAW';
+        const planMh = planMhMap.get(r.work_order_id) || (r.work_order_no ? planMhMap.get(String(r.work_order_no).trim()) : undefined);
+        const mhOd = Number(r.mh_od || planMh?.mh_od || 0);
+        const mhWt = Number(r.mh_wt || planMh?.mh_wt || 0);
+        const finOd = Number(r.od || 0);
+        const finWt = Number(r.wl || 0);
+        const elongationFactor = calcElongationFactor(mhOd, mhWt, finOd, finWt);
+        const mhBaseLen = effectiveMhAvg > 0 ? effectiveMhAvg : 4.49;
+        const elongatedAvg = elongationFactor > 1 ? Number((mhBaseLen * elongationFactor).toFixed(3)) : 0;
+
         const effectiveAvg =
-          isMhStage
+          customAvg > 0
+            ? customAvg
+            : isMhStage
             ? (effectiveMhAvg > 0
                 ? effectiveMhAvg
-                : customAvg > 0
-                ? customAvg
                 : n(r.avg_length) > 0
                 ? n(r.avg_length)
                 : 6.0)
-            : (customAvg > 0
-                ? customAvg
-                : n(r.avg_length) > 0
+            : isDrawStage && elongatedAvg > 0
+            ? elongatedAvg
+            : (n(r.avg_length) > 0
                 ? n(r.avg_length)
                 : 6.0);
 
