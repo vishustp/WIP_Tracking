@@ -181,7 +181,9 @@ export function ProductionHistoryTable({
 
                 const dispOutPcs = Math.round(
                   parsedPcs != null
-                    ? parsedPcs
+                    ? (isMhStage && mhLen > 0 && Math.abs(Number(entry.output_mtr || 0) - parsedPcs * mhLen) > 2
+                        ? Number(entry.output_mtr || 0) / mhLen
+                        : parsedPcs)
                     : isMhStage && mhLen > 0
                     ? Number(entry.output_mtr || 0) / mhLen
                     : Number(entry.output_pcs || 0) > 0
@@ -193,7 +195,9 @@ export function ProductionHistoryTable({
 
                 const dispRejPcs = Math.round(
                   parsedRejPcs != null
-                    ? parsedRejPcs
+                    ? (isMhStage && mhLen > 0 && Math.abs(Number(entry.rejection_mtr || 0) - parsedRejPcs * mhLen) > 2
+                        ? Number(entry.rejection_mtr || 0) / mhLen
+                        : parsedRejPcs)
                     : isMhStage && mhLen > 0
                     ? Number(entry.rejection_mtr || 0) / mhLen
                     : Number(entry.rejection_pcs || 0) > 0

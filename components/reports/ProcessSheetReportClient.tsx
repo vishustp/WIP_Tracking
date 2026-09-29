@@ -1,39 +1,39 @@
+// components/reports/ProcessSheetReportClient.tsx
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Printer,
-  Sparkles,
-  RefreshCw,
   Search,
   CheckCircle2,
   FileSpreadsheet,
   AlertCircle,
-  Cpu,
   Layers,
-  ArrowRight,
-  Flame,
-  ShieldCheck,
-  Activity,
-  Gauge,
-  Info,
-  Save,
   FileText,
-  Check,
-  Copy,
-  Undo2,
   Sliders,
-  Thermometer,
-  Ruler,
-  FlaskConical,
   Award,
   PackageCheck,
-  Calendar,
-  UserCheck,
+  Eye,
+  Edit3,
+  RefreshCw,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { ProcessSpecResult, calculateStandardTolerances, calculateHydroPressurePsi } from '@/lib/metallurgy/specEngine';
+
+import type { SpecMasterRecord } from '@/lib/specMasterDefaults';
+import { DEFAULT_SPEC_MASTER_RECORDS } from '@/lib/specMasterDefaults';
+import {
+  autoPopulateProcessSheet,
+  type ProcessSheetFormData,
+} from '@/lib/metallurgy/processSheetSpecHelper';
+
+import ProcessSheetOrderDetails from './process-sheet/ProcessSheetOrderDetails';
+import ProcessSheetHotMillSection from './process-sheet/ProcessSheetHotMillSection';
+import ProcessSheetMetallurgySection from './process-sheet/ProcessSheetMetallurgySection';
+import ProcessSheetTestingSection from './process-sheet/ProcessSheetTestingSection';
+import ProcessSheetFinishingSection from './process-sheet/ProcessSheetFinishingSection';
+import ProcessSheetPrintDocument from './process-sheet/ProcessSheetPrintDocument';
+import type { ProcessSheetFormActions } from './process-sheet/types';
 
 interface RollingPlanRecord {
   id: string;
@@ -50,7 +50,6 @@ interface RollingPlanRecord {
   mh_l1: number | null;
   mh_l2: number | null;
   pass_required: number | null;
-  // joined fields
   work_order_no: string;
   customer_name: string | null;
   grade: string | null;
@@ -72,746 +71,199 @@ interface RollingPlanRecord {
   display_label?: string;
 }
 
-import { DEFAULT_SPEC_MASTER_RECORDS } from '@/lib/specMasterDefaults';
+const EMPTY_FORM_DATA: ProcessSheetFormData = {
+  sheetNo: '',
+  revNo: 'REV 01',
+  orderType: 'HFS',
+  routeType: 'HFS',
+  sheetDate: '',
+  customer: '',
+  destination: '',
+  poNo: '',
+  poDate: '',
+  woNo: '',
+  woDate: '',
+  orderQty: '',
+  deliveryDate: '',
+  materialCode: '',
+  heatNo: '',
+  steelGrade: '',
+  materialSpec: '',
+  inspection: 'IBR',
+  custOd: '',
+  custWt: '',
+  processWt: '',
+  isMinWall: false,
+  finalOrderLen1: '',
+  finalOrderLen2: '',
+  finalLength: '',
+  finalLenTol: '',
+  finalPipeWeight: '',
+  bundleQtyPcs: '',
+  bundleWeightMt: '',
+  motherHollowOd: '',
+  motherHollowWt: '',
+  rollingWt: '',
+  motherHollowKgMtr: '',
+  smLength: '',
+  hfsFinalLength: '',
+  piercerOd: '',
+  piercerWt: '',
+  piercerShellLen: '',
+  shellWeight: '',
+  billetDia: '',
+  billetSectWt: '',
+  billetLength: '',
+  totalWeightMt: '',
+  multiple: '1',
+  planQtyMtrs: '',
+  planQtyNos: '',
+  planQtyMt: '',
+  finalTolOdMin: '',
+  finalTolOdMax: '',
+  finalTolWtMin: '',
+  finalTolWtMax: '',
+  whfTemp: '',
+  inductionTemp: '',
+  sizingOutletTemp: '',
+  htCycle: '',
+  htCondition: '',
+  holdingTime: '',
+  ystMin: '',
+  ystMax: '',
+  utsMin: '',
+  utsMax: '',
+  elongationMin: '',
+  hardness: '',
+  straightness: '',
+  cMin: '',
+  cMax: '',
+  mnMin: '',
+  mnMax: '',
+  pMax: '',
+  sMax: '',
+  siMin: '',
+  siMax: '',
+  crMax: '',
+  moMax: '',
+  niMax: '',
+  cuMax: '',
+  vMax: '',
+  nbMax: '',
+  ceMax: '',
+  ndt: '',
+  hydroPressurePsi: '',
+  coating: '',
+  endCondition: '',
+  bundling: '',
+  endCap: '',
+  pipeColorCode: '',
+  rmColorCode: '',
+  markingSingle: '',
+  markingTriple: '',
+};
 
-interface SpecMasterRecord {
-  id: string;
-  spec_key: string;
-  spec_full: string;
-  steel_grade: string | null;
-  smys_mpa: number | null;
-  uts_mpa: number | null;
-  elongation_pct: number | null;
-  hardness: string | null;
-  straightness: string | null;
-  color_spec: string | null;
-  rm_color: string | null;
-  whf_temp: string | null;
-  induction_temp: string | null;
-  sizing_outlet_temp: string | null;
-  ht_cycle: string | null;
-  ht_condition: string | null;
-  ndt: string | null;
-  holding_time_sec: number | null;
-  coating: string | null;
-  end_condition: string | null;
-  bundling: string | null;
-  end_cap: string | null;
-  is_min_wall: boolean;
-  is_active: boolean;
-}
-
-function buildMarkingString(
-  type: 'single' | 'triple',
-  params: {
-    routeCode?: string | null;
-    specification?: string | null;
-    grade?: string | null;
-    sizeOd?: number | string | null;
-    sizeWt?: number | string | null;
-    hydroPsi?: string | null;
-    woNo?: string | null;
-    poNo?: string | null;
-  }
-): string {
-  const rCode = (params.routeCode || 'HFS').toUpperCase().includes('CDS') ? 'CDS' : 'HFS';
-  const odVal = Number(params.sizeOd || 0);
-  const wtVal = Number(params.sizeWt || 0);
-  const odStr = Number.isFinite(odVal) && odVal > 0 ? odVal.toFixed(2) : '';
-  const wtStr = Number.isFinite(wtVal) && wtVal > 0 ? wtVal.toFixed(2) : '';
-  const hydroStr = params.hydroPsi
-    ? (params.hydroPsi.includes('PSI') ? params.hydroPsi : `${params.hydroPsi} PSI`)
-    : '';
-
-  if (!params.specification && !params.grade && odVal === 0) {
-    return '';
-  }
-
-  const sizePart = odStr && wtStr ? `OD ${odStr} MM X WT ${wtStr} MM` : '';
-  const hydroPart = hydroStr ? `HYDRO TESTED ${hydroStr}` : 'HYDRO TESTED';
-
-  if (type === 'triple') {
-    return `(IBR) RASHMI SMLS / LOGO / ${rCode} /ASTM A106 Gr B /ASME SA106 GR B/ASTM A53 GR B/ API 5L GR B/ NACE MR0103/MR0175${sizePart ? ` / ${sizePart}` : ''} / ${hydroPart} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
-  }
-
-  // Single Marking
-  const specGrade = params.specification || params.grade || '';
-  return `(IBR) RASHMI SMLS / LOGO / ${rCode}${specGrade ? ` / ${specGrade}` : ''}${sizePart ? ` / ${sizePart}` : ''} / ${hydroPart} / NDE /  LENGTH......MM + H .NO____  + BUNDLE NO..............`;
-}
-
-// Reusable Form UI Components
-function FormSectionCard({
-  title,
-  icon: Icon,
-  headerBg = 'bg-indigo-700',
-  children,
-}: {
-  title: string;
-  icon: React.ElementType;
-  headerBg?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-      <div className={`px-4 py-2.5 ${headerBg} text-white flex items-center gap-2.5 shadow-sm`}>
-        <div className="p-1 rounded bg-black/20 text-white">
-          <Icon className="w-4 h-4" />
-        </div>
-        <h3 className="text-xs sm:text-sm font-black tracking-wide uppercase">{title}</h3>
-      </div>
-      <div className="p-4 sm:p-5 bg-white">{children}</div>
-    </div>
-  );
-}
-
-function FormInput({
-  label,
-  value,
-  onChange,
-  unit,
-  type = 'text',
-  placeholder,
-  disabled = false,
-  highlight = false,
-  title,
-}: {
-  label: string;
-  value: string;
-  onChange: (val: string) => void;
-  unit?: string;
-  type?: string;
-  placeholder?: string;
-  disabled?: boolean;
-  highlight?: boolean;
-  title?: string;
-}) {
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs">
-        <label className="font-bold text-slate-700 truncate" title={title || label}>
-          {label}
-        </label>
-        {unit && (
-          <span className="text-[10px] font-bold font-mono text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-            {unit}
-          </span>
-        )}
-      </div>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        disabled={disabled}
-        title={title}
-        className={`w-full px-3 py-1.5 font-bold text-xs rounded-lg focus:outline-none transition-colors shadow-xs ${
-          disabled
-            ? 'bg-slate-100 text-slate-500 border-2 border-slate-200'
-            : highlight
-            ? 'bg-amber-50 text-amber-950 border-2 border-amber-500 focus:border-amber-600 focus:ring-2 focus:ring-amber-200'
-            : 'bg-white text-slate-900 border-2 border-slate-300 hover:border-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-200'
-        }`}
-      />
-    </div>
-  );
-}
+type FormTab = 'all' | 'order' | 'hotmill' | 'metallurgy' | 'testing' | 'finishing';
 
 export default function ProcessSheetReportClient() {
-  const selectPlanRef = useRef<(plan: RollingPlanRecord) => void>(() => {});
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<RollingPlanRecord[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [specSource, setSpecSource] = useState<'ai' | 'engine' | 'manual'>('engine');
-
-  // Form View Mode & Database Persistence States
   const [viewMode, setViewMode] = useState<'form' | 'preview'>('form');
-  const [saving, setSaving] = useState(false);
-  const [savedRecord, setSavedRecord] = useState<any | null>(null);
-  const [formFilterTab, setFormFilterTab] = useState<
-    'all' | 'order' | 'billet' | 'piercer' | 'final' | 'metallurgy' | 'testing' | 'marking' | 'signatures'
-  >('all');
+  const [formTab, setFormTab] = useState<FormTab>('all');
+  const [specMasterList, setSpecMasterList] = useState<SpecMasterRecord[]>(DEFAULT_SPEC_MASTER_RECORDS);
 
-  // Material Specification Master Dropdown
-  const [specMasterList, setSpecMasterList] = useState<SpecMasterRecord[]>([]);
-  const [specMasterCustom, setSpecMasterCustom] = useState(false);
+  const [formData, setFormData] = useState<ProcessSheetFormData>(EMPTY_FORM_DATA);
 
-  // Process Sheet Form State Fields (Empty/Dynamic by default)
-  const [sheetNo, setSheetNo] = useState('');
-  const [revNo, setRevNo] = useState('REV 01');
-  const [orderType, setOrderType] = useState('HFS');
-  const [routeType, setRouteType] = useState('HFS');
-  const [sheetDate, setSheetDate] = useState(() => {
-    const d = new Date();
-    return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-  });
+  // Form actions
+  const actions: ProcessSheetFormActions = useMemo(
+    () => ({
+      updateField: (field, value) => {
+        setFormData((prev) => ({ ...prev, [field]: value }));
+      },
+      updateFields: (updates) => {
+        setFormData((prev) => ({ ...prev, ...updates }));
+      },
+    }),
+    []
+  );
 
-  const [customer, setCustomer] = useState('');
-  const [destination, setDestination] = useState('');
-  const [poNo, setPoNo] = useState('');
-  const [poDate, setPoDate] = useState('');
-  const [woNo, setWoNo] = useState('');
-  const [woDate, setWoDate] = useState(() => {
-    const d = new Date();
-    return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-  });
-  const [orderQty, setOrderQty] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState('');
-  const [materialCode, setMaterialCode] = useState('');
-  const [priority, setPriority] = useState('');
-  const [materialSpec, setMaterialSpec] = useState('');
-  const [pipeColorCode, setPipeColorCode] = useState('');
-  const [rmColorCode, setRmColorCode] = useState('');
-  const [steelGrade, setSteelGrade] = useState('');
-  const [heatNo, setHeatNo] = useState('');
+  // 1. Load active Spec Master records from Supabase
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = createClient();
+        const { data, error } = await s
+          .from('material_spec_master')
+          .select('*')
+          .eq('is_active', true)
+          .order('spec_full', { ascending: true });
+        if (!error && data && data.length > 0) {
+          setSpecMasterList(data as SpecMasterRecord[]);
+        }
+      } catch (e) {
+        console.warn('Using default spec master records due to fetch warning:', e);
+      }
+    })();
+  }, []);
 
-  // Billet Details
-  const [billetDia, setBilletDia] = useState('');
-  const [billetSectWt, setBilletSectWt] = useState('');
-  const [totalWeightMt, setTotalWeightMt] = useState('');
-  const [billetLength, setBilletLength] = useState('');
-  const [cuttingTol, setCuttingTol] = useState('+5/-0 MM');
-  const [multiple, setMultiple] = useState('');
-
-  // Temperatures
-  const [whfTemp, setWhfTemp] = useState('');
-  const [inductionTemp, setInductionTemp] = useState('');
-  const [sizingOutletTemp, setSizingOutletTemp] = useState('');
-
-  // Piercer & Mother Hollow
-  const [piercerOd, setPiercerOd] = useState('');
-  const [piercerWt, setPiercerWt] = useState('');
-  const [piercerShellLen, setPiercerShellLen] = useState('');
-  const [shellWeight, setShellWeight] = useState('');
-
-  const [motherHollowOd, setMotherHollowOd] = useState('');
-  const [motherHollowWt, setMotherHollowWt] = useState('');
-  const [rollingWt, setRollingWt] = useState('');
-  const [motherHollowKgMtr, setMotherHollowKgMtr] = useState('');
-  const [smLength, setSmLength] = useState('');
-  const [hfsFinalLength, setHfsFinalLength] = useState('');
-
-  // Tolerances
-  const [mhTolOdMin, setMhTolOdMin] = useState('');
-  const [mhTolOdMax, setMhTolOdMax] = useState('');
-  const [mhTolWtMin, setMhTolWtMin] = useState('');
-  const [mhTolWtMax, setMhTolWtMax] = useState('');
-
-  const [planQtyNos, setPlanQtyNos] = useState('');
-  const [planQtyMtrs, setPlanQtyMtrs] = useState('');
-  const [planQtyMt, setPlanQtyMt] = useState('');
-  const [inspection, setInspection] = useState('');
-  const [processRouteStr, setProcessRouteStr] = useState('');
-
-  // Cold Mill & Final
-  const [custOd, setCustOd] = useState('');
-  const [custWt, setCustWt] = useState('');
-  const [processWt, setProcessWt] = useState('');
-  const [finalPipeWeight, setFinalPipeWeight] = useState('');
-  const [finalLength, setFinalLength] = useState('');
-  const [finalOrderLen1, setFinalOrderLen1] = useState('');
-  const [finalOrderLen2, setFinalOrderLen2] = useState('');
-
-  const [finalTolOdMin, setFinalTolOdMin] = useState('');
-  const [finalTolOdMax, setFinalTolOdMax] = useState('');
-  const [finalTolWtMin, setFinalTolWtMin] = useState('');
-  const [finalTolWtMax, setFinalTolWtMax] = useState('');
-  const [finalLenTol, setFinalLenTol] = useState('');
-
-  // Inter Pass
-  const [p1Od, setP1Od] = useState('');
-  const [p1Wt, setP1Wt] = useState('');
-  const [p2Od, setP2Od] = useState('');
-  const [p2Wt, setP2Wt] = useState('');
-  const [p3Od, setP3Od] = useState('');
-  const [p3Wt, setP3Wt] = useState('');
-
-  // Heat Treatment
-  const [htCycle, setHtCycle] = useState('');
-  const [htCondition, setHtCondition] = useState('');
-  const [straightness, setStraightness] = useState('');
-  const [hardness, setHardness] = useState('');
-
-  // Mechanical Properties
-  const [ystMin, setYstMin] = useState('');
-  const [ystMax, setYstMax] = useState('');
-  const [utsMin, setUtsMin] = useState('');
-  const [utsMax, setUtsMax] = useState('');
-  const [elongationMin, setElongationMin] = useState('');
-  const [elongationMax, setElongationMax] = useState('');
-
-  // Testing & Inspection
-  const [ndt, setNdt] = useState('');
-  const [hydroPressurePsi, setHydroPressurePsi] = useState('');
-  const [holdingTime, setHoldingTime] = useState('');
-
-  // Coating & Finishing
-  const [coating, setCoating] = useState('');
-  const [endCondition, setEndCondition] = useState('');
-  const [bundling, setBundling] = useState('');
-  const [bundleQtyPcs, setBundleQtyPcs] = useState('');
-  const [bundleWeightMt, setBundleWeightMt] = useState('');
-  const [endCap, setEndCap] = useState('');
-
-  const [specialReq, setSpecialReq] = useState('');
-  const [markingType, setMarkingType] = useState<'single' | 'triple'>('single');
-  const markingTypeRef = useRef<'single' | 'triple'>('single');
-  markingTypeRef.current = markingType;
-  const [marking, setMarking] = useState('');
-
-  // Signatures
-  const [preparedBy] = useState('PPC EXEC');
-  const [preparedDate] = useState(() => {
-    const d = new Date();
-    return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
-  });
-
-  // Hydrate all state variables from saved sheet JSON
-  const applySavedSheetData = (d: any) => {
-    if (!d || typeof d !== 'object') return;
-    if (d.sheetNo !== undefined) setSheetNo(String(d.sheetNo));
-    if (d.revNo !== undefined) setRevNo(String(d.revNo));
-    if (d.orderType !== undefined) setOrderType(String(d.orderType));
-    if (d.routeType !== undefined) setRouteType(String(d.routeType));
-    if (d.sheetDate !== undefined) setSheetDate(String(d.sheetDate));
-    if (d.customer !== undefined) setCustomer(String(d.customer));
-    if (d.destination !== undefined) setDestination(String(d.destination));
-    if (d.poNo !== undefined) setPoNo(String(d.poNo));
-    if (d.poDate !== undefined) setPoDate(String(d.poDate));
-    if (d.woNo !== undefined) setWoNo(String(d.woNo));
-    if (d.woDate !== undefined) setWoDate(String(d.woDate));
-    if (d.orderQty !== undefined) setOrderQty(String(d.orderQty));
-    if (d.deliveryDate !== undefined) setDeliveryDate(String(d.deliveryDate));
-    if (d.materialCode !== undefined) setMaterialCode(String(d.materialCode));
-    if (d.priority !== undefined) setPriority(String(d.priority));
-    if (d.materialSpec !== undefined) setMaterialSpec(String(d.materialSpec));
-    if (d.pipeColorCode !== undefined) setPipeColorCode(String(d.pipeColorCode));
-    if (d.rmColorCode !== undefined) setRmColorCode(String(d.rmColorCode));
-    if (d.steelGrade !== undefined) setSteelGrade(String(d.steelGrade));
-    if (d.heatNo !== undefined) setHeatNo(String(d.heatNo));
-
-    if (d.billetDia !== undefined) setBilletDia(String(d.billetDia));
-    if (d.billetSectWt !== undefined) setBilletSectWt(String(d.billetSectWt));
-    if (d.totalWeightMt !== undefined) setTotalWeightMt(String(d.totalWeightMt));
-    if (d.billetLength !== undefined) setBilletLength(String(d.billetLength));
-    if (d.cuttingTol !== undefined) setCuttingTol(String(d.cuttingTol));
-    if (d.multiple !== undefined) setMultiple(String(d.multiple));
-
-    if (d.whfTemp !== undefined) setWhfTemp(String(d.whfTemp));
-    if (d.inductionTemp !== undefined) setInductionTemp(String(d.inductionTemp));
-    if (d.sizingOutletTemp !== undefined) setSizingOutletTemp(String(d.sizingOutletTemp));
-
-    if (d.piercerOd !== undefined) setPiercerOd(String(d.piercerOd));
-    if (d.piercerWt !== undefined) setPiercerWt(String(d.piercerWt));
-    if (d.piercerShellLen !== undefined) setPiercerShellLen(String(d.piercerShellLen));
-    if (d.shellWeight !== undefined) setShellWeight(String(d.shellWeight));
-
-    if (d.motherHollowOd !== undefined) setMotherHollowOd(String(d.motherHollowOd));
-    if (d.motherHollowWt !== undefined) setMotherHollowWt(String(d.motherHollowWt));
-    if (d.rollingWt !== undefined) setRollingWt(String(d.rollingWt));
-    if (d.motherHollowKgMtr !== undefined) setMotherHollowKgMtr(String(d.motherHollowKgMtr));
-    if (d.smLength !== undefined) setSmLength(String(d.smLength));
-    if (d.hfsFinalLength !== undefined) setHfsFinalLength(String(d.hfsFinalLength));
-
-    if (d.mhTolOdMin !== undefined) setMhTolOdMin(String(d.mhTolOdMin));
-    if (d.mhTolOdMax !== undefined) setMhTolOdMax(String(d.mhTolOdMax));
-    if (d.mhTolWtMin !== undefined) setMhTolWtMin(String(d.mhTolWtMin));
-    if (d.mhTolWtMax !== undefined) setMhTolWtMax(String(d.mhTolWtMax));
-
-    if (d.planQtyNos !== undefined) setPlanQtyNos(String(d.planQtyNos));
-    if (d.planQtyMtrs !== undefined) setPlanQtyMtrs(String(d.planQtyMtrs));
-    if (d.planQtyMt !== undefined) setPlanQtyMt(String(d.planQtyMt));
-    if (d.inspection !== undefined) setInspection(String(d.inspection));
-    if (d.processRouteStr !== undefined) setProcessRouteStr(String(d.processRouteStr));
-
-    if (d.custOd !== undefined) setCustOd(String(d.custOd));
-    if (d.custWt !== undefined) setCustWt(String(d.custWt));
-    if (d.processWt !== undefined) setProcessWt(String(d.processWt));
-    if (d.finalPipeWeight !== undefined) setFinalPipeWeight(String(d.finalPipeWeight));
-    if (d.finalLength !== undefined) setFinalLength(String(d.finalLength));
-    if (d.finalOrderLen1 !== undefined) setFinalOrderLen1(String(d.finalOrderLen1));
-    if (d.finalOrderLen2 !== undefined) setFinalOrderLen2(String(d.finalOrderLen2));
-
-    if (d.finalTolOdMin !== undefined) setFinalTolOdMin(String(d.finalTolOdMin));
-    if (d.finalTolOdMax !== undefined) setFinalTolOdMax(String(d.finalTolOdMax));
-    if (d.finalTolWtMin !== undefined) setFinalTolWtMin(String(d.finalTolWtMin));
-    if (d.finalTolWtMax !== undefined) setFinalTolWtMax(String(d.finalTolWtMax));
-    if (d.finalLenTol !== undefined) setFinalLenTol(String(d.finalLenTol));
-
-    if (d.p1Od !== undefined) setP1Od(String(d.p1Od));
-    if (d.p1Wt !== undefined) setP1Wt(String(d.p1Wt));
-    if (d.p2Od !== undefined) setP2Od(String(d.p2Od));
-    if (d.p2Wt !== undefined) setP2Wt(String(d.p2Wt));
-    if (d.p3Od !== undefined) setP3Od(String(d.p3Od));
-    if (d.p3Wt !== undefined) setP3Wt(String(d.p3Wt));
-
-    if (d.htCycle !== undefined) setHtCycle(String(d.htCycle));
-    if (d.htCondition !== undefined) setHtCondition(String(d.htCondition));
-    if (d.straightness !== undefined) setStraightness(String(d.straightness));
-    if (d.hardness !== undefined) setHardness(String(d.hardness));
-
-    if (d.ystMin !== undefined) setYstMin(String(d.ystMin));
-    if (d.ystMax !== undefined) setYstMax(String(d.ystMax));
-    if (d.utsMin !== undefined) setUtsMin(String(d.utsMin));
-    if (d.utsMax !== undefined) setUtsMax(String(d.utsMax));
-    if (d.elongationMin !== undefined) setElongationMin(String(d.elongationMin));
-    if (d.elongationMax !== undefined) setElongationMax(String(d.elongationMax));
-
-    if (d.ndt !== undefined) setNdt(String(d.ndt));
-    if (d.hydroPressurePsi !== undefined) setHydroPressurePsi(String(d.hydroPressurePsi));
-    if (d.holdingTime !== undefined) setHoldingTime(String(d.holdingTime));
-
-    if (d.coating !== undefined) setCoating(String(d.coating));
-    if (d.endCondition !== undefined) setEndCondition(String(d.endCondition));
-    if (d.bundling !== undefined) setBundling(String(d.bundling));
-    if (d.bundleQtyPcs !== undefined) setBundleQtyPcs(String(d.bundleQtyPcs));
-    if (d.bundleWeightMt !== undefined) setBundleWeightMt(String(d.bundleWeightMt));
-    if (d.endCap !== undefined) setEndCap(String(d.endCap));
-
-    if (d.specialReq !== undefined) setSpecialReq(String(d.specialReq));
-    if (d.markingType !== undefined) {
-      setMarkingType(d.markingType as 'single' | 'triple');
-      markingTypeRef.current = d.markingType as 'single' | 'triple';
-    }
-    if (d.marking !== undefined) setMarking(String(d.marking));
-  };
-
-  // Save current Process Sheet to Supabase process_sheets table
-  const handleSaveProcessSheet = async () => {
-    const activePlan = plans.find((p) => p.id === selectedPlanId);
-    if (!activePlan && !woNo) {
-      toast.error('Please select a Work Order before saving.');
-      return;
-    }
-    setSaving(true);
-    try {
-      const s = createClient();
-      const effectiveSheetNo = sheetNo.trim() || `PS-${woNo || 'UNKNOWN'}`;
-      const payload = {
-        plan_id: activePlan?.id || selectedPlanId || 'manual',
-        work_order_no: woNo || activePlan?.work_order_no || 'WO-MANUAL',
-        sheet_no: effectiveSheetNo,
-        saved_by: preparedBy || 'PPC EXEC',
-        sheet_data: {
-          sheetNo: effectiveSheetNo,
-          revNo,
-          orderType,
-          routeType,
-          sheetDate,
-          customer,
-          destination,
-          poNo,
-          poDate,
-          woNo,
-          woDate,
-          orderQty,
-          deliveryDate,
-          materialCode,
-          priority,
-          materialSpec,
-          pipeColorCode,
-          rmColorCode,
-          steelGrade,
-          heatNo,
-          billetDia,
-          billetSectWt,
-          totalWeightMt,
-          billetLength,
-          cuttingTol,
-          multiple,
-          whfTemp,
-          inductionTemp,
-          sizingOutletTemp,
-          piercerOd,
-          piercerWt,
-          piercerShellLen,
-          shellWeight,
-          motherHollowOd,
-          motherHollowWt,
-          rollingWt,
-          motherHollowKgMtr,
-          smLength,
-          hfsFinalLength,
-          mhTolOdMin,
-          mhTolOdMax,
-          mhTolWtMin,
-          mhTolWtMax,
-          planQtyNos,
-          planQtyMtrs,
-          planQtyMt,
-          inspection,
-          processRouteStr,
-          custOd,
-          custWt,
-          processWt,
-          finalPipeWeight,
-          finalLength,
-          finalOrderLen1,
-          finalOrderLen2,
-          finalTolOdMin,
-          finalTolOdMax,
-          finalTolWtMin,
-          finalTolWtMax,
-          finalLenTol,
-          p1Od,
-          p1Wt,
-          p2Od,
-          p2Wt,
-          p3Od,
-          p3Wt,
-          htCycle,
-          htCondition,
-          straightness,
-          hardness,
-          ystMin,
-          ystMax,
-          utsMin,
-          utsMax,
-          elongationMin,
-          elongationMax,
-          ndt,
-          hydroPressurePsi,
-          holdingTime,
-          coating,
-          endCondition,
-          bundling,
-          bundleQtyPcs,
-          bundleWeightMt,
-          endCap,
-          specialReq,
-          markingType,
-          marking,
-          preparedBy,
-          preparedDate,
-        },
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data, error } = await s
-        .from('process_sheets')
-        .upsert(payload, { onConflict: 'sheet_no' })
-        .select()
-        .single();
-
-      if (error) throw error;
-      setSavedRecord(data);
-      toast.success(`Process Sheet (${effectiveSheetNo}) saved to database!`);
-    } catch (err: any) {
-      console.error('Error saving process sheet:', err);
-      toast.error(`Save failed: ${err.message || err}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Revert back to formula-calculated plan defaults
-  const resetToCalculatedDefaults = () => {
-    const activePlan = plans.find((p) => p.id === selectedPlanId);
-    if (activePlan) {
-      selectPlanRef.current(activePlan);
-      setSavedRecord(null);
-      toast.info('Reset form parameters to auto-calculated metallurgical defaults.');
-    }
-  };
-
-  // Load ALL Work Orders (User requested: remove Plan issued condition, all work orders available)
-  const loadIssuedPlans = useCallback(async () => {
+  // 2. Load Work Orders & Rolling Plans
+  const loadPlans = useCallback(async () => {
     setLoading(true);
     try {
       const s = createClient();
 
-      // 1. Fetch ALL Work Orders unconditionally
-      const { data: woRes, error: woErr } = await s
-        .from('work_orders')
-        .select('*')
-        .order('work_order_no', { ascending: false })
-        .limit(2000);
-
-      if (woErr) {
-        console.warn('Error fetching work orders:', woErr);
-      }
-      const allWorkOrders: any[] = woRes || [];
-
-      // 2. Fetch Rolling Plans (if available, to enrich work orders with plan specifications)
-      let rawPlans: any[] = [];
-      try {
-        const { data: directRps, error: directErr } = await s
+      const [woRes, rPlanRes, routesRes, divRes] = await Promise.all([
+        s
+          .from('work_orders')
+          .select('id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,ordered_qty_pcs,ordered_qty_mtr,status,target_date,destination,po_no,purchase_order_no,po_date,purchase_order_date,material_code,item_code')
+          .order('created_at', { ascending: false }),
+        s
           .from('rolling_plans')
-          .select('id, plan_no, work_order_id, planned_rolling_date, planned_qty, process_route_id, multiple, status, mh_od, mh_wt, mh_l1, mh_l2, pass_required')
-          .order('planned_rolling_date', { ascending: false })
-          .limit(2000);
-        if (!directErr && directRps) {
-          rawPlans = directRps;
-        }
-      } catch (rpE) {
-        console.warn('Rolling plans fetch note:', rpE);
-      }
-
-      // 3. Fetch Diversion Plans
-      let rawDivs: any[] = [];
-      try {
-        const { data: directDivs } = await s
-          .from('diversion_plans')
-          .select('*')
+          .select('id,plan_no,work_order_id,planned_rolling_date,planned_qty,process_route_id,target_mother_size,multiple,status,mh_od,mh_wt,mh_l1,mh_l2,pass_required')
+          .order('created_at', { ascending: false }),
+        s.from('process_routes').select('id,route_code,route_name'),
+        s
+          .from('pipe_diversions')
+          .select('id,source_wo_id,target_wo_id,diverted_qty,diverted_pcs,target_size,target_grade,target_customer,source_customer,source_grade,route_id,multiple,reason,work_center,created_at')
           .order('created_at', { ascending: false })
-          .limit(1000);
-        rawDivs = directDivs || [];
-      } catch (e) {
-        console.warn('Diversion plans query note:', e);
-      }
+          .limit(50),
+      ]);
 
-      // 4. Fetch Process Routes
-      let routesData: any[] = [];
-      try {
-        const { data: rData } = await s.from('process_routes').select('id, route_code, route_name');
-        routesData = rData || [];
-      } catch (rE) {
-        console.warn('Routes fetch note:', rE);
-      }
+      const wos = woRes.data || [];
+      const rPlans = rPlanRes.data || [];
+      const routes = routesRes.data || [];
+      const divs = divRes.data || [];
 
-      const routeMap = new Map<string, any>();
-      routesData.forEach((r: any) => routeMap.set(r.id, r));
+      const routeMap = new Map<string, any>(routes.map((r: any) => [r.id, r]));
+      const woMap = new Map<string, any>(wos.map((w: any) => [w.id, w]));
 
-      const woMap = new Map<string, any>();
-      allWorkOrders.forEach((w: any) => woMap.set(w.id, w));
-
-      // Map rolling plans by work_order_id
-      const rpsByWoId = new Map<string, any[]>();
-      rawPlans.forEach((rp: any) => {
-        if (rp.work_order_id) {
-          const list = rpsByWoId.get(rp.work_order_id) || [];
-          list.push(rp);
-          rpsByWoId.set(rp.work_order_id, list);
-        }
+      // Group rolling plans by work order
+      const rpByWo = new Map<string, any[]>();
+      rPlans.forEach((rp: any) => {
+        if (!rpByWo.has(rp.work_order_id)) rpByWo.set(rp.work_order_id, []);
+        rpByWo.get(rp.work_order_id)!.push(rp);
       });
 
-      // Map master campaigns by child work order id and child work order no
-      const masterCampaignByChildWoId = new Map<string, { masterPlan: any; childMeta: any }>();
-      rawPlans.forEach((rp: any) => {
-        let parsedSt: any = {};
-        try {
-          parsedSt = typeof rp.status === 'string' ? JSON.parse(rp.status) : rp.status || {};
-        } catch {}
-        if (parsedSt.is_master && Array.isArray(parsedSt.child_work_orders)) {
-          parsedSt.child_work_orders.forEach((c: any) => {
-            const cId = c.work_order_id || c.id;
-            if (cId) {
-              masterCampaignByChildWoId.set(cId, { masterPlan: rp, childMeta: c });
-            }
-            if (c.work_order_no) {
-              const cleanNo = String(c.work_order_no).trim().toLowerCase();
-              masterCampaignByChildWoId.set(cleanNo, { masterPlan: rp, childMeta: c });
-            }
-          });
-        }
-      });
+      const mappedList: RollingPlanRecord[] = [];
 
-      const mappedWoPlans: RollingPlanRecord[] = [];
+      wos.forEach((wo: any) => {
+        const associatedRps = rpByWo.get(wo.id) || [];
+        const finalOd = Number(wo.size_od) || 0;
+        const finalWt = Number(wo.size_wt) || 0;
+        const finalL1 = Number(wo.l1) || 0;
+        const finalL2 = Number(wo.l2) || 0;
 
-      // A. For each work order in allWorkOrders:
-      allWorkOrders.forEach((wo: any) => {
-        const associatedRps = rpsByWoId.get(wo.id) || [];
-
-        // Check if this work order is a Child Work Order linked to a Parent Campaign
-        const childCampaignInfo =
-          masterCampaignByChildWoId.get(wo.id) ||
-          masterCampaignByChildWoId.get(String(wo.work_order_no || '').trim().toLowerCase());
-
-        let parentPlan = childCampaignInfo?.masterPlan;
-        if (!parentPlan && associatedRps.length > 0) {
-          try {
-            const st = typeof associatedRps[0].status === 'string' ? JSON.parse(associatedRps[0].status) : associatedRps[0].status || {};
-            if (st.is_child && (st.master_plan_id || st.master_plan_no)) {
-              parentPlan = rawPlans.find((p) => p.id === st.master_plan_id || p.plan_no === st.master_plan_no);
-            }
-          } catch {}
-        }
-
-        let parentParsedSt: any = {};
-        if (parentPlan) {
-          try {
-            parentParsedSt = typeof parentPlan.status === 'string' ? JSON.parse(parentPlan.status) : parentPlan.status || {};
-          } catch {}
-        }
-
-        const finalOd = Number(wo.size_od ?? 0);
-        const finalWt = Number(wo.size_wt ?? 0);
-        const finalL1 = Number(wo.l1 ?? 0);
-        const finalL2 = Number(wo.l2 ?? 0);
-
-        if (parentPlan) {
-          // RULE: Rolling plan for child work order will be the SAME as parent work order
-          const parentRoute = routeMap.get(parentPlan.process_route_id) || {};
-          const effPlanNo = parentPlan.plan_no;
-          const effRollingDate = parentPlan.planned_rolling_date || wo.target_date || new Date().toISOString().split('T')[0];
-          const effMhOd = Number(parentPlan.mh_od ?? finalOd);
-          const effMhWt = Number(parentPlan.mh_wt ?? finalWt);
-          const effMhL1 = Number(parentPlan.mh_l1 ?? finalL1 ?? 0);
-          const effMhL2 = Number(parentPlan.mh_l2 ?? finalL2 ?? 0);
-          const effPass = Number(parentPlan.pass_required ?? 1);
-          const effMultiple = Number(parentPlan.multiple ?? 1);
-
-          let childParsedSt: any = {};
-          if (associatedRps.length > 0) {
-            try {
-              childParsedSt = typeof associatedRps[0].status === 'string' ? JSON.parse(associatedRps[0].status) : associatedRps[0].status || {};
-            } catch {}
-          }
-
-          const mergedStatus = {
-            ...parentParsedSt,
-            ...childParsedSt,
-            is_child: true,
-            master_plan_no: parentPlan.plan_no,
-            master_wo_id: parentPlan.work_order_id,
-          };
-
-          mappedWoPlans.push({
-            id: associatedRps.length > 0 ? `child-rp-${associatedRps[0].id}-wo-${wo.id}` : `child-wo-${wo.id}`,
-            plan_no: effPlanNo, // Same rolling plan as parent work order
-            work_order_id: wo.id,
-            planned_rolling_date: effRollingDate,
-            planned_qty: Number(childCampaignInfo?.childMeta?.planned_mtr ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0),
-            process_route_id: parentPlan.process_route_id,
-            target_mother_size: parentPlan.target_mother_size || null,
-            multiple: effMultiple,
-            status: mergedStatus,
-            mh_od: effMhOd || null,
-            mh_wt: effMhWt || null,
-            mh_l1: effMhL1 || null,
-            mh_l2: effMhL2 || null,
-            pass_required: effPass,
-            work_order_no: wo.work_order_no || '',
-            customer_name: wo.customer_name || '',
-            grade: wo.grade || parentParsedSt.grade || '',
-            specification: wo.specification || parentParsedSt.spec || wo.grade || '',
-            size_od: finalOd || null,
-            size_wt: finalWt || null,
-            l1: finalL1 || null,
-            l2: finalL2 || null,
-            ordered_qty: Number(wo.ordered_qty || 0),
-            ordered_qty_pcs: Number(wo.ordered_qty_pcs || 0),
-            ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
-            route_code: parentRoute.route_code || 'HFS',
-            route_name: parentRoute.route_name || parentRoute.route_code || 'HFS',
-            po_no: wo.po_no || wo.purchase_order_no || mergedStatus.po_no || null,
-            po_date: wo.po_date || wo.purchase_order_date || mergedStatus.po_date || null,
-            material_code: wo.material_code || wo.item_code || mergedStatus.material_code || null,
-            destination: wo.destination || mergedStatus.destination || null,
-            is_diversion: false,
-            display_label: wo.work_order_no || '',
-          });
-        } else if (associatedRps.length > 0) {
-          // If work order has one or more rolling plans, generate a record for each plan
+        if (associatedRps.length > 0) {
           associatedRps.forEach((r: any) => {
             const route = routeMap.get(r.process_route_id) || {};
             let parsedSt: any = {};
             try {
               parsedSt = typeof r.status === 'string' ? JSON.parse(r.status) : r.status || {};
-            } catch { }
+            } catch {}
 
-            mappedWoPlans.push({
+            mappedList.push({
               id: `rp-${r.id}-wo-${wo.id}`,
               plan_no: parsedSt.master_plan_no || r.plan_no || 'Plan',
               work_order_id: wo.id,
@@ -848,10 +300,9 @@ export default function ProcessSheetReportClient() {
             });
           });
         } else {
-          // Direct Work Order (without an issued rolling plan)
-          mappedWoPlans.push({
+          mappedList.push({
             id: `wo-${wo.id}`,
-            plan_no: 'Pending Plan',
+            plan_no: 'Work Order',
             work_order_id: wo.id,
             planned_rolling_date: wo.target_date || new Date().toISOString().split('T')[0],
             planned_qty: Number(wo.ordered_qty_mtr || wo.ordered_qty || 0),
@@ -887,2743 +338,238 @@ export default function ProcessSheetReportClient() {
         }
       });
 
-      // B. Sort work orders numerically / descending by work order number
-      mappedWoPlans.sort((a, b) => {
+      // Sort by work order number descending
+      mappedList.sort((a, b) => {
         const numA = parseInt(a.work_order_no.replace(/\D/g, ''), 10) || 0;
         const numB = parseInt(b.work_order_no.replace(/\D/g, ''), 10) || 0;
         if (numA !== numB) return numB - numA;
         return b.work_order_no.localeCompare(a.work_order_no);
       });
 
-      // C. Map Diversion Plans
-      const mappedDivPlans: RollingPlanRecord[] = rawDivs.map((d: any) => {
-        const woId = d.target_wo_id || d.source_wo_id;
-        const wo = woMap.get(woId) || {};
-        const routeId = d.route_id || d.process_route_id;
-        const route = routeMap.get(routeId) || {};
+      setPlans(mappedList);
 
-        const finalOd = Number(wo.size_od ?? (d.target_size ? parseFloat(d.target_size) : 0));
-        const finalWt = Number(
-          wo.size_wt ??
-            (d.target_size
-              ? parseFloat(d.target_size.split('×')[1] || d.target_size.split('x')[1] || '0')
-              : 0)
-        );
-        const finalL1 = Number(wo.l1 ?? 0);
-        const finalL2 = Number(wo.l2 ?? 0);
-        const baseWoNo = wo.work_order_no || d.target_wo_no || d.source_wo_no || '';
-
-        return {
-          id: `div-${d.id}`,
-          plan_no: `DIV-${String(d.id).slice(0, 8)}`,
-          work_order_id: woId,
-          planned_rolling_date: d.diversion_date || d.created_at || new Date().toISOString().split('T')[0],
-          planned_qty: Number(d.diverted_qty || 0),
-          process_route_id: routeId,
-          target_mother_size: null,
-          multiple: Number(d.multiple ?? 1),
-          status: { is_diversion: true, diversion_reason: d.reason, work_center: d.work_center },
-          mh_od: finalOd || null,
-          mh_wt: finalWt || null,
-          mh_l1: finalL1 || null,
-          mh_l2: finalL2 || null,
-          pass_required: 1,
-          work_order_no: baseWoNo,
-          customer_name: wo.customer_name || d.target_customer || d.source_customer || '',
-          grade: wo.grade || d.target_grade || d.source_grade || '',
-          specification: wo.specification || d.target_grade || '',
-          size_od: finalOd || null,
-          size_wt: finalWt || null,
-          l1: finalL1 || null,
-          l2: finalL2 || null,
-          ordered_qty: Number(wo.ordered_qty || d.diverted_qty || 0),
-          ordered_qty_pcs: Number(wo.ordered_qty_pcs || d.diverted_pcs || 0),
-          ordered_qty_mtr: Number(wo.ordered_qty_mtr || d.diverted_qty || 0),
-          route_code: route.route_code || d.route_code || 'HFS',
-          route_name: route.route_name || d.route_name || 'Diversion',
-          po_no: wo.po_no || wo.purchase_order_no || null,
-          po_date: wo.po_date || wo.purchase_order_date || null,
-          material_code: wo.material_code || wo.item_code || null,
-          destination: wo.destination || null,
-          is_diversion: true,
-          display_label: baseWoNo ? `${baseWoNo}-Div` : 'Diversion',
-        };
-      });
-
-      const combinedPlans = [...mappedWoPlans, ...mappedDivPlans];
-      setPlans(combinedPlans);
-
-      if (combinedPlans.length > 0) {
-        setSelectedPlanId((prev) => {
-          if (!prev) {
-            selectPlanRef.current(combinedPlans[0]);
-            return combinedPlans[0].id;
-          }
-          // If already selected, do not force-switch
-          return prev;
-        });
+      if (mappedList.length > 0) {
+        setSelectedPlanId(mappedList[0].id);
+        const autoData = autoPopulateProcessSheet(mappedList[0], specMasterList);
+        setFormData(autoData);
       }
     } catch (err: any) {
-      console.error('Error loading work orders:', err);
-      toast.error(err.message || 'Failed to load Work Orders.');
+      console.error('Error loading work orders for process sheet:', err);
+      toast.error('Failed to load work orders.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [specMasterList]);
 
   useEffect(() => {
-    loadIssuedPlans();
-  }, [loadIssuedPlans]);
+    loadPlans();
+  }, [loadPlans]);
 
-  // Load Material Specification Master from Supabase
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = createClient();
-        const { data, error } = await s
-          .from('material_spec_master')
-          .select('*')
-          .eq('is_active', true)
-          .order('spec_full', { ascending: true });
-        if (!error && data && data.length > 0) {
-          setSpecMasterList(data as SpecMasterRecord[]);
-        } else {
-          console.warn('Could not load material_spec_master from DB, using standard specs:', error?.message);
-          setSpecMasterList(DEFAULT_SPEC_MASTER_RECORDS);
-        }
-      } catch (e) {
-        console.warn('material_spec_master fetch error, using standard specs:', e);
-        setSpecMasterList(DEFAULT_SPEC_MASTER_RECORDS);
-      }
-    })();
-  }, []);
+  // Handle plan selection
+  const handleSelectPlan = (planId: string) => {
+    setSelectedPlanId(planId);
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) return;
 
-  // When a Work Order / Rolling Plan is selected
-  const selectPlan = (plan: RollingPlanRecord) => {
-    setSelectedPlanId(plan.id);
-
-    const isCds = (plan.route_code || '').toUpperCase().includes('CDS');
-    const rCode = isCds ? 'CDS' : 'HFS';
-    setOrderType(rCode);
-    setRouteType(rCode);
-
-    const parsedSt = plan.status && typeof plan.status === 'object' ? plan.status : {};
-
-    // Work Order with -Div indicator if issued from a diversion plan
-    const cleanWo = String(plan.work_order_no || '').trim();
-    const effectiveWoNo = plan.is_diversion ? `${cleanWo}-Div` : cleanWo;
-
-    // 2. Process sheet No = Last 2 digits of the year + D + Work order no
-    const yr2 = String(new Date().getFullYear()).slice(-2);
-    setSheetNo(`${yr2}D${effectiveWoNo}`);
-
-    setWoNo(effectiveWoNo);
-    if (parsedSt.wo_date) {
-      setWoDate(parsedSt.wo_date);
-    } else if (plan.planned_rolling_date) {
-      const parts = plan.planned_rolling_date.split('-');
-      if (parts.length === 3 && parts[0].length === 4) {
-        setWoDate(`${parts[2]}-${parts[1]}-${parts[0]}`);
-      } else {
-        setWoDate(plan.planned_rolling_date);
-      }
-    }
-    setCustomer(plan.customer_name || '');
-    // 2. Destination from Work Order table
-    setDestination(plan.destination || parsedSt.destination || '');
-
-    // 3. PURCHASE ORDER NO, PURCHASE ORDER DATE, MATERIAL CODE from Work Order table
-    setPoNo(plan.po_no || parsedSt.po_no || '');
-    setPoDate(plan.po_date || parsedSt.po_date || '');
-    setMaterialCode(plan.material_code || parsedSt.material_code || '');
-
-    setHeatNo(parsedSt.heat_no || '');
-    setSteelGrade(plan.grade || parsedSt.grade || '');
-    setMaterialSpec(plan.specification || parsedSt.spec || '');
-    setInspection(parsedSt.ibr_status || '');
-
-    const targetOd = Number(plan.size_od) || 0;
-    const targetWt = Number(plan.size_wt) || 0;
-    const l1Val = Number(plan.l1) || 0;
-    const l2Val = Number(plan.l2) || 0;
-    const avgLen = (l1Val > 0 && l2Val > 0) ? (l1Val + l2Val) / 2 : l1Val || l2Val || 0;
-
-    setCustOd(targetOd > 0 ? targetOd.toFixed(2) : '');
-    setCustWt(targetWt > 0 ? targetWt.toFixed(2) : '');
-
-    // Combine spec & grade so minimum wall and standard matching always match
-    const fullSpecGrade = `${plan.specification || parsedSt.spec || ''} ${plan.grade || parsedSt.grade || ''}`.trim();
-    const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const cleanTarget = norm(fullSpecGrade);
-
-    // Look up matching record in specMasterList
-    const matchedMaster = specMasterList.find((r) => {
-      if (!fullSpecGrade) return false;
-      const sp = (r.spec_full || '').toUpperCase();
-      const sk = (r.spec_key || '').toUpperCase();
-      const sg = (r.steel_grade || '').toUpperCase();
-      const target = fullSpecGrade.toUpperCase();
-      if (target.includes(sk) || target.includes(sp) || sp.includes(target)) return true;
-      if (sg && (target.includes(sg) || sg.includes(target))) return true;
-
-      const nSp = norm(sp);
-      const nSk = norm(sk);
-      const nSg = norm(sg);
-      return cleanTarget.includes(nSk) || cleanTarget.includes(nSp) || nSp.includes(cleanTarget) || (nSg && (cleanTarget.includes(nSg) || nSg.includes(cleanTarget)));
-    });
-
-    // 6. Process Wall: For material without negative tolerance -> Customer WT * 1.05; For rest -> Customer WT * 0.97
-    const specUpper = `${plan.specification || ''} ${plan.grade || ''} ${parsedSt.spec || ''}`.toUpperCase();
-    const isNoNegativeTol =
-      Boolean(matchedMaster?.is_min_wall) ||
-      specUpper.includes('MIN') ||
-      specUpper.includes('MW') ||
-      specUpper.includes('MIN WALL') ||
-      specUpper.includes('NO NEG') ||
-      specUpper.includes('210') ||
-      specUpper.includes('213') ||
-      specUpper.includes('192') ||
-      specUpper.includes('179');
-
-    const calcProcessWt = targetWt > 0
-      ? (isNoNegativeTol ? Number((targetWt * 1.05).toFixed(2)) : Number((targetWt * 0.97).toFixed(2)))
-      : 0;
-    setProcessWt(calcProcessWt > 0 ? calcProcessWt.toFixed(2) : '');
-
-    const isFixedLength = l1Val > 0 && l2Val > 0 && (Math.abs(l1Val - l2Val) < 0.05 || l1Val === l2Val);
-    setFinalOrderLen1(l1Val > 0 ? l1Val.toFixed(3) : '');
-    setFinalOrderLen2(l2Val > 0 ? (isFixedLength ? `${l2Val.toFixed(3)} +10MM` : l2Val.toFixed(3)) : '');
-    setFinalLength(avgLen > 0 ? avgLen.toFixed(2) : '');
-    if (isFixedLength) {
-      setFinalLenTol('+10MM');
-    }
-
-    // Calculate pipe weight in kg/mtr: (OD - WT) * WT * 0.0246615
-    const kgMtr = (targetOd > targetWt && targetWt > 0) ? (targetOd - targetWt) * targetWt * 0.0246615 : 0;
-    setFinalPipeWeight(kgMtr > 0 ? kgMtr.toFixed(2) : '');
-    setMotherHollowKgMtr(kgMtr > 0 ? kgMtr.toFixed(2) : '');
-
-    // 5. BUNDLE QTY. (PCS) calculated based on Bundle weight Fixed to 2 MT (2000 kg)
-    const wtPerPieceKg = kgMtr * avgLen;
-    const calcBundleQtyPcs = wtPerPieceKg > 0 ? Math.round(2000 / wtPerPieceKg) : 0;
-    setBundleQtyPcs(calcBundleQtyPcs > 0 ? calcBundleQtyPcs.toString() : '');
-    setBundleWeightMt(calcBundleQtyPcs > 0 ? '2 MT' : '');
-
-    // Rolling / Piercer Hollow values
-    const mhOd = Number(parsedSt.sizing_mill?.cust_od || plan.mh_od || targetOd || 0);
-    const mhWt = Number(parsedSt.sizing_mill?.rolling_wt || plan.mh_wt || targetWt || 0);
-    setMotherHollowOd(mhOd > 0 ? mhOd.toFixed(2) : '');
-    setMotherHollowWt(mhWt > 0 ? mhWt.toFixed(2) : '');
-    setRollingWt(mhWt > 0 ? mhWt.toFixed(2) : '');
-    const smLen = parsedSt.sizing_mill?.sm_len || plan.mh_l1 || (avgLen > 0 ? avgLen.toFixed(3) : '');
-    setSmLength(smLen ? smLen.toString() : '');
-    const hfsLen = plan.mh_l2 || (avgLen > 0 ? avgLen.toFixed(3) : '');
-    setHfsFinalLength(hfsLen ? hfsLen.toString() : '');
-
-    // Piercer values from plan metadata or computed dynamically
-    const piercOd = Number(parsedSt.piercer_mill?.pm_od || (mhOd > 0 ? (mhOd * 1.08).toFixed(2) : 0));
-    const piercWt = Number(parsedSt.piercer_mill?.pm_wt || (mhWt > 0 ? (mhWt * 1.04).toFixed(2) : 0));
-    setPiercerOd(piercOd > 0 ? piercOd.toFixed(2) : '');
-    setPiercerWt(piercWt > 0 ? piercWt.toFixed(2) : '');
-    setPiercerShellLen(parsedSt.piercer_mill?.pm_len ? String(parsedSt.piercer_mill.pm_len) : (avgLen > 0 ? (avgLen * 0.88).toFixed(2) : ''));
-    setShellWeight(parsedSt.piercer_mill?.pm_kg_mtr ? String(parsedSt.piercer_mill.pm_kg_mtr) : (kgMtr > 0 ? (kgMtr * 1.13).toFixed(2) : ''));
-
-    // Billet values from plan metadata or computed dynamically
-    const bDia = Number(parsedSt.billet?.rm_od || (mhOd > 75 ? 90.0 : mhOd > 0 ? 63.0 : 0));
-    setBilletDia(bDia > 0 ? bDia.toFixed(2) : '');
-    const bSect = bDia > 0 ? Number(parsedSt.billet?.weight_kg || (((bDia * bDia * 3.14159 * 0.007856) / 4).toFixed(2))) : 0;
-    setBilletSectWt(bSect > 0 ? bSect.toFixed(2) : '');
-    setBilletLength(parsedSt.billet?.rm_len_min ? String(parsedSt.billet.rm_len_min) : '');
-    setTotalWeightMt(bSect > 0 ? (parsedSt.billet?.billet_wt_whf || ((bSect * 1.29) / 1000)).toFixed(2) : '');
-
-    setMultiple((plan.multiple || parsedSt.multiple || 1).toString());
-    const plannedMtr = plan.planned_qty || parsedSt.rolling_mtr || plan.ordered_qty_mtr || 0;
-    setPlanQtyMtrs(plannedMtr ? plannedMtr.toString() : '');
-    const nosCalc = avgLen > 0 ? Math.round(Number(plannedMtr || 0) / avgLen) : 0;
-    setPlanQtyNos(nosCalc > 0 ? nosCalc.toString() : '');
-    setPlanQtyMt(kgMtr > 0 ? ((kgMtr * Number(plannedMtr || 0)) / 1000).toFixed(2) : '');
-    setOrderQty(plan.ordered_qty_mtr ? `${plan.ordered_qty_mtr} MTR` : plannedMtr ? `${plannedMtr} MTR` : '');
-
-    if (matchedMaster) {
-      setPipeColorCode(matchedMaster.color_spec || '');
-      setRmColorCode(matchedMaster.rm_color || '');
-      setWhfTemp(matchedMaster.whf_temp || '');
-      setInductionTemp(matchedMaster.induction_temp || '');
-      setSizingOutletTemp(matchedMaster.sizing_outlet_temp || '');
-      setHtCycle(matchedMaster.ht_cycle || '');
-      setHtCondition(matchedMaster.ht_condition || '');
-      setNdt(matchedMaster.ndt || '');
-      setHoldingTime(matchedMaster.holding_time_sec ? `${matchedMaster.holding_time_sec} SEC` : '');
-      setCoating(matchedMaster.coating || '');
-      setEndCondition(matchedMaster.end_condition || '');
-      setBundling(matchedMaster.bundling || '');
-      setEndCap(matchedMaster.end_cap || '');
-      setHardness(matchedMaster.hardness || '');
-      setStraightness(matchedMaster.straightness || '');
-      setYstMin(matchedMaster.smys_mpa ? String(matchedMaster.smys_mpa) : '');
-      setUtsMin(matchedMaster.uts_mpa ? String(matchedMaster.uts_mpa) : '');
-      setElongationMin(matchedMaster.elongation_pct ? String(matchedMaster.elongation_pct) : '');
-    }
-
-    // Immediate synchronous tolerance and hydro calculation using metallurgy engine
-    let calcHydroStr = '';
-    if (targetOd > 0 && targetWt > 0) {
-      const initialTols = calculateStandardTolerances(
-        targetOd,
-        targetWt,
-        fullSpecGrade || matchedMaster?.spec_full || '',
-        rCode
-      );
-      setFinalTolOdMin(initialTols.od_min.toFixed(2));
-      setFinalTolOdMax(initialTols.od_max.toFixed(2));
-      setFinalTolWtMin(initialTols.wt_min.toFixed(2));
-      setFinalTolWtMax(initialTols.wt_max.toFixed(2));
-
-      setMhTolOdMin((initialTols.od_min + 0.01).toFixed(2));
-      setMhTolOdMax((initialTols.od_max - 0.01).toFixed(2));
-      setMhTolWtMin(initialTols.wt_min.toFixed(2));
-      setMhTolWtMax((initialTols.wt_max - 0.28).toFixed(2));
-
-      const hydroRes = calculateHydroPressurePsi(targetOd, targetWt, matchedMaster?.smys_mpa || 240);
-      calcHydroStr = `${hydroRes.pressurePsi} PSI`;
-      setHydroPressurePsi(calcHydroStr);
-    } else {
-      setFinalTolOdMin('');
-      setFinalTolOdMax('');
-      setFinalTolWtMin('');
-      setFinalTolWtMax('');
-      setMhTolOdMin('');
-      setMhTolOdMax('');
-      setMhTolWtMin('');
-      setMhTolWtMax('');
-      setHydroPressurePsi('');
-    }
-
-    // Reset marking string for the newly selected Work Order based on active markingType
-    setMarking(
-      buildMarkingString(markingTypeRef.current, {
-        routeCode: rCode,
-        specification: plan.specification || parsedSt.spec,
-        grade: plan.grade || parsedSt.grade,
-        sizeOd: targetOd > 0 ? targetOd : undefined,
-        sizeWt: targetWt > 0 ? targetWt : undefined,
-        hydroPsi: calcHydroStr || undefined,
-        woNo: plan.work_order_no,
-        poNo: plan.po_no || parsedSt.po_no || '',
-      })
-    );
-
-    // Fetch mechanical & tolerances automatically specifically for this work order
-    if (fullSpecGrade || targetOd > 0) {
-      fetchAiSpecs({
-        planId: plan.id,
-        grade: plan.grade || parsedSt.grade,
-        specification: fullSpecGrade,
-        size_od: targetOd > 0 ? targetOd : undefined,
-        size_wt: targetWt > 0 ? targetWt : undefined,
-        route_code: rCode,
-        customer_name: plan.customer_name,
-        wo_no: plan.work_order_no,
-        po_no: plan.po_no || parsedSt.po_no || '',
-        heat_no: parsedSt.heat_no || '',
-      });
-    }
-
-    // Check if custom Process Sheet has been saved for this Work Order in database
-    (async () => {
-      try {
-        const s = createClient();
-        const { data, error } = await s
-          .from('process_sheets')
-          .select('*')
-          .or(`work_order_no.eq.${effectiveWoNo},plan_id.eq.${plan.id}`)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!error && data && data.sheet_data) {
-          applySavedSheetData(data.sheet_data);
-          setSavedRecord(data);
-          toast.info(`Loaded saved Process Sheet (${data.sheet_no}) from database.`);
-          return;
-        }
-      } catch (e) {
-        console.warn('Note checking saved process sheet:', e);
-      }
-      setSavedRecord(null);
-    })();
-  };
-  selectPlanRef.current = selectPlan;
-
-  // When user selects a Material Specification from the Master dropdown
-  const handleSpecMasterSelect = (specKey: string) => {
-    if (specKey === '__custom__') {
-      setSpecMasterCustom(true);
-      setMaterialSpec('');
-      return;
-    }
-    setSpecMasterCustom(false);
-    const rec = specMasterList.find((r) => r.spec_key === specKey);
-    if (!rec) return;
-
-    // Auto-populate Material Specification & Steel Grade
-    setMaterialSpec(rec.spec_full);
-    setSteelGrade(rec.steel_grade || '');
-    setPipeColorCode(rec.color_spec || '');
-    setRmColorCode(rec.rm_color || '');
-
-    // Mechanical Properties
-    setYstMin(rec.smys_mpa ? String(rec.smys_mpa) : '');
-    setYstMax('');
-    setUtsMin(rec.uts_mpa ? String(rec.uts_mpa) : '');
-    setUtsMax('');
-    setElongationMin(rec.elongation_pct ? String(rec.elongation_pct) : '');
-    setElongationMax('');
-    setHardness(rec.hardness || '');
-    setStraightness(rec.straightness || '');
-
-    // Thermal Parameters
-    setWhfTemp(rec.whf_temp || '');
-    setInductionTemp(rec.induction_temp || '');
-    setSizingOutletTemp(rec.sizing_outlet_temp || '');
-    setHtCycle(rec.ht_cycle || '');
-    setHtCondition(rec.ht_condition || '');
-
-    // Testing
-    setNdt(rec.ndt || '');
-    setHoldingTime(rec.holding_time_sec ? `${rec.holding_time_sec} SEC` : '');
-
-    // Coating & Finishing
-    setCoating(rec.coating || '');
-    setEndCondition(rec.end_condition || '');
-    setBundling(rec.bundling || '');
-    setEndCap(rec.end_cap || '');
-
-    // Calculate Dimensional Tolerances using current OD/WT
-    const od = Number(custOd) || Number(activePlan?.size_od) || 0;
-    const wt = Number(custWt) || Number(activePlan?.size_wt) || 0;
-    if (od > 0 && wt > 0) {
-      const route = (routeType || orderType || 'HFS').toUpperCase();
-      const tols = calculateStandardTolerances(od, wt, rec.spec_full, route);
-      setFinalTolOdMin(tols.od_min.toFixed(2));
-      setFinalTolOdMax(tols.od_max.toFixed(2));
-      setFinalTolWtMin(tols.wt_min.toFixed(2));
-      setFinalTolWtMax(tols.wt_max.toFixed(2));
-      setMhTolOdMin((tols.od_min + 0.01).toFixed(2));
-      setMhTolOdMax((tols.od_max - 0.01).toFixed(2));
-      setMhTolWtMin(tols.wt_min.toFixed(2));
-      setMhTolWtMax((tols.wt_max - 0.28).toFixed(2));
-
-      // Process Wall
-      const isNoNeg = rec.is_min_wall || tols.wt_min >= wt - 0.01;
-      const calcProcWt = isNoNeg ? Number((wt * 1.05).toFixed(2)) : Number((wt * 0.97).toFixed(2));
-      setProcessWt(calcProcWt.toFixed(2));
-
-      // Hydro Pressure
-      const hydroRes = calculateHydroPressurePsi(od, wt, rec.smys_mpa || 240);
-      setHydroPressurePsi(`${hydroRes.pressurePsi} PSI`);
-
-      // Update Marking
-      setMarking(
-        buildMarkingString(markingTypeRef.current, {
-          routeCode: route,
-          specification: rec.spec_full,
-          grade: rec.steel_grade,
-          sizeOd: od,
-          sizeWt: wt,
-          hydroPsi: `${hydroRes.pressurePsi} PSI`,
-          woNo,
-          poNo,
-        })
-      );
-    } else {
-      setFinalTolOdMin('');
-      setFinalTolOdMax('');
-      setFinalTolWtMin('');
-      setFinalTolWtMax('');
-      setMhTolOdMin('');
-      setMhTolOdMax('');
-      setMhTolWtMin('');
-      setMhTolWtMax('');
-      setProcessWt('');
-      setHydroPressurePsi('');
-    }
-
-    setSpecSource('engine');
-    toast.success(`Loaded specs for ${rec.spec_full} from Master Table`);
+    const populated = autoPopulateProcessSheet(plan, specMasterList);
+    setFormData(populated);
+    toast.success(`Process Sheet loaded for ${plan.work_order_no}`);
   };
 
-  // Fetch Mechanical Properties, Tolerances & Hydro Pressure PSI via AI / Metallurgical Engine
-  const fetchAiSpecs = async (customParams?: any) => {
-    setAiLoading(true);
-    try {
-      const activePlan = plans.find((p) => p.id === (customParams?.planId || selectedPlanId));
-      const targetGrade =
-        customParams?.grade ||
-        steelGrade ||
-        activePlan?.grade ||
-        '';
-      const targetSpec =
-        customParams?.specification ||
-        materialSpec ||
-        activePlan?.specification ||
-        '';
-      const targetOd = Number(
-        customParams?.size_od ||
-        custOd ||
-        activePlan?.size_od ||
-        0
-      );
-      const targetWt = Number(
-        customParams?.size_wt ||
-        custWt ||
-        activePlan?.size_wt ||
-        0
-      );
-      const targetRoute =
-        customParams?.route_code ||
-        orderType ||
-        activePlan?.route_code ||
-        'HFS';
-      const targetCustomer =
-        customParams?.customer_name ||
-        customer ||
-        activePlan?.customer_name ||
-        '';
-      const targetWoNo =
-        customParams?.wo_no ||
-        woNo ||
-        activePlan?.work_order_no ||
-        '';
-      const targetPoNo = customParams?.po_no ?? poNo;
-      const targetHeatNo = customParams?.heat_no ?? heatNo;
-
-      if (!targetSpec && !targetGrade && targetOd === 0) {
-        setAiLoading(false);
-        return;
-      }
-
-      const payload = {
-        grade: targetGrade,
-        specification: targetSpec,
-        size_od: targetOd,
-        size_wt: targetWt,
-        route_code: targetRoute,
-        customer_name: targetCustomer,
-        wo_no: targetWoNo,
-        po_no: targetPoNo,
-        heat_no: targetHeatNo,
-      };
-
-      const res = await fetch('/api/ai/process-spec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || 'Failed to fetch metallurgical specs.');
-      }
-
-      const d: ProcessSpecResult = json.data;
-      setSpecSource(d.source);
-
-      // Populate Mechanical Properties
-      setYstMin(String(d.mechanical.yst_min_mpa));
-      setYstMax(String(d.mechanical.yst_max_mpa));
-      setUtsMin(String(d.mechanical.uts_min_mpa));
-      setUtsMax(String(d.mechanical.uts_max_mpa));
-      setElongationMin(String(d.mechanical.elongation_min_pct));
-      setElongationMax(String(d.mechanical.elongation_max_pct));
-      setHardness(d.mechanical.hardness_max);
-      setStraightness(d.mechanical.straightness);
-
-      // Populate Hydro Pressure PSI
-      setHydroPressurePsi(`${d.testing.hydro_pressure_psi} PSI`);
-      setHoldingTime(`${d.testing.holding_time_sec} SEC`);
-      setNdt(d.testing.ndt);
-
-      // Populate Tolerances
-      setFinalTolOdMin(d.tolerances.od_min.toFixed(2));
-      setFinalTolOdMax(d.tolerances.od_max.toFixed(2));
-      setFinalTolWtMin(d.tolerances.wt_min.toFixed(2));
-      setFinalTolWtMax(d.tolerances.wt_max.toFixed(2));
-
-      setMhTolOdMin((d.tolerances.od_min + 0.01).toFixed(2));
-      setMhTolOdMax((d.tolerances.od_max - 0.01).toFixed(2));
-      setMhTolWtMin(d.tolerances.wt_min.toFixed(2));
-      setMhTolWtMax((d.tolerances.wt_max - 0.28).toFixed(2));
-
-      // Rule 6: Process Wall for material without negative tolerance is Customer WT * 1.05, rest is Customer WT * 0.97
-      const isNoNeg =
-        d.tolerances.wt_min >= targetWt - 0.01 ||
-        (Boolean((d.tolerances as any).wt_tol_str) && String((d.tolerances as any).wt_tol_str).includes('-0')) ||
-        targetSpec.toUpperCase().includes('MIN') ||
-        targetSpec.toUpperCase().includes('MW') ||
-        targetSpec.toUpperCase().includes('MIN WALL') ||
-        targetSpec.toUpperCase().includes('NO NEG') ||
-        targetSpec.toUpperCase().includes('A213') ||
-        targetSpec.toUpperCase().includes('A192') ||
-        targetSpec.toUpperCase().includes('A210');
-      const calcProcWt = isNoNeg ? Number((targetWt * 1.05).toFixed(2)) : Number((targetWt * 0.97).toFixed(2));
-      setProcessWt(calcProcWt.toFixed(2));
-
-      // Thermal & Coating
-      setWhfTemp(d.thermal.whf_temp);
-      setInductionTemp(d.thermal.induction_furnace_temp);
-      setSizingOutletTemp(d.thermal.sizing_mill_outlet_temp);
-      setHtCycle(d.thermal.ht_cycle);
-      setHtCondition(d.thermal.ht_condition);
-
-      setPipeColorCode(d.color_code_spec);
-      setRmColorCode(d.rm_color_code);
-      setCoating(d.coating);
-      setEndCondition(d.end_condition);
-      setBundling(d.bundling);
-      setEndCap(d.end_cap);
-
-      // Update marking string with calculated hydro pressure & active order details adhering to markingType
-      setMarking(
-        buildMarkingString(markingTypeRef.current, {
-          routeCode: targetRoute,
-          specification: targetSpec,
-          grade: targetGrade,
-          sizeOd: targetOd,
-          sizeWt: targetWt,
-          hydroPsi: `${d.testing.hydro_pressure_psi} PSI`,
-          woNo: targetWoNo,
-          poNo: targetPoNo,
-        })
-      );
-
-      toast.success(
-        d.source === 'ai'
-          ? 'Mechanical properties & Hydro Pressure fetched via Google Gemini AI!'
-          : 'Mechanical properties & Hydro Pressure verified via Metallurgical Standards Engine.'
-      );
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to fetch AI specs.');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // Filter plans based on search
+  // Filter plans based on search input
   const filteredPlans = useMemo(() => {
     if (!searchQuery.trim()) return plans;
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
     return plans.filter(
       (p) =>
         p.work_order_no.toLowerCase().includes(q) ||
-        (p.is_diversion && `${p.work_order_no}-div`.toLowerCase().includes(q)) ||
-        (p.is_diversion && 'diversion'.includes(q)) ||
-        p.plan_no.toLowerCase().includes(q) ||
-        (p.customer_name || '').toLowerCase().includes(q) ||
-        (p.grade || '').toLowerCase().includes(q) ||
-        (p.specification || '').toLowerCase().includes(q)
+        (p.customer_name && p.customer_name.toLowerCase().includes(q)) ||
+        (p.grade && p.grade.toLowerCase().includes(q)) ||
+        (p.specification && p.specification.toLowerCase().includes(q))
     );
   }, [plans, searchQuery]);
 
-  const activePlan = useMemo(() => {
-    return plans.find((p) => p.id === selectedPlanId);
-  }, [plans, selectedPlanId]);
-
-  const handlePrint = () => {
-    window.print();
+  // Apply spec master record manually
+  const handleApplySpecMaster = (spec: SpecMasterRecord) => {
+    actions.updateFields({
+      materialSpec: spec.spec_full || spec.spec_key,
+      steelGrade: spec.steel_grade || formData.steelGrade,
+      isMinWall: Boolean(spec.is_min_wall),
+      ystMin: spec.smys_mpa ? String(spec.smys_mpa) : formData.ystMin,
+      utsMin: spec.uts_mpa ? String(spec.uts_mpa) : formData.utsMin,
+      elongationMin: spec.elongation_pct ? String(spec.elongation_pct) : formData.elongationMin,
+      hardness: spec.hardness || formData.hardness,
+      straightness: spec.straightness || formData.straightness,
+      whfTemp: spec.whf_temp || formData.whfTemp,
+      inductionTemp: spec.induction_temp || formData.inductionTemp,
+      sizingOutletTemp: spec.sizing_outlet_temp || formData.sizingOutletTemp,
+      htCycle: spec.ht_cycle || formData.htCycle,
+      htCondition: spec.ht_condition || formData.htCondition,
+      holdingTime: spec.holding_time_sec ? `${spec.holding_time_sec} SEC` : formData.holdingTime,
+      ndt: spec.ndt || formData.ndt,
+      coating: spec.coating || formData.coating,
+      endCondition: spec.end_condition || formData.endCondition,
+      bundling: spec.bundling || formData.bundling,
+      endCap: spec.end_cap || formData.endCap,
+      pipeColorCode: spec.color_spec || formData.pipeColorCode,
+      rmColorCode: spec.rm_color || formData.rmColorCode,
+    });
+    toast.success(`Applied spec: ${spec.spec_full || spec.spec_key}`);
   };
 
   return (
-    <div className="space-y-6 pb-20">
-      {/* Print Overrides: Suppress layout header/sidebar and set page size */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-            @media print {
-              @page {
-                size: A4 portrait;
-                margin: 6mm 5mm;
-              }
-              header, aside, nav, .print\\:hidden, [role="navigation"] {
-                display: none !important;
-              }
-              body, html {
-                background: #ffffff !important;
-                color: #000000 !important;
-                padding: 0 !important;
-                margin: 0 !important;
-              }
-            }
-          `,
-        }}
-      />
-
-      {/* Action Header & WO Selector (Hidden on Print) */}
-      <div className="print:hidden space-y-4">
-        {/* Streamlined Action Header */}
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-lg font-black text-slate-900 tracking-wide flex items-center gap-2">
-              <FileText className="w-5 h-5 text-indigo-600" />
-              Process Sheet Form
-              <span className="text-xs font-semibold text-slate-700 font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
-                F-PROD-11
+    <div className="w-full space-y-4">
+      {/* Top Header Bar */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs print:hidden">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-blue-900 text-white rounded">
+                Format F-PROD-11
               </span>
-            </h1>
-
-            {savedRecord ? (
-              <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-300 flex items-center gap-1.5 shadow-xs">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Saved in Database ({savedRecord.sheet_no})
-              </span>
-            ) : (
-              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1.5 shadow-xs">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-600" /> Draft / Unsaved
-              </span>
-            )}
+              <h1 className="text-lg font-black text-slate-900 tracking-tight">
+                Process Sheet (Seamless Pipe Mill)
+              </h1>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Production routing parameters, metallurgical specifications, and Barlow test pressure.
+            </p>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* View Mode Switcher */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* View Mode Toggle */}
+            <div className="inline-flex rounded-lg border border-slate-300 p-0.5 bg-slate-100 text-xs font-bold shadow-xs">
               <button
                 type="button"
                 onClick={() => setViewMode('form')}
-                className={`px-3 py-1.5 rounded-md text-xs font-black flex items-center gap-1.5 transition-all ${
-                  viewMode === 'form'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors cursor-pointer ${
+                  viewMode === 'form' ? 'bg-white text-blue-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <FileText className="w-3.5 h-3.5" />
-                Form View
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Form Entry</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('preview')}
-                className={`px-3 py-1.5 rounded-md text-xs font-black flex items-center gap-1.5 transition-all ${
-                  viewMode === 'preview'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors cursor-pointer ${
+                  viewMode === 'preview' ? 'bg-white text-blue-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Printer className="w-3.5 h-3.5" />
-                Print Preview (F-11)
+                <Eye className="w-3.5 h-3.5" />
+                <span>Print Preview</span>
               </button>
             </div>
-
-            {/* Marking Type Dropdown */}
-            <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-xs">
-              <span className="text-xs text-slate-700 font-bold">Marking:</span>
-              <select
-                value={markingType}
-                onChange={(e) => {
-                  const newType = e.target.value as 'single' | 'triple';
-                  setMarkingType(newType);
-                  const active = plans.find((p) => p.id === selectedPlanId);
-                  setMarking(
-                    buildMarkingString(newType, {
-                      routeCode: routeType || active?.route_code || 'HFS',
-                      specification: materialSpec || active?.specification,
-                      grade: steelGrade || active?.grade,
-                      sizeOd: custOd || active?.size_od,
-                      sizeWt: custWt || active?.size_wt,
-                      hydroPsi: hydroPressurePsi,
-                      woNo: woNo || active?.work_order_no,
-                      poNo: poNo || active?.po_no || undefined,
-                    })
-                  );
-                }}
-                className="bg-white text-slate-900 font-black text-xs px-2 py-0.5 rounded border border-slate-300 focus:outline-none cursor-pointer"
-              >
-                <option value="single">Single Marking</option>
-                <option value="triple">Triple Marking</option>
-              </select>
-            </div>
-
-            {/* AI Spec Button */}
-            <button
-              type="button"
-              onClick={() => fetchAiSpecs()}
-              disabled={aiLoading || !selectedPlanId}
-              className="px-3.5 py-1.5 min-h-[36px] rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {aiLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-300" />}
-              {aiLoading ? 'Analyzing...' : 'Fetch AI Specs'}
-            </button>
-
-            {/* Save Button */}
-            <button
-              type="button"
-              onClick={handleSaveProcessSheet}
-              disabled={saving || !selectedPlanId}
-              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              {saving ? 'Saving...' : 'Save Sheet'}
-            </button>
 
             {/* Print Button */}
             <button
               type="button"
-              onClick={handlePrint}
-              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center gap-1.5 border border-slate-300 transition-all cursor-pointer shadow-xs"
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-xs cursor-pointer"
             >
-              <Printer className="w-3.5 h-3.5 text-emerald-600" />
-              Print / Save PDF
+              <Printer className="w-4 h-4" />
+              <span>Print F-PROD-11</span>
             </button>
           </div>
         </div>
 
-        {/* Compact Work Order Selector Frame */}
-        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-2.5">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
-            <div className="md:col-span-4 relative">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search Work Order, Grade, Size..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-white focus:bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 shadow-xs"
-              />
-            </div>
-
-            <div className="md:col-span-8 flex items-center gap-2">
-              <select
-                value={selectedPlanId}
-                onChange={(e) => {
-                  const chosen = plans.find((p) => p.id === e.target.value);
-                  if (chosen) selectPlan(chosen);
-                }}
-                className="w-full px-3 py-2 bg-slate-50 hover:bg-white focus:bg-white text-slate-950 font-black border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer shadow-xs"
-              >
-                <option value="" disabled>
-                  -- Select Work Order ({filteredPlans.length} available) --
-                </option>
-                {filteredPlans.some((p) => !p.is_diversion) && (
-                  <optgroup label="📋 Work Orders">
-                    {filteredPlans
-                      .filter((p) => !p.is_diversion)
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.work_order_no} | {p.grade || 'Standard'} | OD {p.size_od} × {p.size_wt} mm — {p.customer_name}
-                        </option>
-                      ))}
-                  </optgroup>
-                )}
-                {filteredPlans.some((p) => p.is_diversion) && (
-                  <optgroup label="🔀 Diversion Plans (-Div)">
-                    {filteredPlans
-                      .filter((p) => p.is_diversion)
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.work_order_no}-Div | Diversion | {p.grade || 'Standard'} | OD {p.size_od} × {p.size_wt} mm — {p.customer_name}
-                        </option>
-                      ))}
-                  </optgroup>
-                )}
-              </select>
-
-              {activePlan?.is_diversion && (
-                <span className="shrink-0 px-2 py-1 rounded text-xs font-black bg-amber-100 text-amber-950 border border-amber-300">
-                  DIVERSION
-                </span>
-              )}
-            </div>
+        {/* Plan / Work Order Selection Bar */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 pt-3 border-t border-slate-100">
+          <div className="md:col-span-1 relative">
+            <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search WO No, Customer, Grade..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
-          {activePlan && (
-            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs flex items-center justify-between flex-wrap gap-2 text-slate-700">
-              <div className="flex items-center gap-2.5 flex-wrap font-bold">
-                <span className="text-slate-900 flex items-center gap-1">
-                  WO: <span className="text-indigo-700 font-extrabold">{activePlan.work_order_no}{activePlan.is_diversion ? '-Div' : ''}</span>
-                </span>
-                <span className="text-slate-300">|</span>
-                <span className="text-emerald-700">{activePlan.customer_name}</span>
-                <span className="text-slate-300">|</span>
-                <span className="text-sky-800 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200">{activePlan.grade} ({activePlan.specification})</span>
-                <span className="text-slate-300">|</span>
-                <span className="text-slate-900">OD {activePlan.size_od} × WT {activePlan.size_wt} mm</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300">
-                  Hydro: {hydroPressurePsi}
-                </span>
-              </div>
-            </div>
+          <div className="md:col-span-2">
+            <select
+              value={selectedPlanId}
+              onChange={(e) => handleSelectPlan(e.target.value)}
+              disabled={loading}
+              className="w-full px-3 py-1.5 text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs cursor-pointer"
+            >
+              {filteredPlans.length === 0 ? (
+                <option value="">No matching work orders found</option>
+              ) : (
+                filteredPlans.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.work_order_no} · {p.customer_name || 'Generic'} · {p.size_od}×{p.size_wt} mm · {p.grade || p.specification} · Route: {p.route_code} ({p.ordered_qty_mtr || p.planned_qty} M)
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        </div>
+
+        {/* Tab Filters (in form mode) */}
+        {viewMode === 'form' && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-slate-100">
+            {[
+              { id: 'all', label: 'All Sections' },
+              { id: 'order', label: '1. Order Details' },
+              { id: 'hotmill', label: '2. Hot Mill & Piercing' },
+              { id: 'metallurgy', label: '3. Metallurgy & Chemistry' },
+              { id: 'testing', label: '4. Testing & Temperatures' },
+              { id: 'finishing', label: '5. Marking & Dispatch' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFormTab(tab.id as FormTab)}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                  formTab === tab.id
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Main Content Area */}
+      {loading ? (
+        <div className="flex h-64 items-center justify-center bg-white border border-slate-200 rounded-xl p-8 text-xs font-bold text-slate-500 gap-2">
+          <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+          <span>Loading Process Sheet parameters...</span>
+        </div>
+      ) : viewMode === 'preview' ? (
+        <ProcessSheetPrintDocument data={formData} />
+      ) : (
+        <div className="space-y-5">
+          {(formTab === 'all' || formTab === 'order') && (
+            <ProcessSheetOrderDetails data={formData} actions={actions} />
+          )}
+
+          {(formTab === 'all' || formTab === 'hotmill') && (
+            <ProcessSheetHotMillSection data={formData} actions={actions} />
+          )}
+
+          {(formTab === 'all' || formTab === 'metallurgy') && (
+            <ProcessSheetMetallurgySection
+              data={formData}
+              actions={actions}
+              specMasterList={specMasterList}
+              onApplySpecMaster={handleApplySpecMaster}
+            />
+          )}
+
+          {(formTab === 'all' || formTab === 'testing') && (
+            <ProcessSheetTestingSection data={formData} actions={actions} />
+          )}
+
+          {(formTab === 'all' || formTab === 'finishing') && (
+            <ProcessSheetFinishingSection data={formData} actions={actions} />
           )}
         </div>
-      </div>
-
-      {/* 
-        ========================================================================
-        PROCESS SHEET INTERACTIVE FORM VIEW
-        Clean, structured cards for fast editing, validation and saving
-        ========================================================================
-      */}
-      {viewMode === 'form' && (
-        <div className="space-y-5 print:hidden">
-          {/* Section 1: Order & Master Identification */}
-          <FormSectionCard
-            title="1. Order & Master Identification"
-            icon={FileText}
-            headerBg="bg-indigo-700"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-              <FormInput
-                label="Process Sheet No."
-                value={sheetNo}
-                onChange={setSheetNo}
-                unit="Doc ID"
-                highlight
-              />
-              <FormInput
-                label="Revision No."
-                value={revNo}
-                onChange={setRevNo}
-                placeholder="REV 01"
-              />
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <label className="font-bold text-slate-700">Order Category</label>
-                  <span className="text-[10px] font-bold font-mono text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-                    Type
-                  </span>
-                </div>
-                <select
-                  value={orderType}
-                  onChange={(e) => setOrderType(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200 shadow-xs"
-                >
-                  <option value="HFS">HFS (Hot Finished Seamless)</option>
-                  <option value="CDS">CDS (Cold Drawn Seamless)</option>
-                </select>
-              </div>
-              <FormInput
-                label="Process Route"
-                value={routeType}
-                onChange={setRouteType}
-              />
-
-              <FormInput
-                label="Sheet Issue Date"
-                value={sheetDate}
-                onChange={setSheetDate}
-                placeholder="DD-MM-YYYY"
-              />
-              <FormInput
-                label="Customer Name"
-                value={customer}
-                onChange={setCustomer}
-                highlight
-              />
-              <FormInput
-                label="Destination / Consignee"
-                value={destination}
-                onChange={setDestination}
-              />
-              <FormInput
-                label="Purchase Order No."
-                value={poNo}
-                onChange={setPoNo}
-              />
-
-              <FormInput
-                label="Purchase Order Date"
-                value={poDate}
-                onChange={setPoDate}
-                placeholder="DD-MM-YYYY"
-              />
-              <FormInput
-                label="Work Order No."
-                value={woNo}
-                onChange={setWoNo}
-                highlight
-              />
-              <FormInput
-                label="Work Order Date"
-                value={woDate}
-                onChange={setWoDate}
-                placeholder="DD-MM-YYYY"
-              />
-              <FormInput
-                label="Order Quantity"
-                value={orderQty}
-                onChange={setOrderQty}
-                unit="Mtr / Pcs"
-              />
-
-              <FormInput
-                label="Delivery Date"
-                value={deliveryDate}
-                onChange={setDeliveryDate}
-              />
-              <FormInput
-                label="Material Item Code"
-                value={materialCode}
-                onChange={setMaterialCode}
-              />
-              <FormInput
-                label="Rolling Priority"
-                value={priority}
-                onChange={setPriority}
-              />
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <label className="font-bold text-slate-700">Material Specification</label>
-                  <a
-                    href="/admin/spec-master"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[10px] font-bold text-indigo-700 hover:text-indigo-900 hover:underline inline-flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 cursor-pointer"
-                    title="Open Material Spec Master in new tab"
-                  >
-                    <span>Spec Master ↗</span>
-                  </a>
-                </div>
-                {specMasterCustom ? (
-                  <div className="flex gap-1">
-                    <input
-                      type="text"
-                      value={materialSpec}
-                      onChange={(e) => setMaterialSpec(e.target.value)}
-                      placeholder="Enter custom specification..."
-                      className="flex-1 px-3 py-1.5 font-bold text-xs rounded-lg bg-amber-50 text-amber-950 border-2 border-amber-500 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none shadow-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSpecMasterCustom(false)}
-                      className="px-2 py-1 text-xs font-bold bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors cursor-pointer"
-                      title="Switch back to dropdown"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <select
-                    value={specMasterList.find((r) => r.spec_full === materialSpec)?.spec_key || ''}
-                    onChange={(e) => handleSpecMasterSelect(e.target.value)}
-                    className="w-full px-3 py-1.5 font-bold text-xs rounded-lg bg-amber-50 text-amber-950 border-2 border-amber-500 hover:border-amber-600 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none shadow-xs cursor-pointer"
-                  >
-                    <option value="">— Select Specification —</option>
-                    {specMasterList.map((spec) => (
-                      <option key={spec.spec_key} value={spec.spec_key}>
-                        {spec.spec_full}
-                      </option>
-                    ))}
-                    <option value="__custom__">✏️ Other (Custom Entry)</option>
-                  </select>
-                )}
-              </div>
-
-              <FormInput
-                label="Steel Grade"
-                value={steelGrade}
-                onChange={setSteelGrade}
-                highlight
-              />
-              <FormInput
-                label="Raw Material Heat No."
-                value={heatNo}
-                onChange={setHeatNo}
-              />
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <label className="font-bold text-slate-700">Inspection Authority</label>
-                  <span className="text-[10px] font-bold font-mono text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
-                    Standard
-                  </span>
-                </div>
-                <select
-                  value={inspection}
-                  onChange={(e) => setInspection(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200 shadow-xs"
-                >
-                  <option value="IBR">IBR (Indian Boiler Regulations)</option>
-                  <option value="NON-IBR">NON-IBR (Commercial / General)</option>
-                </select>
-              </div>
-              <FormInput
-                label="Pipe Colour Code"
-                value={pipeColorCode}
-                onChange={setPipeColorCode}
-              />
-              <FormInput
-                label="RM Billet Colour Code"
-                value={rmColorCode}
-                onChange={setRmColorCode}
-              />
-            </div>
-          </FormSectionCard>
-
-          {/* Section 2: Billet & Heating Parameters */}
-          <FormSectionCard
-            title="2. Billet Cutting & Furnace Heating Parameters"
-            icon={Flame}
-            headerBg="bg-amber-700"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              <FormInput
-                label="Billet Diameter"
-                value={billetDia}
-                onChange={setBilletDia}
-                unit="mm"
-              />
-              <FormInput
-                label="Billet Section Weight"
-                value={billetSectWt}
-                onChange={setBilletSectWt}
-                unit="kg/m"
-              />
-              <FormInput
-                label="Total Planned Billet Wt"
-                value={totalWeightMt}
-                onChange={setTotalWeightMt}
-                unit="MT"
-              />
-              <FormInput
-                label="Billet Cutting Length"
-                value={billetLength}
-                onChange={setBilletLength}
-                unit="m"
-              />
-              <FormInput
-                label="Billet Cutting Tolerance"
-                value={cuttingTol}
-                onChange={setCuttingTol}
-                placeholder="+5/-0 MM"
-              />
-              <FormInput
-                label="Rolling Multiple"
-                value={multiple}
-                onChange={setMultiple}
-                placeholder="1 or 2"
-              />
-              <FormInput
-                label="WHF Heating Temperature"
-                value={whfTemp}
-                onChange={setWhfTemp}
-                unit="°C"
-              />
-              <FormInput
-                label="Induction Furnace Temp"
-                value={inductionTemp}
-                onChange={setInductionTemp}
-                unit="°C"
-              />
-              <FormInput
-                label="Sizing Mill Outlet Temp"
-                value={sizingOutletTemp}
-                onChange={setSizingOutletTemp}
-                unit="°C"
-              />
-            </div>
-          </FormSectionCard>
-
-          {/* Section 3: Piercer & Mother Hollow Specs */}
-          <FormSectionCard
-            title="3. Piercer Mill & Mother Hollow Specifications"
-            icon={Cpu}
-            headerBg="bg-blue-700"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-              <FormInput
-                label="Piercer Shell OD"
-                value={piercerOd}
-                onChange={setPiercerOd}
-                unit="mm"
-              />
-              <FormInput
-                label="Piercer Shell WT"
-                value={piercerWt}
-                onChange={setPiercerWt}
-                unit="mm"
-              />
-              <FormInput
-                label="Piercer Shell Length"
-                value={piercerShellLen}
-                onChange={setPiercerShellLen}
-                unit="m"
-              />
-              <FormInput
-                label="Piercer Shell Weight"
-                value={shellWeight}
-                onChange={setShellWeight}
-                unit="kg"
-              />
-
-              <FormInput
-                label="Mother Hollow OD"
-                value={motherHollowOd}
-                onChange={setMotherHollowOd}
-                unit="mm"
-                highlight
-              />
-              <FormInput
-                label="Mother Hollow WT"
-                value={motherHollowWt}
-                onChange={setMotherHollowWt}
-                unit="mm"
-                highlight
-              />
-              <FormInput
-                label="Rolling Wall Thickness"
-                value={rollingWt}
-                onChange={setRollingWt}
-                unit="mm"
-              />
-              <FormInput
-                label="Mother Hollow Wt/Mtr"
-                value={motherHollowKgMtr}
-                onChange={setMotherHollowKgMtr}
-                unit="kg/m"
-              />
-
-              <FormInput
-                label="Sizing Mill Length (SM)"
-                value={smLength}
-                onChange={setSmLength}
-                unit="m"
-              />
-              <FormInput
-                label="HFS Final Length"
-                value={hfsFinalLength}
-                onChange={setHfsFinalLength}
-                unit="m"
-              />
-              <FormInput
-                label="MH Tol: OD Min"
-                value={mhTolOdMin}
-                onChange={setMhTolOdMin}
-                unit="mm"
-              />
-              <FormInput
-                label="MH Tol: OD Max"
-                value={mhTolOdMax}
-                onChange={setMhTolOdMax}
-                unit="mm"
-              />
-
-              <FormInput
-                label="MH Tol: WT Min"
-                value={mhTolWtMin}
-                onChange={setMhTolWtMin}
-                unit="mm"
-              />
-              <FormInput
-                label="MH Tol: WT Max"
-                value={mhTolWtMax}
-                onChange={setMhTolWtMax}
-                unit="mm"
-              />
-              <FormInput
-                label="Planned Quantity (Nos)"
-                value={planQtyNos}
-                onChange={setPlanQtyNos}
-                unit="pcs"
-              />
-              <FormInput
-                label="Planned Quantity (Mtrs)"
-                value={planQtyMtrs}
-                onChange={setPlanQtyMtrs}
-                unit="m"
-              />
-
-              <FormInput
-                label="Planned Quantity (MT)"
-                value={planQtyMt}
-                onChange={setPlanQtyMt}
-                unit="MT"
-              />
-              <div className="col-span-1 sm:col-span-2 lg:col-span-3">
-                <FormInput
-                  label="Process Route Sequence Flow"
-                  value={processRouteStr}
-                  onChange={setProcessRouteStr}
-                  placeholder="BILLET CUTTING # WHF # PIERCER # SIZING # STRA # CUTTING # UT # HYDRO # VDI # BLACK VARNISH # MARKING # BUNDLING"
-                />
-              </div>
-            </div>
-          </FormSectionCard>
-
-          {/* Section 4: Cold Mill & Final Sizing Dimensions & Tolerances */}
-          <FormSectionCard
-            title="4. Cold Mill & Final Sizing Dimensions & Tolerances"
-            icon={Layers}
-            headerBg="bg-emerald-700"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-              <FormInput
-                label="Customer Finished OD"
-                value={custOd}
-                onChange={setCustOd}
-                unit="mm"
-                highlight
-              />
-              <FormInput
-                label="Customer Finished WT"
-                value={custWt}
-                onChange={setCustWt}
-                unit="mm"
-                highlight
-              />
-              <FormInput
-                label="Process Wall Thickness"
-                value={processWt}
-                onChange={setProcessWt}
-                unit="mm"
-                title="Calculated with standard expansion margin"
-              />
-              <FormInput
-                label="Final Pipe Weight"
-                value={finalPipeWeight}
-                onChange={setFinalPipeWeight}
-                unit="kg/m"
-              />
-
-              <FormInput
-                label="Final Calculated Length"
-                value={finalLength}
-                onChange={setFinalLength}
-                unit="m"
-              />
-              <FormInput
-                label="Order Length (L1)"
-                value={finalOrderLen1}
-                unit="m"
-                onChange={(val) => {
-                  setFinalOrderLen1(val);
-                  const n1 = parseFloat(val);
-                  const n2 = parseFloat(finalOrderLen2);
-                  if (!isNaN(n1) && !isNaN(n2)) {
-                    if (Math.abs(n1 - n2) < 0.05) {
-                      setFinalLenTol('+10MM');
-                      if (!finalOrderLen2.includes('+10MM')) {
-                        setFinalOrderLen2(`${n2.toFixed(3)} +10MM`);
-                      }
-                    }
-                  }
-                }}
-              />
-              <FormInput
-                label="Order Length (L2) (+10MM Fixed)"
-                value={finalOrderLen2}
-                unit="m"
-                onChange={(val) => {
-                  setFinalOrderLen2(val);
-                  const n1 = parseFloat(finalOrderLen1);
-                  const n2 = parseFloat(val);
-                  if (!isNaN(n1) && !isNaN(n2)) {
-                    if (Math.abs(n1 - n2) < 0.05) {
-                      setFinalLenTol('+10MM');
-                    }
-                  }
-                }}
-                highlight
-              />
-              <FormInput
-                label="Length Tolerance"
-                value={finalLenTol}
-                onChange={setFinalLenTol}
-                placeholder="+10MM"
-              />
-
-              <FormInput
-                label="Final Tol: OD Min"
-                value={finalTolOdMin}
-                onChange={setFinalTolOdMin}
-                unit="mm"
-                highlight
-              />
-              <FormInput
-                label="Final Tol: OD Max"
-                value={finalTolOdMax}
-                onChange={setFinalTolOdMax}
-                unit="mm"
-                highlight
-              />
-              <FormInput
-                label="Final Tol: WT Min"
-                value={finalTolWtMin}
-                onChange={setFinalTolWtMin}
-                unit="mm"
-                highlight
-              />
-              <FormInput
-                label="Final Tol: WT Max"
-                value={finalTolWtMax}
-                onChange={setFinalTolWtMax}
-                unit="mm"
-                highlight
-              />
-            </div>
-
-            {/* Inter-Pass Reductions Sub-Block */}
-            <div className="mt-4 pt-3 border-t border-slate-200">
-              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-                <Sliders className="w-3.5 h-3.5 text-emerald-600" /> Cold Mill Inter-Pass Reductions (P1 / P2 / P3)
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 shadow-xs">
-                  <div className="text-xs font-black text-indigo-700 border-b border-slate-200 pb-1">
-                    PASS 1 (P1)
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <FormInput label="OD" value={p1Od} onChange={setP1Od} unit="mm" />
-                    <FormInput label="WT" value={p1Wt} onChange={setP1Wt} unit="mm" />
-                  </div>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 shadow-xs">
-                  <div className="text-xs font-black text-indigo-700 border-b border-slate-200 pb-1">
-                    PASS 2 (P2)
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <FormInput label="OD" value={p2Od} onChange={setP2Od} unit="mm" />
-                    <FormInput label="WT" value={p2Wt} onChange={setP2Wt} unit="mm" />
-                  </div>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 shadow-xs">
-                  <div className="text-xs font-black text-indigo-700 border-b border-slate-200 pb-1">
-                    PASS 3 (P3)
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <FormInput label="OD" value={p3Od} onChange={setP3Od} unit="mm" />
-                    <FormInput label="WT" value={p3Wt} onChange={setP3Wt} unit="mm" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </FormSectionCard>
-
-          {/* Section 5: Heat Treatment & Mechanical Properties */}
-          <FormSectionCard
-            title="5. Heat Treatment & Mechanical Properties"
-            icon={Activity}
-            headerBg="bg-purple-700"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-              <FormInput
-                label="Heat Treatment Cycle"
-                value={htCycle}
-                onChange={setHtCycle}
-                placeholder="NORMALIZED / SUB-CRITICAL ANNEAL"
-              />
-              <FormInput
-                label="Heat Treatment Condition"
-                value={htCondition}
-                onChange={setHtCondition}
-              />
-              <FormInput
-                label="Straightness Requirement"
-                value={straightness}
-                onChange={setStraightness}
-                placeholder="1:1000"
-              />
-              <FormInput
-                label="Hardness Limit"
-                value={hardness}
-                onChange={setHardness}
-                placeholder="79 HRB MAX"
-                highlight
-              />
-
-              <FormInput
-                label="Yield Strength (YST) Min"
-                value={ystMin}
-                onChange={setYstMin}
-                unit="MPa"
-                highlight
-              />
-              <FormInput
-                label="Yield Strength (YST) Max"
-                value={ystMax}
-                onChange={setYstMax}
-                unit="MPa"
-                placeholder="NOT SPECIFIED"
-              />
-              <FormInput
-                label="Tensile Strength (UTS) Min"
-                value={utsMin}
-                onChange={setUtsMin}
-                unit="MPa"
-                highlight
-              />
-              <FormInput
-                label="Tensile Strength (UTS) Max"
-                value={utsMax}
-                onChange={setUtsMax}
-                unit="MPa"
-                placeholder="NOT SPECIFIED"
-              />
-
-              <FormInput
-                label="Elongation Min"
-                value={elongationMin}
-                onChange={setElongationMin}
-                unit="%"
-                highlight
-              />
-              <FormInput
-                label="Elongation Max"
-                value={elongationMax}
-                onChange={setElongationMax}
-                unit="%"
-                placeholder="NOT SPECIFIED"
-              />
-            </div>
-          </FormSectionCard>
-
-          {/* Section 6: Testing, Quality & Surface Protection */}
-          <FormSectionCard
-            title="6. Testing, Quality & Surface Protection"
-            icon={ShieldCheck}
-            headerBg="bg-rose-700"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              <FormInput
-                label="Non-Destructive Testing (NDT)"
-                value={ndt}
-                onChange={setNdt}
-                placeholder="UT / ET"
-                highlight
-              />
-              <FormInput
-                label="Hydrostatic Test Pressure"
-                value={hydroPressurePsi}
-                onChange={setHydroPressurePsi}
-                unit="PSI"
-                highlight
-              />
-              <FormInput
-                label="Hydro Holding Time"
-                value={holdingTime}
-                onChange={setHoldingTime}
-                unit="Sec"
-              />
-
-              <FormInput
-                label="Surface Coating"
-                value={coating}
-                onChange={setCoating}
-                placeholder="BLACK VARNISH"
-              />
-              <FormInput
-                label="Pipe End Condition"
-                value={endCondition}
-                onChange={setEndCondition}
-                placeholder="BEVEL END (30°-35°)"
-              />
-              <FormInput
-                label="Bundling Shape / Type"
-                value={bundling}
-                onChange={setBundling}
-                placeholder="HEXAGONAL"
-              />
-
-              <FormInput
-                label="Bundle Quantity (Pcs)"
-                value={bundleQtyPcs}
-                onChange={setBundleQtyPcs}
-                unit="pcs"
-              />
-              <FormInput
-                label="Bundle Weight (MT)"
-                value={bundleWeightMt}
-                onChange={setBundleWeightMt}
-                unit="MT"
-              />
-              <FormInput
-                label="End Protection Cap"
-                value={endCap}
-                onChange={setEndCap}
-                placeholder="PLASTIC PROTECTOR"
-              />
-            </div>
-          </FormSectionCard>
-
-          {/* Section 7: Marking Specification & Special Requirements */}
-          <FormSectionCard
-            title="7. Marking Specification & Special Requirements"
-            icon={FileSpreadsheet}
-            headerBg="bg-amber-600"
-          >
-            <div className="space-y-3.5">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-700">Marking Format:</span>
-                  <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-0.5 shadow-xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMarkingType('single');
-                        markingTypeRef.current = 'single';
-                        const active = plans.find((p) => p.id === selectedPlanId);
-                        setMarking(
-                          buildMarkingString('single', {
-                            routeCode: routeType || active?.route_code || 'HFS',
-                            specification: materialSpec || active?.specification,
-                            grade: steelGrade || active?.grade,
-                            sizeOd: custOd || active?.size_od,
-                            sizeWt: custWt || active?.size_wt,
-                            hydroPsi: hydroPressurePsi,
-                            woNo: woNo || active?.work_order_no,
-                            poNo: poNo || active?.po_no || undefined,
-                          })
-                        );
-                      }}
-                      className={`px-3 py-1 rounded-md text-xs font-black transition-colors ${
-                        markingType === 'single'
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Single Marking
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMarkingType('triple');
-                        markingTypeRef.current = 'triple';
-                        const active = plans.find((p) => p.id === selectedPlanId);
-                        setMarking(
-                          buildMarkingString('triple', {
-                            routeCode: routeType || active?.route_code || 'HFS',
-                            specification: materialSpec || active?.specification,
-                            grade: steelGrade || active?.grade,
-                            sizeOd: custOd || active?.size_od,
-                            sizeWt: custWt || active?.size_wt,
-                            hydroPsi: hydroPressurePsi,
-                            woNo: woNo || active?.work_order_no,
-                            poNo: poNo || active?.po_no || undefined,
-                          })
-                        );
-                      }}
-                      className={`px-3 py-1 rounded-md text-xs font-black transition-colors ${
-                        markingType === 'triple'
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Triple Marking
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(marking);
-                    toast.success('Marking specification copied to clipboard!');
-                  }}
-                  className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors border border-slate-300 shadow-xs"
-                >
-                  <Copy className="w-3.5 h-3.5 text-indigo-600" /> Copy Marking Text
-                </button>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">
-                  Pipe Body Stenciling / Marking Text
-                </label>
-                <textarea
-                  rows={3}
-                  value={marking}
-                  onChange={(e) => setMarking(e.target.value)}
-                  className="w-full p-3 bg-white text-slate-950 font-black border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-200 transition-colors shadow-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">
-                  Special Customer Requirements (If Any)
-                </label>
-                <textarea
-                  rows={2}
-                  value={specialReq}
-                  onChange={(e) => setSpecialReq(e.target.value)}
-                  placeholder="Enter any customer specific inspection, third-party stamping, or packaging instructions..."
-                  className="w-full p-3 bg-white text-slate-950 font-bold border-2 border-slate-300 hover:border-slate-400 focus:border-indigo-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-200 transition-colors shadow-xs"
-                />
-              </div>
-            </div>
-          </FormSectionCard>
-
-          {/* Section 8: Signatures & Document Control */}
-          <FormSectionCard
-            title="8. Signatures & Document Control"
-            icon={UserCheck}
-            headerBg="bg-slate-800"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 text-center shadow-xs">
-                <div className="text-xs font-black text-slate-700">PREPARED BY</div>
-                <div className="text-sm font-black text-emerald-700 mt-2">{preparedBy}</div>
-                <div className="text-[10px] text-slate-500 font-bold">{preparedDate}</div>
-              </div>
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 text-center shadow-xs">
-                <div className="text-xs font-black text-slate-700">PPC SEC. IN-CHARGE</div>
-                <div className="text-xs text-slate-500 font-bold mt-3">APPROVED & VERIFIED</div>
-              </div>
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 text-center shadow-xs">
-                <div className="text-xs font-black text-slate-700">HOT MILL SEC IN-CHARGE</div>
-                <div className="text-xs text-slate-500 font-bold mt-3">HOT ROLLING READY</div>
-              </div>
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 text-center shadow-xs">
-                <div className="text-xs font-black text-slate-700">COLD MILL SEC IN-CHARGE</div>
-                <div className="text-xs text-slate-500 font-bold mt-3">PASS REDUCTIONS READY</div>
-              </div>
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1 text-center shadow-xs">
-                <div className="text-xs font-black text-slate-700">APPROVED BY QC</div>
-                <div className="text-xs text-emerald-700 font-bold mt-3">QUALITY ASSURED</div>
-              </div>
-            </div>
-          </FormSectionCard>
-
-          {/* Sticky / Floating Bottom Form Action Bar */}
-          <div className="sticky bottom-4 z-20 bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl p-3 shadow-xl flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold text-slate-700">
-                Work Order: <strong className="text-indigo-900 font-black">{woNo || 'None Selected'}</strong>
-              </span>
-              {savedRecord ? (
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-700 border border-emerald-300 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Saved in Database ({savedRecord.sheet_no})
-                </span>
-              ) : (
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" /> Unsaved Changes
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2.5">
-              {savedRecord && (
-                <button
-                  type="button"
-                  onClick={resetToCalculatedDefaults}
-                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 border border-slate-300 transition-colors shadow-xs"
-                >
-                  <Undo2 className="w-3.5 h-3.5 text-amber-600" /> Reset Defaults
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => fetchAiSpecs()}
-                disabled={aiLoading || !selectedPlanId}
-                className="px-3.5 py-1.5 min-h-[36px] rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
-              >
-                {aiLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-300" />}
-                {aiLoading ? 'Analyzing...' : 'Fetch AI Specs'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode('preview')}
-                className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center gap-1.5 border border-slate-300 transition-colors shadow-xs"
-              >
-                <Printer className="w-3.5 h-3.5 text-emerald-600" /> Preview Sheet
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSaveProcessSheet}
-                disabled={saving || !selectedPlanId}
-                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all disabled:opacity-50"
-              >
-                {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                {saving ? 'Saving...' : 'Save Process Sheet'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
-
-      {/* 
-        ========================================================================
-        AUTHENTIC RASHMI SEAMLESS DIVISION PROCESS SHEET (FORMAT NO. F-PROD-11)
-        Styled for direct high-fidelity visual fidelity on screen & physical A4 print
-        ========================================================================
-      */}
-      <div className={viewMode === 'preview' ? 'block' : 'hidden print:block'}>
-      {/* Legend Banner */}
-      <div className="max-w-[1100px] mx-auto mb-2 flex items-center justify-between text-xs px-2 py-1 print:hidden">
-        <div className="flex items-center gap-4 text-slate-600">
-          <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded border border-slate-300 bg-white inline-block shadow-xs"></span>
-            <span className="font-semibold text-slate-700">White Cells: Editable User Inputs</span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded border border-slate-400 bg-slate-200 inline-block shadow-xs"></span>
-            <span className="font-semibold text-amber-800">Grey Cells: Non-Editable / System Calculated</span>
-          </span>
-        </div>
-        <span className="text-[10px] text-slate-500 font-mono font-bold">Format: F-PROD-11</span>
-      </div>
-
-      <div className="bg-white text-black p-4 sm:p-6 rounded-xl shadow-2xl border border-slate-300 print:border-none print:shadow-none print:p-0 max-w-[1100px] mx-auto text-[11px] leading-tight font-sans">
-        {/* Company Header */}
-        <div className="border border-black flex items-stretch">
-          {/* Logo Box */}
-          <div className="w-36 p-2 border-r border-black flex flex-col items-center justify-center text-center bg-slate-50 print:bg-white">
-            <div className="font-extrabold text-lg tracking-wider text-red-600 print:text-black">
-              RASHMI
-            </div>
-            <div className="text-[9px] font-bold tracking-widest uppercase text-slate-700">
-              SEAMLESS
-            </div>
-          </div>
-
-          {/* Title & Division Info */}
-          <div className="flex-1 p-1.5 text-center">
-            <div className="font-bold text-xs uppercase tracking-wide">
-              RASHMI GREEN HYDROGEN STEEL PVT. LTD.
-            </div>
-            <div className="text-[10px] font-semibold">
-              (SEAMLESS DIVISION)
-            </div>
-            <div className="text-[8.5px] text-slate-700">
-              KHATRANGA CHANGUAL, GOPINATHPUR AND JETHIA, KHARAGPUR, WEST BENGAL-721301
-            </div>
-            <div className="font-black text-sm uppercase tracking-widest mt-0.5 border-t border-black/40 pt-0.5">
-              PROCESS SHEET
-            </div>
-          </div>
-        </div>
-
-        {/* Section: ORDER DETAILS HEADER */}
-        <div className="bg-slate-200 border-x border-b border-black text-center font-bold text-[10px] py-0.5 uppercase tracking-wide">
-          ORDER DETAILS
-        </div>
-
-        {/* Top Meta Table */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">PROCESS SHEET NO</div>
-          <div className="col-span-2 p-1 font-mono font-bold">
-            <input
-              type="text"
-              value={sheetNo}
-              onChange={(e) => setSheetNo(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold"
-            />
-          </div>
-          <div className="col-span-1 font-bold p-1 bg-slate-50">REV NO :</div>
-          <div className="col-span-1 p-1">
-            <input
-              type="text"
-              value={revNo}
-              onChange={(e) => setRevNo(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none"
-            />
-          </div>
-          <div className="col-span-1 font-bold p-1 bg-slate-50">ORDER</div>
-          <div className="col-span-1 p-1 font-bold text-center">
-            <input
-              type="text"
-              value={orderType}
-              onChange={(e) => setOrderType(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-          <div className="col-span-1 font-bold p-1 bg-slate-50">ROUTE</div>
-          <div className="col-span-1 p-1 font-bold text-center">
-            <input
-              type="text"
-              value={routeType}
-              onChange={(e) => setRouteType(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-          <div className="col-span-1 font-bold p-1 bg-slate-50">Date :</div>
-          <div className="col-span-1 p-1 font-bold">
-            <input
-              type="text"
-              value={sheetDate}
-              onChange={(e) => setSheetDate(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {/* Customer & Destination */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">CUSTOMER</div>
-          <div className="col-span-4 p-1 font-bold">
-            <input
-              type="text"
-              value={customer}
-              onChange={(e) => setCustomer(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">DESTINATION:</div>
-          <div className="col-span-4 p-1 font-bold">
-            <input
-              type="text"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold uppercase"
-            />
-          </div>
-        </div>
-
-        {/* PO & Work Order Row 1 */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">PURCHASE ORDER NO</div>
-          <div className="col-span-6 p-1">
-            <input
-              type="text"
-              value={poNo}
-              onChange={(e) => setPoNo(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-mono"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">WORK ORDER NO:</div>
-          <div className="col-span-2 p-1 font-bold font-mono">
-            <input
-              type="text"
-              value={woNo}
-              onChange={(e) => setWoNo(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold"
-            />
-          </div>
-        </div>
-
-        {/* PO Date & WO Date */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">PURCHASE ORDER DATE</div>
-          <div className="col-span-6 p-1">
-            <input
-              type="text"
-              value={poDate}
-              onChange={(e) => setPoDate(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">WORK ORDER DATE:</div>
-          <div className="col-span-2 p-1 font-bold">
-            <input
-              type="text"
-              value={woDate}
-              onChange={(e) => setWoDate(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold"
-              placeholder="DD-MM-YYYY"
-            />
-          </div>
-        </div>
-
-        {/* Order Qty & Delivery Date */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">ORDER QTY</div>
-          <div className="col-span-6 p-1 font-bold">
-            <input
-              type="text"
-              value={orderQty}
-              onChange={(e) => setOrderQty(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">DELIVERY DATE:</div>
-          <div className="col-span-2 p-1 font-bold">
-            <input
-              type="text"
-              value={deliveryDate}
-              onChange={(e) => setDeliveryDate(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {/* Material Code & Priority */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">MATERIAL CODE</div>
-          <div className="col-span-6 p-1 font-mono">
-            <input
-              type="text"
-              value={materialCode}
-              onChange={(e) => setMaterialCode(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">PRIORITY :</div>
-          <div className="col-span-2 p-1 font-bold">
-            <input
-              type="text"
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {/* Material Specification & Pipe Color Code */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">MATERIAL SPECIFICATION</div>
-          <div className="col-span-6 p-1 font-bold text-indigo-950 print:text-black">
-            <input
-              type="text"
-              value={materialSpec}
-              onChange={(e) => setMaterialSpec(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">PIPE COLOUR CODE AS PER SPECIFICATION:</div>
-          <div className="col-span-2 p-1 font-bold text-center">
-            <input
-              type="text"
-              value={pipeColorCode}
-              onChange={(e) => setPipeColorCode(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-        </div>
-
-        {/* Steel Grade, Heat No, RM Color Code */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">STEEL GRADE</div>
-          <div className="col-span-3 p-1 font-bold">
-            <input
-              type="text"
-              value={steelGrade}
-              onChange={(e) => setSteelGrade(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold"
-            />
-          </div>
-          <div className="col-span-1 font-bold p-1 bg-slate-50 text-center">HEAT NO :</div>
-          <div className="col-span-2 p-1 font-bold font-mono">
-            <input
-              type="text"
-              value={heatNo}
-              onChange={(e) => setHeatNo(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">RM COLOR CODE:</div>
-          <div className="col-span-2 p-1 font-bold text-center">
-            <input
-              type="text"
-              value={rmColorCode}
-              onChange={(e) => setRmColorCode(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-        </div>
-
-        {/* Billet Dia & Weight Grid */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">BILLET DIA (IN MM)</div>
-          <div className="col-span-3 p-1 text-center font-bold">
-            <input
-              type="text"
-              value={billetDia}
-              onChange={(e) => setBilletDia(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">BILLET SECT. WEIGHT (KG/MTR)</div>
-          <div className="col-span-2 p-1 text-center font-bold">
-            <input
-              type="text"
-              value={billetSectWt}
-              onChange={(e) => setBilletSectWt(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">TOTAL WEIGHT IN MT (THEO.)</div>
-          <div className="col-span-1 p-1 text-center font-bold">
-            <input
-              type="text"
-              value={totalWeightMt}
-              onChange={(e) => setTotalWeightMt(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-        </div>
-
-        {/* Billet Length & Multiple */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">BILLET LENGTH (IN MM)</div>
-          <div className="col-span-3 p-1 text-center font-bold">
-            <input
-              type="text"
-              value={billetLength}
-              onChange={(e) => setBilletLength(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">CUTTING TOLERANCE IN MM</div>
-          <div className="col-span-2 p-1 text-center font-bold">
-            <input
-              type="text"
-              value={cuttingTol}
-              onChange={(e) => setCuttingTol(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">MULTIPLE</div>
-          <div className="col-span-1 p-1 text-center font-bold">
-            <input
-              type="text"
-              value={multiple}
-              onChange={(e) => setMultiple(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-        </div>
-
-        {/* Furnaces Temperatures */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">WHF (IN DEGREE)</div>
-          <div className="col-span-2 p-1 text-center font-bold">
-            <input
-              type="text"
-              value={whfTemp}
-              onChange={(e) => setWhfTemp(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">INDUCTION FURNACE (IN DEGREE)</div>
-          <div className="col-span-2 p-1 text-center font-bold">
-            <input
-              type="text"
-              value={inductionTemp}
-              onChange={(e) => setInductionTemp(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50">SIZING MILL OUTLET TEMP</div>
-          <div className="col-span-2 p-1 text-center font-bold">
-            <input
-              type="text"
-              value={sizingOutletTemp}
-              onChange={(e) => setSizingOutletTemp(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-        </div>
-
-        {/* PIERCER & ACCU MANDREL MILL HOLLOW */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50 flex items-center">PIERCER SIZE</div>
-          <div className="col-span-10 grid grid-cols-6 divide-x divide-black text-center bg-slate-200 text-slate-800">
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">OD (MM) in Hot</div>
-              <div className="font-bold">{piercerOd}</div>
-            </div>
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">WT(MM) in Hot</div>
-              <div className="font-bold">{piercerWt}</div>
-            </div>
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">PIERCER SHELL LENGTH</div>
-              <div className="font-bold">{piercerShellLen}</div>
-            </div>
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">SHELL WEIGHT KG/MTR</div>
-              <div className="font-bold">{shellWeight}</div>
-            </div>
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">OD (MM) AIM</div>
-              <div className="font-bold">NA</div>
-            </div>
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">WT(MM) AIM</div>
-              <div className="font-bold">NA</div>
-            </div>
-          </div>
-        </div>
-
-        {/* MOTHER HOLLOW SIZE : SIZING MILL */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50 flex items-center">
-            MOTHER HOLLOW SIZE : SIZING MILL
-          </div>
-          <div className="col-span-10 grid grid-cols-6 divide-x divide-black text-center bg-slate-200 text-slate-800">
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">MOTHER HOLLOW OD (MM)</div>
-              <div className="font-bold font-mono">{motherHollowOd}</div>
-            </div>
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">MOTHER HOLLOW WT(MM)</div>
-              <div className="font-bold font-mono">{motherHollowWt}</div>
-            </div>
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">ROLLING WT(MM)</div>
-              <div className="font-bold font-mono">{rollingWt}</div>
-            </div>
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">MOTHER HOLLOW KG/MTR</div>
-              <div className="font-bold font-mono">{motherHollowKgMtr}</div>
-            </div>
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">SM LENGTH (MTR)</div>
-              <div className="font-bold">{smLength}</div>
-            </div>
-            <div className="p-0.5">
-              <div className="text-[8px] text-slate-600">HFS FINAL LENGTH (MTR)</div>
-              <div className="font-bold">{hfsFinalLength}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* TOLERANCE (IN MM) FOR MOTHER HOLLOW & PLAN QTY */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">TOLERANCE (IN MM):</div>
-          <div className="col-span-2 p-1 text-center font-bold bg-white text-black flex items-center justify-center gap-1">
-            <span className="text-[8.5px] font-bold text-slate-500">OD:</span>
-            <input
-              type="text"
-              value={mhTolOdMin}
-              onChange={(e) => setMhTolOdMin(e.target.value)}
-              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
-              title="Mother Hollow Minimum OD"
-            />
-            <span>-</span>
-            <input
-              type="text"
-              value={mhTolOdMax}
-              onChange={(e) => setMhTolOdMax(e.target.value)}
-              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
-              title="Mother Hollow Maximum OD"
-            />
-          </div>
-          <div className="col-span-2 p-1 text-center font-bold bg-white text-black flex items-center justify-center gap-1">
-            <span className="text-[8.5px] font-bold text-slate-500">WT:</span>
-            <input
-              type="text"
-              value={mhTolWtMin}
-              onChange={(e) => setMhTolWtMin(e.target.value)}
-              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
-              title="Mother Hollow Minimum WT"
-            />
-            <span>-</span>
-            <input
-              type="text"
-              value={mhTolWtMax}
-              onChange={(e) => setMhTolWtMax(e.target.value)}
-              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
-              title="Mother Hollow Maximum WT"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50 text-center">PLAN QTY IN NOS:</div>
-          <div className="col-span-1 p-1 font-bold text-center bg-slate-200 text-slate-800">{planQtyNos}</div>
-          <div className="col-span-1 font-bold p-1 text-center bg-slate-200 text-slate-800">MTRS: {planQtyMtrs}</div>
-          <div className="col-span-1 font-bold p-1 text-center bg-slate-200 text-slate-800">MT: {planQtyMt}</div>
-          <div className="col-span-1 font-bold p-1 bg-slate-200 text-center text-slate-800 print:text-black">
-            {inspection}
-          </div>
-        </div>
-
-        {/* PROCESS ROUTE */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[8.5px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">PROCESS ROUTE :</div>
-          <div className="col-span-10 p-1 font-mono tracking-tight font-semibold">
-            <input
-              type="text"
-              value={processRouteStr}
-              onChange={(e) => setProcessRouteStr(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none"
-            />
-          </div>
-        </div>
-
-        {/* Section: COLD MILL */}
-        <div className="bg-slate-200 border-x border-b border-black text-center font-bold text-[10px] py-0.5 uppercase tracking-wide">
-          COLD MILL & FINAL SIZING
-        </div>
-
-        {/* FINAL SIZE: HFS / CDS HEADER & VALUES */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50 flex items-center">
-            FINAL SIZE: {orderType}
-          </div>
-          <div className="col-span-2 p-1 text-center">
-            <div className="text-[8px] text-slate-500">CUSTOMER OD (MM)</div>
-            <input
-              type="text"
-              value={custOd}
-              onChange={(e) => setCustOd(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-sm text-indigo-900 print:text-black text-center"
-            />
-          </div>
-          <div className="col-span-2 p-1 text-center">
-            <div className="text-[8px] text-slate-500">CUSTOMER WT(MM)</div>
-            <input
-              type="text"
-              value={custWt}
-              onChange={(e) => {
-                const val = e.target.value;
-                setCustWt(val);
-                const w = parseFloat(val);
-                if (!isNaN(w) && w > 0) {
-                  const specUpper = `${materialSpec} ${steelGrade}`.toUpperCase();
-                  const isNoNeg =
-                    specUpper.includes('MIN') ||
-                    specUpper.includes('MW') ||
-                    specUpper.includes('MIN WALL') ||
-                    specUpper.includes('NO NEG') ||
-                    specUpper.includes('A213') ||
-                    specUpper.includes('A192') ||
-                    specUpper.includes('A210') ||
-                    specUpper.includes('SA210') ||
-                    specUpper.includes('210') ||
-                    specUpper.includes('3059');
-                  const pWt = isNoNeg ? w * 1.05 : w * 0.97;
-                  setProcessWt(pWt.toFixed(2));
-                }
-              }}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-sm text-indigo-900 print:text-black text-center"
-            />
-          </div>
-          <div className="col-span-2 p-1 text-center">
-            <div className="text-[8px] text-slate-500">PROCESS WT(MM)</div>
-            <input
-              type="text"
-              value={processWt}
-              onChange={(e) => setProcessWt(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-sm text-center"
-            />
-          </div>
-          <div className="col-span-2 p-1 text-center">
-            <div className="text-[8px] text-slate-500">FINAL PIPE WEIGHT (KG/MTR)</div>
-            <input
-              type="text"
-              value={finalPipeWeight}
-              onChange={(e) => setFinalPipeWeight(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-          <div className="col-span-2 p-1 text-center">
-            <div className="text-[8px] text-slate-500">FINAL LENGTH (MTRS)</div>
-            <input
-              type="text"
-              value={finalLength}
-              onChange={(e) => setFinalLength(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-            />
-          </div>
-        </div>
-
-        {/* FINAL TOLERANCE & ORDER LENGTH */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-50">
-            FINAL {orderType} TOLERANCE (IN MM)
-          </div>
-          <div className="col-span-2 p-1 text-center font-bold bg-white text-black flex items-center justify-center gap-1">
-            <span className="text-[8.5px] font-bold text-slate-500">OD:</span>
-            <input
-              type="text"
-              value={finalTolOdMin}
-              onChange={(e) => setFinalTolOdMin(e.target.value)}
-              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
-              title="Final Minimum OD"
-            />
-            <span>-</span>
-            <input
-              type="text"
-              value={finalTolOdMax}
-              onChange={(e) => setFinalTolOdMax(e.target.value)}
-              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
-              title="Final Maximum OD"
-            />
-          </div>
-          <div className="col-span-2 p-1 text-center font-bold bg-white text-black flex items-center justify-center gap-1">
-            <span className="text-[8.5px] font-bold text-slate-500">WT:</span>
-            <input
-              type="text"
-              value={finalTolWtMin}
-              onChange={(e) => setFinalTolWtMin(e.target.value)}
-              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
-              title="Final Minimum WT"
-            />
-            <span>-</span>
-            <input
-              type="text"
-              value={finalTolWtMax}
-              onChange={(e) => setFinalTolWtMax(e.target.value)}
-              className="w-12 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold text-black focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px]"
-              title="Final Maximum WT"
-            />
-          </div>
-          <div className="col-span-2 p-1 text-center font-bold flex items-center justify-center gap-1 bg-white text-slate-800 print:bg-transparent print:text-black">
-            <span className="text-[8.5px] font-bold">LEN:</span>
-            <input
-              type="text"
-              value={finalLenTol}
-              onChange={(e) => setFinalLenTol(e.target.value)}
-              className="w-16 px-1 py-0.5 bg-slate-50 hover:bg-white border border-slate-300 rounded text-center font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[9px] uppercase"
-            />
-          </div>
-          <div className="col-span-2 font-bold p-1 bg-slate-50 text-center">
-            FINAL ORDER LENGTH (MTR)
-          </div>
-          <div className="col-span-1 p-1 text-center font-bold bg-slate-200 text-slate-800 flex items-center justify-center gap-0.5">
-            <span className="text-[8px] font-bold">L1:</span>
-            <input
-              type="text"
-              value={finalOrderLen1}
-              onChange={(e) => {
-                const val = e.target.value;
-                setFinalOrderLen1(val);
-                const n1 = parseFloat(val);
-                const n2 = parseFloat(finalOrderLen2);
-                if (!isNaN(n1) && !isNaN(n2)) {
-                  if (Math.abs(n1 - n2) < 0.05) {
-                    setFinalLenTol('+10MM');
-                    if (!finalOrderLen2.includes('+10MM')) {
-                      setFinalOrderLen2(`${n2.toFixed(3)} +10MM`);
-                    }
-                  }
-                }
-              }}
-              className="w-10 bg-transparent border-none focus:outline-none text-center font-bold text-[9px]"
-            />
-          </div>
-          <div className="col-span-1 p-1 text-center font-bold bg-slate-200 text-slate-800 flex items-center justify-center gap-0.5">
-            <span className="text-[8px] font-bold">L2:</span>
-            <input
-              type="text"
-              value={finalOrderLen2}
-              onChange={(e) => {
-                const val = e.target.value;
-                setFinalOrderLen2(val);
-                const n1 = parseFloat(finalOrderLen1);
-                const n2 = parseFloat(val);
-                if (!isNaN(n1) && !isNaN(n2)) {
-                  if (Math.abs(n1 - n2) < 0.05) {
-                    setFinalLenTol('+10MM');
-                  }
-                }
-              }}
-              className="w-16 bg-transparent border-none focus:outline-none text-center font-bold text-[9px]"
-            />
-          </div>
-        </div>
-
-        {/* INTER PASS & BUNDLE QUANTITY TABLE */}
-        <div className="border-x border-b border-black grid grid-cols-12 divide-x divide-black text-[9px]">
-          {/* Left Column: Inter Pass */}
-          <div className="col-span-8 divide-y divide-black">
-            <div className="grid grid-cols-8 divide-x divide-black text-center font-bold bg-slate-50 text-[8.5px]">
-              <div className="col-span-2 p-1">INTER PASS</div>
-              <div className="col-span-2 p-1">1 ST PASS</div>
-              <div className="col-span-2 p-1">2 ND PASS</div>
-              <div className="col-span-2 p-1">3 RD PASS</div>
-            </div>
-            <div className="grid grid-cols-8 divide-x divide-black text-center text-[8.5px] bg-slate-200 text-slate-800">
-              <div className="col-span-2 p-1 font-semibold text-left pl-2 bg-slate-50 text-black">OD & WT (MM)</div>
-              <div className="col-span-2 p-1 font-mono">
-                {p1Od} / {p1Wt}
-              </div>
-              <div className="col-span-2 p-1 font-mono">
-                {p2Od} / {p2Wt}
-              </div>
-              <div className="col-span-2 p-1 font-mono">
-                {p3Od} / {p3Wt}
-              </div>
-            </div>
-
-            {/* Heat Treatment & Straightness */}
-            <div className="grid grid-cols-8 divide-x divide-black text-[8.5px]">
-              <div className="col-span-2 p-1 font-bold bg-slate-50">HEAT TREATMENT</div>
-              <div className="col-span-2 p-1 text-center font-medium">
-                CYCLE:{' '}
-                <input
-                  type="text"
-                  value={htCycle}
-                  onChange={(e) => setHtCycle(e.target.value)}
-                  className="bg-transparent border-none focus:outline-none font-semibold text-center w-24"
-                />
-              </div>
-              <div className="col-span-2 p-1 font-bold bg-slate-50">STRAIGHTNESS</div>
-              <div className="col-span-2 p-1 text-center font-bold">
-                <input
-                  type="text"
-                  value={straightness}
-                  onChange={(e) => setStraightness(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-8 divide-x divide-black text-[8.5px]">
-              <div className="col-span-2 p-1 font-bold bg-slate-50">CONDITION</div>
-              <div className="col-span-2 p-1 text-center font-medium">
-                <input
-                  type="text"
-                  value={htCondition}
-                  onChange={(e) => setHtCondition(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-semibold text-center"
-                />
-              </div>
-              <div className="col-span-2 p-1 font-bold bg-slate-50">HARDNESS</div>
-              <div className="col-span-2 p-1 text-center font-bold text-purple-950 print:text-black">
-                <input
-                  type="text"
-                  value={hardness}
-                  onChange={(e) => setHardness(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-                />
-              </div>
-            </div>
-
-            {/* 
-              ========================================================================
-              CRITICAL USER REQUIREMENT: MECHANICAL PROPERTIES TABLE
-              ========================================================================
-            */}
-            <div className="bg-slate-100 p-1 text-center font-bold text-[9px] uppercase tracking-wider text-slate-800 border-t border-b border-black">
-              MECHANICAL PROPERTIES (PER SPECIFICATION & AI LOOKUP)
-            </div>
-
-            <div className="grid grid-cols-9 divide-x divide-black text-center text-[8px] bg-slate-50">
-              <div className="col-span-3 p-0.5 font-bold">YST (MPa) / PROOF STRESS</div>
-              <div className="col-span-3 p-0.5 font-bold">UTS (MPa) / TENSILE STRENGTH</div>
-              <div className="col-span-3 p-0.5 font-bold">ELONGATION % (CS AREA)</div>
-            </div>
-
-            <div className="grid grid-cols-9 divide-x divide-black text-center text-[8.5px]">
-              {/* YST */}
-              <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MIN.</div>
-              <div className="col-span-2 p-0.5 font-extrabold text-sm text-indigo-900 print:text-black">
-                <input
-                  type="text"
-                  value={ystMin}
-                  onChange={(e) => setYstMin(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-extrabold text-sm text-indigo-900 print:text-black text-center"
-                />
-              </div>
-              {/* UTS */}
-              <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MIN.</div>
-              <div className="col-span-2 p-0.5 font-extrabold text-sm text-indigo-900 print:text-black">
-                <input
-                  type="text"
-                  value={utsMin}
-                  onChange={(e) => setUtsMin(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-extrabold text-sm text-indigo-900 print:text-black text-center"
-                />
-              </div>
-              {/* ELONGATION */}
-              <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MIN.</div>
-              <div className="col-span-2 p-0.5 font-extrabold text-sm text-indigo-900 print:text-black">
-                <input
-                  type="text"
-                  value={elongationMin}
-                  onChange={(e) => setElongationMin(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-extrabold text-sm text-indigo-900 print:text-black text-center"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-9 divide-x divide-black text-center text-[8.5px]">
-              {/* YST MAX */}
-              <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MAX.</div>
-              <div className="col-span-2 p-0.5 font-medium text-slate-700">
-                <input
-                  type="text"
-                  value={ystMax}
-                  onChange={(e) => setYstMax(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-medium text-slate-700 text-center"
-                />
-              </div>
-              {/* UTS MAX */}
-              <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MAX.</div>
-              <div className="col-span-2 p-0.5 font-medium text-slate-700">
-                <input
-                  type="text"
-                  value={utsMax}
-                  onChange={(e) => setUtsMax(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-medium text-slate-700 text-center"
-                />
-              </div>
-              {/* ELONGATION MAX */}
-              <div className="col-span-1 p-0.5 font-bold text-slate-600 bg-slate-50">MAX.</div>
-              <div className="col-span-2 p-0.5 font-medium text-slate-700">
-                <input
-                  type="text"
-                  value={elongationMax}
-                  onChange={(e) => setElongationMax(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-medium text-slate-700 text-center"
-                />
-              </div>
-            </div>
-
-            {/* 
-              ========================================================================
-              CRITICAL USER REQUIREMENT: HYDRO PRESSURE IN PSI & NDT
-              ========================================================================
-            */}
-            <div className="grid grid-cols-8 divide-x divide-black text-[8.5px] border-t border-black">
-              <div className="col-span-2 p-1 font-bold bg-slate-50">TESTING</div>
-              <div className="col-span-2 p-1 text-center font-bold">
-                NDT:{' '}
-                <input
-                  type="text"
-                  value={ndt}
-                  onChange={(e) => setNdt(e.target.value)}
-                  className="bg-transparent border-none focus:outline-none font-bold text-center w-16"
-                />
-              </div>
-              <div className="col-span-2 p-1 font-bold bg-emerald-100 text-emerald-950 print:bg-white print:text-black">
-                HYDRO PRESSURE
-              </div>
-              <div className="col-span-2 p-1 text-center font-extrabold text-sm text-emerald-900 print:text-black">
-                <input
-                  type="text"
-                  value={hydroPressurePsi}
-                  onChange={(e) => setHydroPressurePsi(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-extrabold text-sm text-emerald-900 print:text-black text-center"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-8 divide-x divide-black text-[8.5px]">
-              <div className="col-span-2 p-1 font-bold bg-slate-50">HOLDING TIME:</div>
-              <div className="col-span-2 p-1 text-center font-bold">
-                <input
-                  type="text"
-                  value={holdingTime}
-                  onChange={(e) => setHoldingTime(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-                />
-              </div>
-              <div className="col-span-2 p-1 font-bold bg-slate-50">END CONDITION</div>
-              <div className="col-span-2 p-1 text-[7.5px] font-semibold">
-                <input
-                  type="text"
-                  value={endCondition}
-                  onChange={(e) => setEndCondition(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none text-[7.5px] font-semibold text-center"
-                />
-              </div>
-            </div>
-
-            {/* Coating & Bundling */}
-            <div className="grid grid-cols-8 divide-x divide-black text-[8.5px]">
-              <div className="col-span-2 p-1 font-bold bg-slate-50">COATING</div>
-              <div className="col-span-2 p-1 font-bold text-center">
-                <input
-                  type="text"
-                  value={coating}
-                  onChange={(e) => setCoating(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-                />
-              </div>
-              <div className="col-span-2 p-1 font-bold bg-slate-50">BUNDLING</div>
-              <div className="col-span-2 p-1 font-bold text-center">
-                <input
-                  type="text"
-                  value={bundling}
-                  onChange={(e) => setBundling(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-8 divide-x divide-black text-[8.5px]">
-              <div className="col-span-2 p-1 font-bold bg-slate-50">BUNDLE QTY. (PCS)</div>
-              <div className="col-span-2 p-1 font-bold text-center">
-                <input
-                  type="text"
-                  value={bundleQtyPcs}
-                  onChange={(e) => setBundleQtyPcs(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-                />
-              </div>
-              <div className="col-span-2 p-1 font-bold bg-slate-50">BUNDLE WEIGHT (MT)</div>
-              <div className="col-span-2 p-1 font-bold text-center">
-                <input
-                  type="text"
-                  value={bundleWeightMt}
-                  onChange={(e) => setBundleWeightMt(e.target.value)}
-                  className="w-full bg-transparent border-none focus:outline-none font-bold text-center"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: BUNDLE SL.NO. TABLE */}
-          <div className="col-span-4 flex flex-col justify-between">
-            <div className="grid grid-cols-3 divide-x divide-black text-center font-bold bg-slate-50 text-[8.5px] border-b border-black">
-              <div className="p-1">SL.NO.</div>
-              <div className="p-1">BUNDLE NO.</div>
-              <div className="p-1">QTY.</div>
-            </div>
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((idx) => (
-              <div
-                key={idx}
-                className="grid grid-cols-3 divide-x divide-black text-center text-[8px] border-b border-black/40 h-4 items-center"
-              >
-                <div>{idx}</div>
-                <div className="font-mono text-[7.5px] text-slate-400">BN-{idx.toString().padStart(2, '0')}</div>
-                <div className="font-mono text-[7.5px] text-slate-400">-</div>
-              </div>
-            ))}
-            <div className="grid grid-cols-3 divide-x divide-black text-center font-bold bg-slate-100 text-[8.5px] border-t border-black">
-              <div className="p-0.5 col-span-2">TOTAL</div>
-              <div className="p-0.5 font-bold">{planQtyNos}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Special Requirements */}
-        <div className="border-x border-b border-black p-1 text-[9px] flex items-start gap-2">
-          <span className="font-bold whitespace-nowrap pt-0.5">SPECIAL REQUIREMENTS (IF ANY):</span>
-          <textarea
-            rows={2}
-            value={specialReq}
-            onChange={(e) => setSpecialReq(e.target.value)}
-            className="flex-1 bg-transparent border-none focus:outline-none text-[8.5px] leading-tight resize-y min-h-[32px]"
-          />
-        </div>
-
-        {/* Marking Section */}
-        <div className="border-x border-b border-black p-1">
-          <div className="text-center font-bold text-[9px] uppercase tracking-wider mb-0.5">
-            MARKING SPECIFICATION
-          </div>
-          <div className="bg-slate-50 p-1.5 border border-black/30 font-mono text-[8.5px] leading-relaxed break-all">
-            <textarea
-              rows={2}
-              value={marking}
-              onChange={(e) => setMarking(e.target.value)}
-              className="w-full bg-transparent border-none focus:outline-none font-mono text-[8.5px] resize-none"
-            />
-          </div>
-        </div>
-
-        {/* Signatures & Approvals */}
-        <div className="border-x border-b border-black grid grid-cols-5 divide-x divide-black text-center text-[8.5px] min-h-[52px]">
-          <div className="p-1 flex flex-col justify-between">
-            <div className="font-bold">PREPARED BY</div>
-            <div className="text-[7.5px] text-slate-600 mt-4">{preparedBy} / {preparedDate}</div>
-          </div>
-          <div className="p-1 flex flex-col justify-between">
-            <div className="font-bold">PPC SEC. IN-CHARGE</div>
-            <div className="text-[7.5px] text-slate-400 mt-4">DATE: ____________</div>
-          </div>
-          <div className="p-1 flex flex-col justify-between">
-            <div className="font-bold">HOT MILL SEC IN-CHARGE</div>
-            <div className="text-[7.5px] text-slate-400 mt-4">DATE: ____________</div>
-          </div>
-          <div className="p-1 flex flex-col justify-between">
-            <div className="font-bold">COLD MILL SEC IN-CHARGE</div>
-            <div className="text-[7.5px] text-slate-400 mt-4">DATE: ____________</div>
-          </div>
-          <div className="p-1 flex flex-col justify-between">
-            <div className="font-bold">APPROVED BY QC</div>
-            <div className="text-[7.5px] text-slate-400 mt-4">DATE: ____________</div>
-          </div>
-        </div>
-
-        {/* Document Footer */}
-        <div className="text-[8px] text-slate-600 flex items-center justify-between pt-1">
-          <span>Format No. F-PROD-11, Eff. Date:01.04.2023, Rev.01, Rev. Dt:01.04.2024 / PPC</span>
-          <span>RASHMI SEAMLESS DIVISION • QUALITY MANAGEMENT SYSTEM</span>
-          <span>PAGE 1 OF 1</span>
-        </div>
-      </div>
-      </div>
     </div>
   );
 }

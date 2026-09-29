@@ -227,6 +227,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/profile',
     '/admin/spec-master',
     '/spec-master',
+    '/order-priority',
     '/reports/pending-orders',
     '/reports/process-sheet',
     '/reports/wip',
@@ -235,6 +236,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/reports/aging',
     '/reports/rolling-plans',
     '/reports/diversions',
+    '/reports/scrap',
     '/reports/training',
   ];
 
@@ -256,8 +258,8 @@ export function isRouteVisible(user: AppUserProfile | null | undefined, href: st
   const perms = user.permissions || getDefaultPermissions(group, user.work_center);
 
   // Check specific route mappings against user's custom permissions or defaults
-  if (href === '/work-orders' || href.startsWith('/work-orders/')) {
-    return perms.work_order === 'edit' || perms.work_order === 'view';
+  if (href === '/work-orders' || href.startsWith('/work-orders/') || href === '/order-priority' || href.startsWith('/order-priority/')) {
+    return perms.work_order === 'edit' || perms.work_order === 'view' || perms.rolling_plan === 'edit' || perms.rolling_plan === 'view';
   }
   if (href === '/rolling-plans' || href.startsWith('/rolling-plans/')) {
     return perms.rolling_plan === 'edit' || perms.rolling_plan === 'view';

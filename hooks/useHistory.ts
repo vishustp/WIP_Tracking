@@ -277,10 +277,12 @@ export function useHistory(
 
         const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(entry.remarks);
 
-        // If exact piece count was encoded in remarks, respect it directly! Otherwise stage-aware division.
+        // If exact piece count was encoded in remarks, respect it directly unless corrupted by final-length bug on MH stages!
         const outputPcs =
           parsedPcs != null
-            ? parsedPcs
+            ? (isMhStage && mhLen > 0 && Math.abs(outMtr - parsedPcs * mhLen) > 2
+                ? Math.round(outMtr / mhLen)
+                : parsedPcs)
             : isMhStage && mhLen > 0
             ? Math.round(outMtr / mhLen)
             : entry.output_pcs != null && Number(entry.output_pcs) > 0
@@ -296,7 +298,9 @@ export function useHistory(
 
         const rejectionPcs =
           parsedRejPcs != null
-            ? parsedRejPcs
+            ? (isMhStage && mhLen > 0 && Math.abs(rejMtr - parsedRejPcs * mhLen) > 2
+                ? Math.round(rejMtr / mhLen)
+                : parsedRejPcs)
             : isMhStage && mhLen > 0
             ? Math.round(rejMtr / mhLen)
             : entry.rejection_pcs != null && Number(entry.rejection_pcs) > 0
@@ -335,6 +339,9 @@ export function useHistory(
           ...entry,
           od: effOd,
           wl: effWt,
+          avg_length: isMhStage && mhLen > 0 ? mhLen : (effectiveLen > 0 ? effectiveLen : entry.avg_length),
+          l1: isMhStage && plan?.mh_l1 ? plan.mh_l1 : entry.l1,
+          l2: isMhStage && plan?.mh_l2 ? plan.mh_l2 : entry.l2,
           rolling_plan_id: plan?.id || logRow?.rolling_plan_id,
           plan_no: plan?.plan_no,
           revision_no: plan?.revision_no,

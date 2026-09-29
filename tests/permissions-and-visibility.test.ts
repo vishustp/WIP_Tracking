@@ -81,6 +81,8 @@ describe('Permissions & Form Visibility Suite', () => {
       expect(isRouteVisible(finishingUser, '/reports/process-sheet')).toBe(true);
       expect(isRouteVisible(finishingUser, '/reports/pending-orders')).toBe(true);
       expect(isRouteVisible(finishingUser, '/reports/rolling-plans')).toBe(true);
+      expect(isRouteVisible(finishingUser, '/reports/scrap')).toBe(true);
+      expect(isRouteVisible(finishingUser, '/order-priority')).toBe(true);
     });
   });
 

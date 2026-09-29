@@ -12,7 +12,7 @@ import {
   User, ShieldCheck, ChevronDown, Activity, Clock,
   ClipboardCheck, FileText, Beaker, Layers, Scissors, History,
   Search, Calendar, Bell, Users, SlidersHorizontal, AlertTriangle, ScrollText,
-  Palette, Check, Loader2, ChevronRight, Lock
+  Palette, Check, Loader2, ChevronRight, Lock, ArrowUpDown, Recycle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
@@ -84,6 +84,7 @@ const navSections = [
     label: 'PLANNING',
     items: [
       { href: '/work-orders', label: 'Work Orders', icon: FileText },
+      { href: '/order-priority', label: 'Order Priority Sheet', icon: ArrowUpDown },
       { href: '/rolling-plans', label: 'Rolling Plan', icon: CalendarClock },
       { href: '/diversions', label: 'Diversion', icon: Shuffle },
       { href: '/excel-import', label: 'Excel Import', icon: FileSpreadsheet },
@@ -100,6 +101,7 @@ const navSections = [
       { href: '/reports/production', label: 'Production Report', icon: Factory },
       { href: '/reports/aging', label: 'Aging Report', icon: Clock },
       { href: '/reports/diversions', label: 'Rejection Report', icon: AlertTriangle },
+      { href: '/reports/scrap', label: 'Scrap Generation Report', icon: Recycle },
     ],
   },
   {

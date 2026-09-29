@@ -31,18 +31,39 @@ export function EditEntryModal({
   avgLength,
 }: EditEntryModalProps) {
   const isMhStage = editing.stage_code === 'ROLLING' || editing.stage_code === 'HOLLOW_HEAT_TREATMENT';
+  const isDrawOrHt = editing.stage_code === 'DRAW' || editing.stage_code === 'HEAT_TREATMENT';
   const hasL1L2 = editing.stage_code === 'DRAW' || editing.stage_code === 'HEAT_TREATMENT' || editing.stage_code === 'BAND_SAW' || editing.stage_code === 'VDI' || editing.stage_code === 'FINISHING';
   const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(editing.remarks);
 
   const l1Match = (editing.remarks || '').match(/\[L1:([0-9.]+)\]/i);
   const l2Match = (editing.remarks || '').match(/\[L2:([0-9.]+)\]/i);
-  const initialL1 = l1Match ? l1Match[1] : (editing.l1 ? String(editing.l1) : '');
-  const initialL2 = l2Match ? l2Match[1] : (editing.l2 ? String(editing.l2) : '');
+
+  // For stages without L1/L2 (ROLLING, HOLLOW_HT), L1 and L2 are NOT operator adjustable and must not override MH length.
+  // For DRAW and HEAT_TREATMENT, default to elongated mother pipe length (avgLength) if not explicitly tagged in remarks.
+  // For BAND_SAW and downstream, default to order cut lengths.
+  const initialL1 = l1Match
+    ? l1Match[1]
+    : isMhStage
+    ? ''
+    : isDrawOrHt
+    ? (avgLength > 0 ? String(avgLength) : (editing.l1 ? String(editing.l1) : ''))
+    : (editing.l1 ? String(editing.l1) : (avgLength > 0 ? String(avgLength) : ''));
+
+  const initialL2 = l2Match
+    ? l2Match[1]
+    : isMhStage
+    ? ''
+    : isDrawOrHt
+    ? (avgLength > 0 ? String(avgLength) : (editing.l2 ? String(editing.l2) : ''))
+    : (editing.l2 ? String(editing.l2) : (avgLength > 0 ? String(avgLength) : ''));
 
   const [editL1, setEditL1] = useState(initialL1);
   const [editL2, setEditL2] = useState(initialL2);
 
   const effAvgLength = (() => {
+    if (isMhStage) {
+      return avgLength > 0 ? avgLength : (Number(editing.mh_avg_length) || 4.4);
+    }
     const nL1 = Number(editL1);
     const nL2 = Number(editL2);
     if (nL1 > 0 && nL2 > 0) return (nL1 + nL2) / 2;
@@ -51,36 +72,52 @@ export function EditEntryModal({
     return avgLength > 0 ? avgLength : 6.0;
   })();
 
-  const effOutPcs =
-    parsedPcs != null
-      ? parsedPcs
-      : isMhStage && avgLength > 0
-      ? Math.round(Number(editing.output_mtr || 0) / avgLength)
-      : Number(editing.output_pcs || 0) > 0
-      ? Math.round(Number(editing.output_pcs))
-      : avgLength > 0 && Number(editing.output_mtr || 0) > 0
-      ? Math.round(Number(editing.output_mtr) / avgLength)
-      : '';
+  const effOutPcs = (() => {
+    const outMtr = Number(editing.output_mtr || 0);
+    if (isMhStage && effAvgLength > 0 && outMtr > 0) {
+      // If parsedPcs matches output_mtr with effAvgLength, keep it; otherwise recalculate at MH length
+      if (parsedPcs != null && Math.abs(outMtr - parsedPcs * effAvgLength) <= 2) {
+        return parsedPcs;
+      }
+      return Math.round(outMtr / effAvgLength);
+    }
+    if (parsedPcs != null) return parsedPcs;
+    if (Number(editing.output_pcs || 0) > 0) return Math.round(Number(editing.output_pcs));
+    if (effAvgLength > 0 && outMtr > 0) return Math.round(outMtr / effAvgLength);
+    return '';
+  })();
 
-  const effRejPcs =
-    parsedRejPcs != null
-      ? parsedRejPcs
-      : isMhStage && avgLength > 0
-      ? Math.round(Number(editing.rejection_mtr || 0) / avgLength)
-      : Number(editing.rejection_pcs || 0) > 0
-      ? Math.round(Number(editing.rejection_pcs))
-      : avgLength > 0 && Number(editing.rejection_mtr || 0) > 0
-      ? Math.round(Number(editing.rejection_mtr) / avgLength)
-      : '';
+  const effRejPcs = (() => {
+    const rejMtr = Number(editing.rejection_mtr || 0);
+    if (isMhStage && effAvgLength > 0 && rejMtr > 0) {
+      if (parsedRejPcs != null && Math.abs(rejMtr - parsedRejPcs * effAvgLength) <= 2) {
+        return parsedRejPcs;
+      }
+      return Math.round(rejMtr / effAvgLength);
+    }
+    if (parsedRejPcs != null) return parsedRejPcs;
+    if (Number(editing.rejection_pcs || 0) > 0) return Math.round(Number(editing.rejection_pcs));
+    if (effAvgLength > 0 && rejMtr > 0) return Math.round(rejMtr / effAvgLength);
+    return '';
+  })();
 
-  const effHtcPcs =
-    isMhStage && avgLength > 0
-      ? Math.round(Number(editing.htc_ok_mtr || 0) / avgLength)
-      : Number(editing.htc_ok_pcs || 0) > 0
-      ? Math.round(Number(editing.htc_ok_pcs))
-      : avgLength > 0 && Number(editing.htc_ok_mtr || 0) > 0
-      ? Math.round(Number(editing.htc_ok_mtr) / avgLength)
-      : '';
+  const effHtcPcs = (() => {
+    if (editing.stage_code !== 'ROLLING') return '';
+    const htcMtr = Number(editing.htc_ok_mtr || 0);
+    const outMtr = Number(editing.output_mtr || 0);
+    const rejMtr = Number(editing.rejection_mtr || 0);
+    const pPcs = n(effOutPcs);
+    const rPcs = n(effRejPcs);
+    const expectedOkPcs = Math.max(0, pPcs - rPcs);
+    if (expectedOkPcs > 0 && Math.abs(htcMtr - (outMtr - rejMtr)) < 0.1) {
+      return expectedOkPcs;
+    }
+    if (effAvgLength > 0 && htcMtr > 0) {
+      return Math.round(htcMtr / effAvgLength);
+    }
+    if (Number(editing.htc_ok_pcs || 0) > 0) return Math.round(Number(editing.htc_ok_pcs));
+    return '';
+  })();
 
   const [editDate, setEditDate] = useState(editing.process_date.slice(0, 10));
   const [editMtr, setEditMtr] = useState(String(editing.output_mtr || ''));
@@ -105,8 +142,30 @@ export function EditEntryModal({
     const rPcs = n(editRejectionPcs);
     const okPcs = Math.max(0, pPcs - rPcs);
     setEditHtcPcs(value === '' ? '' : String(okPcs));
-    if (!isFinishing) {
+    if (!isFinishing && editing.stage_code === 'ROLLING') {
       setEditHtcMtr(okPcs > 0 ? String(mtrFromPcs(okPcs, effAvgLength).toFixed(2).replace(/\.?0+$/, '')) : '0');
+    }
+  };
+
+  const changeEditMtr = (value: string) => {
+    setEditMtr(value);
+    if (!isFinishing && effAvgLength > 0 && value !== '') {
+      const calculatedPcs = String(Math.round(n(value) / effAvgLength));
+      setEditPcs(calculatedPcs);
+      const pPcs = n(calculatedPcs);
+      const rPcs = n(editRejectionPcs);
+      const okPcs = Math.max(0, pPcs - rPcs);
+      setEditHtcPcs(String(okPcs));
+      const okMtr = Math.max(0, n(value) - n(editRejectionMtr));
+      if (editing.stage_code === 'ROLLING') {
+        setEditHtcMtr(String(Number(okMtr.toFixed(2))));
+      }
+    } else if (value === '') {
+      setEditPcs('');
+      if (editing.stage_code === 'ROLLING') {
+        setEditHtcPcs('');
+        setEditHtcMtr('');
+      }
     }
   };
 
@@ -119,8 +178,26 @@ export function EditEntryModal({
     const rPcs = n(value);
     const okPcs = Math.max(0, pPcs - rPcs);
     setEditHtcPcs(editPcs === '' ? '' : String(okPcs));
-    if (!isFinishing) {
+    if (!isFinishing && editing.stage_code === 'ROLLING') {
       setEditHtcMtr(okPcs > 0 ? String(mtrFromPcs(okPcs, effAvgLength).toFixed(2).replace(/\.?0+$/, '')) : '0');
+    }
+  };
+
+  const changeEditRejectionMtr = (value: string) => {
+    setEditRejectionMtr(value);
+    if (!isFinishing && effAvgLength > 0 && value !== '') {
+      const calculatedRejPcs = String(Math.round(n(value) / effAvgLength));
+      setEditRejectionPcs(calculatedRejPcs);
+      const pPcs = n(editPcs);
+      const rPcs = n(calculatedRejPcs);
+      const okPcs = Math.max(0, pPcs - rPcs);
+      setEditHtcPcs(editPcs === '' ? '' : String(okPcs));
+      const okMtr = Math.max(0, n(editMtr) - n(value));
+      if (editing.stage_code === 'ROLLING') {
+        setEditHtcMtr(String(Number(okMtr.toFixed(2))));
+      }
+    } else if (value === '') {
+      setEditRejectionPcs('');
     }
   };
 
@@ -133,17 +210,49 @@ export function EditEntryModal({
     }
   };
 
+  const updateL1L2 = (newL1: string, newL2: string) => {
+    setEditL1(newL1);
+    setEditL2(newL2);
+    const n1 = Number(newL1);
+    const n2 = Number(newL2);
+    const newEffAvg = isMhStage
+      ? (avgLength > 0 ? avgLength : 4.4)
+      : n1 > 0 && n2 > 0
+      ? (n1 + n2) / 2
+      : n1 > 0
+      ? n1
+      : n2 > 0
+      ? n2
+      : avgLength > 0
+      ? avgLength
+      : 6.0;
+
+    if (editPcs !== '') {
+      const mtrVal = String(mtrFromPcs(n(editPcs), newEffAvg).toFixed(2).replace(/\.?0+$/, ''));
+      if (!isFinishing) setEditMtr(mtrVal);
+    }
+    if (editRejectionPcs !== '') {
+      const rejMtrVal = String(mtrFromPcs(n(editRejectionPcs), newEffAvg).toFixed(2).replace(/\.?0+$/, ''));
+      if (!isFinishing) setEditRejectionMtr(rejMtrVal);
+    }
+    if (editHtcPcs !== '' && editing.stage_code === 'ROLLING') {
+      const pPcs = n(editPcs);
+      const rPcs = n(editRejectionPcs);
+      const okPcs = Math.max(0, pPcs - rPcs);
+      setEditHtcPcs(String(okPcs));
+      setEditHtcMtr(String(mtrFromPcs(okPcs, newEffAvg).toFixed(2).replace(/\.?0+$/, '')));
+    }
+  };
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError('');
 
-    const mtr = isFinishing ? n(editMtr) : editPcs.trim() !== '' ? mtrFromPcs(n(editPcs), effAvgLength) : n(editMtr);
-    const rejection = isFinishing
-      ? n(editRejectionMtr)
-      : editRejectionPcs.trim() !== ''
-      ? mtrFromPcs(n(editRejectionPcs), effAvgLength)
-      : n(editRejectionMtr);
-    const htc = editing.stage_code === 'ROLLING' ? (editHtcPcs.trim() !== '' ? mtrFromPcs(n(editHtcPcs), effAvgLength) : n(editHtcMtr)) : 0;
+    const mtr = n(editMtr) > 0 ? n(editMtr) : editPcs.trim() !== '' ? mtrFromPcs(n(editPcs), effAvgLength) : 0;
+    const rejection = n(editRejectionMtr) > 0 ? n(editRejectionMtr) : editRejectionPcs.trim() !== '' ? mtrFromPcs(n(editRejectionPcs), effAvgLength) : 0;
+    const htc = editing.stage_code === 'ROLLING'
+      ? (n(editHtcMtr) > 0 ? n(editHtcMtr) : editHtcPcs.trim() !== '' ? mtrFromPcs(n(editHtcPcs), effAvgLength) : Math.max(0, mtr - rejection))
+      : 0;
 
     if (!editDate) {
       setLocalError('Process date is required.');
@@ -203,7 +312,7 @@ export function EditEntryModal({
           <h2 className="text-base font-bold text-slate-900">Edit Production Record</h2>
           <p className="text-xs text-slate-500 font-normal mt-0.5 font-mono">
             {editing.work_order_no}
-            {editing.plan_no ? ` · Plan: ${editing.plan_no}` : ''} · {editing.route_code} · {stageLabel}
+            {editing.plan_no ? ` · Plan: ${editing.plan_no}` : ''} · {editing.route_code} · {stageLabel} · Length: {effAvgLength.toFixed(2)} m
           </p>
         </div>
       }
@@ -239,7 +348,7 @@ export function EditEntryModal({
                   step="any"
                   placeholder="L1 (Min)"
                   value={editL1}
-                  onChange={(e) => setEditL1(e.target.value)}
+                  onChange={(e) => updateL1L2(e.target.value, editL2)}
                   className="w-1/2 rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-xs font-bold text-slate-900 shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                 />
                 <input
@@ -248,7 +357,7 @@ export function EditEntryModal({
                   step="any"
                   placeholder="L2 (Max)"
                   value={editL2}
-                  onChange={(e) => setEditL2(e.target.value)}
+                  onChange={(e) => updateL1L2(editL1, e.target.value)}
                   className="w-1/2 rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-xs font-bold text-slate-900 shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                 />
               </div>
@@ -273,7 +382,7 @@ export function EditEntryModal({
                 step="any"
                 placeholder="MTR"
                 value={editMtr}
-                onChange={(e) => setEditMtr(e.target.value)}
+                onChange={(e) => changeEditMtr(e.target.value)}
                 className="w-1/2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs font-bold text-slate-900 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
               />
             </div>
@@ -297,7 +406,7 @@ export function EditEntryModal({
                 step="any"
                 placeholder="MTR"
                 value={editRejectionMtr}
-                onChange={(e) => setEditRejectionMtr(e.target.value)}
+                onChange={(e) => changeEditRejectionMtr(e.target.value)}
                 className="w-1/2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs text-rose-700 font-semibold shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
               />
             </div>

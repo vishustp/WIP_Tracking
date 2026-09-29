@@ -307,5 +307,33 @@ describe("Production Utils Unit Tests", () => {
       expect(totalDrawnPipeMt).toBe(12.47);
       expect(totalConservedMt).toBe(totalDrawnPipeMt);
     });
+
+    it("Rolling Stage calc() uses Mother Hollow length (4.4m), not order final length (6.0m)", () => {
+      const rollingOrder = {
+        stage_code: "ROLLING",
+        od: 60.3,
+        wl: 3.91,
+        l1: 6.0,
+        l2: 6.0,
+        avg_length: 6.0,
+        mh_od: 70.0,
+        mh_wt: 5.25,
+        mh_l1: 4.4,
+        mh_l2: 4.4,
+        mh_avg_length: 4.4,
+        pcs: "1826",
+        mtr: "",
+        rejection_pcs: "",
+        rejection_mtr: "",
+        htc_ok_pcs: "",
+        htc_ok_mtr: "",
+      };
+
+      const result = calc(rollingOrder);
+      // 1826 pieces * 4.4m = 8034.4m (NOT 1826 * 6.0 = 10956m)
+      expect(result.avg).toBe(4.4);
+      expect(result.mtr).toBe(8034.4);
+    });
   });
 });
+

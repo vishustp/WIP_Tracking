@@ -850,14 +850,19 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
   const getEntryAvgLength = (entry: ProductionEntry | null) => {
     if (!entry) return 6.0;
-    const isMhStage = entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT' || entry.stage_code === 'DRAW';
+    const isMhStage = entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
     const isDraw = entry.stage_code === 'DRAW';
     const isHeatTreatment = entry.stage_code === 'HEAT_TREATMENT';
     const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no || r.work_order_id === entry.work_order_id);
-    const mhL1 = Number(entry.mh_l1 || rowMatch?.mh_l1 || 0);
-    const mhL2 = Number(entry.mh_l2 || rowMatch?.mh_l2 || 0);
+    const planMh =
+      (entry.work_order_id ? planMhMap.get(entry.work_order_id) : undefined) ||
+      (entry.work_order_no ? planMhMap.get(String(entry.work_order_no).trim()) : undefined) ||
+      (rowMatch?.work_order_id ? planMhMap.get(rowMatch.work_order_id) : undefined);
+
+    const mhL1 = Number(entry.mh_l1 || rowMatch?.mh_l1 || planMh?.mh_l1 || 0);
+    const mhL2 = Number(entry.mh_l2 || rowMatch?.mh_l2 || planMh?.mh_l2 || 0);
     const computedMhAvg = mhL1 > 0 && mhL2 > 0 ? (mhL1 + mhL2) / 2 : mhL1 || mhL2 || 0;
-    const mhLen = Number(entry.mh_avg_length || rowMatch?.mh_avg_length || computedMhAvg || 0);
+    const mhLen = Number(entry.mh_avg_length || rowMatch?.mh_avg_length || planMh?.mh_avg_length || computedMhAvg || 0);
     const woLen = Number(
       entry.avg_length ||
         rowMatch?.avg_length ||
@@ -866,11 +871,22 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
           : 6.0)
     );
 
-    return isMhStage && mhLen > 0
-      ? mhLen
-      : woLen > 0
-      ? woLen
-      : 6.0;
+    if (isMhStage) {
+      return mhLen > 0 ? mhLen : 4.4;
+    }
+
+    if (isDraw || isHeatTreatment) {
+      const mhOd = Number(entry.mh_od || rowMatch?.mh_od || planMh?.mh_od || 0);
+      const mhWt = Number(entry.mh_wt || rowMatch?.mh_wt || planMh?.mh_wt || 0);
+      const finOd = Number(entry.od || rowMatch?.od || 0);
+      const finWt = Number(entry.wl || rowMatch?.wl || 0);
+      const elongationFactor = calcElongationFactor(mhOd, mhWt, finOd, finWt);
+      const mhBaseLen = mhLen > 0 ? mhLen : 4.4;
+      const elongatedAvg = elongationFactor > 1 ? Number((mhBaseLen * elongationFactor).toFixed(3)) : mhBaseLen;
+      return elongatedAvg > 0 ? elongatedAvg : (woLen > 0 ? woLen : 6.0);
+    }
+
+    return woLen > 0 ? woLen : 6.0;
   };
 
   // Edit handler execution
