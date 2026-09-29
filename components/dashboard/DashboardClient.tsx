@@ -55,6 +55,14 @@ type KPI = {
   today_rej_pct?: number;
   rejection_qty?: number;
   delayed_orders?: number;
+  total_rolling_mt?: number;
+  total_rolling_pcs?: number;
+  total_draw_mt?: number;
+  total_draw_pcs?: number;
+  total_ht_mt?: number;
+  total_ht_pcs?: number;
+  total_finishing_mt?: number;
+  total_finishing_pcs?: number;
 };
 
 type WIPRow = {
@@ -182,61 +190,76 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
     return map;
   }, [wip]);
 
-  // 3. Row 1: Top 5 Summary KPI Cards strictly with Real Database Metrics
+  // 3. Row 1: Top 5 Summary KPI Cards: Total Rolling, Total Draw, Total HT, Total Finishing Production, and Total WIP
   const summaryMetrics = useMemo(() => {
-    const todayProd = Number(kpi?.today_prod_mt ?? (kpi?.completed_today ? Number(kpi.completed_today) : 0));
-    const rejPct = Number(kpi?.today_rej_pct ?? 0);
-    const delayedCount = Number(kpi?.delayed_orders ?? pending.filter((p) => p.target_date && new Date(p.target_date) < new Date()).length);
-    const activeOrders = Number(kpi?.active_work_orders ?? pending.length);
+    const rollingMt = Number(kpi?.total_rolling_mt ?? 0);
+    const rollingNos = Number(kpi?.total_rolling_pcs ?? 0);
+
+    const drawMt = Number(kpi?.total_draw_mt ?? 0);
+    const drawNos = Number(kpi?.total_draw_pcs ?? 0);
+
+    const htMt = Number(kpi?.total_ht_mt ?? 0);
+    const htNos = Number(kpi?.total_ht_pcs ?? 0);
+
+    const finishingMt = Number(kpi?.total_finishing_mt ?? 0);
+    const finishingNos = Number(kpi?.total_finishing_pcs ?? 0);
+
+    const wipMt = totalPlantWipMt;
+    const wipNos = Number(kpi?.total_wip_pcs || 0);
 
     return [
       {
-        title: 'Total WIP',
-        value: `${formatNum(totalPlantWipMt, 1)} MT`,
-        subText: `${formatNum(kpi?.total_wip_pcs || 0)} Pieces in Mill`,
-        icon: Layers,
+        title: 'Total Rolling',
+        mt: formatNum(rollingMt, 1),
+        nos: formatNum(rollingNos, 0),
+        subText: 'Hot Mill Logged',
+        icon: Factory,
+        iconBg: 'bg-orange-100 text-orange-600',
+        badge: 'Rolling',
+        badgeColor: 'text-orange-700 bg-orange-50 border-orange-200',
+      },
+      {
+        title: 'Total Draw',
+        mt: formatNum(drawMt, 1),
+        nos: formatNum(drawNos, 0),
+        subText: 'Cold Draw Bench',
+        icon: Wrench,
         iconBg: 'bg-blue-100 text-blue-600',
-        badge: 'Plant WIP',
+        badge: 'Draw',
         badgeColor: 'text-blue-700 bg-blue-50 border-blue-200',
       },
       {
-        title: 'Today Production',
-        value: `${formatNum(todayProd, 1)} MT`,
-        subText: todayProd > 0 ? 'Active Shift Logged' : 'No Output Logged Today',
-        icon: Factory,
+        title: 'Total HT',
+        mt: formatNum(htMt, 1),
+        nos: formatNum(htNos, 0),
+        subText: 'Heat Treatment',
+        icon: Flame,
         iconBg: 'bg-emerald-100 text-emerald-600',
-        badge: 'Output',
+        badge: 'Furnace',
         badgeColor: 'text-emerald-700 bg-emerald-50 border-emerald-200',
       },
       {
-        title: 'Rejection',
-        value: `${rejPct.toFixed(1)} %`,
-        subText: `${formatNum(kpi?.today_rej_mt ?? 0, 1)} MT Scrapped`,
-        icon: AlertTriangle,
-        iconBg: 'bg-rose-100 text-rose-600',
-        badge: 'Quality',
-        badgeColor: 'text-rose-700 bg-rose-50 border-rose-200',
+        title: 'Total Finishing Production',
+        mt: formatNum(finishingMt, 1),
+        nos: formatNum(finishingNos, 0),
+        subText: 'Bundled & Cleared',
+        icon: CheckCircle2,
+        iconBg: 'bg-cyan-100 text-cyan-600',
+        badge: 'Finishing',
+        badgeColor: 'text-cyan-700 bg-cyan-50 border-cyan-200',
       },
       {
-        title: 'Delayed Orders',
-        value: String(delayedCount),
-        subText: delayedCount > 0 ? 'Past Target Date' : 'All Orders On Schedule',
-        icon: Clock,
-        iconBg: 'bg-amber-100 text-amber-600',
-        badge: delayedCount > 0 ? 'Action Req.' : 'Nominal',
-        badgeColor: delayedCount > 0 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-slate-600 bg-slate-50 border-slate-200',
-      },
-      {
-        title: 'Active Work Orders',
-        value: String(activeOrders),
-        subText: 'Scheduled & In Progress',
-        icon: FileText,
-        iconBg: 'bg-purple-100 text-purple-600',
-        badge: 'In Flight',
-        badgeColor: 'text-purple-700 bg-purple-50 border-purple-200',
+        title: 'Total WIP',
+        mt: formatNum(wipMt, 1),
+        nos: formatNum(wipNos, 0),
+        subText: 'Plant In-Process',
+        icon: Layers,
+        iconBg: 'bg-indigo-100 text-indigo-600',
+        badge: 'Plant WIP',
+        badgeColor: 'text-indigo-700 bg-indigo-50 border-indigo-200',
       },
     ];
-  }, [totalPlantWipMt, kpi, pending]);
+  }, [totalPlantWipMt, kpi]);
 
   // 4. Row 2: 6 Real Post-Rolling Work Centers in Pipe Manufacturing Sequence
   const pipelineStages = useMemo(() => {
@@ -364,12 +387,17 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
                   <Icon className="h-4 w-4" />
                 </div>
                 <div className="flex flex-col text-right">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-tight">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-tight truncate max-w-[130px]">
                     {card.title}
                   </span>
-                  <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight font-mono mt-0.5">
-                    {card.value}
-                  </span>
+                  <div className="flex items-baseline justify-end gap-1.5 mt-1 flex-wrap">
+                    <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight font-mono">
+                      {card.mt} <span className="text-xs sm:text-sm font-black text-slate-900">MT</span>
+                    </span>
+                    <span className="text-xs font-medium text-slate-500 font-mono">
+                      {card.nos} <span className="text-[10px] text-slate-400 font-sans">Nos</span>
+                    </span>
+                  </div>
                 </div>
               </div>
 

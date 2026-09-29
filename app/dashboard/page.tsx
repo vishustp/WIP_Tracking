@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import DashboardClient from '@/components/dashboard/DashboardClient';
-import { mtFromMtr } from '@/lib/productionUtils';
+import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
 import { buildCampaignHierarchyMaps, reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
 
 export const dynamic = 'force-dynamic';
@@ -137,17 +137,53 @@ export default async function Dashboard() {
     let totalProdMt = 0;
     let totalRejMt = 0;
 
+    let totalRollingMt = 0;
+    let totalRollingPcs = 0;
+    let totalDrawMt = 0;
+    let totalDrawPcs = 0;
+    let totalHtMt = 0;
+    let totalHtPcs = 0;
+    let totalFinishingMt = 0;
+    let totalFinishingPcs = 0;
+
     for (const pl of productionLogs) {
       const wo = woMap.get(pl.work_order_id);
-      const od = Number(wo?.size_od || 0);
-      const wt = Number(wo?.size_wt || 0);
+      const planMh = hierarchyMaps.mhMap.get(pl.work_order_id) || hierarchyMaps.mhMap.get(String(wo?.work_order_no).trim());
+      const rawCode = (pl.process_stages?.stage_code || pl.stage_code || '').toUpperCase();
+      const isRolling = rawCode.includes('ROLL');
+      const isDraw = rawCode.includes('DRAW') || rawCode.includes('PILGER');
+      const isHt = rawCode === 'HEAT_TREATMENT' || rawCode === 'HT' || rawCode.includes('HOLLOW');
+      const isFin = rawCode.includes('FINISH');
+
+      const od = isRolling && planMh?.mh_od ? Number(planMh.mh_od) : Number(wo?.size_od || 0);
+      const wt = isRolling && planMh?.mh_wt ? Number(planMh.mh_wt) : Number(wo?.size_wt || 0);
       const outMtr = Number(pl.output_qty || 0);
       const rejMtr = Number(pl.rejection_qty || 0);
       const outMt = od > 0 && wt > 0 ? mtFromMtr(outMtr, od, wt) : 0;
       const rejMt = od > 0 && wt > 0 ? mtFromMtr(rejMtr, od, wt) : 0;
 
+      const { pcs: pPcs } = extractPcsFromRemarks(pl.remarks);
+      const avgLen = isRolling
+        ? Number(planMh?.mh_avg_length || 4.49)
+        : Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : wo?.l1 || 6.0);
+      const calcPcs = pPcs > 0 ? pPcs : (outMtr > 0 && avgLen > 0 ? Math.round(outMtr / avgLen) : 0);
+
       totalProdMt += outMt;
       totalRejMt += rejMt;
+
+      if (isRolling) {
+        totalRollingMt += outMt;
+        totalRollingPcs += calcPcs;
+      } else if (isDraw) {
+        totalDrawMt += outMt;
+        totalDrawPcs += calcPcs;
+      } else if (isHt) {
+        totalHtMt += outMt;
+        totalHtPcs += calcPcs;
+      } else if (isFin) {
+        totalFinishingMt += outMt;
+        totalFinishingPcs += calcPcs;
+      }
 
       const isToday = pl.process_date === todayStr || (pl.created_at && String(pl.created_at).slice(0, 10) === todayStr);
       if (isToday) {
@@ -170,6 +206,14 @@ export default async function Dashboard() {
       total_wip_mtr: totalWipMtr,
       total_wip_pcs: totalWipPcs,
       total_wip_mt: totalWipMt,
+      total_rolling_mt: totalRollingMt,
+      total_rolling_pcs: totalRollingPcs,
+      total_draw_mt: totalDrawMt,
+      total_draw_pcs: totalDrawPcs,
+      total_ht_mt: totalHtMt,
+      total_ht_pcs: totalHtPcs,
+      total_finishing_mt: totalFinishingMt,
+      total_finishing_pcs: totalFinishingPcs,
       today_prod_mt: todayProdMt,
       today_rej_mt: todayRejMt,
       today_rej_pct: todayRejectionPct,
