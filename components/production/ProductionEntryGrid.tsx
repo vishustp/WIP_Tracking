@@ -36,9 +36,8 @@ const DeleteEntryModal = dynamic(() => import('@/components/production/modals/De
 const BundlingCampaignModal = dynamic(() => import('@/components/production/modals/BundlingCampaignModal'), { ssr: false });
 const BandSawCuttingModal = dynamic(() => import('@/components/production/modals/BandSawCuttingModal'), { ssr: false });
 
-function getYesterdayDateStr(): string {
+function getCurrentDateStr(): string {
   const d = new Date();
-  d.setDate(d.getDate() - 1);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -80,7 +79,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
     }
   }, [initialStage]);
 
-  const [date, setDate] = useState(() => getYesterdayDateStr());
+  const [date, setDate] = useState(() => getCurrentDateStr());
 
   const [search, setSearch] = useState('');
   const [woFilter, setWoFilter] = useState('');
