@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
+import { loadLocalPriorities, type PriorityItem } from '@/lib/planning/orderPriorityHelper';
 import {
   ResponsiveContainer,
   PieChart,
@@ -143,6 +144,15 @@ const CANONICAL_WIP_WORK_CENTERS = [
 ];
 
 export default function DashboardClient({ kpi, wip, pending, recentProduction = [], trendData = [] }: Props) {
+  const [localPriorities, setLocalPriorities] = useState<Record<string, PriorityItem>>({});
+
+  useEffect(() => {
+    setLocalPriorities(loadLocalPriorities());
+    const handleSync = () => setLocalPriorities(loadLocalPriorities());
+    window.addEventListener('focus', handleSync);
+    return () => window.removeEventListener('focus', handleSync);
+  }, []);
+
   // 1. Calculate Real Total Plant WIP MT strictly from active post-rolling data
   const totalPlantWipMt = useMemo(() => {
     const rawSum = wip.reduce((acc, r) => {
@@ -319,23 +329,63 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
     }));
   }, [stageWipMap]);
 
-  // 7. Row 4: Priority / Delayed Work Orders (from real pending data)
+  // 7. Row 4: Priority / Delayed Work Orders (ordered by priority & target completion date)
   const priorityWorkOrders = useMemo(() => {
-    const now = new Date();
-    return pending.slice(0, 7).map((row) => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayTime = new Date(todayStr).getTime();
+
+    // Sort pending orders strictly by completion date / target date ascending (earliest / overdue first)
+    const sortedPending = [...pending].sort((a, b) => {
+      const prioA = localPriorities[a.work_order_id] || localPriorities[a.work_order_no];
+      const prioB = localPriorities[b.work_order_id] || localPriorities[b.work_order_no];
+
+      const dateA = prioA?.completion_date !== undefined ? prioA.completion_date : a.target_date;
+      const dateB = prioB?.completion_date !== undefined ? prioB.completion_date : b.target_date;
+
+      const timeA = dateA ? new Date(dateA).getTime() : Infinity;
+      const timeB = dateB ? new Date(dateB).getTime() : Infinity;
+
+      if (timeA !== timeB) {
+        return timeA - timeB;
+      }
+
+      // Secondary sort: manual rank if set
+      const rankA = prioA?.rank ?? 9999;
+      const rankB = prioB?.rank ?? 9999;
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+
+      // Tertiary sort: pending quantity descending
+      return Number(b.total_pending || 0) - Number(a.total_pending || 0);
+    });
+
+    return sortedPending.slice(0, 8).map((row) => {
+      const prio = localPriorities[row.work_order_id] || localPriorities[row.work_order_no];
+      const effectiveDate = prio?.completion_date !== undefined ? prio.completion_date : row.target_date;
+
       let statusLabel = 'On Track';
       let statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
-      if (row.target_date) {
-        const target = new Date(row.target_date);
-        const diffDays = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (effectiveDate) {
+        const itemTime = new Date(effectiveDate).getTime();
+        const diffDays = Math.ceil((itemTime - todayTime) / (1000 * 60 * 60 * 24));
         if (diffDays < 0) {
-          statusLabel = 'Delayed';
-          statusColor = 'bg-rose-50 text-rose-700 border-rose-200';
+          statusLabel = `${Math.abs(diffDays)}d Overdue`;
+          statusColor = 'bg-rose-50 text-rose-700 border-rose-200 font-bold';
+        } else if (diffDays === 0) {
+          statusLabel = 'Due Today';
+          statusColor = 'bg-amber-50 text-amber-800 border-amber-300 font-bold';
         } else if (diffDays <= 3) {
-          statusLabel = 'At Risk';
-          statusColor = 'bg-amber-50 text-amber-700 border-amber-200';
+          statusLabel = `${diffDays}d Due`;
+          statusColor = 'bg-amber-50 text-amber-700 border-amber-200 font-semibold';
+        } else if (diffDays <= 7) {
+          statusLabel = `${diffDays}d Due`;
+          statusColor = 'bg-blue-50 text-blue-700 border-blue-200 font-medium';
         }
+      } else {
+        statusLabel = 'No Date';
+        statusColor = 'bg-slate-50 text-slate-500 border-slate-200';
       }
 
       // Find current stage for this WO
@@ -348,8 +398,8 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
       const wipMt = od > 0 && wt > 0 ? mtFromMtr(mtr, od, wt) : 0;
 
       let dueFormatted = '—';
-      if (row.target_date) {
-        const d = new Date(row.target_date);
+      if (effectiveDate) {
+        const d = new Date(effectiveDate);
         if (!isNaN(d.getTime())) {
           dueFormatted = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }).replace(/ /g, '-');
         }
@@ -367,7 +417,7 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
         dueDate: dueFormatted,
       };
     });
-  }, [pending, wip]);
+  }, [pending, wip, localPriorities]);
 
   return (
     <div className="space-y-4">
@@ -632,7 +682,7 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
               <p className="text-xs text-slate-500 mt-0.5">Orders requiring immediate shop-floor tracking</p>
             </div>
             <Link
-              href="/reports/tracking"
+              href="/order-priority"
               className="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
             >
               View All <ArrowRight className="h-3 w-3" />

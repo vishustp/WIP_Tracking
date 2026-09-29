@@ -26,7 +26,7 @@ export default async function Dashboard() {
         .select('*')
         .gt('total_pending', 0)
         .order('target_date', { ascending: true, nullsFirst: false })
-        .limit(20),
+        .limit(100),
       supabase
         .from('rolling_plans')
         .select('work_order_id,status,planned_qty,mh_od,mh_wt,mh_l1,mh_l2,plan_no')

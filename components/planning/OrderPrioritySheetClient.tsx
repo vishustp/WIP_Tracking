@@ -2,30 +2,30 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import {
   Download,
   Printer,
   Search,
-  Filter,
+  Calendar,
   AlertTriangle,
-  Flame,
   Clock,
   CheckCircle2,
-  FileSpreadsheet,
   RefreshCw,
   Save,
-  Layers,
-  Building2,
-  Calendar,
-  Sparkles,
+  ExternalLink,
+  X,
+  Filter,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import {
-  type PriorityTier,
   type PriorityItem,
-  PRIORITY_CONFIGS,
+  type DateFilterType,
+  DATE_FILTER_OPTIONS,
   sortOrdersByPriority,
+  filterOrdersByDateBasis,
+  getEffectiveOrderDate,
   buildPriorityCsvContent,
   loadLocalPriorities,
   saveLocalPriorities,
@@ -57,7 +57,9 @@ export default function OrderPrioritySheetClient() {
   const [orders, setOrders] = useState<WorkOrderItem[]>([]);
   const [priorities, setPriorities] = useState<Record<string, PriorityItem>>({});
   const [search, setSearch] = useState('');
-  const [selectedTier, setSelectedTier] = useState<string>('ALL');
+  const [dateFilter, setDateFilter] = useState<DateFilterType>('ALL');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
 
   // Load orders & priorities
   const loadData = useCallback(async () => {
@@ -68,7 +70,7 @@ export default function OrderPrioritySheetClient() {
         s
           .from('work_orders')
           .select('id,work_order_no,customer_name,size_od,size_wt,l1,l2,grade,specification,ordered_qty,ordered_qty_mtr,balance_qty_mtr,target_date,status,destination,po_no')
-          .order('target_date', { ascending: true })
+          .order('target_date', { ascending: true, nullsFirst: false })
           .limit(500),
         Promise.resolve(loadLocalPriorities()),
       ]);
@@ -89,46 +91,86 @@ export default function OrderPrioritySheetClient() {
     loadData();
   }, [loadData]);
 
-  // Set tier for a specific work order
-  const handleSetTier = (wo: WorkOrderItem, tier: PriorityTier) => {
+  // Update target completion date for an order
+  const handleUpdateCompletionDate = async (wo: WorkOrderItem, newDate: string) => {
+    const cleanDate = newDate.trim() ? newDate.trim() : null;
+
+    // Update orders state
+    setOrders((prev) =>
+      prev.map((o) => (o.id === wo.id ? { ...o, target_date: cleanDate } : o))
+    );
+
+    // Update priorities map
     const updated: PriorityItem = {
+      ...(priorities[wo.id] || {
+        work_order_id: wo.id,
+        work_order_no: wo.work_order_no,
+      }),
       work_order_id: wo.id,
       work_order_no: wo.work_order_no,
-      tier,
-      notes: priorities[wo.id]?.notes || '',
+      completion_date: cleanDate,
       updated_at: new Date().toISOString(),
     };
 
     const newMap = { ...priorities, [wo.id]: updated };
     setPriorities(newMap);
     saveLocalPriorities(newMap);
-    toast.success(`${wo.work_order_no} priority set to ${PRIORITY_CONFIGS[tier].label}`);
+
+    // Asynchronously sync to Supabase work_orders table
+    try {
+      const s = createClient();
+      await s.from('work_orders').update({ target_date: cleanDate }).eq('id', wo.id);
+    } catch (err) {
+      console.warn('Failed to sync target_date to Supabase work_orders:', err);
+    }
+
+    toast.success(
+      cleanDate
+        ? `${wo.work_order_no}: Target date set to ${cleanDate}`
+        : `${wo.work_order_no}: Target date cleared`
+    );
   };
 
   // Update notes
-  const handleUpdateNotes = (woId: string, notes: string) => {
-    setPriorities((prev) => ({
-      ...prev,
-      [woId]: {
-        ...(prev[woId] || {
-          work_order_id: woId,
-          work_order_no: '',
-          tier: 'NORMAL',
-        }),
-        notes,
-        updated_at: new Date().toISOString(),
-      },
-    }));
+  const handleUpdateNotes = (wo: WorkOrderItem, notes: string) => {
+    setPriorities((prev) => {
+      const updatedMap = {
+        ...prev,
+        [wo.id]: {
+          ...(prev[wo.id] || {
+            work_order_id: wo.id,
+            work_order_no: wo.work_order_no,
+          }),
+          notes,
+          updated_at: new Date().toISOString(),
+        },
+      };
+      saveLocalPriorities(updatedMap);
+      return updatedMap;
+    });
   };
 
-  // Save priorities
-  const handleSaveAll = () => {
+  // Save all priorities to localStorage and DB
+  const handleSaveAll = async () => {
     setSaving(true);
     saveLocalPriorities(priorities);
-    setTimeout(() => {
+
+    try {
+      const s = createClient();
+      const updates = Object.entries(priorities)
+        .filter(([_, item]) => item.completion_date !== undefined)
+        .map(([woId, item]) =>
+          s.from('work_orders').update({ target_date: item.completion_date }).eq('id', woId)
+        );
+
+      await Promise.all(updates);
+      toast.success('Priority dates and expediting notes saved successfully.');
+    } catch (err: any) {
+      console.error('Failed to sync priority dates:', err);
+      toast.success('Priority dates saved to browser storage.');
+    } finally {
       setSaving(false);
-      toast.success('Priority order sequence saved successfully.');
-    }, 300);
+    }
   };
 
   // Export to CSV
@@ -146,19 +188,15 @@ export default function OrderPrioritySheetClient() {
     toast.success('Priority Sheet exported to CSV.');
   };
 
-  // Sorted and filtered orders
+  // Filter and sort orders
   const filteredOrders = useMemo(() => {
-    let result = orders;
+    // 1. Date-based filtering
+    let result = filterOrdersByDateBasis(orders, priorities, dateFilter, {
+      from: customFrom || undefined,
+      to: customTo || undefined,
+    });
 
-    // Filter by tier
-    if (selectedTier !== 'ALL') {
-      result = result.filter((o) => {
-        const t = priorities[o.id]?.tier || 'NORMAL';
-        return t === selectedTier;
-      });
-    }
-
-    // Filter by search
+    // 2. Search filter
     if (search.trim()) {
       const q = search.toLowerCase().trim();
       result = result.filter(
@@ -170,32 +208,49 @@ export default function OrderPrioritySheetClient() {
       );
     }
 
+    // 3. Date-based primary sorting (earliest completion date first)
     return sortOrdersByPriority(result, priorities);
-  }, [orders, priorities, selectedTier, search]);
+  }, [orders, priorities, dateFilter, customFrom, customTo, search]);
 
-  // Statistics
+  // Date statistics for KPI cards
   const stats = useMemo(() => {
-    const now = new Date();
-    let critical = 0;
-    let high = 0;
-    let normal = 0;
-    let low = 0;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStart = new Date(todayStr).getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+
     let overdue = 0;
+    let today = 0;
+    let due7 = 0;
+    let due15 = 0;
+    let due30 = 0;
+    let noDate = 0;
 
     orders.forEach((o) => {
-      const t = priorities[o.id]?.tier || 'NORMAL';
-      if (t === 'CRITICAL') critical++;
-      else if (t === 'HIGH') high++;
-      else if (t === 'LOW') low++;
-      else normal++;
+      const d = getEffectiveOrderDate(o, priorities);
+      if (!d) {
+        noDate++;
+        return;
+      }
 
-      if (o.target_date) {
-        const diff = (new Date(o.target_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-        if (diff < 0) overdue++;
+      const itemTime = new Date(d).getTime();
+      if (itemTime < todayStart) {
+        overdue++;
+      } else if (d === todayStr) {
+        today++;
+      }
+
+      if (itemTime >= todayStart && itemTime <= todayStart + 7 * dayMs) {
+        due7++;
+      }
+      if (itemTime >= todayStart && itemTime <= todayStart + 15 * dayMs) {
+        due15++;
+      }
+      if (itemTime >= todayStart && itemTime <= todayStart + 30 * dayMs) {
+        due30++;
       }
     });
 
-    return { total: orders.length, critical, high, normal, low, overdue };
+    return { total: orders.length, overdue, today, due7, due15, due30, noDate };
   }, [orders, priorities]);
 
   return (
@@ -206,14 +261,14 @@ export default function OrderPrioritySheetClient() {
           <div>
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-blue-900 text-white rounded">
-                PPC Planning Form
+                PPC Planning Console
               </span>
               <h1 className="text-lg font-black text-slate-900 tracking-tight">
-                Set Priority Order Sheet
+                Order Priority & Dispatch Sheet
               </h1>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Sequence production campaigns, flag expedited customer orders, and issue daily priority dispatch lists.
+              Set target completion dates, sequence shop-floor dispatch deadlines, and expedite open work orders.
             </p>
           </div>
 
@@ -222,10 +277,10 @@ export default function OrderPrioritySheetClient() {
               type="button"
               onClick={handleSaveAll}
               disabled={saving}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-xs cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-xs cursor-pointer disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              <span>{saving ? 'Saving...' : 'Save Sequence'}</span>
+              <span>{saving ? 'Saving...' : 'Save Dates & Notes'}</span>
             </button>
 
             <button
@@ -248,44 +303,93 @@ export default function OrderPrioritySheetClient() {
           </div>
         </div>
 
-        {/* 2. Top Summary KPI Cards */}
+        {/* 2. Top Summary KPI Cards (Date Basis) */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4 pt-3 border-t border-slate-100">
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          {/* Total Open Orders */}
+          <div
+            onClick={() => setDateFilter('ALL')}
+            className={`border rounded-lg p-3 cursor-pointer transition-all ${
+              dateFilter === 'ALL' && !customFrom && !customTo
+                ? 'bg-blue-50/70 border-blue-400 ring-2 ring-blue-500/20'
+                : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70'
+            }`}
+          >
             <div className="text-[11px] font-bold text-slate-500 uppercase">Open Orders</div>
             <div className="text-xl font-black text-slate-900 mt-0.5 font-mono">{stats.total}</div>
           </div>
 
-          <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+          {/* Overdue */}
+          <div
+            onClick={() => setDateFilter('OVERDUE')}
+            className={`border rounded-lg p-3 cursor-pointer transition-all ${
+              dateFilter === 'OVERDUE'
+                ? 'bg-rose-100/70 border-rose-400 ring-2 ring-rose-500/20'
+                : 'bg-rose-50 border-rose-200 hover:bg-rose-100/50'
+            }`}
+          >
             <div className="text-[11px] font-bold text-rose-700 uppercase flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-              <span>Critical</span>
+              <span>Overdue</span>
             </div>
-            <div className="text-xl font-black text-rose-900 mt-0.5 font-mono">{stats.critical}</div>
+            <div className="text-xl font-black text-rose-900 mt-0.5 font-mono">{stats.overdue}</div>
           </div>
 
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-            <div className="text-[11px] font-bold text-amber-700 uppercase">High Priority</div>
-            <div className="text-xl font-black text-amber-900 mt-0.5 font-mono">{stats.high}</div>
+          {/* Due Today */}
+          <div
+            onClick={() => setDateFilter('TODAY')}
+            className={`border rounded-lg p-3 cursor-pointer transition-all ${
+              dateFilter === 'TODAY'
+                ? 'bg-amber-100/70 border-amber-400 ring-2 ring-amber-500/20'
+                : 'bg-amber-50 border-amber-200 hover:bg-amber-100/50'
+            }`}
+          >
+            <div className="text-[11px] font-bold text-amber-700 uppercase">Due Today</div>
+            <div className="text-xl font-black text-amber-900 mt-0.5 font-mono">{stats.today}</div>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <div className="text-[11px] font-bold text-blue-700 uppercase">Normal Schedule</div>
-            <div className="text-xl font-black text-blue-900 mt-0.5 font-mono">{stats.normal}</div>
+          {/* Due Next 7 Days */}
+          <div
+            onClick={() => setDateFilter('NEXT_7_DAYS')}
+            className={`border rounded-lg p-3 cursor-pointer transition-all ${
+              dateFilter === 'NEXT_7_DAYS'
+                ? 'bg-blue-100/70 border-blue-400 ring-2 ring-blue-500/20'
+                : 'bg-blue-50 border-blue-200 hover:bg-blue-100/50'
+            }`}
+          >
+            <div className="text-[11px] font-bold text-blue-700 uppercase">Next 7 Days</div>
+            <div className="text-xl font-black text-blue-900 mt-0.5 font-mono">{stats.due7}</div>
           </div>
 
-          <div className="bg-slate-100 border border-slate-200 rounded-lg p-3">
-            <div className="text-[11px] font-bold text-slate-600 uppercase">Low / Stock</div>
-            <div className="text-xl font-black text-slate-700 mt-0.5 font-mono">{stats.low}</div>
+          {/* Due Next 30 Days */}
+          <div
+            onClick={() => setDateFilter('NEXT_30_DAYS')}
+            className={`border rounded-lg p-3 cursor-pointer transition-all ${
+              dateFilter === 'NEXT_30_DAYS'
+                ? 'bg-indigo-100/70 border-indigo-400 ring-2 ring-indigo-500/20'
+                : 'bg-indigo-50 border-indigo-200 hover:bg-indigo-100/50'
+            }`}
+          >
+            <div className="text-[11px] font-bold text-indigo-700 uppercase">Next 30 Days</div>
+            <div className="text-xl font-black text-indigo-900 mt-0.5 font-mono">{stats.due30}</div>
           </div>
 
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <div className="text-[11px] font-bold text-red-700 uppercase">Overdue Target</div>
-            <div className="text-xl font-black text-red-900 mt-0.5 font-mono">{stats.overdue}</div>
+          {/* No Date Set */}
+          <div
+            onClick={() => setDateFilter('NO_DATE')}
+            className={`border rounded-lg p-3 cursor-pointer transition-all ${
+              dateFilter === 'NO_DATE'
+                ? 'bg-slate-200 border-slate-400 ring-2 ring-slate-500/20'
+                : 'bg-slate-100 border-slate-200 hover:bg-slate-200/70'
+            }`}
+          >
+            <div className="text-[11px] font-bold text-slate-600 uppercase">No Date Set</div>
+            <div className="text-xl font-black text-slate-700 mt-0.5 font-mono">{stats.noDate}</div>
           </div>
         </div>
 
-        {/* 3. Search and Tier Filter Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-100">
+        {/* 3. Search and Date-Based Filter Bar */}
+        <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-100">
+          {/* Search box */}
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400 pointer-events-none" />
             <input
@@ -297,28 +401,64 @@ export default function OrderPrioritySheetClient() {
             />
           </div>
 
-          {/* Tier Filter Buttons */}
+          {/* Date Filter Buttons */}
           <div className="flex flex-wrap items-center gap-1.5">
-            {[
-              { id: 'ALL', label: 'All Orders' },
-              { id: 'CRITICAL', label: 'Critical' },
-              { id: 'HIGH', label: 'High' },
-              { id: 'NORMAL', label: 'Normal' },
-              { id: 'LOW', label: 'Low' },
-            ].map((tab) => (
+            {DATE_FILTER_OPTIONS.map((opt) => (
               <button
-                key={tab.id}
+                key={opt.id}
                 type="button"
-                onClick={() => setSelectedTier(tab.id)}
+                onClick={() => {
+                  setDateFilter(opt.id);
+                  setCustomFrom('');
+                  setCustomTo('');
+                }}
                 className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                  selectedTier === tab.id
+                  dateFilter === opt.id && !customFrom && !customTo
                     ? 'bg-blue-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
-                {tab.label}
+                {opt.label}
               </button>
             ))}
+          </div>
+
+          {/* Custom Date Range Filter */}
+          <div className="flex items-center gap-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="text-[11px] font-bold text-slate-500">From:</span>
+            <input
+              type="date"
+              value={customFrom}
+              onChange={(e) => {
+                setCustomFrom(e.target.value);
+                setDateFilter('ALL');
+              }}
+              className="bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <span className="text-[11px] font-bold text-slate-500">To:</span>
+            <input
+              type="date"
+              value={customTo}
+              onChange={(e) => {
+                setCustomTo(e.target.value);
+                setDateFilter('ALL');
+              }}
+              className="bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            {(customFrom || customTo) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomFrom('');
+                  setCustomTo('');
+                }}
+                title="Clear custom date filter"
+                className="text-slate-400 hover:text-rose-600 p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -339,11 +479,11 @@ export default function OrderPrioritySheetClient() {
         {loading ? (
           <div className="flex h-64 items-center justify-center text-xs font-bold text-slate-500 gap-2">
             <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
-            <span>Loading priority order queue...</span>
+            <span>Loading priority orders...</span>
           </div>
         ) : filteredOrders.length === 0 ? (
           <div className="p-12 text-center text-xs font-bold text-slate-500">
-            No matching work orders found.
+            No matching work orders found for the selected date criteria.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -351,49 +491,79 @@ export default function OrderPrioritySheetClient() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 text-[11px] font-bold uppercase tracking-wider">
                   <th className="py-2.5 px-3 w-12 text-center">#</th>
-                  <th className="py-2.5 px-3 w-32">Priority Tier</th>
                   <th className="py-2.5 px-3">Work Order</th>
                   <th className="py-2.5 px-3">Customer</th>
                   <th className="py-2.5 px-3">Size (OD × WT)</th>
                   <th className="py-2.5 px-3">Grade / Spec</th>
                   <th className="py-2.5 px-3 text-right">Pending Qty</th>
-                  <th className="py-2.5 px-3">Target Date</th>
+                  <th className="py-2.5 px-3 min-w-[200px]">Target Completion Date</th>
+                  <th className="py-2.5 px-3 text-center">Due Status</th>
                   <th className="py-2.5 px-3">Status</th>
                   <th className="py-2.5 px-3 min-w-[220px]">Planner Expedite Notes</th>
+                  <th className="py-2.5 px-3 text-center print:hidden">Link</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredOrders.map((wo, index) => {
-                  const prio = priorities[wo.id] || { tier: 'NORMAL', notes: '' };
-                  const cfg = PRIORITY_CONFIGS[prio.tier] || PRIORITY_CONFIGS.NORMAL;
+                  const prio = priorities[wo.id] || { notes: '' };
+                  const effectiveDate = getEffectiveOrderDate(wo, priorities);
 
                   // Date calculation
-                  const now = new Date();
-                  let dueBadge = <span className="text-slate-400 font-mono">—</span>;
-                  if (wo.target_date) {
-                    const diffDays = Math.ceil((new Date(wo.target_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                  const todayStr = new Date().toISOString().slice(0, 10);
+                  const todayTime = new Date(todayStr).getTime();
+                  let statusBadge = (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
+                      No Date Set
+                    </span>
+                  );
+                  let rowBorder = 'border-l-4 border-l-slate-300';
+
+                  if (effectiveDate) {
+                    const itemTime = new Date(effectiveDate).getTime();
+                    const diffDays = Math.ceil((itemTime - todayTime) / (1000 * 60 * 60 * 24));
+
                     if (diffDays < 0) {
-                      dueBadge = (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                          {Math.abs(diffDays)}d Overdue
+                      rowBorder = 'border-l-4 border-l-rose-600 bg-rose-50/20';
+                      statusBadge = (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
+                          <span>{Math.abs(diffDays)}d Overdue</span>
+                        </span>
+                      );
+                    } else if (diffDays === 0) {
+                      rowBorder = 'border-l-4 border-l-amber-500 bg-amber-50/20';
+                      statusBadge = (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          <span>Due Today</span>
                         </span>
                       );
                     } else if (diffDays <= 3) {
-                      dueBadge = (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
-                          {diffDays}d Due
+                      rowBorder = 'border-l-4 border-l-amber-400';
+                      statusBadge = (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          {diffDays}d Due (Urgent)
                         </span>
                       );
                     } else if (diffDays <= 7) {
-                      dueBadge = (
+                      rowBorder = 'border-l-4 border-l-blue-400';
+                      statusBadge = (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          {diffDays}d Due (This Wk)
+                        </span>
+                      );
+                    } else if (diffDays <= 30) {
+                      rowBorder = 'border-l-4 border-l-indigo-300';
+                      statusBadge = (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
                           {diffDays}d Due
                         </span>
                       );
                     } else {
-                      dueBadge = (
+                      rowBorder = 'border-l-4 border-l-slate-300';
+                      statusBadge = (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-50 text-slate-600 border border-slate-200">
-                          {diffDays}d
+                          {diffDays}d Due
                         </span>
                       );
                     }
@@ -402,41 +572,21 @@ export default function OrderPrioritySheetClient() {
                   return (
                     <tr
                       key={wo.id}
-                      className={`hover:bg-slate-50/80 transition-colors ${cfg.borderClass}`}
+                      className={`hover:bg-slate-50/80 transition-colors ${rowBorder}`}
                     >
-                      {/* Rank Index */}
+                      {/* Priority Sequence Rank */}
                       <td className="py-2.5 px-3 text-center font-bold text-slate-500 font-mono">
                         {index + 1}
                       </td>
 
-                      {/* Priority Tier Selector */}
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-1 print:hidden">
-                          {(['CRITICAL', 'HIGH', 'NORMAL', 'LOW'] as PriorityTier[]).map((t) => (
-                            <button
-                              key={t}
-                              type="button"
-                              onClick={() => handleSetTier(wo, t)}
-                              title={PRIORITY_CONFIGS[t].label}
-                              className={`px-2 py-0.5 text-[10px] font-black rounded border transition-colors cursor-pointer ${
-                                prio.tier === t
-                                  ? PRIORITY_CONFIGS[t].badgeClass
-                                  : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
-                              }`}
-                            >
-                              {t[0]}
-                            </button>
-                          ))}
-                        </div>
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold border mt-1 ${cfg.badgeClass}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotClass}`} />
-                          <span>{prio.tier}</span>
-                        </span>
-                      </td>
-
                       {/* Work Order No */}
-                      <td className="py-2.5 px-3 font-mono font-bold text-blue-900">
-                        {wo.work_order_no}
+                      <td className="py-2.5 px-3 font-mono font-bold text-blue-900 whitespace-nowrap">
+                        <Link
+                          href={`/reports/tracking?search=${encodeURIComponent(wo.work_order_no)}`}
+                          className="hover:underline"
+                        >
+                          {wo.work_order_no}
+                        </Link>
                       </td>
 
                       {/* Customer Name */}
@@ -455,18 +605,39 @@ export default function OrderPrioritySheetClient() {
                       </td>
 
                       {/* Balance Pending Qty */}
-                      <td className="py-2.5 px-3 font-mono font-bold text-right text-slate-900">
+                      <td className="py-2.5 px-3 font-mono font-bold text-right text-slate-900 whitespace-nowrap">
                         {(wo.balance_qty_mtr ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0).toLocaleString()} M
                       </td>
 
-                      {/* Target Date */}
+                      {/* Target Completion Date Input */}
                       <td className="py-2.5 px-3 whitespace-nowrap">
-                        <div className="font-mono text-slate-700">{wo.target_date || '—'}</div>
-                        <div className="mt-0.5">{dueBadge}</div>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="date"
+                            value={effectiveDate || ''}
+                            onChange={(e) => handleUpdateCompletionDate(wo, e.target.value)}
+                            className="px-2 py-1 text-xs font-mono font-bold text-slate-800 bg-slate-50 hover:bg-white focus:bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                          />
+                          {effectiveDate && (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateCompletionDate(wo, '')}
+                              title="Clear completion date"
+                              className="text-slate-400 hover:text-rose-600 p-0.5 print:hidden"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
 
-                      {/* Status */}
-                      <td className="py-2.5 px-3">
+                      {/* Due Status Badge */}
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        {statusBadge}
+                      </td>
+
+                      {/* Work Order Stage Status */}
+                      <td className="py-2.5 px-3 whitespace-nowrap">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                           {wo.status}
                         </span>
@@ -477,10 +648,21 @@ export default function OrderPrioritySheetClient() {
                         <input
                           type="text"
                           value={prio.notes || ''}
-                          onChange={(e) => handleUpdateNotes(wo.id, e.target.value)}
+                          onChange={(e) => handleUpdateNotes(wo, e.target.value)}
                           placeholder="Add expedite remarks / plant note..."
                           className="w-full px-2.5 py-1 text-xs bg-slate-50 hover:bg-white focus:bg-white text-slate-800 border border-slate-200 focus:border-blue-500 rounded focus:outline-none transition-colors"
                         />
+                      </td>
+
+                      {/* Quick Link to Tracking */}
+                      <td className="py-2.5 px-3 text-center print:hidden">
+                        <Link
+                          href={`/reports/tracking?search=${encodeURIComponent(wo.work_order_no)}`}
+                          title="Open WO Tracking"
+                          className="text-slate-400 hover:text-blue-600 inline-flex items-center"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </Link>
                       </td>
                     </tr>
                   );

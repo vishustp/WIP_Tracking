@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   sortOrdersByPriority,
+  filterOrdersByDateBasis,
   buildPriorityCsvContent,
   PRIORITY_CONFIGS,
   type PriorityItem,
 } from '../lib/planning/orderPriorityHelper';
 
-describe('Order Priority Helper & Sorting Engine', () => {
+describe('Order Priority Helper & Date-Based Sorting Engine', () => {
   const sampleOrders = [
     {
       id: 'wo-1',
@@ -44,52 +45,80 @@ describe('Order Priority Helper & Sorting Engine', () => {
       target_date: '2026-10-01',
       status: 'Pending Plan',
     },
+    {
+      id: 'wo-4',
+      work_order_no: 'WO-1004',
+      customer_name: 'NTPC Simhadri',
+      size_od: 73.0,
+      size_wt: 7.01,
+      grade: 'SA106 Gr C',
+      ordered_qty_mtr: 250,
+      balance_qty_mtr: 250,
+      target_date: null,
+      status: 'Pending Plan',
+    },
   ];
 
   const samplePriorities: Record<string, PriorityItem> = {
     'wo-1': {
       work_order_id: 'wo-1',
       work_order_no: 'WO-1001',
-      tier: 'LOW',
-      rank: 3,
-      notes: 'Stock replenishment',
+      notes: 'Standard stock delivery',
     },
     'wo-2': {
       work_order_id: 'wo-2',
       work_order_no: 'WO-1002',
-      tier: 'CRITICAL',
-      rank: 1,
-      notes: 'Refinery shutdown order',
+      // Manual completion date set by planner earlier than target date
+      completion_date: '2026-09-28',
+      notes: 'Refinery shutdown order expedited',
     },
     'wo-3': {
       work_order_id: 'wo-3',
       work_order_no: 'WO-1003',
-      tier: 'HIGH',
-      rank: 2,
       notes: 'Delivery penalty clause',
     },
   };
 
-  it('correctly sorts orders by priority tier: CRITICAL -> HIGH -> NORMAL -> LOW', () => {
+  it('correctly sorts orders by effective completion date ascending (earliest first, null dates last)', () => {
     const sorted = sortOrdersByPriority(sampleOrders, samplePriorities);
 
-    expect(sorted[0].work_order_no).toBe('WO-1002'); // CRITICAL
-    expect(sorted[1].work_order_no).toBe('WO-1003'); // HIGH
-    expect(sorted[2].work_order_no).toBe('WO-1001'); // LOW
+    // WO-1002 has completion_date 2026-09-28 (earliest)
+    expect(sorted[0].work_order_no).toBe('WO-1002');
+    // WO-1003 has target_date 2026-10-01
+    expect(sorted[1].work_order_no).toBe('WO-1003');
+    // WO-1001 has target_date 2026-10-20
+    expect(sorted[2].work_order_no).toBe('WO-1001');
+    // WO-1004 has no target date (null goes to the end)
+    expect(sorted[3].work_order_no).toBe('WO-1004');
   });
 
-  it('provides color configuration and badges for all 4 priority tiers', () => {
+  it('filters orders on date basis (OVERDUE, NO_DATE, ALL)', () => {
+    const overdue = filterOrdersByDateBasis(sampleOrders, samplePriorities, 'OVERDUE');
+    // WO-1002 completion_date is 2026-09-28 which is before today (2026-09-29)
+    expect(overdue.some((o) => o.work_order_no === 'WO-1002')).toBe(true);
+
+    const noDate = filterOrdersByDateBasis(sampleOrders, samplePriorities, 'NO_DATE');
+    expect(noDate.length).toBe(1);
+    expect(noDate[0].work_order_no).toBe('WO-1004');
+
+    const all = filterOrdersByDateBasis(sampleOrders, samplePriorities, 'ALL');
+    expect(all.length).toBe(4);
+  });
+
+  it('maintains tier config definitions for UI styling compatibility', () => {
     expect(PRIORITY_CONFIGS.CRITICAL.badgeClass).toContain('rose');
     expect(PRIORITY_CONFIGS.HIGH.badgeClass).toContain('amber');
     expect(PRIORITY_CONFIGS.NORMAL.badgeClass).toContain('blue');
     expect(PRIORITY_CONFIGS.LOW.badgeClass).toContain('slate');
   });
 
-  it('generates formatted CSV export content for plant morning meeting', () => {
+  it('generates formatted CSV export content with sequence, completion date, and due status', () => {
     const sorted = sortOrdersByPriority(sampleOrders, samplePriorities);
     const csv = buildPriorityCsvContent(sorted, samplePriorities);
 
-    expect(csv).toContain('Priority,WO No,Customer,Grade,OD (mm),WT (mm),Pending (Mtr),Target Date,Notes');
-    expect(csv).toContain('CRITICAL,WO-1002,"L&T Energy","A335 P11",60.3,3.91,300,2026-10-05,"Refinery shutdown order"');
+    expect(csv).toContain('Sequence,Completion Date,Due Status,WO No,Customer,Grade,OD (mm),WT (mm),Pending (Mtr),Notes');
+    expect(csv).toContain('1,2026-09-28');
+    expect(csv).toContain('WO-1002');
+    expect(csv).toContain('"Refinery shutdown order expedited"');
   });
 });
