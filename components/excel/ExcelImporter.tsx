@@ -8,6 +8,11 @@ import {
   exportJsonToExcel,
   exportSheetsToExcel,
 } from '@/lib/excelUtils';
+import {
+  isOrderCompletedForImport,
+  buildWorkOrderUpdatePayload,
+  validateWorkOrderImportRow,
+} from '@/lib/excelWorkOrderImport';
 import { createClient } from '@/lib/supabase/client';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
@@ -652,7 +657,7 @@ export default function ExcelImporter() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('work_orders')
-        .select('id, work_order_no, customer_name, specification, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mtr, balance_qty_pcs, balance_qty_mtr');
+        .select('id, work_order_no, customer_name, specification, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mtr, balance_qty_pcs, balance_qty_mtr, status');
       if (!error && data) {
         const map = new Map<string, any>();
         data.forEach((w: any) => map.set(w.work_order_no.toLowerCase().trim(), w));
@@ -764,19 +769,11 @@ export default function ExcelImporter() {
           destination: destinationVal,
         };
 
-        const errors: string[] = [];
-        if (!wo) errors.push('Work Order No missing');
-        if (row.od === null || row.od <= 0) errors.push('OD missing or invalid');
-        if (row.wl === null || row.wl <= 0) errors.push('WT/WL missing or invalid');
-        if (row.od && row.wl && row.od <= row.wl) errors.push('OD must be greater than WT');
-        if (row.ordered_qty_pcs <= 0 && row.ordered_qty_mtr <= 0 && row.ordered_qty_mt <= 0 && row.balance_to_make_mtr <= 0) {
-          errors.push('Order Qty missing');
-        }
-        if (currentStatus && !['pending', 'in progress', 'open', 'scheduled', 'planned', ''].includes(String(currentStatus).toLowerCase().trim())) {
-          errors.push(`Status "${currentStatus}" is not eligible`);
-        }
-        if (balanceToMakeMtr <= 5 && row.ordered_qty_mtr <= 5) {
-          errors.push(`Bal to Make MTR (${balanceToMakeMtr}) ≤ 5`);
+        const existsInDb = !!wo && knownWos.has(wo.toLowerCase().trim());
+        const errors = validateWorkOrderImportRow(row, { existsInDb });
+        const isCompleted = isOrderCompletedForImport(row);
+        if (isCompleted) {
+          row.target_status = 'Completed';
         }
 
         row.duplicate = !!wo && seen.has(wo);
@@ -1324,20 +1321,11 @@ export default function ExcelImporter() {
           const chunk = validRows.slice(i, i + updateChunkSize);
           await Promise.all(
             chunk.map(async (row) => {
-              const updateObj: Record<string, any> = {
-                l1: row.l1,
-                l2: row.l2,
-                ordered_qty_pcs: row.ordered_qty_pcs,
-                ordered_qty_mtr: row.ordered_qty_mtr,
-                ordered_qty_mt: row.ordered_qty_mt,
-                balance_qty_pcs: row.balance_qty_pcs,
-                balance_qty_mtr: row.balance_qty_mtr,
-                balance_qty_mt: row.balance_qty_mt,
-              };
-              if (row.po_no) updateObj.po_no = row.po_no;
-              if (row.po_date) updateObj.po_date = row.po_date;
-              if (row.material_code) updateObj.material_code = row.material_code;
-              if (row.destination) updateObj.destination = row.destination;
+              const dbWo = knownWos.get(row.work_order_no.toLowerCase().trim());
+              const updateObj = buildWorkOrderUpdatePayload(row, {
+                existsInDb: true,
+                currentDbStatus: dbWo?.status,
+              });
 
               const { error: updErr } = await supabase
                 .from('work_orders')
