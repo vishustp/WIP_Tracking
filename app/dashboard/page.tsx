@@ -131,20 +131,41 @@ export default async function Dashboard() {
     const totalWipMt = calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip_mt) || 0), 0);
 
     // Calculate real production and rejection from production_logs
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const localTodayStr = `${year}-${month}-${day}`;
+    const utcTodayStr = now.toISOString().slice(0, 10);
+    const currentMonthStr = `${year}-${month}`;
+    const utcMonthStr = utcTodayStr.slice(0, 7);
+    const monthName = now.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+
     let todayProdMt = 0;
     let todayRejMt = 0;
     let totalProdMt = 0;
     let totalRejMt = 0;
 
-    let totalRollingMt = 0;
-    let totalRollingPcs = 0;
-    let totalDrawMt = 0;
-    let totalDrawPcs = 0;
-    let totalHtMt = 0;
-    let totalHtPcs = 0;
-    let totalFinishingMt = 0;
-    let totalFinishingPcs = 0;
+    let monthProdMt = 0;
+    let monthRejMt = 0;
+
+    let monthRollingMt = 0;
+    let monthRollingPcs = 0;
+    let monthDrawMt = 0;
+    let monthDrawPcs = 0;
+    let monthHtMt = 0;
+    let monthHtPcs = 0;
+    let monthFinishingMt = 0;
+    let monthFinishingPcs = 0;
+
+    let allTimeRollingMt = 0;
+    let allTimeRollingPcs = 0;
+    let allTimeDrawMt = 0;
+    let allTimeDrawPcs = 0;
+    let allTimeHtMt = 0;
+    let allTimeHtPcs = 0;
+    let allTimeFinishingMt = 0;
+    let allTimeFinishingPcs = 0;
 
     for (const pl of productionLogs) {
       const wo = woMap.get(pl.work_order_id);
@@ -182,24 +203,48 @@ export default async function Dashboard() {
         }
       }
 
+      const logDate = pl.process_date ? String(pl.process_date).slice(0, 10) : (pl.created_at ? String(pl.created_at).slice(0, 10) : '');
+      const isToday = logDate === localTodayStr || logDate === utcTodayStr;
+      const isCurrentMonth = logDate.startsWith(currentMonthStr) || logDate.startsWith(utcMonthStr);
+
       totalProdMt += outMt;
       totalRejMt += rejMt;
 
       if (isRolling) {
-        totalRollingMt += outMt;
-        totalRollingPcs += calcPcs;
+        allTimeRollingMt += outMt;
+        allTimeRollingPcs += calcPcs;
+        if (isCurrentMonth) {
+          monthRollingMt += outMt;
+          monthRollingPcs += calcPcs;
+        }
       } else if (isDraw) {
-        totalDrawMt += outMt;
-        totalDrawPcs += calcPcs;
+        allTimeDrawMt += outMt;
+        allTimeDrawPcs += calcPcs;
+        if (isCurrentMonth) {
+          monthDrawMt += outMt;
+          monthDrawPcs += calcPcs;
+        }
       } else if (isHt) {
-        totalHtMt += outMt;
-        totalHtPcs += calcPcs;
+        allTimeHtMt += outMt;
+        allTimeHtPcs += calcPcs;
+        if (isCurrentMonth) {
+          monthHtMt += outMt;
+          monthHtPcs += calcPcs;
+        }
       } else if (isFin) {
-        totalFinishingMt += outMt;
-        totalFinishingPcs += calcPcs;
+        allTimeFinishingMt += outMt;
+        allTimeFinishingPcs += calcPcs;
+        if (isCurrentMonth) {
+          monthFinishingMt += outMt;
+          monthFinishingPcs += calcPcs;
+        }
       }
 
-      const isToday = pl.process_date === todayStr || (pl.created_at && String(pl.created_at).slice(0, 10) === todayStr);
+      if (isCurrentMonth) {
+        monthProdMt += outMt;
+        monthRejMt += rejMt;
+      }
+
       if (isToday) {
         todayProdMt += outMt;
         todayRejMt += rejMt;
@@ -220,14 +265,35 @@ export default async function Dashboard() {
       total_wip_mtr: totalWipMtr,
       total_wip_pcs: totalWipPcs,
       total_wip_mt: totalWipMt,
-      total_rolling_mt: totalRollingMt,
-      total_rolling_pcs: totalRollingPcs,
-      total_draw_mt: totalDrawMt,
-      total_draw_pcs: totalDrawPcs,
-      total_ht_mt: totalHtMt,
-      total_ht_pcs: totalHtPcs,
-      total_finishing_mt: totalFinishingMt,
-      total_finishing_pcs: totalFinishingPcs,
+      // Monthly Production Metrics
+      total_rolling_mt: monthRollingMt,
+      total_rolling_pcs: monthRollingPcs,
+      total_draw_mt: monthDrawMt,
+      total_draw_pcs: monthDrawPcs,
+      total_ht_mt: monthHtMt,
+      total_ht_pcs: monthHtPcs,
+      total_finishing_mt: monthFinishingMt,
+      total_finishing_pcs: monthFinishingPcs,
+      month_rolling_mt: monthRollingMt,
+      month_rolling_pcs: monthRollingPcs,
+      month_draw_mt: monthDrawMt,
+      month_draw_pcs: monthDrawPcs,
+      month_ht_mt: monthHtMt,
+      month_ht_pcs: monthHtPcs,
+      month_finishing_mt: monthFinishingMt,
+      month_finishing_pcs: monthFinishingPcs,
+      month_name: monthName,
+      month_prod_mt: monthProdMt,
+      month_rej_mt: monthRejMt,
+      // All-time Metrics (for historical audits)
+      all_time_rolling_mt: allTimeRollingMt,
+      all_time_rolling_pcs: allTimeRollingPcs,
+      all_time_draw_mt: allTimeDrawMt,
+      all_time_draw_pcs: allTimeDrawPcs,
+      all_time_ht_mt: allTimeHtMt,
+      all_time_ht_pcs: allTimeHtPcs,
+      all_time_finishing_mt: allTimeFinishingMt,
+      all_time_finishing_pcs: allTimeFinishingPcs,
       today_prod_mt: todayProdMt,
       today_rej_mt: todayRejMt,
       today_rej_pct: todayRejectionPct,

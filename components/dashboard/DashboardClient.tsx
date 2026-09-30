@@ -64,6 +64,17 @@ type KPI = {
   total_ht_pcs?: number;
   total_finishing_mt?: number;
   total_finishing_pcs?: number;
+  month_rolling_mt?: number;
+  month_rolling_pcs?: number;
+  month_draw_mt?: number;
+  month_draw_pcs?: number;
+  month_ht_mt?: number;
+  month_ht_pcs?: number;
+  month_finishing_mt?: number;
+  month_finishing_pcs?: number;
+  month_name?: string;
+  month_prod_mt?: number;
+  month_rej_mt?: number;
 };
 
 type WIPRow = {
@@ -200,62 +211,64 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
     return map;
   }, [wip]);
 
-  // 3. Row 1: Top 5 Summary KPI Cards: Total Rolling, Total Draw, Total HT, Total Finishing Production, and Total WIP
+  // 3. Row 1: Top 5 Summary KPI Cards: Monthly Rolling, Monthly Draw, Monthly HT, Total Production (Monthly), and Total WIP
   const summaryMetrics = useMemo(() => {
-    const rollingMt = Number(kpi?.total_rolling_mt ?? 0);
-    const rollingNos = Number(kpi?.total_rolling_pcs ?? 0);
+    const rollingMt = Number(kpi?.month_rolling_mt ?? kpi?.total_rolling_mt ?? 0);
+    const rollingNos = Number(kpi?.month_rolling_pcs ?? kpi?.total_rolling_pcs ?? 0);
 
-    const drawMt = Number(kpi?.total_draw_mt ?? 0);
-    const drawNos = Number(kpi?.total_draw_pcs ?? 0);
+    const drawMt = Number(kpi?.month_draw_mt ?? kpi?.total_draw_mt ?? 0);
+    const drawNos = Number(kpi?.month_draw_pcs ?? kpi?.total_draw_pcs ?? 0);
 
-    const htMt = Number(kpi?.total_ht_mt ?? 0);
-    const htNos = Number(kpi?.total_ht_pcs ?? 0);
+    const htMt = Number(kpi?.month_ht_mt ?? kpi?.total_ht_mt ?? 0);
+    const htNos = Number(kpi?.month_ht_pcs ?? kpi?.total_ht_pcs ?? 0);
 
-    const finishingMt = Number(kpi?.total_finishing_mt ?? 0);
-    const finishingNos = Number(kpi?.total_finishing_pcs ?? 0);
+    const finishingMt = Number(kpi?.month_finishing_mt ?? kpi?.total_finishing_mt ?? 0);
+    const finishingNos = Number(kpi?.month_finishing_pcs ?? kpi?.total_finishing_pcs ?? 0);
 
     const wipMt = totalPlantWipMt;
     const wipNos = Number(kpi?.total_wip_pcs || 0);
 
+    const monthLabel = kpi?.month_name || 'Monthly';
+
     return [
       {
-        title: 'Total Rolling',
+        title: 'Monthly Rolling',
         mt: formatNum(rollingMt, 1),
         nos: formatNum(rollingNos, 0),
-        subText: 'Hot Mill Logged',
+        subText: `${monthLabel} Hot Mill`,
         icon: Factory,
         iconBg: 'bg-orange-100 text-orange-600',
-        badge: 'Rolling',
+        badge: 'Monthly',
         badgeColor: 'text-orange-700 bg-orange-50 border-orange-200',
       },
       {
-        title: 'Total Draw',
+        title: 'Monthly Draw',
         mt: formatNum(drawMt, 1),
         nos: formatNum(drawNos, 0),
-        subText: 'Cold Draw Bench',
+        subText: `${monthLabel} Cold Draw`,
         icon: Wrench,
         iconBg: 'bg-blue-100 text-blue-600',
-        badge: 'Draw',
+        badge: 'Monthly',
         badgeColor: 'text-blue-700 bg-blue-50 border-blue-200',
       },
       {
-        title: 'Total HT',
+        title: 'Monthly HT',
         mt: formatNum(htMt, 1),
         nos: formatNum(htNos, 0),
-        subText: 'Heat Treatment',
+        subText: `${monthLabel} Furnace`,
         icon: Flame,
         iconBg: 'bg-emerald-100 text-emerald-600',
-        badge: 'Furnace',
+        badge: 'Monthly',
         badgeColor: 'text-emerald-700 bg-emerald-50 border-emerald-200',
       },
       {
-        title: 'Total Finishing Production',
+        title: 'Total Production',
         mt: formatNum(finishingMt, 1),
         nos: formatNum(finishingNos, 0),
-        subText: 'Bundled & Cleared',
+        subText: `${monthLabel} Bundled`,
         icon: CheckCircle2,
         iconBg: 'bg-cyan-100 text-cyan-600',
-        badge: 'Finishing',
+        badge: 'Monthly',
         badgeColor: 'text-cyan-700 bg-cyan-50 border-cyan-200',
       },
       {
