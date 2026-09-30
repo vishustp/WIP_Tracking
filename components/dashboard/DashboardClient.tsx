@@ -262,7 +262,7 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
         badgeColor: 'text-emerald-700 bg-emerald-50 border-emerald-200',
       },
       {
-        title: 'Total Production',
+        title: 'Total Bundling',
         mt: formatNum(finishingMt, 1),
         nos: formatNum(finishingNos, 0),
         subText: `${monthLabel} Bundled`,
