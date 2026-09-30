@@ -350,7 +350,7 @@ export default async function Dashboard() {
         draw: Number(stageTotals.DRAW.toFixed(1)),
         heatTreatment: Number(stageTotals.HEAT_TREATMENT.toFixed(1)),
         bandSaw: Number(stageTotals.BAND_SAW.toFixed(1)),
-        HYDRO/UT: Number(stageTotals.VDI.toFixed(1)),
+        vdi: Number(stageTotals.VDI.toFixed(1)),
         finishing: Number(stageTotals.FINISHING.toFixed(1)),
       };
     });
