@@ -317,7 +317,7 @@ export default async function Dashboard() {
         else if (rawCode.includes('DRAW') || rawCode.includes('PILGER')) code = 'DRAW';
         else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') code = 'HEAT_TREATMENT';
         else if (rawCode.includes('SAW') || rawCode.includes('CUT')) code = 'BAND_SAW';
-        else if (rawCode.includes('VDI') || rawCode.includes('QC')) code = 'Hydro/UT';
+        else if (rawCode.includes('VDI') || rawCode.includes('QC')) code = 'VDI';
         else if (rawCode.includes('FINISH')) code = 'FINISHING';
 
         if (code && stageTotals[code] !== undefined) {
@@ -350,7 +350,7 @@ export default async function Dashboard() {
         draw: Number(stageTotals.DRAW.toFixed(1)),
         heatTreatment: Number(stageTotals.HEAT_TREATMENT.toFixed(1)),
         bandSaw: Number(stageTotals.BAND_SAW.toFixed(1)),
-        vdi: Number(stageTotals.VDI.toFixed(1)),
+        HYDRO/UT: Number(stageTotals.VDI.toFixed(1)),
         finishing: Number(stageTotals.FINISHING.toFixed(1)),
       };
     });
