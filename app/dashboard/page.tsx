@@ -317,7 +317,7 @@ export default async function Dashboard() {
         else if (rawCode.includes('DRAW') || rawCode.includes('PILGER')) code = 'DRAW';
         else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') code = 'HEAT_TREATMENT';
         else if (rawCode.includes('SAW') || rawCode.includes('CUT')) code = 'BAND_SAW';
-        else if (rawCode.includes('VDI') || rawCode.includes('QC')) code = 'VDI';
+        else if (rawCode.includes('VDI') || rawCode.includes('QC')) code = 'Hydro/UT';
         else if (rawCode.includes('FINISH')) code = 'FINISHING';
 
         if (code && stageTotals[code] !== undefined) {
