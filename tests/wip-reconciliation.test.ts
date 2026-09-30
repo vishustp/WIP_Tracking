@@ -511,4 +511,79 @@ describe('PCS-First Route-Aware WIP Reconciliation', () => {
     expect(fin!.reconciled_wip_pcs).toBe(86);
     expect(fin!.capped_wip_pcs).toBe(86); // Must not be shrunk by mass clamp
   });
+
+  it('correctly calculates Band Saw WIP PCS by deducting actual cut mother pieces rather than dividing cut meters by elongated length', () => {
+    // 1,747 mother tubes heat treated
+    // 1,076 mother tubes cut at Band Saw (multiple = 1, each 6.0m + scrap)
+    // Expected remaining Band Saw WIP = 1,747 - 1,076 = 671 PCS (NOT 795 PCS)
+    const stages: StageWipInput[] = [
+      {
+        stage_code: 'ROLLING',
+        sequence_no: 1,
+        gross_output_mtr: 7695.6,
+        gross_output_pcs: 1749,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 7695.6,
+        net_output_pcs: 1749,
+        od: 70,
+        wt: 5.25,
+        avg_length: 4.4,
+      },
+      {
+        stage_code: 'DRAW',
+        sequence_no: 2,
+        gross_output_mtr: 10482,
+        gross_output_pcs: 1747,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 10482,
+        net_output_pcs: 1747,
+        od: 60.3,
+        wt: 3.91,
+        avg_length: 6.0,
+      },
+      {
+        stage_code: 'HEAT_TREATMENT',
+        sequence_no: 3,
+        gross_output_mtr: 10482,
+        gross_output_pcs: 1747,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 10482,
+        net_output_pcs: 1747,
+        od: 60.3,
+        wt: 3.91,
+        avg_length: 6.0,
+      },
+      {
+        stage_code: 'BAND_SAW',
+        sequence_no: 4,
+        gross_output_mtr: 6456,
+        gross_output_pcs: 1076,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 6456,
+        net_output_pcs: 1076,
+        od: 60.3,
+        wt: 3.91,
+        avg_length: 6.0,
+      },
+    ];
+
+    const result = reconcileWorkOrderWip(stages, {
+      route_code: 'CDS',
+      mh_od: 70,
+      mh_wt: 5.25,
+      mh_avg_length: 4.4,
+      final_avg_length: 6.0,
+      multiple: 1,
+    });
+
+    const bs = result.stages.find((s) => s.stage_code === 'BAND_SAW');
+    expect(bs).toBeDefined();
+    expect(bs!.reconciled_wip_pcs).toBe(671);
+    expect(bs!.capped_wip_pcs).toBe(671);
+  });
 });
+

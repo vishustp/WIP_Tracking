@@ -269,7 +269,6 @@ export function reconcileWorkOrderWip(
       } else {
         const htProd = stageProdMap.get('HEAT_TREATMENT');
         incomingPcs = htProd?.prodPcs || 0;
-        // Uncut drawn pipes awaiting cutting at Band Saw have actual elongated length:
         const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
         const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
         if (finUnitWeight > 0 && mhUnitWeight > 0) {
@@ -308,10 +307,11 @@ export function reconcileWorkOrderWip(
       const isDownCut = down.stage_code === 'BAND_SAW' || down.stage_code === 'VDI' || down.stage_code === 'FINISHING';
 
       if (isCurrentUpstreamOfCut && isDownCut) {
-        if (stageLen > 0 && downData.prodMtr > 0) {
+        const mult = (isCds ? drawnMultiple : pieceMultiple) || 1;
+        if (downData.prodPcs > 0) {
+          effectiveDownPcs = mult > 1 ? Math.round(downData.prodPcs / mult) : downData.prodPcs;
+        } else if (stageLen > 0 && downData.prodMtr > 0) {
           effectiveDownPcs = Math.round(downData.prodMtr / stageLen);
-        } else if (isCds ? drawnMultiple > 1 : pieceMultiple > 1) {
-          effectiveDownPcs = Math.round(downData.prodPcs / (isCds ? drawnMultiple : pieceMultiple));
         }
       }
 
@@ -323,10 +323,11 @@ export function reconcileWorkOrderWip(
     const curProd = stageProdMap.get(sc) || { prodPcs: 0, rejPcs: 0, prodMtr: 0, rejMtr: 0 };
     let curPassedPcs = curProd.prodPcs;
     if (sc === 'BAND_SAW') {
-      if (stageLen > 0 && curProd.prodMtr > 0) {
+      const mult = (isCds ? drawnMultiple : pieceMultiple) || 1;
+      if (curProd.prodPcs > 0) {
+        curPassedPcs = mult > 1 ? Math.round(curProd.prodPcs / mult) : curProd.prodPcs;
+      } else if (stageLen > 0 && curProd.prodMtr > 0) {
         curPassedPcs = Math.round(curProd.prodMtr / stageLen);
-      } else if (isCds ? drawnMultiple > 1 : pieceMultiple > 1) {
-        curPassedPcs = Math.round(curProd.prodPcs / (isCds ? drawnMultiple : pieceMultiple));
       }
     }
 
