@@ -424,7 +424,7 @@ export default function DepartmentTrainingManualClient() {
                   <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" /> Rolling Guardrails:
                 </div>
                 <ul className="list-disc list-inside mt-1.5 space-y-1 text-xs text-rose-950">
-                  <li><strong>110% Over-Rolling Capping:</strong> Rolling output cannot exceed 110% of total planned campaign meters.</li>
+                  <li><strong>Uncapped Rolling Output:</strong> Rolling output is not restricted by a 110% ceiling, accommodating natural rolling campaign yields.</li>
                   <li><strong>HTC OK Limit:</strong> HTC OK cannot exceed Net Output (<code>Production − Rejection</code>).</li>
                   <li>Entering 0 for HTC OK means zero stock will be available for downstream draw benches!</li>
                 </ul>

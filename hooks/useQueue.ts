@@ -371,18 +371,6 @@ export function useQueue(stage: StageCode) {
             const availMt =
               Math.max(mhOd - mhWt, 0) * Math.max(mhWt, 0) * 0.0246615 * 0.001 * availMtr;
 
-            // Effective logged production for capping
-            const effLoggedMtr = totalLoggedMtr > 0
-              ? totalLoggedMtr
-              : (masterPlannedMtr > availMtr ? masterPlannedMtr - availMtr : 0);
-
-            // Capping at rolling = 110% of Plan issued against master work order - total already logged
-            const maxCappingMtr = Number((masterPlannedMtr * 1.1).toFixed(2));
-            const cappingMtr = Math.max(0, maxCappingMtr - effLoggedMtr);
-            const cappingPcs = effAvg > 0
-              ? Math.round(cappingMtr / effAvg)
-              : Math.max(0, Math.round(masterPlannedPcs * 1.1) - totalLoggedPcs);
-
             return {
               ...r,
               mh_od: campaign.mh_od ?? r.mh_od,
@@ -402,8 +390,8 @@ export function useQueue(stage: StageCode) {
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
               balance_to_make_mt: Number(availMt.toFixed(2)),
-              max_allowed_mtr: cappingMtr,
-              max_allowed_pcs: cappingPcs,
+              max_allowed_mtr: null,
+              max_allowed_pcs: null,
             };
           } else {
             // Standard single work order plan
@@ -424,13 +412,6 @@ export function useQueue(stage: StageCode) {
             const wt = Number(r.wl || 0);
             const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
 
-            const effLoggedMtr = totalLoggedMtr > 0
-              ? totalLoggedMtr
-              : ((planMtr || availMtr) > availMtr ? (planMtr || availMtr) - availMtr : 0);
-            const maxCappingMtr = Number(((planMtr || availMtr) * 1.1).toFixed(2));
-            const cappingMtr = Math.max(0, maxCappingMtr - effLoggedMtr);
-            const cappingPcs = effPlanLen > 0 ? Math.round(cappingMtr / effPlanLen) : Math.max(0, Math.round(availPcs * 1.1) - totalLoggedPcs);
-
             return {
               ...r,
               mh_od: planInfo?.mh_od ?? plan?.mh_od ?? r.mh_od,
@@ -449,8 +430,8 @@ export function useQueue(stage: StageCode) {
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
               balance_to_make_mt: Number(availMt.toFixed(2)),
-              max_allowed_mtr: cappingMtr,
-              max_allowed_pcs: cappingPcs,
+              max_allowed_mtr: null,
+              max_allowed_pcs: null,
             };
           }
         });
@@ -524,11 +505,6 @@ export function useQueue(stage: StageCode) {
                 const mhWt = Number(campaign.mh_wt || wo.size_wt || 0);
                 const availMt =
                   Math.max(mhOd - mhWt, 0) * Math.max(mhWt, 0) * 0.0246615 * 0.001 * availMtr;
-                const maxCappingMtr = Number((campaign.total_campaign_mtr * 1.1).toFixed(2));
-                const cappingMtr = Math.max(0, maxCappingMtr - totalLogged);
-                const cappingPcs = woEffAvg > 0
-                  ? Math.round(cappingMtr / woEffAvg)
-                  : Math.max(0, Math.round(totalCampaignPcs * 1.1) - totalLoggedPcs);
 
                 enriched.push(
                   emptyRow({
@@ -553,8 +529,8 @@ export function useQueue(stage: StageCode) {
                     balance_to_make_mtr: availMtr,
                     balance_to_make_pcs: availPcs,
                     balance_to_make_mt: Number(availMt.toFixed(2)),
-                    max_allowed_mtr: cappingMtr,
-                    max_allowed_pcs: cappingPcs,
+                    max_allowed_mtr: null,
+                    max_allowed_pcs: null,
                     multiple: 1,
                     ht_nos: null,
                     is_master: true,

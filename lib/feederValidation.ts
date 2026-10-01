@@ -123,23 +123,13 @@ export function computeFeederBalanceForWorkOrder(params: {
     }, 0);
   };
 
-  // 1. ROLLING
+  // 1. ROLLING - Rolling Production is uncapped (No 110% capping)
   if (targetStage === 'ROLLING') {
-    const plans = rollingPlans.filter((p) => p.work_order_id === workOrder.id);
-    const plannedMtr = plans.reduce((sum, p) => sum + Number(p.planned_qty || 0), 0);
-    const max110Mtr = Number((plannedMtr * 1.10).toFixed(2));
-    const rollingLogs = getStageLogs('ROLLING');
-    const rolledMtr = sumStageOutMtr(rollingLogs);
-    const rolledPcs = sumStagePcs(rollingLogs);
-
-    const availMtr = plannedMtr > 0 ? Math.max(0, Number((max110Mtr - rolledMtr).toFixed(2))) : 0;
-    const availPcs = avgLen > 0 ? Math.round(availMtr / avgLen) : 0;
-
     return {
       feederStageCode: 'ROLLING_PLAN',
-      feederLabel: 'Active Rolling Plan (+10% Tolerance)',
-      availPcs,
-      availMtr,
+      feederLabel: 'Active Rolling Plan (Uncapped)',
+      availPcs: Infinity,
+      availMtr: Infinity,
       routeCode,
     };
   }

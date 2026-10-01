@@ -107,32 +107,7 @@ export function validateProductionEntry(
     }
   }
 
-  // 6. Rolling Stage Capping Rule: Rolling Production cannot exceed 110% (Plan + 10%) of the Rolling Plan
-  if (stage === "ROLLING") {
-    const plannedPcs = n(row.planned_pcs) > 0 ? n(row.planned_pcs) : n(row.campaign_total_pcs);
-    const plannedMtr = n(row.planned_rolling_total) > 0 ? n(row.planned_rolling_total) : n(row.campaign_total_mtr);
-    const max110Pcs = n(row.max_allowed_pcs) > 0 ? n(row.max_allowed_pcs) : (plannedPcs > 0 ? Math.round(plannedPcs * 1.10) : 0);
-    const max110Mtr = n(row.max_allowed_mtr) > 0 ? n(row.max_allowed_mtr) : (plannedMtr > 0 ? Number((plannedMtr * 1.10).toFixed(2)) : 0);
-
-    const prevGrossOutput = Number(row.prev_gross_output || 0);
-    const prevGrossPcs = d.avg > 0 ? Math.round(prevGrossOutput / d.avg) : 0;
-
-    if (max110Pcs > 0 && d.pcs > 0) {
-      if (d.pcs + prevGrossPcs > max110Pcs) {
-        errors.push({
-          workOrder: row.work_order_no,
-          message: `Rolling production (${d.pcs} PCS${prevGrossPcs > 0 ? ` + previously rolled ${prevGrossPcs} PCS` : ""}) exceeds maximum allowed 110% of Rolling Plan (limit: ${max110Pcs} PCS based on planned plan quantity).`,
-        });
-      }
-    } else if (max110Mtr > 0 && d.mtr > 0) {
-      if (d.mtr + prevGrossOutput > max110Mtr + 0.01) {
-        errors.push({
-          workOrder: row.work_order_no,
-          message: `Rolling production (${fmt(d.mtr, " MTR")}${prevGrossOutput > 0 ? ` + previously rolled ${fmt(prevGrossOutput, " MTR")}` : ""}) exceeds maximum allowed 110% of Rolling Plan (limit: ${fmt(max110Mtr, " MTR")}).`,
-        });
-      }
-    }
-  }
+  // 6. Rolling Stage: Uncapped (No 110% capping enforced on Rolling Production)
 
   // 7. Maximum Allowed Quantity Checks based on Nos (PCS) & Preceding Feeder WIP for downstream stages
   const allowedPcs =

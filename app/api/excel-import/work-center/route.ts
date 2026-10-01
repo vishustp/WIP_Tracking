@@ -352,9 +352,9 @@ export async function POST(req: NextRequest) {
 
         const effectiveOutPcs = outPcs || htcOkPcs || null;
 
-        // Feeder WIP capping check across all manufacturing stages
+        // Feeder WIP capping check across all downstream manufacturing stages (Rolling has no feeder/capping restriction)
         const feederBal = feederBalanceMap.get(wo.id);
-        if (feederBal) {
+        if (feederBal && work_center !== 'ROLLING') {
           const avgLen = rowL1 && rowL2 ? (rowL1 + rowL2) / 2 : rowL1 || rowL2 || (wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : 6.0);
           const reqPcs = effectiveOutPcs || (avgLen > 0 && outMtr > 0 ? Math.round(outMtr / avgLen) : 0);
           const reqMtr = outMtr;

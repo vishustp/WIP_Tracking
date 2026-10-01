@@ -137,8 +137,8 @@ describe('Excel Feeder WIP Capping Validation', () => {
     });
   });
 
-  describe('Rolling Mill capping at 110% of Planned Rolling Campaign', () => {
-    it('caps Rolling Mill gross output at 110% of Rolling Plan', () => {
+  describe('Rolling Mill uncapped production', () => {
+    it('does not cap Rolling Mill gross output at 110% of Rolling Plan', () => {
       const rollingPlans = [
         {
           work_order_id: 'wo_123',
@@ -166,10 +166,10 @@ describe('Excel Feeder WIP Capping Validation', () => {
         rollingPlans,
       });
 
-      // Max 110% = 1100 MTR. Prev Rolled = 800 MTR. Remaining = 300 MTR.
-      expect(balance.feederLabel).toBe('Active Rolling Plan (+10% Tolerance)');
-      expect(balance.availMtr).toBe(300);
-      expect(balance.availPcs).toBe(50); // 300 / 6.0 = 50 pcs
+      // Rolling production is uncapped
+      expect(balance.feederLabel).toBe('Active Rolling Plan (Uncapped)');
+      expect(balance.availMtr).toBe(Infinity);
+      expect(balance.availPcs).toBe(Infinity);
     });
   });
 
