@@ -106,7 +106,7 @@ export default function AgingNotificationBell({
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).order('sequence_no', { ascending: true }),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok').order('process_date', { ascending: false }),
         supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr').order('inspection_date', { ascending: false }),
-        supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, rolling_date, created_at').not('status', 'is', null),
+        supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, planned_rolling_date, created_at').not('status', 'is', null),
         supabase.from('work_orders').select('id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, created_at'),
         supabase.from('route_stages').select('route_id, stage_id, sequence_no, process_stages(stage_code)').order('sequence_no', { ascending: true }),
         supabase.from('aging_alert_acknowledgements').select('work_order_id, stage_code, acknowledged_by, notes, snooze_until'),

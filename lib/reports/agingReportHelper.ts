@@ -85,6 +85,7 @@ export interface RawRollingPlan {
   work_order_id: string;
   mh_od?: number | null;
   mh_wt?: number | null;
+  planned_rolling_date?: string | null;
   rolling_date?: string | null;
   created_at?: string;
   status?: any;
@@ -300,7 +301,7 @@ export function computeAgingReportRows(options: {
     planMap.set(p.work_order_id, {
       mh_od: mhOd ? Number(mhOd) : null,
       mh_wt: mhWt ? Number(mhWt) : null,
-      rolling_date: p.rolling_date || p.created_at?.slice(0, 10) || null,
+      rolling_date: p.planned_rolling_date || p.rolling_date || p.created_at?.slice(0, 10) || null,
     });
   });
 

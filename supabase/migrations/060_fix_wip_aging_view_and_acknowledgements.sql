@@ -90,7 +90,7 @@ with active_wip as (
     ) as upstream_last_log_date,
     -- Find plan date if rolling
     (
-      select max(rp.rolling_date)
+      select max(coalesce(rp.planned_rolling_date, rp.created_at::date))
       from public.rolling_plans rp
       where rp.work_order_id = w.work_order_id
     ) as rolling_plan_date,
