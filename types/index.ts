@@ -29,6 +29,7 @@ export interface WorkCenterWipInfo {
 }
 
 export interface Row {
+  id?: string;
   work_order_id: string;
   work_order_no: string;
   customer_name: string | null;
@@ -82,6 +83,7 @@ export interface Row {
   htc_ok_pcs: string;
   htc_ok_mtr: string;
   heat_lot_no: string;
+  heat_lots?: HeatLotInfo[];
   remarks: string;
 
   // Work Center WIP Breakdown across the entire route
@@ -340,6 +342,7 @@ export interface QcInspection {
   vdi_rejection_mt: number;
   salvage_reasons: SalvageReasonItem[];
   rework_history?: ReworkHistoryItem[];
+  heat_lot_no?: string | null;
   remarks?: string | null;
   created_by?: string | null;
   created_at: string;
@@ -360,6 +363,8 @@ export interface QcQueueItem {
   route_code?: string;
   feeder_source_label?: string;
   feeder_stage_code?: string;
+  heat_lot_no?: string | null;
+  heat_lots?: HeatLotInfo[];
   ht_ok_pcs: number;
   ht_ok_mtr: number;
   ht_ok_mt: number;
@@ -373,6 +378,12 @@ export interface QcQueueItem {
   master_wo_no?: string;
   master_plan_no?: string;
   child_work_orders?: any[];
+}
+
+export interface HeatLotInfo {
+  lot_no: string;
+  pcs?: number;
+  mtr?: number;
 }
 
 export interface QcSalvageQueueItem {
@@ -423,6 +434,8 @@ export interface BandSawQueueItem {
   route_name?: string;
   feeder_source_label?: string;
   feeder_stage_code?: string;
+  heat_lot_no?: string | null;
+  heat_lots?: HeatLotInfo[];
   available_mother_pcs: number;
   available_mother_mtr: number;
   available_mother_mt: number;

@@ -714,6 +714,12 @@ export function BandSawCuttingModal({
                 )}
               </div>
 
+              <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-1.5 shadow-2xs text-left">
+                <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">HT Lot No.</div>
+                <div className="font-mono text-xs font-bold text-amber-950 truncate max-w-[140px]" title={row.heat_lot_no || 'Standard'}>
+                  {row.heat_lot_no || 'Standard'}
+                </div>
+              </div>
               <div className="rounded-lg border border-slate-200/80 bg-white/90 px-3 py-1.5 shadow-2xs text-left">
                 <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">Pipe Size (OD × WT)</div>
                 <div className="font-mono text-xs font-bold text-slate-800">
@@ -1550,16 +1556,53 @@ export function BandSawCuttingModal({
               </div>
 
               <div>
-                <label className="mb-1 block text-[11px] font-semibold text-slate-600">
-                  Heat / Lot No.
-                </label>
-                <Input
-                  type="text"
-                  value={heatLotNo}
-                  onChange={(e) => setHeatLotNo(e.target.value)}
-                  className="h-8 text-xs font-medium"
-                  placeholder="e.g. HT-9821"
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-600">
+                    Heat / Lot No.
+                  </label>
+                  {row.heat_lots && row.heat_lots.length > 1 && (
+                    <span className="text-[10px] text-amber-700 font-bold">
+                      {row.heat_lots.length} Lots Available
+                    </span>
+                  )}
+                </div>
+                {row.heat_lots && row.heat_lots.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap gap-1">
+                      {row.heat_lots.map((hl, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setHeatLotNo(hl.lot_no)}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10.5px] font-mono font-bold transition-all border cursor-pointer ${
+                            heatLotNo === hl.lot_no
+                              ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                              : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                          }`}
+                          title={`Click to set lot ${hl.lot_no} (${hl.pcs || 0} pcs)`}
+                        >
+                          <span>{hl.lot_no}</span>
+                          {hl.pcs ? <span className="text-[9.5px] opacity-85">({hl.pcs} pcs)</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                    <Input
+                      type="text"
+                      value={heatLotNo}
+                      onChange={(e) => setHeatLotNo(e.target.value)}
+                      className="h-8 text-xs font-mono font-semibold"
+                      placeholder="e.g. HT-9821 or click pill above"
+                    />
+                  </div>
+                ) : (
+                  <Input
+                    type="text"
+                    value={heatLotNo}
+                    onChange={(e) => setHeatLotNo(e.target.value)}
+                    className="h-8 text-xs font-medium"
+                    placeholder="e.g. HT-9821"
+                  />
+                )}
               </div>
             </div>
 

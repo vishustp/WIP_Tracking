@@ -116,7 +116,9 @@ export default function BandSawCuttingClient() {
       (r) =>
         r.work_order_no.toLowerCase().includes(term) ||
         (r.customer_name || '').toLowerCase().includes(term) ||
-        (r.specification || '').toLowerCase().includes(term)
+        (r.specification || '').toLowerCase().includes(term) ||
+        (r.heat_lot_no || '').toLowerCase().includes(term) ||
+        (r.heat_lots && r.heat_lots.some((l) => l.lot_no.toLowerCase().includes(term)))
     );
   }, [queueRows, searchTerm]);
 
@@ -385,9 +387,10 @@ export default function BandSawCuttingClient() {
           <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
           <Input
             type="text"
+            aria-label="Search work orders, lot numbers, customer, or grade"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search WO #, Customer, Grade..."
+            placeholder="Search WO #, Lot No, Customer, Grade..."
             className="h-9 pl-9 text-xs"
           />
         </div>
@@ -412,6 +415,7 @@ export default function BandSawCuttingClient() {
               <thead className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                 <tr>
                   <th className="sticky left-0 top-0 z-20 bg-slate-50 py-3 px-4 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[180px]">Work Order</th>
+                  <th className="py-3 px-3">HT Lot No.</th>
                   <th className="py-3 px-3">Customer / Grade</th>
                   <th className="py-3 px-3">Pipe Size (OD × WT)</th>
                   <th className="py-3 px-3">Target Length (L1/L2)</th>
@@ -424,14 +428,28 @@ export default function BandSawCuttingClient() {
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {loading ? (
-                  <tr>
-                    <td colSpan={9} className="py-8 text-center text-slate-400">
-                      Loading Band Saw Queue...
-                    </td>
-                  </tr>
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse border-b border-slate-100" aria-busy="true">
+                      <td className="sticky left-0 z-10 bg-white py-3.5 px-4 border-r border-slate-200">
+                        <div className="h-4 w-28 bg-slate-200 rounded" />
+                        <div className="mt-1.5 h-3 w-16 bg-slate-100 rounded" />
+                      </td>
+                      <td className="py-3 px-3"><div className="h-5 w-20 bg-amber-100/70 rounded" /></td>
+                      <td className="py-3 px-3"><div className="h-4 w-24 bg-slate-200 rounded" /><div className="mt-1.5 h-3 w-16 bg-slate-100 rounded" /></td>
+                      <td className="py-3 px-3"><div className="h-4 w-20 bg-slate-200 rounded" /></td>
+                      <td className="py-3 px-3"><div className="h-4 w-16 bg-slate-200 rounded" /></td>
+                      <td className="py-3 px-3"><div className="h-4 w-24 bg-slate-100 rounded" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-4 w-16 bg-indigo-100 rounded ml-auto" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-4 w-14 bg-slate-200 rounded ml-auto" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-4 w-14 bg-slate-200 rounded ml-auto" /></td>
+                      <td className="sticky right-0 z-10 bg-white py-3 px-4 border-l border-slate-200 text-center">
+                        <div className="h-8 w-24 bg-slate-200 rounded mx-auto" />
+                      </td>
+                    </tr>
+                  ))
                 ) : filteredQueue.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-500">
+                    <td colSpan={10} className="py-12 text-center text-slate-500">
                       <Scissors size={24} className="mx-auto mb-2 text-slate-300 rotate-90" />
                       <div className="font-semibold text-slate-700">
                         {searchTerm ? `No work orders match "${searchTerm}"` : 'No work orders currently awaiting cutting in the Band Saw queue.'}
@@ -457,7 +475,7 @@ export default function BandSawCuttingClient() {
                     const lenLabel = l1 > 0 && l2 > 0 ? `${l1}m - ${l2}m` : l1 > 0 ? `${l1}m` : '6.0m';
 
                     return (
-                      <tr key={row.work_order_id} className="group hover:bg-slate-50/70 transition-colors">
+                      <tr key={row.id || `${row.work_order_id}_${row.heat_lot_no || 'std'}`} className="group hover:bg-slate-50/70 transition-colors">
                         <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-3.5 px-4 font-mono font-bold text-slate-900 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[180px]">
                           <div className="flex items-center gap-1.5">
                             <span>WO #{row.work_order_no}</span>
@@ -471,6 +489,15 @@ export default function BandSawCuttingClient() {
                             <div className="mt-1 inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[9.5px] font-bold text-blue-800">
                               <span>Campaign ({row.child_work_orders.length} Child WOs)</span>
                             </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          {row.heat_lot_no ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                              {row.heat_lot_no}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-xs">—</span>
                           )}
                         </td>
                         <td className="py-3 px-3 text-slate-700">
@@ -503,13 +530,13 @@ export default function BandSawCuttingClient() {
                             {row.feeder_source_label || 'Heat Treatment Net OK'}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-indigo-700 text-sm">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight font-bold text-indigo-700 text-sm">
                           {row.balance_to_make_pcs} PCS
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-semibold text-slate-800">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight font-semibold text-slate-800">
                           {fmt(Number(row.balance_to_make_mtr || 0))} m
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-700">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-700">
                           {fmt(Number(row.balance_to_make_mt || 0), 3)} MT
                         </td>
                         <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-3 px-4 text-center border-l border-slate-200 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[140px]">
@@ -517,7 +544,7 @@ export default function BandSawCuttingClient() {
                             <Button
                               size="sm"
                               onClick={() => handleOpenCutModal(row)}
-                              className="h-8 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-2xs"
+                              className="h-8 min-h-[34px] sm:min-h-[32px] gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-2xs touch-manipulation active:scale-95 transition-all"
                             >
                               <Scissors size={13} className="rotate-90" />
                               Record Cutting
@@ -556,6 +583,7 @@ export default function BandSawCuttingClient() {
                 <tr>
                   <th className="py-3 px-4">Date</th>
                   <th className="py-3 px-3">Work Order</th>
+                  <th className="py-3 px-3">HT / Lot No</th>
                   <th className="py-3 px-3">Pipe Size</th>
                   <th className="py-3 px-4">Multi-Length Cut Breakdown</th>
                   <th className="py-3 px-3 text-right">Total Net Cuts (Pcs)</th>
@@ -569,7 +597,7 @@ export default function BandSawCuttingClient() {
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-500">
+                    <td colSpan={11} className="py-12 text-center text-slate-500">
                       No cutting history records found.
                     </td>
                   </tr>
@@ -603,6 +631,15 @@ export default function BandSawCuttingClient() {
                               </span>
                             ) : null}
                           </div>
+                        </td>
+                        <td className="py-3 px-3 font-mono">
+                          {entry.heat_lot_no ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                              {entry.heat_lot_no}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">—</span>
+                          )}
                         </td>
                         <td className="py-3 px-3 font-mono text-slate-800">
                           {entry.od} × {entry.wl} mm
@@ -639,13 +676,13 @@ export default function BandSawCuttingClient() {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-indigo-700 text-sm">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight font-bold text-indigo-700 text-sm">
                           {netPcs} PCS
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-semibold text-slate-800">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight font-semibold text-slate-800">
                           {fmt(Number(entry.output_mtr || 0))} m
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-700">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-700">
                           {fmt(entryMt, 3)} MT
                         </td>
                         <td className="py-3 px-3 text-center">

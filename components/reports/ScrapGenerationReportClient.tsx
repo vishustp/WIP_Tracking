@@ -321,16 +321,16 @@ export default function ScrapGenerationReportClient() {
           </div>
 
           {/* Card 4: Process Stage Rejections */}
-          <div className="bg-white p-4 rounded-xl border border-indigo-200 shadow-xs flex flex-col justify-between">
+          <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-indigo-700">Process Rejections</span>
-              <span className="p-1 bg-indigo-50 text-indigo-700 rounded-md">
+              <span className="text-xs font-semibold uppercase tracking-wider text-rose-700">Process Rejections</span>
+              <span className="p-1 bg-rose-50 text-rose-700 rounded-md">
                 <Wrench className="w-4 h-4" />
               </span>
             </div>
             <div className="mt-2">
-              <div className="text-2xl font-bold font-mono tabular-nums text-indigo-700">
-                {fmt(kpis.process_rejection_scrap_mt, 3)} <span className="text-sm font-normal text-indigo-500">MT</span>
+              <div className="text-2xl font-bold font-mono tabular-nums text-rose-700">
+                {fmt(kpis.process_rejection_scrap_mt, 3)} <span className="text-sm font-normal text-rose-500">MT</span>
               </div>
               <div className="text-xs font-mono tabular-nums text-slate-500 mt-0.5">
                 {fmt(kpis.process_rejection_scrap_mtr, 2)} Mtr across mills

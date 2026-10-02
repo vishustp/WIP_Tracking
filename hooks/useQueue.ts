@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { StageCode, Row, emptyRow } from "@/types";
-import { extractPcsFromRemarks } from "@/lib/productionUtils";
+import { extractPcsFromRemarks, mtFromMtr } from "@/lib/productionUtils";
 
 const clientQueueCache = new Map<string, { timestamp: number; rows: Row[] }>();
 const inflightPromises = new Map<string, Promise<any>>();
@@ -291,6 +291,7 @@ export function useQueue(stage: StageCode) {
         s === "DRAW" ||
         s === "HOLLOW_HEAT_TREATMENT" ||
         s === "HEAT_TREATMENT" ||
+        s === "BAND_SAW" ||
         s === "VDI" ||
         s === "ROLLING";
 
@@ -560,7 +561,7 @@ export function useQueue(stage: StageCode) {
 
         // Enrich master rows with campaign details and strict downstream Rolling HTC OK propagation
         const enriched = filtered
-          .map((r) => {
+          .flatMap((r) => {
             const campaign = masterCampaignMap.get(r.work_order_id);
             const masterLogs = logs.filter((l: any) => l.work_order_id === r.work_order_id);
 
@@ -698,6 +699,28 @@ export function useQueue(stage: StageCode) {
             const effectiveWt = isMhWip && mhWt > 0 ? mhWt : Number(r.wl || 0);
             const availMt = Math.max(effectiveOd - effectiveWt, 0) * Math.max(effectiveWt, 0) * 0.0246615 * 0.001 * availMtr;
 
+            // Find all distinct HT Lot Nos from upstream Heat Treatment (or Hollow HT) for this work order
+            const allHtLogs = [...htLogs, ...hollowHtLogs]
+              .filter((l: any) => Boolean(l.heat_lot_no))
+              .sort((a: any, b: any) => new Date(b.created_at || b.process_date || 0).getTime() - new Date(a.created_at || a.process_date || 0).getTime());
+            
+            const htLotMap = new Map<string, { lot_no: string; pcs: number; mtr: number }>();
+            for (const l of allHtLogs) {
+              const lot = String(l.heat_lot_no).trim();
+              if (!lot) continue;
+              const pcs = Number(l.output_pcs || 0) || (tubeAvg > 0 ? Math.round(Number(l.output_qty || 0) / tubeAvg) : 0);
+              const mtr = Number(l.output_qty || 0);
+              if (!htLotMap.has(lot)) {
+                htLotMap.set(lot, { lot_no: lot, pcs, mtr });
+              } else {
+                const ex = htLotMap.get(lot)!;
+                ex.pcs += pcs;
+                ex.mtr += mtr;
+              }
+            }
+            const htLots = Array.from(htLotMap.values());
+            const inheritedHtLotNo = htLots[0]?.lot_no || r.heat_lot_no || "";
+
             const base: Row = {
               ...r,
               od: effectiveOd,
@@ -714,19 +737,48 @@ export function useQueue(stage: StageCode) {
               max_allowed_mtr: availMtr,
               max_allowed_pcs: availPcs,
               prev_htc_ok: rollingHtcOkMtr,
+              heat_lot_no: (s === "BAND_SAW" || s === "VDI") ? (inheritedHtLotNo || r.heat_lot_no || "") : r.heat_lot_no,
+              heat_lots: htLots.length > 0 ? htLots : undefined,
             };
 
+            if ((s === "BAND_SAW" || s === "VDI") && htLots.length > 1) {
+              return htLots.map((hl) => {
+                const rowBase: Row = {
+                  ...base,
+                  id: `${r.work_order_id}_${hl.lot_no}`,
+                  heat_lot_no: hl.lot_no,
+                  heat_lots: [hl],
+                  balance_to_make_pcs: hl.pcs || 0,
+                  balance_to_make_mtr: hl.mtr || 0,
+                  max_allowed_pcs: hl.pcs || 0,
+                  max_allowed_mtr: hl.mtr || 0,
+                  balance_to_make_mt: hl.mtr ? Number(mtFromMtr(hl.mtr, effectiveOd, effectiveWt).toFixed(2)) : 0,
+                };
+                if (campaign) {
+                  return {
+                    ...rowBase,
+                    is_master: true,
+                    master_plan_no: campaign.plan_no,
+                    campaign_total_mtr: campaign.total_campaign_mtr,
+                    campaign_total_pcs: campaign.total_campaign_pcs,
+                    child_work_orders: campaign.child_work_orders,
+                  };
+                }
+                return rowBase;
+              });
+            }
+
             if (campaign) {
-              return {
+              return [{
                 ...base,
                 is_master: true,
                 master_plan_no: campaign.plan_no,
                 campaign_total_mtr: campaign.total_campaign_mtr,
                 campaign_total_pcs: campaign.total_campaign_pcs,
                 child_work_orders: campaign.child_work_orders,
-              };
+              }];
             }
-            return base;
+            return [base];
           })
           .filter((r) => Number(r.balance_to_make_mtr || 0) > 0);
 

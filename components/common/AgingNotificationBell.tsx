@@ -6,34 +6,27 @@ import { createClient } from '@/lib/supabase/client';
 import type { AppUserProfile } from '@/lib/users/types';
 import {
   Bell,
-  AlertTriangle,
   Clock,
   ExternalLink,
   CheckCircle,
   RefreshCw,
-  X,
   Factory,
   ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  type AgingRow,
+  type RawWipRow,
+  type RawProductionLog,
+  type RawQcInspection,
+  type RawRollingPlan,
+  type RawWorkOrder,
+  type RawRouteStage,
+  type RawAcknowledgement,
+  computeAgingReportRows,
+} from '@/lib/reports/agingReportHelper';
 
-export type AgingAlert = {
-  work_order_id: string;
-  work_order_no: string;
-  customer_name: string | null;
-  grade: string | null;
-  od: number;
-  wt: number;
-  stage_code: string;
-  stage_name: string;
-  current_wip: number;
-  current_wip_pcs: number;
-  available_mt: number;
-  last_activity_date: string;
-  days_stuck: number;
-  severity: 'NORMAL' | 'WARNING' | 'CRITICAL';
-  is_acknowledged?: boolean;
-};
+export type AgingAlert = AgingRow;
 
 export default function AgingNotificationBell({
   currentUser,
@@ -63,61 +56,77 @@ export default function AgingNotificationBell({
       setLoading(true);
       const supabase = createClient();
 
-      // Attempt reading from vw_wip_aging view
-      const { data, error } = await supabase
+      // Read local acknowledgements from localStorage
+      const localAcks: RawAcknowledgement[] = [];
+      try {
+        if (typeof window !== 'undefined') {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key?.startsWith('aging_ack_')) {
+              const val = localStorage.getItem(key);
+              if (val) {
+                const parsed = JSON.parse(val);
+                localAcks.push(parsed);
+              }
+            }
+          }
+        }
+      } catch {}
+
+      // 1. Attempt reading from vw_wip_aging view
+      const { data: viewData, error: viewError } = await supabase
         .from('vw_wip_aging')
         .select('*')
         .order('days_stuck', { ascending: false });
 
-      if (!error && data) {
-        setAlerts((data as AgingAlert[]).filter(a => a.current_wip > 0));
+      if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
+        const rowsWithLocalAck: AgingAlert[] = viewData.map((r: any) => {
+          const matchLocal = localAcks.find(
+            (a) => a.work_order_id === r.work_order_id && a.stage_code === r.stage_code
+          );
+          if (matchLocal && (!matchLocal.snooze_until || matchLocal.snooze_until >= new Date().toISOString().slice(0, 10))) {
+            return {
+              ...r,
+              is_acknowledged: true,
+              acknowledged_by: matchLocal.acknowledged_by || r.acknowledged_by,
+              ack_notes: matchLocal.notes || r.ack_notes,
+              ack_snooze_until: matchLocal.snooze_until || r.ack_snooze_until,
+            };
+          }
+          return r as AgingAlert;
+        });
+
+        setAlerts(rowsWithLocalAck.filter((a) => a.current_wip > 0));
         setLoading(false);
         return;
       }
 
-      // Fallback if view not yet migrated on remote db:
-      // Compute aging directly from vw_route_stage_wip and production_logs
-      const [wipRes, prodRes] = await Promise.all([
-        supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0),
-        supabase.from('production_logs').select('work_order_id, stage_id, process_date').order('process_date', { ascending: false }),
+      // 2. Comprehensive fallback using robust aging helper
+      const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes] = await Promise.all([
+        supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).order('sequence_no', { ascending: true }),
+        supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok').order('process_date', { ascending: false }),
+        supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr').order('inspection_date', { ascending: false }),
+        supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, rolling_date, created_at').not('status', 'is', null),
+        supabase.from('work_orders').select('id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, created_at'),
+        supabase.from('route_stages').select('route_id, stage_id, sequence_no, process_stages(stage_code)').order('sequence_no', { ascending: true }),
+        supabase.from('aging_alert_acknowledgements').select('work_order_id, stage_code, acknowledged_by, notes, snooze_until'),
       ]);
 
-      if (wipRes.data) {
-        const today = new Date();
-        const fallbackAlerts: AgingAlert[] = wipRes.data
-          .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
-          .map((r: any) => {
-          // Find latest log for this WO and stage
-          const matchLog = (prodRes.data || []).find(
-            (p: any) => p.work_order_id === r.work_order_id && p.stage_id === r.stage_id
-          );
-          const actDateStr = matchLog?.process_date || r.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
-          const actDate = new Date(actDateStr);
-          const diffDays = Math.max(0, Math.floor((today.getTime() - actDate.getTime()) / (1000 * 60 * 60 * 24)));
-          const sev: 'NORMAL' | 'WARNING' | 'CRITICAL' =
-            diffDays > 5 ? 'CRITICAL' : diffDays >= 3 ? 'WARNING' : 'NORMAL';
+      const dbAcks: RawAcknowledgement[] = ackRes?.data || [];
+      const combinedAcks = [...dbAcks, ...localAcks];
 
-          return {
-            work_order_id: r.work_order_id,
-            work_order_no: r.work_order_no,
-            customer_name: r.customer_name,
-            grade: r.grade || 'Grade N/A',
-            od: Number(r.od) || 0,
-            wt: Number(r.wt) || 0,
-            stage_code: r.stage_code,
-            stage_name: r.stage_name || r.stage_code,
-            current_wip: Number(r.current_wip) || 0,
-            current_wip_pcs: Number(r.current_wip_pcs) || 0,
-            available_mt: Number(r.available_mt) || 0,
-            last_activity_date: actDateStr,
-            days_stuck: diffDays,
-            severity: sev,
-            is_acknowledged: false,
-          };
-        });
+      const computed = computeAgingReportRows({
+        wipRows: (wipRes.data || []) as RawWipRow[],
+        workOrders: (woRes.data || []) as RawWorkOrder[],
+        productionLogs: (prodRes.data || []) as RawProductionLog[],
+        qcInspections: (qcRes.data || []) as RawQcInspection[],
+        rollingPlans: (plansRes.data || []) as RawRollingPlan[],
+        routeStages: (routeStagesRes.data || []) as RawRouteStage[],
+        acknowledgements: combinedAcks,
+        asOfDate: new Date(),
+      });
 
-        setAlerts(fallbackAlerts.filter(a => a.current_wip > 0));
-      }
+      setAlerts(computed);
     } catch (err) {
       console.warn('Error loading WIP aging alerts:', err);
     } finally {
@@ -167,47 +176,50 @@ export default function AgingNotificationBell({
     const key = `${alert.work_order_id}_${alert.stage_code}`;
     setAcknowledgingId(key);
     try {
-      const supabase = createClient();
       const userName = currentUser?.name || currentUser?.email || 'Operator';
       const snoozeDate = new Date();
       snoozeDate.setDate(snoozeDate.getDate() + 2); // Snooze for 2 days
+      const snoozeDateStr = snoozeDate.toISOString().slice(0, 10);
 
-      const { error } = await supabase
+      const ackData: RawAcknowledgement = {
+        work_order_id: alert.work_order_id,
+        stage_code: alert.stage_code,
+        acknowledged_by: userName,
+        notes: 'Acknowledged via Notification Bell',
+        snooze_until: snoozeDateStr,
+      };
+
+      // 1. Save to localStorage immediately
+      try {
+        localStorage.setItem(`aging_ack_${key}`, JSON.stringify(ackData));
+      } catch {}
+
+      // 2. Try upserting to remote DB
+      const supabase = createClient();
+      await supabase
         .from('aging_alert_acknowledgements')
         .upsert(
           {
             work_order_id: alert.work_order_id,
             stage_code: alert.stage_code,
             acknowledged_by: userName,
-            notes: 'Acknowledged via Notification Bell',
-            snooze_until: snoozeDate.toISOString().slice(0, 10),
+            notes: ackData.notes,
+            snooze_until: snoozeDateStr,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'work_order_id,stage_code' }
         );
 
-      if (!error) {
-        setAlerts(prev =>
-          prev.map(a =>
-            a.work_order_id === alert.work_order_id && a.stage_code === alert.stage_code
-              ? { ...a, is_acknowledged: true }
-              : a
-          )
-        );
-        toast.success(`Alert for ${alert.work_order_no} at ${alert.stage_name} acknowledged & snoozed for 2 days.`);
-      } else {
-        // Local state update fallback
-        setAlerts(prev =>
-          prev.map(a =>
-            a.work_order_id === alert.work_order_id && a.stage_code === alert.stage_code
-              ? { ...a, is_acknowledged: true }
-              : a
-          )
-        );
-        toast.success(`Alert acknowledged.`);
-      }
-    } catch (e) {
-      toast.error('Could not acknowledge alert.');
+      setAlerts(prev =>
+        prev.map(a =>
+          a.work_order_id === alert.work_order_id && a.stage_code === alert.stage_code
+            ? { ...a, is_acknowledged: true, ack_snooze_until: snoozeDateStr, acknowledged_by: userName }
+            : a
+        )
+      );
+      toast.success(`Alert for ${alert.work_order_no} at ${alert.stage_name} acknowledged & snoozed for 2 days.`);
+    } catch {
+      toast.success('Alert acknowledged locally.');
     } finally {
       setAcknowledgingId(null);
     }

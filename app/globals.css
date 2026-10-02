@@ -85,11 +85,12 @@ textarea:focus-visible {
 }
 
 /* ─── WCAG 2.3.3 Reduced Motion ───────────────────────────────────────────── */
+/* Disables jarring physical motion while preserving subtle opacity/color state feedback */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: 0.001s !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0.1s !important;
     scroll-behavior: auto !important;
   }
 }

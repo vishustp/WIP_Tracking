@@ -73,6 +73,7 @@ export default function QcInspectionClient() {
   const [vdiRejectionPcs, setVdiRejectionPcs] = useState('');
   const [salvageReasons, setSalvageReasons] = useState<SalvageReasonItem[]>([]);
   const [remarks, setRemarks] = useState('');
+  const [formHeatLotNo, setFormHeatLotNo] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Delete modal state
@@ -130,7 +131,11 @@ export default function QcInspectionClient() {
 
       // Handle qc_inspections gracefully even if table was just created
       if (qcRes.data) {
-        setQcInspections(qcRes.data as QcInspection[]);
+        const normalizedQc = (qcRes.data as any[]).map((q) => ({
+          ...q,
+          heat_lot_no: q.heat_lot_no || (q.remarks ? q.remarks.match(/\[(?:HEAT_)?LOT:\s*([^\]]+)\]/i)?.[1] : null) || null,
+        }));
+        setQcInspections(normalizedQc as QcInspection[]);
       } else if (qcRes.error && qcRes.error.code !== 'PGRST116') {
         console.warn('qc_inspections notice:', qcRes.error.message);
         setQcInspections([]);
@@ -151,6 +156,11 @@ export default function QcInspectionClient() {
   const queueItems = useMemo(() => {
     const htStage = stages.find((s) => s.stage_code === 'HEAT_TREATMENT');
     const rollingStage = stages.find((s) => s.stage_code === 'ROLLING');
+    const htStageIds = new Set(
+      stages
+        .filter((s) => s.stage_code === 'HEAT_TREATMENT' || s.stage_code === 'HOLLOW_HEAT_TREATMENT')
+        .map((s) => s.id)
+    );
     const routeMap = new Map<string, any>();
     routes.forEach((r) => routeMap.set(r.id, r));
 
@@ -294,6 +304,26 @@ export default function QcInspectionClient() {
         const campaignBandSawLogs = productionLogs.filter(
           (l) => allCampaignWoIds.has(l.work_order_id) && bandSawStage && l.stage_id === bandSawStage.id
         );
+        const campaignAllLogs = productionLogs.filter((l) => allCampaignWoIds.has(l.work_order_id));
+        
+        // Extract all distinct lots for campaign (prefer Band Saw cuts, fallback to HT)
+        const campaignLotMap = new Map<string, { lot_no: string; pcs: number; mtr: number }>();
+        const candidateCampaignLogs = campaignBandSawLogs.length > 0 ? campaignBandSawLogs : campaignAllLogs;
+        candidateCampaignLogs.forEach((l) => {
+          const lot = (l.heat_lot_no || '').trim();
+          if (!lot) return;
+          const pcs = Number(l.output_pcs || 0) || (avgLen > 0 ? Math.round(Number(l.output_qty || 0) / avgLen) : 0);
+          const mtr = Number(l.output_qty || 0);
+          if (!campaignLotMap.has(lot)) {
+            campaignLotMap.set(lot, { lot_no: lot, pcs, mtr });
+          } else {
+            const ex = campaignLotMap.get(lot)!;
+            ex.pcs += pcs;
+            ex.mtr += mtr;
+          }
+        });
+        const campaignLots = Array.from(campaignLotMap.values());
+        const campaignHeatLotNo = campaignLots[0]?.lot_no || null;
 
         const { cutPcs: totalCampaignCutPcs, cutMtr: totalCampaignCutMtr } = getBandSawCutStats(campaignBandSawLogs, avgLen);
 
@@ -307,8 +337,99 @@ export default function QcInspectionClient() {
         const sharedAvailMtr = Math.max(0, totalCampaignCutMtr - campaignAlreadyInspectedMtr);
         const sharedAvailMt = mtFromMtr(sharedAvailMtr, od, wt);
 
-        // Add Single Master Work Order Row representing the entire campaign pool
-        if (sharedAvailPcs >= 1) {
+        // Calculate per-lot available WIP for Campaign pool (Option 2)
+        const lotCampaignInspectionsMap = new Map<string, { pcs: number; mtr: number }>();
+        for (const q of campaignInspections) {
+          const lot = (q.heat_lot_no || '').trim();
+          if (!lot) continue;
+          const pcs = Number(q.inspected_pcs || 0) || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0));
+          const mtr = Number(q.inspected_mtr || 0);
+          if (!lotCampaignInspectionsMap.has(lot)) {
+            lotCampaignInspectionsMap.set(lot, { pcs, mtr });
+          } else {
+            const ex = lotCampaignInspectionsMap.get(lot)!;
+            ex.pcs += pcs;
+            ex.mtr += mtr;
+          }
+        }
+
+        let addedCampaignLotRows = 0;
+        let sumAssignedCampaignPcs = 0;
+        let sumAssignedCampaignMtr = 0;
+
+        if (campaignLots.length > 0) {
+          for (const lot of campaignLots) {
+            const lotInsp = lotCampaignInspectionsMap.get(lot.lot_no) || { pcs: 0, mtr: 0 };
+            const lotAvailPcs = Math.max(0, lot.pcs - lotInsp.pcs);
+            const lotAvailMtr = Math.max(0, Number((lot.mtr - lotInsp.mtr).toFixed(3)));
+            if (lotAvailPcs >= 1) {
+              addedCampaignLotRows++;
+              sumAssignedCampaignPcs += lotAvailPcs;
+              sumAssignedCampaignMtr += lotAvailMtr;
+              items.push({
+                work_order_id: wo.id,
+                work_order_no: wo.work_order_no,
+                customer_name: wo.customer_name || null,
+                specification: wo.specification || wo.grade || null,
+                size_od: od,
+                size_wt: wt,
+                l1,
+                l2,
+                avg_length: avgLen,
+                process_route_id: routeId || null,
+                route_code: routeCode,
+                feeder_source_label: feederLabel,
+                feeder_stage_code: feederStageCode,
+                ht_ok_pcs: lot.pcs,
+                ht_ok_mtr: lot.mtr,
+                ht_ok_mt: mtFromMtr(lot.mtr, od, wt),
+                already_inspected_pcs: lotInsp.pcs,
+                available_ht_ok_pcs: lotAvailPcs,
+                available_ht_ok_mtr: lotAvailMtr,
+                available_ht_ok_mt: mtFromMtr(lotAvailMtr, od, wt),
+                heat_lot_no: lot.lot_no,
+                heat_lots: [lot],
+                is_master: true,
+                master_plan_no: campaign.plan_no,
+                child_work_orders: campaign.child_work_orders,
+              });
+            }
+          }
+        }
+
+        // Add unassigned or fallback single row if pieces remain
+        if (sharedAvailPcs > sumAssignedCampaignPcs) {
+          const unassignedPcs = sharedAvailPcs - sumAssignedCampaignPcs;
+          const unassignedMtr = Math.max(0, Number((sharedAvailMtr - sumAssignedCampaignMtr).toFixed(3)));
+          if (unassignedPcs >= 1) {
+            items.push({
+              work_order_id: wo.id,
+              work_order_no: wo.work_order_no,
+              customer_name: wo.customer_name || null,
+              specification: wo.specification || wo.grade || null,
+              size_od: od,
+              size_wt: wt,
+              l1,
+              l2,
+              avg_length: avgLen,
+              process_route_id: routeId || null,
+              route_code: routeCode,
+              feeder_source_label: feederLabel,
+              feeder_stage_code: feederStageCode,
+              ht_ok_pcs: unassignedPcs,
+              ht_ok_mtr: unassignedMtr,
+              ht_ok_mt: mtFromMtr(unassignedMtr, od, wt),
+              already_inspected_pcs: 0,
+              available_ht_ok_pcs: unassignedPcs,
+              available_ht_ok_mtr: unassignedMtr,
+              available_ht_ok_mt: mtFromMtr(unassignedMtr, od, wt),
+              heat_lot_no: null,
+              is_master: true,
+              master_plan_no: campaign.plan_no,
+              child_work_orders: campaign.child_work_orders,
+            });
+          }
+        } else if (addedCampaignLotRows === 0 && sharedAvailPcs >= 1) {
           items.push({
             work_order_id: wo.id,
             work_order_no: wo.work_order_no,
@@ -330,6 +451,7 @@ export default function QcInspectionClient() {
             available_ht_ok_pcs: sharedAvailPcs,
             available_ht_ok_mtr: sharedAvailMtr,
             available_ht_ok_mt: sharedAvailMt,
+            heat_lot_no: campaignHeatLotNo,
             is_master: true,
             master_plan_no: campaign.plan_no,
             child_work_orders: campaign.child_work_orders,
@@ -347,6 +469,25 @@ export default function QcInspectionClient() {
 
         if (woBandSawLogs.length === 0) return; // Strict Rule: No VDI queue without Band Saw cut
 
+        // Extract all distinct lots for standalone order
+        const woLotMap = new Map<string, { lot_no: string; pcs: number; mtr: number }>();
+        const candidateWoLogs = woBandSawLogs.length > 0 ? woBandSawLogs : woLogs;
+        candidateWoLogs.forEach((l) => {
+          const lot = (l.heat_lot_no || '').trim();
+          if (!lot) return;
+          const pcs = Number(l.output_pcs || 0) || (avgLen > 0 ? Math.round(Number(l.output_qty || 0) / avgLen) : 0);
+          const mtr = Number(l.output_qty || 0);
+          if (!woLotMap.has(lot)) {
+            woLotMap.set(lot, { lot_no: lot, pcs, mtr });
+          } else {
+            const ex = woLotMap.get(lot)!;
+            ex.pcs += pcs;
+            ex.mtr += mtr;
+          }
+        });
+        const woLots = Array.from(woLotMap.values());
+        const woHeatLotNo = woLots[0]?.lot_no || null;
+
         const { cutPcs: bandSawCutPcs, cutMtr: bandSawCutMtr } = getBandSawCutStats(woBandSawLogs, avgLen);
 
         if (bandSawCutPcs <= 0 && bandSawCutMtr <= 0) return;
@@ -362,32 +503,129 @@ export default function QcInspectionClient() {
         const availableMt = mtFromMtr(availableMtr, od, wt);
 
         if (availablePcs >= 1) {
-          items.push({
-            work_order_id: wo.id,
-            work_order_no: wo.work_order_no,
-            customer_name: wo.customer_name || null,
-            specification: wo.specification || wo.grade || null,
-            size_od: od,
-            size_wt: wt,
-            l1,
-            l2,
-            avg_length: avgLen,
-            process_route_id: routeId || null,
-            route_code: routeCode,
-            feeder_source_label: feederLabel,
-            feeder_stage_code: feederStageCode,
-            ht_ok_pcs: bandSawCutPcs,
-            ht_ok_mtr: bandSawCutMtr,
-            ht_ok_mt: effectiveCutMt,
-            already_inspected_pcs: alreadyInspectedPcs,
-            available_ht_ok_pcs: availablePcs,
-            available_ht_ok_mtr: availableMtr,
-            available_ht_ok_mt: availableMt,
-            is_child: !!childInfo,
-            master_wo_id: childInfo?.master_wo_id,
-            master_wo_no: childInfo?.master_wo_no,
-            master_plan_no: childInfo?.master_plan_no,
-          });
+          const lotInspectionsMap = new Map<string, { pcs: number; mtr: number }>();
+          for (const q of woInspections) {
+            const lot = (q.heat_lot_no || '').trim();
+            if (!lot) continue;
+            const pcs = Number(q.inspected_pcs || 0) || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0));
+            const mtr = Number(q.inspected_mtr || 0);
+            if (!lotInspectionsMap.has(lot)) {
+              lotInspectionsMap.set(lot, { pcs, mtr });
+            } else {
+              const ex = lotInspectionsMap.get(lot)!;
+              ex.pcs += pcs;
+              ex.mtr += mtr;
+            }
+          }
+
+          let addedWoLotRows = 0;
+          let sumAssignedWoPcs = 0;
+          let sumAssignedWoMtr = 0;
+
+          if (woLots.length > 0) {
+            for (const lot of woLots) {
+              const lotInsp = lotInspectionsMap.get(lot.lot_no) || { pcs: 0, mtr: 0 };
+              const lotAvailPcs = Math.max(0, lot.pcs - lotInsp.pcs);
+              const lotAvailMtr = Math.max(0, Number((lot.mtr - lotInsp.mtr).toFixed(3)));
+              if (lotAvailPcs >= 1) {
+                addedWoLotRows++;
+                sumAssignedWoPcs += lotAvailPcs;
+                sumAssignedWoMtr += lotAvailMtr;
+                items.push({
+                  work_order_id: wo.id,
+                  work_order_no: wo.work_order_no,
+                  customer_name: wo.customer_name || null,
+                  specification: wo.specification || wo.grade || null,
+                  size_od: od,
+                  size_wt: wt,
+                  l1,
+                  l2,
+                  avg_length: avgLen,
+                  process_route_id: routeId || null,
+                  route_code: routeCode,
+                  feeder_source_label: feederLabel,
+                  feeder_stage_code: feederStageCode,
+                  ht_ok_pcs: lot.pcs,
+                  ht_ok_mtr: lot.mtr,
+                  ht_ok_mt: mtFromMtr(lot.mtr, od, wt),
+                  already_inspected_pcs: lotInsp.pcs,
+                  available_ht_ok_pcs: lotAvailPcs,
+                  available_ht_ok_mtr: lotAvailMtr,
+                  available_ht_ok_mt: mtFromMtr(lotAvailMtr, od, wt),
+                  heat_lot_no: lot.lot_no,
+                  heat_lots: [lot],
+                  is_child: !!childInfo,
+                  master_wo_id: childInfo?.master_wo_id,
+                  master_wo_no: childInfo?.master_wo_no,
+                  master_plan_no: childInfo?.master_plan_no,
+                });
+              }
+            }
+          }
+
+          // Remaining unassigned pieces
+          if (availablePcs > sumAssignedWoPcs) {
+            const unassignedPcs = availablePcs - sumAssignedWoPcs;
+            const unassignedMtr = Math.max(0, Number((availableMtr - sumAssignedWoMtr).toFixed(3)));
+            if (unassignedPcs >= 1) {
+              items.push({
+                work_order_id: wo.id,
+                work_order_no: wo.work_order_no,
+                customer_name: wo.customer_name || null,
+                specification: wo.specification || wo.grade || null,
+                size_od: od,
+                size_wt: wt,
+                l1,
+                l2,
+                avg_length: avgLen,
+                process_route_id: routeId || null,
+                route_code: routeCode,
+                feeder_source_label: feederLabel,
+                feeder_stage_code: feederStageCode,
+                ht_ok_pcs: unassignedPcs,
+                ht_ok_mtr: unassignedMtr,
+                ht_ok_mt: mtFromMtr(unassignedMtr, od, wt),
+                already_inspected_pcs: 0,
+                available_ht_ok_pcs: unassignedPcs,
+                available_ht_ok_mtr: unassignedMtr,
+                available_ht_ok_mt: mtFromMtr(unassignedMtr, od, wt),
+                heat_lot_no: null,
+                is_child: !!childInfo,
+                master_wo_id: childInfo?.master_wo_id,
+                master_wo_no: childInfo?.master_wo_no,
+                master_plan_no: childInfo?.master_plan_no,
+              });
+            }
+          } else if (addedWoLotRows === 0) {
+            // Fallback single row
+            items.push({
+              work_order_id: wo.id,
+              work_order_no: wo.work_order_no,
+              customer_name: wo.customer_name || null,
+              specification: wo.specification || wo.grade || null,
+              size_od: od,
+              size_wt: wt,
+              l1,
+              l2,
+              avg_length: avgLen,
+              process_route_id: routeId || null,
+              route_code: routeCode,
+              feeder_source_label: feederLabel,
+              feeder_stage_code: feederStageCode,
+              ht_ok_pcs: bandSawCutPcs,
+              ht_ok_mtr: bandSawCutMtr,
+              ht_ok_mt: effectiveCutMt,
+              already_inspected_pcs: alreadyInspectedPcs,
+              available_ht_ok_pcs: availablePcs,
+              available_ht_ok_mtr: availableMtr,
+              available_ht_ok_mt: availableMt,
+              heat_lot_no: woHeatLotNo,
+              is_child: !!childInfo,
+              master_wo_id: childInfo?.master_wo_id,
+              master_wo_no: childInfo?.master_wo_no,
+              master_plan_no: childInfo?.master_plan_no,
+            });
+          }
         }
       }
     });
@@ -404,7 +642,9 @@ export default function QcInspectionClient() {
         item.work_order_no.toLowerCase().includes(q) ||
         (item.customer_name || '').toLowerCase().includes(q) ||
         (item.specification || '').toLowerCase().includes(q) ||
-        (item.master_wo_no || '').toLowerCase().includes(q)
+        (item.master_wo_no || '').toLowerCase().includes(q) ||
+        (item.heat_lot_no || '').toLowerCase().includes(q) ||
+        (item.heat_lots && item.heat_lots.some((l) => l.lot_no.toLowerCase().includes(q)))
     );
   }, [queueItems, queueSearch]);
 
@@ -459,6 +699,7 @@ export default function QcInspectionClient() {
         item.work_order_no.toLowerCase().includes(q) ||
         (item.customer_name || '').toLowerCase().includes(q) ||
         (item.specification || '').toLowerCase().includes(q) ||
+        (item.heat_lot_no || '').toLowerCase().includes(q) ||
         (item.remarks || '').toLowerCase().includes(q)
       );
     });
@@ -547,7 +788,8 @@ export default function QcInspectionClient() {
       (item) =>
         item.work_order_no.toLowerCase().includes(q) ||
         (item.customer_name || '').toLowerCase().includes(q) ||
-        (item.specification || '').toLowerCase().includes(q)
+        (item.specification || '').toLowerCase().includes(q) ||
+        item.inspections.some((insp) => (insp.heat_lot_no || '').toLowerCase().includes(q))
     );
   }, [salvageQueueItems, salvageSearch]);
 
@@ -600,6 +842,7 @@ export default function QcInspectionClient() {
     setTargetWorkOrderId(item.work_order_id);
     setEditingInspection(null);
     setFormDate(getYesterdayDateStr());
+    setFormHeatLotNo(item.heat_lot_no || '');
     setInspectedPcs(String(item.available_ht_ok_pcs));
     setVdiOkPcs(String(item.available_ht_ok_pcs));
     setVdiSalvagePcs('0');
@@ -640,12 +883,14 @@ export default function QcInspectionClient() {
       available_ht_ok_pcs: Number(inspection.inspected_pcs),
       available_ht_ok_mtr: Number(inspection.inspected_mtr),
       available_ht_ok_mt: Number(inspection.inspected_mt),
+      heat_lot_no: inspection.heat_lot_no || null,
     };
 
     setSelectedQueueItem(queueItem);
     setTargetWorkOrderId(inspection.work_order_id);
     setEditingInspection(inspection);
     setFormDate(inspection.inspection_date.slice(0, 10));
+    setFormHeatLotNo(inspection.heat_lot_no || '');
     setInspectedPcs(String(inspection.inspected_pcs));
     setVdiOkPcs(String(inspection.vdi_ok_pcs));
     setVdiSalvagePcs(String(inspection.vdi_salvage_pcs));
@@ -790,7 +1035,12 @@ export default function QcInspectionClient() {
 
     setSaving(true);
     try {
-      const payload = {
+      const targetLotNo = (formHeatLotNo.trim() || selectedQueueItem.heat_lot_no || '').trim();
+      const lotTag = targetLotNo ? `[LOT: ${targetLotNo}]` : '';
+      const userRemarks = (remarks || '').trim();
+      const finalRemarks = lotTag ? (userRemarks ? `${lotTag} ${userRemarks}` : lotTag) : (userRemarks || null);
+
+      const basePayload: any = {
         work_order_id: effectiveWoId,
         process_route_id: targetRouteId,
         inspection_date: formDate,
@@ -807,20 +1057,33 @@ export default function QcInspectionClient() {
         vdi_rejection_mtr: formMetrics.rejMtr,
         vdi_rejection_mt: formMetrics.rejMt,
         salvage_reasons: salvageReasons,
-        remarks: remarks.trim() || null,
+        remarks: finalRemarks,
         created_by: currentUser?.name || currentUser?.email || 'QC Inspector',
         updated_at: new Date().toISOString(),
       };
 
+      const payload = targetLotNo ? { ...basePayload, heat_lot_no: targetLotNo } : basePayload;
+
       if (editingInspection) {
-        const { error } = await supabase
+        let { error } = await supabase
           .from('qc_inspections')
           .update(payload)
           .eq('id', editingInspection.id);
+        if (error && (error.code === '42703' || error.message?.includes('heat_lot_no'))) {
+          const retryRes = await supabase
+            .from('qc_inspections')
+            .update(basePayload)
+            .eq('id', editingInspection.id);
+          error = retryRes.error;
+        }
         if (error) throw error;
         toast.success(`Updated QC Inspection for WO ${displayWoNo}`);
       } else {
-        const { error } = await supabase.from('qc_inspections').insert([payload]);
+        let { error } = await supabase.from('qc_inspections').insert([payload]);
+        if (error && (error.code === '42703' || error.message?.includes('heat_lot_no'))) {
+          const retryRes = await supabase.from('qc_inspections').insert([basePayload]);
+          error = retryRes.error;
+        }
         if (error) throw error;
         toast.success(`Recorded QC Inspection for WO ${displayWoNo}: ${okP} OK, ${salP} Salvage`);
       }
@@ -1246,9 +1509,10 @@ export default function QcInspectionClient() {
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
+                aria-label="Search inspection queue by work order number, lot number, customer, or specification"
                 value={queueSearch}
                 onChange={(e) => setQueueSearch(e.target.value)}
-                placeholder="Search by WO#, customer, specification..."
+                placeholder="Search by WO#, Lot No, customer, specification..."
                 className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
@@ -1259,9 +1523,39 @@ export default function QcInspectionClient() {
 
           <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
             {loading ? (
-              <div className="p-12 text-center text-sm text-slate-500">
-                <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-blue-600" />
-                Loading Heat Treatment WIP inspection queue...
+              <div className="overflow-auto max-h-[70vh] relative" aria-busy="true" aria-label="Loading Heat Treatment inspection queue">
+                <table className="min-w-full text-left text-xs">
+                  <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold shadow-2xs">
+                    <tr>
+                      <th className="py-3 px-3.5">Work Order #</th>
+                      <th className="py-3 px-3">HT Lot No.</th>
+                      <th className="py-3 px-3">Customer</th>
+                      <th className="py-3 px-3">Specification</th>
+                      <th className="py-3 px-3 text-right">OD x WT</th>
+                      <th className="py-3 px-3 text-right">Length</th>
+                      <th className="py-3 px-3 text-right bg-orange-50/50">Total Feeder OK</th>
+                      <th className="py-3 px-3 text-right">Already Inspected</th>
+                      <th className="py-3 px-3 text-right bg-blue-50/50">Available for Inspection</th>
+                      <th className="py-3 px-3.5 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <tr key={i} className="animate-pulse border-b border-slate-100">
+                        <td className="py-3 px-3.5"><div className="h-4 w-28 bg-slate-200 rounded" /><div className="mt-1 h-3 w-16 bg-slate-100 rounded" /></td>
+                        <td className="py-3 px-3"><div className="h-5 w-20 bg-amber-100/70 rounded" /></td>
+                        <td className="py-3 px-3"><div className="h-4 w-24 bg-slate-200 rounded" /></td>
+                        <td className="py-3 px-3"><div className="h-4 w-20 bg-slate-200 rounded" /></td>
+                        <td className="py-3 px-3 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
+                        <td className="py-3 px-3 text-right"><div className="h-4 w-14 bg-slate-200 rounded ml-auto" /></td>
+                        <td className="py-3 px-3 text-right bg-orange-50/30"><div className="h-4 w-14 bg-orange-200/60 rounded ml-auto" /></td>
+                        <td className="py-3 px-3 text-right"><div className="h-4 w-12 bg-slate-200 rounded ml-auto" /></td>
+                        <td className="py-3 px-3 text-right bg-blue-50/30"><div className="h-4 w-16 bg-blue-200/60 rounded ml-auto" /></td>
+                        <td className="py-3 px-3.5 text-center"><div className="h-7 w-20 bg-blue-200/80 rounded mx-auto" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ) : filteredQueue.length === 0 ? (
               <div className="p-12 text-center text-sm text-slate-500 space-y-1">
@@ -1277,6 +1571,7 @@ export default function QcInspectionClient() {
                   <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold shadow-2xs">
                     <tr>
                       <th className="py-3 px-3.5">Work Order #</th>
+                      <th className="py-3 px-3">HT Lot No.</th>
                       <th className="py-3 px-3">Customer</th>
                       <th className="py-3 px-3">Specification</th>
                       <th className="py-3 px-3 text-right">OD x WT</th>
@@ -1291,7 +1586,7 @@ export default function QcInspectionClient() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredQueue.map((item) => (
-                      <tr key={item.work_order_id} className="hover:bg-slate-50/60 transition-colors">
+                      <tr key={`${item.work_order_id}_${item.heat_lot_no || 'std'}`} className="hover:bg-slate-50/60 transition-colors">
                         <td className="py-3 px-3.5 font-bold font-mono text-slate-900 text-sm">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{item.work_order_no}</span>
@@ -1326,26 +1621,35 @@ export default function QcInspectionClient() {
                             </div>
                           )}
                         </td>
+                        <td className="py-3 px-3">
+                          {item.heat_lot_no ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                              {item.heat_lot_no}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-xs">—</span>
+                          )}
+                        </td>
                         <td className="py-3 px-3 text-slate-700 max-w-[150px] truncate">
                           {item.customer_name || '—'}
                         </td>
                         <td className="py-3 px-3 text-slate-600 max-w-[140px] truncate" title={item.specification || '—'}>
                           {item.specification || '—'}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-800">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-800">
                           {item.size_od} × {item.size_wt} mm
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-600">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-600">
                           {item.l1 && item.l2 ? `${item.l1} - ${item.l2}m` : `${item.avg_length}m`}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono bg-orange-50/30 text-orange-950">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight bg-orange-50/30 text-orange-950">
                           <div className="font-bold">{fmt(item.ht_ok_pcs)} Nos</div>
                           <div className="text-[10px] text-orange-700">{fmt(item.ht_ok_mt, ' MT')}</div>
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-600">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-600">
                           {fmt(item.already_inspected_pcs)} Nos
                         </td>
-                        <td className="py-3 px-3 text-right font-mono bg-blue-50/40 text-blue-950">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight bg-blue-50/40 text-blue-950">
                           <div className="font-black text-sm text-blue-900">{fmt(item.available_ht_ok_pcs)} Nos</div>
                           <div className="text-[10px] text-blue-700 font-semibold">{fmt(item.available_ht_ok_mt, ' MT')} · {item.available_ht_ok_mtr}m</div>
                         </td>
@@ -1354,7 +1658,7 @@ export default function QcInspectionClient() {
                             type="button"
                             onClick={() => openRecordModal(item)}
                             disabled={!canModify}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 min-h-[34px] sm:min-h-[32px] text-xs font-bold text-white shadow hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all touch-manipulation"
                           >
                             <ClipboardCheck size={13} />
                             Inspect
@@ -1378,6 +1682,7 @@ export default function QcInspectionClient() {
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
+                aria-label="Search salvage queue by work order number, customer, or defect"
                 value={salvageSearch}
                 onChange={(e) => setSalvageSearch(e.target.value)}
                 placeholder="Search salvage by WO#, customer, defect..."
@@ -1526,6 +1831,7 @@ export default function QcInspectionClient() {
                     <tr>
                       <th className="py-3 px-3.5">Date</th>
                       <th className="py-3 px-3">Work Order #</th>
+                      <th className="py-3 px-3">HT / Lot No</th>
                       <th className="py-3 px-3">Customer / Specs</th>
                       <th className="py-3 px-3 text-right">Inspected</th>
                       <th className="py-3 px-3 text-right text-emerald-700 bg-emerald-50/40">VDI OK</th>
@@ -1547,6 +1853,15 @@ export default function QcInspectionClient() {
                           </td>
                           <td className="py-3 px-3 font-bold font-mono text-slate-900 text-sm">
                             {item.work_order_no}
+                          </td>
+                          <td className="py-3 px-3 font-mono">
+                            {item.heat_lot_no ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                                {item.heat_lot_no}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-xs">—</span>
+                            )}
                           </td>
                           <td className="py-3 px-3 text-slate-700 max-w-[160px] truncate">
                             <div className="font-medium text-slate-900 truncate">{item.customer_name || '—'}</div>
@@ -1734,10 +2049,16 @@ export default function QcInspectionClient() {
                 const dispAvg = targetChild?.l1 && targetChild?.l2 ? (Number(targetChild.l1) + Number(targetChild.l2)) / 2 : Number(targetChild?.l1 || targetWo?.l1 || selectedQueueItem.avg_length || 6.0);
 
                 return (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 rounded-xl bg-blue-50/50 border border-blue-100 p-3 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 rounded-xl bg-blue-50/50 border border-blue-100 p-3 text-xs">
                     <div>
                       <span className="text-slate-500 block">Specification:</span>
                       <span className="font-bold text-slate-800">{dispSpec}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">HT / Lot No:</span>
+                      <span className="font-bold font-mono text-amber-900 bg-amber-100/70 border border-amber-300 px-1.5 py-0.5 rounded text-[11px] truncate max-w-[140px] inline-block" title={selectedQueueItem.heat_lot_no || '—'}>
+                        {selectedQueueItem.heat_lot_no || '—'}
+                      </span>
                     </div>
                     <div>
                       <span className="text-slate-500 block">Dimensions:</span>
@@ -1759,16 +2080,65 @@ export default function QcInspectionClient() {
                 );
               })()}
 
-              {/* Date Input */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Inspection Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={formDate}
-                  onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+              {/* Date & Heat Lot Inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Inspection Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">Heat / Lot No.</label>
+                    {selectedQueueItem.heat_lots && selectedQueueItem.heat_lots.length > 1 && (
+                      <span className="text-[10px] text-amber-700 font-bold">
+                        {selectedQueueItem.heat_lots.length} Lots Available
+                      </span>
+                    )}
+                  </div>
+                  {selectedQueueItem.heat_lots && selectedQueueItem.heat_lots.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap gap-1">
+                        {selectedQueueItem.heat_lots.map((hl, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setFormHeatLotNo(hl.lot_no)}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10.5px] font-mono font-bold transition-all border cursor-pointer ${
+                              formHeatLotNo === hl.lot_no
+                                ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                                : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                            }`}
+                            title={`Select lot ${hl.lot_no} (${hl.pcs || 0} pcs)`}
+                          >
+                            <span>{hl.lot_no}</span>
+                            {hl.pcs ? <span className="text-[9.5px] opacity-85">({hl.pcs} pcs)</span> : null}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        value={formHeatLotNo}
+                        onChange={(e) => setFormHeatLotNo(e.target.value)}
+                        placeholder="e.g. HT-9821 or click pill above"
+                        className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={formHeatLotNo}
+                      onChange={(e) => setFormHeatLotNo(e.target.value)}
+                      placeholder="e.g. HT-9821"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  )}
+                </div>
               </div>
 
               {/* Inspection Breakdown Inputs */}

@@ -264,17 +264,27 @@ export function ProductionQueueRow({
         </td>
       )}
 
-      {/* Heat Lot No. (Heat Treatment only) */}
-      {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT') && (
+      {/* Heat Lot No. (Heat Treatment & Band Saw) */}
+      {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'BAND_SAW') && (
         <td className="py-2.5 px-3 align-middle">
-          <input
-            type="text"
-            placeholder="e.g. HT-8842"
-            disabled={!isAllowed}
-            value={row.heat_lot_no}
-            onChange={(e) => onUpdateRow(key, 'heat_lot_no', e.target.value)}
-            className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-900 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-slate-100 disabled:text-slate-400"
-          />
+          {stage === 'BAND_SAW' ? (
+            row.heat_lot_no ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                {row.heat_lot_no}
+              </span>
+            ) : (
+              <span className="text-slate-400 font-mono text-xs">—</span>
+            )
+          ) : (
+            <input
+              type="text"
+              placeholder="e.g. HT-8842"
+              disabled={!isAllowed}
+              value={row.heat_lot_no}
+              onChange={(e) => onUpdateRow(key, 'heat_lot_no', e.target.value)}
+              className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-900 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-slate-100 disabled:text-slate-400"
+            />
+          )}
         </td>
       )}
 

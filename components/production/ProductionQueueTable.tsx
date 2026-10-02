@@ -156,7 +156,7 @@ export function ProductionQueueTable({
                 <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#d1fae5] border-r border-emerald-100 whitespace-nowrap">
                   {stage === 'ROLLING' ? 'HTC OK (Nos)' : 'OK Nos (Net)'}
                 </th>
-                {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT') && (
+                {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'BAND_SAW') && (
                   <th className="py-2.5 px-3 text-left font-bold text-slate-700 whitespace-nowrap">Heat Lot No.</th>
                 )}
                 <th className="sticky right-0 top-0 z-30 py-2.5 px-3 text-center font-bold text-slate-800 bg-slate-100 border-l border-slate-200 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)] whitespace-nowrap">

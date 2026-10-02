@@ -8,7 +8,15 @@ export const revalidate = 0;
 
 interface CachePayload {
   timestamp: number;
-  allCalculatedRows: Map<string, { queueRows: Record<StageCode, Row | null>; pipeline: WorkCenterWipInfo[] }>;
+  allCalculatedRows: Map<
+    string,
+    {
+      queueRows: Record<StageCode, Row | null>;
+      pipeline: WorkCenterWipInfo[];
+      bandSawLotRows?: Row[];
+      vdiLotRows?: Row[];
+    }
+  >;
   rollingPlanRows: Row[];
   childFinishingRows: Row[];
   workCenterSummary: Record<StageCode, { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }>;
@@ -36,6 +44,26 @@ export async function GET(req: NextRequest) {
             (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
           )
         );
+      } else if (targetStage === "BAND_SAW") {
+        for (const { bandSawLotRows } of memoryCache.allCalculatedRows.values()) {
+          if (bandSawLotRows && bandSawLotRows.length > 0) {
+            selectedRows.push(
+              ...bandSawLotRows.filter(
+                (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+              )
+            );
+          }
+        }
+      } else if (targetStage === "VDI") {
+        for (const { vdiLotRows } of memoryCache.allCalculatedRows.values()) {
+          if (vdiLotRows && vdiLotRows.length > 0) {
+            selectedRows.push(
+              ...vdiLotRows.filter(
+                (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+              )
+            );
+          }
+        }
       } else {
         for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
           const row = queueRows[targetStage];
@@ -118,7 +146,7 @@ export async function GET(req: NextRequest) {
       admin.from("process_routes").select("id, route_code, route_name"),
       admin
         .from("qc_inspections")
-        .select("id, work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr"),
+        .select("id, work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr, remarks"),
       admin
         .from("diversion_plans")
         .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id, reason"),
@@ -473,8 +501,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Build complete WIP details for all active work orders / campaigns
-    const allCalculatedRows: Map<string, { queueRows: Record<StageCode, Row | null>; pipeline: WorkCenterWipInfo[] }> =
-      new Map();
+    const allCalculatedRows: Map<
+      string,
+      {
+        queueRows: Record<StageCode, Row | null>;
+        pipeline: WorkCenterWipInfo[];
+        bandSawLotRows?: Row[];
+        vdiLotRows?: Row[];
+      }
+    > = new Map();
 
     const rollingPlanRows: Row[] = [];
 
@@ -1063,6 +1098,49 @@ export async function GET(req: NextRequest) {
         ht_input_nos: "",
       };
 
+      // Find all distinct HT Lot Nos from upstream Heat Treatment (or Hollow HT) for this work order
+      const allHtLogs = [...htLogs, ...hollowHtLogs].sort(
+        (a, b) => new Date(b.created_at || b.process_date || 0).getTime() - new Date(a.created_at || a.process_date || 0).getTime()
+      );
+      const htLotMap = new Map<string, { lot_no: string; pcs: number; mtr: number }>();
+      for (const log of allHtLogs) {
+        const lot = (log.heat_lot_no || "").trim();
+        if (!lot) continue;
+        const outPcs = Number(log.output_pcs || 0) || (avgLength > 0 ? Math.round(Number(log.output_qty || 0) / avgLength) : 0);
+        const outMtr = Number(log.output_qty || 0);
+        if (!htLotMap.has(lot)) {
+          htLotMap.set(lot, { lot_no: lot, pcs: outPcs, mtr: outMtr });
+        } else {
+          const existing = htLotMap.get(lot)!;
+          existing.pcs += outPcs;
+          existing.mtr += outMtr;
+        }
+      }
+      const htLots = Array.from(htLotMap.values());
+      const latestHtLotNo = htLots.length > 0 ? htLots[0].lot_no : "";
+
+      // Find all distinct Band Saw Logs for this work order
+      const sortedBandSawLogs = [...bandSawLogs].sort(
+        (a, b) => new Date(b.created_at || b.process_date || 0).getTime() - new Date(a.created_at || a.process_date || 0).getTime()
+      );
+      const bandSawLotMap = new Map<string, { lot_no: string; pcs: number; mtr: number }>();
+      for (const log of sortedBandSawLogs) {
+        const lot = (log.heat_lot_no || "").trim();
+        if (!lot) continue;
+        const outPcs = Number(log.output_pcs || 0) || (avgLength > 0 ? Math.round(Number(log.output_qty || 0) / avgLength) : 0);
+        const outMtr = Number(log.output_qty || 0);
+        if (!bandSawLotMap.has(lot)) {
+          bandSawLotMap.set(lot, { lot_no: lot, pcs: outPcs, mtr: outMtr });
+        } else {
+          const existing = bandSawLotMap.get(lot)!;
+          existing.pcs += outPcs;
+          existing.mtr += outMtr;
+        }
+      }
+      const bandSawLots = Array.from(bandSawLotMap.values());
+      const vdiLots = bandSawLots.length > 0 ? bandSawLots : htLots;
+      const latestBandSawLotNo = bandSawLots.length > 0 ? bandSawLots[0].lot_no : latestHtLotNo;
+
       const queueRows: Record<StageCode, Row | null> = {
         ROLLING:
           isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)
@@ -1078,8 +1156,8 @@ export async function GET(req: NextRequest) {
                 balance_to_make_pcs: rollAvailPcs,
                 balance_to_make_mt: rollAvailMt,
                 planned_rolling_total: totalCampaignMtr,
-                max_allowed_mtr: Number((totalCampaignMtr * 1.10).toFixed(2)),
-                max_allowed_pcs: Math.round(totalCampaignPcs * 1.10),
+                max_allowed_mtr: null,
+                max_allowed_pcs: null,
                 prev_gross_output: rollOutMtr + rollRejMtr,
                 feeder_source_label: "Active Rolling Plan",
                 feeder_stage_code: "ROLLING_PLAN",
@@ -1147,6 +1225,8 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 stage_code: "BAND_SAW",
+                heat_lot_no: latestHtLotNo,
+                heat_lots: htLots,
                 balance_to_make_mtr: bandSawAvailMtr,
                 balance_to_make_pcs: bandSawAvailPcs,
                 balance_to_make_mt: bandSawAvailMt,
@@ -1164,6 +1244,8 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 stage_code: "VDI",
+                heat_lot_no: latestBandSawLotNo,
+                heat_lots: vdiLots,
                 balance_to_make_mtr: vdiAvailMtr,
                 balance_to_make_pcs: vdiAvailPcs,
                 balance_to_make_mt: vdiAvailMt,
@@ -1194,7 +1276,138 @@ export async function GET(req: NextRequest) {
             : null,
       };
 
-      allCalculatedRows.set(woId, { queueRows, pipeline });
+      // Generate individual lot rows for BAND_SAW queue (Option 2)
+      const bandSawLotRows: Row[] = [];
+      if (queueRows.BAND_SAW) {
+        // Group bandSawLogs cut pieces by lot
+        const bandSawCutByLot = new Map<string, { pcs: number; mtr: number }>();
+        for (const log of bandSawLogs) {
+          const lot = (log.heat_lot_no || "").trim();
+          if (!lot) continue;
+          const pcs = getLogPcs(log, avgLength);
+          const mtr = Number(log.output_qty || 0);
+          if (!bandSawCutByLot.has(lot)) {
+            bandSawCutByLot.set(lot, { pcs, mtr });
+          } else {
+            const ex = bandSawCutByLot.get(lot)!;
+            ex.pcs += pcs;
+            ex.mtr += mtr;
+          }
+        }
+
+        if (htLots.length > 0) {
+          for (const lot of htLots) {
+            const cut = bandSawCutByLot.get(lot.lot_no) || { pcs: 0, mtr: 0 };
+            const lotAvailPcs = Math.max(0, lot.pcs - cut.pcs);
+            const lotAvailMtr = Math.max(0, Number((lot.mtr - cut.mtr).toFixed(3)));
+            if (lotAvailPcs >= 1 || lotAvailMtr >= 1.0) {
+              const lotMt = mtFromMtr(lotAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+              bandSawLotRows.push({
+                ...queueRows.BAND_SAW,
+                id: `${woId}_${lot.lot_no}`,
+                heat_lot_no: lot.lot_no,
+                heat_lots: [{ lot_no: lot.lot_no, pcs: lotAvailPcs, mtr: lotAvailMtr }],
+                balance_to_make_pcs: lotAvailPcs,
+                balance_to_make_mtr: lotAvailMtr,
+                balance_to_make_mt: lotMt,
+                max_allowed_pcs: lotAvailPcs,
+                max_allowed_mtr: lotAvailMtr,
+              });
+            }
+          }
+          // Any remaining unassigned pieces
+          const sumAssignedPcs = bandSawLotRows.reduce((sum, r) => sum + Number(r.balance_to_make_pcs || 0), 0);
+          if (bandSawAvailPcs > sumAssignedPcs) {
+            const unassignedPcs = bandSawAvailPcs - sumAssignedPcs;
+            const sumAssignedMtr = bandSawLotRows.reduce((sum, r) => sum + Number(r.balance_to_make_mtr || 0), 0);
+            const unassignedMtr = Math.max(0, Number((bandSawAvailMtr - sumAssignedMtr).toFixed(3)));
+            if (unassignedPcs >= 1 || unassignedMtr >= 1.0) {
+              bandSawLotRows.push({
+                ...queueRows.BAND_SAW,
+                id: `${woId}_unassigned`,
+                heat_lot_no: "",
+                heat_lots: undefined,
+                balance_to_make_pcs: unassignedPcs,
+                balance_to_make_mtr: unassignedMtr,
+                balance_to_make_mt: mtFromMtr(unassignedMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+                max_allowed_pcs: unassignedPcs,
+                max_allowed_mtr: unassignedMtr,
+              });
+            }
+          }
+        }
+        if (bandSawLotRows.length === 0) {
+          bandSawLotRows.push(queueRows.BAND_SAW);
+        }
+      }
+
+      // Generate individual lot rows for VDI queue (Option 2)
+      const vdiLotRows: Row[] = [];
+      if (queueRows.VDI) {
+        // Group VDI inspections by lot
+        const vdiInspectedByLot = new Map<string, { pcs: number; mtr: number }>();
+        for (const q of woQcList) {
+          const rawLot = (q as any).heat_lot_no || (q.remarks ? q.remarks.match(/\[(?:HEAT_)?LOT:\s*([^\]]+)\]/i)?.[1] : "") || "";
+          const lot = String(rawLot).trim();
+          if (!lot) continue;
+          const pcs = Number(q.inspected_pcs || 0) || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0));
+          const mtr = Number(q.inspected_mtr || 0) || (avgLength > 0 ? Number((pcs * avgLength).toFixed(3)) : 0);
+          if (!vdiInspectedByLot.has(lot)) {
+            vdiInspectedByLot.set(lot, { pcs, mtr });
+          } else {
+            const ex = vdiInspectedByLot.get(lot)!;
+            ex.pcs += pcs;
+            ex.mtr += mtr;
+          }
+        }
+
+        if (vdiLots.length > 0) {
+          for (const lot of vdiLots) {
+            const insp = vdiInspectedByLot.get(lot.lot_no) || { pcs: 0, mtr: 0 };
+            const lotAvailPcs = Math.max(0, lot.pcs - insp.pcs);
+            const lotAvailMtr = Math.max(0, Number((lot.mtr - insp.mtr).toFixed(3)));
+            if (lotAvailPcs >= 1 || lotAvailMtr >= 1.0) {
+              const lotMt = mtFromMtr(lotAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+              vdiLotRows.push({
+                ...queueRows.VDI,
+                id: `${woId}_${lot.lot_no}`,
+                heat_lot_no: lot.lot_no,
+                heat_lots: [{ lot_no: lot.lot_no, pcs: lotAvailPcs, mtr: lotAvailMtr }],
+                balance_to_make_pcs: lotAvailPcs,
+                balance_to_make_mtr: lotAvailMtr,
+                balance_to_make_mt: lotMt,
+                max_allowed_pcs: lotAvailPcs,
+                max_allowed_mtr: lotAvailMtr,
+              });
+            }
+          }
+          // Any remaining unassigned pieces
+          const sumAssignedPcs = vdiLotRows.reduce((sum, r) => sum + Number(r.balance_to_make_pcs || 0), 0);
+          if (vdiAvailPcs > sumAssignedPcs) {
+            const unassignedPcs = vdiAvailPcs - sumAssignedPcs;
+            const sumAssignedMtr = vdiLotRows.reduce((sum, r) => sum + Number(r.balance_to_make_mtr || 0), 0);
+            const unassignedMtr = Math.max(0, Number((vdiAvailMtr - sumAssignedMtr).toFixed(3)));
+            if (unassignedPcs >= 1 || unassignedMtr >= 1.0) {
+              vdiLotRows.push({
+                ...queueRows.VDI,
+                id: `${woId}_unassigned`,
+                heat_lot_no: "",
+                heat_lots: undefined,
+                balance_to_make_pcs: unassignedPcs,
+                balance_to_make_mtr: unassignedMtr,
+                balance_to_make_mt: mtFromMtr(unassignedMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+                max_allowed_pcs: unassignedPcs,
+                max_allowed_mtr: unassignedMtr,
+              });
+            }
+          }
+        }
+        if (vdiLotRows.length === 0) {
+          vdiLotRows.push(queueRows.VDI);
+        }
+      }
+
+      allCalculatedRows.set(woId, { queueRows, pipeline, bandSawLotRows, vdiLotRows });
 
       // Generate individual plan rows for ROLLING stage queue
       const woPlans = plans
@@ -1539,6 +1752,26 @@ export async function GET(req: NextRequest) {
           (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
         )
       );
+    } else if (targetStage === "BAND_SAW") {
+      for (const { bandSawLotRows } of allCalculatedRows.values()) {
+        if (bandSawLotRows && bandSawLotRows.length > 0) {
+          selectedRows.push(
+            ...bandSawLotRows.filter(
+              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+            )
+          );
+        }
+      }
+    } else if (targetStage === "VDI") {
+      for (const { vdiLotRows } of allCalculatedRows.values()) {
+        if (vdiLotRows && vdiLotRows.length > 0) {
+          selectedRows.push(
+            ...vdiLotRows.filter(
+              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+            )
+          );
+        }
+      }
     } else {
       for (const { queueRows } of allCalculatedRows.values()) {
         const row = queueRows[targetStage];

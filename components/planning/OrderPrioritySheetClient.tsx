@@ -516,14 +516,14 @@ export default function OrderPrioritySheetClient() {
                       No Date Set
                     </span>
                   );
-                  let rowBorder = 'border-l-4 border-l-slate-300';
+                  let rowBg = '';
 
                   if (effectiveDate) {
                     const itemTime = new Date(effectiveDate).getTime();
                     const diffDays = Math.ceil((itemTime - todayTime) / (1000 * 60 * 60 * 24));
 
                     if (diffDays < 0) {
-                      rowBorder = 'border-l-4 border-l-rose-600 bg-rose-50/20';
+                      rowBg = 'bg-rose-50/20';
                       statusBadge = (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                           <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
@@ -531,7 +531,7 @@ export default function OrderPrioritySheetClient() {
                         </span>
                       );
                     } else if (diffDays === 0) {
-                      rowBorder = 'border-l-4 border-l-amber-500 bg-amber-50/20';
+                      rowBg = 'bg-amber-50/20';
                       statusBadge = (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
@@ -539,28 +539,28 @@ export default function OrderPrioritySheetClient() {
                         </span>
                       );
                     } else if (diffDays <= 3) {
-                      rowBorder = 'border-l-4 border-l-amber-400';
+                      rowBg = 'bg-amber-50/10';
                       statusBadge = (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                           {diffDays}d Due (Urgent)
                         </span>
                       );
                     } else if (diffDays <= 7) {
-                      rowBorder = 'border-l-4 border-l-blue-400';
+                      rowBg = '';
                       statusBadge = (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
                           {diffDays}d Due (This Wk)
                         </span>
                       );
                     } else if (diffDays <= 30) {
-                      rowBorder = 'border-l-4 border-l-indigo-300';
+                      rowBg = '';
                       statusBadge = (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
                           {diffDays}d Due
                         </span>
                       );
                     } else {
-                      rowBorder = 'border-l-4 border-l-slate-300';
+                      rowBg = '';
                       statusBadge = (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-50 text-slate-600 border border-slate-200">
                           {diffDays}d Due
@@ -572,7 +572,7 @@ export default function OrderPrioritySheetClient() {
                   return (
                     <tr
                       key={wo.id}
-                      className={`hover:bg-slate-50/80 transition-colors ${rowBorder}`}
+                      className={`hover:bg-slate-50/80 transition-colors ${rowBg}`}
                     >
                       {/* Priority Sequence Rank */}
                       <td className="py-2.5 px-3 text-center font-bold text-slate-500 font-mono">

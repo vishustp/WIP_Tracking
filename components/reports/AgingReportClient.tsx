@@ -15,45 +15,26 @@ import {
   Search,
   RefreshCw,
   Factory,
-  Layers,
   ArrowRight,
   TrendingUp,
-  Filter,
+  ShieldCheck,
   Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
-
-type AgingRow = {
-  work_order_id: string;
-  work_order_no: string;
-  customer_name: string | null;
-  grade: string | null;
-  od: number;
-  wt: number;
-  l1: number | null;
-  l2: number | null;
-  stage_code: string;
-  stage_name: string;
-  current_wip: number;
-  current_wip_pcs: number;
-  available_mt: number;
-  last_activity_date: string;
-  days_stuck: number;
-  severity: 'NORMAL' | 'WARNING' | 'CRITICAL';
-  is_acknowledged?: boolean;
-  acknowledged_by?: string | null;
-  ack_notes?: string | null;
-  ack_snooze_until?: string | null;
-};
-
-const STAGES = [
-  { code: 'ALL', name: 'All Work Centers' },
-  { code: 'ROLLING', name: 'Rolling Mill (Mother Hollow)' },
-  { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow Heat Treatment (HTC)' },
-  { code: 'DRAW', name: 'Cold Draw Bench' },
-  { code: 'HEAT_TREATMENT', name: 'Final Heat Treatment' },
-  { code: 'FINISHING', name: 'Finishing & Inspection' },
-];
+import {
+  type AgingRow,
+  type RawWipRow,
+  type RawProductionLog,
+  type RawQcInspection,
+  type RawRollingPlan,
+  type RawWorkOrder,
+  type RawRouteStage,
+  type RawAcknowledgement,
+  AGING_STAGES,
+  computeAgingReportRows,
+  computeAgingKpis,
+  filterAgingRows,
+} from '@/lib/reports/agingReportHelper';
 
 const fmt = (n: number | null | undefined, digits = 2) =>
   n == null || isNaN(n) ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -66,6 +47,7 @@ export default function AgingReportClient() {
   const [selectedStage, setSelectedStage] = useState<string>('ALL');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('ALL');
   const [page, setPage] = useState<number>(1);
+  const [acknowledgingKey, setAcknowledgingKey] = useState<string | null>(null);
   const pageSize = 50;
 
   const loadData = useCallback(async () => {
@@ -73,92 +55,79 @@ export default function AgingReportClient() {
       setLoading(true);
       const supabase = createClient();
 
-      // Try reading from view
-      const { data, error } = await supabase
+      // Read local acknowledgements from localStorage
+      const localAcks: RawAcknowledgement[] = [];
+      try {
+        if (typeof window !== 'undefined') {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key?.startsWith('aging_ack_')) {
+              const val = localStorage.getItem(key);
+              if (val) {
+                const parsed = JSON.parse(val);
+                localAcks.push(parsed);
+              }
+            }
+          }
+        }
+      } catch {}
+
+      // 1. Try reading from database view if present
+      const { data: viewData, error: viewError } = await supabase
         .from('vw_wip_aging')
         .select('*')
         .gt('current_wip', 0)
         .order('days_stuck', { ascending: false });
 
-      if (!error && data) {
-        setRows(data as AgingRow[]);
+      if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
+        // Merge with local acknowledgements if any
+        const rowsWithLocalAck: AgingRow[] = viewData.map((r: any) => {
+          const matchLocal = localAcks.find(
+            (a) => a.work_order_id === r.work_order_id && a.stage_code === r.stage_code
+          );
+          if (matchLocal && (!matchLocal.snooze_until || matchLocal.snooze_until >= new Date().toISOString().slice(0, 10))) {
+            return {
+              ...r,
+              is_acknowledged: true,
+              acknowledged_by: matchLocal.acknowledged_by || r.acknowledged_by,
+              ack_notes: matchLocal.notes || r.ack_notes,
+              ack_snooze_until: matchLocal.snooze_until || r.ack_snooze_until,
+            };
+          }
+          return r as AgingRow;
+        });
+
+        setRows(rowsWithLocalAck);
         setLoading(false);
         return;
       }
 
-      // Fallback if view not yet applied to database
-      const [wipRes, prodRes, plansRes] = await Promise.all([
-        supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0),
-        supabase.from('production_logs').select('work_order_id, stage_id, process_date').order('process_date', { ascending: false }),
-        supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, mh_l1, mh_l2').not('status', 'is', null),
+      // 2. Comprehensive fallback with accurate domain calculations
+      const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes] = await Promise.all([
+        supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).order('sequence_no', { ascending: true }),
+        supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok').order('process_date', { ascending: false }),
+        supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr').order('inspection_date', { ascending: false }),
+        supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, rolling_date, created_at').not('status', 'is', null),
+        supabase.from('work_orders').select('id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, created_at'),
+        supabase.from('route_stages').select('route_id, stage_id, sequence_no, process_stages(stage_code)').order('sequence_no', { ascending: true }),
+        supabase.from('aging_alert_acknowledgements').select('work_order_id, stage_code, acknowledged_by, notes, snooze_until'),
       ]);
 
-      if (wipRes.data) {
-        const today = new Date();
-        const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null }>();
-        (plansRes.data || []).forEach((p: any) => {
-          try {
-            const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
-            const mhOd = Number(p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || 0) || null;
-            const mhWt = Number(p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || 0) || null;
-            if (p.work_order_id) {
-              mhMap.set(p.work_order_id, { mh_od: mhOd, mh_wt: mhWt });
-            }
-            if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
-              for (const c of parsed.child_work_orders) {
-                const cId = c.work_order_id || c.id;
-                if (cId) mhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt });
-              }
-            }
-          } catch {}
-        });
+      const dbAcks: RawAcknowledgement[] = ackRes?.data || [];
+      const combinedAcks = [...dbAcks, ...localAcks];
 
-        const computed: AgingRow[] = wipRes.data
-          .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
-          .map((r: any) => {
-          const matchLog = (prodRes.data || []).find(
-            (p: any) => p.work_order_id === r.work_order_id && p.stage_id === r.stage_id
-          );
-          const actDateStr = matchLog?.process_date || r.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
-          const actDate = new Date(actDateStr);
-          const diffDays = Math.max(0, Math.floor((today.getTime() - actDate.getTime()) / (1000 * 60 * 60 * 24)));
-          const sev: 'NORMAL' | 'WARNING' | 'CRITICAL' =
-            diffDays > 5 ? 'CRITICAL' : diffDays >= 3 ? 'WARNING' : 'NORMAL';
+      const computed = computeAgingReportRows({
+        wipRows: (wipRes.data || []) as RawWipRow[],
+        workOrders: (woRes.data || []) as RawWorkOrder[],
+        productionLogs: (prodRes.data || []) as RawProductionLog[],
+        qcInspections: (qcRes.data || []) as RawQcInspection[],
+        rollingPlans: (plansRes.data || []) as RawRollingPlan[],
+        routeStages: (routeStagesRes.data || []) as RawRouteStage[],
+        acknowledgements: combinedAcks,
+        asOfDate: new Date(),
+      });
 
-          const isHfsBandSaw = r.stage_code === 'BAND_SAW' && (!(r.route_code || '').toUpperCase().includes('CDS'));
-          const isMhStage = r.stage_code === 'HOLLOW_HEAT_TREATMENT' || r.stage_code === 'DRAW' || isHfsBandSaw;
-          const planMh = mhMap.get(r.work_order_id);
-          const od = Number(isMhStage ? (planMh?.mh_od || r.mh_od || r.od || 0) : (r.od || 0));
-          const wt = Number(isMhStage ? (planMh?.mh_wt || r.mh_wt || r.wt || 0) : (r.wt || 0));
-          const currentWipMtr = Number(r.current_wip) || 0;
-          const computedMt = (Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * currentWipMtr);
-          const availMt = isMhStage
-            ? Number(computedMt.toFixed(3))
-            : (Number(r.current_wip_mt || r.available_mt || 0) > 0 ? Number(r.current_wip_mt || r.available_mt) : Number(computedMt.toFixed(3)));
-
-          return {
-            work_order_id: r.work_order_id,
-            work_order_no: r.work_order_no,
-            customer_name: r.customer_name,
-            grade: r.grade || 'ASTM A106 Gr.B',
-            od,
-            wt,
-            l1: r.l1,
-            l2: r.l2,
-            stage_code: r.stage_code,
-            stage_name: r.stage_name || r.stage_code,
-            current_wip: currentWipMtr,
-            current_wip_pcs: Number(r.current_wip_pcs) || 0,
-            available_mt: availMt,
-            last_activity_date: actDateStr,
-            days_stuck: diffDays,
-            severity: sev,
-            is_acknowledged: false,
-          };
-        });
-
-        setRows(computed.filter(x => x.current_wip > 0));
-      }
+      setRows(computed);
     } catch (err) {
       toast.error('Failed to load WIP aging data');
     } finally {
@@ -170,67 +139,77 @@ export default function AgingReportClient() {
     loadData();
   }, [loadData]);
 
-  // Filtering
+  // Acknowledge / Snooze alert
+  const handleAcknowledge = async (row: AgingRow) => {
+    const key = `${row.work_order_id}_${row.stage_code}`;
+    setAcknowledgingKey(key);
+    try {
+      const snoozeDate = new Date();
+      snoozeDate.setDate(snoozeDate.getDate() + 2); // 2-day snooze
+      const snoozeDateStr = snoozeDate.toISOString().slice(0, 10);
+
+      const ackData: RawAcknowledgement = {
+        work_order_id: row.work_order_id,
+        stage_code: row.stage_code,
+        acknowledged_by: 'Shop Floor Supervisor',
+        notes: `Acknowledged via Aging Report Console on ${new Date().toLocaleDateString('en-GB')}`,
+        snooze_until: snoozeDateStr,
+      };
+
+      // 1. Save locally to localStorage for immediate resilience
+      try {
+        localStorage.setItem(`aging_ack_${key}`, JSON.stringify(ackData));
+      } catch {}
+
+      // 2. Try upserting to remote DB table
+      const supabase = createClient();
+      await supabase.from('aging_alert_acknowledgements').upsert(
+        {
+          work_order_id: row.work_order_id,
+          stage_code: row.stage_code,
+          acknowledged_by: ackData.acknowledged_by,
+          notes: ackData.notes,
+          snooze_until: ackData.snooze_until,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'work_order_id,stage_code' }
+      );
+
+      // 3. Update local row state
+      setRows((prev) =>
+        prev.map((r) =>
+          r.work_order_id === row.work_order_id && r.stage_code === row.stage_code
+            ? {
+                ...r,
+                is_acknowledged: true,
+                acknowledged_by: ackData.acknowledged_by,
+                ack_notes: ackData.notes,
+                ack_snooze_until: ackData.snooze_until,
+              }
+            : r
+        )
+      );
+
+      toast.success(`WO ${row.work_order_no} at ${row.stage_name} acknowledged & snoozed for 2 days.`);
+    } catch {
+      toast.error('Could not save acknowledgement to server, cached locally.');
+    } finally {
+      setAcknowledgingKey(null);
+    }
+  };
+
+  // Filtered rows
   const filteredRows = useMemo(() => {
-    return rows.filter((r) => {
-      // Stage filter
-      if (selectedStage !== 'ALL' && r.stage_code !== selectedStage) return false;
-      // Severity filter
-      if (selectedSeverity !== 'ALL' && r.severity !== selectedSeverity) return false;
-      // Search filter
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        const matchesWo = r.work_order_no.toLowerCase().includes(q);
-        const matchesCust = (r.customer_name || '').toLowerCase().includes(q);
-        const matchesGrade = (r.grade || '').toLowerCase().includes(q);
-        const matchesStage = (r.stage_name || '').toLowerCase().includes(q);
-        const matchesSize = `${r.od}x${r.wt}`.includes(q);
-        if (!matchesWo && !matchesCust && !matchesGrade && !matchesStage && !matchesSize) return false;
-      }
-      return true;
+    return filterAgingRows(rows, {
+      selectedStage,
+      selectedSeverity,
+      search,
     });
   }, [rows, selectedStage, selectedSeverity, search]);
 
   // KPI Metrics
   const kpis = useMemo(() => {
-    const totalLots = rows.length;
-    const criticalLots = rows.filter(r => r.severity === 'CRITICAL').length;
-    const warningLots = rows.filter(r => r.severity === 'WARNING').length;
-    const normalLots = rows.filter(r => r.severity === 'NORMAL').length;
-
-    const criticalMtr = rows.filter(r => r.severity === 'CRITICAL').reduce((sum, r) => sum + r.current_wip, 0);
-    const criticalMt = rows.filter(r => r.severity === 'CRITICAL').reduce((sum, r) => sum + r.available_mt, 0);
-    const totalWipMtr = rows.reduce((sum, r) => sum + r.current_wip, 0);
-    const totalWipMt = rows.reduce((sum, r) => sum + r.available_mt, 0);
-
-    const avgDays = totalLots > 0 ? rows.reduce((sum, r) => sum + r.days_stuck, 0) / totalLots : 0;
-
-    // Work center with highest critical count
-    const stageCounts: Record<string, number> = {};
-    rows.filter(r => r.severity === 'CRITICAL').forEach(r => {
-      stageCounts[r.stage_name] = (stageCounts[r.stage_name] || 0) + 1;
-    });
-    let topStage = 'None';
-    let topCount = 0;
-    Object.entries(stageCounts).forEach(([stg, cnt]) => {
-      if (cnt > topCount) {
-        topCount = cnt;
-        topStage = stg;
-      }
-    });
-
-    return {
-      totalLots,
-      criticalLots,
-      warningLots,
-      normalLots,
-      criticalMtr,
-      criticalMt,
-      totalWipMtr,
-      totalWipMt,
-      avgDays,
-      topBottleneck: topCount > 0 ? `${topStage} (${topCount} lots)` : 'None (Fluid)',
-    };
+    return computeAgingKpis(rows);
   }, [rows]);
 
   const paginatedRows = useMemo(() => {
@@ -256,6 +235,8 @@ export default function AgingReportClient() {
       'Days Stuck': r.days_stuck,
       'Aging Severity': r.severity,
       'Acknowledged': r.is_acknowledged ? 'Yes' : 'No',
+      'Acknowledged By': r.acknowledged_by || '—',
+      'Snooze Until': r.ack_snooze_until || '—',
     }));
 
     await exportJsonToExcel(
@@ -351,7 +332,7 @@ export default function AgingReportClient() {
             </span>
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            Work center with most stuck lots
+            Work center with most stalled lots
           </div>
         </div>
 
@@ -379,7 +360,7 @@ export default function AgingReportClient() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
               type="text"
-              placeholder="Search WO, customer, grade, size..."
+              placeholder="Search WO, customer, grade, size (e.g. 60.3)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 text-xs h-9"
@@ -393,7 +374,7 @@ export default function AgingReportClient() {
               onChange={(e) => setSelectedStage(e.target.value)}
               className="text-xs h-9"
             >
-              {STAGES.map((s) => (
+              {AGING_STAGES.map((s) => (
                 <option key={s.code} value={s.code}>
                   {s.name}
                 </option>
@@ -431,20 +412,21 @@ export default function AgingReportClient() {
                 <th className="py-2.5 px-3">Last Activity</th>
                 <th className="py-2.5 px-3 text-center">Days Stuck</th>
                 <th className="py-2.5 px-3 text-center">Severity</th>
+                <th className="py-2.5 px-3 text-center">Ack / Status</th>
                 <th className="py-2.5 px-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                     Calculating station dwell times and physical WIP aging...
                   </td>
                 </tr>
               ) : paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
                     <div className="font-semibold text-slate-700">No stagnant material found</div>
                     <div className="text-[11px] text-slate-400 mt-0.5">
@@ -456,10 +438,12 @@ export default function AgingReportClient() {
                 paginatedRows.map((r) => {
                   const isCrit = r.severity === 'CRITICAL';
                   const isWarn = r.severity === 'WARNING';
+                  const key = `${r.work_order_id}_${r.stage_code}`;
+                  const isAcking = acknowledgingKey === key;
 
                   return (
                     <tr
-                      key={`${r.work_order_id}_${r.stage_code}`}
+                      key={key}
                       className={`transition hover:bg-blue-50/30 ${
                         isCrit ? 'bg-red-50/15' : isWarn ? 'bg-amber-50/10' : ''
                       }`}
@@ -485,7 +469,7 @@ export default function AgingReportClient() {
                         <div className="font-mono font-semibold text-slate-800">
                           {r.od} × {r.wt} mm
                         </div>
-                        <div className="text-[10px] text-slate-400 truncate">
+                        <div className="text-[10px] text-slate-500 truncate font-mono">
                           {r.grade}
                         </div>
                       </td>
@@ -499,7 +483,7 @@ export default function AgingReportClient() {
                       </td>
 
                       {/* Physical WIP */}
-                      <td className="py-2.5 px-3 text-right font-mono">
+                      <td className="py-2.5 px-3 text-right font-mono tabular-nums">
                         <div className="font-bold text-slate-900">{fmt(r.current_wip)} m</div>
                         <div className="text-[10px] text-slate-500">
                           {fmt(r.current_wip_pcs, 0)} pcs · {fmt(r.available_mt, 2)} MT
@@ -532,6 +516,31 @@ export default function AgingReportClient() {
                         >
                           {r.severity}
                         </span>
+                      </td>
+
+                      {/* Ack / Status */}
+                      <td className="py-2.5 px-3 text-center">
+                        {r.is_acknowledged ? (
+                          <span
+                            title={`Snoozed until ${r.ack_snooze_until || 'active'}${r.ack_notes ? ` - ${r.ack_notes}` : ''}`}
+                            className="inline-flex items-center gap-1 rounded bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 font-mono"
+                          >
+                            <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                            <span>Snoozed</span>
+                          </span>
+                        ) : isCrit || isWarn ? (
+                          <button
+                            type="button"
+                            onClick={() => handleAcknowledge(r)}
+                            disabled={isAcking}
+                            className="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 text-[10px] font-medium transition cursor-pointer"
+                          >
+                            <Check className="h-3 w-3 text-slate-500" />
+                            <span>{isAcking ? 'Snoozing...' : 'Acknowledge'}</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-400 text-[10px]">Normal</span>
+                        )}
                       </td>
 
                       {/* Action Button */}

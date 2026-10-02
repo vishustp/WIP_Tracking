@@ -71,7 +71,7 @@ export function ProductionHistoryTable({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search WO, customer, grade, plan no..."
+            placeholder="Search WO, Lot No, customer, grade, plan no..."
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 text-xs"
           />
           <select

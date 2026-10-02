@@ -14,6 +14,12 @@ colors:
   warning: "#f59e0b"
   danger: "#ef4444"
   info: "#0284c7"
+  border-strong: "#cbd5e1"
+  stage-rolling: "#f97316"
+  stage-hht: "#3b82f6"
+  stage-draw: "#eab308"
+  stage-ht: "#8b5cf6"
+  stage-bandsaw: "#06b6d4"
 typography:
   display:
     fontFamily: "Inter, system-ui, -apple-system, sans-serif"
@@ -29,6 +35,18 @@ typography:
     fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, monospace"
     fontSize: "0.8125rem"
     fontWeight: 600
+  micro:
+    fontFamily: "Inter, system-ui, -apple-system, sans-serif"
+    fontSize: "0.6875rem"
+    fontWeight: 600
+  badge:
+    fontFamily: "Inter, system-ui, -apple-system, sans-serif"
+    fontSize: "0.625rem"
+    fontWeight: 700
+  sub-badge:
+    fontFamily: "Inter, system-ui, -apple-system, sans-serif"
+    fontSize: "0.5625rem"
+    fontWeight: 700
 rounded:
   sm: "6px"
   md: "8px"
