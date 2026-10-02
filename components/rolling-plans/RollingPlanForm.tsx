@@ -171,7 +171,7 @@ export interface HollowDimensions {
 }
 
 /** Compute planned MTR and MT from hollow specs + planned pcs */
-export function calcHollowMetrics(
+function calcHollowMetrics(
   wo: Pick<WO, 'size_od' | 'size_wt' | 'l1' | 'l2'>,
   pcs: number,
   hollow: HollowDimensions
@@ -227,7 +227,7 @@ export interface ComputedGroupSpecs {
   multi: string;
 }
 
-export function computeGroupSpecs(
+function computeGroupSpecs(
   group: WorkOrderGroup,
   totalRollingMtr: number,
   srIndex = 1,
@@ -351,7 +351,7 @@ export function computeGroupSpecs(
   };
 }
 
-export function createDefaultGroup(
+function createDefaultGroup(
   wo: WO,
   availMtr: number,
   defaultRouteId = '',

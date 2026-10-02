@@ -340,6 +340,7 @@ describe("Production Utils Unit Tests", () => {
     it("computes HTC OK pieces as output_pcs - rejection_pcs when no explicit HTC tag exists", () => {
       const outPcs = 76;
       const rejPcs = 0;
+      const rejMtr = 0;
       const rawHtcMtr = 451.4;
       const outMtr = 341.24;
 

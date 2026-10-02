@@ -20,7 +20,7 @@ import GlobalKeyboardNavigation from '@/components/common/GlobalKeyboardNavigati
 
 export type AppTheme = 'light' | 'cobalt' | 'navy';
 
-export const THEMES: {
+const THEMES: {
   id: AppTheme;
   name: string;
   badge: string;

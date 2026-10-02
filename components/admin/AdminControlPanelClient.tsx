@@ -19,7 +19,7 @@ import {
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 
-export const GROUP_OPTIONS: { value: UserGroup; label: string; description: string; badge: string; iconColor: string }[] = [
+const GROUP_OPTIONS: { value: UserGroup; label: string; description: string; badge: string; iconColor: string }[] = [
   {
     value: 'admin',
     label: 'Admin Group',
@@ -43,7 +43,7 @@ export const GROUP_OPTIONS: { value: UserGroup; label: string; description: stri
   },
 ];
 
-export const WORK_CENTER_OPTIONS: { value: WorkCenterCode; label: string; stages: string[] }[] = [
+const WORK_CENTER_OPTIONS: { value: WorkCenterCode; label: string; stages: string[] }[] = [
   { value: 'ALL', label: 'All Work Centers (Global Access)', stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'] },
   { value: 'ROLLING', label: 'Hot Rolling & Piercing Mill', stages: ['ROLLING'] },
   { value: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment (Furnace)', stages: ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'] },

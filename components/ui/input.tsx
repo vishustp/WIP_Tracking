@@ -42,5 +42,3 @@ export function Input({ label, className = "", id, error, helperText, ...props }
     </div>
   );
 }
-
-export default Input;

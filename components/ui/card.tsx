@@ -17,5 +17,3 @@ export function CardHeader({ children, className = "" }: CardProps) {
 export function CardContent({ children, className = "" }: CardProps) {
   return <div className={cn("p-4", className)}>{children}</div>;
 }
-
-export default Card;
