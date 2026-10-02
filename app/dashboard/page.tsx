@@ -10,11 +10,12 @@ export default async function Dashboard() {
   let wip: any[] = [];
   let pending: any[] = [];
   let recentProduction: any[] = [];
+  let agingData: any[] = [];
   let trendData: any[] = [];
 
   try {
     const supabase = await createClient();
-    const [kpiRes, wipRes, pendingRes, plansRes, woRes, qcRes, prodRes, usersRes] = await Promise.all([
+    const [kpiRes, wipRes, pendingRes, plansRes, woRes, qcRes, prodRes, usersRes, agingRes] = await Promise.all([
       supabase.from('vw_dashboard_kpis').select('*').maybeSingle(),
       supabase
         .from('vw_route_stage_wip')
@@ -37,6 +38,7 @@ export default async function Dashboard() {
       supabase.from('qc_inspections').select('work_order_id,vdi_ok_mtr,vdi_ok_pcs,vdi_rejection_mtr,vdi_salvage_mtr,vdi_rejection_pcs,vdi_salvage_pcs'),
       supabase.from('production_logs').select('id,work_order_id,stage_id,output_qty,rejection_qty,remarks,process_date,created_at,created_by,process_stages(stage_code,stage_name)'),
       supabase.from('app_users').select('id,auth_user_id,employee_name,email'),
+      supabase.from('vw_wip_aging').select('*').gt('current_wip', 0).order('days_stuck', { ascending: false }).limit(50),
     ]);
 
     const rawWip = (wipRes.data ?? []) as any[];
@@ -350,6 +352,64 @@ export default async function Dashboard() {
       };
     });
 
+    // WIP Aging items for dashboard
+    if (agingRes?.data && agingRes.data.length > 0) {
+      agingData = (agingRes.data as any[])
+        .filter((r) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
+        .slice(0, 10)
+        .map((r) => ({
+          id: `${r.work_order_id}_${r.stage_code}`,
+          woNo: r.work_order_no,
+          customer: r.customer_name || 'Generic Customer',
+          grade: r.grade || '—',
+          od: r.od,
+          wt: r.wt,
+          stage: r.stage_name || r.stage_code,
+          stageCode: r.stage_code,
+          wipMt: Number(r.available_mt || 0).toFixed(1),
+          wipPcs: Number(r.current_wip_pcs || 0),
+          wipMtr: Number(r.current_wip || 0),
+          daysStuck: Number(r.days_stuck || 0),
+          severity: (r.severity as 'CRITICAL' | 'WARNING' | 'NORMAL') || 'NORMAL',
+          lastActivityDate: r.last_activity_date || '—',
+        }));
+    } else {
+      // Fallback computed from calculatedWip and productionLogs
+      const today = new Date();
+      agingData = calculatedWip
+        .filter((r: any) => (r.stage_code || '').toUpperCase() !== 'ROLLING' && Number(r.current_wip || 0) > 0)
+        .map((r: any) => {
+          const matchLog = productionLogs.find(
+            (p: any) => p.work_order_id === r.work_order_id && (p.stage_id === r.stage_id || p.process_stages?.stage_code === r.stage_code)
+          );
+          const actDateStr = matchLog?.process_date || r.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+          const actDate = new Date(actDateStr);
+          const diffDays = Math.max(0, Math.floor((today.getTime() - actDate.getTime()) / (1000 * 60 * 60 * 24)));
+          const sev: 'CRITICAL' | 'WARNING' | 'NORMAL' =
+            diffDays > 5 ? 'CRITICAL' : diffDays >= 3 ? 'WARNING' : 'NORMAL';
+          const wo = woMap.get(r.work_order_id);
+
+          return {
+            id: `${r.work_order_id}_${r.stage_code}`,
+            woNo: r.work_order_no,
+            customer: r.customer_name || wo?.customer_name || 'Generic Customer',
+            grade: r.grade || wo?.grade || '—',
+            od: r.od || wo?.size_od,
+            wt: r.wt || wo?.size_wt,
+            stage: r.stage_name || r.stage_code,
+            stageCode: r.stage_code,
+            wipMt: Number(r.current_wip_mt || 0).toFixed(1),
+            wipPcs: Number(r.current_wip_pcs || 0),
+            wipMtr: Number(r.current_wip || 0),
+            daysStuck: diffDays,
+            severity: sev,
+            lastActivityDate: actDateStr,
+          };
+        })
+        .sort((a, b) => b.daysStuck - a.daysStuck)
+        .slice(0, 10);
+    }
+
     // Real 7-day trend calculated strictly from project's 7 canonical work centers
     const last7Days: string[] = [];
     for (let i = 6; i >= 0; i--) {
@@ -431,6 +491,7 @@ export default async function Dashboard() {
       wip={wip as any}
       pending={pending as any}
       recentProduction={recentProduction}
+      agingData={agingData}
       trendData={trendData}
     />
   );

@@ -125,6 +125,23 @@ export type RecentProductionItem = {
   operator: string;
 };
 
+export type AgingItem = {
+  id: string;
+  woNo: string;
+  customer?: string | null;
+  grade?: string | null;
+  od?: number | null;
+  wt?: number | null;
+  stage: string;
+  stageCode: string;
+  wipMt: string;
+  wipPcs: number;
+  wipMtr: number;
+  daysStuck: number;
+  severity: 'CRITICAL' | 'WARNING' | 'NORMAL';
+  lastActivityDate: string;
+};
+
 export type TrendDataPoint = {
   day: string;
   rolling: number;
@@ -141,6 +158,7 @@ interface Props {
   wip: WIPRow[];
   pending: PendingRow[];
   recentProduction?: RecentProductionItem[];
+  agingData?: AgingItem[];
   trendData?: TrendDataPoint[];
 }
 
@@ -154,7 +172,7 @@ const CANONICAL_WIP_WORK_CENTERS = [
   { code: 'FINISHING', name: 'Finishing', fullName: 'Finishing & Dispatch', icon: CheckCircle2, color: '#06b6d4', badgeBg: 'bg-cyan-50/90 border-cyan-200 text-cyan-900' },
 ];
 
-export default function DashboardClient({ kpi, wip, pending, recentProduction = [], trendData = [] }: Props) {
+export default function DashboardClient({ kpi, wip, pending, recentProduction = [], agingData = [], trendData = [] }: Props) {
   const [localPriorities, setLocalPriorities] = useState<Record<string, PriorityItem>>({});
 
   useEffect(() => {
@@ -313,10 +331,14 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
     }).filter((d) => totalPlantWipMt === 0 || d.mt > 0);
   }, [stageWipMap, totalPlantWipMt]);
 
-  // 6. Row 3: Ranked Top Bottlenecks among Post-Rolling Work Centers
+  // 6. Row 3: Ranked Top Bottlenecks among Post-Rolling Work Centers (Excludes Hollow Heat Treatment, Includes Finishing)
   const rankedBottlenecks = useMemo(() => {
-    const sorted = [...CANONICAL_WIP_WORK_CENTERS]
+    const BOTTLENECK_WORK_CENTERS = CANONICAL_WIP_WORK_CENTERS.filter(
+      (wc) => wc.code !== 'HOLLOW_HEAT_TREATMENT'
+    );
+    const sorted = [...BOTTLENECK_WORK_CENTERS]
       .map((wc) => ({
+        code: wc.code,
         stage: wc.fullName,
         shortStage: wc.name,
         mt: stageWipMap[wc.code]?.mt || 0,
@@ -334,6 +356,7 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
 
     return sorted.slice(0, 5).map((item, idx) => ({
       rank: idx + 1,
+      code: item.code,
       stage: item.shortStage,
       mt: item.mt,
       pcs: item.pcs,
@@ -431,6 +454,42 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
       };
     });
   }, [pending, wip, localPriorities]);
+
+  // 8. Row 4: WIP Aging Report Items
+  const dashboardAgingList = useMemo(() => {
+    if (agingData && agingData.length > 0) return agingData.slice(0, 8);
+    // Fallback if agingData not yet loaded
+    return wip
+      .filter((r) => (r.stage_code || '').toUpperCase() !== 'ROLLING' && Number(r.current_wip || 0) > 0)
+      .slice(0, 8)
+      .map((r) => {
+        const mtr = Number(r.current_wip || 0);
+        const pcs = Number(r.current_wip_pcs || 0);
+        const od = Number(r.size_od || 0);
+        const wt = Number(r.size_wt || 0);
+        const mt = Number(r.current_wip_mt ?? (od > 0 && wt > 0 ? mtFromMtr(mtr, od, wt) : 0));
+        return {
+          id: `${r.work_order_id}_${r.stage_code}`,
+          woNo: r.work_order_no,
+          customer: r.customer_name || 'Generic Customer',
+          grade: r.grade || '—',
+          od,
+          wt,
+          stage: r.stage_name || r.stage_code || 'Stage',
+          stageCode: r.stage_code || '',
+          wipMt: mt > 0 ? mt.toFixed(1) : '0.0',
+          wipPcs: pcs,
+          wipMtr: mtr,
+          daysStuck: 0,
+          severity: 'NORMAL' as const,
+          lastActivityDate: '—',
+        };
+      });
+  }, [agingData, wip]);
+
+  const criticalAgingCount = useMemo(() => {
+    return dashboardAgingList.filter((r) => r.severity === 'CRITICAL').length;
+  }, [dashboardAgingList]);
 
   return (
     <div className="space-y-4">
@@ -657,9 +716,10 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
 
           <div className="space-y-2 my-2">
             {rankedBottlenecks.map((item) => (
-              <div
+              <Link
                 key={item.stage}
-                className={`flex items-center justify-between p-2 rounded-lg border transition-all ${item.pillBg}`}
+                href={`/reports/wip?stage=${encodeURIComponent(item.code)}`}
+                className={`flex items-center justify-between p-2 rounded-lg border transition-all hover:brightness-95 ${item.pillBg}`}
               >
                 <div className="flex items-center gap-2.5">
                   <div className={`h-5 w-5 rounded-full ${item.badgeBg} text-white flex items-center justify-center text-[10px] font-black shrink-0`}>
@@ -671,11 +731,14 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
                   <span className="text-xs font-black font-mono">{formatNum(item.mt, 1)}</span>
                   <span className="text-[10px] font-normal text-slate-500 block leading-none">{formatNum(item.pcs)} pcs</span>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
 
-          <div className="pt-2 border-t border-slate-100 text-right">
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+            <Link href="/reports/aging" className="text-xs font-semibold text-slate-500 hover:text-slate-700 inline-flex items-center gap-1">
+              Aging <ArrowRight className="h-3 w-3" />
+            </Link>
             <Link href="/reports/wip" className="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
               View Detailed WIP <ExternalLink className="h-3 w-3" />
             </Link>
@@ -750,54 +813,85 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
           </div>
         </div>
 
-        {/* Right: Recent Production Logs (5 cols) */}
-        <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 tracking-tight">Recent Production</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Real-time shop-floor completions</p>
+        {/* Right: WIP Aging Report (5 cols) */}
+        <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-900 tracking-tight">WIP Aging Report</h3>
+                  {criticalAgingCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+                      {criticalAgingCount} Critical
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">Material stagnation & station dwell times</p>
+              </div>
+              <Link
+                href="/reports/aging"
+                className="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
+              >
+                View Full Report <ArrowRight className="h-3 w-3" />
+              </Link>
             </div>
-            <Link
-              href="/reports/production"
-              className="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
-            >
-              View All <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-tight bg-slate-50/70">
-                  <th className="py-2 px-2.5">Date</th>
-                  <th className="py-2 px-2">Stage</th>
-                  <th className="py-2 px-2">WO No</th>
-                  <th className="py-2 px-2 text-right">Qty (MT)</th>
-                  <th className="py-2 px-2 text-right">Rej (MT)</th>
-                  <th className="py-2 px-2">Operator</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {recentProduction.length > 0 ? (
-                  recentProduction.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-2 px-2.5 font-mono text-slate-600 whitespace-nowrap">{row.date}</td>
-                      <td className="py-2 px-2 font-medium text-slate-800 whitespace-nowrap">{row.stage}</td>
-                      <td className="py-2 px-2 font-mono font-bold text-slate-900 whitespace-nowrap">{row.woNo}</td>
-                      <td className="py-2 px-2 text-right font-mono font-bold text-emerald-600">{row.qtyMt}</td>
-                      <td className="py-2 px-2 text-right font-mono font-bold text-rose-600">{row.rejMt}</td>
-                      <td className="py-2 px-2 text-slate-600 font-medium whitespace-nowrap">{row.operator}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="py-6 text-center text-xs text-slate-500 font-medium">
-                      No production entries logged yet today.
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-tight bg-slate-50/70">
+                    <th className="py-2 px-2.5">WO No</th>
+                    <th className="py-2 px-2">Stage</th>
+                    <th className="py-2 px-2 text-right">Physical WIP</th>
+                    <th className="py-2 px-2 text-center">Days</th>
+                    <th className="py-2 px-2 text-center">Severity</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dashboardAgingList.length > 0 ? (
+                    dashboardAgingList.map((row) => (
+                      <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-2 px-2.5 font-mono font-bold text-blue-700 whitespace-nowrap">
+                          <Link href={`/reports/tracking?search=${encodeURIComponent(row.woNo)}`} className="hover:underline">
+                            {row.woNo}
+                          </Link>
+                        </td>
+                        <td className="py-2 px-2 font-medium text-slate-800 whitespace-nowrap">{row.stage}</td>
+                        <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                          {row.wipMt} <span className="text-[10px] text-slate-500 font-normal">MT</span>
+                          {row.wipPcs > 0 && (
+                            <span className="block text-[10px] text-slate-500 font-normal leading-none">{formatNum(row.wipPcs)} pcs</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-center font-mono font-black text-slate-900 whitespace-nowrap">
+                          {row.daysStuck}d
+                        </td>
+                        <td className="py-2 px-2 text-center whitespace-nowrap">
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              row.severity === 'CRITICAL'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : row.severity === 'WARNING'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}
+                          >
+                            {row.severity === 'CRITICAL' ? '> 5 Days' : row.severity === 'WARNING' ? '3-5 Days' : '≤ 2 Days'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-xs text-slate-500 font-medium">
+                        <CheckCircle2 className="h-5 w-5 text-emerald-500 mx-auto mb-1.5" />
+                        No stagnant material found. All physical WIP is progressing normally.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
