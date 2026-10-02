@@ -177,7 +177,7 @@ export default function WorkCenterProductionReportClient() {
         const [{ data: logDetails }, { data: rpData }] = await Promise.all([
           s
             .from('production_logs')
-            .select('id, rolling_plan_id, work_order_id, input_qty, output_qty, rejection_qty, htc_ok, output_pcs, rejection_pcs, heat_lot_no, remarks, created_at, process_date')
+            .select('id, rolling_plan_id, work_order_id, input_qty, output_qty, rejection_qty, htc_ok, heat_lot_no, remarks, created_at, process_date')
             .in('id', entryIds),
           s
             .from('rolling_plans')
@@ -309,6 +309,26 @@ export default function WorkCenterProductionReportClient() {
         const calculatedOutMt = mtFromMtr(outMtr, od, wl);
         const calculatedRejMt = mtFromMtr(rejMtr, od, wl);
 
+        const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING' || selectedWc === 'ROLLING';
+        const rawHtcMtr = Number(logRow?.htc_ok ?? e.htc_ok_mtr ?? (e as any).htc_ok ?? 0);
+        const htcOkMtr = isRolling
+          ? (rawHtcMtr > 0 ? rawHtcMtr : Math.max(0, outMtr - rejMtr))
+          : 0;
+
+        const htcMatch = (e.remarks || logRow?.remarks || '').match(/\[HTC(?:_OK)?(?:_PCS)?:(\d+)\]/i);
+        const remarkHtcPcs = htcMatch ? parseInt(htcMatch[1], 10) : null;
+
+        const htcOkPcs = isRolling
+          ? Math.max(
+              0,
+              remarkHtcPcs != null && remarkHtcPcs > 0
+                ? Math.min(outPcs, remarkHtcPcs)
+                : Number(e.htc_ok_pcs || 0) > 0
+                ? Math.min(outPcs, Math.round(Number(e.htc_ok_pcs)))
+                : Math.max(0, outPcs - rejPcs)
+            )
+          : 0;
+
         return {
           ...e,
           od,
@@ -317,6 +337,7 @@ export default function WorkCenterProductionReportClient() {
           mh_wt: isMhStage && mhInfo?.mh_wt ? Number(mhInfo.mh_wt) : undefined,
           customer_name: e.customer_name || woInfo?.customer_name || 'Standard Stock',
           grade: woInfo?.grade || woInfo?.specification || '—',
+          heat_lot_no: logRow?.heat_lot_no || e.heat_lot_no || woInfo?.heat_lot_no || '',
           rolling_plan_id: plan?.id || logRow?.rolling_plan_id,
           plan_no: plan?.plan_no,
           revision_no: plan?.revision_no,
@@ -329,6 +350,8 @@ export default function WorkCenterProductionReportClient() {
           rejection_pcs: rejPcs,
           rejection_mtr: rejMtr,
           rejection_mt: calculatedRejMt,
+          htc_ok_pcs: htcOkPcs,
+          htc_ok_mtr: htcOkMtr,
           remarks: cleanRemarks || e.remarks,
         };
       });
@@ -448,6 +471,7 @@ export default function WorkCenterProductionReportClient() {
     let rejMt = 0;
 
     let htcOkMtr = 0;
+    let htcOkPcs = 0;
 
     filteredEntries.forEach((e) => {
       const isFinishing = e.stage_code === 'FINISHING' || selectedWc === 'FINISHING';
@@ -494,6 +518,7 @@ export default function WorkCenterProductionReportClient() {
       rejMt += rMt;
 
       htcOkMtr += Number(e.htc_ok_mtr || 0);
+      htcOkPcs += Number(e.htc_ok_pcs || 0);
     });
 
     const netMtr = Math.max(outputMtr - rejMtr, 0);
@@ -513,6 +538,7 @@ export default function WorkCenterProductionReportClient() {
       rejPcs,
       rejMt,
       htcOkMtr,
+      htcOkPcs,
       netMtr,
       netMt,
       rejRatePct,
@@ -571,7 +597,8 @@ export default function WorkCenterProductionReportClient() {
       'Output MT',
       'Rejection MTR',
       'Rejection PCS',
-      'HTC OK MTR',
+      'HTC OK (Nos)',
+      'HTC OK (MTR)',
       'Yield %',
       'Remarks',
     ];
@@ -592,6 +619,7 @@ export default function WorkCenterProductionReportClient() {
       e.output_mt ?? 0,
       e.rejection_mtr ?? 0,
       e.rejection_pcs ?? 0,
+      e.htc_ok_pcs ?? 0,
       e.htc_ok_mtr ?? 0,
       e.input_mtr > 0 ? (((e.output_mtr - e.rejection_mtr) / e.input_mtr) * 100).toFixed(1) : '100',
       `"${(e.remarks || '').replace(/"/g, '""')}"`,
@@ -875,7 +903,7 @@ export default function WorkCenterProductionReportClient() {
             </span>
             <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
-                {fmt(Math.max(metrics.outputPcs - metrics.rejPcs, 0), 0)} PCS
+                {fmt(selectedWc === 'ROLLING' ? metrics.htcOkPcs : Math.max(metrics.outputPcs - metrics.rejPcs, 0), 0)} PCS
               </span>
               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
                 {fmt(metrics.netMt)} MT
@@ -1054,9 +1082,9 @@ export default function WorkCenterProductionReportClient() {
 
                       {/* HTC OK / VDI OK / Net Accepted */}
                       <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30 border-r border-emerald-100 print:text-black">
-                        {selectedWc === 'ROLLING' ? (
+                        {e.stage_code === 'ROLLING' || selectedWc === 'ROLLING' ? (
                           <span>{fmt(e.htc_ok_pcs, 0)} pcs ({fmt(e.htc_ok_mtr)}m)</span>
-                        ) : selectedWc === 'VDI' ? (
+                        ) : selectedWc === 'VDI' || e.stage_code === 'VDI' ? (
                           <span>{fmt(e.output_pcs, 0)} pcs ({fmt(e.output_mtr)}m)</span>
                         ) : (
                           <span>{fmt(netPcs, 0)} pcs ({fmt(netMtr)}m)</span>

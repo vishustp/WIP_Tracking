@@ -335,5 +335,42 @@ describe("Production Utils Unit Tests", () => {
       expect(result.mtr).toBe(8034.4);
     });
   });
+
+  describe("8. Rolling HTC OK Pieces & Meters Accounting", () => {
+    it("computes HTC OK pieces as output_pcs - rejection_pcs when no explicit HTC tag exists", () => {
+      const outPcs = 76;
+      const rejPcs = 0;
+      const rawHtcMtr = 451.4;
+      const outMtr = 341.24;
+
+      const isRolling = true;
+      const htcOkPcs = isRolling ? Math.max(0, outPcs - rejPcs) : 0;
+      const htcOkMtr = isRolling ? (rawHtcMtr > 0 ? rawHtcMtr : Math.max(0, outMtr - rejMtr)) : 0;
+
+      expect(htcOkPcs).toBe(76);
+      expect(htcOkMtr).toBe(451.4);
+      expect(fmt(htcOkPcs, 0)).toBe("76");
+      expect(`${fmt(htcOkPcs, 0)} pcs (${fmt(htcOkMtr)}m)`).toBe("76 pcs (451.40m)");
+    });
+
+    it("correctly subtracts rejections from HTC OK pieces", () => {
+      const outPcs = 76;
+      const rejPcs = 4;
+      const rawHtcMtr = 427.6;
+
+      const isRolling = true;
+      const htcOkPcs = isRolling ? Math.max(0, outPcs - rejPcs) : 0;
+      expect(htcOkPcs).toBe(72);
+      expect(`${fmt(htcOkPcs, 0)} pcs (${fmt(rawHtcMtr)}m)`).toBe("72 pcs (427.60m)");
+    });
+
+    it("extracts [HTC_OK_PCS:...] tag if present in remarks", () => {
+      const remarks = "Shift A rolling passed [PCS:80] [REJ:2] [HTC_OK_PCS:78]";
+      const htcMatch = remarks.match(/\[HTC(?:_OK)?(?:_PCS)?:(\d+)\]/i);
+      expect(htcMatch).not.toBeNull();
+      expect(parseInt(htcMatch![1], 10)).toBe(78);
+    });
+  });
 });
+
 
