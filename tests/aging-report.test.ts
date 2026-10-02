@@ -327,6 +327,71 @@ describe('WIP Aging & Bottlenecks Calculation Engine', () => {
       expect(normalRow.severity).toBe('NORMAL');
     });
 
+    it('correctly reports aging on Draw Bench when partial batch (10 pcs) was left behind while 90 pcs continued downstream', () => {
+      // Scenario:
+      // 100 rolled on Sep 28
+      // Draw Bench drew 90 on Sep 28 (10 left behind on DB)
+      // HT processed 90 on Sep 30 (0 left on HT)
+      // Finishing finished 90 on Oct 01 (0 left on Finishing)
+      // As of Oct 02 (4 days since DB last touched the 10 pcs):
+      // Only Draw Bench has active WIP, and its dwell time is 4 days (>3 days => WARNING/Aged).
+      const asOf = new Date('2026-10-02T12:00:00Z');
+      const testWo: RawWorkOrder = {
+        id: 'WO_SPLIT',
+        work_order_no: '7777',
+        customer_name: 'Boiler Client',
+        grade: 'ASTM A106 Gr B',
+        size_od: 60.3,
+        size_wt: 3.91,
+        created_at: '2026-09-25T00:00:00Z',
+      };
+
+      const testWip: RawWipRow[] = [
+        {
+          work_order_id: 'WO_SPLIT',
+          work_order_no: '7777',
+          route_id: 'R1',
+          stage_id: 'S_DRAW',
+          stage_code: 'DRAW',
+          stage_name: 'Cold Draw Bench',
+          sequence_no: 2,
+          current_wip: 60, // 10 pieces left
+          current_wip_pcs: 10,
+          current_wip_mt: 0.33,
+          size_od: 60.3,
+          size_wt: 3.91,
+        },
+        // HT and Finishing have 0 WIP (fully processed the 90 pcs)
+      ];
+
+      const testLogs: RawProductionLog[] = [
+        { work_order_id: 'WO_SPLIT', stage_id: 'S_ROLL', process_date: '2026-09-28' },
+        { work_order_id: 'WO_SPLIT', stage_id: 'S_DRAW', process_date: '2026-09-28' },
+        { work_order_id: 'WO_SPLIT', stage_id: 'S_HT', process_date: '2026-09-30' },
+        { work_order_id: 'WO_SPLIT', stage_id: 'S_FIN', process_date: '2026-10-01' },
+      ];
+
+      const rows = computeAgingReportRows({
+        wipRows: testWip,
+        workOrders: [testWo],
+        productionLogs: testLogs,
+        qcInspections: [],
+        rollingPlans: [],
+        routeStages,
+        asOfDate: asOf,
+      });
+
+      expect(rows).toHaveLength(1);
+      const dbRow = rows[0];
+      expect(dbRow.work_order_no).toBe('7777');
+      expect(dbRow.stage_code).toBe('DRAW');
+      expect(dbRow.current_wip_pcs).toBe(10);
+      // Last activity at Draw Bench was Sep 28 (downstream HT/Finishing logs do NOT reset DB's stagnation clock)
+      expect(dbRow.last_activity_date).toBe('2026-09-28');
+      expect(dbRow.days_stuck).toBe(4);
+      expect(dbRow.severity).toBe('WARNING');
+    });
+
     it('respects active alert acknowledgements', () => {
       const asOf = new Date('2026-10-02T12:00:00Z');
       const rows = computeAgingReportRows({
