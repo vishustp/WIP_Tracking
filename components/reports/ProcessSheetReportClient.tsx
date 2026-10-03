@@ -214,27 +214,31 @@ export default function ProcessSheetReportClient() {
     try {
       const s = createClient();
 
-      const [woRes, rPlanRes, routesRes, divRes] = await Promise.all([
+      const [woRes, rPlanRes, routesRes] = await Promise.all([
         s
           .from('work_orders')
-          .select('id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,ordered_qty_pcs,ordered_qty_mtr,status,target_date,destination,po_no,purchase_order_no,po_date,purchase_order_date,material_code,item_code')
-          .order('created_at', { ascending: false }),
+          .select('id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,ordered_qty_pcs,ordered_qty_mtr,status,target_date,destination,po_no,po_date,material_code')
+          .order('created_at', { ascending: false })
+          .limit(1000),
         s
           .from('rolling_plans')
           .select('id,plan_no,work_order_id,planned_rolling_date,planned_qty,process_route_id,target_mother_size,multiple,status,mh_od,mh_wt,mh_l1,mh_l2,pass_required')
-          .order('created_at', { ascending: false }),
-        s.from('process_routes').select('id,route_code,route_name'),
-        s
-          .from('pipe_diversions')
-          .select('id,source_wo_id,target_wo_id,diverted_qty,diverted_pcs,target_size,target_grade,target_customer,source_customer,source_grade,route_id,multiple,reason,work_center,created_at')
           .order('created_at', { ascending: false })
-          .limit(50),
+          .limit(1000),
+        s.from('process_routes').select('id,route_code,route_name'),
       ]);
+
+      if (woRes.error) {
+        console.error('Failed to load work_orders:', woRes.error);
+        toast.error('Failed to load work orders: ' + woRes.error.message);
+      }
+      if (rPlanRes.error) {
+        console.error('Failed to load rolling_plans:', rPlanRes.error);
+      }
 
       const wos = woRes.data || [];
       const rPlans = rPlanRes.data || [];
       const routes = routesRes.data || [];
-      const divs = divRes.data || [];
 
       const routeMap = new Map<string, any>(routes.map((r: any) => [r.id, r]));
       const woMap = new Map<string, any>(wos.map((w: any) => [w.id, w]));
@@ -291,9 +295,9 @@ export default function ProcessSheetReportClient() {
               ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
               route_code: route.route_code || 'HFS',
               route_name: route.route_name || route.route_code || 'HFS',
-              po_no: wo.po_no || wo.purchase_order_no || parsedSt.po_no || null,
-              po_date: wo.po_date || wo.purchase_order_date || parsedSt.po_date || null,
-              material_code: wo.material_code || wo.item_code || parsedSt.material_code || null,
+              po_no: wo.po_no || parsedSt.po_no || null,
+              po_date: wo.po_date || parsedSt.po_date || null,
+              material_code: wo.material_code || parsedSt.material_code || null,
               destination: wo.destination || parsedSt.destination || null,
               is_diversion: false,
               display_label: wo.work_order_no || '',
@@ -328,9 +332,9 @@ export default function ProcessSheetReportClient() {
             ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
             route_code: 'HFS',
             route_name: 'HFS',
-            po_no: wo.po_no || wo.purchase_order_no || null,
-            po_date: wo.po_date || wo.purchase_order_date || null,
-            material_code: wo.material_code || wo.item_code || null,
+            po_no: wo.po_no || null,
+            po_date: wo.po_date || null,
+            material_code: wo.material_code || null,
             destination: wo.destination || null,
             is_diversion: false,
             display_label: wo.work_order_no || '',
@@ -340,10 +344,12 @@ export default function ProcessSheetReportClient() {
 
       // Sort by work order number descending
       mappedList.sort((a, b) => {
-        const numA = parseInt(a.work_order_no.replace(/\D/g, ''), 10) || 0;
-        const numB = parseInt(b.work_order_no.replace(/\D/g, ''), 10) || 0;
+        const woA = String(a.work_order_no || '');
+        const woB = String(b.work_order_no || '');
+        const numA = parseInt(woA.replace(/\D/g, ''), 10) || 0;
+        const numB = parseInt(woB.replace(/\D/g, ''), 10) || 0;
         if (numA !== numB) return numB - numA;
-        return b.work_order_no.localeCompare(a.work_order_no);
+        return woB.localeCompare(woA);
       });
 
       setPlans(mappedList);
