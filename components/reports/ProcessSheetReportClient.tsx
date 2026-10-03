@@ -16,6 +16,7 @@ import {
   Eye,
   Edit3,
   RefreshCw,
+  Save,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
@@ -29,6 +30,7 @@ import {
 
 import ProcessSheetOrderDetails from './process-sheet/ProcessSheetOrderDetails';
 import ProcessSheetHotMillSection from './process-sheet/ProcessSheetHotMillSection';
+import ProcessSheetDimensionsSection from './process-sheet/ProcessSheetDimensionsSection';
 import ProcessSheetMetallurgySection from './process-sheet/ProcessSheetMetallurgySection';
 import ProcessSheetTestingSection from './process-sheet/ProcessSheetTestingSection';
 import ProcessSheetFinishingSection from './process-sheet/ProcessSheetFinishingSection';
@@ -73,7 +75,7 @@ interface RollingPlanRecord {
 
 const EMPTY_FORM_DATA: ProcessSheetFormData = {
   sheetNo: '',
-  revNo: 'REV 01',
+  revNo: '0',
   orderType: 'HFS',
   routeType: 'HFS',
   sheetDate: '',
@@ -136,21 +138,6 @@ const EMPTY_FORM_DATA: ProcessSheetFormData = {
   elongationMin: '',
   hardness: '',
   straightness: '',
-  cMin: '',
-  cMax: '',
-  mnMin: '',
-  mnMax: '',
-  pMax: '',
-  sMax: '',
-  siMin: '',
-  siMax: '',
-  crMax: '',
-  moMax: '',
-  niMax: '',
-  cuMax: '',
-  vMax: '',
-  nbMax: '',
-  ceMax: '',
   ndt: '',
   hydroPressurePsi: '',
   coating: '',
@@ -159,14 +146,16 @@ const EMPTY_FORM_DATA: ProcessSheetFormData = {
   endCap: '',
   pipeColorCode: '',
   rmColorCode: '',
-  markingSingle: '',
-  markingTriple: '',
+  markingType: 'single',
+  markingText: '',
+  specialInstructions: '',
 };
 
-type FormTab = 'all' | 'order' | 'hotmill' | 'metallurgy' | 'testing' | 'finishing';
+type FormTab = 'all' | 'order' | 'hotmill' | 'dimensions' | 'metallurgy' | 'testing' | 'finishing';
 
 export default function ProcessSheetReportClient() {
   const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [plans, setPlans] = useState<RollingPlanRecord[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -208,6 +197,56 @@ export default function ProcessSheetReportClient() {
     })();
   }, []);
 
+  // Helper to load or populate a plan's process sheet
+  const loadPlanSheet = useCallback(
+    async (plan: RollingPlanRecord, currentSpecs: SpecMasterRecord[]) => {
+      try {
+        const s = createClient();
+        const yr2 = String(new Date().getFullYear()).slice(-2);
+        const cleanWo = String(plan.work_order_no || '').trim();
+        const effectiveWoNo = plan.is_diversion ? `${cleanWo}-Div` : cleanWo;
+        const expectedSheetNo = `${yr2}D${effectiveWoNo}`;
+
+        // Try to fetch existing saved sheet
+        const { data: savedSheet } = await s
+          .from('process_sheets')
+          .select('sheet_data')
+          .eq('sheet_no', expectedSheetNo)
+          .maybeSingle();
+
+        if (savedSheet && savedSheet.sheet_data) {
+          setFormData(savedSheet.sheet_data as ProcessSheetFormData);
+          return;
+        }
+
+        // Fallback by work order no
+        if (cleanWo) {
+          const { data: savedByWo } = await s
+            .from('process_sheets')
+            .select('sheet_data')
+            .eq('work_order_no', cleanWo)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (savedByWo && savedByWo.sheet_data) {
+            setFormData(savedByWo.sheet_data as ProcessSheetFormData);
+            return;
+          }
+        }
+
+        // Auto-populate fresh data
+        const autoData = autoPopulateProcessSheet(plan, currentSpecs);
+        setFormData(autoData);
+      } catch (err) {
+        console.error('Error checking saved process sheet:', err);
+        const autoData = autoPopulateProcessSheet(plan, currentSpecs);
+        setFormData(autoData);
+      }
+    },
+    []
+  );
+
   // 2. Load Work Orders & Rolling Plans
   const loadPlans = useCallback(async () => {
     setLoading(true);
@@ -217,12 +256,16 @@ export default function ProcessSheetReportClient() {
       const [woRes, rPlanRes, routesRes] = await Promise.all([
         s
           .from('work_orders')
-          .select('id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,ordered_qty_pcs,ordered_qty_mtr,status,target_date,destination,po_no,po_date,material_code')
+          .select(
+            'id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,ordered_qty_pcs,ordered_qty_mtr,status,target_date,destination,po_no,po_date,material_code'
+          )
           .order('created_at', { ascending: false })
           .limit(1000),
         s
           .from('rolling_plans')
-          .select('id,plan_no,work_order_id,planned_rolling_date,planned_qty,process_route_id,target_mother_size,multiple,status,mh_od,mh_wt,mh_l1,mh_l2,pass_required')
+          .select(
+            'id,plan_no,work_order_id,planned_rolling_date,planned_qty,process_route_id,target_mother_size,multiple,status,mh_od,mh_wt,mh_l1,mh_l2,pass_required'
+          )
           .order('created_at', { ascending: false })
           .limit(1000),
         s.from('process_routes').select('id,route_code,route_name'),
@@ -241,7 +284,6 @@ export default function ProcessSheetReportClient() {
       const routes = routesRes.data || [];
 
       const routeMap = new Map<string, any>(routes.map((r: any) => [r.id, r]));
-      const woMap = new Map<string, any>(wos.map((w: any) => [w.id, w]));
 
       // Group rolling plans by work order
       const rpByWo = new Map<string, any[]>();
@@ -271,7 +313,8 @@ export default function ProcessSheetReportClient() {
               id: `rp-${r.id}-wo-${wo.id}`,
               plan_no: parsedSt.master_plan_no || r.plan_no || 'Plan',
               work_order_id: wo.id,
-              planned_rolling_date: r.planned_rolling_date || wo.target_date || new Date().toISOString().split('T')[0],
+              planned_rolling_date:
+                r.planned_rolling_date || wo.target_date || new Date().toISOString().split('T')[0],
               planned_qty: Number(r.planned_qty ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0),
               process_route_id: r.process_route_id,
               target_mother_size: r.target_mother_size || null,
@@ -284,8 +327,9 @@ export default function ProcessSheetReportClient() {
               pass_required: Number(r.pass_required ?? 1),
               work_order_no: wo.work_order_no || '',
               customer_name: wo.customer_name || '',
-              grade: wo.grade || parsedSt.grade || '',
-              specification: wo.specification || parsedSt.spec || wo.grade || '',
+              grade: parsedSt.grade || parsedSt.steel_grade || wo.grade || '',
+              specification:
+                parsedSt.spec || parsedSt.specification || wo.specification || parsedSt.grade || wo.grade || '',
               size_od: finalOd || null,
               size_wt: finalWt || null,
               l1: finalL1 || null,
@@ -356,8 +400,7 @@ export default function ProcessSheetReportClient() {
 
       if (mappedList.length > 0) {
         setSelectedPlanId(mappedList[0].id);
-        const autoData = autoPopulateProcessSheet(mappedList[0], specMasterList);
-        setFormData(autoData);
+        await loadPlanSheet(mappedList[0], specMasterList);
       }
     } catch (err: any) {
       console.error('Error loading work orders for process sheet:', err);
@@ -365,21 +408,20 @@ export default function ProcessSheetReportClient() {
     } finally {
       setLoading(false);
     }
-  }, [specMasterList]);
+  }, [specMasterList, loadPlanSheet]);
 
   useEffect(() => {
     loadPlans();
   }, [loadPlans]);
 
   // Handle plan selection
-  const handleSelectPlan = (planId: string) => {
+  const handleSelectPlan = async (planId: string) => {
     setSelectedPlanId(planId);
     const plan = plans.find((p) => p.id === planId);
     if (!plan) return;
 
-    const populated = autoPopulateProcessSheet(plan, specMasterList);
-    setFormData(populated);
-    toast.success(`Process Sheet loaded for ${plan.work_order_no}`);
+    await loadPlanSheet(plan, specMasterList);
+    toast.success(`Loaded Process Sheet for WO ${plan.work_order_no}`);
   };
 
   // Filter plans based on search input
@@ -394,6 +436,70 @@ export default function ProcessSheetReportClient() {
         (p.specification && p.specification.toLowerCase().includes(q))
     );
   }, [plans, searchQuery]);
+
+  // Save / Update process sheet with automatic revision incrementing
+  const handleSaveProcessSheet = async () => {
+    if (!formData.sheetNo || !formData.woNo) {
+      toast.error('Sheet No and Work Order No are required to save.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const s = createClient();
+
+      // Check if this sheet was previously saved in the database
+      const { data: existing } = await s
+        .from('process_sheets')
+        .select('id, sheet_no, sheet_data')
+        .eq('sheet_no', formData.sheetNo)
+        .maybeSingle();
+
+      let nextRev = '0';
+      if (existing) {
+        // Existing sheet edited -> increment revision number
+        const currentRevNum = parseInt(String(formData.revNo || '0').replace(/\D/g, ''), 10) || 0;
+        nextRev = String(currentRevNum + 1);
+      } else {
+        // Fresh initial save -> starts with 0
+        nextRev = formData.revNo || '0';
+      }
+
+      const updatedFormData: ProcessSheetFormData = {
+        ...formData,
+        revNo: nextRev,
+      };
+
+      const { error } = await s.from('process_sheets').upsert(
+        {
+          plan_id: selectedPlanId || `wo-${formData.woNo}`,
+          work_order_no: formData.woNo,
+          sheet_no: formData.sheetNo,
+          sheet_data: updatedFormData,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'sheet_no' }
+      );
+
+      if (error) {
+        console.error('Failed to save process sheet:', error);
+        toast.error('Failed to save process sheet: ' + error.message);
+        return;
+      }
+
+      setFormData(updatedFormData);
+      toast.success(
+        existing
+          ? `Process Sheet updated successfully (Saved as REV ${nextRev})`
+          : `Process Sheet saved successfully (Initial REV 0)`
+      );
+    } catch (err: any) {
+      console.error('Error saving process sheet:', err);
+      toast.error('Failed to save process sheet.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   // Apply spec master record manually
   const handleApplySpecMaster = (spec: SpecMasterRecord) => {
@@ -436,6 +542,9 @@ export default function ProcessSheetReportClient() {
               <h1 className="text-lg font-black text-slate-900 tracking-tight">
                 Process Sheet (Seamless Pipe Mill)
               </h1>
+              <span className="px-2 py-0.5 text-[11px] font-mono font-bold bg-slate-100 text-slate-700 rounded border border-slate-300">
+                REV {formData.revNo || '0'}
+              </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               Production routing parameters, metallurgical specifications, and Barlow test pressure.
@@ -443,6 +552,21 @@ export default function ProcessSheetReportClient() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Save Button */}
+            <button
+              type="button"
+              onClick={handleSaveProcessSheet}
+              disabled={isSaving || loading}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-lg transition-colors shadow-xs cursor-pointer"
+            >
+              {isSaving ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              <span>{isSaving ? 'Saving...' : 'Save Process Sheet'}</span>
+            </button>
+
             {/* View Mode Toggle */}
             <div className="inline-flex rounded-lg border border-slate-300 p-0.5 bg-slate-100 text-xs font-bold shadow-xs">
               <button
@@ -504,7 +628,8 @@ export default function ProcessSheetReportClient() {
               ) : (
                 filteredPlans.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.work_order_no} · {p.customer_name || 'Generic'} · {p.size_od}×{p.size_wt} mm · {p.grade || p.specification} · Route: {p.route_code} ({p.ordered_qty_mtr || p.planned_qty} M)
+                    {p.work_order_no} · {p.customer_name || 'Generic'} · {p.size_od}×{p.size_wt} mm ·{' '}
+                    {p.grade || p.specification} · Route: {p.route_code} ({p.ordered_qty_mtr || p.planned_qty} M)
                   </option>
                 ))
               )}
@@ -519,9 +644,10 @@ export default function ProcessSheetReportClient() {
               { id: 'all', label: 'All Sections' },
               { id: 'order', label: '1. Order Details' },
               { id: 'hotmill', label: '2. Hot Mill & Piercing' },
-              { id: 'metallurgy', label: '3. Metallurgy & Chemistry' },
-              { id: 'testing', label: '4. Testing & Temperatures' },
-              { id: 'finishing', label: '5. Marking & Dispatch' },
+              { id: 'dimensions', label: '3. Pipe Dimensions' },
+              { id: 'metallurgy', label: '4. Metallurgy & Mechanical' },
+              { id: 'testing', label: '5. Testing & Temperatures' },
+              { id: 'finishing', label: '6. Marking & Dispatch' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -556,6 +682,10 @@ export default function ProcessSheetReportClient() {
 
           {(formTab === 'all' || formTab === 'hotmill') && (
             <ProcessSheetHotMillSection data={formData} actions={actions} />
+          )}
+
+          {(formTab === 'all' || formTab === 'dimensions') && (
+            <ProcessSheetDimensionsSection data={formData} actions={actions} />
           )}
 
           {(formTab === 'all' || formTab === 'metallurgy') && (

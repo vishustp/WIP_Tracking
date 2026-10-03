@@ -2,9 +2,10 @@
 'use client';
 
 import React from 'react';
-import { PackageCheck, Palette, Tag } from 'lucide-react';
+import { PackageCheck, Tag, FileText, CheckCircle2 } from 'lucide-react';
 import { FormSectionCard, FormInput } from './FormCommon';
 import type { ProcessSheetFormData, ProcessSheetFormActions } from './types';
+import { buildMarkingString } from '@/lib/metallurgy/processSheetSpecHelper';
 
 export default function ProcessSheetFinishingSection({
   data,
@@ -13,36 +14,97 @@ export default function ProcessSheetFinishingSection({
   data: ProcessSheetFormData;
   actions: ProcessSheetFormActions;
 }) {
+  const currentMarkingType = data.markingType || 'single';
+
+  const handleSelectMarkingType = (type: 'single' | 'triple') => {
+    const generated = buildMarkingString(type, {
+      routeCode: data.routeType,
+      specification: data.materialSpec,
+      grade: data.steelGrade,
+      sizeOd: data.custOd,
+      sizeWt: data.custWt,
+      hydroPsi: data.hydroPressurePsi,
+      woNo: data.woNo,
+      poNo: data.poNo,
+    });
+    actions.updateFields({
+      markingType: type,
+      markingText: generated,
+    });
+  };
+
   return (
     <div className="space-y-5">
       {/* Pipe Stencil Markings */}
-      <FormSectionCard title="Specification Stencil Markings" icon={Tag} headerBg="bg-blue-900">
+      <FormSectionCard title="Specification Stencil Marking" icon={Tag} headerBg="bg-blue-900">
         <div className="space-y-3">
-          <div>
-            <label className="font-bold text-xs text-slate-700 block mb-1">
-              Single Marking Stencil String
-            </label>
-            <textarea
-              rows={2}
-              value={data.markingSingle}
-              onChange={(e) => actions.updateField('markingSingle', e.target.value)}
-              className="w-full px-3 py-2 text-xs font-mono font-bold bg-white text-slate-900 border border-slate-300 rounded-lg focus:border-blue-600 focus:outline-none shadow-xs"
-              placeholder="Single Marking String..."
-            />
+          {/* User selector for Single vs Triple marking */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+            <span className="text-xs font-bold text-slate-800">
+              Select Marking Format:
+            </span>
+            <div className="inline-flex rounded-lg border border-slate-300 p-0.5 bg-white shadow-xs">
+              <button
+                type="button"
+                onClick={() => handleSelectMarkingType('single')}
+                className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-md transition-colors cursor-pointer ${
+                  currentMarkingType === 'single'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {currentMarkingType === 'single' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                <span>Single Line Marking</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectMarkingType('triple')}
+                className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-md transition-colors cursor-pointer ${
+                  currentMarkingType === 'triple'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {currentMarkingType === 'triple' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                <span>Triple Line Marking</span>
+              </button>
+            </div>
           </div>
 
+          {/* Single field for stencil string */}
           <div>
-            <label className="font-bold text-xs text-slate-700 block mb-1">
-              Triple Marking Stencil String (Multi-Specification)
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="font-bold text-xs text-slate-700 block">
+                {currentMarkingType === 'triple' ? 'Triple Line Stencil String' : 'Single Line Stencil String'}
+              </label>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {currentMarkingType === 'triple' ? 'Multi-spec format' : 'Standard single format'}
+              </span>
+            </div>
             <textarea
-              rows={2}
-              value={data.markingTriple}
-              onChange={(e) => actions.updateField('markingTriple', e.target.value)}
+              rows={3}
+              value={data.markingText || ''}
+              onChange={(e) => actions.updateField('markingText', e.target.value)}
               className="w-full px-3 py-2 text-xs font-mono font-bold bg-white text-slate-900 border border-slate-300 rounded-lg focus:border-blue-600 focus:outline-none shadow-xs"
-              placeholder="Triple Marking String..."
+              placeholder="Marking stencil string..."
             />
           </div>
+        </div>
+      </FormSectionCard>
+
+      {/* Special Instructions */}
+      <FormSectionCard title="Special Instructions & Customer Specific Requirements" icon={FileText} headerBg="bg-indigo-900">
+        <div>
+          <label className="font-bold text-xs text-slate-700 block mb-1">
+            Special Instructions / Quality Remarks (Printed on Process Sheet)
+          </label>
+          <textarea
+            rows={3}
+            value={data.specialInstructions || ''}
+            onChange={(e) => actions.updateField('specialInstructions', e.target.value)}
+            className="w-full px-3 py-2 text-xs font-medium bg-white text-slate-900 border border-slate-300 rounded-lg focus:border-blue-600 focus:outline-none shadow-xs"
+            placeholder="e.g. Third-party inspection (TPI) required before dispatch; Strict length tolerance SRL; Color coding on both ends..."
+          />
         </div>
       </FormSectionCard>
 

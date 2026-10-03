@@ -88,23 +88,6 @@ export interface ProcessSheetFormData {
   hardness: string;
   straightness: string;
 
-  // Chemical Composition
-  cMin: string;
-  cMax: string;
-  mnMin: string;
-  mnMax: string;
-  pMax: string;
-  sMax: string;
-  siMin: string;
-  siMax: string;
-  crMax: string;
-  moMax: string;
-  niMax: string;
-  cuMax: string;
-  vMax: string;
-  nbMax: string;
-  ceMax: string;
-
   // Testing & Finishing
   ndt: string;
   hydroPressurePsi: string;
@@ -115,9 +98,10 @@ export interface ProcessSheetFormData {
   pipeColorCode: string;
   rmColorCode: string;
 
-  // Markings
-  markingSingle: string;
-  markingTriple: string;
+  // Markings & Special Instructions
+  markingType: 'single' | 'triple';
+  markingText: string;
+  specialInstructions: string;
 }
 
 export function buildMarkingString(
@@ -182,35 +166,7 @@ export function findMatchingSpecMaster(
   });
 }
 
-const DEFAULT_CHEMISTRY_BY_SPEC: Record<string, {
-  cMin?: string; cMax?: string;
-  mnMin?: string; mnMax?: string;
-  pMax?: string; sMax?: string;
-  siMin?: string; siMax?: string;
-  crMax?: string; moMax?: string;
-  niMax?: string; cuMax?: string;
-  vMax?: string; nbMax?: string;
-  ceMax?: string;
-}> = {
-  A106: { cMax: '0.30', mnMin: '0.29', mnMax: '1.06', pMax: '0.035', sMax: '0.035', siMin: '0.10', crMax: '0.40', moMax: '0.15', niMax: '0.40', cuMax: '0.40', vMax: '0.08', ceMax: '0.50' },
-  A53: { cMax: '0.30', mnMin: '0.29', mnMax: '1.20', pMax: '0.050', sMax: '0.045', siMin: '0.10', crMax: '0.40', moMax: '0.15', niMax: '0.40', cuMax: '0.40', vMax: '0.08', ceMax: '0.50' },
-  A210: { cMax: '0.27', mnMax: '0.93', pMax: '0.035', sMax: '0.035', siMin: '0.10' },
-  A179: { cMin: '0.06', cMax: '0.18', mnMin: '0.27', mnMax: '0.63', pMax: '0.035', sMax: '0.035' },
-  A192: { cMin: '0.06', cMax: '0.18', mnMin: '0.27', mnMax: '0.63', pMax: '0.035', sMax: '0.035', siMin: '0.25' },
-  A335_P11: { cMin: '0.05', cMax: '0.15', mnMin: '0.30', mnMax: '0.60', pMax: '0.025', sMax: '0.025', siMin: '0.50', siMax: '1.00', crMax: '1.50', moMax: '0.65' },
-  A335_P22: { cMin: '0.05', cMax: '0.15', mnMin: '0.30', mnMax: '0.60', pMax: '0.025', sMax: '0.025', siMax: '0.50', crMax: '2.60', moMax: '1.13' },
-};
 
-function resolveChemistryDefaults(specGradeStr: string) {
-  const upper = specGradeStr.toUpperCase();
-  if (upper.includes('210')) return DEFAULT_CHEMISTRY_BY_SPEC.A210;
-  if (upper.includes('179')) return DEFAULT_CHEMISTRY_BY_SPEC.A179;
-  if (upper.includes('192')) return DEFAULT_CHEMISTRY_BY_SPEC.A192;
-  if (upper.includes('P11') || upper.includes('T11')) return DEFAULT_CHEMISTRY_BY_SPEC.A335_P11;
-  if (upper.includes('P22') || upper.includes('T22')) return DEFAULT_CHEMISTRY_BY_SPEC.A335_P22;
-  if (upper.includes('A53')) return DEFAULT_CHEMISTRY_BY_SPEC.A53;
-  return DEFAULT_CHEMISTRY_BY_SPEC.A106;
-}
 
 export function autoPopulateProcessSheet(
   plan: any,
@@ -305,19 +261,6 @@ export function autoPopulateProcessSheet(
     poNo: plan.po_no || parsedSt.po_no,
   });
 
-  const markingTriple = buildMarkingString('triple', {
-    routeCode: rCode,
-    specification: plan.specification || parsedSt.spec,
-    grade: plan.grade || parsedSt.grade,
-    sizeOd: targetOd,
-    sizeWt: targetWt,
-    hydroPsi: hydroStr,
-    woNo: effectiveWoNo,
-    poNo: plan.po_no || parsedSt.po_no,
-  });
-
-  const chemDefaults = resolveChemistryDefaults(fullSpecGrade);
-
   const todayStr = (() => {
     const d = new Date();
     return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
@@ -325,7 +268,7 @@ export function autoPopulateProcessSheet(
 
   return {
     sheetNo: `${yr2}D${effectiveWoNo}`,
-    revNo: 'REV 01',
+    revNo: '0',
     orderType: rCode,
     routeType: rCode,
     sheetDate: todayStr,
@@ -340,7 +283,7 @@ export function autoPopulateProcessSheet(
     deliveryDate: plan.target_date || '',
     materialCode: plan.material_code || parsedSt.material_code || '',
     heatNo: parsedSt.heat_no || '',
-    steelGrade: plan.grade || parsedSt.grade || '',
+    steelGrade: parsedSt.grade || parsedSt.steel_grade || plan.grade || plan.specification || '',
     materialSpec: plan.specification || parsedSt.spec || '',
     inspection: parsedSt.ibr_status || 'IBR',
 
@@ -398,22 +341,6 @@ export function autoPopulateProcessSheet(
     hardness: matchedMaster?.hardness || '85 HRB MAX',
     straightness: matchedMaster?.straightness || '1:1000',
 
-    cMin: chemDefaults.cMin || '',
-    cMax: chemDefaults.cMax || '',
-    mnMin: chemDefaults.mnMin || '',
-    mnMax: chemDefaults.mnMax || '',
-    pMax: chemDefaults.pMax || '',
-    sMax: chemDefaults.sMax || '',
-    siMin: chemDefaults.siMin || '',
-    siMax: chemDefaults.siMax || '',
-    crMax: chemDefaults.crMax || '',
-    moMax: chemDefaults.moMax || '',
-    niMax: chemDefaults.niMax || '',
-    cuMax: chemDefaults.cuMax || '',
-    vMax: chemDefaults.vMax || '',
-    nbMax: chemDefaults.nbMax || '',
-    ceMax: chemDefaults.ceMax || '',
-
     ndt: matchedMaster?.ndt || 'UT',
     hydroPressurePsi: hydroStr,
     coating: matchedMaster?.coating || 'BLACK VARNISH',
@@ -423,7 +350,8 @@ export function autoPopulateProcessSheet(
     pipeColorCode: matchedMaster?.color_spec || 'WHITE',
     rmColorCode: matchedMaster?.rm_color || 'YELLOW + WHITE',
 
-    markingSingle,
-    markingTriple,
+    markingType: 'single',
+    markingText: markingSingle,
+    specialInstructions: parsedSt.special_instructions || parsedSt.specialInstructions || parsedSt.remarks || '',
   };
 }

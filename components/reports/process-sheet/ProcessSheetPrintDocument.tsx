@@ -9,6 +9,10 @@ export default function ProcessSheetPrintDocument({
 }: {
   data: ProcessSheetFormData;
 }) {
+  const revDisplay = data.revNo?.toUpperCase().includes('REV')
+    ? data.revNo
+    : `REV ${data.revNo || '0'}`;
+
   return (
     <div className="bg-white text-black p-4 max-w-[1100px] mx-auto border border-black shadow-lg print:shadow-none print:border-none print:p-0 print:max-w-none text-[9.5px] font-sans antialiased">
       {/* 1. Official Header */}
@@ -44,7 +48,7 @@ export default function ProcessSheetPrintDocument({
             </div>
             <div className="p-1 flex justify-between">
               <span className="font-bold text-slate-600">REV NO:</span>
-              <span className="font-black text-black">{data.revNo || 'REV 01'}</span>
+              <span className="font-black text-black">{revDisplay}</span>
             </div>
             <div className="p-1 flex justify-between">
               <span className="font-bold text-slate-600">DATE:</span>
@@ -85,7 +89,7 @@ export default function ProcessSheetPrintDocument({
           <div className="col-span-2 p-1 font-bold">{data.orderQty || '—'}</div>
         </div>
 
-        {/* 3. Raw Billet & Furnaces */}
+        {/* 3. Raw Billet & Furnaces (Hot Mill Input) */}
         <div className="bg-slate-200 print:bg-slate-100 border-b border-black font-black text-[9.5px] py-0.5 px-2 uppercase tracking-wide">
           RAW MATERIAL BILLET & HEATING PARAMETERS
         </div>
@@ -107,9 +111,9 @@ export default function ProcessSheetPrintDocument({
           <div className="col-span-2 p-1 font-bold text-center">{data.sizingOutletTemp || '880°C - 900°C'}</div>
         </div>
 
-        {/* 4. Piercer Shell & Sizing Mill Mother Hollow */}
+        {/* 4. Hot Piercing & Sizing Mill (Hot Mill Dimensions) */}
         <div className="bg-slate-200 print:bg-slate-100 border-b border-black font-black text-[9.5px] py-0.5 px-2 uppercase tracking-wide">
-          HOT PIERCING & SIZING MILL (MOTHER HOLLOW)
+          HOT PIERCING & SIZING MILL (HOT MILL DIMENSIONS)
         </div>
         <div className="grid grid-cols-12 divide-x divide-black border-b border-black text-[9px]">
           <div className="col-span-2 font-bold p-1 bg-slate-100 print:bg-transparent">PIERCER SHELL:</div>
@@ -131,9 +135,9 @@ export default function ProcessSheetPrintDocument({
           </div>
         </div>
 
-        {/* 5. Final Pipe Dimensions & Tolerances */}
+        {/* 5. Target Pipe Dimensions & Tolerances (Printed after Hot Mill Dimensions) */}
         <div className="bg-slate-200 print:bg-slate-100 border-b border-black font-black text-[9.5px] py-0.5 px-2 uppercase tracking-wide flex justify-between">
-          <span>FINAL FINISHED PIPE DIMENSIONS & TOLERANCES ({data.orderType})</span>
+          <span>TARGET FINISHED PIPE DIMENSIONS & TOLERANCES ({data.orderType})</span>
           <span>{data.isMinWall ? 'MINIMUM WALL (+20% / -0%)' : 'NOMINAL WALL (+15% / -12.5%)'}</span>
         </div>
         <div className="grid grid-cols-12 divide-x divide-black border-b border-black text-[9px]">
@@ -171,39 +175,7 @@ export default function ProcessSheetPrintDocument({
           </div>
         </div>
 
-        {/* 6. Chemical Composition Limits */}
-        <div className="bg-slate-200 print:bg-slate-100 border-b border-black font-black text-[9.5px] py-0.5 px-2 uppercase tracking-wide">
-          SPECIFIED CHEMICAL COMPOSITION (% MAX / RANGE)
-        </div>
-        <div className="grid grid-cols-12 divide-x divide-black border-b border-black text-[8.5px] text-center">
-          <div className="font-bold bg-slate-100 p-0.5">C</div>
-          <div className="font-bold bg-slate-100 p-0.5">Mn</div>
-          <div className="font-bold bg-slate-100 p-0.5">P</div>
-          <div className="font-bold bg-slate-100 p-0.5">S</div>
-          <div className="font-bold bg-slate-100 p-0.5">Si</div>
-          <div className="font-bold bg-slate-100 p-0.5">Cr</div>
-          <div className="font-bold bg-slate-100 p-0.5">Mo</div>
-          <div className="font-bold bg-slate-100 p-0.5">Ni</div>
-          <div className="font-bold bg-slate-100 p-0.5">Cu</div>
-          <div className="font-bold bg-slate-100 p-0.5">V</div>
-          <div className="font-bold bg-slate-100 p-0.5">Nb</div>
-          <div className="font-bold bg-slate-100 p-0.5">CE</div>
-
-          <div className="p-0.5 font-bold">{data.cMax ? (data.cMin ? `${data.cMin}-${data.cMax}` : data.cMax) : '—'}</div>
-          <div className="p-0.5 font-bold">{data.mnMax ? (data.mnMin ? `${data.mnMin}-${data.mnMax}` : data.mnMax) : '—'}</div>
-          <div className="p-0.5 font-bold">{data.pMax || '—'}</div>
-          <div className="p-0.5 font-bold">{data.sMax || '—'}</div>
-          <div className="p-0.5 font-bold">{data.siMax ? (data.siMin ? `${data.siMin}-${data.siMax}` : data.siMax) : data.siMin || '—'}</div>
-          <div className="p-0.5 font-bold">{data.crMax || '—'}</div>
-          <div className="p-0.5 font-bold">{data.moMax || '—'}</div>
-          <div className="p-0.5 font-bold">{data.niMax || '—'}</div>
-          <div className="p-0.5 font-bold">{data.cuMax || '—'}</div>
-          <div className="p-0.5 font-bold">{data.vMax || '—'}</div>
-          <div className="p-0.5 font-bold">{data.nbMax || '—'}</div>
-          <div className="p-0.5 font-bold">{data.ceMax || '—'}</div>
-        </div>
-
-        {/* 7. Mechanical & Testing Specifications */}
+        {/* 6. Mechanical & Testing Specifications (Chemical Compositions removed) */}
         <div className="bg-slate-200 print:bg-slate-100 border-b border-black font-black text-[9.5px] py-0.5 px-2 uppercase tracking-wide">
           MECHANICAL PROPERTIES, HEAT TREATMENT & QUALITY CONTROL
         </div>
@@ -236,21 +208,16 @@ export default function ProcessSheetPrintDocument({
           </div>
         </div>
 
-        {/* 8. Finishing, Markings & Packaging */}
+        {/* 7. Finishing, Single Marking Stencil & Packaging */}
         <div className="bg-slate-200 print:bg-slate-100 border-b border-black font-black text-[9.5px] py-0.5 px-2 uppercase tracking-wide">
           FINISHING, MARKING STENCIL & DISPATCH PACKAGING
         </div>
         <div className="grid grid-cols-12 divide-x divide-black border-b border-black text-[9px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-100 print:bg-transparent">SINGLE MARKING:</div>
-          <div className="col-span-10 p-1 font-mono text-[8.5px] font-bold">
-            {data.markingSingle || '—'}
+          <div className="col-span-2 font-bold p-1 bg-slate-100 print:bg-transparent">
+            MARKING STENCIL:
           </div>
-        </div>
-
-        <div className="grid grid-cols-12 divide-x divide-black border-b border-black text-[9px]">
-          <div className="col-span-2 font-bold p-1 bg-slate-100 print:bg-transparent">TRIPLE MARKING:</div>
-          <div className="col-span-10 p-1 font-mono text-[8.5px] font-bold">
-            {data.markingTriple || '—'}
+          <div className="col-span-10 p-1 font-mono text-[8.5px] font-bold leading-relaxed break-words">
+            {data.markingText || '—'}
           </div>
         </div>
 
@@ -263,6 +230,16 @@ export default function ProcessSheetPrintDocument({
           <div className="col-span-4 p-1 font-bold">
             {data.bundling || 'HEXAGONAL'} ({data.bundleQtyPcs || '—'} PCS · {data.bundleWeightMt || '2 MT'}) · {data.pipeColorCode || 'WHITE'}
           </div>
+        </div>
+
+        {/* 8. Special Instructions / Customer Requirements */}
+        <div className="bg-slate-200 print:bg-slate-100 border-b border-black font-black text-[9.5px] py-0.5 px-2 uppercase tracking-wide">
+          SPECIAL INSTRUCTIONS & TECHNICAL DELIVERY CONDITIONS
+        </div>
+        <div className="p-2 border-b border-black text-[9px] min-h-[36px] bg-white">
+          <p className="font-semibold text-slate-900 leading-normal">
+            {data.specialInstructions ? data.specialInstructions : 'NIL / AS PER APPLICABLE SPECIFICATION'}
+          </p>
         </div>
 
         {/* 9. Signatures Footer */}

@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { FlaskConical, Award, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Award, SlidersHorizontal } from 'lucide-react';
 import { FormSectionCard, FormInput } from './FormCommon';
 import type { ProcessSheetFormData, ProcessSheetFormActions } from './types';
 import type { SpecMasterRecord } from '@/lib/specMasterDefaults';
@@ -97,104 +97,6 @@ export default function ProcessSheetMetallurgySection({
             value={data.straightness}
             onChange={(val) => actions.updateField('straightness', val)}
             placeholder="1:1000"
-          />
-        </div>
-      </FormSectionCard>
-
-      {/* Chemical Composition Limits Table */}
-      <FormSectionCard title="Specified Chemical Composition (% Max / Range)" icon={FlaskConical} headerBg="bg-slate-800">
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
-          <FormInput
-            label="C (Carbon) Min"
-            value={data.cMin}
-            onChange={(val) => actions.updateField('cMin', val)}
-            placeholder="0.00"
-          />
-          <FormInput
-            label="C (Carbon) Max"
-            value={data.cMax}
-            onChange={(val) => actions.updateField('cMax', val)}
-            placeholder="0.30"
-            highlight
-          />
-          <FormInput
-            label="Mn Min"
-            value={data.mnMin}
-            onChange={(val) => actions.updateField('mnMin', val)}
-            placeholder="0.29"
-          />
-          <FormInput
-            label="Mn Max"
-            value={data.mnMax}
-            onChange={(val) => actions.updateField('mnMax', val)}
-            placeholder="1.06"
-            highlight
-          />
-          <FormInput
-            label="P (Phosphorus)"
-            value={data.pMax}
-            onChange={(val) => actions.updateField('pMax', val)}
-            placeholder="0.035"
-          />
-          <FormInput
-            label="S (Sulphur)"
-            value={data.sMax}
-            onChange={(val) => actions.updateField('sMax', val)}
-            placeholder="0.035"
-          />
-          <FormInput
-            label="Si (Silicon) Min"
-            value={data.siMin}
-            onChange={(val) => actions.updateField('siMin', val)}
-            placeholder="0.10"
-          />
-          <FormInput
-            label="Si (Silicon) Max"
-            value={data.siMax}
-            onChange={(val) => actions.updateField('siMax', val)}
-            placeholder="0.50"
-          />
-          <FormInput
-            label="Cr (Chromium)"
-            value={data.crMax}
-            onChange={(val) => actions.updateField('crMax', val)}
-            placeholder="0.40"
-          />
-          <FormInput
-            label="Mo (Moly)"
-            value={data.moMax}
-            onChange={(val) => actions.updateField('moMax', val)}
-            placeholder="0.15"
-          />
-          <FormInput
-            label="Ni (Nickel)"
-            value={data.niMax}
-            onChange={(val) => actions.updateField('niMax', val)}
-            placeholder="0.40"
-          />
-          <FormInput
-            label="Cu (Copper)"
-            value={data.cuMax}
-            onChange={(val) => actions.updateField('cuMax', val)}
-            placeholder="0.40"
-          />
-          <FormInput
-            label="V (Vanadium)"
-            value={data.vMax}
-            onChange={(val) => actions.updateField('vMax', val)}
-            placeholder="0.08"
-          />
-          <FormInput
-            label="Nb (Columbium)"
-            value={data.nbMax}
-            onChange={(val) => actions.updateField('nbMax', val)}
-            placeholder="0.02"
-          />
-          <FormInput
-            label="CE (Carbon Eq.)"
-            value={data.ceMax}
-            onChange={(val) => actions.updateField('ceMax', val)}
-            placeholder="0.50"
           />
         </div>
       </FormSectionCard>

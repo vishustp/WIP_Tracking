@@ -89,9 +89,8 @@ describe('Process Sheet Spec Helper & Auto-Population Engine', () => {
     expect(Number(data.hydroPressurePsi)).toBeLessThanOrEqual(2500);
 
     // Stencil marking string
-    expect(data.markingSingle).toContain('RASHMI SMLS');
-    expect(data.markingSingle).toContain('OD 88.90 MM X WT 5.49 MM');
-    expect(data.markingTriple).toContain('ASTM A106 Gr B');
+    expect(data.markingText).toContain('RASHMI SMLS');
+    expect(data.markingText).toContain('OD 88.90 MM X WT 5.49 MM');
   });
 
   it('correctly applies Minimum Wall (+20% / -0%) tolerances for ASTM A210/A213 CDS orders', () => {
