@@ -59,6 +59,15 @@ export default function ProcessSheetOrderDetails({
             highlight
           />
         </div>
+
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <FormInput
+            label="Process Route Sequence"
+            value={data.processRouteSequence}
+            onChange={(val) => actions.updateField('processRouteSequence', val)}
+            placeholder="BILLET CUTTING # WHF # PIERCER LXC 50 # SIZING # STR # CUTTING # ..."
+          />
+        </div>
       </FormSectionCard>
 
       {/* 2. Customer & Commercial Information */}
@@ -108,7 +117,7 @@ export default function ProcessSheetOrderDetails({
           />
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 pt-3 border-t border-slate-100">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3 pt-3 border-t border-slate-100">
           <FormInput
             label="Material Code"
             value={data.materialCode}
@@ -134,6 +143,12 @@ export default function ProcessSheetOrderDetails({
             value={data.heatNo}
             onChange={(val) => actions.updateField('heatNo', val)}
             placeholder="Heat No."
+          />
+          <FormInput
+            label="Priority"
+            value={data.priority}
+            onChange={(val) => actions.updateField('priority', val)}
+            placeholder="1"
           />
         </div>
       </FormSectionCard>

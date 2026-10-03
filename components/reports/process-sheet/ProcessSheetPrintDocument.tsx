@@ -145,7 +145,7 @@ export default function ProcessSheetPrintDocument({
               </td>
               <td className="border-r border-black p-1 font-bold">PRIORITY :</td>
               <td colSpan={3} className="p-1 font-bold text-center">
-                1
+                {data.priority || '1'}
               </td>
             </tr>
 
@@ -256,7 +256,7 @@ export default function ProcessSheetPrintDocument({
             <tr className="border-b border-black text-center font-bold">
               <td className="border-r border-black p-1">{data.piercerOd || ''}</td>
               <td className="border-r border-black p-1">{data.piercerWt || ''}</td>
-              <td className="border-r border-black p-1">4.36</td>
+              <td className="border-r border-black p-1">{data.piercerShellLen || '4.36'}</td>
               <td className="border-r border-black p-1">{data.shellWeight || '7.94'}</td>
               <td className="border-r border-black p-1">NA</td>
               <td className="p-1">NA</td>
@@ -345,7 +345,7 @@ export default function ProcessSheetPrintDocument({
             <tr className="border-b border-black">
               <td className="border-r border-black p-1 font-bold">PROCESS ROUTE :</td>
               <td colSpan={7} className="p-1 font-bold text-[7px] tracking-tight leading-snug">
-                {defaultRouteString}
+                {data.processRouteSequence || defaultRouteString}
               </td>
             </tr>
           </tbody>
@@ -432,12 +432,12 @@ export default function ProcessSheetPrintDocument({
                   </td>
                 </tr>
                 <tr className="border-b border-black text-center font-semibold">
-                  <td className="border-r border-black p-0.5">OD: NA</td>
-                  <td className="border-r border-black p-0.5">WT: NA</td>
-                  <td className="border-r border-black p-0.5">OD: NA</td>
-                  <td className="border-r border-black p-0.5">WT: NA</td>
-                  <td className="border-r border-black p-0.5">OD: NA</td>
-                  <td className="p-0.5">WT: NA</td>
+                  <td className="border-r border-black p-0.5">OD: {data.pass1Od || 'NA'}</td>
+                  <td className="border-r border-black p-0.5">WT: {data.pass1Wt || 'NA'}</td>
+                  <td className="border-r border-black p-0.5">OD: {data.pass2Od || 'NA'}</td>
+                  <td className="border-r border-black p-0.5">WT: {data.pass2Wt || 'NA'}</td>
+                  <td className="border-r border-black p-0.5">OD: {data.pass3Od || 'NA'}</td>
+                  <td className="p-0.5">WT: {data.pass3Wt || 'NA'}</td>
                 </tr>
 
                 {/* Heat Treatment */}
@@ -445,13 +445,15 @@ export default function ProcessSheetPrintDocument({
                   <td className="border-r border-black p-1 font-bold">HEAT TREATMENT</td>
                   <td className="border-r border-black p-1 font-bold text-center bg-slate-50">CYCLE</td>
                   <td className="border-r border-black p-1 font-bold text-center">CONDITION</td>
-                  <td colSpan={4} className="p-1 font-bold text-center">HARDNESS</td>
+                  <td colSpan={2} className="border-r border-black p-1 font-bold text-center">HARDNESS</td>
+                  <td colSpan={2} className="p-1 font-bold text-center">STRAIGHTNESS</td>
                 </tr>
                 <tr className="border-b border-black">
                   <td className="border-r border-black p-1 font-bold">ANNEALED</td>
                   <td className="border-r border-black p-1 text-center font-medium">{data.htCycle || 'ANNEALING'}</td>
                   <td className="border-r border-black p-1 text-center font-medium">{data.htCondition || 'ANNEALING'}</td>
-                  <td colSpan={4} className="p-1 text-center font-bold">{data.hardness || '79 HRB MAX'}</td>
+                  <td colSpan={2} className="border-r border-black p-1 text-center font-bold">{data.hardness || '79 HRB MAX'}</td>
+                  <td colSpan={2} className="p-1 text-center font-bold">{data.straightness || '1:1000'}</td>
                 </tr>
 
                 {/* Mechanical Properties */}

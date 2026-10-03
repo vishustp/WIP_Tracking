@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { Ruler, AlertCircle } from 'lucide-react';
+import { Ruler, AlertCircle, Layers } from 'lucide-react';
 import { FormSectionCard, FormInput } from './FormCommon';
 import type { ProcessSheetFormData, ProcessSheetFormActions } from './types';
 
@@ -13,6 +13,8 @@ export default function ProcessSheetDimensionsSection({
   data: ProcessSheetFormData;
   actions: ProcessSheetFormActions;
 }) {
+  const isCds = data.routeType?.includes('CDS') || data.orderType?.includes('CDS');
+
   return (
     <div className="space-y-5">
       {/* Finished Pipe Target Dimensions */}
@@ -129,6 +131,61 @@ export default function ProcessSheetDimensionsSection({
             value={data.finalTolWtMax}
             onChange={(val) => actions.updateField('finalTolWtMax', val)}
             unit="MM"
+          />
+        </div>
+      </FormSectionCard>
+
+      {/* Inter-Pass Drawing Dimensions (for CDS / Multi-pass routes) */}
+      <FormSectionCard
+        title={`Cold Drawing Inter-Pass Dimensions (Pass 1 - 3)${isCds ? ' - Active CDS Route' : ''}`}
+        icon={Layers}
+        headerBg="bg-slate-700"
+      >
+        <p className="text-xs text-slate-500 mb-3">
+          Optional intermediate drawing passes. Defaults to &apos;NA&apos; on the printed process sheet if left blank.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <FormInput
+            label="Pass 1 OD"
+            value={data.pass1Od || ''}
+            onChange={(val) => actions.updateField('pass1Od', val)}
+            unit="MM"
+            placeholder="NA"
+          />
+          <FormInput
+            label="Pass 1 WT"
+            value={data.pass1Wt || ''}
+            onChange={(val) => actions.updateField('pass1Wt', val)}
+            unit="MM"
+            placeholder="NA"
+          />
+          <FormInput
+            label="Pass 2 OD"
+            value={data.pass2Od || ''}
+            onChange={(val) => actions.updateField('pass2Od', val)}
+            unit="MM"
+            placeholder="NA"
+          />
+          <FormInput
+            label="Pass 2 WT"
+            value={data.pass2Wt || ''}
+            onChange={(val) => actions.updateField('pass2Wt', val)}
+            unit="MM"
+            placeholder="NA"
+          />
+          <FormInput
+            label="Pass 3 OD"
+            value={data.pass3Od || ''}
+            onChange={(val) => actions.updateField('pass3Od', val)}
+            unit="MM"
+            placeholder="NA"
+          />
+          <FormInput
+            label="Pass 3 WT"
+            value={data.pass3Wt || ''}
+            onChange={(val) => actions.updateField('pass3Wt', val)}
+            unit="MM"
+            placeholder="NA"
           />
         </div>
       </FormSectionCard>

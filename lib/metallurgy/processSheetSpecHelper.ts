@@ -20,11 +20,21 @@ export interface ProcessSheetFormData {
   woDate: string;
   orderQty: string;
   deliveryDate: string;
+  priority: string;
   materialCode: string;
   heatNo: string;
   steelGrade: string;
   materialSpec: string;
   inspection: string;
+  processRouteSequence: string;
+
+  // Inter Pass (Cold Drawing)
+  pass1Od?: string;
+  pass1Wt?: string;
+  pass2Od?: string;
+  pass2Wt?: string;
+  pass3Od?: string;
+  pass3Wt?: string;
 
   // Finished Pipe Dimensions
   custOd: string;
@@ -540,8 +550,22 @@ export function autoPopulateProcessSheet(
   const bDia = Number(parsedSt.billet?.rm_od || (mhOd > 75 ? 90.0 : mhOd > 0 ? 63.0 : 0));
   const bSect = bDia > 0 ? Number(parsedSt.billet?.weight_kg || (((bDia * bDia * 3.14159 * 0.007856) / 4).toFixed(2))) : 0;
 
+  const rawRmLen = Number(parsedSt.billet?.rm_len_min ?? parsedSt.rm_len_min ?? 0);
+  const billetLenMm = rawRmLen > 0
+    ? (rawRmLen < 20 ? Math.round(rawRmLen * 1000) : Math.round(rawRmLen)).toString()
+    : '';
+
   const plannedMtr = plan.planned_qty || parsedSt.rolling_mtr || plan.ordered_qty_mtr || 0;
   const nosCalc = avgLen > 0 ? Math.round(Number(plannedMtr || 0) / avgLen) : 0;
+  const calcOrderMt = kgMtr > 0 ? ((kgMtr * Number(plannedMtr || 0)) / 1000).toFixed(2) : '';
+  const totalTheoBilletMt =
+    parsedSt.plan_qty?.mton
+      ? Number(parsedSt.plan_qty.mton).toFixed(2)
+      : parsedSt.plan_qty_mton
+        ? Number(parsedSt.plan_qty_mton).toFixed(2)
+        : calcOrderMt || (bSect > 0 && nosCalc > 0 && rawRmLen > 0
+            ? (((bSect * (rawRmLen < 20 ? rawRmLen : rawRmLen / 1000)) * nosCalc) / 1000).toFixed(2)
+            : '');
 
   const smysMpa = matchedMaster?.smys_mpa ? Number(matchedMaster.smys_mpa) : 240;
   const hydroCalc = targetOd > 0 && targetWt > 0 ? calculateHydroPressurePsi(targetOd, targetWt, smysMpa) : { pressurePsi: 0 };
@@ -551,6 +575,10 @@ export function autoPopulateProcessSheet(
   if (targetOd > 0 && targetWt > 0) {
     initialTols = calculateStandardTolerances(targetOd, targetWt, fullSpecGrade || matchedMaster?.spec_full || '', resolvedRoute);
   }
+
+  const defaultRouteSequence = isCds
+    ? 'BILLET CUTTING # WHF # PIERCER LXC 50 # SIZING # STR # CUTTING # VDI # STP # POINTING # DB # ANNEALING # STR # CUTTING # HUT # HYDRO # VDI # BLACK VARNISH # BUNDLING'
+    : 'BILLET CUTTING # WHF # PIERCER LXC 50 # SIZING # STR # CUTTING # VDI # FINISHING # HYDRO # BLACK VARNISH # BUNDLING';
 
   const markingSingle = buildMarkingString('single', {
     routeCode: resolvedRoute,
@@ -582,12 +610,21 @@ export function autoPopulateProcessSheet(
     woNo: effectiveWoNo,
     woDate: woDateFormatted || todayStr,
     orderQty: plan.ordered_qty_mtr ? `${plan.ordered_qty_mtr} MTR` : plannedMtr ? `${plannedMtr} MTR` : '',
-    deliveryDate: plan.target_date || '',
+    deliveryDate: plan.target_date || 'IMMEDIATE',
+    priority: String(parsedSt.priority || '1'),
     materialCode: plan.material_code || parsedSt.material_code || '',
     heatNo: parsedSt.heat_no || '',
     steelGrade: resolvedSteelGrade,
     materialSpec: plan.specification || parsedSt.spec || matchedMaster?.spec_full || '',
     inspection: parsedSt.ibr_status || 'IBR',
+    processRouteSequence: parsedSt.route_sequence || defaultRouteSequence,
+
+    pass1Od: parsedSt.pass1_od || '',
+    pass1Wt: parsedSt.pass1_wt || '',
+    pass2Od: parsedSt.pass2_od || '',
+    pass2Wt: parsedSt.pass2_wt || '',
+    pass3Od: parsedSt.pass3_od || '',
+    pass3Wt: parsedSt.pass3_wt || '',
 
     custOd: targetOd > 0 ? targetOd.toFixed(2) : '',
     custWt: targetWt > 0 ? targetWt.toFixed(2) : '',
@@ -615,8 +652,8 @@ export function autoPopulateProcessSheet(
 
     billetDia: bDia > 0 ? bDia.toFixed(2) : '',
     billetSectWt: bSect > 0 ? bSect.toFixed(2) : '',
-    billetLength: parsedSt.billet?.rm_len_min ? String(parsedSt.billet.rm_len_min) : '',
-    totalWeightMt: bSect > 0 ? (parsedSt.billet?.billet_wt_whf || ((bSect * 1.29) / 1000)).toFixed(2) : '',
+    billetLength: billetLenMm,
+    totalWeightMt: totalTheoBilletMt,
 
     multiple: (plan.multiple || parsedSt.multiple || 1).toString(),
     planQtyMtrs: plannedMtr ? plannedMtr.toString() : '',
