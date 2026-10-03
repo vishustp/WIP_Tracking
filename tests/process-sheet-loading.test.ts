@@ -32,7 +32,6 @@ describe('Process Sheet Query & Loading', () => {
     expect(data.length).toBeGreaterThan(0);
     const woNos = data.map((w: any) => w.work_order_no).filter(Boolean);
     expect(woNos.length).toBeGreaterThan(0);
-    console.log('Successfully fetched work orders:', woNos.slice(0, 5));
   });
 
   it('fails if non-existent columns like item_code or purchase_order_no are queried', async () => {

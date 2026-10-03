@@ -43,6 +43,29 @@ describe('Process Sheet Modifications Plan Requirements', () => {
     expect(data.steelGrade).toBe('SAE 1018 Rolling RM Grade');
   });
 
+  it('Fetches route from Rolling plan when specified in status or plan properties', () => {
+    const planWithCdsStatus = {
+      ...mockPlanWithRollingGrade,
+      route_code: 'HFS',
+      status: {
+        ...mockPlanWithRollingGrade.status,
+        route_code: 'CDS',
+      },
+    };
+    const data1 = autoPopulateProcessSheet(planWithCdsStatus, DEFAULT_SPEC_MASTER_RECORDS);
+    expect(data1.routeType).toBe('CDS');
+    expect(data1.orderType).toBe('CDS');
+
+    const planWithAlloyCds = {
+      ...mockPlanWithRollingGrade,
+      route_code: 'ALLOY_CDS',
+      status: {},
+    };
+    const data2 = autoPopulateProcessSheet(planWithAlloyCds, DEFAULT_SPEC_MASTER_RECORDS);
+    expect(data2.routeType).toBe('ALLOY_CDS');
+    expect(data2.orderType).toBe('ALLOY_CDS');
+  });
+
   it('Requirement 3: Omits chemical composition fields from ProcessSheetFormData', () => {
     const data: any = autoPopulateProcessSheet(mockPlanWithRollingGrade, DEFAULT_SPEC_MASTER_RECORDS);
     expect(data.cMin).toBeUndefined();

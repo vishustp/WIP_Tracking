@@ -172,14 +172,26 @@ export function autoPopulateProcessSheet(
   plan: any,
   specMasterList: SpecMasterRecord[]
 ): ProcessSheetFormData {
-  const isCds = (plan.route_code || '').toUpperCase().includes('CDS');
-  const rCode = isCds ? 'CDS' : 'HFS';
+  const parsedSt = plan.status && typeof plan.status === 'object' ? plan.status : {};
+
+  // Extract Route from Rolling plan (status route properties or plan.route_code)
+  const planRouteCandidate = (
+    parsedSt.route_code ||
+    parsedSt.route ||
+    parsedSt.route_name ||
+    plan.route_code ||
+    plan.route_name ||
+    'HFS'
+  ).toString().toUpperCase();
+
+  const isCds = planRouteCandidate.includes('CDS');
+  const isAlloy = planRouteCandidate.includes('ALLOY');
+  const rCode = isAlloy ? (isCds ? 'ALLOY_CDS' : 'ALLOY_HFS') : (isCds ? 'CDS' : 'HFS');
+  const resolvedRoute = parsedSt.route_code || parsedSt.route || plan.route_code || rCode;
 
   const cleanWo = String(plan.work_order_no || '').trim();
   const effectiveWoNo = plan.is_diversion ? `${cleanWo}-Div` : cleanWo;
   const yr2 = String(new Date().getFullYear()).slice(-2);
-
-  const parsedSt = plan.status && typeof plan.status === 'object' ? plan.status : {};
 
   let woDateFormatted = '';
   if (parsedSt.wo_date) {
@@ -247,11 +259,11 @@ export function autoPopulateProcessSheet(
 
   let initialTols = { od_min: 0, od_max: 0, wt_min: 0, wt_max: 0 };
   if (targetOd > 0 && targetWt > 0) {
-    initialTols = calculateStandardTolerances(targetOd, targetWt, fullSpecGrade || matchedMaster?.spec_full || '', rCode);
+    initialTols = calculateStandardTolerances(targetOd, targetWt, fullSpecGrade || matchedMaster?.spec_full || '', resolvedRoute);
   }
 
   const markingSingle = buildMarkingString('single', {
-    routeCode: rCode,
+    routeCode: resolvedRoute,
     specification: plan.specification || parsedSt.spec,
     grade: plan.grade || parsedSt.grade,
     sizeOd: targetOd,
@@ -269,8 +281,8 @@ export function autoPopulateProcessSheet(
   return {
     sheetNo: `${yr2}D${effectiveWoNo}`,
     revNo: '0',
-    orderType: rCode,
-    routeType: rCode,
+    orderType: resolvedRoute,
+    routeType: resolvedRoute,
     sheetDate: todayStr,
 
     customer: plan.customer_name || '',

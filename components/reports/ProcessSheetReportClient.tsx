@@ -215,7 +215,16 @@ export default function ProcessSheetReportClient() {
           .maybeSingle();
 
         if (savedSheet && savedSheet.sheet_data) {
-          setFormData(savedSheet.sheet_data as ProcessSheetFormData);
+          const sheetData = { ...(savedSheet.sheet_data as ProcessSheetFormData) };
+          // If the plan has an active route from rolling plan, ensure it synchronizes
+          if (plan.route_code) {
+            sheetData.routeType = plan.route_code;
+            sheetData.orderType = plan.route_code;
+          }
+          if (plan.grade) {
+            sheetData.steelGrade = plan.grade;
+          }
+          setFormData(sheetData);
           return;
         }
 
@@ -230,7 +239,15 @@ export default function ProcessSheetReportClient() {
             .maybeSingle();
 
           if (savedByWo && savedByWo.sheet_data) {
-            setFormData(savedByWo.sheet_data as ProcessSheetFormData);
+            const sheetData = { ...(savedByWo.sheet_data as ProcessSheetFormData) };
+            if (plan.route_code) {
+              sheetData.routeType = plan.route_code;
+              sheetData.orderType = plan.route_code;
+            }
+            if (plan.grade) {
+              sheetData.steelGrade = plan.grade;
+            }
+            setFormData(sheetData);
             return;
           }
         }
@@ -303,11 +320,35 @@ export default function ProcessSheetReportClient() {
 
         if (associatedRps.length > 0) {
           associatedRps.forEach((r: any) => {
-            const route = routeMap.get(r.process_route_id) || {};
             let parsedSt: any = {};
             try {
               parsedSt = typeof r.status === 'string' ? JSON.parse(r.status) : r.status || {};
             } catch {}
+
+            // Priority 1: r.process_route_id in routeMap
+            // Priority 2: parsedSt.route_id / parsedSt.process_route_id in routeMap
+            // Priority 3: parsedSt.route_code / parsedSt.route / parsedSt.route_name
+            const routeIdFromPlan = r.process_route_id || parsedSt.route_id || parsedSt.process_route_id;
+            let route = routeIdFromPlan ? routeMap.get(routeIdFromPlan) : null;
+            if (!route) {
+              const codeCandidate = String(parsedSt.route_code || parsedSt.route || parsedSt.route_name || '').toUpperCase();
+              if (codeCandidate) {
+                route = routes.find(
+                  (rt: any) =>
+                    rt.route_code?.toUpperCase() === codeCandidate ||
+                    rt.id === codeCandidate ||
+                    rt.route_name?.toUpperCase() === codeCandidate
+                ) || { route_code: codeCandidate, route_name: codeCandidate };
+              }
+            }
+
+            const effectiveRouteCode =
+              route?.route_code ||
+              parsedSt.route_code ||
+              parsedSt.route ||
+              (parsedSt.catg?.toUpperCase().includes('CDS') ? 'CDS' : null) ||
+              'HFS';
+            const effectiveRouteName = route?.route_name || effectiveRouteCode;
 
             mappedList.push({
               id: `rp-${r.id}-wo-${wo.id}`,
@@ -337,8 +378,8 @@ export default function ProcessSheetReportClient() {
               ordered_qty: Number(wo.ordered_qty || 0),
               ordered_qty_pcs: Number(wo.ordered_qty_pcs || 0),
               ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
-              route_code: route.route_code || 'HFS',
-              route_name: route.route_name || route.route_code || 'HFS',
+              route_code: effectiveRouteCode,
+              route_name: effectiveRouteName,
               po_no: wo.po_no || parsedSt.po_no || null,
               po_date: wo.po_date || parsedSt.po_date || null,
               material_code: wo.material_code || parsedSt.material_code || null,
