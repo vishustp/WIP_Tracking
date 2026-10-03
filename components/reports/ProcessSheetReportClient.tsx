@@ -451,9 +451,12 @@ export default function ProcessSheetReportClient() {
 
       setPlans(mappedList);
 
-      if (mappedList.length > 0) {
-        setSelectedPlanId(mappedList[0].id);
-        await loadPlanSheet(mappedList[0], specMasterList);
+      // Only re-fetch if a plan was already explicitly selected
+      if (selectedPlanId) {
+        const existingSelected = mappedList.find((p) => p.id === selectedPlanId);
+        if (existingSelected) {
+          await loadPlanSheet(existingSelected, specMasterList);
+        }
       }
     } catch (err: any) {
       console.error('Error loading work orders for process sheet:', err);
@@ -461,7 +464,7 @@ export default function ProcessSheetReportClient() {
     } finally {
       setLoading(false);
     }
-  }, [specMasterList, loadPlanSheet]);
+  }, [specMasterList, loadPlanSheet, selectedPlanId]);
 
   useEffect(() => {
     loadPlans();
@@ -470,6 +473,10 @@ export default function ProcessSheetReportClient() {
   // Handle plan selection
   const handleSelectPlan = async (planId: string) => {
     setSelectedPlanId(planId);
+    if (!planId) {
+      setFormData(EMPTY_FORM_DATA);
+      return;
+    }
     const plan = plans.find((p) => p.id === planId);
     if (!plan) return;
 
@@ -676,8 +683,9 @@ export default function ProcessSheetReportClient() {
               disabled={loading}
               className="w-full px-3 py-1.5 text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs cursor-pointer"
             >
+              <option value="">-- Select Work Order / Rolling Plan --</option>
               {filteredPlans.length === 0 ? (
-                <option value="">No matching work orders found</option>
+                <option value="" disabled>No matching work orders found</option>
               ) : (
                 filteredPlans.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -718,6 +726,20 @@ export default function ProcessSheetReportClient() {
           </div>
         )}
       </div>
+
+      {/* Informational banner when no work order is selected */}
+      {!loading && !selectedPlanId && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-center justify-between text-xs text-amber-900 shadow-xs">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 font-bold uppercase tracking-wider bg-amber-200 text-amber-900 rounded text-[10px]">
+              Notice
+            </span>
+            <span className="font-semibold">
+              No Work Order selected. All fields are blank. Select a Work Order from the dropdown above to load data.
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       {loading ? (
