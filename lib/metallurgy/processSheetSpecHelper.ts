@@ -309,6 +309,28 @@ export function findMatchingSpecMaster(
 
 
 
+export function isPipeSpecRatherThanSteelGrade(str?: string | null): boolean {
+  if (!str) return false;
+  const s = str.toUpperCase().trim();
+  return (
+    s.startsWith('ASTM') ||
+    s.startsWith('ASME') ||
+    s.startsWith('DIN 2391') ||
+    s.startsWith('EN 10305') ||
+    s.startsWith('BS 3059') ||
+    s.startsWith('IS 1239') ||
+    s.startsWith('IS 3589') ||
+    s.includes('A106') ||
+    s.includes('A53') ||
+    s.includes('A179') ||
+    s.includes('A192') ||
+    s.includes('A210') ||
+    s.includes('A335') ||
+    s.includes('A213') ||
+    s.includes('A312')
+  );
+}
+
 export function inferRouteFromMaterialOrSpec(
   materialCode?: string | null,
   spec?: string | null,
@@ -359,12 +381,25 @@ export function autoPopulateProcessSheet(
   const parsedSt = plan.status && typeof plan.status === 'object' ? plan.status : {};
 
   const specText = plan.specification || parsedSt.spec || '';
-  const gradeText = plan.grade || parsedSt.grade || parsedSt.steel_grade || '';
-  const fullSpecGrade = `${specText} ${gradeText}`.trim();
-  const matchedMaster = findMatchingSpecMaster(fullSpecGrade, specMasterList, specText, gradeText);
+  const parsedGrade = String(parsedSt.grade || parsedSt.steel_grade || '').trim();
+  const planGrade = String(plan.grade || '').trim();
+  const fullSpecGrade = `${specText} ${parsedGrade || planGrade}`.trim();
+  const matchedMaster = findMatchingSpecMaster(fullSpecGrade, specMasterList, specText, parsedGrade || planGrade);
+
+  // Resolve Steel Grade (Raw Material / Billet Grade e.g. SAE 1018 / 15C8 RS-03)
+  let resolvedSteelGrade = '';
+  if (parsedGrade && !isPipeSpecRatherThanSteelGrade(parsedGrade)) {
+    resolvedSteelGrade = parsedGrade;
+  } else if (matchedMaster?.steel_grade) {
+    resolvedSteelGrade = matchedMaster.steel_grade;
+  } else if (planGrade && !isPipeSpecRatherThanSteelGrade(planGrade)) {
+    resolvedSteelGrade = planGrade;
+  } else {
+    resolvedSteelGrade = parsedGrade || matchedMaster?.steel_grade || planGrade || plan.specification || '';
+  }
 
   const matCode = (plan.material_code || parsedSt.material_code || '').toString().toUpperCase();
-  const inferred = inferRouteFromMaterialOrSpec(matCode, specText, gradeText);
+  const inferred = inferRouteFromMaterialOrSpec(matCode, specText, resolvedSteelGrade || planGrade);
 
   // Extract Route from Rolling plan (status route properties, plan.route_code, or inferred)
   const explicitRoute = (
@@ -488,8 +523,8 @@ export function autoPopulateProcessSheet(
     deliveryDate: plan.target_date || '',
     materialCode: plan.material_code || parsedSt.material_code || '',
     heatNo: parsedSt.heat_no || '',
-    steelGrade: parsedSt.grade || parsedSt.steel_grade || plan.grade || plan.specification || '',
-    materialSpec: plan.specification || parsedSt.spec || '',
+    steelGrade: resolvedSteelGrade,
+    materialSpec: plan.specification || parsedSt.spec || matchedMaster?.spec_full || '',
     inspection: parsedSt.ibr_status || 'IBR',
 
     custOd: targetOd > 0 ? targetOd.toFixed(2) : '',

@@ -135,5 +135,33 @@ describe('Process Sheet Modifications Plan Requirements', () => {
     expect(Number(data.finalTolWtMin)).toBeCloseTo(5.72, 1);
     expect(Number(data.finalTolWtMax)).toBeCloseTo(6.98, 1);
   });
+
+  it('WO 6555 Test Case: Resolves Steel Grade to SAE 1018 instead of duplicating pipe specification ASTM A106 Gr B', () => {
+    const mockWo6555 = {
+      id: 'ab3ab66c-115b-4ad5-9840-ddf7bb4c7203',
+      work_order_no: '6555',
+      customer_name: 'Steel Sales Company',
+      size_od: 73,
+      size_wt: 7.01,
+      grade: 'ASTM A106 Gr B',
+      specification: 'ASTM A106 Gr B',
+      ordered_qty: 550,
+      ordered_qty_mtr: 550,
+      l1: 5,
+      l2: 7,
+      material_code: 'HFISB0730007010020',
+      status: 'Pending Plan',
+    };
+
+    const data = autoPopulateProcessSheet(mockWo6555, DEFAULT_SPEC_MASTER_RECORDS);
+
+    // Steel Grade MUST be the raw material/billet grade (SAE 1018), NOT the pipe specification ASTM A106 Gr B
+    expect(data.steelGrade).toContain('SAE 1018');
+    expect(data.steelGrade).not.toBe('ASTM A106 Gr B');
+
+    // Material Specification should hold the pipe specification
+    expect(data.materialSpec).toContain('ASTM A106 Gr B');
+  });
 });
+
 

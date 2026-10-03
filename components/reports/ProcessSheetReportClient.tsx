@@ -25,7 +25,9 @@ import type { SpecMasterRecord } from '@/lib/specMasterDefaults';
 import { DEFAULT_SPEC_MASTER_RECORDS } from '@/lib/specMasterDefaults';
 import {
   autoPopulateProcessSheet,
+  findMatchingSpecMaster,
   inferRouteFromMaterialOrSpec,
+  isPipeSpecRatherThanSteelGrade,
   type ProcessSheetFormData,
 } from '@/lib/metallurgy/processSheetSpecHelper';
 
@@ -222,7 +224,7 @@ export default function ProcessSheetReportClient() {
             sheetData.routeType = plan.route_code;
             sheetData.orderType = plan.route_code;
           }
-          if (plan.grade) {
+          if (plan.grade && !isPipeSpecRatherThanSteelGrade(plan.grade)) {
             sheetData.steelGrade = plan.grade;
           }
           setFormData(sheetData);
@@ -245,7 +247,7 @@ export default function ProcessSheetReportClient() {
               sheetData.routeType = plan.route_code;
               sheetData.orderType = plan.route_code;
             }
-            if (plan.grade) {
+            if (plan.grade && !isPipeSpecRatherThanSteelGrade(plan.grade)) {
               sheetData.steelGrade = plan.grade;
             }
             setFormData(sheetData);
@@ -357,6 +359,16 @@ export default function ProcessSheetReportClient() {
               inferred.route_code;
             const effectiveRouteName = route?.route_name || inferred.route_name;
 
+            const rawGrade = String(parsedSt.grade || parsedSt.steel_grade || wo.grade || '').trim();
+            const specCandidate = String(parsedSt.spec || parsedSt.specification || wo.specification || wo.grade || '').trim();
+            const matchedSpec = findMatchingSpecMaster(`${specCandidate} ${rawGrade}`.trim(), specMasterList, specCandidate, rawGrade);
+            const actualSteelGrade =
+              (parsedSt.grade && !isPipeSpecRatherThanSteelGrade(parsedSt.grade) ? parsedSt.grade : null) ||
+              (parsedSt.steel_grade && !isPipeSpecRatherThanSteelGrade(parsedSt.steel_grade) ? parsedSt.steel_grade : null) ||
+              matchedSpec?.steel_grade ||
+              (!isPipeSpecRatherThanSteelGrade(rawGrade) ? rawGrade : '') ||
+              rawGrade;
+
             mappedList.push({
               id: `rp-${r.id}-wo-${wo.id}`,
               plan_no: parsedSt.master_plan_no || r.plan_no || 'Plan',
@@ -375,9 +387,8 @@ export default function ProcessSheetReportClient() {
               pass_required: Number(r.pass_required ?? 1),
               work_order_no: wo.work_order_no || '',
               customer_name: wo.customer_name || '',
-              grade: parsedSt.grade || parsedSt.steel_grade || wo.grade || '',
-              specification:
-                parsedSt.spec || parsedSt.specification || wo.specification || parsedSt.grade || wo.grade || '',
+              grade: actualSteelGrade,
+              specification: specCandidate || matchedSpec?.spec_full || '',
               size_od: finalOd || null,
               size_wt: finalWt || null,
               l1: finalL1 || null,
@@ -396,10 +407,18 @@ export default function ProcessSheetReportClient() {
             });
           });
         } else {
+          const rawGrade = String(wo.grade || '').trim();
+          const specCandidate = String(wo.specification || wo.grade || '').trim();
+          const matchedSpec = findMatchingSpecMaster(`${specCandidate} ${rawGrade}`.trim(), specMasterList, specCandidate, rawGrade);
+          const actualSteelGrade =
+            matchedSpec?.steel_grade ||
+            (!isPipeSpecRatherThanSteelGrade(rawGrade) ? rawGrade : '') ||
+            rawGrade;
+
           const inferred = inferRouteFromMaterialOrSpec(
             wo.material_code,
             wo.specification,
-            wo.grade
+            actualSteelGrade
           );
           mappedList.push({
             id: `wo-${wo.id}`,
@@ -418,8 +437,8 @@ export default function ProcessSheetReportClient() {
             pass_required: 1,
             work_order_no: wo.work_order_no || '',
             customer_name: wo.customer_name || '',
-            grade: wo.grade || '',
-            specification: wo.specification || wo.grade || '',
+            grade: actualSteelGrade,
+            specification: specCandidate || matchedSpec?.spec_full || '',
             size_od: finalOd || null,
             size_wt: finalWt || null,
             l1: finalL1 || null,
