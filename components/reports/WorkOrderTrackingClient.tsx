@@ -437,7 +437,10 @@ export default function WorkOrderTrackingClient() {
       const planRoute = processRoutes.find((r) => r.id === plan?.process_route_id);
       const woWipRows = stageWip.filter((s) => s.work_order_id === wo.id || s.work_order_id === effectiveMasterWoId);
       const routeCode = (planRoute?.route_code || woWipRows[0]?.route_code || '').toUpperCase();
-      const hasHtcInRoute = routeCode === 'ALLOY_CDS' || routeCode.includes('ALLOY') || woWipRows.some((s) => s.stage_code === 'HOLLOW_HEAT_TREATMENT');
+      const hasHtcInRoute = routeCode === 'ALLOY_CDS' || routeCode === 'ALLOY_HFS' || routeCode.includes('ALLOY') || woWipRows.some((s) => s.stage_code === 'HOLLOW_HEAT_TREATMENT');
+      const hasDrawInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS' || routeCode.includes('CDS') || woWipRows.some((s) => s.stage_code === 'DRAW');
+      const hasHtInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS' || routeCode.includes('CDS') || woWipRows.some((s) => s.stage_code === 'HEAT_TREATMENT');
+      const hasBandSawInRoute = true;
 
       // Rolling production stats (tracked under master campaign or single order)
       const mhAvgLen = (plan?.mh_l1 && plan?.mh_l2 ? (plan.mh_l1 + plan.mh_l2) / 2 : plan?.mh_l1 || plan?.mh_l2) || avgLen;
@@ -562,6 +565,31 @@ export default function WorkOrderTrackingClient() {
 
         // RULE 2: Child work orders in campaigns are bundled under master for pre-finishing stages
         if (childInfo && stageCode !== 'FINISHING') {
+          if (
+            (stageCode === 'HOLLOW_HEAT_TREATMENT' && !hasHtcInRoute) ||
+            (stageCode === 'DRAW' && !hasDrawInRoute) ||
+            (stageCode === 'HEAT_TREATMENT' && !hasHtInRoute)
+          ) {
+            return {
+              ...stageDef,
+              isBundled: false,
+              isNotInRoute: true,
+              planMtr: 0,
+              planPcs: 0,
+              outMtr: 0,
+              outPcs: 0,
+              rejMtr: 0,
+              rejPcs: 0,
+              htcOkMtr: 0,
+              htcOkPcs: 0,
+              wipMtr: 0,
+              wipPcs: 0,
+              wipMt: 0,
+              logsCount: 0,
+              dwellDays: 0,
+              agingSeverity: 'NORMAL',
+            };
+          }
           // If VDI stage, show child's own QC inspection output, while uninspected queue WIP stays pooled under master
           if (stageCode === 'VDI') {
             const childQcList = qcInspections.filter((q: any) => q.work_order_id === wo.id);
@@ -730,6 +758,30 @@ export default function WorkOrderTrackingClient() {
         if (stageCode === 'DRAW') {
           const divIn = getStageDivIn(effectiveMasterWoId, 'DRAW');
           const divOut = getStageDivOut(effectiveMasterWoId, 'DRAW');
+          if (!hasDrawInRoute) {
+            return {
+              ...stageDef,
+              isBundled: false,
+              isNotInRoute: true,
+              planMtr: 0,
+              planPcs: 0,
+              outMtr: 0,
+              outPcs: 0,
+              rejMtr: 0,
+              rejPcs: 0,
+              htcOkMtr: 0,
+              htcOkPcs: 0,
+              wipMtr: 0,
+              wipPcs: 0,
+              wipMt: 0,
+              logsCount: 0,
+              dwellDays: 0,
+              agingSeverity: 'NORMAL',
+              divertedInMtr: divIn,
+              divertedOutMtr: divOut,
+            };
+          }
+
           const incomingPcs = hasHtcInRoute ? Math.max(0, htcOutPcs - htcRejPcs) : rollingHtcOkPcs;
           const effDrawLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = effDrawLen > 0 ? Math.round(divIn / effDrawLen) : 0;
@@ -760,6 +812,7 @@ export default function WorkOrderTrackingClient() {
           return {
             ...stageDef,
             isBundled: false,
+            isNotInRoute: false,
             planMtr: 0,
             planPcs: 0,
             outMtr: stageOutMtr,
@@ -782,6 +835,30 @@ export default function WorkOrderTrackingClient() {
         if (stageCode === 'HEAT_TREATMENT') {
           const divIn = getStageDivIn(effectiveMasterWoId, 'HEAT_TREATMENT');
           const divOut = getStageDivOut(effectiveMasterWoId, 'HEAT_TREATMENT');
+          if (!hasHtInRoute) {
+            return {
+              ...stageDef,
+              isBundled: false,
+              isNotInRoute: true,
+              planMtr: 0,
+              planPcs: 0,
+              outMtr: 0,
+              outPcs: 0,
+              rejMtr: 0,
+              rejPcs: 0,
+              htcOkMtr: 0,
+              htcOkPcs: 0,
+              wipMtr: 0,
+              wipPcs: 0,
+              wipMt: 0,
+              logsCount: 0,
+              dwellDays: 0,
+              agingSeverity: 'NORMAL',
+              divertedInMtr: divIn,
+              divertedOutMtr: divOut,
+            };
+          }
+
           const drawNetPcs = Math.max(0, drawOutPcs - drawRejPcs);
           const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
           const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
@@ -801,6 +878,7 @@ export default function WorkOrderTrackingClient() {
           return {
             ...stageDef,
             isBundled: false,
+            isNotInRoute: false,
             planMtr: 0,
             planPcs: 0,
             outMtr: stageOutMtr,
@@ -823,11 +901,20 @@ export default function WorkOrderTrackingClient() {
         if (stageCode === 'BAND_SAW') {
           const divIn = getStageDivIn(effectiveMasterWoId, 'BAND_SAW');
           const divOut = getStageDivOut(effectiveMasterWoId, 'BAND_SAW');
-          const isHfs = !hasHtcInRoute && (routeCode.includes('HFS') || !routeCode.includes('CDS'));
-          const incomingPcs = isHfs
-            ? rollingHtcOkPcs
-            : (htOutPcs > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs));
-          const effLen = isHfs && mhAvgLen > 0 ? mhAvgLen : avgLen;
+          // Feeding rule from AGENTS.md:
+          // - HFS: incoming from Rolling HTC OK
+          // - ALLOY_HFS: incoming from Hollow HT OK
+          // - CDS / ALLOY_CDS: incoming from Heat Treatment OK (or Draw OK if no HT)
+          let incomingPcs = 0;
+          if (!hasDrawInRoute) {
+            // HFS or ALLOY_HFS
+            incomingPcs = hasHtcInRoute ? Math.max(0, htcOutPcs - htcRejPcs) : rollingHtcOkPcs;
+          } else {
+            // CDS or ALLOY_CDS
+            incomingPcs = htOutPcs > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs);
+          }
+          const isHfsLike = !hasDrawInRoute;
+          const effLen = isHfsLike && mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = effLen > 0 ? Math.round(divIn / effLen) : 0;
           const divOutPcs = effLen > 0 ? Math.round(divOut / effLen) : 0;
           const consumedPcs = bandSawOutPcs + bandSawRejPcs;
@@ -843,14 +930,14 @@ export default function WorkOrderTrackingClient() {
           } catch {}
           const mhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || wo.size_od || 0);
           const mhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || wo.size_wt || 0);
-          const wipMt = isHfs
+          const wipMt = isHfsLike
             ? mtFromMtr(wipMtr, mhOd, mhWt)
             : mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
           const { dwellDays, agingSeverity } = getStageAging(
             wipMtr,
             masterBandSawLogs,
-            masterHtLogs.length > 0 ? masterHtLogs : (masterDrawLogs.length > 0 ? masterDrawLogs : masterRollLogs)
+            masterHtLogs.length > 0 ? masterHtLogs : (masterDrawLogs.length > 0 ? masterDrawLogs : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs))
           );
 
           const stageOutMtr = avgLen > 0 ? Number((bandSawOutPcs * avgLen).toFixed(3)) : bandSawOutMtr;
@@ -947,7 +1034,11 @@ export default function WorkOrderTrackingClient() {
           ? targetPcs * avgLen
           : Number(wo.ordered_qty);
 
-        const precedingOutPcs = htOutPcs > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs);
+        const precedingOutPcs = vdiOutPcs > 0
+          ? Math.max(0, vdiOutPcs - vdiRejPcs)
+          : (bandSawOutPcs > 0
+            ? Math.max(0, bandSawOutPcs - bandSawRejPcs)
+            : (htOutPcs > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs)));
 
         const thisWoQcList = qcInspections.filter((q: any) => q.work_order_id === wo.id);
         const qcOkPcs = thisWoQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
@@ -1444,7 +1535,7 @@ export default function WorkOrderTrackingClient() {
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-800 text-sm">Station Progress Matrix</span>
             <span className="text-xs text-slate-500">
-              (Rolling &rarr; Hollow HT &rarr; Draw Bench &rarr; HT &rarr; Finishing)
+              (Rolling &rarr; Hollow HT &rarr; Draw Bench &rarr; HT &rarr; Band Saw &rarr; VDI &rarr; Finishing)
             </span>
           </div>
           <button
@@ -1475,20 +1566,26 @@ export default function WorkOrderTrackingClient() {
                   <th className="sticky left-0 top-0 z-30 bg-slate-100 py-3 px-3 text-left font-bold min-w-[200px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">
                     Work Order & Specs
                   </th>
-                  <th className="py-3 px-3 text-center font-bold min-w-[130px] bg-blue-50/70 border-x border-blue-100 text-blue-900">
+                  <th className="py-3 px-3 text-center font-bold min-w-[125px] bg-blue-50/70 border-x border-blue-100 text-blue-900">
                     1. Rolling Mill
                   </th>
-                  <th className="py-3 px-3 text-center font-bold min-w-[120px] bg-amber-50/70 border-r border-amber-100 text-amber-900">
+                  <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-amber-50/70 border-r border-amber-100 text-amber-900">
                     2. Hollow HT (HTC)
                   </th>
-                  <th className="py-3 px-3 text-center font-bold min-w-[120px] bg-indigo-50/70 border-r border-indigo-100 text-indigo-900">
+                  <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-indigo-50/70 border-r border-indigo-100 text-indigo-900">
                     3. Draw Bench
                   </th>
-                  <th className="py-3 px-3 text-center font-bold min-w-[120px] bg-orange-50/70 border-r border-orange-100 text-orange-900">
+                  <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-orange-50/70 border-r border-orange-100 text-orange-900">
                     4. Heat Treatment
                   </th>
-                  <th className="py-3 px-3 text-center font-bold min-w-[130px] bg-emerald-50/70 border-r border-emerald-100 text-emerald-900">
-                    5. Finishing Line
+                  <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-yellow-50/70 border-r border-yellow-100 text-yellow-900">
+                    5. Band Saw
+                  </th>
+                  <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-purple-50/70 border-r border-purple-100 text-purple-900">
+                    6. VDI / QC
+                  </th>
+                  <th className="py-3 px-3 text-center font-bold min-w-[125px] bg-emerald-50/70 border-r border-emerald-100 text-emerald-900">
+                    7. Finishing Line
                   </th>
                   <th className="py-3 px-3 text-right font-bold min-w-[110px]">Progress & Yield</th>
                 </tr>
@@ -1502,6 +1599,8 @@ export default function WorkOrderTrackingClient() {
                   const rHtc = data.stagesData.find((s) => s.code === 'HOLLOW_HEAT_TREATMENT');
                   const rDraw = data.stagesData.find((s) => s.code === 'DRAW');
                   const rHt = data.stagesData.find((s) => s.code === 'HEAT_TREATMENT');
+                  const rBandSaw = data.stagesData.find((s) => s.code === 'BAND_SAW');
+                  const rVdi = data.stagesData.find((s) => s.code === 'VDI');
                   const rFin = data.stagesData.find((s) => s.code === 'FINISHING');
 
                   return (
@@ -1773,6 +1872,11 @@ export default function WorkOrderTrackingClient() {
                                 WIP: 0 Nos
                               </span>
                             </div>
+                          ) : rDraw?.isNotInRoute ? (
+                            <div className="text-[11px] text-slate-400 italic text-center py-4 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+                              <div className="font-semibold text-slate-400">Not in Route</div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
+                            </div>
                           ) : Number(rRoll?.outMtr || 0) === 0 ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
                               Waiting Upstream
@@ -1842,6 +1946,11 @@ export default function WorkOrderTrackingClient() {
                                 WIP: 0 Nos
                               </span>
                             </div>
+                          ) : rHt?.isNotInRoute ? (
+                            <div className="text-[11px] text-slate-400 italic text-center py-4 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+                              <div className="font-semibold text-slate-400">Not in Route</div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
+                            </div>
                           ) : Number(rRoll?.outMtr || 0) === 0 ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
                               Waiting Upstream
@@ -1890,6 +1999,154 @@ export default function WorkOrderTrackingClient() {
                                   }`}>
                                     <Clock size={9} />
                                     {rHt.dwellDays}d at station
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 5. Band Saw */}
+                        <td className="py-3 px-3 align-top bg-yellow-50/30 border-r border-yellow-100">
+                          {data.childInfo ? (
+                            <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2 text-center">
+                              <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
+                                Planned in Work order No
+                              </span>
+                              <span className="font-mono text-xs text-indigo-950 font-bold block mt-0.5">
+                                {data.childInfo.master_wo_no}
+                              </span>
+                              <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
+                                WIP: 0 Nos
+                              </span>
+                            </div>
+                          ) : rBandSaw?.isNotInRoute ? (
+                            <div className="text-[11px] text-slate-400 italic text-center py-4 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+                              <div className="font-semibold text-slate-400">Not in Route</div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
+                            </div>
+                          ) : Number(rRoll?.outMtr || 0) === 0 ? (
+                            <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
+                              Waiting Upstream
+                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-slate-600">
+                                <span>Cut Output:</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rBandSaw?.outPcs || 0)} Nos</span>
+                              </div>
+
+                              {Number(rBandSaw?.rejPcs || 0) > 0 && (
+                                <div className="flex justify-between text-rose-600">
+                                  <span>Rej:</span>
+                                  <span className="font-mono">{fmt(rBandSaw?.rejPcs || 0)} Nos</span>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between pt-1 border-t border-yellow-200/60 text-yellow-950 font-bold">
+                                <span>Cut WIP:</span>
+                                <span className="font-mono">{fmt(rBandSaw?.wipPcs || 0)} Nos</span>
+                              </div>
+
+                              {Number(rBandSaw?.divertedInMtr || 0) > 0 && (
+                                <div className="flex justify-between text-emerald-700 text-[10px]">
+                                  <span>Div In:</span>
+                                  <span className="font-mono font-bold">+{fmt(rBandSaw?.divertedInMtr, 'm')}</span>
+                                </div>
+                              )}
+                              {Number(rBandSaw?.divertedOutMtr || 0) > 0 && (
+                                <div className="flex justify-between text-amber-700 text-[10px]">
+                                  <span>Div Out:</span>
+                                  <span className="font-mono font-bold">-{fmt(rBandSaw?.divertedOutMtr, 'm')}</span>
+                                </div>
+                              )}
+
+                              {Number(rBandSaw?.wipPcs || 0) > 0 && rBandSaw?.dwellDays !== undefined && (
+                                <div className="mt-1 flex items-center justify-end">
+                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
+                                    rBandSaw.agingSeverity === 'CRITICAL'
+                                      ? 'bg-red-100 text-red-700 border border-red-200'
+                                      : rBandSaw.agingSeverity === 'WARNING'
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                  }`}>
+                                    <Clock size={9} />
+                                    {rBandSaw.dwellDays}d at station
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 6. VDI / QC */}
+                        <td className="py-3 px-3 align-top bg-purple-50/30 border-r border-purple-100">
+                          {data.childInfo ? (
+                            <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2 text-center">
+                              <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
+                                Planned in Work order No
+                              </span>
+                              <span className="font-mono text-xs text-indigo-950 font-bold block mt-0.5">
+                                {data.childInfo.master_wo_no}
+                              </span>
+                              <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
+                                WIP: 0 Nos
+                              </span>
+                            </div>
+                          ) : rVdi?.isNotInRoute ? (
+                            <div className="text-[11px] text-slate-400 italic text-center py-4 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+                              <div className="font-semibold text-slate-400">Not in Route</div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
+                            </div>
+                          ) : Number(rRoll?.outMtr || 0) === 0 ? (
+                            <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
+                              Waiting Upstream
+                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-slate-600">
+                                <span>VDI OK:</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rVdi?.outPcs || 0)} Nos</span>
+                              </div>
+
+                              {Number(rVdi?.rejPcs || 0) > 0 && (
+                                <div className="flex justify-between text-rose-600">
+                                  <span>Rej/Sal:</span>
+                                  <span className="font-mono">{fmt(rVdi?.rejPcs || 0)} Nos</span>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between pt-1 border-t border-purple-200/60 text-purple-950 font-bold">
+                                <span>VDI WIP:</span>
+                                <span className="font-mono">{fmt(rVdi?.wipPcs || 0)} Nos</span>
+                              </div>
+
+                              {Number(rVdi?.divertedInMtr || 0) > 0 && (
+                                <div className="flex justify-between text-emerald-700 text-[10px]">
+                                  <span>Div In:</span>
+                                  <span className="font-mono font-bold">+{fmt(rVdi?.divertedInMtr, 'm')}</span>
+                                </div>
+                              )}
+                              {Number(rVdi?.divertedOutMtr || 0) > 0 && (
+                                <div className="flex justify-between text-amber-700 text-[10px]">
+                                  <span>Div Out:</span>
+                                  <span className="font-mono font-bold">-{fmt(rVdi?.divertedOutMtr, 'm')}</span>
+                                </div>
+                              )}
+
+                              {Number(rVdi?.wipPcs || 0) > 0 && rVdi?.dwellDays !== undefined && (
+                                <div className="mt-1 flex items-center justify-end">
+                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
+                                    rVdi.agingSeverity === 'CRITICAL'
+                                      ? 'bg-red-100 text-red-700 border border-red-200'
+                                      : rVdi.agingSeverity === 'WARNING'
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                  }`}>
+                                    <Clock size={9} />
+                                    {rVdi.dwellDays}d at station
                                   </span>
                                 </div>
                               )}
@@ -2005,7 +2262,7 @@ export default function WorkOrderTrackingClient() {
                       {/* Expanded Child Work Orders Breakdown for Master Campaign */}
                       {expandedMasterChildren[wo.id] && data.masterInfo?.child_work_orders && data.masterInfo.child_work_orders.length > 0 && (
                         <tr className="bg-indigo-50/40 border-y-2 border-indigo-200">
-                          <td colSpan={7} className="p-3.5">
+                          <td colSpan={9} className="p-3.5">
                             <div className="rounded-xl border border-indigo-200 bg-white p-3.5 space-y-3 shadow-xs">
                               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 pb-2">
                                 <div className="flex items-center gap-2">
@@ -2043,8 +2300,14 @@ export default function WorkOrderTrackingClient() {
                                       <th className="py-2 px-3 text-center bg-orange-50/50 border-r border-orange-100 text-orange-900">
                                         4. Heat Treatment
                                       </th>
+                                      <th className="py-2 px-3 text-center bg-yellow-50/50 border-r border-yellow-100 text-yellow-900">
+                                        5. Band Saw
+                                      </th>
+                                      <th className="py-2 px-3 text-center bg-purple-50/50 border-r border-purple-100 text-purple-900">
+                                        6. VDI / QC
+                                      </th>
                                       <th className="py-2 px-3 text-center bg-emerald-50/50 border-r border-emerald-100 text-emerald-900">
-                                        5. Finishing Line
+                                        7. Finishing Line
                                       </th>
                                       <th className="py-2 px-3 text-right">Completion</th>
                                     </tr>
@@ -2113,6 +2376,20 @@ export default function WorkOrderTrackingClient() {
                                             </div>
                                           </td>
 
+                                          <td className="py-2.5 px-3 text-center align-top bg-yellow-50/20 border-r border-yellow-100 text-[10px] text-slate-500 font-mono">
+                                            <div className="rounded bg-yellow-50/80 p-1 border border-yellow-100">
+                                              <span className="text-yellow-900 font-semibold block">Bundled in Master</span>
+                                              <span className="text-[9.5px] text-yellow-700 block">#{wo.work_order_no}</span>
+                                            </div>
+                                          </td>
+
+                                          <td className="py-2.5 px-3 text-center align-top bg-purple-50/20 border-r border-purple-100 text-[10px] text-slate-500 font-mono">
+                                            <div className="rounded bg-purple-50/80 p-1 border border-purple-100">
+                                              <span className="text-purple-900 font-semibold block">Bundled in Master</span>
+                                              <span className="text-[9.5px] text-purple-700 block">#{wo.work_order_no}</span>
+                                            </div>
+                                          </td>
+
                                           <td className="py-2.5 px-3 align-top bg-emerald-50/20 border-r border-emerald-100 text-xs">
                                             <div className="space-y-0.5 text-right font-mono">
                                               <div className="flex justify-between text-[10.5px]">
@@ -2167,7 +2444,7 @@ export default function WorkOrderTrackingClient() {
                       {/* Expanded Production History Rows */}
                       {isExpanded && (
                         <tr className="bg-slate-50/80 border-b border-slate-200">
-                          <td colSpan={7} className="p-3">
+                          <td colSpan={9} className="p-3">
                             <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2 shadow-2xs">
                               <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">

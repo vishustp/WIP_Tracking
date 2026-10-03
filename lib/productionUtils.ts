@@ -677,3 +677,85 @@ export function formatDiversionReason(
 export function cleanDiversionReason(reason: string | null | undefined): string {
   return (reason || '').replace(/\[FROM_STAGE:[^\]]*\]/gi, '').replace(/\[TO_STAGE:[^\]]*\]/gi, '').trim();
 }
+
+export interface WorkOrderFormData {
+  work_order_no: string;
+  customer_name?: string | null;
+  specification?: string | null;
+  grade?: string | null;
+  size_od?: string | number | null;
+  size_wt?: string | number | null;
+  l1?: string | number | null;
+  l2?: string | number | null;
+  ordered_qty_pcs?: string | number | null;
+  ordered_qty_mtr?: string | number | null;
+  ordered_qty_mt?: string | number | null;
+  balance_qty_pcs?: string | number | null;
+  balance_qty_mtr?: string | number | null;
+  balance_qty_mt?: string | number | null;
+  target_date?: string | null;
+  status?: string | null;
+  po_no?: string | null;
+  po_date?: string | null;
+  purchase_order_no?: string | null;
+  purchase_order_date?: string | null;
+  material_code?: string | null;
+  destination?: string | null;
+}
+
+export function buildWorkOrderPayload(form: WorkOrderFormData) {
+  const od = form.size_od != null && form.size_od !== '' ? Number(form.size_od) : null;
+  const wt = form.size_wt != null && form.size_wt !== '' ? Number(form.size_wt) : null;
+  const l1 = form.l1 != null && form.l1 !== '' ? Number(form.l1) : 6.0;
+  const l2 = form.l2 != null && form.l2 !== '' ? Number(form.l2) : 6.5;
+  const avg = (l1 + l2) / 2 || 6.0;
+
+  let mtr = form.ordered_qty_mtr != null && form.ordered_qty_mtr !== '' ? Number(form.ordered_qty_mtr) : 0;
+  let pcs = form.ordered_qty_pcs != null && form.ordered_qty_pcs !== '' ? Number(form.ordered_qty_pcs) : 0;
+  if (mtr === 0 && pcs > 0) mtr = Number((pcs * avg).toFixed(2));
+  if (pcs === 0 && mtr > 0 && avg > 0) pcs = Math.round(mtr / avg);
+
+  const mt = form.ordered_qty_mt != null && form.ordered_qty_mt !== ''
+    ? Number(form.ordered_qty_mt)
+    : (mtr > 0 && od && wt ? Number(mtFromMtr(mtr, od, wt).toFixed(3)) : 0);
+
+  const balMtr = form.balance_qty_mtr != null && form.balance_qty_mtr !== '' ? Number(form.balance_qty_mtr) : mtr;
+  const balPcs = form.balance_qty_pcs != null && form.balance_qty_pcs !== ''
+    ? Number(form.balance_qty_pcs)
+    : (avg > 0 && balMtr > 0 ? Math.round(balMtr / avg) : pcs);
+  const balMt = form.balance_qty_mt != null && form.balance_qty_mt !== ''
+    ? Number(form.balance_qty_mt)
+    : (balMtr > 0 && od && wt ? Number(mtFromMtr(balMtr, od, wt).toFixed(3)) : mt);
+
+  const spec = (form.specification || form.grade || '').trim() || null;
+  const po = (form.po_no || form.purchase_order_no || '').trim() || null;
+
+  return {
+    work_order_no: form.work_order_no.trim(),
+    customer_name: (form.customer_name || '').trim() || null,
+    size_od: od,
+    size_wt: wt,
+    l1,
+    l2,
+    grade: spec,
+    specification: spec,
+    ordered_qty: mtr > 0 ? mtr : (pcs > 0 ? pcs : mt),
+    uom: mtr > 0 ? 'Mtrs' : (pcs > 0 ? 'Pcs' : 'MT'),
+    ordered_qty_pcs: pcs,
+    ordered_qty_mtr: mtr,
+    ordered_qty_mt: mt,
+    balance_qty_pcs: balPcs,
+    balance_qty_mtr: balMtr,
+    balance_qty_mt: balMt,
+    target_date: form.target_date || null,
+    status: form.status || 'Pending Plan',
+    po_no: po,
+    purchase_order_no: po,
+    po_date: form.po_date || form.purchase_order_date || null,
+    purchase_order_date: form.purchase_order_date || form.po_date || null,
+    material_code: (form.material_code || '').trim() || null,
+    destination: (form.destination || '').trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+

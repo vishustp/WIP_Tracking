@@ -8,7 +8,7 @@ import { Select } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { exportJsonToExcel } from '@/lib/excelUtils';
 import Link from 'next/link';
-import { mtFromMtr, fmt, normalizeSpecification } from '@/lib/productionUtils';
+import { mtFromMtr, fmt, normalizeSpecification, buildWorkOrderPayload, type WorkOrderFormData } from '@/lib/productionUtils';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import RouteAccessGuard from '@/components/common/RouteAccessGuard';
@@ -30,6 +30,8 @@ import {
   Trash2,
   RotateCcw,
   Calculator,
+  Pencil,
+  X,
 } from 'lucide-react';
 
 type WO = {
@@ -99,6 +101,7 @@ export default function WorkOrders() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [editingWO, setEditingWO] = useState<WO | null>(null);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
 
   const [form, setForm] = useState({
@@ -118,6 +121,9 @@ export default function WorkOrders() {
     balance_qty_mt: '',
     target_date: '',
     status: 'Pending Plan',
+    po_no: '',
+    material_code: '',
+    destination: '',
   });
 
   const load = useCallback(async () => {
@@ -276,59 +282,7 @@ export default function WorkOrders() {
     toast.success('PCS and MT units recalculated from dimensions & length');
   };
 
-  const createWO = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const od = form.size_od ? Number(form.size_od) : null;
-    const wt = form.size_wt ? Number(form.size_wt) : null;
-    const l1 = form.l1 ? Number(form.l1) : 6.0;
-    const l2 = form.l2 ? Number(form.l2) : 6.5;
-    const avg = (l1 + l2) / 2 || 6.0;
-
-    let mtr = form.ordered_qty_mtr ? Number(form.ordered_qty_mtr) : 0;
-    let pcs = form.ordered_qty_pcs ? Number(form.ordered_qty_pcs) : 0;
-    if (mtr === 0 && pcs > 0) mtr = Number((pcs * avg).toFixed(2));
-    if (pcs === 0 && mtr > 0 && avg > 0) pcs = Math.round(mtr / avg);
-
-    const mt = form.ordered_qty_mt ? Number(form.ordered_qty_mt) : (mtr > 0 && od && wt ? Number(mtFromMtr(mtr, od, wt).toFixed(3)) : 0);
-    const balMtr = form.balance_qty_mtr !== '' ? Number(form.balance_qty_mtr) : mtr;
-    const balPcs = form.balance_qty_pcs !== '' ? Number(form.balance_qty_pcs) : pcs;
-    const balMt = form.balance_qty_mt !== '' ? Number(form.balance_qty_mt) : mt;
-
-    const spec = form.specification.trim() || form.grade.trim() || null;
-
-    const payload = {
-      work_order_no: form.work_order_no.trim(),
-      customer_name: form.customer_name.trim() || null,
-      size_od: od,
-      size_wt: wt,
-      l1,
-      l2,
-      grade: spec,
-      specification: spec,
-      ordered_qty: mtr > 0 ? mtr : (pcs > 0 ? pcs : mt),
-      uom: mtr > 0 ? 'Mtrs' : (pcs > 0 ? 'Pcs' : 'MT'),
-      ordered_qty_pcs: pcs,
-      ordered_qty_mtr: mtr,
-      ordered_qty_mt: mt,
-      balance_qty_pcs: balPcs,
-      balance_qty_mtr: balMtr,
-      balance_qty_mt: balMt,
-      target_date: form.target_date || null,
-      status: form.status || 'Pending Plan',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    try {
-      const s = createClient();
-      const { error } = await s.from('work_orders').insert(payload);
-      if (error) throw new Error(error.message);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to create work order.');
-      return;
-    }
-
-    toast.success('Work Order created successfully');
+  const resetForm = () => {
     setForm({
       work_order_no: '',
       customer_name: '',
@@ -346,7 +300,71 @@ export default function WorkOrders() {
       balance_qty_mt: '',
       target_date: '',
       status: 'Pending Plan',
+      po_no: '',
+      material_code: '',
+      destination: '',
     });
+    setEditingWO(null);
+  };
+
+  const handleStartEdit = (wo: WO) => {
+    setEditingWO(wo);
+    setForm({
+      work_order_no: wo.work_order_no || '',
+      customer_name: wo.customer_name || '',
+      specification: wo.specification || wo.grade || '',
+      grade: wo.grade || wo.specification || '',
+      size_od: wo.size_od != null ? String(wo.size_od) : '',
+      size_wt: wo.size_wt != null ? String(wo.size_wt) : '',
+      l1: wo.l1 != null ? String(wo.l1) : '6.0',
+      l2: wo.l2 != null ? String(wo.l2) : '6.5',
+      ordered_qty_pcs: wo.ordered_qty_pcs != null ? String(wo.ordered_qty_pcs) : '',
+      ordered_qty_mtr: wo.ordered_qty_mtr != null ? String(wo.ordered_qty_mtr) : '',
+      ordered_qty_mt: wo.ordered_qty_mt != null ? String(wo.ordered_qty_mt) : '',
+      balance_qty_pcs: wo.balance_qty_pcs != null ? String(wo.balance_qty_pcs) : '',
+      balance_qty_mtr: wo.balance_qty_mtr != null ? String(wo.balance_qty_mtr) : '',
+      balance_qty_mt: wo.balance_qty_mt != null ? String(wo.balance_qty_mt) : '',
+      target_date: wo.target_date || '',
+      status: wo.status || 'Pending Plan',
+      po_no: wo.po_no || wo.purchase_order_no || '',
+      material_code: wo.material_code || '',
+      destination: wo.destination || '',
+    });
+    setShowCreate(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const saveWO = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canCreateWO) {
+      toast.error('Permission denied: Only Admin or authorized users can create or edit work orders');
+      return;
+    }
+
+    const payload = buildWorkOrderPayload(form);
+
+    try {
+      const s = createClient();
+      if (editingWO) {
+        const { error } = await s
+          .from('work_orders')
+          .update(payload)
+          .eq('id', editingWO.id);
+        if (error) throw new Error(error.message);
+        toast.success(`Work Order ${editingWO.work_order_no} updated successfully`);
+      } else {
+        const { error } = await s
+          .from('work_orders')
+          .insert({ ...payload, created_at: new Date().toISOString() });
+        if (error) throw new Error(error.message);
+        toast.success('Work Order created successfully');
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `Failed to ${editingWO ? 'update' : 'create'} work order.`);
+      return;
+    }
+
+    resetForm();
     setShowCreate(false);
     load();
   };
@@ -474,10 +492,18 @@ export default function WorkOrders() {
           </Link>
           <button
             type="button"
-            onClick={() => setShowCreate(!showCreate)}
+            onClick={() => {
+              if (showCreate) {
+                resetForm();
+                setShowCreate(false);
+              } else {
+                resetForm();
+                setShowCreate(true);
+              }
+            }}
             className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:from-blue-700 hover:to-indigo-700 transition cursor-pointer"
           >
-            <PlusCircle className="h-4 w-4" /> {showCreate ? 'Close Form' : canCreateWO ? 'Create Work Order' : 'Create WO Form (View-Only)'}
+            <PlusCircle className="h-4 w-4" /> {showCreate ? (editingWO ? 'Close Edit Form' : 'Close Form') : canCreateWO ? 'Create Work Order' : 'Create WO Form (View-Only)'}
           </button>
         </div>
       </div>
@@ -485,14 +511,25 @@ export default function WorkOrders() {
       {/* Form Access Banner */}
       <FormAccessBanner access={formAccess} />
 
-      {/* Collapsible Create Work Order Form - Matched with Excel Import */}
+      {/* Collapsible Create / Edit Work Order Form */}
       {showCreate && (
-        <form onSubmit={createWO} className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-5">
+        <form onSubmit={saveWO} className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
               <div>
-                <h2 className="text-sm font-bold text-slate-900">New Work Order (Manual Form Entry)</h2>
-                <p className="text-xs text-slate-500">Fields and calculated units match Excel Import format</p>
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  {editingWO ? (
+                    <>
+                      <Pencil className="h-4 w-4 text-blue-600" />
+                      Edit Work Order: <span className="font-mono text-blue-700">{editingWO.work_order_no}</span>
+                    </>
+                  ) : (
+                    'New Work Order (Manual Form Entry)'
+                  )}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  {editingWO ? 'Update work order geometry, quantities, delivery SLA, or metadata' : 'Fields and calculated units match Excel Import format'}
+                </p>
               </div>
               {!canCreateWO && (
                 <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded px-2.5 py-1">
@@ -504,15 +541,18 @@ export default function WorkOrders() {
               <button
                 type="button"
                 onClick={recalculateQuantities}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer"
                 title="Recalculate PCS and MT using OD, WT, and Length"
               >
                 <Calculator className="h-3.5 w-3.5 text-blue-600" /> Recalculate Units
               </button>
               <button
                 type="button"
-                onClick={() => setShowCreate(false)}
-                className="text-sm font-medium text-slate-500 hover:text-slate-900"
+                onClick={() => {
+                  resetForm();
+                  setShowCreate(false);
+                }}
+                className="text-sm font-medium text-slate-500 hover:text-slate-900 cursor-pointer"
               >
                 Cancel
               </button>
@@ -568,6 +608,39 @@ export default function WorkOrders() {
                   <option value="Completed">Completed</option>
                   <option value="Diverted">Diverted</option>
                 </Select>
+              </div>
+            </div>
+            {/* Extended Metadata Sub-row: PO, Material Code, Destination */}
+            <div className="grid gap-3 sm:grid-cols-3 text-sm mt-3 pt-3 border-t border-slate-100">
+              <div>
+                <label className="font-semibold text-slate-700">Purchase Order (PO No.)</label>
+                <Input
+                  className="mt-1 font-mono"
+                  placeholder="e.g. PO-89021"
+                  disabled={!canCreateWO}
+                  value={form.po_no}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, po_no: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-slate-700">Material Code</label>
+                <Input
+                  className="mt-1 font-mono"
+                  placeholder="e.g. MAT-PIPE-73"
+                  disabled={!canCreateWO}
+                  value={form.material_code}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, material_code: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-slate-700">Destination Yard / Plant</label>
+                <Input
+                  className="mt-1"
+                  placeholder="e.g. Dispatch Yard A"
+                  disabled={!canCreateWO}
+                  value={form.destination}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, destination: e.target.value })}
+                />
               </div>
             </div>
           </div>
@@ -760,7 +833,7 @@ export default function WorkOrders() {
               variant={canCreateWO ? 'primary' : 'secondary'}
               disabled={!canCreateWO}
             >
-              {canCreateWO ? 'Save Work Order' : 'Save Work Order (View-Only)'}
+              {editingWO ? (canCreateWO ? 'Update Work Order' : 'Update Work Order (View-Only)') : (canCreateWO ? 'Save Work Order' : 'Save Work Order (View-Only)')}
             </Button>
           </div>
         </form>
@@ -1021,9 +1094,20 @@ export default function WorkOrders() {
                             {canCreateWO && (
                               <button
                                 type="button"
+                                onClick={() => handleStartEdit(w)}
+                                aria-label={`Edit work order ${w.work_order_no}`}
+                                className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 hover:text-blue-900 hover:border-blue-300 transition-colors shadow-2xs cursor-pointer"
+                                title={`Edit ${w.work_order_no}`}
+                              >
+                                <Pencil className="h-3 w-3 text-blue-600" /> Edit
+                              </button>
+                            )}
+                            {canCreateWO && (
+                              <button
+                                type="button"
                                 onClick={() => handleDeleteWO(w)}
                                 aria-label={`Delete work order ${w.work_order_no}`}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-rose-600 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-300 transition-colors shadow-2xs focus-visible:ring-2 focus-visible:ring-rose-500"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-rose-600 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-300 transition-colors shadow-2xs focus-visible:ring-2 focus-visible:ring-rose-500 cursor-pointer"
                                 title={`Delete ${w.work_order_no}`}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
