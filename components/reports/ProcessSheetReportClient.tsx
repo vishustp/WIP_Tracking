@@ -729,7 +729,7 @@ export default function ProcessSheetReportClient() {
 
       {/* Informational banner when no work order is selected */}
       {!loading && !selectedPlanId && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-center justify-between text-xs text-amber-900 shadow-xs">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-center justify-between text-xs text-amber-900 shadow-xs print:hidden">
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 font-bold uppercase tracking-wider bg-amber-200 text-amber-900 rounded text-[10px]">
               Notice
@@ -747,39 +747,45 @@ export default function ProcessSheetReportClient() {
           <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
           <span>Loading Process Sheet parameters...</span>
         </div>
-      ) : viewMode === 'preview' ? (
-        <ProcessSheetPrintDocument data={formData} />
       ) : (
-        <div className="space-y-5">
-          {(formTab === 'all' || formTab === 'order') && (
-            <ProcessSheetOrderDetails data={formData} actions={actions} />
-          )}
+        <>
+          <div className={viewMode === 'preview' ? 'block' : 'hidden print:block'}>
+            <ProcessSheetPrintDocument data={formData} />
+          </div>
 
-          {(formTab === 'all' || formTab === 'hotmill') && (
-            <ProcessSheetHotMillSection data={formData} actions={actions} />
-          )}
+          {viewMode === 'form' && (
+            <div className="space-y-5 print:hidden">
+              {(formTab === 'all' || formTab === 'order') && (
+                <ProcessSheetOrderDetails data={formData} actions={actions} />
+              )}
 
-          {(formTab === 'all' || formTab === 'dimensions') && (
-            <ProcessSheetDimensionsSection data={formData} actions={actions} />
-          )}
+              {(formTab === 'all' || formTab === 'hotmill') && (
+                <ProcessSheetHotMillSection data={formData} actions={actions} />
+              )}
 
-          {(formTab === 'all' || formTab === 'metallurgy') && (
-            <ProcessSheetMetallurgySection
-              data={formData}
-              actions={actions}
-              specMasterList={specMasterList}
-              onApplySpecMaster={handleApplySpecMaster}
-            />
-          )}
+              {(formTab === 'all' || formTab === 'dimensions') && (
+                <ProcessSheetDimensionsSection data={formData} actions={actions} />
+              )}
 
-          {(formTab === 'all' || formTab === 'testing') && (
-            <ProcessSheetTestingSection data={formData} actions={actions} />
-          )}
+              {(formTab === 'all' || formTab === 'metallurgy') && (
+                <ProcessSheetMetallurgySection
+                  data={formData}
+                  actions={actions}
+                  specMasterList={specMasterList}
+                  onApplySpecMaster={handleApplySpecMaster}
+                />
+              )}
 
-          {(formTab === 'all' || formTab === 'finishing') && (
-            <ProcessSheetFinishingSection data={formData} actions={actions} />
+              {(formTab === 'all' || formTab === 'testing') && (
+                <ProcessSheetTestingSection data={formData} actions={actions} />
+              )}
+
+              {(formTab === 'all' || formTab === 'finishing') && (
+                <ProcessSheetFinishingSection data={formData} actions={actions} />
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
