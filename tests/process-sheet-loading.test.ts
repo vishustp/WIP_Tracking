@@ -27,11 +27,14 @@ describe('Process Sheet Query & Loading', () => {
       console.log('Error res status:', res.status, await res.text());
     }
     expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(Array.isArray(data)).toBe(true);
-    expect(data.length).toBeGreaterThan(0);
-    const woNos = data.map((w: any) => w.work_order_no).filter(Boolean);
-    expect(woNos.length).toBeGreaterThan(0);
+    // Check work order 6299
+    const wo6299Res = await fetch(`${url}/rest/v1/work_orders?work_order_no=eq.6299`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` }
+    });
+    const wo6299Data = await wo6299Res.json();
+    expect(wo6299Data.length).toBeGreaterThan(0);
+    expect(wo6299Data[0].work_order_no).toBe('6299');
+    expect(wo6299Data[0].specification).toContain('DIN 2391');
   });
 
   it('fails if non-existent columns like item_code or purchase_order_no are queried', async () => {

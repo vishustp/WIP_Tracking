@@ -2,7 +2,7 @@
 // Offline-first metallurgical auto-population and parameter generation for Process Sheet (Format F-PROD-11)
 
 import { calculateHydroPressurePsi, calculateStandardTolerances } from './specEngine';
-import type { SpecMasterRecord } from '../specMasterDefaults';
+import { DEFAULT_SPEC_MASTER_RECORDS, type SpecMasterRecord } from '../specMasterDefaults';
 
 export interface ProcessSheetFormData {
   sheetNo: string;
@@ -139,34 +139,218 @@ export function buildMarkingString(
 
 export function findMatchingSpecMaster(
   fullSpecGrade: string,
-  specMasterList: SpecMasterRecord[]
+  specMasterList?: SpecMasterRecord[],
+  fallbackSpec?: string,
+  fallbackGrade?: string
 ): SpecMasterRecord | undefined {
-  if (!fullSpecGrade) return undefined;
-  const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const cleanTarget = norm(fullSpecGrade);
+  const list = specMasterList && specMasterList.length > 0 ? specMasterList : DEFAULT_SPEC_MASTER_RECORDS;
+  if (!fullSpecGrade && !fallbackSpec && !fallbackGrade) return list[0];
 
-  return specMasterList.find((r) => {
+  const searchTexts = Array.from(
+    new Set([
+      fullSpecGrade,
+      fallbackSpec,
+      fallbackGrade,
+      `${fallbackSpec || ''} ${fallbackGrade || ''}`.trim(),
+    ])
+  )
+    .filter((s): s is string => Boolean(s))
+    .map((s) => s.trim().toUpperCase());
+
+  const combined = searchTexts.join(' ');
+  const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  // 1. Keyword-based priority matches for seamless pipe standards
+  if (
+    combined.includes('2391') ||
+    combined.includes('ST 52') ||
+    combined.includes('ST52') ||
+    combined.includes('E355')
+  ) {
+    const found =
+      list.find(
+        (r) =>
+          r.spec_key === 'DIN2391_ST52' ||
+          (r.spec_full || '').toUpperCase().includes('2391') ||
+          (r.spec_full || '').toUpperCase().includes('ST 52')
+      ) || DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'DIN2391_ST52');
+    if (found) return found;
+  }
+  if (
+    combined.includes('ST 35') ||
+    combined.includes('ST35') ||
+    combined.includes('E235')
+  ) {
+    const found =
+      list.find(
+        (r) =>
+          r.spec_key === 'DIN2391_ST35' ||
+          (r.spec_full || '').toUpperCase().includes('ST 35')
+      ) || DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'DIN2391_ST35');
+    if (found) return found;
+  }
+  if (combined.includes('192')) {
+    const found = list.find(
+      (r) => r.spec_key === 'SA192' || (r.spec_full || '').toUpperCase().includes('192')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('179')) {
+    const found = list.find(
+      (r) => r.spec_key === 'SA179' || (r.spec_full || '').toUpperCase().includes('179')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('210')) {
+    const isGrC =
+      combined.includes('GR C') || combined.includes('GR.C') || combined.includes('GRADE C');
+    const found = list.find(
+      (r) =>
+        r.spec_key === (isGrC ? 'A210_C' : 'A210') ||
+        (r.spec_full || '').toUpperCase().includes('210')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('3059')) {
+    let key = 'BS3059_360';
+    if (combined.includes('620') || combined.includes('622')) key = 'BS3059_620';
+    else if (combined.includes('440')) key = 'BS3059_440';
+    else if (combined.includes('320')) key = 'BS3059_320';
+    const found = list.find(
+      (r) => r.spec_key === key || (r.spec_full || '').toUpperCase().includes('3059')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('213')) {
+    let key = 'A213_T11';
+    if (combined.includes('T22')) key = 'A213_T22';
+    else if (combined.includes('T12')) key = 'A213_T12';
+    const found = list.find(
+      (r) => r.spec_key === key || (r.spec_full || '').toUpperCase().includes('213')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('335')) {
+    let key = 'A335_P11';
+    if (combined.includes('P22')) key = 'A335_P22';
+    const found = list.find(
+      (r) => r.spec_key === key || (r.spec_full || '').toUpperCase().includes('335')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('35.8') || combined.includes('17175')) {
+    const found = list.find(
+      (r) => r.spec_key === 'ST35_8' || (r.spec_full || '').toUpperCase().includes('35.8')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('1010')) {
+    const found = list.find(
+      (r) => r.spec_key === 'SAE_1010' || (r.spec_full || '').toUpperCase().includes('1010')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('900DP') || combined.includes('MS 900')) {
+    const found = list.find(
+      (r) => r.spec_key === 'MS_900DP' || (r.spec_full || '').toUpperCase().includes('900DP')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('312') || combined.includes('316')) {
+    const found = list.find(
+      (r) => r.spec_key === 'A312_316L' || (r.spec_full || '').toUpperCase().includes('316')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('304')) {
+    const found = list.find(
+      (r) => r.spec_key === 'A312_304L' || (r.spec_full || '').toUpperCase().includes('304')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('A53') || combined.includes('53 GR') || combined.includes('53-B')) {
+    const found = list.find(
+      (r) => r.spec_key === 'A53' || (r.spec_full || '').toUpperCase().includes('A53')
+    );
+    if (found) return found;
+  }
+  if (combined.includes('106') || combined.includes('SA106') || combined.includes('1018')) {
+    const isGrC =
+      combined.includes('GR C') || combined.includes('GR.C') || combined.includes('GRADE C');
+    const found = list.find(
+      (r) =>
+        r.spec_key === (isGrC ? 'SA106_C' : 'A106') ||
+        (r.spec_full || '').toUpperCase().includes('106')
+    );
+    if (found) return found;
+  }
+
+  // 2. Generic normalized substring search
+  return list.find((r) => {
     const sp = (r.spec_full || '').toUpperCase();
     const sk = (r.spec_key || '').toUpperCase();
     const sg = (r.steel_grade || '').toUpperCase();
-    const target = fullSpecGrade.toUpperCase();
 
-    if (target.includes(sk) || target.includes(sp) || sp.includes(target)) return true;
-    if (sg && (target.includes(sg) || sg.includes(target))) return true;
+    for (const t of searchTexts) {
+      if (t.includes(sk) || t.includes(sp) || sp.includes(t)) return true;
+      if (sg && (t.includes(sg) || sg.includes(t))) return true;
 
-    const nSp = norm(sp);
-    const nSk = norm(sk);
-    const nSg = norm(sg);
-    return (
-      cleanTarget.includes(nSk) ||
-      cleanTarget.includes(nSp) ||
-      nSp.includes(cleanTarget) ||
-      (Boolean(nSg) && (cleanTarget.includes(nSg) || nSg.includes(cleanTarget)))
-    );
+      const nT = norm(t);
+      const nSp = norm(sp);
+      const nSk = norm(sk);
+      const nSg = norm(sg);
+
+      if (nT.includes(nSk) || nSk.includes(nT) || nT.includes(nSp) || nSp.includes(nT)) return true;
+      if (nSg && (nT.includes(nSg) || nSg.includes(nT))) return true;
+    }
+    return false;
   });
 }
 
 
+
+export function inferRouteFromMaterialOrSpec(
+  materialCode?: string | null,
+  spec?: string | null,
+  grade?: string | null
+): { route_code: string; route_name: string } {
+  const mat = (materialCode || '').toUpperCase().trim();
+  const sp = `${spec || ''} ${grade || ''}`.toUpperCase().trim();
+
+  const isAlloy =
+    sp.includes('ALLOY') ||
+    sp.includes('213') ||
+    sp.includes('335') ||
+    sp.includes('T11') ||
+    sp.includes('T22') ||
+    sp.includes('T12') ||
+    sp.includes('P11') ||
+    sp.includes('P22') ||
+    mat.includes('ALLOY');
+
+  const isCds =
+    mat.startsWith('CF') ||
+    mat.startsWith('CD') ||
+    mat.includes('CDS') ||
+    sp.includes('2391') ||
+    sp.includes('10305') ||
+    sp.includes('179') ||
+    sp.includes('192') ||
+    sp.includes('ST 52') ||
+    sp.includes('ST52') ||
+    sp.includes('ST 35') ||
+    sp.includes('ST35') ||
+    sp.includes('CDS');
+
+  if (isAlloy) {
+    return isCds
+      ? { route_code: 'ALLOY_CDS', route_name: 'Alloy Cold Drawn' }
+      : { route_code: 'ALLOY_HFS', route_name: 'Alloy Hot Finished' };
+  }
+  return isCds
+    ? { route_code: 'CDS', route_name: 'Cold Drawn' }
+    : { route_code: 'HFS', route_name: 'Hot Finished' };
+}
 
 export function autoPopulateProcessSheet(
   plan: any,
@@ -174,20 +358,32 @@ export function autoPopulateProcessSheet(
 ): ProcessSheetFormData {
   const parsedSt = plan.status && typeof plan.status === 'object' ? plan.status : {};
 
-  // Extract Route from Rolling plan (status route properties or plan.route_code)
-  const planRouteCandidate = (
+  const specText = plan.specification || parsedSt.spec || '';
+  const gradeText = plan.grade || parsedSt.grade || parsedSt.steel_grade || '';
+  const fullSpecGrade = `${specText} ${gradeText}`.trim();
+  const matchedMaster = findMatchingSpecMaster(fullSpecGrade, specMasterList, specText, gradeText);
+
+  const matCode = (plan.material_code || parsedSt.material_code || '').toString().toUpperCase();
+  const inferred = inferRouteFromMaterialOrSpec(matCode, specText, gradeText);
+
+  // Extract Route from Rolling plan (status route properties, plan.route_code, or inferred)
+  const explicitRoute = (
     parsedSt.route_code ||
     parsedSt.route ||
     parsedSt.route_name ||
     plan.route_code ||
     plan.route_name ||
-    'HFS'
+    ''
   ).toString().toUpperCase();
 
-  const isCds = planRouteCandidate.includes('CDS');
-  const isAlloy = planRouteCandidate.includes('ALLOY');
-  const rCode = isAlloy ? (isCds ? 'ALLOY_CDS' : 'ALLOY_HFS') : (isCds ? 'CDS' : 'HFS');
-  const resolvedRoute = parsedSt.route_code || parsedSt.route || plan.route_code || rCode;
+  let candidateRoute = explicitRoute;
+  if (!candidateRoute || candidateRoute === 'PENDING' || candidateRoute === 'NONE') {
+    candidateRoute = inferred.route_code;
+  }
+
+  const isCds = candidateRoute.includes('CDS') || inferred.route_code.includes('CDS');
+  const isAlloy = candidateRoute.includes('ALLOY') || inferred.route_code.includes('ALLOY');
+  const resolvedRoute = isAlloy ? (isCds ? 'ALLOY_CDS' : 'ALLOY_HFS') : (isCds ? 'CDS' : 'HFS');
 
   const cleanWo = String(plan.work_order_no || '').trim();
   const effectiveWoNo = plan.is_diversion ? `${cleanWo}-Div` : cleanWo;
@@ -210,9 +406,6 @@ export function autoPopulateProcessSheet(
   const l1Val = Number(plan.l1) || 0;
   const l2Val = Number(plan.l2) || 0;
   const avgLen = l1Val > 0 && l2Val > 0 ? (l1Val + l2Val) / 2 : l1Val || l2Val || 0;
-
-  const fullSpecGrade = `${plan.specification || parsedSt.spec || ''} ${plan.grade || parsedSt.grade || ''}`.trim();
-  const matchedMaster = findMatchingSpecMaster(fullSpecGrade, specMasterList);
 
   const specUpper = `${plan.specification || ''} ${plan.grade || ''} ${parsedSt.spec || ''}`.toUpperCase();
   const isNoNegativeTol =

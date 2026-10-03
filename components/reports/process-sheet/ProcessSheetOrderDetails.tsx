@@ -38,37 +38,13 @@ export default function ProcessSheetOrderDetails({
             placeholder="HFS / CDS"
             highlight
           />
-          <div className="space-y-1">
-            <span className="font-bold text-xs text-slate-700 block">Route Type</span>
-            <div className="flex gap-1">
-              <input
-                type="text"
-                value={data.routeType}
-                onChange={(e) => actions.updateField('routeType', e.target.value)}
-                placeholder="HFS / CDS"
-                className="w-full px-2 py-1.5 text-xs font-bold rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-900 shadow-xs"
-              />
-              <select
-                value={['HFS', 'CDS', 'ALLOY_HFS', 'ALLOY_CDS'].includes(data.routeType) ? data.routeType : ''}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    actions.updateFields({
-                      routeType: e.target.value,
-                      orderType: e.target.value,
-                    });
-                  }
-                }}
-                className="px-1 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-slate-50 text-slate-700 cursor-pointer"
-                title="Select Standard Route"
-              >
-                <option value="">▼</option>
-                <option value="HFS">HFS</option>
-                <option value="CDS">CDS</option>
-                <option value="ALLOY_HFS">ALLOY_HFS</option>
-                <option value="ALLOY_CDS">ALLOY_CDS</option>
-              </select>
-            </div>
-          </div>
+          <FormInput
+            label="Route Type"
+            value={data.routeType}
+            onChange={(val) => actions.updateFields({ routeType: val, orderType: val })}
+            placeholder="HFS / CDS"
+            highlight
+          />
           <FormInput
             label="Issue Date"
             value={data.sheetDate}

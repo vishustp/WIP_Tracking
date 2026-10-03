@@ -25,6 +25,7 @@ import type { SpecMasterRecord } from '@/lib/specMasterDefaults';
 import { DEFAULT_SPEC_MASTER_RECORDS } from '@/lib/specMasterDefaults';
 import {
   autoPopulateProcessSheet,
+  inferRouteFromMaterialOrSpec,
   type ProcessSheetFormData,
 } from '@/lib/metallurgy/processSheetSpecHelper';
 
@@ -342,13 +343,19 @@ export default function ProcessSheetReportClient() {
               }
             }
 
+            const inferred = inferRouteFromMaterialOrSpec(
+              wo.material_code || parsedSt.material_code,
+              wo.specification || parsedSt.spec,
+              wo.grade || parsedSt.grade
+            );
+
             const effectiveRouteCode =
               route?.route_code ||
               parsedSt.route_code ||
               parsedSt.route ||
               (parsedSt.catg?.toUpperCase().includes('CDS') ? 'CDS' : null) ||
-              'HFS';
-            const effectiveRouteName = route?.route_name || effectiveRouteCode;
+              inferred.route_code;
+            const effectiveRouteName = route?.route_name || inferred.route_name;
 
             mappedList.push({
               id: `rp-${r.id}-wo-${wo.id}`,
@@ -389,6 +396,11 @@ export default function ProcessSheetReportClient() {
             });
           });
         } else {
+          const inferred = inferRouteFromMaterialOrSpec(
+            wo.material_code,
+            wo.specification,
+            wo.grade
+          );
           mappedList.push({
             id: `wo-${wo.id}`,
             plan_no: 'Work Order',
@@ -415,8 +427,8 @@ export default function ProcessSheetReportClient() {
             ordered_qty: Number(wo.ordered_qty || 0),
             ordered_qty_pcs: Number(wo.ordered_qty_pcs || 0),
             ordered_qty_mtr: Number(wo.ordered_qty_mtr || 0),
-            route_code: 'HFS',
-            route_name: 'HFS',
+            route_code: inferred.route_code,
+            route_name: inferred.route_name,
             po_no: wo.po_no || null,
             po_date: wo.po_date || null,
             material_code: wo.material_code || null,

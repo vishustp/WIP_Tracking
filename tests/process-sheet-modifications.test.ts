@@ -99,4 +99,41 @@ describe('Process Sheet Modifications Plan Requirements', () => {
     const data = autoPopulateProcessSheet(mockPlanWithRollingGrade, DEFAULT_SPEC_MASTER_RECORDS);
     expect(data.specialInstructions).toBe('Customer inspection required prior to dispatch. Beveled ends 30 deg.');
   });
+
+  it('WO 6299 Test Case: DIN 2391 ST 52 automatically fetches CDS route, mechanical properties & precision tolerances', () => {
+    const mockWo6299 = {
+      id: 'wo-d0323be2-2782-4aa8-9fda-8aa108f49034',
+      work_order_no: '6299',
+      customer_name: 'Uniparts India LTD',
+      size_od: 60.3,
+      size_wt: 6.35,
+      grade: 'DIN 2391 ST 52',
+      specification: 'DIN 2391 ST 52',
+      l1: 5,
+      l2: 7,
+      material_code: 'CFNSP060306350020',
+      status: 'Pending Plan',
+    };
+
+    const data = autoPopulateProcessSheet(mockWo6299, DEFAULT_SPEC_MASTER_RECORDS);
+
+    // 1. Route auto-detection (Cold Finished material_code / DIN 2391 spec -> CDS)
+    expect(data.routeType).toBe('CDS');
+    expect(data.orderType).toBe('CDS');
+
+    // 2. Mechanical properties per DIN 2391 ST 52 / EN 10305-1 E355
+    expect(data.ystMin).toBe('355');
+    expect(data.utsMin).toBe('520');
+    expect(data.elongationMin).toBe('22');
+    expect(data.hardness).toBe('85 HRB MAX');
+
+    // 3. Dimensional tolerances per DIN 2391 Table 2 precision cold drawn seamless tubes
+    // OD 60.3 mm -> ±0.20 mm (60.10 mm to 60.50 mm)
+    expect(data.finalTolOdMin).toBe('60.10');
+    expect(data.finalTolOdMax).toBe('60.50');
+    // WT 6.35 mm -> ±10% (5.72 mm to 6.99 mm)
+    expect(Number(data.finalTolWtMin)).toBeCloseTo(5.72, 1);
+    expect(Number(data.finalTolWtMax)).toBeCloseTo(6.98, 1);
+  });
 });
+

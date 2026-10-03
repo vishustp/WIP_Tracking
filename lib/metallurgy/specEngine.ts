@@ -137,33 +137,58 @@ export function calculateStandardTolerances(
   let wtMax = wtMm;
   let wtTolStr = '+15% / -12.5%';
 
-  if (isCds) {
-    // Cold Drawn Seamless tolerances (ASTM A450 / ASME SA450 Table 1 / ASTM A1016)
-    if (odMm < 25.4) {
-      odMin = Number((odMm - 0.10).toFixed(2));
-      odMax = Number((odMm + 0.10).toFixed(2));
-      odTolStr = '±0.10 mm';
-    } else if (odMm <= 38.1) {
-      odMin = Number((odMm - 0.13).toFixed(2));
-      odMax = Number((odMm + 0.13).toFixed(2));
-      odTolStr = '±0.13 mm';
-    } else if (odMm < 50.8) {
-      odMin = Number((odMm - 0.15).toFixed(2));
-      odMax = Number((odMm + 0.15).toFixed(2));
-      odTolStr = '±0.15 mm';
-    } else if (odMm <= 63.5) {
-      // ASTM A450 Table 1: Size 50.8 to 63.5 mm OD is ±0.30 mm (or 63.20 - 63.80 mm for 63.50 mm)
-      odMin = Number((odMm - 0.30).toFixed(2));
-      odMax = Number((odMm + 0.30).toFixed(2));
-      odTolStr = '±0.30 mm';
-    } else if (odMm <= 76.2) {
-      odMin = Number((odMm - 0.38).toFixed(2));
-      odMax = Number((odMm + 0.38).toFixed(2));
-      odTolStr = '±0.38 mm';
+  const isDinPrecision =
+    stdUpper.includes('2391') ||
+    stdUpper.includes('10305') ||
+    stdUpper.includes('ST 52') ||
+    stdUpper.includes('ST52') ||
+    stdUpper.includes('ST 35') ||
+    stdUpper.includes('ST35') ||
+    stdUpper.includes('E355') ||
+    stdUpper.includes('E235');
+
+  if (isDinPrecision || isCds) {
+    if (isDinPrecision) {
+      // Precision seamless cold drawn tube tolerances (DIN 2391-1 / EN 10305-1 Table 2)
+      let tolOd = 0.15;
+      if (odMm <= 30) tolOd = 0.08;
+      else if (odMm <= 50) tolOd = 0.12;
+      else if (odMm <= 60) tolOd = 0.15;
+      else if (odMm <= 70) tolOd = 0.20;
+      else if (odMm <= 80) tolOd = 0.22;
+      else tolOd = 0.25;
+
+      odMin = Number((odMm - tolOd).toFixed(2));
+      odMax = Number((odMm + tolOd).toFixed(2));
+      odTolStr = `±${tolOd.toFixed(2)} mm`;
     } else {
-      odMin = Number((odMm - 0.50).toFixed(2));
-      odMax = Number((odMm + 0.50).toFixed(2));
-      odTolStr = '±0.50 mm';
+      // Cold Drawn Seamless tolerances (ASTM A450 / ASME SA450 Table 1 / ASTM A1016)
+      if (odMm < 25.4) {
+        odMin = Number((odMm - 0.10).toFixed(2));
+        odMax = Number((odMm + 0.10).toFixed(2));
+        odTolStr = '±0.10 mm';
+      } else if (odMm <= 38.1) {
+        odMin = Number((odMm - 0.13).toFixed(2));
+        odMax = Number((odMm + 0.13).toFixed(2));
+        odTolStr = '±0.13 mm';
+      } else if (odMm < 50.8) {
+        odMin = Number((odMm - 0.15).toFixed(2));
+        odMax = Number((odMm + 0.15).toFixed(2));
+        odTolStr = '±0.15 mm';
+      } else if (odMm <= 63.5) {
+        // ASTM A450 Table 1: Size 50.8 to 63.5 mm OD is ±0.30 mm (or 63.20 - 63.80 mm for 63.50 mm)
+        odMin = Number((odMm - 0.30).toFixed(2));
+        odMax = Number((odMm + 0.30).toFixed(2));
+        odTolStr = '±0.30 mm';
+      } else if (odMm <= 76.2) {
+        odMin = Number((odMm - 0.38).toFixed(2));
+        odMax = Number((odMm + 0.38).toFixed(2));
+        odTolStr = '±0.38 mm';
+      } else {
+        odMin = Number((odMm - 0.50).toFixed(2));
+        odMax = Number((odMm + 0.50).toFixed(2));
+        odTolStr = '±0.50 mm';
+      }
     }
 
     if (isMinWall) {
@@ -173,6 +198,11 @@ export function calculateStandardTolerances(
       wtMin = Number(wtMm.toFixed(2)); // 0% minus tolerance
       wtMax = Number((wtMm * 1.20).toFixed(2)); // +20% max
       wtTolStr = '+20% / -0% (MIN WALL)';
+    } else if (isDinPrecision) {
+      // Precision seamless cold drawn tube WT per DIN 2391-1 / EN 10305-1 Table 2: ±10%
+      wtMin = Number((wtMm * 0.90).toFixed(2));
+      wtMax = Number((wtMm * 1.10).toFixed(2));
+      wtTolStr = '±10%';
     } else if (isPipeStandard) {
       // ASTM Pipe Standard (ASTM A106 / A530 Table 1):
       // Minimum wall thickness at any point shall not be more than 12.5% under nominal wall
