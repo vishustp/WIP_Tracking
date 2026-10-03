@@ -7,6 +7,8 @@ export interface ChildWoPayload {
   work_order_no: string;
   customer_name?: string | null;
   grade?: string | null;
+  rm_grade?: string | null;
+  spec?: string | null;
   size_od?: number | null;
   size_wt?: number | null;
   l1?: number | null;
@@ -359,6 +361,9 @@ export async function POST(req: NextRequest) {
           master_plan_no: masterPlanNo,
           master_wo_id: masterWo.id,
           master_wo_no: masterWo.work_order_no,
+          grade: g.grade,
+          rm_grade: g.grade,
+          spec: c.spec || g.spec || childWo?.specification || '',
           planned_pcs: Number(c.planned_pcs || 0),
           planned_mtr: Number(c.planned_mtr || childRollingMtr || 0),
           planned_mt: Number(c.planned_mt || childRollingMt || 0),
@@ -444,7 +449,9 @@ export async function POST(req: NextRequest) {
             work_order_id: c.id,
             work_order_no: c.work_order_no,
             customer_name: c.customer_name ?? childWo?.customer_name ?? null,
-            grade: c.grade ?? childWo?.grade ?? null,
+            grade: g.grade || c.grade || childWo?.grade || null,
+            rm_grade: g.grade,
+            spec: c.spec || g.spec || childWo?.specification || null,
             size_od: c.size_od ?? childWo?.size_od ?? null,
             size_wt: c.size_wt ?? childWo?.size_wt ?? null,
             l1: c.l1 ?? childWo?.l1 ?? null,
@@ -1333,6 +1340,8 @@ export async function PUT(req: NextRequest) {
         cpStatus.master_plan_no = targetPlan.plan_no;
         cpStatus.master_wo_id = targetPlan.work_order_id;
         cpStatus.master_wo_no = targetWo?.work_order_no;
+        cpStatus.grade = effGrade;
+        cpStatus.rm_grade = effGrade;
         cpStatus.planned_pcs = planned_pcs;
         cpStatus.planned_mtr = targetMtr;
         cpStatus.planned_mt = targetMt;
@@ -1359,7 +1368,9 @@ export async function PUT(req: NextRequest) {
           work_order_id: cp.work_order_id,
           work_order_no: childWo?.work_order_no || existingChildMeta?.work_order_no || '',
           customer_name: childWo?.customer_name ?? existingChildMeta?.customer_name ?? null,
-          grade: childWo?.grade ?? existingChildMeta?.grade ?? null,
+          grade: effGrade || childWo?.grade || existingChildMeta?.grade || null,
+          rm_grade: effGrade,
+          spec: childWo?.specification || existingChildMeta?.spec || effSpec,
           size_od: childWo?.size_od ?? existingChildMeta?.size_od ?? null,
           size_wt: childWo?.size_wt ?? (existingChildMeta?.size_wt && existingChildMeta.size_wt !== 4.73 ? existingChildMeta.size_wt : null),
           l1: childWo?.l1 ?? existingChildMeta?.l1 ?? null,
@@ -1514,6 +1525,10 @@ export async function PUT(req: NextRequest) {
       parsedStatus.planned_pcs = planned_pcs;
       parsedStatus.planned_mtr = targetMtr;
       parsedStatus.planned_mt = targetMt;
+      if (effGrade) {
+        parsedStatus.grade = effGrade;
+        parsedStatus.rm_grade = effGrade;
+      }
       childUpdateObj.status = JSON.stringify(parsedStatus);
 
       await admin.from('rolling_plans').update(childUpdateObj).eq('id', targetPlan.id);

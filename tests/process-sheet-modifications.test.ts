@@ -162,6 +162,50 @@ describe('Process Sheet Modifications Plan Requirements', () => {
     // Material Specification should hold the pipe specification
     expect(data.materialSpec).toContain('ASTM A106 Gr B');
   });
+
+  it('Rolling Plan RM Grade * precedence: User entered RM Grade in Rolling Plan overrides all else', () => {
+    const planWithUserRmGrade = {
+      ...mockPlanWithRollingGrade,
+      grade: 'ASTM A106 Gr B', // WO grade from Excel
+      specification: 'ASTM A106 Gr B',
+      status: {
+        rm_grade: 'SAE 1018',
+        grade: 'SAE 1018', // User entered in Rolling Plan
+        spec: 'ASTM A106 Gr B',
+      },
+    };
+
+    const data = autoPopulateProcessSheet(planWithUserRmGrade, DEFAULT_SPEC_MASTER_RECORDS);
+    expect(data.steelGrade).toBe('SAE 1018');
+    expect(data.materialSpec).toBe('ASTM A106 Gr B');
+  });
+
+  it('Rejects pipe standard even if database spec master had steel_grade as ASTM A106 Gr B', () => {
+    const corruptedSpecMaster = [
+      {
+        ...DEFAULT_SPEC_MASTER_RECORDS[0],
+        spec_key: 'A106',
+        spec_full: 'ASTM A106 Gr B',
+        steel_grade: 'ASTM A106 Gr B', // Corrupted DB value
+      },
+    ];
+
+    const planWithoutRollingGrade = {
+      id: 'plan-no-grade',
+      plan_no: 'RP-100',
+      work_order_id: 'wo-100',
+      work_order_no: '6555',
+      grade: 'ASTM A106 Gr B',
+      specification: 'ASTM A106 Gr B',
+      status: {},
+    };
+
+    const data = autoPopulateProcessSheet(planWithoutRollingGrade, corruptedSpecMaster);
+    // Even if DB spec master was corrupted, cleanOrFallbackSteelGrade ensures steelGrade is SAE 1018
+    expect(data.steelGrade).toBe('SAE 1018');
+    expect(data.steelGrade).not.toBe('ASTM A106 Gr B');
+  });
 });
+
 
 

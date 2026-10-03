@@ -25,6 +25,7 @@ import type { SpecMasterRecord } from '@/lib/specMasterDefaults';
 import { DEFAULT_SPEC_MASTER_RECORDS } from '@/lib/specMasterDefaults';
 import {
   autoPopulateProcessSheet,
+  cleanOrFallbackSteelGrade,
   findMatchingSpecMaster,
   inferRouteFromMaterialOrSpec,
   isPipeSpecRatherThanSteelGrade,
@@ -219,13 +220,17 @@ export default function ProcessSheetReportClient() {
 
         if (savedSheet && savedSheet.sheet_data) {
           const sheetData = { ...(savedSheet.sheet_data as ProcessSheetFormData) };
-          // If the plan has an active route from rolling plan, ensure it synchronizes
           if (plan.route_code) {
             sheetData.routeType = plan.route_code;
             sheetData.orderType = plan.route_code;
           }
           if (plan.grade && !isPipeSpecRatherThanSteelGrade(plan.grade)) {
             sheetData.steelGrade = plan.grade;
+          } else if (isPipeSpecRatherThanSteelGrade(sheetData.steelGrade)) {
+            sheetData.steelGrade = cleanOrFallbackSteelGrade(plan.grade, sheetData.materialSpec || plan.specification);
+          }
+          if (!sheetData.materialSpec && plan.specification) {
+            sheetData.materialSpec = plan.specification;
           }
           setFormData(sheetData);
           return;
@@ -249,6 +254,11 @@ export default function ProcessSheetReportClient() {
             }
             if (plan.grade && !isPipeSpecRatherThanSteelGrade(plan.grade)) {
               sheetData.steelGrade = plan.grade;
+            } else if (isPipeSpecRatherThanSteelGrade(sheetData.steelGrade)) {
+              sheetData.steelGrade = cleanOrFallbackSteelGrade(plan.grade, sheetData.materialSpec || plan.specification);
+            }
+            if (!sheetData.materialSpec && plan.specification) {
+              sheetData.materialSpec = plan.specification;
             }
             setFormData(sheetData);
             return;
@@ -305,17 +315,53 @@ export default function ProcessSheetReportClient() {
 
       const routeMap = new Map<string, any>(routes.map((r: any) => [r.id, r]));
 
-      // Group rolling plans by work order
-      const rpByWo = new Map<string, any[]>();
+      // Group rolling plans by work order id AND work order no (including child groups in multi-WO campaigns)
+      const rpByWoId = new Map<string, any[]>();
+      const rpByWoNo = new Map<string, any[]>();
+
+      const registerRp = (keyId: string | null | undefined, keyNo: string | null | undefined, rp: any) => {
+        if (keyId) {
+          if (!rpByWoId.has(keyId)) rpByWoId.set(keyId, []);
+          rpByWoId.get(keyId)!.push(rp);
+        }
+        if (keyNo) {
+          const cleanNo = String(keyNo).trim();
+          if (cleanNo) {
+            if (!rpByWoNo.has(cleanNo)) rpByWoNo.set(cleanNo, []);
+            rpByWoNo.get(cleanNo)!.push(rp);
+          }
+        }
+      };
+
       rPlans.forEach((rp: any) => {
-        if (!rpByWo.has(rp.work_order_id)) rpByWo.set(rp.work_order_id, []);
-        rpByWo.get(rp.work_order_id)!.push(rp);
+        let parsedSt: any = {};
+        try {
+          parsedSt = typeof rp.status === 'string' ? JSON.parse(rp.status) : rp.status || {};
+        } catch {}
+
+        registerRp(rp.work_order_id, parsedSt.master_wo_no || parsedSt.work_order_no, rp);
+        if (parsedSt.master_wo_id) registerRp(parsedSt.master_wo_id, parsedSt.master_wo_no, rp);
+
+        // Include any child work orders bundled into this rolling plan
+        if (Array.isArray(parsedSt.child_work_orders)) {
+          parsedSt.child_work_orders.forEach((c: any) => {
+            registerRp(c.work_order_id, c.work_order_no, rp);
+          });
+        }
       });
+
+      const planById = new Map<string, any>(rPlans.map((p: any) => [p.id, p]));
+      const planByNo = new Map<string, any>(rPlans.map((p: any) => [p.plan_no, p]));
 
       const mappedList: RollingPlanRecord[] = [];
 
       wos.forEach((wo: any) => {
-        const associatedRps = rpByWo.get(wo.id) || [];
+        const associatedRps = Array.from(
+          new Set([
+            ...(rpByWoId.get(wo.id) || []),
+            ...(wo.work_order_no ? rpByWoNo.get(String(wo.work_order_no).trim()) || [] : []),
+          ])
+        );
         const finalOd = Number(wo.size_od) || 0;
         const finalWt = Number(wo.size_wt) || 0;
         const finalL1 = Number(wo.l1) || 0;
@@ -328,13 +374,35 @@ export default function ProcessSheetReportClient() {
               parsedSt = typeof r.status === 'string' ? JSON.parse(r.status) : r.status || {};
             } catch {}
 
+            // If child plan, look up master plan for parent setup and campaign details
+            let masterParsedSt: any = {};
+            if (parsedSt.is_child || parsedSt.master_plan_id || parsedSt.master_plan_no) {
+              const masterRp =
+                (parsedSt.master_plan_id ? planById.get(parsedSt.master_plan_id) : null) ||
+                (parsedSt.master_plan_no ? planByNo.get(parsedSt.master_plan_no) : null);
+              if (masterRp) {
+                try {
+                  masterParsedSt = typeof masterRp.status === 'string' ? JSON.parse(masterRp.status) : masterRp.status || {};
+                } catch {}
+              }
+            }
+
+            // Check if this work order is listed as a child in either plan
+            const childEntry = (Array.isArray(parsedSt.child_work_orders) ? parsedSt.child_work_orders : [])
+              .concat(Array.isArray(masterParsedSt.child_work_orders) ? masterParsedSt.child_work_orders : [])
+              .find(
+                (c: any) =>
+                  String(c.work_order_id || c.id || '').trim() === String(wo.id).trim() ||
+                  String(c.work_order_no || '').trim() === String(wo.work_order_no || '').trim()
+              );
+
             // Priority 1: r.process_route_id in routeMap
             // Priority 2: parsedSt.route_id / parsedSt.process_route_id in routeMap
             // Priority 3: parsedSt.route_code / parsedSt.route / parsedSt.route_name
-            const routeIdFromPlan = r.process_route_id || parsedSt.route_id || parsedSt.process_route_id;
+            const routeIdFromPlan = r.process_route_id || parsedSt.route_id || parsedSt.process_route_id || masterParsedSt.route_id;
             let route = routeIdFromPlan ? routeMap.get(routeIdFromPlan) : null;
             if (!route) {
-              const codeCandidate = String(parsedSt.route_code || parsedSt.route || parsedSt.route_name || '').toUpperCase();
+              const codeCandidate = String(parsedSt.route_code || parsedSt.route || parsedSt.route_name || masterParsedSt.route_code || '').toUpperCase();
               if (codeCandidate) {
                 route = routes.find(
                   (rt: any) =>
@@ -345,10 +413,32 @@ export default function ProcessSheetReportClient() {
               }
             }
 
+            const rawGrade = String(wo.grade || '').trim();
+            const specCandidate = String(childEntry?.spec || parsedSt.spec || parsedSt.specification || masterParsedSt.spec || wo.specification || wo.grade || '').trim();
+
+            // Resolve RM Grade * entered by user in the Rolling Plan
+            const userEnteredRmGrade =
+              (parsedSt.rm_grade && !isPipeSpecRatherThanSteelGrade(parsedSt.rm_grade) ? parsedSt.rm_grade : null) ||
+              (parsedSt.grade && !isPipeSpecRatherThanSteelGrade(parsedSt.grade) ? parsedSt.grade : null) ||
+              (masterParsedSt.rm_grade && !isPipeSpecRatherThanSteelGrade(masterParsedSt.rm_grade) ? masterParsedSt.rm_grade : null) ||
+              (masterParsedSt.grade && !isPipeSpecRatherThanSteelGrade(masterParsedSt.grade) ? masterParsedSt.grade : null) ||
+              (childEntry?.rm_grade && !isPipeSpecRatherThanSteelGrade(childEntry.rm_grade) ? childEntry.rm_grade : null) ||
+              (childEntry?.grade && !isPipeSpecRatherThanSteelGrade(childEntry.grade) ? childEntry.grade : null);
+
+            const matchedSpec = findMatchingSpecMaster(`${specCandidate} ${userEnteredRmGrade || rawGrade}`.trim(), specMasterList, specCandidate, userEnteredRmGrade || rawGrade);
+            const fallbackMasterGrade = matchedSpec?.steel_grade && !isPipeSpecRatherThanSteelGrade(matchedSpec.steel_grade)
+              ? matchedSpec.steel_grade
+              : null;
+
+            const actualSteelGrade =
+              userEnteredRmGrade ||
+              fallbackMasterGrade ||
+              cleanOrFallbackSteelGrade(rawGrade, specCandidate);
+
             const inferred = inferRouteFromMaterialOrSpec(
               wo.material_code || parsedSt.material_code,
-              wo.specification || parsedSt.spec,
-              wo.grade || parsedSt.grade
+              wo.specification || specCandidate,
+              actualSteelGrade
             );
 
             const effectiveRouteCode =
@@ -358,16 +448,6 @@ export default function ProcessSheetReportClient() {
               (parsedSt.catg?.toUpperCase().includes('CDS') ? 'CDS' : null) ||
               inferred.route_code;
             const effectiveRouteName = route?.route_name || inferred.route_name;
-
-            const rawGrade = String(parsedSt.grade || parsedSt.steel_grade || wo.grade || '').trim();
-            const specCandidate = String(parsedSt.spec || parsedSt.specification || wo.specification || wo.grade || '').trim();
-            const matchedSpec = findMatchingSpecMaster(`${specCandidate} ${rawGrade}`.trim(), specMasterList, specCandidate, rawGrade);
-            const actualSteelGrade =
-              (parsedSt.grade && !isPipeSpecRatherThanSteelGrade(parsedSt.grade) ? parsedSt.grade : null) ||
-              (parsedSt.steel_grade && !isPipeSpecRatherThanSteelGrade(parsedSt.steel_grade) ? parsedSt.steel_grade : null) ||
-              matchedSpec?.steel_grade ||
-              (!isPipeSpecRatherThanSteelGrade(rawGrade) ? rawGrade : '') ||
-              rawGrade;
 
             mappedList.push({
               id: `rp-${r.id}-wo-${wo.id}`,
@@ -410,10 +490,13 @@ export default function ProcessSheetReportClient() {
           const rawGrade = String(wo.grade || '').trim();
           const specCandidate = String(wo.specification || wo.grade || '').trim();
           const matchedSpec = findMatchingSpecMaster(`${specCandidate} ${rawGrade}`.trim(), specMasterList, specCandidate, rawGrade);
+          const fallbackMasterGrade = matchedSpec?.steel_grade && !isPipeSpecRatherThanSteelGrade(matchedSpec.steel_grade)
+            ? matchedSpec.steel_grade
+            : null;
+
           const actualSteelGrade =
-            matchedSpec?.steel_grade ||
-            (!isPipeSpecRatherThanSteelGrade(rawGrade) ? rawGrade : '') ||
-            rawGrade;
+            fallbackMasterGrade ||
+            cleanOrFallbackSteelGrade(rawGrade, specCandidate);
 
           const inferred = inferRouteFromMaterialOrSpec(
             wo.material_code,

@@ -374,6 +374,67 @@ export function inferRouteFromMaterialOrSpec(
     : { route_code: 'HFS', route_name: 'Hot Finished' };
 }
 
+export function cleanOrFallbackSteelGrade(
+  candidateGrade?: string | null,
+  specText?: string | null
+): string {
+  const cg = (candidateGrade || '').trim();
+  if (cg && !isPipeSpecRatherThanSteelGrade(cg)) {
+    return cg;
+  }
+
+  const sp = `${specText || ''} ${cg}`.toUpperCase();
+  if (sp.includes('DIN 2391') || sp.includes('ST 52') || sp.includes('E355')) {
+    return 'ST 52';
+  }
+  if (sp.includes('17175') || sp.includes('ST 35.8') || sp.includes('ST35.8')) {
+    return 'ST 35.8';
+  }
+  if (sp.includes('900DP') || sp.includes('MS 900')) {
+    return 'DP 900';
+  }
+  if (sp.includes('316')) {
+    return 'AISI 316L';
+  }
+  if (sp.includes('304')) {
+    return 'AISI 304L';
+  }
+  if (sp.includes('213') && sp.includes('T11')) {
+    return '1.25Cr - 0.5Mo';
+  }
+  if (sp.includes('213') && sp.includes('T22')) {
+    return '2.25Cr - 1Mo';
+  }
+  if (sp.includes('335') && sp.includes('P11')) {
+    return '1.25Cr - 0.5Mo';
+  }
+  if (sp.includes('335') && sp.includes('P22')) {
+    return '2.25Cr - 1Mo';
+  }
+  if (sp.includes('210') && (sp.includes('GR C') || sp.includes('GR.C') || sp.includes('GRADE C'))) {
+    return 'SAE 1026';
+  }
+  if (sp.includes('210')) {
+    return 'SAE 1018';
+  }
+  if (sp.includes('179') || sp.includes('192')) {
+    return 'SAE 1010';
+  }
+  if (sp.includes('106') || sp.includes('A53') || sp.includes('SA106')) {
+    if (sp.includes('GR C') || sp.includes('GR.C') || sp.includes('GRADE C')) {
+      return 'SAE 1020';
+    }
+    return 'SAE 1018';
+  }
+  if (sp.includes('3059')) {
+    if (sp.includes('620') || sp.includes('622')) return 'Alloy Steel';
+    if (sp.includes('440')) return 'SAE 1020';
+    return 'SAE 1018';
+  }
+
+  return cg || 'SAE 1018';
+}
+
 export function autoPopulateProcessSheet(
   plan: any,
   specMasterList: SpecMasterRecord[]
@@ -381,21 +442,22 @@ export function autoPopulateProcessSheet(
   const parsedSt = plan.status && typeof plan.status === 'object' ? plan.status : {};
 
   const specText = plan.specification || parsedSt.spec || '';
-  const parsedGrade = String(parsedSt.grade || parsedSt.steel_grade || '').trim();
+  const parsedGrade = String(parsedSt.rm_grade || parsedSt.grade || parsedSt.steel_grade || '').trim();
   const planGrade = String(plan.grade || '').trim();
   const fullSpecGrade = `${specText} ${parsedGrade || planGrade}`.trim();
   const matchedMaster = findMatchingSpecMaster(fullSpecGrade, specMasterList, specText, parsedGrade || planGrade);
 
   // Resolve Steel Grade (Raw Material / Billet Grade e.g. SAE 1018 / 15C8 RS-03)
+  // RM Grade * entered by user in Rolling Plan has top priority
   let resolvedSteelGrade = '';
   if (parsedGrade && !isPipeSpecRatherThanSteelGrade(parsedGrade)) {
     resolvedSteelGrade = parsedGrade;
-  } else if (matchedMaster?.steel_grade) {
-    resolvedSteelGrade = matchedMaster.steel_grade;
   } else if (planGrade && !isPipeSpecRatherThanSteelGrade(planGrade)) {
     resolvedSteelGrade = planGrade;
+  } else if (matchedMaster?.steel_grade && !isPipeSpecRatherThanSteelGrade(matchedMaster.steel_grade)) {
+    resolvedSteelGrade = matchedMaster.steel_grade;
   } else {
-    resolvedSteelGrade = parsedGrade || matchedMaster?.steel_grade || planGrade || plan.specification || '';
+    resolvedSteelGrade = cleanOrFallbackSteelGrade(parsedGrade || planGrade, specText);
   }
 
   const matCode = (plan.material_code || parsedSt.material_code || '').toString().toUpperCase();
