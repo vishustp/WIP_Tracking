@@ -29,6 +29,7 @@ import {
   Split,
   Calculator,
   RefreshCw,
+  Calendar,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -811,7 +812,20 @@ export function BandSawCuttingModal({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div>
+              <label className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-700">
+                <Calendar size={12} className="text-indigo-600" />
+                Cutting Date <span className="text-rose-500">*</span>
+              </label>
+              <Input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="h-9 font-semibold text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white shadow-2xs"
+              />
+            </div>
+
             <div>
               <label className="mb-1 block text-[11px] font-semibold text-slate-700">
                 Mother Pipes Processed (Pcs) <span className="text-rose-500">*</span>
