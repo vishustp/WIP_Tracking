@@ -82,9 +82,9 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'FINISHING',
-    label: 'Finishing, NDT & Dispatch',
-    shortLabel: 'Finishing',
-    description: 'Rotary straightening, ultrasonic/eddy current NDT, hydro-testing, and bundling.',
+    label: 'BUNDLING',
+    shortLabel: 'BUNDLING',
+    description: 'BUNDLING.',
     icon: Factory,
     color: 'border-teal-500 text-teal-700 bg-teal-50',
   },
@@ -240,7 +240,7 @@ export default function WorkCenterProductionReportClient() {
                   }
                 });
               }
-            } catch {}
+            } catch { }
           }
 
           if (mhOd > 0 && mhWt > 0) {
@@ -277,7 +277,7 @@ export default function WorkCenterProductionReportClient() {
             plansByWoMap.set(cId, list);
           }
         });
-      } catch {}
+      } catch { }
 
       const enriched = raw.map((e) => {
         const logRow = logMap.get(e.id);
@@ -342,13 +342,13 @@ export default function WorkCenterProductionReportClient() {
 
         const htcOkPcs = isRolling
           ? Math.max(
-              0,
-              remarkHtcPcs != null && remarkHtcPcs > 0
-                ? Math.min(outPcs, remarkHtcPcs)
-                : Number(e.htc_ok_pcs || 0) > 0
+            0,
+            remarkHtcPcs != null && remarkHtcPcs > 0
+              ? Math.min(outPcs, remarkHtcPcs)
+              : Number(e.htc_ok_pcs || 0) > 0
                 ? Math.min(outPcs, Math.round(Number(e.htc_ok_pcs)))
                 : Math.max(0, outPcs - rejPcs)
-            )
+          )
           : 0;
 
         return {
@@ -812,11 +812,10 @@ export default function WorkCenterProductionReportClient() {
                 key={wc.code}
                 type="button"
                 onClick={() => setSelectedWc(wc.code)}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all whitespace-nowrap cursor-pointer border ${
-                  isSelected
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all whitespace-nowrap cursor-pointer border ${isSelected
                     ? `${wc.color} shadow-xs border-current ring-1 ring-current/20`
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 <Icon className="h-4 w-4" />
                 <span>{wc.label}</span>
@@ -954,121 +953,188 @@ export default function WorkCenterProductionReportClient() {
         </div>
 
         {/* Tailored Station KPI Summary Cards - Main focus on PCS and MT */}
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 border-t border-slate-100 pt-4 print:grid-cols-6 print:border-black print:pt-2">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6 border-t border-slate-100 pt-4 print:grid-cols-6 print:gap-2 print:border-black print:pt-2">
           {/* Card 1: Received from <Last Work Center Name> */}
-          <div className="rounded-xl bg-slate-50 p-3 border-2 border-slate-200 print:bg-white print:border-black shadow-2xs">
-            <span
-              className="block text-[10px] font-black uppercase tracking-wider text-slate-600 print:text-black truncate"
-              title={`Received from ${feederMetrics.lastWcName}`}
-            >
-              Received from {feederMetrics.lastWcName}
-            </span>
-            <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-indigo-100 text-indigo-950 border border-indigo-300 print:border-black print:bg-white print:text-black">
-                {fmt(feederMetrics.receivedPcs, 0)} PCS
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
-                {fmt(feederMetrics.receivedMt)} MT
-              </span>
+          <div className="rounded-xl bg-slate-50 p-3 border-2 border-slate-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+            <div>
+              <div className="min-h-[2.25rem] flex flex-col justify-start">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
+                  Received from
+                </span>
+                <span
+                  className="text-xs font-black text-slate-800 print:text-black leading-tight break-words"
+                  title={feederMetrics.lastWcName}
+                >
+                  {feederMetrics.lastWcName}
+                </span>
+              </div>
+              <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-base sm:text-lg font-black font-mono text-slate-900 tabular-nums">
+                    {fmt(feederMetrics.receivedPcs, 0)}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">PCS</span>
+                </div>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 tabular-nums whitespace-nowrap">
+                  {fmt(feederMetrics.receivedMt)} MT
+                </span>
+              </div>
             </div>
-            <span className="text-[11px] text-slate-500 block font-mono mt-1 font-semibold print:text-black">
-              Length: {fmt(feederMetrics.receivedMtr)} MTR
-            </span>
+            <div className="pt-1.5 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-mono text-slate-600 print:text-black">
+              <span>Length</span>
+              <span className="font-bold text-slate-900">{fmt(feederMetrics.receivedMtr)} MTR</span>
+            </div>
           </div>
 
           {/* Card 2: Balance for Production */}
-          <div className="rounded-xl bg-amber-50/50 p-3 border-2 border-amber-200 print:bg-white print:border-black shadow-2xs">
-            <span className="block text-[10px] font-black uppercase tracking-wider text-amber-900 print:text-black truncate">
-              Balance for Production
-            </span>
-            <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-amber-100 text-amber-950 border border-amber-300 print:border-black print:bg-white print:text-black">
-                {fmt(feederMetrics.balancePcs, 0)} PCS
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
-                {fmt(feederMetrics.balanceMt)} MT
-              </span>
+          <div className="rounded-xl bg-amber-50/50 p-3 border-2 border-amber-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+            <div>
+              <div className="min-h-[2.25rem] flex flex-col justify-start">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 print:text-black">
+                  Station Queue
+                </span>
+                <span className="text-xs font-black text-amber-950 print:text-black leading-tight">
+                  Balance for Production
+                </span>
+              </div>
+              <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-base sm:text-lg font-black font-mono text-amber-950 tabular-nums">
+                    {fmt(feederMetrics.balancePcs, 0)}
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-700 uppercase">PCS</span>
+                </div>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 tabular-nums whitespace-nowrap">
+                  {fmt(feederMetrics.balanceMt)} MT
+                </span>
+              </div>
             </div>
-            <span className="text-[11px] text-amber-800 block font-mono mt-1 font-semibold print:text-black">
-              Queue: {fmt(feederMetrics.balanceMtr)} MTR
-            </span>
+            <div className="pt-1.5 border-t border-amber-200/70 flex items-center justify-between text-[11px] font-mono text-amber-800 print:text-black">
+              <span>Queue</span>
+              <span className="font-bold text-amber-950">{fmt(feederMetrics.balanceMtr)} MTR</span>
+            </div>
           </div>
 
           {/* Card 3: Gross Output */}
-          <div className="rounded-xl bg-blue-50/40 p-3 border-2 border-blue-200 print:bg-white print:border-black shadow-2xs">
-            <span className="block text-[10px] font-black uppercase tracking-wider text-blue-900 print:text-black">
-              Gross Output (Pcs & MT)
-            </span>
-            <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-blue-100 text-blue-950 border border-blue-300 print:border-black print:bg-white print:text-black">
-                {fmt(metrics.outputPcs, 0)} PCS
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
-                {fmt(metrics.outputMt)} MT
-              </span>
+          <div className="rounded-xl bg-blue-50/40 p-3 border-2 border-blue-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+            <div>
+              <div className="min-h-[2.25rem] flex flex-col justify-start">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 print:text-black">
+                  Shift Production
+                </span>
+                <span className="text-xs font-black text-blue-950 print:text-black leading-tight">
+                  Gross Output
+                </span>
+              </div>
+              <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-base sm:text-lg font-black font-mono text-blue-950 tabular-nums">
+                    {fmt(metrics.outputPcs, 0)}
+                  </span>
+                  <span className="text-[10px] font-bold text-blue-700 uppercase">PCS</span>
+                </div>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 tabular-nums whitespace-nowrap">
+                  {fmt(metrics.outputMt)} MT
+                </span>
+              </div>
             </div>
-            <span className="text-[11px] text-blue-800 block font-mono mt-1 font-semibold print:text-black">
-              Length: {fmt(metrics.outputMtr)} MTR
-            </span>
+            <div className="pt-1.5 border-t border-blue-200/70 flex items-center justify-between text-[11px] font-mono text-blue-800 print:text-black">
+              <span>Length</span>
+              <span className="font-bold text-blue-950">{fmt(metrics.outputMtr)} MTR</span>
+            </div>
           </div>
 
           {/* Card 4: Scrap & Rejection */}
-          <div className="rounded-xl bg-rose-50/40 p-3 border-2 border-rose-200 print:bg-white print:border-black shadow-2xs">
-            <span className="block text-[10px] font-black uppercase tracking-wider text-rose-900 print:text-black">
-              Scrap & Rejection (Pcs & MT)
-            </span>
-            <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-rose-100 text-rose-950 border border-rose-300 print:border-black print:bg-white print:text-black">
-                {fmt(metrics.rejPcs, 0)} PCS
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-rose-100 text-rose-950 border border-rose-300 print:border-black print:bg-white print:text-black">
-                {fmt(metrics.rejMt)} MT
+          <div className="rounded-xl bg-rose-50/40 p-3 border-2 border-rose-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+            <div>
+              <div className="min-h-[2.25rem] flex flex-col justify-start">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 print:text-black">
+                  Mill Losses
+                </span>
+                <span className="text-xs font-black text-rose-950 print:text-black leading-tight">
+                  Scrap & Rejection
+                </span>
+              </div>
+              <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-base sm:text-lg font-black font-mono text-rose-950 tabular-nums">
+                    {fmt(metrics.rejPcs, 0)}
+                  </span>
+                  <span className="text-[10px] font-bold text-rose-700 uppercase">PCS</span>
+                </div>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-rose-100 text-rose-900 border border-rose-300 tabular-nums whitespace-nowrap">
+                  {fmt(metrics.rejMt)} MT
+                </span>
+              </div>
+            </div>
+            <div className="pt-1.5 border-t border-rose-200/70 flex items-center justify-between text-[11px] font-mono text-rose-800 print:text-black">
+              <span>Loss Rate</span>
+              <span className="font-bold text-rose-950 whitespace-nowrap">
+                {fmt(metrics.rejRatePct, 1)}%{' '}
+                <span className="text-[10px] font-normal text-rose-700">({fmt(metrics.rejMtr)}m)</span>
               </span>
             </div>
-            <span className="text-[11px] text-rose-700 block font-semibold mt-1 print:text-black">
-              Rate: {fmt(metrics.rejRatePct, 1)}% ({fmt(metrics.rejMtr)} MTR)
-            </span>
           </div>
 
           {/* Card 5: Prime / Net Accepted / HTC OK */}
-          <div className="rounded-xl bg-emerald-50/40 p-3 border-2 border-emerald-200 print:bg-white print:border-black shadow-2xs">
-            <span className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 print:text-black">
-              {selectedWc === 'ROLLING'
-                ? 'HTC OK / Prime Output'
-                : selectedWc === 'FINISHING'
-                ? 'VDI HT OK / Net Accepted'
-                : 'Prime / Net Accepted'}
-            </span>
-            <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
-                {fmt(selectedWc === 'ROLLING' ? metrics.htcOkPcs : Math.max(metrics.outputPcs - metrics.rejPcs, 0), 0)} PCS
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
-                {fmt(metrics.netMt)} MT
+          <div className="rounded-xl bg-emerald-50/40 p-3 border-2 border-emerald-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+            <div>
+              <div className="min-h-[2.25rem] flex flex-col justify-start">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 print:text-black">
+                  Accepted Yield
+                </span>
+                <span className="text-xs font-black text-emerald-950 print:text-black leading-tight">
+                  {selectedWc === 'ROLLING'
+                    ? 'HTC OK Output'
+                    : selectedWc === 'FINISHING'
+                      ? 'VDI HT OK Output'
+                      : 'Prime / Net Accepted'}
+                </span>
+              </div>
+              <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-base sm:text-lg font-black font-mono text-emerald-950 tabular-nums">
+                    {fmt(selectedWc === 'ROLLING' ? metrics.htcOkPcs : Math.max(metrics.outputPcs - metrics.rejPcs, 0), 0)}
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase">PCS</span>
+                </div>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 tabular-nums whitespace-nowrap">
+                  {fmt(metrics.netMt)} MT
+                </span>
+              </div>
+            </div>
+            <div className="pt-1.5 border-t border-emerald-200/70 flex items-center justify-between text-[11px] font-mono text-emerald-800 print:text-black">
+              <span>{selectedWc === 'ROLLING' ? 'HTC OK Length' : 'Net Length'}</span>
+              <span className="font-bold text-emerald-950">
+                {fmt(selectedWc === 'ROLLING' ? metrics.htcOkMtr : metrics.netMtr)} MTR
               </span>
             </div>
-            <span className="text-[11px] text-emerald-800 block font-bold mt-1 font-mono print:text-black">
-              {selectedWc === 'ROLLING'
-                ? `HTC OK: ${fmt(metrics.htcOkMtr)} MTR`
-                : selectedWc === 'FINISHING'
-                ? `Net Accepted: ${fmt(metrics.netMtr)} MTR`
-                : `Net MTR: ${fmt(metrics.netMtr)} MTR`}
-            </span>
           </div>
 
           {/* Card 6: Station Yield Efficiency */}
-          <div className="rounded-xl bg-indigo-50/40 p-3 border-2 border-indigo-200 print:bg-white print:border-black shadow-2xs">
-            <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-900 print:text-black">
-              Station Yield Efficiency
-            </span>
-            <div className="mt-1.5">
-              <span className="text-xl font-black text-indigo-950 font-mono print:text-black">
-                {fmt(metrics.yieldPct, 1)}%
-              </span>
+          <div className="rounded-xl bg-indigo-50/40 p-3 border-2 border-indigo-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+            <div>
+              <div className="min-h-[2.25rem] flex flex-col justify-start">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 print:text-black">
+                  Performance
+                </span>
+                <span className="text-xs font-black text-indigo-950 print:text-black leading-tight">
+                  Station Yield
+                </span>
+              </div>
+              <div className="my-2 flex items-baseline justify-between gap-1">
+                <span className="text-xl sm:text-2xl font-black text-indigo-950 font-mono tabular-nums print:text-black">
+                  {fmt(metrics.yieldPct, 1)}%
+                </span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-indigo-100 text-indigo-900 border border-indigo-300 tabular-nums whitespace-nowrap">
+                  Yield
+                </span>
+              </div>
             </div>
-            <span className="text-[11px] text-slate-500 block mt-1 font-medium print:text-black">
-              {metrics.count} shift batches logged
-            </span>
+            <div className="pt-1.5 border-t border-indigo-200/70 flex items-center justify-between text-[11px] font-mono text-slate-600 print:text-black">
+              <span>Batches Logged</span>
+              <span className="font-bold text-indigo-950">{metrics.count}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1134,8 +1200,8 @@ export default function WorkCenterProductionReportClient() {
                     e.input_mtr > 0
                       ? (netMtr / e.input_mtr) * 100
                       : e.output_mtr > 0
-                      ? (netMtr / e.output_mtr) * 100
-                      : 100;
+                        ? (netMtr / e.output_mtr) * 100
+                        : 100;
 
                   return (
                     <tr key={e.id} className="hover:bg-slate-50/50 print:text-black">
@@ -1231,13 +1297,12 @@ export default function WorkCenterProductionReportClient() {
 
                       <td className="px-3 py-2 text-center font-mono font-bold print:text-black">
                         <span
-                          className={`rounded px-1.5 py-0.2 text-[11px] ${
-                            entryYield >= 90
+                          className={`rounded px-1.5 py-0.2 text-[11px] ${entryYield >= 90
                               ? 'bg-emerald-100 text-emerald-800'
                               : entryYield >= 80
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-rose-100 text-rose-800'
-                          } print:border print:border-black print:bg-white print:text-black`}
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-rose-100 text-rose-800'
+                            } print:border print:border-black print:bg-white print:text-black`}
                         >
                           {fmt(entryYield, 1)}%
                         </span>
