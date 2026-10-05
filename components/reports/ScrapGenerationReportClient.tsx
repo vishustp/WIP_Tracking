@@ -460,11 +460,10 @@ export default function ScrapGenerationReportClient() {
                   <button
                     key={s.code}
                     onClick={() => setSelectedStage(s.code)}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer ${
-                      active
-                        ? 'bg-slate-900 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer ${active
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
                   >
                     <Icon className="w-3 h-3" />
                     {s.label}
@@ -482,11 +481,10 @@ export default function ScrapGenerationReportClient() {
                   <button
                     key={st.code}
                     onClick={() => setSelectedScrapType(st.code)}
-                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer ${
-                      active
-                        ? 'bg-rose-700 text-white font-semibold'
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                    }`}
+                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer ${active
+                      ? 'bg-rose-700 text-white font-semibold'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                      }`}
                   >
                     {st.label}
                   </button>
@@ -668,13 +666,12 @@ export default function ScrapGenerationReportClient() {
                         {/* Scrap Classification Badge */}
                         <td className="py-2 px-3 whitespace-nowrap">
                           <span
-                            className={`inline-block px-2 py-0.5 text-[11px] rounded-full font-medium ${
-                              isRemnantUnder3m
-                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                : isBandSaw
+                            className={`inline-block px-2 py-0.5 text-[11px] rounded-full font-medium ${isRemnantUnder3m
+                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                              : isBandSaw
                                 ? 'bg-blue-100 text-blue-800 border border-blue-200'
                                 : 'bg-rose-100 text-rose-800 border border-rose-200'
-                            }`}
+                              }`}
                           >
                             {r.scrap_type_label}
                           </span>
@@ -719,158 +716,129 @@ export default function ScrapGenerationReportClient() {
             </table>
           </div>
         </div>
-
-        {/* 6. Mill Rules & Standard Compliance Reference Footer */}
-        <div className="bg-slate-100 rounded-xl p-4 border border-slate-200 text-xs text-slate-600 space-y-2 print:hidden">
-          <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-            <Info className="w-4 h-4 text-blue-600" />
-            Seamless Pipe Manufacturing Scrap Accounting Rules:
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-              <span className="font-semibold text-slate-900 block mb-0.5">Rule 4: Band Saw Hybrid Cut Accounting</span>
-              <p className="text-[11px] text-slate-500">
-                Cutting scrap is calculated as <span className="font-mono">Scrap = Mother Pipe Input Mtr − Prime Cut Mtr</span>.
-                End trims, kerf loss, and crop ends are aggregated into cutting scrap.
-              </p>
-            </div>
-            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-              <span className="font-semibold text-slate-900 block mb-0.5">Rule 5B: Hard 3.0-Meter Scrap Floor</span>
-              <p className="text-[11px] text-slate-500">
-                Any pipe off-cut or crop remnant &lt; 3.0m cannot be diverted and is automatically classified as scrap melt loss.
-              </p>
-            </div>
-            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-              <span className="font-semibold text-slate-900 block mb-0.5">Rule 5C: Usable Off-cuts (≥ 3.0m)</span>
-              <p className="text-[11px] text-slate-500">
-                Off-cuts ≥ 3.0m are kept as usable inventory eligible for Diversion to other work orders or Commercial secondary sales.
-              </p>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* 7. Detail Modal */}
       {selectedRecordForDetail && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-rose-50 text-rose-700 rounded-md">
-                  <Recycle className="w-5 h-5" />
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-rose-50 text-rose-700 rounded-md">
+                    <Recycle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Scrap Event: {selectedRecordForDetail.work_order_no}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {selectedRecordForDetail.stage_name} • {selectedRecordForDetail.process_date}
+                    </p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setSelectedRecordForDetail(null)}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-md cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4 text-xs">
+                <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 font-mono">
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Customer:</span>
+                    <span className="font-semibold text-slate-800">{selectedRecordForDetail.customer_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Size & Grade:</span>
+                    <span className="font-semibold text-slate-800">
+                      {selectedRecordForDetail.size_display} ({selectedRecordForDetail.grade})
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Heat / Lot No:</span>
+                    <span className="font-semibold text-slate-800">{selectedRecordForDetail.heat_lot_no}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Classification:</span>
+                    <span className="font-semibold text-rose-700">{selectedRecordForDetail.scrap_type_label}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center font-mono">
+                  <div className="p-2.5 bg-slate-100 rounded-md">
+                    <span className="text-[11px] text-slate-500 block">Input</span>
+                    <span className="font-bold text-slate-800">{fmt(selectedRecordForDetail.input_mt, 3)} MT</span>
+                    <span className="text-[10px] text-slate-400 block">{fmt(selectedRecordForDetail.input_mtr, 1)} Mtr</span>
+                  </div>
+                  <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded-md border border-emerald-200">
+                    <span className="text-[11px] text-emerald-600 block">Prime OK</span>
+                    <span className="font-bold">{fmt(selectedRecordForDetail.prime_mt, 3)} MT</span>
+                    <span className="text-[10px] text-emerald-600 block">{fmt(selectedRecordForDetail.prime_mtr, 1)} Mtr</span>
+                  </div>
+                  <div className="p-2.5 bg-rose-50 text-rose-800 rounded-md border border-rose-200">
+                    <span className="text-[11px] text-rose-600 block">Scrap Loss</span>
+                    <span className="font-bold">{fmt(selectedRecordForDetail.scrap_mt, 3)} MT</span>
+                    <span className="text-[10px] text-rose-600 block">
+                      {fmt(selectedRecordForDetail.scrap_mtr, 2)} Mtr ({selectedRecordForDetail.scrap_pct.toFixed(1)}%)
+                    </span>
+                  </div>
+                </div>
+
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">
-                    Scrap Event: {selectedRecordForDetail.work_order_no}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    {selectedRecordForDetail.stage_name} • {selectedRecordForDetail.process_date}
+                  <span className="font-semibold text-slate-800 block mb-1">Scrap / Defect Reason:</span>
+                  <p className="p-2.5 bg-slate-50 rounded-md border border-slate-200 text-slate-700">
+                    {selectedRecordForDetail.scrap_reason}
                   </p>
                 </div>
+
+                {selectedRecordForDetail.remarks && (
+                  <div>
+                    <span className="font-semibold text-slate-800 block mb-1">Full Entry Remarks:</span>
+                    <pre className="p-2.5 bg-slate-50 rounded-md border border-slate-200 text-[11px] text-slate-600 whitespace-pre-wrap font-mono">
+                      {selectedRecordForDetail.remarks}
+                    </pre>
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => setSelectedRecordForDetail(null)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-md cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+              <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
+                <button
+                  onClick={() => setSelectedRecordForDetail(null)}
+                  className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-100 cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
+          </div>
+        )}
 
-            <div className="p-5 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 font-mono">
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Customer:</span>
-                  <span className="font-semibold text-slate-800">{selectedRecordForDetail.customer_name}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Size & Grade:</span>
-                  <span className="font-semibold text-slate-800">
-                    {selectedRecordForDetail.size_display} ({selectedRecordForDetail.grade})
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Heat / Lot No:</span>
-                  <span className="font-semibold text-slate-800">{selectedRecordForDetail.heat_lot_no}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Classification:</span>
-                  <span className="font-semibold text-rose-700">{selectedRecordForDetail.scrap_type_label}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 text-center font-mono">
-                <div className="p-2.5 bg-slate-100 rounded-md">
-                  <span className="text-[11px] text-slate-500 block">Input</span>
-                  <span className="font-bold text-slate-800">{fmt(selectedRecordForDetail.input_mt, 3)} MT</span>
-                  <span className="text-[10px] text-slate-400 block">{fmt(selectedRecordForDetail.input_mtr, 1)} Mtr</span>
-                </div>
-                <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded-md border border-emerald-200">
-                  <span className="text-[11px] text-emerald-600 block">Prime OK</span>
-                  <span className="font-bold">{fmt(selectedRecordForDetail.prime_mt, 3)} MT</span>
-                  <span className="text-[10px] text-emerald-600 block">{fmt(selectedRecordForDetail.prime_mtr, 1)} Mtr</span>
-                </div>
-                <div className="p-2.5 bg-rose-50 text-rose-800 rounded-md border border-rose-200">
-                  <span className="text-[11px] text-rose-600 block">Scrap Loss</span>
-                  <span className="font-bold">{fmt(selectedRecordForDetail.scrap_mt, 3)} MT</span>
-                  <span className="text-[10px] text-rose-600 block">
-                    {fmt(selectedRecordForDetail.scrap_mtr, 2)} Mtr ({selectedRecordForDetail.scrap_pct.toFixed(1)}%)
-                  </span>
-                </div>
-              </div>
-
+        {/* 8. Printable Sign-off & Audit Document Footer (visible only in print) */}
+        <div className="hidden print:block max-w-7xl mx-auto px-4 mt-8 pt-6 border-t-2 border-slate-400">
+          <div className="flex justify-between items-end text-xs text-slate-700">
+            <div>
+              <p className="font-bold">SEAMLESS PIPE MANUFACTURING MILL</p>
+              <p>Quality Assurance & Production Control Ledger</p>
+              <p className="text-[10px] text-slate-500 mt-1">Generated: {new Date().toLocaleString()}</p>
+            </div>
+            <div className="flex gap-12 text-center">
               <div>
-                <span className="font-semibold text-slate-800 block mb-1">Scrap / Defect Reason:</span>
-                <p className="p-2.5 bg-slate-50 rounded-md border border-slate-200 text-slate-700">
-                  {selectedRecordForDetail.scrap_reason}
-                </p>
+                <div className="w-36 border-b border-slate-600 h-8 mb-1"></div>
+                <span className="font-medium">Shift In-Charge</span>
               </div>
-
-              {selectedRecordForDetail.remarks && (
-                <div>
-                  <span className="font-semibold text-slate-800 block mb-1">Full Entry Remarks:</span>
-                  <pre className="p-2.5 bg-slate-50 rounded-md border border-slate-200 text-[11px] text-slate-600 whitespace-pre-wrap font-mono">
-                    {selectedRecordForDetail.remarks}
-                  </pre>
-                </div>
-              )}
-            </div>
-
-            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
-              <button
-                onClick={() => setSelectedRecordForDetail(null)}
-                className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-100 cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 8. Printable Sign-off & Audit Document Footer (visible only in print) */}
-      <div className="hidden print:block max-w-7xl mx-auto px-4 mt-8 pt-6 border-t-2 border-slate-400">
-        <div className="flex justify-between items-end text-xs text-slate-700">
-          <div>
-            <p className="font-bold">SEAMLESS PIPE MANUFACTURING MILL</p>
-            <p>Quality Assurance & Production Control Ledger</p>
-            <p className="text-[10px] text-slate-500 mt-1">Generated: {new Date().toLocaleString()}</p>
-          </div>
-          <div className="flex gap-12 text-center">
-            <div>
-              <div className="w-36 border-b border-slate-600 h-8 mb-1"></div>
-              <span className="font-medium">Shift In-Charge</span>
-            </div>
-            <div>
-              <div className="w-36 border-b border-slate-600 h-8 mb-1"></div>
-              <span className="font-medium">Quality Head</span>
-            </div>
-            <div>
-              <div className="w-36 border-b border-slate-600 h-8 mb-1"></div>
-              <span className="font-medium">Plant General Manager</span>
+              <div>
+                <div className="w-36 border-b border-slate-600 h-8 mb-1"></div>
+                <span className="font-medium">Quality Head</span>
+              </div>
+              <div>
+                <div className="w-36 border-b border-slate-600 h-8 mb-1"></div>
+                <span className="font-medium">Plant General Manager</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
   );
 }
