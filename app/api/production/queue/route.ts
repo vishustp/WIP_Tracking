@@ -1603,8 +1603,8 @@ export async function GET(req: NextRequest) {
                 mh_l1: plMhL1,
                 mh_l2: plMhL2,
                 mh_avg_length: effPlMhAvg,
-                max_allowed_mtr: Number(((plPlannedMtr || plAvailMtr) * 1.10).toFixed(2)),
-                max_allowed_pcs: Math.round((plPlannedPcs || plAvailPcs) * 1.10),
+                max_allowed_mtr: plAvailMtr,
+                max_allowed_pcs: plAvailPcs,
                 feeder_source_label: `Rolling Plan: ${pl.plan_no}`,
                 feeder_stage_code: "ROLLING_PLAN",
               });

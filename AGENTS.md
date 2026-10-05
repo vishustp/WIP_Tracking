@@ -58,3 +58,7 @@ All frontend features, dashboards, production entry consoles, and report tables 
 - **Joint Furnace Rule**: Hollow Heat Treatment (`HOLLOW_HEAT_TREATMENT`) and Final Heat Treatment (`HEAT_TREATMENT`) share mutual furnace permissions.
 - **Granular Custom Permissions**: Custom access levels (`view`, `edit`, `none`) configured via the Admin Control Panel dynamically determine sidebar route visibility (`isRouteVisible`) and form execution rights (`getFormAccess`, `checkCanManagePlans`), superseding static group whitelist filters.
 
+## 9. Strict Rolling Plan Quantity Capping
+- **Rolling Production Limit**: Rolling production (Pieces or Meters) cannot exceed the Rolling Plan Quantity.
+- **Enforcement**: Both frontend queue validation (`/production`, `useQueue`, `validateProductionEntry`) and backend API (`/api/production/record`) strictly cap rolling production at the remaining plan balance (`balance_to_make_pcs` / `balance_to_make_mtr`), blocking any attempt to record rolling output exceeding the PPC authorized Rolling Plan.
+

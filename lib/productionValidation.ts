@@ -107,7 +107,27 @@ export function validateProductionEntry(
     }
   }
 
-  // 6. Rolling Stage: Uncapped (No 110% capping enforced on Rolling Production)
+  // 6. Rolling Stage: Rolling production cannot exceed Rolling Plan Quantity (Strictly PCS / Nos)
+  if (stage === "ROLLING") {
+    const planPcs =
+      n(row.max_allowed_pcs) > 0
+        ? n(row.max_allowed_pcs)
+        : n(row.balance_to_make_pcs) > 0
+        ? n(row.balance_to_make_pcs)
+        : n(row.planned_pcs);
+
+    if (planPcs <= 0) {
+      errors.push({
+        workOrder: row.work_order_no,
+        message: "Rolling production cannot exceed Rolling Plan Quantity. Planned piece quantity has already been fully rolled for this plan.",
+      });
+    } else if (d.pcs > 0 && d.pcs > planPcs) {
+      errors.push({
+        workOrder: row.work_order_no,
+        message: `Rolling production (${d.pcs} PCS) exceeds remaining Rolling Plan Quantity (${fmt(planPcs)} PCS).`,
+      });
+    }
+  }
 
   // 7. Maximum Allowed Quantity Checks based on Nos (PCS) & Preceding Feeder WIP for downstream stages
   const allowedPcs =

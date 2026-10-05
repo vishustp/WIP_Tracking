@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { attachPcsToRemarks } from '@/lib/productionUtils';
+import { attachPcsToRemarks, extractPcsFromRemarks } from '@/lib/productionUtils';
 import { requireAuth } from '@/lib/supabase/authGuard';
 
 export async function POST(req: NextRequest) {
@@ -84,7 +84,42 @@ export async function POST(req: NextRequest) {
           );
         }
 
+        // Rule: Rolling production cannot exceed Rolling Plan QTY
+        let planQuery = admin.from('rolling_plans').select('id, planned_qty, status');
+        if (item.rolling_plan_id || item.plan_id) {
+          planQuery = planQuery.eq('id', item.rolling_plan_id || item.plan_id);
+        } else if (item.work_order_id) {
+          planQuery = planQuery.eq('work_order_id', item.work_order_id);
+        }
+        const { data: matchedPlans } = await planQuery.limit(1);
+        const matchedPlan = matchedPlans?.[0];
+        if (matchedPlan) {
+          const st = typeof matchedPlan.status === 'object' && matchedPlan.status !== null ? matchedPlan.status : {};
+          const planTotalMtr = Number(matchedPlan.planned_qty || st.planned_mtr || st.rolling_mtr || 0);
+          const planTotalPcs = Number(st.planned_pcs || st.plan_qty?.nos || 0);
 
+          const { data: existingLogs } = await admin
+            .from('production_logs')
+            .select('output_qty, rejection_qty, remarks')
+            .eq('work_order_id', item.work_order_id)
+            .eq('stage_id', item.stage_id);
+
+          let alreadyLoggedMtr = 0;
+          let alreadyLoggedPcs = 0;
+          for (const el of existingLogs || []) {
+            alreadyLoggedMtr += Number(el.output_qty || 0);
+            const pInfo = extractPcsFromRemarks(el.remarks);
+            alreadyLoggedPcs += pInfo?.pcs || 0;
+          }
+
+          if (planTotalPcs > 0 && (alreadyLoggedPcs + outPcs) > planTotalPcs) {
+            const remainingPcs = Math.max(0, planTotalPcs - alreadyLoggedPcs);
+            return NextResponse.json(
+              { error: `Rolling production (${outPcs} PCS) exceeds remaining Rolling Plan Quantity (${remainingPcs} PCS).` },
+              { status: 400 }
+            );
+          }
+        }
       }
     }
 

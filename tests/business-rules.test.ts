@@ -60,12 +60,16 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
   });
 
   describe("CDS Route Rules", () => {
-    it("Rule 1: Rolling production is uncapped and can exceed Rolling Plan quantity without 110% ceiling", () => {
+    it("Rule 1: Rolling production is strictly validated by PCS (pieces/Nos), not meters", () => {
+      // 1. Valid row within plan PCS
       const validRow: Row = {
         ...baseRow,
         stage_code: "ROLLING",
         route_code: "CDS",
-        planned_rolling_total: 500,
+        balance_to_make_pcs: 100,
+        balance_to_make_mtr: 600,
+        max_allowed_pcs: 100,
+        max_allowed_mtr: 600,
         mtr: "540",
         pcs: "90",
         htc_ok_pcs: "90",
@@ -73,19 +77,39 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       };
       expect(validateProductionEntry(validRow, "ROLLING")).toHaveLength(0);
 
-      // Rolling production exceeding 110% is allowed (no capping error)
-      const excessRow: Row = {
+      // 2. Rolling production where PCS is within plan (e.g. 90 PCS <= 100) but meters exceed (e.g. 650m > 600m due to cut yield) is ALLOWED
+      const excessMtrRow: Row = {
         ...baseRow,
         stage_code: "ROLLING",
         route_code: "CDS",
-        planned_rolling_total: 500,
+        balance_to_make_pcs: 100,
+        balance_to_make_mtr: 600,
+        max_allowed_pcs: 100,
+        max_allowed_mtr: 600,
+        mtr: "650",
+        pcs: "90",
+        htc_ok_pcs: "90",
+        htc_ok_mtr: "650",
+      };
+      expect(validateProductionEntry(excessMtrRow, "ROLLING")).toHaveLength(0);
+
+      // 3. Rolling production where PCS exceeds remaining plan is BLOCKED
+      const excessPcsRow: Row = {
+        ...baseRow,
+        stage_code: "ROLLING",
+        route_code: "CDS",
+        balance_to_make_pcs: 90,
+        balance_to_make_mtr: 540,
+        max_allowed_pcs: 90,
+        max_allowed_mtr: 540,
         mtr: "600",
         pcs: "100",
         htc_ok_pcs: "100",
         htc_ok_mtr: "600",
       };
-      const errors = validateProductionEntry(excessRow, "ROLLING");
-      expect(errors).toHaveLength(0);
+      const errors = validateProductionEntry(excessPcsRow, "ROLLING");
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0].message).toContain("exceeds remaining Rolling Plan Quantity");
     });
 
     it("Rule 2: Draw production is capped at Rolling HTC OK", () => {

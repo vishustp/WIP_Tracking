@@ -391,8 +391,8 @@ export function useQueue(stage: StageCode) {
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
               balance_to_make_mt: Number(availMt.toFixed(2)),
-              max_allowed_mtr: null,
-              max_allowed_pcs: null,
+              max_allowed_mtr: availMtr,
+              max_allowed_pcs: availPcs,
             };
           } else {
             // Standard single work order plan
@@ -431,8 +431,8 @@ export function useQueue(stage: StageCode) {
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
               balance_to_make_mt: Number(availMt.toFixed(2)),
-              max_allowed_mtr: null,
-              max_allowed_pcs: null,
+              max_allowed_mtr: availMtr,
+              max_allowed_pcs: availPcs,
             };
           }
         });
@@ -530,8 +530,8 @@ export function useQueue(stage: StageCode) {
                     balance_to_make_mtr: availMtr,
                     balance_to_make_pcs: availPcs,
                     balance_to_make_mt: Number(availMt.toFixed(2)),
-                    max_allowed_mtr: null,
-                    max_allowed_pcs: null,
+                    max_allowed_mtr: availMtr,
+                    max_allowed_pcs: availPcs,
                     multiple: 1,
                     ht_nos: null,
                     is_master: true,
