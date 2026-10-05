@@ -74,9 +74,9 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'VDI',
-    label: 'STR/Cutting/Hydro/UT',
-    shortLabel: 'VDI / QC',
-    description: 'Dimensional verification (OD/WT/Length), surface inspection, and QA disposition.',
+    label: 'VDI',
+    shortLabel: 'VDI',
+    description: 'Visual Dimension Inspection: OD, WT, length verification, surface inspection, and QA disposition.',
     icon: ClipboardCheck,
     color: 'border-purple-500 text-purple-700 bg-purple-50',
   },
@@ -101,9 +101,22 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
 const fmt = (n: number | null | undefined, digits = 2) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
+const LAST_WC_MAP: Record<string, string> = {
+  ROLLING: 'PPC Rolling Plan',
+  HOLLOW_HEAT_TREATMENT: 'Hot Rolling Mill',
+  DRAW: 'Hollow HT / Rolling',
+  HEAT_TREATMENT: 'Cold Draw Bench',
+  BAND_SAW: 'Final Heat Treatment',
+  VDI: 'Band Saw Cutting',
+  FINISHING: 'VDI',
+  ALL: 'Upstream Feed',
+};
+
 export default function WorkCenterProductionReportClient() {
   const [selectedWc, setSelectedWc] = useState<string>('ROLLING');
   const [entries, setEntries] = useState<ProductionEntry[]>([]);
+  const [wipData, setWipData] = useState<any[]>([]);
+  const [rollingPlansData, setRollingPlansData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -131,7 +144,7 @@ export default function WorkCenterProductionReportClient() {
       const s = createClient();
       const stageArg = selectedWc === 'ALL' ? null : selectedWc;
 
-      const [prodRes, woRes, routeRes, qcRes] = await Promise.all([
+      const [prodRes, woRes, routeRes, qcRes, wipRes] = await Promise.all([
         s.rpc('get_production_entries', {
           p_search: debouncedSearch.trim() || null,
           p_stage_code: stageArg,
@@ -149,7 +162,12 @@ export default function WorkCenterProductionReportClient() {
         (selectedWc === 'VDI' || selectedWc === 'ALL')
           ? s.from('qc_inspections').select('*').order('created_at', { ascending: false }).limit(2500)
           : Promise.resolve({ data: [] as any[], error: null }),
+        s.from('vw_route_stage_wip').select('*'),
       ]);
+
+      if (wipRes?.data) {
+        setWipData(wipRes.data);
+      }
 
       if (prodRes.error) throw prodRes.error;
       const raw = (prodRes.data as ProductionEntry[]) || [];
@@ -181,10 +199,14 @@ export default function WorkCenterProductionReportClient() {
             .in('id', entryIds),
           s
             .from('rolling_plans')
-            .select('id, plan_no, work_order_id, mh_od, mh_wt, mh_l1, mh_l2, status, created_at')
+            .select('id, plan_no, work_order_id, mh_od, mh_wt, mh_l1, mh_l2, planned_qty, status, created_at')
             .not('status', 'is', null)
             .limit(5000),
         ]);
+
+        if (rpData) {
+          setRollingPlansData(rpData as any[]);
+        }
 
         ((logDetails as any[]) || []).forEach((l: any) => {
           logMap.set(l.id, l);
@@ -356,7 +378,7 @@ export default function WorkCenterProductionReportClient() {
         };
       });
 
-      // Also merge records from qc_inspections for STR/Cutting/Hydro/UT (VDI)
+      // Also merge records from qc_inspections for VDI
       const qcEntries: ProductionEntry[] = [];
       if (qcRes?.data && Array.isArray(qcRes.data)) {
         qcRes.data.forEach((q: any) => {
@@ -407,7 +429,7 @@ export default function WorkCenterProductionReportClient() {
             htc_ok_pcs: outPcs,
             htc_ok_mtr: outMtr,
             heat_lot_no: q.heat_lot_no || '',
-            remarks: q.remarks ? `[STR/Cutting/Hydro/UT QC] ${q.remarks}` : '[STR/Cutting/Hydro/UT QC]',
+            remarks: q.remarks ? `[VDI QC] ${q.remarks}` : '[VDI QC]',
             created_at: q.created_at,
           } as ProductionEntry);
         });
@@ -545,6 +567,101 @@ export default function WorkCenterProductionReportClient() {
       yieldPct,
     };
   }, [filteredEntries, selectedWc]);
+
+  // Feeder Balance Calculations: Received from Last Work Center & Balance for Production
+  const feederMetrics = useMemo(() => {
+    const lastWcName = LAST_WC_MAP[selectedWc] || 'Preceding Stage';
+    const activeWoIds = new Set(filteredEntries.map((e) => e.work_order_id).filter(Boolean));
+    const hasFilter = filteredEntries.length < entries.length;
+
+    if (selectedWc === 'ROLLING') {
+      let totalPlanMtr = 0;
+      let totalPlanPcs = 0;
+      let totalPlanMt = 0;
+      let rolledMtr = 0;
+      let rolledPcs = 0;
+
+      const relevantPlans = hasFilter && activeWoIds.size > 0
+        ? rollingPlansData.filter((p) => activeWoIds.has(p.work_order_id))
+        : rollingPlansData;
+
+      relevantPlans.forEach((p) => {
+        const st = typeof p.status === 'object' && p.status !== null ? p.status : {};
+        const pMtr = Number(p.planned_qty || st.planned_mtr || 0);
+        const pPcs = Number(st.planned_pcs || st.plan_qty?.nos || (pMtr > 0 ? Math.round(pMtr / 6) : 0));
+        const od = Number(st.mh_od || st.cust_od || 60);
+        const wt = Number(st.mh_wt || st.cust_wt || 4);
+        totalPlanMtr += pMtr;
+        totalPlanPcs += pPcs;
+        totalPlanMt += mtFromMtr(pMtr, od, wt);
+      });
+
+      filteredEntries.forEach((e) => {
+        rolledMtr += Number(e.output_mtr || 0);
+        rolledPcs += Number(e.output_pcs || 0);
+      });
+
+      const balMtr = Math.max(0, totalPlanMtr - rolledMtr);
+      const balPcs = Math.max(0, totalPlanPcs - rolledPcs);
+      const balMt = Math.max(0, totalPlanMt - mtFromMtr(rolledMtr, 60, 4));
+
+      return {
+        lastWcName,
+        receivedPcs: totalPlanPcs,
+        receivedMtr: totalPlanMtr,
+        receivedMt: totalPlanMt,
+        balancePcs: balPcs,
+        balanceMtr: balMtr,
+        balanceMt: balMt,
+      };
+    }
+
+    const relevantWip = wipData.filter((r) => {
+      if (selectedWc !== 'ALL' && r.stage_code !== selectedWc) return false;
+      if (hasFilter && activeWoIds.size > 0) {
+        return activeWoIds.has(r.work_order_id);
+      }
+      return true;
+    });
+
+    let recMtr = 0;
+    let recPcs = 0;
+    let recMt = 0;
+    let balMtr = 0;
+    let balPcs = 0;
+    let balMt = 0;
+
+    relevantWip.forEach((r) => {
+      const inMtr = Number(r.incoming_qty || 0);
+      const curWipMtr = Number(r.current_wip || 0);
+      const curWipPcs = Number(r.current_wip_pcs || 0);
+      const curWipMt = Number(r.current_wip_mt || 0);
+
+      const od = Number(r.size_od || 60);
+      const wt = Number(r.size_wt || 4);
+      const avgLen = curWipPcs > 0 && curWipMtr > 0 ? curWipMtr / curWipPcs : 6.0;
+      const inPcs = avgLen > 0 ? Math.round(inMtr / avgLen) : 0;
+      const inMt = mtFromMtr(inMtr, od, wt);
+
+      recMtr += inMtr;
+      recPcs += inPcs;
+      recMt += inMt;
+
+      balMtr += curWipMtr;
+      balPcs += curWipPcs;
+      balMt += curWipMt;
+    });
+
+    return {
+      lastWcName,
+      receivedPcs: recPcs,
+      receivedMtr: recMtr,
+      receivedMt: recMt,
+      balancePcs: balPcs,
+      balanceMtr: balMtr,
+      balanceMt: balMt,
+    };
+  }, [selectedWc, filteredEntries, entries.length, rollingPlansData, wipData]);
 
   const activeWcConfig = useMemo(() => {
     return WORK_CENTERS.find((w) => w.code === selectedWc) || WORK_CENTERS[0];
@@ -837,26 +954,47 @@ export default function WorkCenterProductionReportClient() {
         </div>
 
         {/* Tailored Station KPI Summary Cards - Main focus on PCS and MT */}
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5 border-t border-slate-100 pt-4 print:border-black print:pt-2">
-          {/* Card 1: Total Input */}
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 border-t border-slate-100 pt-4 print:grid-cols-6 print:border-black print:pt-2">
+          {/* Card 1: Received from <Last Work Center Name> */}
           <div className="rounded-xl bg-slate-50 p-3 border-2 border-slate-200 print:bg-white print:border-black shadow-2xs">
-            <span className="block text-[10px] font-black uppercase tracking-wider text-slate-500 print:text-black">
-              Total Input (Pcs & MT)
+            <span
+              className="block text-[10px] font-black uppercase tracking-wider text-slate-600 print:text-black truncate"
+              title={`Received from ${feederMetrics.lastWcName}`}
+            >
+              Received from {feederMetrics.lastWcName}
             </span>
             <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-indigo-100 text-indigo-950 border border-indigo-300 print:border-black print:bg-white print:text-black">
-                {fmt(metrics.inputPcs, 0)} PCS
+                {fmt(feederMetrics.receivedPcs, 0)} PCS
               </span>
               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
-                {fmt(metrics.inputMt)} MT
+                {fmt(feederMetrics.receivedMt)} MT
               </span>
             </div>
             <span className="text-[11px] text-slate-500 block font-mono mt-1 font-semibold print:text-black">
-              Length: {fmt(metrics.inputMtr)} MTR
+              Length: {fmt(feederMetrics.receivedMtr)} MTR
             </span>
           </div>
 
-          {/* Card 2: Gross Output */}
+          {/* Card 2: Balance for Production */}
+          <div className="rounded-xl bg-amber-50/50 p-3 border-2 border-amber-200 print:bg-white print:border-black shadow-2xs">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-amber-900 print:text-black truncate">
+              Balance for Production
+            </span>
+            <div className="flex flex-wrap items-baseline gap-1.5 mt-1.5">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-amber-100 text-amber-950 border border-amber-300 print:border-black print:bg-white print:text-black">
+                {fmt(feederMetrics.balancePcs, 0)} PCS
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-sm sm:text-base font-black font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 print:border-black print:bg-white print:text-black">
+                {fmt(feederMetrics.balanceMt)} MT
+              </span>
+            </div>
+            <span className="text-[11px] text-amber-800 block font-mono mt-1 font-semibold print:text-black">
+              Queue: {fmt(feederMetrics.balanceMtr)} MTR
+            </span>
+          </div>
+
+          {/* Card 3: Gross Output */}
           <div className="rounded-xl bg-blue-50/40 p-3 border-2 border-blue-200 print:bg-white print:border-black shadow-2xs">
             <span className="block text-[10px] font-black uppercase tracking-wider text-blue-900 print:text-black">
               Gross Output (Pcs & MT)
@@ -874,7 +1012,7 @@ export default function WorkCenterProductionReportClient() {
             </span>
           </div>
 
-          {/* Card 3: Scrap & Rejection */}
+          {/* Card 4: Scrap & Rejection */}
           <div className="rounded-xl bg-rose-50/40 p-3 border-2 border-rose-200 print:bg-white print:border-black shadow-2xs">
             <span className="block text-[10px] font-black uppercase tracking-wider text-rose-900 print:text-black">
               Scrap & Rejection (Pcs & MT)
@@ -892,7 +1030,7 @@ export default function WorkCenterProductionReportClient() {
             </span>
           </div>
 
-          {/* Card 4: Prime / Net Accepted / HTC OK */}
+          {/* Card 5: Prime / Net Accepted / HTC OK */}
           <div className="rounded-xl bg-emerald-50/40 p-3 border-2 border-emerald-200 print:bg-white print:border-black shadow-2xs">
             <span className="block text-[10px] font-black uppercase tracking-wider text-emerald-900 print:text-black">
               {selectedWc === 'ROLLING'
@@ -918,7 +1056,7 @@ export default function WorkCenterProductionReportClient() {
             </span>
           </div>
 
-          {/* Card 5: Station Yield Efficiency */}
+          {/* Card 6: Station Yield Efficiency */}
           <div className="rounded-xl bg-indigo-50/40 p-3 border-2 border-indigo-200 print:bg-white print:border-black shadow-2xs">
             <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-900 print:text-black">
               Station Yield Efficiency
