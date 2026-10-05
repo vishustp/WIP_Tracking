@@ -122,7 +122,6 @@ export default function WorkCenterProductionReportClient() {
   // Filters
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [shiftFilter, setShiftFilter] = useState('ALL');
   const [fromDate, setFromDate] = useState(() => {
     // Default to last 7 days
     const d = new Date();
@@ -453,30 +452,8 @@ export default function WorkCenterProductionReportClient() {
     loadData();
   }, [loadData]);
 
-  // Filter entries further by shift (parsed from remarks or created_at timestamp hour)
-  const filteredEntries = useMemo(() => {
-    if (shiftFilter === 'ALL') return entries;
-
-    return entries.filter((e) => {
-      const rem = (e.remarks || '').toUpperCase();
-      if (shiftFilter === 'SHIFT_A') {
-        if (rem.includes('SHIFT A') || rem.includes('SHIFT-A')) return true;
-        const hour = new Date(e.created_at).getHours();
-        return hour >= 6 && hour < 14;
-      }
-      if (shiftFilter === 'SHIFT_B') {
-        if (rem.includes('SHIFT B') || rem.includes('SHIFT-B')) return true;
-        const hour = new Date(e.created_at).getHours();
-        return hour >= 14 && hour < 22;
-      }
-      if (shiftFilter === 'SHIFT_C') {
-        if (rem.includes('SHIFT C') || rem.includes('SHIFT-C')) return true;
-        const hour = new Date(e.created_at).getHours();
-        return hour >= 22 || hour < 6;
-      }
-      return true;
-    });
-  }, [entries, shiftFilter]);
+  // Filtered entries
+  const filteredEntries = entries;
 
   // Work Center Metrics Calculations
   const metrics = useMemo(() => {
@@ -851,14 +828,11 @@ export default function WorkCenterProductionReportClient() {
             <div className="text-slate-500 font-mono">
               Period: {fromDate} to {toDate}
             </div>
-            <div className="text-slate-500">
-              Shift: {shiftFilter === 'ALL' ? 'All Shifts (A, B, C)' : shiftFilter.replace('_', ' ')}
-            </div>
           </div>
         </div>
 
         {/* Filter Controls (hidden when printing) */}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5 print:hidden">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 print:hidden">
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
               Search WO # / Heat / Remarks
@@ -873,22 +847,6 @@ export default function WorkCenterProductionReportClient() {
                 className="w-full rounded-lg border border-slate-300 bg-white pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-hidden"
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-              Shift Selector
-            </label>
-            <select
-              value={shiftFilter}
-              onChange={(e) => setShiftFilter(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-blue-500 focus:outline-hidden"
-            >
-              <option value="ALL">All Shifts Combined</option>
-              <option value="SHIFT_A">Shift A (06:00 - 14:00)</option>
-              <option value="SHIFT_B">Shift B (14:00 - 22:00)</option>
-              <option value="SHIFT_C">Shift C (22:00 - 06:00)</option>
-            </select>
           </div>
 
           <div>
