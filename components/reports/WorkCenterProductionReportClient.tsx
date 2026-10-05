@@ -123,6 +123,8 @@ export default function WorkCenterProductionReportClient() {
   // Filters
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [selectedRoute, setSelectedRoute] = useState<string>('ALL');
+  const [routesList, setRoutesList] = useState<Array<{ id: string; route_code: string; route_name: string }>>([]);
   const [fromDate, setFromDate] = useState(() => {
     // Default to last 7 days
     const d = new Date();
@@ -143,12 +145,13 @@ export default function WorkCenterProductionReportClient() {
     try {
       const s = createClient();
       const stageArg = selectedWc === 'ALL' ? null : selectedWc;
+      const routeArg = selectedRoute === 'ALL' ? null : selectedRoute;
 
       const [prodRes, woRes, routeRes, qcRes, wipRes] = await Promise.all([
         s.rpc('get_production_entries', {
           p_search: debouncedSearch.trim() || null,
           p_stage_code: stageArg,
-          p_route_code: null,
+          p_route_code: routeArg,
           p_from_date: fromDate || null,
           p_to_date: toDate || null,
           p_limit: 2500,
@@ -156,7 +159,7 @@ export default function WorkCenterProductionReportClient() {
         }),
         s
           .from('work_orders')
-          .select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2')
+          .select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2, process_route_id')
           .limit(5000),
         s.from('process_routes').select('id, route_code, route_name').eq('active', true),
         (selectedWc === 'VDI' || selectedWc === 'ALL')
@@ -167,6 +170,10 @@ export default function WorkCenterProductionReportClient() {
 
       if (wipRes?.data) {
         setWipData(wipRes.data);
+      }
+
+      if (routeRes?.data) {
+        setRoutesList(routeRes.data);
       }
 
       if (prodRes.error) throw prodRes.error;
@@ -406,6 +413,7 @@ export default function WorkCenterProductionReportClient() {
           const rejPcs = Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0);
           const rejMtr = Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0);
           const routeInfo = wo?.process_route_id ? routeMap.get(wo.process_route_id) : null;
+          if (selectedRoute !== 'ALL' && routeInfo?.route_code !== selectedRoute) return;
 
           qcEntries.push({
             id: q.id,
@@ -450,7 +458,7 @@ export default function WorkCenterProductionReportClient() {
     } finally {
       setLoading(false);
     }
-  }, [selectedWc, debouncedSearch, fromDate, toDate]);
+  }, [selectedWc, debouncedSearch, fromDate, toDate, selectedRoute]);
 
   useEffect(() => {
     loadData();
@@ -568,6 +576,16 @@ export default function WorkCenterProductionReportClient() {
         .filter((no) => no && no !== '—')
     );
 
+    // Index all WIP rows by work_order_id and sequence_no to get exact preceding stage output and rolling outputs
+    const wipByWoAndSeq = new Map<string, any>();
+    const rollingWipByWo = new Map<string, any>();
+    wipData.forEach((w) => {
+      wipByWoAndSeq.set(`${w.work_order_id}_${w.sequence_no}`, w);
+      if (w.stage_code === 'ROLLING') {
+        rollingWipByWo.set(w.work_order_id, w);
+      }
+    });
+
     if (selectedWc === 'ROLLING') {
       let totalPlanMtr = 0;
       let totalPlanPcs = 0;
@@ -576,20 +594,26 @@ export default function WorkCenterProductionReportClient() {
       let balPcs = 0;
       let balMt = 0;
 
-      const relevantPlans = isSearchFiltered
-        ? rollingPlansData.filter((p) => {
-            const pId = p.work_order_id;
-            if (pId && activeWoIds.has(pId)) return true;
-            const pNo = (p.plan_no || '').toLowerCase();
-            if (pNo && pNo.includes(searchTerm)) return true;
-            if (activeWoNos.size > 0) {
-              for (const woNo of activeWoNos) {
-                if (woNo && pNo.includes(woNo)) return true;
-              }
+      const relevantPlans = rollingPlansData.filter((p) => {
+        const pId = p.work_order_id;
+        const wInfo = pId ? rollingWipByWo.get(pId) : null;
+        if (selectedRoute !== 'ALL') {
+          const rCode = wInfo?.route_code;
+          if (rCode && rCode !== selectedRoute) return false;
+        }
+        if (isSearchFiltered) {
+          if (pId && activeWoIds.has(pId)) return true;
+          const pNo = (p.plan_no || '').toLowerCase();
+          if (pNo && pNo.includes(searchTerm)) return true;
+          if (activeWoNos.size > 0) {
+            for (const woNo of activeWoNos) {
+              if (woNo && pNo.includes(woNo)) return true;
             }
-            return false;
-          })
-        : rollingPlansData;
+          }
+          return false;
+        }
+        return true;
+      });
 
       relevantPlans.forEach((p) => {
         let st: any = {};
@@ -610,12 +634,17 @@ export default function WorkCenterProductionReportClient() {
         totalPlanPcs += pPcs;
         totalPlanMt += mtFromMtr(pMtr, od, wt);
 
+        // Fetch actual rolled production from WIP tracking
+        const rolled = rollingWipByWo.get(p.work_order_id);
+        const rolledMtr = Number(rolled?.production_qty || 0);
+        const rolledPcs = Number(rolled?.gross_output_pcs || 0);
+
         const planBalPcs = st.balance_to_make_pcs !== undefined
           ? Number(st.balance_to_make_pcs)
-          : Math.max(0, pPcs - Number(st.rolled_pcs || 0));
+          : Math.max(0, pPcs - rolledPcs);
         const planBalMtr = st.balance_to_make_mtr !== undefined
           ? Number(st.balance_to_make_mtr)
-          : Math.max(0, pMtr - Number(st.rolled_mtr || 0));
+          : Math.max(0, pMtr - rolledMtr);
 
         balPcs += planBalPcs;
         balMtr += planBalMtr;
@@ -633,14 +662,9 @@ export default function WorkCenterProductionReportClient() {
       };
     }
 
-    // Index all WIP rows by work_order_id and sequence_no to get exact preceding stage output
-    const wipByWoAndSeq = new Map<string, any>();
-    wipData.forEach((w) => {
-      wipByWoAndSeq.set(`${w.work_order_id}_${w.sequence_no}`, w);
-    });
-
     const relevantWip = wipData.filter((r) => {
       if (selectedWc !== 'ALL' && r.stage_code !== selectedWc) return false;
+      if (selectedRoute !== 'ALL' && r.route_code !== selectedRoute) return false;
       if (isSearchFiltered) {
         const woId = r.work_order_id;
         const woNo = (r.work_order_no || '').toLowerCase();
@@ -694,7 +718,7 @@ export default function WorkCenterProductionReportClient() {
       balanceMtr: balMtr,
       balanceMt: balMt,
     };
-  }, [selectedWc, filteredEntries, debouncedSearch, rollingPlansData, wipData]);
+  }, [selectedWc, filteredEntries, debouncedSearch, rollingPlansData, wipData, selectedRoute]);
 
   const activeWcConfig = useMemo(() => {
     return WORK_CENTERS.find((w) => w.code === selectedWc) || WORK_CENTERS[0];
@@ -888,7 +912,7 @@ export default function WorkCenterProductionReportClient() {
         </div>
 
         {/* Filter Controls (hidden when printing) */}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 print:hidden">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 print:hidden">
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
               Search WO # / Heat / Remarks
@@ -913,6 +937,24 @@ export default function WorkCenterProductionReportClient() {
                 </button>
               )}
             </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Process Route
+            </label>
+            <select
+              value={selectedRoute}
+              onChange={(e) => setSelectedRoute(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:outline-hidden cursor-pointer"
+            >
+              <option value="ALL">All Routes (CDS, HFS, etc.)</option>
+              {routesList.map((r) => (
+                <option key={r.id} value={r.route_code}>
+                  {r.route_code} — {r.route_name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -977,22 +1019,35 @@ export default function WorkCenterProductionReportClient() {
         </div>
 
         {/* Dynamic Filter Scope Banner */}
-        {debouncedSearch.trim() && (
+        {(debouncedSearch.trim() || selectedRoute !== 'ALL') && (
           <div className="mt-3 flex items-center justify-between bg-blue-50/90 border border-blue-200 rounded-lg px-3 py-1.5 text-xs text-blue-900 print:hidden">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1 rounded bg-blue-200/80 px-1.5 py-0.5 text-[10px] font-bold text-blue-900 uppercase">
                 Dynamic Scope
               </span>
               <span>
-                All 6 KPI cards & records are filtered by: &ldquo;<strong className="font-mono text-blue-950 font-bold">{debouncedSearch}</strong>&rdquo;
+                All 6 KPI cards &amp; records scoped to:
+                {selectedRoute !== 'ALL' && (
+                  <span className="ml-1.5 inline-flex items-center rounded bg-indigo-100 px-1.5 py-0.5 font-mono font-bold text-indigo-900 border border-indigo-300 text-[11px]">
+                    Route: {selectedRoute}
+                  </span>
+                )}
+                {debouncedSearch.trim() && (
+                  <span className="ml-1.5 font-bold text-blue-950 font-mono">
+                    &ldquo;{debouncedSearch}&rdquo;
+                  </span>
+                )}
               </span>
             </div>
             <button
               type="button"
-              onClick={() => setSearch('')}
+              onClick={() => {
+                setSearch('');
+                setSelectedRoute('ALL');
+              }}
               className="text-blue-700 hover:text-blue-900 font-bold underline cursor-pointer text-[11px]"
             >
-              Clear (Show Station Totals)
+              Clear All Filters (Show Station Totals)
             </button>
           </div>
         )}
