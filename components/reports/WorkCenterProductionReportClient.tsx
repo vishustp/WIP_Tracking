@@ -523,7 +523,12 @@ export default function WorkCenterProductionReportClient() {
     const netMtr = Math.max(outputMtr - rejMtr, 0);
     const netMt = Math.max(outputMt - rejMt, 0);
     const rejRatePct = outputMtr > 0 ? (rejMtr / outputMtr) * 100 : 0;
-    const yieldPct = inputMtr > 0 ? (netMtr / inputMtr) * 100 : outputMtr > 0 ? ((outputMtr - rejMtr) / outputMtr) * 100 : 100;
+    const yieldPct =
+      inputMtr > 0
+        ? Math.min(100, Math.max(0, (netMtr / inputMtr) * 100))
+        : outputMtr > 0
+          ? Math.min(100, Math.max(0, (netMtr / outputMtr) * 100))
+          : 100;
 
     return {
       count: filteredEntries.length,
@@ -555,32 +560,44 @@ export default function WorkCenterProductionReportClient() {
       let totalPlanMtr = 0;
       let totalPlanPcs = 0;
       let totalPlanMt = 0;
-      let rolledMtr = 0;
-      let rolledPcs = 0;
+      let balMtr = 0;
+      let balPcs = 0;
+      let balMt = 0;
 
       const relevantPlans = hasFilter && activeWoIds.size > 0
         ? rollingPlansData.filter((p) => activeWoIds.has(p.work_order_id))
         : rollingPlansData;
 
       relevantPlans.forEach((p) => {
-        const st = typeof p.status === 'object' && p.status !== null ? p.status : {};
+        let st: any = {};
+        if (typeof p.status === 'object' && p.status !== null) {
+          st = p.status;
+        } else if (typeof p.status === 'string') {
+          try {
+            st = JSON.parse(p.status);
+          } catch {
+            st = {};
+          }
+        }
         const pMtr = Number(p.planned_qty || st.planned_mtr || 0);
-        const pPcs = Number(st.planned_pcs || st.plan_qty?.nos || (pMtr > 0 ? Math.round(pMtr / 6) : 0));
-        const od = Number(st.mh_od || st.cust_od || 60);
-        const wt = Number(st.mh_wt || st.cust_wt || 4);
+        const pPcs = Number(st.master_planned_pcs || st.planned_pcs || st.plan_qty?.nos || (pMtr > 0 ? Math.round(pMtr / 6) : 0));
+        const od = Number(st.mh_od || p.mh_od || st.cust_od || 60);
+        const wt = Number(st.mh_wt || p.mh_wt || st.cust_wt || 4);
         totalPlanMtr += pMtr;
         totalPlanPcs += pPcs;
         totalPlanMt += mtFromMtr(pMtr, od, wt);
-      });
 
-      filteredEntries.forEach((e) => {
-        rolledMtr += Number(e.output_mtr || 0);
-        rolledPcs += Number(e.output_pcs || 0);
-      });
+        const planBalPcs = st.balance_to_make_pcs !== undefined
+          ? Number(st.balance_to_make_pcs)
+          : Math.max(0, pPcs - Number(st.rolled_pcs || 0));
+        const planBalMtr = st.balance_to_make_mtr !== undefined
+          ? Number(st.balance_to_make_mtr)
+          : Math.max(0, pMtr - Number(st.rolled_mtr || 0));
 
-      const balMtr = Math.max(0, totalPlanMtr - rolledMtr);
-      const balPcs = Math.max(0, totalPlanPcs - rolledPcs);
-      const balMt = Math.max(0, totalPlanMt - mtFromMtr(rolledMtr, 60, 4));
+        balPcs += planBalPcs;
+        balMtr += planBalMtr;
+        balMt += mtFromMtr(planBalMtr, od, wt);
+      });
 
       return {
         lastWcName,
@@ -715,7 +732,7 @@ export default function WorkCenterProductionReportClient() {
       e.rejection_pcs ?? 0,
       e.htc_ok_pcs ?? 0,
       e.htc_ok_mtr ?? 0,
-      e.input_mtr > 0 ? (((e.output_mtr - e.rejection_mtr) / e.input_mtr) * 100).toFixed(1) : '100',
+      e.input_mtr > 0 ? Math.min(100, Math.max(0, ((e.output_mtr - e.rejection_mtr) / e.input_mtr) * 100)).toFixed(1) : '100',
       `"${(e.remarks || '').replace(/"/g, '""')}"`,
     ]);
 
@@ -938,9 +955,9 @@ export default function WorkCenterProductionReportClient() {
                 </span>
               </div>
             </div>
-            <div className="pt-1.5 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-mono text-slate-600 print:text-black">
-              <span>Length</span>
-              <span className="font-bold text-slate-900">{fmt(feederMetrics.receivedMtr)} MTR</span>
+            <div className="pt-1.5 border-t border-slate-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-slate-600 print:text-black">
+              <span className="whitespace-nowrap">Length</span>
+              <span className="font-bold text-slate-900 whitespace-nowrap">{fmt(feederMetrics.receivedMtr)} MTR</span>
             </div>
           </div>
 
@@ -967,9 +984,9 @@ export default function WorkCenterProductionReportClient() {
                 </span>
               </div>
             </div>
-            <div className="pt-1.5 border-t border-amber-200/70 flex items-center justify-between text-[11px] font-mono text-amber-800 print:text-black">
-              <span>Queue</span>
-              <span className="font-bold text-amber-950">{fmt(feederMetrics.balanceMtr)} MTR</span>
+            <div className="pt-1.5 border-t border-amber-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-amber-800 print:text-black">
+              <span className="whitespace-nowrap">Queue</span>
+              <span className="font-bold text-amber-950 whitespace-nowrap">{fmt(feederMetrics.balanceMtr)} MTR</span>
             </div>
           </div>
 
@@ -978,7 +995,7 @@ export default function WorkCenterProductionReportClient() {
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 print:text-black">
-                  Shift Production
+                  Period Output
                 </span>
                 <span className="text-xs font-black text-blue-950 print:text-black leading-tight">
                   Gross Output
@@ -996,9 +1013,9 @@ export default function WorkCenterProductionReportClient() {
                 </span>
               </div>
             </div>
-            <div className="pt-1.5 border-t border-blue-200/70 flex items-center justify-between text-[11px] font-mono text-blue-800 print:text-black">
-              <span>Length</span>
-              <span className="font-bold text-blue-950">{fmt(metrics.outputMtr)} MTR</span>
+            <div className="pt-1.5 border-t border-blue-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-blue-800 print:text-black">
+              <span className="whitespace-nowrap">Length</span>
+              <span className="font-bold text-blue-950 whitespace-nowrap">{fmt(metrics.outputMtr)} MTR</span>
             </div>
           </div>
 
@@ -1025,8 +1042,8 @@ export default function WorkCenterProductionReportClient() {
                 </span>
               </div>
             </div>
-            <div className="pt-1.5 border-t border-rose-200/70 flex items-center justify-between text-[11px] font-mono text-rose-800 print:text-black">
-              <span>Loss Rate</span>
+            <div className="pt-1.5 border-t border-rose-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-rose-800 print:text-black">
+              <span className="whitespace-nowrap">Loss Rate</span>
               <span className="font-bold text-rose-950 whitespace-nowrap">
                 {fmt(metrics.rejRatePct, 1)}%{' '}
                 <span className="text-[10px] font-normal text-rose-700">({fmt(metrics.rejMtr)}m)</span>
@@ -1061,9 +1078,9 @@ export default function WorkCenterProductionReportClient() {
                 </span>
               </div>
             </div>
-            <div className="pt-1.5 border-t border-emerald-200/70 flex items-center justify-between text-[11px] font-mono text-emerald-800 print:text-black">
-              <span>{selectedWc === 'ROLLING' ? 'HTC OK Length' : 'Net Length'}</span>
-              <span className="font-bold text-emerald-950">
+            <div className="pt-1.5 border-t border-emerald-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-emerald-800 print:text-black">
+              <span className="whitespace-nowrap">{selectedWc === 'ROLLING' ? 'HTC OK Length' : 'Net Length'}</span>
+              <span className="font-bold text-emerald-950 whitespace-nowrap">
                 {fmt(selectedWc === 'ROLLING' ? metrics.htcOkMtr : metrics.netMtr)} MTR
               </span>
             </div>
@@ -1089,9 +1106,9 @@ export default function WorkCenterProductionReportClient() {
                 </span>
               </div>
             </div>
-            <div className="pt-1.5 border-t border-indigo-200/70 flex items-center justify-between text-[11px] font-mono text-slate-600 print:text-black">
-              <span>Batches Logged</span>
-              <span className="font-bold text-indigo-950">{metrics.count}</span>
+            <div className="pt-1.5 border-t border-indigo-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-slate-600 print:text-black">
+              <span className="whitespace-nowrap">Batches Logged</span>
+              <span className="font-bold text-indigo-950 whitespace-nowrap">{metrics.count}</span>
             </div>
           </div>
         </div>
@@ -1156,9 +1173,9 @@ export default function WorkCenterProductionReportClient() {
                   const netPcs = Math.max(e.output_pcs - e.rejection_pcs, 0);
                   const entryYield =
                     e.input_mtr > 0
-                      ? (netMtr / e.input_mtr) * 100
+                      ? Math.min(100, Math.max(0, (netMtr / e.input_mtr) * 100))
                       : e.output_mtr > 0
-                        ? (netMtr / e.output_mtr) * 100
+                        ? Math.min(100, Math.max(0, (netMtr / e.output_mtr) * 100))
                         : 100;
 
                   return (

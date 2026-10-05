@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
           routeId = rp?.process_route_id || defaultRouteId;
         }
+        const normalizedPlanId = item.rolling_plan_id || item.plan_id || null;
         const finalRemarks = attachPcsToRemarks(
           item.remarks,
           Number(item.output_pcs || 0) || null,
@@ -61,12 +62,16 @@ export async function POST(req: NextRequest) {
         );
         return {
           ...item,
+          rolling_plan_id: normalizedPlanId,
           route_id: routeId,
           remarks: finalRemarks || null,
           created_by: userId,
         };
       })
     );
+
+    // Track batch cumulative pieces per plan/WO for batch-level capping
+    const batchPcsByPlan = new Map<string, number>();
 
     // Validate server-side business rules
     for (const item of sanitizedEntries) {
@@ -77,6 +82,12 @@ export async function POST(req: NextRequest) {
 
       // Rule: Rolling HTC OK strictly required
       if (item.stage_code === 'ROLLING' && (outMtr > 0 || outPcs > 0)) {
+        if (!outPcs || outPcs <= 0 || !Number.isFinite(outPcs)) {
+          return NextResponse.json(
+            { error: 'Rolling output recording strictly requires entering a valid piece count (Pieces ≥ 1).' },
+            { status: 400 }
+          );
+        }
         if (htcMtr <= 0 && htcPcs <= 0) {
           return NextResponse.json(
             { error: 'Rolling output recording strictly requires entering HTC OK Quantity (Pieces or Meters ≥ 1).' },
@@ -86,39 +97,67 @@ export async function POST(req: NextRequest) {
 
         // Rule: Rolling production cannot exceed Rolling Plan QTY
         let planQuery = admin.from('rolling_plans').select('id, planned_qty, status');
-        if (item.rolling_plan_id || item.plan_id) {
-          planQuery = planQuery.eq('id', item.rolling_plan_id || item.plan_id);
+        if (item.rolling_plan_id) {
+          planQuery = planQuery.eq('id', item.rolling_plan_id);
         } else if (item.work_order_id) {
           planQuery = planQuery.eq('work_order_id', item.work_order_id);
         }
         const { data: matchedPlans } = await planQuery.limit(1);
         const matchedPlan = matchedPlans?.[0];
         if (matchedPlan) {
-          const st = typeof matchedPlan.status === 'object' && matchedPlan.status !== null ? matchedPlan.status : {};
-          const planTotalMtr = Number(matchedPlan.planned_qty || st.planned_mtr || st.rolling_mtr || 0);
-          const planTotalPcs = Number(st.planned_pcs || st.plan_qty?.nos || 0);
+          const planKey = matchedPlan.id;
+          const batchAlreadyAdded = batchPcsByPlan.get(planKey) || 0;
 
-          const { data: existingLogs } = await admin
+          let st: any = {};
+          if (typeof matchedPlan.status === 'object' && matchedPlan.status !== null) {
+            st = matchedPlan.status;
+          } else if (typeof matchedPlan.status === 'string') {
+            try {
+              st = JSON.parse(matchedPlan.status);
+            } catch {
+              st = {};
+            }
+          }
+          const planTotalPcs = Number(st.master_planned_pcs || st.planned_pcs || st.plan_qty?.nos || 0);
+
+          let existingLogsQuery = admin
             .from('production_logs')
-            .select('output_qty, rejection_qty, remarks')
-            .eq('work_order_id', item.work_order_id)
-            .eq('stage_id', item.stage_id);
+            .select('output_qty, rejection_qty, remarks, rolling_plan_id')
+            .eq('work_order_id', item.work_order_id);
 
-          let alreadyLoggedMtr = 0;
-          let alreadyLoggedPcs = 0;
-          for (const el of existingLogs || []) {
-            alreadyLoggedMtr += Number(el.output_qty || 0);
-            const pInfo = extractPcsFromRemarks(el.remarks);
-            alreadyLoggedPcs += pInfo?.pcs || 0;
+          const rollingStageId = stageMap.get('ROLLING') || item.stage_id;
+          if (rollingStageId) {
+            existingLogsQuery = existingLogsQuery.eq('stage_id', rollingStageId);
+          }
+          if (item.rolling_plan_id) {
+            existingLogsQuery = existingLogsQuery.or(`rolling_plan_id.eq.${item.rolling_plan_id},rolling_plan_id.is.null`);
           }
 
-          if (planTotalPcs > 0 && (alreadyLoggedPcs + outPcs) > planTotalPcs) {
-            const remainingPcs = Math.max(0, planTotalPcs - alreadyLoggedPcs);
+          const { data: existingLogs } = await existingLogsQuery;
+
+          let alreadyLoggedPcs = 0;
+          for (const el of existingLogs || []) {
+            const pInfo = extractPcsFromRemarks(el.remarks);
+            if (pInfo?.pcs) {
+              alreadyLoggedPcs += pInfo.pcs;
+            }
+          }
+
+          let remainingPcs = Infinity;
+          if (st.balance_to_make_pcs !== undefined && Number(st.balance_to_make_pcs) >= 0) {
+            remainingPcs = Math.max(0, Number(st.balance_to_make_pcs) - batchAlreadyAdded);
+          } else if (planTotalPcs > 0) {
+            remainingPcs = Math.max(0, planTotalPcs - alreadyLoggedPcs - batchAlreadyAdded);
+          }
+
+          if (remainingPcs !== Infinity && outPcs > remainingPcs) {
             return NextResponse.json(
               { error: `Rolling production (${outPcs} PCS) exceeds remaining Rolling Plan Quantity (${remainingPcs} PCS).` },
               { status: 400 }
             );
           }
+
+          batchPcsByPlan.set(planKey, batchAlreadyAdded + outPcs);
         }
       }
     }

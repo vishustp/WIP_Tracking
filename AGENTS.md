@@ -59,6 +59,6 @@ All frontend features, dashboards, production entry consoles, and report tables 
 - **Granular Custom Permissions**: Custom access levels (`view`, `edit`, `none`) configured via the Admin Control Panel dynamically determine sidebar route visibility (`isRouteVisible`) and form execution rights (`getFormAccess`, `checkCanManagePlans`), superseding static group whitelist filters.
 
 ## 9. Strict Rolling Plan Quantity Capping
-- **Rolling Production Limit**: Rolling production (Pieces or Meters) cannot exceed the Rolling Plan Quantity.
-- **Enforcement**: Both frontend queue validation (`/production`, `useQueue`, `validateProductionEntry`) and backend API (`/api/production/record`) strictly cap rolling production at the remaining plan balance (`balance_to_make_pcs` / `balance_to_make_mtr`), blocking any attempt to record rolling output exceeding the PPC authorized Rolling Plan.
+- **Rolling Production Limit**: Rolling production is strictly capped by PCS (`balance_to_make_pcs`). Meters can naturally vary due to hot rolling elongation and pipe length variance.
+- **Enforcement**: Both frontend queue validation (`/production`, `useQueue`, `validateProductionEntry`) and backend API (`/api/production/record`) strictly cap rolling production at the remaining plan piece balance (`balance_to_make_pcs`), blocking any attempt to record rolling output exceeding the PPC authorized Rolling Plan piece count.
 
