@@ -16,6 +16,7 @@ import {
   Calendar,
   Filter,
   ClipboardCheck,
+  X,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { ProductionEntry, StageCode } from '@/types';
@@ -352,6 +353,8 @@ export default function WorkCenterProductionReportClient() {
 
         return {
           ...e,
+          work_order_id: effectiveWoId || e.work_order_id,
+          work_order_no: e.work_order_no || woInfo?.work_order_no || '—',
           od,
           wl,
           mh_od: isMhStage && mhInfo?.mh_od ? Number(mhInfo.mh_od) : undefined,
@@ -406,6 +409,7 @@ export default function WorkCenterProductionReportClient() {
 
           qcEntries.push({
             id: q.id,
+            work_order_id: q.work_order_id,
             work_order_no: wo?.work_order_no || '—',
             customer_name: wo?.customer_name || 'Standard Stock',
             route_code: routeInfo?.route_code || 'HFS',
@@ -553,8 +557,16 @@ export default function WorkCenterProductionReportClient() {
   // Feeder Balance Calculations: Received from Last Work Center & Balance for Production
   const feederMetrics = useMemo(() => {
     const lastWcName = LAST_WC_MAP[selectedWc] || 'Preceding Stage';
+    const searchTerm = debouncedSearch.trim().toLowerCase();
+    const isSearchFiltered = searchTerm.length > 0;
+
+    // Collect active WO IDs and WO numbers from filteredEntries
     const activeWoIds = new Set(filteredEntries.map((e) => e.work_order_id).filter(Boolean));
-    const hasFilter = filteredEntries.length < entries.length;
+    const activeWoNos = new Set(
+      filteredEntries
+        .map((e) => (e.work_order_no || '').toLowerCase().trim())
+        .filter((no) => no && no !== '—')
+    );
 
     if (selectedWc === 'ROLLING') {
       let totalPlanMtr = 0;
@@ -564,8 +576,19 @@ export default function WorkCenterProductionReportClient() {
       let balPcs = 0;
       let balMt = 0;
 
-      const relevantPlans = hasFilter && activeWoIds.size > 0
-        ? rollingPlansData.filter((p) => activeWoIds.has(p.work_order_id))
+      const relevantPlans = isSearchFiltered
+        ? rollingPlansData.filter((p) => {
+            const pId = p.work_order_id;
+            if (pId && activeWoIds.has(pId)) return true;
+            const pNo = (p.plan_no || '').toLowerCase();
+            if (pNo && pNo.includes(searchTerm)) return true;
+            if (activeWoNos.size > 0) {
+              for (const woNo of activeWoNos) {
+                if (woNo && pNo.includes(woNo)) return true;
+              }
+            }
+            return false;
+          })
         : rollingPlansData;
 
       relevantPlans.forEach((p) => {
@@ -610,10 +633,22 @@ export default function WorkCenterProductionReportClient() {
       };
     }
 
+    // Index all WIP rows by work_order_id and sequence_no to get exact preceding stage output
+    const wipByWoAndSeq = new Map<string, any>();
+    wipData.forEach((w) => {
+      wipByWoAndSeq.set(`${w.work_order_id}_${w.sequence_no}`, w);
+    });
+
     const relevantWip = wipData.filter((r) => {
       if (selectedWc !== 'ALL' && r.stage_code !== selectedWc) return false;
-      if (hasFilter && activeWoIds.size > 0) {
-        return activeWoIds.has(r.work_order_id);
+      if (isSearchFiltered) {
+        const woId = r.work_order_id;
+        const woNo = (r.work_order_no || '').toLowerCase();
+        const cust = (r.customer_name || '').toLowerCase();
+        const matchesId = woId && activeWoIds.has(woId);
+        const matchesWoNo = activeWoNos.has(woNo) || woNo.includes(searchTerm);
+        const matchesCust = cust.includes(searchTerm);
+        return matchesId || matchesWoNo || matchesCust;
       }
       return true;
     });
@@ -633,8 +668,12 @@ export default function WorkCenterProductionReportClient() {
 
       const od = Number(r.size_od || 60);
       const wt = Number(r.size_wt || 4);
-      const avgLen = curWipPcs > 0 && curWipMtr > 0 ? curWipMtr / curWipPcs : 6.0;
-      const inPcs = avgLen > 0 ? Math.round(inMtr / avgLen) : 0;
+
+      // Option A: Look up actual pieces produced by the preceding stage
+      const prev = wipByWoAndSeq.get(`${r.work_order_id}_${Number(r.sequence_no) - 1}`);
+      const inPcs = prev
+        ? Number(prev.net_output_pcs || prev.gross_output_pcs || 0)
+        : (curWipPcs > 0 && curWipMtr > 0 ? Math.round(inMtr / (curWipMtr / curWipPcs)) : Math.round(inMtr / 6.0));
       const inMt = mtFromMtr(inMtr, od, wt);
 
       recMtr += inMtr;
@@ -655,7 +694,7 @@ export default function WorkCenterProductionReportClient() {
       balanceMtr: balMtr,
       balanceMt: balMt,
     };
-  }, [selectedWc, filteredEntries, entries.length, rollingPlansData, wipData]);
+  }, [selectedWc, filteredEntries, debouncedSearch, rollingPlansData, wipData]);
 
   const activeWcConfig = useMemo(() => {
     return WORK_CENTERS.find((w) => w.code === selectedWc) || WORK_CENTERS[0];
@@ -861,8 +900,18 @@ export default function WorkCenterProductionReportClient() {
                 placeholder="e.g. WO-101 or HT-98"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-hidden"
+                className="w-full rounded-lg border border-slate-300 bg-white pl-8 pr-8 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-hidden"
               />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 rounded transition"
+                  title="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -926,6 +975,27 @@ export default function WorkCenterProductionReportClient() {
             />
           </div>
         </div>
+
+        {/* Dynamic Filter Scope Banner */}
+        {debouncedSearch.trim() && (
+          <div className="mt-3 flex items-center justify-between bg-blue-50/90 border border-blue-200 rounded-lg px-3 py-1.5 text-xs text-blue-900 print:hidden">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded bg-blue-200/80 px-1.5 py-0.5 text-[10px] font-bold text-blue-900 uppercase">
+                Dynamic Scope
+              </span>
+              <span>
+                All 6 KPI cards & records are filtered by: &ldquo;<strong className="font-mono text-blue-950 font-bold">{debouncedSearch}</strong>&rdquo;
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="text-blue-700 hover:text-blue-900 font-bold underline cursor-pointer text-[11px]"
+            >
+              Clear (Show Station Totals)
+            </button>
+          </div>
+        )}
 
         {/* Tailored Station KPI Summary Cards - Main focus on PCS and MT */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6 border-t border-slate-100 pt-4 print:grid-cols-6 print:gap-2 print:border-black print:pt-2">
@@ -1189,7 +1259,14 @@ export default function WorkCenterProductionReportClient() {
 
                       <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap print:text-black">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span>{e.work_order_no}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSearch(e.work_order_no)}
+                            className="hover:underline hover:text-blue-600 text-left cursor-pointer transition-colors"
+                            title={`Click to dynamically filter all cards & records for ${e.work_order_no}`}
+                          >
+                            {e.work_order_no}
+                          </button>
                           {e.plan_no && (
                             <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 border border-sky-200 text-sky-800 px-1.5 py-0.2 text-[9px] font-bold font-mono tracking-tight print:border print:border-black">
                               PLAN: {e.plan_no}{e.revision_no && Number(e.revision_no) > 0 ? ` (R${e.revision_no})` : ''}
