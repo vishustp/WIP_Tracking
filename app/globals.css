@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root, [data-theme="light"] {
   color-scheme: light;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
@@ -19,6 +19,54 @@
 
   /* Engineering Blueprint Dot Matrix */
   --grid-pattern-dot: rgba(148, 163, 184, 0.28);
+}
+
+[data-theme="foundry-dark"] {
+  color-scheme: dark;
+  --bg-canvas: #090d16;
+  --bg-surface: #0f172a;
+  --bg-surface-elevated: #1e293b;
+  --bg-surface-subtle: #172033;
+  --border-subtle: #1e293b;
+  --border-strong: #334155;
+  --border-focus: #38bdf8;
+  --grid-pattern-dot: rgba(56, 189, 248, 0.15);
+}
+
+[data-theme="ocean"] {
+  color-scheme: dark;
+  --bg-canvas: #060d17;
+  --bg-surface: #0a192f;
+  --bg-surface-elevated: #112240;
+  --bg-surface-subtle: #0d1e38;
+  --border-subtle: #1e3a5f;
+  --border-strong: #234876;
+  --border-focus: #38bdf8;
+  --grid-pattern-dot: rgba(56, 189, 248, 0.16);
+}
+
+[data-theme="titanium"] {
+  color-scheme: dark;
+  --bg-canvas: #121214;
+  --bg-surface: #18181b;
+  --bg-surface-elevated: #27272a;
+  --bg-surface-subtle: #202024;
+  --border-subtle: #27272a;
+  --border-strong: #3f3f46;
+  --border-focus: #10b981;
+  --grid-pattern-dot: rgba(161, 161, 170, 0.20);
+}
+
+[data-theme="high-contrast"] {
+  color-scheme: dark;
+  --bg-canvas: #000000;
+  --bg-surface: #0a0a0a;
+  --bg-surface-elevated: #171717;
+  --bg-surface-subtle: #1f1f1f;
+  --border-subtle: #404040;
+  --border-strong: #737373;
+  --border-focus: #f59e0b;
+  --grid-pattern-dot: rgba(245, 158, 11, 0.25);
 }
 
 * {

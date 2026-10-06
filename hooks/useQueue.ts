@@ -98,11 +98,16 @@ export function useQueue(stage: StageCode) {
       let rawQueueData = queueRes.data;
       if (queueRes.error) {
         console.warn("[useQueue] RPC get_production_entry_queue error, falling back to vw_route_stage_wip:", queueRes.error.message);
-        const { data: viewData, error: viewError } = await supabase
-          .from("vw_route_stage_wip")
-          .select("work_order_id, work_order_no, customer_name, route_id, route_code, route_name, stage_code, current_wip, current_wip_pcs, current_wip_mt, size_od, size_wt")
-          .eq("stage_code", s)
-          .gt("current_wip", 0);
+        const [{ data: viewData, error: viewError }, { data: woData }] = await Promise.all([
+          supabase
+            .from("vw_route_stage_wip")
+            .select("work_order_id, work_order_no, customer_name, route_id, route_code, route_name, stage_code, current_wip, current_wip_pcs, current_wip_mt, size_od, size_wt")
+            .eq("stage_code", s)
+            .gt("current_wip", 0),
+          supabase
+            .from("work_orders")
+            .select("id, grade, specification, l1, l2"),
+        ]);
 
         if (viewError) {
           setRows([]);
@@ -111,25 +116,32 @@ export function useQueue(stage: StageCode) {
           return;
         }
 
-        rawQueueData = (viewData || []).map((v: any) => ({
-          work_order_id: v.work_order_id,
-          work_order_no: v.work_order_no,
-          customer_name: v.customer_name,
-          specification: null,
-          od: v.size_od,
-          wl: v.size_wt,
-          l1: 6,
-          l2: 6.5,
-          avg_length: 6.25,
-          route_id: v.route_id,
-          route_code: v.route_code,
-          route_name: v.route_name,
-          stage_code: v.stage_code,
-          balance_to_make_mtr: v.current_wip,
-          balance_to_make_pcs: v.current_wip_pcs,
-          balance_to_make_mt: v.current_wip_mt,
-          multiple: 1,
-        }));
+        const woInfoMap = new Map<string, any>((woData || []).map((w: any) => [w.id, w]));
+        rawQueueData = (viewData || []).map((v: any) => {
+          const woInfo: any = woInfoMap.get(v.work_order_id);
+          const l1 = Number(woInfo?.l1 || 6);
+          const l2 = Number(woInfo?.l2 || 6.5);
+          const avg = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : (l1 || 6);
+          return {
+            work_order_id: v.work_order_id,
+            work_order_no: v.work_order_no,
+            customer_name: v.customer_name,
+            specification: woInfo?.specification || woInfo?.grade || null,
+            od: v.size_od,
+            wl: v.size_wt,
+            l1,
+            l2,
+            avg_length: avg,
+            route_id: v.route_id,
+            route_code: v.route_code,
+            route_name: v.route_name,
+            stage_code: v.stage_code,
+            balance_to_make_mtr: v.current_wip,
+            balance_to_make_pcs: v.current_wip_pcs || (avg > 0 ? Math.round(v.current_wip / avg) : 0),
+            balance_to_make_mt: v.current_wip_mt,
+            multiple: 1,
+          };
+        });
       }
 
       const rawRows: Row[] = (rawQueueData ?? []).map((r: any) => emptyRow(r));
@@ -691,7 +703,9 @@ export function useQueue(stage: StageCode) {
                 0
               );
               availPcs = Math.max(0, incomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
-              availMtr = effLen > 0 ? Number((availPcs * effLen).toFixed(2)) : 0;
+              availMtr = vdiDivIn > 0 && incomingPcs === 0
+                ? Math.max(0, Number((vdiDivIn - qcInspectedPcs * effLen - vdiDivOut).toFixed(2)))
+                : (effLen > 0 ? Number((availPcs * effLen).toFixed(2)) : 0);
             }
 
             const isMhWip = (s as string) === "ROLLING" || s === "HOLLOW_HEAT_TREATMENT" || s === "DRAW";
@@ -737,7 +751,9 @@ export function useQueue(stage: StageCode) {
               max_allowed_mtr: availMtr,
               max_allowed_pcs: availPcs,
               prev_htc_ok: rollingHtcOkMtr,
-              heat_lot_no: (s === "BAND_SAW" || s === "VDI") ? (inheritedHtLotNo || r.heat_lot_no || "") : r.heat_lot_no,
+              heat_lot_no: (s === "BAND_SAW" || s === "VDI")
+                ? (inheritedHtLotNo || r.heat_lot_no || (getStageDivIn(r.work_order_id, s) > 0 ? `DIV-${r.work_order_no}` : ""))
+                : r.heat_lot_no,
               heat_lots: htLots.length > 0 ? htLots : undefined,
             };
 

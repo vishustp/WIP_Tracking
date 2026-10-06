@@ -1796,7 +1796,7 @@ export default function WorkOrderTrackingClient() {
                               <div className="font-semibold text-slate-400">Not in Route</div>
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
                             </div>
-                          ) : Number(rRoll?.outMtr || 0) === 0 ? (
+                          ) : (Number(rRoll?.outMtr || 0) === 0 && Number(rHtc?.wipPcs || 0) === 0 && Number(rHtc?.divertedInMtr || 0) === 0 && Number(rHtc?.outPcs || 0) === 0) ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
                               Waiting Rolling HTC OK
                               <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
@@ -1877,7 +1877,7 @@ export default function WorkOrderTrackingClient() {
                               <div className="font-semibold text-slate-400">Not in Route</div>
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
                             </div>
-                          ) : Number(rRoll?.outMtr || 0) === 0 ? (
+                          ) : (Number(rRoll?.outMtr || 0) === 0 && Number(rDraw?.wipPcs || 0) === 0 && Number(rDraw?.divertedInMtr || 0) === 0 && Number(rDraw?.outPcs || 0) === 0) ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
                               Waiting Upstream
                               <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
@@ -1951,7 +1951,7 @@ export default function WorkOrderTrackingClient() {
                               <div className="font-semibold text-slate-400">Not in Route</div>
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
                             </div>
-                          ) : Number(rRoll?.outMtr || 0) === 0 ? (
+                          ) : (Number(rRoll?.outMtr || 0) === 0 && Number(rHt?.wipPcs || 0) === 0 && Number(rHt?.divertedInMtr || 0) === 0 && Number(rHt?.outPcs || 0) === 0) ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
                               Waiting Upstream
                               <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
@@ -2025,7 +2025,7 @@ export default function WorkOrderTrackingClient() {
                               <div className="font-semibold text-slate-400">Not in Route</div>
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
                             </div>
-                          ) : Number(rRoll?.outMtr || 0) === 0 ? (
+                          ) : (Number(rRoll?.outMtr || 0) === 0 && Number(rBandSaw?.wipPcs || 0) === 0 && Number(rBandSaw?.divertedInMtr || 0) === 0 && Number(rBandSaw?.outPcs || 0) === 0) ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
                               Waiting Upstream
                               <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
@@ -2099,7 +2099,7 @@ export default function WorkOrderTrackingClient() {
                               <div className="font-semibold text-slate-400">Not in Route</div>
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
                             </div>
-                          ) : Number(rRoll?.outMtr || 0) === 0 ? (
+                          ) : (Number(rRoll?.outMtr || 0) === 0 && Number(rVdi?.wipPcs || 0) === 0 && Number(rVdi?.divertedInMtr || 0) === 0 && Number(rVdi?.outPcs || 0) === 0) ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
                               Waiting Upstream
                               <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>

@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
 import GlobalKeyboardNavigation from '@/components/common/GlobalKeyboardNavigation';
 
-export type AppTheme = 'light' | 'cobalt' | 'navy';
+export type AppTheme = 'light' | 'foundry-dark' | 'ocean' | 'titanium' | 'high-contrast' | 'cobalt';
 
 const THEMES: {
   id: AppTheme;
@@ -31,26 +31,50 @@ const THEMES: {
   {
     id: 'light',
     name: 'Clean Executive Light',
-    badge: 'Recommended',
-    desc: 'Crisp all-white topbar & sidebar for maximum daytime clarity',
+    badge: 'Standard',
+    desc: 'Crisp all-white topbar & sidebar for daytime clarity',
     headerSwatch: 'bg-white border border-slate-300',
     sidebarSwatch: 'bg-white border border-slate-300',
   },
   {
+    id: 'foundry-dark',
+    name: 'Foundry Night (Dark)',
+    badge: 'Popular',
+    desc: 'Deep charcoal #0f172a with glowing cyan accents for night shifts',
+    headerSwatch: 'bg-[#0f172a] border border-slate-700',
+    sidebarSwatch: 'bg-[#1e293b] border border-slate-700',
+  },
+  {
+    id: 'ocean',
+    name: 'Deep Ocean / Steel Navy',
+    badge: 'Console',
+    desc: 'Midnight ocean #0a192f with cobalt & icy cyan indicators',
+    headerSwatch: 'bg-[#0a192f] border border-blue-900',
+    sidebarSwatch: 'bg-[#0d1b2a] border border-blue-900',
+  },
+  {
+    id: 'titanium',
+    name: 'Titanium / Obsidian',
+    badge: 'Modern',
+    desc: 'Ultra-modern matte zinc #18181b with emerald accents',
+    headerSwatch: 'bg-[#18181b] border border-zinc-700',
+    sidebarSwatch: 'bg-[#202024] border border-zinc-700',
+  },
+  {
+    id: 'high-contrast',
+    name: 'High-Contrast Operator',
+    badge: 'Shop Floor',
+    desc: 'Jet black with vivid safety yellow & white high-visibility borders',
+    headerSwatch: 'bg-black border border-white/60',
+    sidebarSwatch: 'bg-[#0a0a0a] border border-white/60',
+  },
+  {
     id: 'cobalt',
     name: 'Steel-Blue Hybrid',
-    badge: 'Popular',
+    badge: 'Classic',
     desc: 'Polished steel-blue topbar with high-contrast white sidebar',
     headerSwatch: 'bg-[#16325c] border border-blue-900',
     sidebarSwatch: 'bg-white border border-slate-300',
-  },
-  {
-    id: 'navy',
-    name: 'Industrial Dark Navy',
-    badge: 'Console',
-    desc: 'Midnight dark navy console for night shifts & low glare',
-    headerSwatch: 'bg-[#0b132b] border border-slate-800',
-    sidebarSwatch: 'bg-[#0d1733] border border-slate-800',
   },
 ];
 
@@ -139,9 +163,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
     // Load saved theme preference
     try {
-      const savedTheme = localStorage.getItem('app_theme') as AppTheme;
-      if (savedTheme && (savedTheme === 'light' || savedTheme === 'cobalt' || savedTheme === 'navy')) {
-        setTheme(savedTheme);
+      let savedTheme = localStorage.getItem('app_theme') as string;
+      if (savedTheme === 'navy') savedTheme = 'ocean';
+      if (savedTheme && ['light', 'foundry-dark', 'ocean', 'titanium', 'high-contrast', 'cobalt'].includes(savedTheme)) {
+        setTheme(savedTheme as AppTheme);
       }
     } catch {
       // Ignore localStorage read errors in SSR/sandboxed mode
@@ -263,9 +288,184 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const formattedDay = now.toLocaleDateString('en-GB', { weekday: 'long' });
 
   const currentThemeConfig = THEMES.find((t) => t.id === theme) || THEMES[0];
+  const isLight = theme === 'light';
+  const isDark = theme !== 'light' && theme !== 'cobalt';
+
+  const getHeaderClasses = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'bg-[#0f172a] border-b border-slate-800 text-slate-100 shadow-md';
+      case 'ocean':
+        return 'bg-[#0a192f] border-b border-[#142845] text-white shadow-md';
+      case 'titanium':
+        return 'bg-[#18181b] border-b border-zinc-800 text-zinc-100 shadow-md';
+      case 'high-contrast':
+        return 'bg-black border-b border-neutral-700 text-white shadow-md';
+      case 'cobalt':
+        return 'bg-[#16325c] border-b border-[#0f2444] text-white shadow-md';
+      case 'light':
+      default:
+        return 'bg-white border-b border-slate-200/90 text-slate-800 shadow-2xs';
+    }
+  };
+
+  const getSearchInputClasses = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'bg-slate-800/90 hover:bg-slate-800 text-white placeholder:text-slate-400 border-slate-700 focus:bg-slate-900 focus:ring-sky-400 focus:border-sky-400';
+      case 'ocean':
+        return 'bg-[#0e213d]/90 hover:bg-[#0e213d] text-white placeholder:text-blue-200/70 border-[#1c3a64] focus:bg-[#081527] focus:ring-cyan-400 focus:border-cyan-400';
+      case 'titanium':
+        return 'bg-zinc-800/90 hover:bg-zinc-800 text-white placeholder:text-zinc-400 border-zinc-700 focus:bg-zinc-900 focus:ring-emerald-400 focus:border-emerald-400';
+      case 'high-contrast':
+        return 'bg-neutral-900 text-white placeholder:text-neutral-400 border-neutral-600 focus:bg-black focus:ring-amber-400 focus:border-amber-400';
+      case 'cobalt':
+        return 'bg-[#0f2444]/90 hover:bg-[#0f2444] text-white placeholder:text-blue-200/80 border-blue-900/60 focus:bg-[#0a182e] focus:ring-blue-400 focus:border-blue-400';
+      case 'light':
+      default:
+        return 'bg-slate-100/90 hover:bg-slate-100 text-slate-900 placeholder:text-slate-400 border-slate-200 focus:bg-white focus:ring-blue-500 focus:border-blue-500';
+    }
+  };
+
+  const getThemeButtonClasses = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'border-slate-700 bg-slate-800/90 hover:bg-slate-800 text-slate-100 shadow-2xs';
+      case 'ocean':
+        return 'border-blue-900 bg-[#0e213d] hover:bg-[#122a4c] text-white shadow-2xs';
+      case 'titanium':
+        return 'border-zinc-700 bg-zinc-800/90 hover:bg-zinc-800 text-zinc-100 shadow-2xs';
+      case 'high-contrast':
+        return 'border-neutral-500 bg-neutral-900 hover:bg-black text-white ring-1 ring-neutral-400 shadow-2xs';
+      case 'cobalt':
+        return 'border-blue-700/60 bg-[#0f2444]/90 hover:bg-[#0f2444] text-white shadow-2xs';
+      case 'light':
+      default:
+        return 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700 shadow-2xs';
+    }
+  };
+
+  const getThemeBadgeClasses = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'bg-slate-700 text-sky-300 border border-slate-600';
+      case 'ocean':
+        return 'bg-blue-900/80 text-cyan-200 border border-blue-700';
+      case 'titanium':
+        return 'bg-zinc-800 text-emerald-300 border border-zinc-700';
+      case 'high-contrast':
+        return 'bg-amber-400 text-black border border-amber-300 font-black';
+      case 'cobalt':
+        return 'bg-blue-900/60 text-blue-200 border border-blue-700/50';
+      case 'light':
+      default:
+        return 'bg-blue-50 text-blue-700 border border-blue-200';
+    }
+  };
+
+  const getSidebarClasses = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'bg-[#111827] border-r border-slate-800 text-slate-200';
+      case 'ocean':
+        return 'bg-[#0d1b2a] border-r border-[#142845] text-slate-200';
+      case 'titanium':
+        return 'bg-[#141416] border-r border-zinc-800 text-zinc-200';
+      case 'high-contrast':
+        return 'bg-black border-r border-neutral-700 text-white';
+      case 'cobalt':
+      case 'light':
+      default:
+        return 'bg-white border-r border-slate-200/90 text-slate-800';
+    }
+  };
+
+  const getNavItemClasses = (active: boolean) => {
+    if (active) {
+      switch (theme) {
+        case 'foundry-dark':
+          return 'bg-sky-600 text-white shadow-xs font-semibold';
+        case 'ocean':
+          return 'bg-blue-600 text-white shadow-xs font-semibold';
+        case 'titanium':
+          return 'bg-emerald-600 text-white shadow-xs font-semibold';
+        case 'high-contrast':
+          return 'bg-amber-400 text-black shadow-xs font-black ring-1 ring-white';
+        case 'cobalt':
+        case 'light':
+        default:
+          return 'bg-blue-600 text-white shadow-xs font-semibold';
+      }
+    }
+    switch (theme) {
+      case 'foundry-dark':
+        return 'text-slate-300 hover:bg-slate-800/80 hover:text-white';
+      case 'ocean':
+        return 'text-blue-100/90 hover:bg-[#132a4a] hover:text-white';
+      case 'titanium':
+        return 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white';
+      case 'high-contrast':
+        return 'text-white hover:bg-neutral-800 hover:text-amber-300';
+      case 'cobalt':
+      case 'light':
+      default:
+        return 'text-slate-700 hover:bg-slate-100 hover:text-slate-900';
+    }
+  };
+
+  const getSidebarHeaderClasses = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'border-slate-800 bg-[#0b101d] text-slate-300';
+      case 'ocean':
+        return 'border-[#142845] bg-[#08121f] text-blue-200';
+      case 'titanium':
+        return 'border-zinc-800 bg-[#0e0e10] text-zinc-300';
+      case 'high-contrast':
+        return 'border-neutral-700 bg-neutral-900 text-white';
+      case 'cobalt':
+      case 'light':
+      default:
+        return 'border-slate-200 bg-slate-50/70 text-slate-700';
+    }
+  };
+
+  const getSidebarFooterClasses = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'border-slate-800 bg-[#0b101d] text-slate-400';
+      case 'ocean':
+        return 'border-[#142845] bg-[#08121f] text-slate-400';
+      case 'titanium':
+        return 'border-zinc-800 bg-[#0e0e10] text-zinc-400';
+      case 'high-contrast':
+        return 'border-neutral-700 bg-black text-neutral-300';
+      case 'cobalt':
+      case 'light':
+      default:
+        return 'border-slate-200 bg-slate-50/80 text-slate-600';
+    }
+  };
+
+  const getContentBgClass = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'bg-[#090d16] text-slate-100';
+      case 'ocean':
+        return 'bg-[#060d17] text-slate-100';
+      case 'titanium':
+        return 'bg-[#121214] text-zinc-100';
+      case 'high-contrast':
+        return 'bg-black text-white';
+      case 'cobalt':
+      case 'light':
+      default:
+        return 'bg-[#f4f6fa] text-slate-900';
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-[#f4f6fa] text-slate-900 font-sans flex flex-col antialiased">
+    <div data-theme={theme} className={`min-h-screen ${getContentBgClass()} font-sans flex flex-col antialiased`}>
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -276,20 +476,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Top Header Bar */}
       <header
-        className={`sticky top-0 z-50 flex h-16 w-full items-center justify-between px-4 sm:px-6 shrink-0 print:hidden transition-colors duration-150 ${
-          theme === 'light'
-            ? 'bg-white border-b border-slate-200/90 text-slate-800 shadow-2xs'
-            : theme === 'cobalt'
-            ? 'bg-[#16325c] border-b border-[#0f2444] text-white shadow-md'
-            : 'bg-[#0b132b] border-b border-slate-800 text-white shadow-md'
-        }`}
+        className={`sticky top-0 z-50 flex h-16 w-full items-center justify-between px-4 sm:px-6 shrink-0 print:hidden transition-colors duration-150 ${getHeaderClasses()}`}
       >
         {/* Left: Brand Logo & Title */}
         <div className="flex items-center gap-3.5 min-w-0">
           <button
             type="button"
             className={`lg:hidden rounded-lg p-1.5 transition ${
-              theme === 'light'
+              isLight
                 ? 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 : 'text-white/80 hover:bg-white/10 hover:text-white'
             }`}
@@ -307,7 +501,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-red-600 font-black text-xl tracking-wider leading-none">RASHMI</span>
             <span
               className={`text-[10px] font-bold tracking-widest pl-0.5 mt-0.5 ${
-                theme === 'light' ? 'text-slate-800' : 'text-white'
+                isLight ? 'text-slate-800' : 'text-white'
               }`}
             >
               GROUP
@@ -316,7 +510,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           <div
             className={`h-8 w-[1px] mx-2 hidden sm:block shrink-0 ${
-              theme === 'light' ? 'bg-slate-200' : theme === 'cobalt' ? 'bg-blue-800/60' : 'bg-slate-800'
+              isLight
+                ? 'bg-slate-200'
+                : theme === 'cobalt'
+                ? 'bg-blue-800/60'
+                : theme === 'titanium'
+                ? 'bg-zinc-800'
+                : 'bg-slate-800'
             }`}
           />
 
@@ -324,14 +524,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="hidden sm:flex flex-col min-w-0">
             <span
               className={`font-bold text-base tracking-tight leading-tight truncate ${
-                theme === 'light' ? 'text-slate-900' : 'text-white'
+                isLight ? 'text-slate-900' : 'text-white'
               }`}
             >
               Seamless WIP Tracking
             </span>
             <span
               className={`text-xs font-normal leading-tight truncate ${
-                theme === 'light' ? 'text-slate-500' : theme === 'cobalt' ? 'text-blue-200' : 'text-slate-400'
+                isLight
+                  ? 'text-slate-500'
+                  : theme === 'cobalt'
+                  ? 'text-blue-200'
+                  : theme === 'titanium'
+                  ? 'text-zinc-400'
+                  : theme === 'high-contrast'
+                  ? 'text-neutral-300'
+                  : 'text-slate-400'
               }`}
             >
               Rashmi Green Hydrogen Steel Pvt. Ltd.
@@ -348,7 +556,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="relative w-full">
             <Search
               className={`absolute left-3 top-2.5 h-4 w-4 pointer-events-none ${
-                theme === 'light' ? 'text-slate-400' : theme === 'cobalt' ? 'text-blue-300' : 'text-slate-400'
+                isLight
+                  ? 'text-slate-400'
+                  : theme === 'cobalt'
+                  ? 'text-blue-300'
+                  : theme === 'titanium'
+                  ? 'text-zinc-400'
+                  : 'text-slate-400'
               }`}
             />
             <input
@@ -369,13 +583,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               onKeyDown={(e) => {
                 if (e.key === 'Escape') setSearchOpen(false);
               }}
-              className={`w-full text-sm rounded-lg pl-9 pr-14 py-2 border transition font-normal focus:outline-none focus:ring-2 ${
-                theme === 'light'
-                  ? 'bg-slate-100/90 hover:bg-slate-100 text-slate-900 placeholder:text-slate-400 border-slate-200 focus:bg-white focus:ring-blue-500 focus:border-blue-500'
-                  : theme === 'cobalt'
-                  ? 'bg-[#0f2444]/90 hover:bg-[#0f2444] text-white placeholder:text-blue-200/80 border-blue-900/60 focus:bg-[#0a182e] focus:ring-blue-400 focus:border-blue-400'
-                  : 'bg-slate-900/90 hover:bg-slate-900 text-white placeholder:text-slate-400 border-slate-700 focus:bg-slate-950 focus:ring-blue-500 focus:border-blue-500'
-              }`}
+              className={`w-full text-sm rounded-lg pl-9 pr-14 py-2 border transition font-normal focus:outline-none focus:ring-2 ${getSearchInputClasses()}`}
             />
             <div className="absolute right-2.5 top-2 flex items-center gap-1">
               {searchQuery && (
@@ -386,7 +594,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     setSearchOpen(false);
                   }}
                   className={`p-0.5 rounded hover:bg-slate-200/40 text-xs cursor-pointer ${
-                    theme === 'light' ? 'text-slate-400 hover:text-slate-600' : 'text-blue-200 hover:text-white'
+                    isLight ? 'text-slate-400 hover:text-slate-600' : 'text-blue-200 hover:text-white'
                   }`}
                   aria-label="Clear search query"
                 >
@@ -396,7 +604,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 type="submit"
                 className={`p-0.5 rounded cursor-pointer ${
-                  theme === 'light' ? 'text-slate-400 hover:text-slate-700' : 'text-blue-200 hover:text-white'
+                  isLight ? 'text-slate-400 hover:text-slate-700' : 'text-blue-200 hover:text-white'
                 }`}
                 aria-label="Submit search"
               >
@@ -497,39 +705,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               title={`Current Theme: ${currentThemeConfig.name}`}
               aria-expanded={themeDropdownOpen}
               aria-label="Select application theme"
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold border transition cursor-pointer ${
-                theme === 'light'
-                  ? 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700 shadow-2xs'
-                  : theme === 'cobalt'
-                  ? 'border-blue-700/60 bg-[#0f2444]/90 hover:bg-[#0f2444] text-white shadow-2xs'
-                  : 'border-slate-700 bg-slate-800/90 hover:bg-slate-800 text-white shadow-2xs'
-              }`}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold border transition cursor-pointer ${getThemeButtonClasses()}`}
             >
-              <Palette className={`h-4 w-4 shrink-0 ${theme === 'light' ? 'text-blue-600' : 'text-blue-300'}`} />
+              <Palette className={`h-4 w-4 shrink-0 ${isLight ? 'text-blue-600' : theme === 'titanium' ? 'text-emerald-400' : theme === 'high-contrast' ? 'text-amber-400' : 'text-cyan-300'}`} />
               <span className="hidden sm:inline font-medium">Theme</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${
-                  theme === 'light'
-                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                    : theme === 'cobalt'
-                    ? 'bg-blue-900/60 text-blue-200 border border-blue-700/50'
-                    : 'bg-slate-700 text-slate-200 border border-slate-600'
-                }`}
-              >
-                {theme}
+              <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${getThemeBadgeClasses()}`}>
+                {currentThemeConfig.name.split(' ')[0]}
               </span>
               <ChevronDown className="h-3 w-3 opacity-70" />
             </button>
 
             {/* Theme Dropdown Menu */}
             {themeDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 text-xs text-slate-800">
+              <div className="absolute right-0 mt-2 w-76 rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 text-xs text-slate-800">
                 <div className="px-2 py-1.5 border-b border-slate-100 mb-1 flex items-center justify-between">
                   <div className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
                     <Palette className="h-3.5 w-3.5 text-blue-600" />
                     <span>Select Interface Theme</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-mono">3 options</span>
+                  <span className="text-[10px] text-slate-400 font-mono">{THEMES.length} themes</span>
                 </div>
 
                 <div className="space-y-1 py-1">
@@ -581,20 +775,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="hidden lg:flex items-center gap-2.5 text-right">
             <Calendar
               className={`h-4 w-4 shrink-0 ${
-                theme === 'light' ? 'text-blue-600' : theme === 'cobalt' ? 'text-blue-300' : 'text-cyan-400'
+                isLight ? 'text-blue-600' : theme === 'titanium' ? 'text-emerald-400' : theme === 'high-contrast' ? 'text-amber-400' : 'text-cyan-300'
               }`}
             />
             <div className="flex flex-col leading-tight">
               <span
                 className={`text-xs font-bold tracking-tight ${
-                  theme === 'light' ? 'text-slate-800' : 'text-white'
+                  isLight ? 'text-slate-800' : 'text-white'
                 }`}
               >
                 {formattedDate}
               </span>
               <span
                 className={`text-xs font-medium ${
-                  theme === 'light' ? 'text-slate-500' : theme === 'cobalt' ? 'text-blue-200' : 'text-slate-400'
+                  isLight
+                    ? 'text-slate-500'
+                    : theme === 'cobalt'
+                    ? 'text-blue-200'
+                    : theme === 'titanium'
+                    ? 'text-zinc-400'
+                    : theme === 'high-contrast'
+                    ? 'text-neutral-300'
+                    : 'text-slate-400'
                 }`}
               >
                 {formattedDay}
@@ -613,11 +815,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => setUserDropdownOpen(!userDropdownOpen)}
               className={`flex items-center gap-2.5 rounded-lg p-1.5 transition cursor-pointer text-left ${
-                theme === 'light'
+                isLight
                   ? 'hover:bg-slate-100 text-slate-900'
-                  : theme === 'cobalt'
-                  ? 'hover:bg-white/10 text-white'
-                  : 'hover:bg-slate-800 text-white'
+                  : 'hover:bg-white/10 text-white'
               }`}
               aria-expanded={userDropdownOpen}
               aria-label="User account menu"
@@ -756,32 +956,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Sidebar: Dynamic styling based on selected theme */}
         <aside
-          className={`fixed top-16 bottom-0 left-0 z-40 flex w-64 flex-col transition-transform duration-200 ease-out lg:translate-x-0 print:hidden ${
-            theme === 'navy'
-              ? 'bg-[#0d1733] border-r border-slate-800 text-slate-200'
-              : 'bg-white border-r border-slate-200/90 text-slate-800'
-          } ${open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}
+          className={`fixed top-16 bottom-0 left-0 z-40 flex w-64 flex-col transition-transform duration-200 ease-out lg:translate-x-0 print:hidden ${getSidebarClasses()} ${
+            open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+          }`}
         >
-          <div
-            className={`flex items-center justify-between px-4 py-3 border-b lg:hidden ${
-              theme === 'navy' ? 'border-slate-800 bg-[#0a1228]' : 'border-slate-200 bg-slate-50/70'
-            }`}
-          >
-            <span
-              className={`text-xs font-bold uppercase tracking-wider ${
-                theme === 'navy' ? 'text-slate-300' : 'text-slate-700'
-              }`}
-            >
+          <div className={`flex items-center justify-between px-4 py-3 border-b lg:hidden ${getSidebarHeaderClasses()}`}>
+            <span className="text-xs font-bold uppercase tracking-wider">
               Navigation Menu
             </span>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className={`rounded p-1 ${
-                theme === 'navy'
-                  ? 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'
-              }`}
+              className="rounded p-1 hover:opacity-80"
+              aria-label="Close navigation menu"
             >
               <X size={18} />
             </button>
@@ -793,7 +980,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 {section.label && (
                   <div
                     className={`px-3 pt-2.5 pb-1 text-xs font-bold tracking-wider uppercase ${
-                      theme === 'navy' ? 'text-slate-400' : 'text-slate-400'
+                      theme === 'high-contrast' ? 'text-amber-400 font-black' : 'text-slate-400'
                     }`}
                   >
                     {section.label}
@@ -811,19 +998,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                           setOpen(false);
                         }}
                         aria-current={active ? 'page' : undefined}
-                        className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 cursor-pointer ${
-                          active
-                            ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                            : theme === 'navy'
-                            ? 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
-                            : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-                        }`}
+                        className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 cursor-pointer ${getNavItemClasses(active)}`}
                       >
                         <Icon
                           className={`h-4 w-4 shrink-0 transition-transform ${
                             active
-                              ? 'text-white'
-                              : theme === 'navy'
+                              ? theme === 'high-contrast'
+                                ? 'text-black'
+                                : 'text-white'
+                              : isDark
                               ? 'text-slate-400 group-hover:text-cyan-400'
                               : 'text-slate-500 group-hover:text-slate-800'
                           }`}
@@ -838,17 +1021,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
 
           {/* Sidebar Footer */}
-          <div
-            className={`p-3.5 border-t text-xs font-mono flex items-center justify-between ${
-              theme === 'navy'
-                ? 'border-slate-800 bg-[#091024] text-slate-400'
-                : 'border-slate-200 bg-slate-50/80 text-slate-600'
-            }`}
-          >
-            <span className={`font-semibold ${theme === 'navy' ? 'text-slate-300' : 'text-slate-700'}`}>
+          <div className={`p-3.5 border-t text-xs font-mono flex items-center justify-between ${getSidebarFooterClasses()}`}>
+            <span className="font-semibold">
               RASHMI STEEL MILL
             </span>
-            <span className="text-emerald-600 font-bold flex items-center gap-1.5 text-xs">
+            <span className="text-emerald-500 font-bold flex items-center gap-1.5 text-xs">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               ONLINE
             </span>
@@ -856,7 +1033,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* Content Area */}
-        <div className="flex-1 lg:pl-64 min-w-0 flex flex-col bg-[#f4f6fa]">
+        <div className={`flex-1 lg:pl-64 min-w-0 flex flex-col ${getContentBgClass()}`}>
           <main id="main-content" className="flex-1 w-full p-4 sm:p-5 lg:p-6 print:p-0 print:m-0 print:bg-white">
             {children}
           </main>

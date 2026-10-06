@@ -1,0 +1,674 @@
+{
+  "systemMore": [
+    {
+      "work_order_no": "4069",
+      "customer": "Sainest Tubes Pvt.Ltd",
+      "size": "30 x 2.6",
+      "excel_rec_pcs": 611,
+      "excel_ok_pcs": 548,
+      "excel_salvage_pcs": 63,
+      "excel_rework_ok": 63,
+      "excel_total_ok": 611,
+      "excel_total_mt": 11.645,
+      "excel_dates": [
+        "2026-10-01"
+      ],
+      "dbRollingPcs": 1797,
+      "dbRollingMtr": 10782,
+      "dbHtcOkMtr": 10206,
+      "dbHtcOkPcs": 1797,
+      "dbDates": [
+        "2026-10-02"
+      ],
+      "dbLogsCount": 3
+    },
+    {
+      "work_order_no": "6072",
+      "customer": "Shanta Techno pvt.ltd",
+      "size": "51 x 5.5",
+      "excel_rec_pcs": 101,
+      "excel_ok_pcs": 101,
+      "excel_salvage_pcs": 0,
+      "excel_rework_ok": 0,
+      "excel_total_ok": 101,
+      "excel_total_mt": 8.093,
+      "excel_dates": [
+        "2026-10-04"
+      ],
+      "dbRollingPcs": 201,
+      "dbRollingMtr": 1161.78,
+      "dbHtcOkMtr": 1161.78,
+      "dbHtcOkPcs": 201,
+      "dbDates": [
+        "2026-10-05"
+      ],
+      "dbLogsCount": 2
+    },
+    {
+      "work_order_no": "6172",
+      "customer": "M.S. Raja pvt.ltd",
+      "size": "60.3 x 3.91",
+      "excel_rec_pcs": 132,
+      "excel_ok_pcs": 70,
+      "excel_salvage_pcs": 62,
+      "excel_rework_ok": 62,
+      "excel_total_ok": 132,
+      "excel_total_mt": 4.385,
+      "excel_dates": [
+        "2026-10-01"
+      ],
+      "dbRollingPcs": 142,
+      "dbRollingMtr": 852,
+      "dbHtcOkMtr": 852,
+      "dbHtcOkPcs": 142,
+      "dbDates": [
+        "2026-10-02",
+        "2026-10-03"
+      ],
+      "dbLogsCount": 2
+    },
+    {
+      "work_order_no": "6245",
+      "customer": "Calcutta Steel tube Corporation",
+      "size": "50.8 x 3.66",
+      "excel_rec_pcs": 148,
+      "excel_ok_pcs": 126,
+      "excel_salvage_pcs": 22,
+      "excel_rework_ok": 22,
+      "excel_total_ok": 148,
+      "excel_total_mt": 4.546,
+      "excel_dates": [
+        "2026-10-02"
+      ],
+      "dbRollingPcs": 252,
+      "dbRollingMtr": 1086.12,
+      "dbHtcOkMtr": 1086.12,
+      "dbHtcOkPcs": 252,
+      "dbDates": [
+        "2026-10-03"
+      ],
+      "dbLogsCount": 2
+    },
+    {
+      "work_order_no": "6278",
+      "customer": "Shanta Techno pvt.ltd",
+      "size": "38.1 x 3.66",
+      "excel_rec_pcs": 119,
+      "excel_ok_pcs": 119,
+      "excel_salvage_pcs": 0,
+      "excel_rework_ok": 0,
+      "excel_total_ok": 119,
+      "excel_total_mt": 4.89,
+      "excel_dates": [
+        "2026-09-29"
+      ],
+      "dbRollingPcs": 238,
+      "dbRollingMtr": 1737.4,
+      "dbHtcOkMtr": 1737.4,
+      "dbHtcOkPcs": 238,
+      "dbDates": [
+        "2026-09-30",
+        "2026-10-02"
+      ],
+      "dbLogsCount": 2
+    },
+    {
+      "work_order_no": "6298",
+      "customer": "Uniparts India LTD",
+      "size": "63 x 11.5",
+      "excel_rec_pcs": 47,
+      "excel_ok_pcs": 27,
+      "excel_salvage_pcs": 20,
+      "excel_rework_ok": 20,
+      "excel_total_ok": 47,
+      "excel_total_mt": 5.008,
+      "excel_dates": [
+        "2026-10-02"
+      ],
+      "dbRollingPcs": 97,
+      "dbRollingMtr": 537.38,
+      "dbHtcOkMtr": 537.38,
+      "dbHtcOkPcs": 97,
+      "dbDates": [
+        "2026-10-03"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6307",
+      "customer": "Avon Tubetech",
+      "size": "38.1 x 3.5",
+      "excel_rec_pcs": 2202,
+      "excel_ok_pcs": 2100,
+      "excel_salvage_pcs": 102,
+      "excel_rework_ok": 102,
+      "excel_total_ok": 2202,
+      "excel_total_mt": 81.533,
+      "excel_dates": [
+        "2026-09-29",
+        "2026-09-30"
+      ],
+      "dbRollingPcs": 2238,
+      "dbRollingMtr": 16001.7,
+      "dbHtcOkMtr": 4004,
+      "dbHtcOkPcs": 2238,
+      "dbDates": [
+        "2026-09-30"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6349",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "63.5 x 5.2",
+      "excel_rec_pcs": 953,
+      "excel_ok_pcs": 939,
+      "excel_salvage_pcs": 14,
+      "excel_rework_ok": 14,
+      "excel_total_ok": 953,
+      "excel_total_mt": 80.345,
+      "excel_dates": [
+        "2026-09-30",
+        "2026-10-01"
+      ],
+      "dbRollingPcs": 1091,
+      "dbRollingMtr": 8073.4,
+      "dbHtcOkMtr": 7903.2,
+      "dbHtcOkPcs": 1091,
+      "dbDates": [
+        "2026-10-01"
+      ],
+      "dbLogsCount": 2
+    },
+    {
+      "work_order_no": "6352",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "63.5 x 5.2",
+      "excel_rec_pcs": 532,
+      "excel_ok_pcs": 467,
+      "excel_salvage_pcs": 65,
+      "excel_rework_ok": 65,
+      "excel_total_ok": 532,
+      "excel_total_mt": 59.258,
+      "excel_dates": [
+        "2026-10-03",
+        "2026-10-04"
+      ],
+      "dbRollingPcs": 567,
+      "dbRollingMtr": 4099.41,
+      "dbHtcOkMtr": 4099.41,
+      "dbHtcOkPcs": 567,
+      "dbDates": [
+        "2026-10-04"
+      ],
+      "dbLogsCount": 2
+    },
+    {
+      "work_order_no": "6355",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "63.5 x 5.2",
+      "excel_rec_pcs": 1376,
+      "excel_ok_pcs": 1376,
+      "excel_salvage_pcs": 0,
+      "excel_rework_ok": 0,
+      "excel_total_ok": 1376,
+      "excel_total_mt": 104.563,
+      "excel_dates": [
+        "2026-10-01",
+        "2026-10-02"
+      ],
+      "dbRollingPcs": 2752,
+      "dbRollingMtr": 18355.84,
+      "dbHtcOkMtr": 18355.84,
+      "dbHtcOkPcs": 2752,
+      "dbDates": [
+        "2026-10-02",
+        "2026-10-03"
+      ],
+      "dbLogsCount": 3
+    },
+    {
+      "work_order_no": "6392",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "63.5 x 5",
+      "excel_rec_pcs": 129,
+      "excel_ok_pcs": 129,
+      "excel_salvage_pcs": 0,
+      "excel_rework_ok": 0,
+      "excel_total_ok": 129,
+      "excel_total_mt": 10.47,
+      "excel_dates": [
+        "2026-10-02"
+      ],
+      "dbRollingPcs": 258,
+      "dbRollingMtr": 1898.88,
+      "dbHtcOkMtr": 1898.88,
+      "dbHtcOkPcs": 258,
+      "dbDates": [
+        "2026-10-03",
+        "2026-10-04"
+      ],
+      "dbLogsCount": 4
+    },
+    {
+      "work_order_no": "6430",
+      "customer": "Tubes india",
+      "size": "60.3 x 3.91",
+      "excel_rec_pcs": 2250,
+      "excel_ok_pcs": 2223,
+      "excel_salvage_pcs": 27,
+      "excel_rework_ok": 27,
+      "excel_total_ok": 2250,
+      "excel_total_mt": 82.99,
+      "excel_dates": [
+        "2026-09-28",
+        "2026-09-29"
+      ],
+      "dbRollingPcs": 2256,
+      "dbRollingMtr": 9865.56,
+      "dbHtcOkMtr": 9865.56,
+      "dbHtcOkPcs": 2256,
+      "dbDates": [
+        "2026-09-28",
+        "2026-09-30",
+        "2026-10-01"
+      ],
+      "dbLogsCount": 3
+    },
+    {
+      "work_order_no": "6435",
+      "customer": "Taher Steel Tube co",
+      "size": "63.5 x 3.66",
+      "excel_rec_pcs": 184,
+      "excel_ok_pcs": 159,
+      "excel_salvage_pcs": 25,
+      "excel_rework_ok": 25,
+      "excel_total_ok": 184,
+      "excel_total_mt": 6.843,
+      "excel_dates": [
+        "2026-09-29"
+      ],
+      "dbRollingPcs": 368,
+      "dbRollingMtr": 1519.84,
+      "dbHtcOkMtr": 1519.84,
+      "dbHtcOkPcs": 368,
+      "dbDates": [
+        "2026-09-30",
+        "2026-10-02"
+      ],
+      "dbLogsCount": 2
+    },
+    {
+      "work_order_no": "6559",
+      "customer": "Excellent Dry-Tech Pvt.Ltd",
+      "size": "50.8 x 3.25",
+      "excel_rec_pcs": 1637,
+      "excel_ok_pcs": 1588,
+      "excel_salvage_pcs": 49,
+      "excel_rework_ok": 49,
+      "excel_total_ok": 1637,
+      "excel_total_mt": 55.363,
+      "excel_dates": [
+        "2026-10-02"
+      ],
+      "dbRollingPcs": 3225,
+      "dbRollingMtr": 15996,
+      "dbHtcOkMtr": 15996,
+      "dbHtcOkPcs": 3225,
+      "dbDates": [
+        "2026-10-03",
+        "2026-10-04"
+      ],
+      "dbLogsCount": 2
+    }
+  ],
+  "excelMore": [
+    {
+      "work_order_no": "6068",
+      "customer": "Shanta Techno pvt.ltd",
+      "size": "57 x 4.5",
+      "excel_rec_pcs": 60,
+      "excel_ok_pcs": 43,
+      "excel_salvage_pcs": 17,
+      "excel_rework_ok": 17,
+      "excel_total_ok": 60,
+      "excel_total_mt": 4.923,
+      "excel_dates": [
+        "2026-10-04"
+      ],
+      "dbRollingPcs": 43,
+      "dbRollingMtr": 282.94,
+      "dbHtcOkMtr": 282.94,
+      "dbHtcOkPcs": 43,
+      "dbDates": [
+        "2026-10-05"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6236",
+      "customer": "Uniparts India LTD",
+      "size": "60.3 x 12.5",
+      "excel_rec_pcs": 47,
+      "excel_ok_pcs": 47,
+      "excel_salvage_pcs": 0,
+      "excel_rework_ok": 0,
+      "excel_total_ok": 47,
+      "excel_total_mt": 5.007,
+      "excel_dates": [
+        "2026-10-02"
+      ],
+      "dbRollingPcs": 44,
+      "dbRollingMtr": 230.12,
+      "dbHtcOkMtr": 230.12,
+      "dbHtcOkPcs": 44,
+      "dbDates": [
+        "2026-10-04"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6248",
+      "customer": "Calcutta Steel tube Corporation",
+      "size": "63.5 x 4.06",
+      "excel_rec_pcs": 143,
+      "excel_ok_pcs": 143,
+      "excel_salvage_pcs": 0,
+      "excel_rework_ok": 0,
+      "excel_total_ok": 143,
+      "excel_total_mt": 6.123,
+      "excel_dates": [
+        "2026-09-29"
+      ],
+      "dbRollingPcs": 76,
+      "dbRollingMtr": 463.6,
+      "dbHtcOkMtr": 451.4,
+      "dbHtcOkPcs": 76,
+      "dbDates": [
+        "2026-09-29"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6395",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "63.5 x 3.2",
+      "excel_rec_pcs": 553,
+      "excel_ok_pcs": 435,
+      "excel_salvage_pcs": 118,
+      "excel_rework_ok": 118,
+      "excel_total_ok": 553,
+      "excel_total_mt": 21.606,
+      "excel_dates": [
+        "2026-09-29"
+      ],
+      "dbRollingPcs": 550,
+      "dbRollingMtr": 2563,
+      "dbHtcOkMtr": 2563,
+      "dbHtcOkPcs": 550,
+      "dbDates": [
+        "2026-10-01"
+      ],
+      "dbLogsCount": 2
+    },
+    {
+      "work_order_no": "6400",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "76.1 x 4.5",
+      "excel_rec_pcs": 98,
+      "excel_ok_pcs": 92,
+      "excel_salvage_pcs": 6,
+      "excel_rework_ok": 6,
+      "excel_total_ok": 98,
+      "excel_total_mt": 8.73,
+      "excel_dates": [
+        "2026-10-04"
+      ],
+      "dbRollingPcs": 0,
+      "dbRollingMtr": 0,
+      "dbHtcOkMtr": 0,
+      "dbHtcOkPcs": 0,
+      "dbDates": [],
+      "dbLogsCount": 0
+    },
+    {
+      "work_order_no": "6418",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "50.8 x 4",
+      "excel_rec_pcs": 62,
+      "excel_ok_pcs": 62,
+      "excel_salvage_pcs": 0,
+      "excel_rework_ok": 0,
+      "excel_total_ok": 62,
+      "excel_total_mt": 3.23,
+      "excel_dates": [
+        "2026-10-04"
+      ],
+      "dbRollingPcs": 0,
+      "dbRollingMtr": 0,
+      "dbHtcOkMtr": 0,
+      "dbHtcOkPcs": 0,
+      "dbDates": [],
+      "dbLogsCount": 0
+    },
+    {
+      "work_order_no": "6448",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "76.1 x 4.5",
+      "excel_rec_pcs": 278,
+      "excel_ok_pcs": 278,
+      "excel_salvage_pcs": 0,
+      "excel_rework_ok": 0,
+      "excel_total_ok": 278,
+      "excel_total_mt": 19.052,
+      "excel_dates": [
+        "2026-10-04"
+      ],
+      "dbRollingPcs": 275,
+      "dbRollingMtr": 1614.25,
+      "dbHtcOkMtr": 1614.25,
+      "dbHtcOkPcs": 275,
+      "dbDates": [
+        "2026-10-05"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6484",
+      "customer": "N/A",
+      "size": "N/A",
+      "excel_rec_pcs": 266,
+      "excel_ok_pcs": 245,
+      "excel_salvage_pcs": 21,
+      "excel_rework_ok": 21,
+      "excel_total_ok": 266,
+      "excel_total_mt": 5.047,
+      "excel_dates": [
+        "2026-10-01"
+      ],
+      "dbRollingPcs": 0,
+      "dbRollingMtr": 0,
+      "dbHtcOkMtr": 0,
+      "dbHtcOkPcs": 0,
+      "dbDates": [],
+      "dbLogsCount": 0
+    },
+    {
+      "work_order_no": "6501",
+      "customer": "Amardeep Steel Centre LLP",
+      "size": "51 x 5",
+      "excel_rec_pcs": 36,
+      "excel_ok_pcs": 34,
+      "excel_salvage_pcs": 2,
+      "excel_rework_ok": 2,
+      "excel_total_ok": 36,
+      "excel_total_mt": 2.737,
+      "excel_dates": [
+        "2026-10-04"
+      ],
+      "dbRollingPcs": 0,
+      "dbRollingMtr": 0,
+      "dbHtcOkMtr": 0,
+      "dbHtcOkPcs": 0,
+      "dbDates": [],
+      "dbLogsCount": 0
+    }
+  ],
+  "exactMatch": [
+    {
+      "work_order_no": "6299",
+      "customer": "Uniparts India LTD",
+      "size": "60.3 x 6.35",
+      "excel_rec_pcs": 80,
+      "excel_ok_pcs": 56,
+      "excel_salvage_pcs": 24,
+      "excel_rework_ok": 24,
+      "excel_total_ok": 80,
+      "excel_total_mt": 4.759,
+      "excel_dates": [
+        "2026-10-02"
+      ],
+      "dbRollingPcs": 80,
+      "dbRollingMtr": 379.2,
+      "dbHtcOkMtr": 379.2,
+      "dbHtcOkPcs": 80,
+      "dbDates": [
+        "2026-10-05"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6394",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "76.1 x 4.5",
+      "excel_rec_pcs": 6,
+      "excel_ok_pcs": 6,
+      "excel_salvage_pcs": 0,
+      "excel_rework_ok": 0,
+      "excel_total_ok": 6,
+      "excel_total_mt": 0.534,
+      "excel_dates": [
+        "2026-10-04"
+      ],
+      "dbRollingPcs": 6,
+      "dbRollingMtr": 45.78,
+      "dbHtcOkMtr": 45.78,
+      "dbHtcOkPcs": 6,
+      "dbDates": [
+        "2026-10-05"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6396",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "63.5 x 3.2",
+      "excel_rec_pcs": 694,
+      "excel_ok_pcs": 654,
+      "excel_salvage_pcs": 40,
+      "excel_rework_ok": 40,
+      "excel_total_ok": 694,
+      "excel_total_mt": 23.566,
+      "excel_dates": [
+        "2026-09-29"
+      ],
+      "dbRollingPcs": 694,
+      "dbRollingMtr": 2810.7,
+      "dbHtcOkMtr": 2810.7,
+      "dbHtcOkPcs": 694,
+      "dbDates": [
+        "2026-09-30",
+        "2026-10-01"
+      ],
+      "dbLogsCount": 2
+    },
+    {
+      "work_order_no": "6399",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "76.1 x 4.5",
+      "excel_rec_pcs": 16,
+      "excel_ok_pcs": 11,
+      "excel_salvage_pcs": 5,
+      "excel_rework_ok": 5,
+      "excel_total_ok": 16,
+      "excel_total_mt": 1.295,
+      "excel_dates": [
+        "2026-10-04"
+      ],
+      "dbRollingPcs": 16,
+      "dbRollingMtr": 110.88,
+      "dbHtcOkMtr": 110.88,
+      "dbHtcOkPcs": 16,
+      "dbDates": [
+        "2026-10-05"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6407",
+      "customer": "Dinesh Tube India",
+      "size": "60 x 3",
+      "excel_rec_pcs": 41,
+      "excel_ok_pcs": 18,
+      "excel_salvage_pcs": 23,
+      "excel_rework_ok": 23,
+      "excel_total_ok": 41,
+      "excel_total_mt": 1.347,
+      "excel_dates": [
+        "2026-09-29"
+      ],
+      "dbRollingPcs": 41,
+      "dbRollingMtr": 168.1,
+      "dbHtcOkMtr": 168.1,
+      "dbHtcOkPcs": 41,
+      "dbDates": [
+        "2026-10-01"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6453",
+      "customer": "Bharat Heavy Electrical Limited",
+      "size": "76.1 x 4.5",
+      "excel_rec_pcs": 216,
+      "excel_ok_pcs": 216,
+      "excel_salvage_pcs": 0,
+      "excel_rework_ok": 0,
+      "excel_total_ok": 216,
+      "excel_total_mt": 15.686,
+      "excel_dates": [
+        "2026-10-04"
+      ],
+      "dbRollingPcs": 216,
+      "dbRollingMtr": 1343.52,
+      "dbHtcOkMtr": 1343.52,
+      "dbHtcOkPcs": 216,
+      "dbDates": [
+        "2026-10-05"
+      ],
+      "dbLogsCount": 1
+    },
+    {
+      "work_order_no": "6555",
+      "customer": "Steel Sales Company",
+      "size": "73 x 7.01",
+      "excel_rec_pcs": 200,
+      "excel_ok_pcs": 193,
+      "excel_salvage_pcs": 7,
+      "excel_rework_ok": 7,
+      "excel_total_ok": 200,
+      "excel_total_mt": 16.244,
+      "excel_dates": [
+        "2026-10-02"
+      ],
+      "dbRollingPcs": 200,
+      "dbRollingMtr": 1446,
+      "dbHtcOkMtr": 1446,
+      "dbHtcOkPcs": 200,
+      "dbDates": [
+        "2026-10-05"
+      ],
+      "dbLogsCount": 1
+    }
+  ]
+}

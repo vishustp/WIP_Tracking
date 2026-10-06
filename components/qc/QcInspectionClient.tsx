@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, extractPcsFromRemarks } from '@/lib/productionUtils';
+import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, extractPcsFromRemarks, parseDiversionStages } from '@/lib/productionUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
 import { isUserAuthorizedForQc } from '@/lib/permissions';
 import type { AppUserProfile } from '@/lib/users/types';
@@ -49,6 +49,7 @@ export default function QcInspectionClient() {
   const [stages, setStages] = useState<{ id: string; stage_code: string; stage_name: string }[]>([]);
   const [routes, setRoutes] = useState<{ id: string; route_code: string; route_name: string }[]>([]);
   const [rollingPlans, setRollingPlans] = useState<any[]>([]);
+  const [diversionPlans, setDiversionPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Search & Filter
@@ -114,13 +115,14 @@ export default function QcInspectionClient() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [woRes, logsRes, qcRes, stagesRes, routesRes, plansRes] = await Promise.all([
+      const [woRes, logsRes, qcRes, stagesRes, routesRes, plansRes, divsRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('production_logs').select('*'),
         supabase.from('qc_inspections').select('*').order('created_at', { ascending: false }),
         supabase.from('process_stages').select('*'),
         supabase.from('process_routes').select('id, route_code, route_name'),
         supabase.from('rolling_plans').select('*').not('status', 'is', null),
+        supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, reason'),
       ]);
 
       if (woRes.data) setWorkOrders(woRes.data as WorkOrder[]);
@@ -128,6 +130,7 @@ export default function QcInspectionClient() {
       if (stagesRes.data) setStages(stagesRes.data);
       if (routesRes.data) setRoutes(routesRes.data);
       if (plansRes.data) setRollingPlans(plansRes.data);
+      if (divsRes.data) setDiversionPlans(divsRes.data);
 
       // Handle qc_inspections gracefully even if table was just created
       if (qcRes.data) {
@@ -232,6 +235,16 @@ export default function QcInspectionClient() {
     const items: QcQueueItem[] = [];
     const processedWoIds = new Set<string>();
 
+    const getStageDivIn = (wId: string, stageCode: string) =>
+      diversionPlans
+        .filter((d: any) => d.target_wo_id === wId && parseDiversionStages(d).targetStage === stageCode)
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+    const getStageDivOut = (wId: string, stageCode: string) =>
+      diversionPlans
+        .filter((d: any) => d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode)
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
     workOrders.forEach((wo) => {
       if (processedWoIds.has(wo.id)) return;
 
@@ -327,17 +340,29 @@ export default function QcInspectionClient() {
 
         const { cutPcs: totalCampaignCutPcs, cutMtr: totalCampaignCutMtr } = getBandSawCutStats(campaignBandSawLogs, avgLen);
 
+        let campaignDivIn = 0;
+        let campaignDivOut = 0;
+        for (const cWoId of allCampaignWoIds) {
+          campaignDivIn += getStageDivIn(cWoId, 'VDI');
+          campaignDivOut += getStageDivOut(cWoId, 'VDI');
+        }
+        const campaignDivInPcs = avgLen > 0 ? Math.round(campaignDivIn / avgLen) : 0;
+        const campaignDivOutPcs = avgLen > 0 ? Math.round(campaignDivOut / avgLen) : 0;
+
+        const totalCampaignIncomingPcs = totalCampaignCutPcs + campaignDivInPcs;
+        const totalCampaignIncomingMtr = totalCampaignCutMtr + campaignDivIn;
+
         // Total inspected so far across the ENTIRE campaign pool
         const campaignInspections = qcInspections.filter((q) => allCampaignWoIds.has(q.work_order_id));
         const campaignAlreadyInspectedPcs = campaignInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
         const campaignAlreadyInspectedMtr = campaignInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
 
         // Shared total remaining WIP balance at VDI for the entire campaign
-        const sharedAvailPcs = Math.max(0, totalCampaignCutPcs - campaignAlreadyInspectedPcs);
-        const sharedAvailMtr = Math.max(0, totalCampaignCutMtr - campaignAlreadyInspectedMtr);
+        const sharedAvailPcs = Math.max(0, totalCampaignIncomingPcs - campaignAlreadyInspectedPcs - campaignDivOutPcs);
+        const sharedAvailMtr = Math.max(0, totalCampaignIncomingMtr - campaignAlreadyInspectedMtr - campaignDivOut);
         const sharedAvailMt = mtFromMtr(sharedAvailMtr, od, wt);
 
-        if (sharedAvailPcs >= 1) {
+        if (sharedAvailPcs >= 1 || sharedAvailMtr >= 1.0) {
           items.push({
             work_order_id: wo.id,
             work_order_no: wo.work_order_no,
@@ -350,11 +375,11 @@ export default function QcInspectionClient() {
             avg_length: avgLen,
             process_route_id: routeId || null,
             route_code: routeCode,
-            feeder_source_label: feederLabel,
+            feeder_source_label: campaignDivIn > 0 && totalCampaignCutPcs === 0 ? 'Diverted Material In' : feederLabel,
             feeder_stage_code: feederStageCode,
-            ht_ok_pcs: totalCampaignCutPcs,
-            ht_ok_mtr: totalCampaignCutMtr,
-            ht_ok_mt: mtFromMtr(totalCampaignCutMtr, od, wt),
+            ht_ok_pcs: totalCampaignIncomingPcs,
+            ht_ok_mtr: totalCampaignIncomingMtr,
+            ht_ok_mt: mtFromMtr(totalCampaignIncomingMtr, od, wt),
             already_inspected_pcs: campaignAlreadyInspectedPcs,
             available_ht_ok_pcs: sharedAvailPcs,
             available_ht_ok_mtr: sharedAvailMtr,
@@ -370,13 +395,19 @@ export default function QcInspectionClient() {
         // 2. STANDALONE WORK ORDER (OR STANDALONE CHILD)
         processedWoIds.add(wo.id);
 
-        if (woLogs.length === 0) return;
+        const vdiDivIn = getStageDivIn(wo.id, 'VDI');
+        const vdiDivOut = getStageDivOut(wo.id, 'VDI');
+        const vdiDivInPcs = avgLen > 0 ? Math.round(vdiDivIn / avgLen) : 0;
+        const vdiDivOutPcs = avgLen > 0 ? Math.round(vdiDivOut / avgLen) : 0;
 
         const woBandSawLogs = woLogs.filter(
           (l) => bandSawStage && l.stage_id === bandSawStage.id
         );
 
-        if (woBandSawLogs.length === 0) return; // Strict Rule: No VDI queue without Band Saw cut
+        const { cutPcs: bandSawCutPcs, cutMtr: bandSawCutMtr } = getBandSawCutStats(woBandSawLogs, avgLen);
+
+        // Skip order only if it has neither Band Saw cut output nor diverted incoming material
+        if (bandSawCutPcs <= 0 && bandSawCutMtr <= 0 && vdiDivIn <= 0) return;
 
         // Extract all distinct lots for standalone order
         const woLotMap = new Map<string, { lot_no: string; pcs: number; mtr: number }>();
@@ -394,24 +425,28 @@ export default function QcInspectionClient() {
             ex.mtr += mtr;
           }
         });
-        const woLots = Array.from(woLotMap.values());
-        const woHeatLotNo = woLots[0]?.lot_no || null;
 
-        const { cutPcs: bandSawCutPcs, cutMtr: bandSawCutMtr } = getBandSawCutStats(woBandSawLogs, avgLen);
-
-        if (bandSawCutPcs <= 0 && bandSawCutMtr <= 0) return;
-
-        const effectiveCutMt = mtFromMtr(bandSawCutMtr, od, wt);
+        const totalIncomingPcs = bandSawCutPcs + vdiDivInPcs;
+        const totalIncomingMtr = bandSawCutMtr + vdiDivIn;
+        const effectiveCutMt = mtFromMtr(totalIncomingMtr, od, wt);
 
         const woInspections = qcInspections.filter((q) => q.work_order_id === wo.id);
         const alreadyInspectedPcs = woInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
         const alreadyInspectedMtr = woInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
 
-        const availablePcs = Math.max(0, bandSawCutPcs - alreadyInspectedPcs);
-        const availableMtr = Math.max(0, bandSawCutMtr - alreadyInspectedMtr);
+        const availablePcs = Math.max(0, totalIncomingPcs - alreadyInspectedPcs - vdiDivOutPcs);
+        const availableMtr = Math.max(0, totalIncomingMtr - alreadyInspectedMtr - vdiDivOut);
         const availableMt = mtFromMtr(availableMtr, od, wt);
 
-        if (availablePcs >= 1) {
+        if (availablePcs >= 1 || availableMtr >= 1.0) {
+          const woLots = Array.from(woLotMap.values());
+          const woHeatLotNo = woLots[0]?.lot_no || (vdiDivIn > 0 ? `DIV-${wo.work_order_no}` : null);
+          const finalLots = woLots.length > 0
+            ? woLots
+            : (woHeatLotNo ? [{ lot_no: woHeatLotNo, pcs: availablePcs, mtr: availableMtr }] : []);
+
+          const effectiveFeederLabel = vdiDivIn > 0 && bandSawCutPcs === 0 ? 'Diverted Material In' : feederLabel;
+
           items.push({
             work_order_id: wo.id,
             work_order_no: wo.work_order_no,
@@ -424,17 +459,17 @@ export default function QcInspectionClient() {
             avg_length: avgLen,
             process_route_id: routeId || null,
             route_code: routeCode,
-            feeder_source_label: feederLabel,
+            feeder_source_label: effectiveFeederLabel,
             feeder_stage_code: feederStageCode,
-            ht_ok_pcs: bandSawCutPcs,
-            ht_ok_mtr: bandSawCutMtr,
+            ht_ok_pcs: totalIncomingPcs,
+            ht_ok_mtr: totalIncomingMtr,
             ht_ok_mt: effectiveCutMt,
             already_inspected_pcs: alreadyInspectedPcs,
             available_ht_ok_pcs: availablePcs,
             available_ht_ok_mtr: availableMtr,
             available_ht_ok_mt: availableMt,
             heat_lot_no: woHeatLotNo,
-            heat_lots: woLots,
+            heat_lots: finalLots,
             is_child: !!childInfo,
             master_wo_id: childInfo?.master_wo_id,
             master_wo_no: childInfo?.master_wo_no,
@@ -445,7 +480,7 @@ export default function QcInspectionClient() {
     });
 
     return items;
-  }, [workOrders, productionLogs, qcInspections, stages, routes, rollingPlans]);
+  }, [workOrders, productionLogs, qcInspections, stages, routes, rollingPlans, diversionPlans]);
 
   // Filtered Queue
   const filteredQueue = useMemo(() => {

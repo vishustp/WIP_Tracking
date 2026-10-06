@@ -133,8 +133,8 @@ export default function SizeGradeWipReportClient() {
       setLoading(true);
       const supabase = createClient();
 
-      // Query view for live stage physical WIP + rolling logs + plans + qc inspections
-      const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes, qcRes] = await Promise.all([
+      // Query view for live stage physical WIP + rolling logs + plans + qc inspections + diversion plans
+      const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes, qcRes, divRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').limit(5000),
         supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mt').limit(5000),
         supabase.from('rolling_plans').select('id, work_order_id, plan_no, multiple, planned_qty, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id, created_at').not('status', 'is', null).limit(5000),
@@ -142,9 +142,10 @@ export default function SizeGradeWipReportClient() {
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at, remarks, output_qty, rejection_qty, htc_ok').order('process_date', { ascending: false }).limit(5000),
         supabase.from('process_stages').select('id, stage_code, stage_name'),
         supabase.from('qc_inspections').select('work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr').limit(5000),
+        supabase.from('diversion_plans').select('target_wo_id, source_wo_id, diversion_date, created_at').limit(5000),
       ]);
 
-      const queryErrors = [wipRes.error, woRes.error, plansRes.error, routesRes.error, prodRes.error, stagesRes.error, qcRes.error].filter(Boolean);
+      const queryErrors = [wipRes.error, woRes.error, plansRes.error, routesRes.error, prodRes.error, stagesRes.error, qcRes.error, divRes.error].filter(Boolean);
       if (queryErrors.length > 0) {
         console.error('Supabase query error in WIP Report:', queryErrors);
         toast.error('Failed to load WIP report data: ' + queryErrors[0]?.message);
@@ -207,6 +208,19 @@ export default function SizeGradeWipReportClient() {
           if (p.work_order_id && !rollingDateMap.has(p.work_order_id)) {
             const fbDate = p.process_date ? String(p.process_date).slice(0, 10) : (p.created_at ? String(p.created_at).slice(0, 10) : null);
             if (fbDate) rollingDateMap.set(p.work_order_id, fbDate);
+          }
+        });
+
+        // 4. Fallback for orders with diversions (so target work orders receiving stock have a valid date)
+        (divRes.data || []).forEach((d: any) => {
+          const dDate = d.diversion_date ? String(d.diversion_date).slice(0, 10) : (d.created_at ? String(d.created_at).slice(0, 10) : null);
+          if (dDate) {
+            if (d.target_wo_id && !rollingDateMap.has(d.target_wo_id)) {
+              rollingDateMap.set(d.target_wo_id, dDate);
+            }
+            if (d.source_wo_id && !rollingDateMap.has(d.source_wo_id)) {
+              rollingDateMap.set(d.source_wo_id, dDate);
+            }
           }
         });
 
