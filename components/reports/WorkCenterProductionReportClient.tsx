@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { ProductionEntry, StageCode } from '@/types';
-import { mtFromMtr, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
+import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
 import { toast } from 'sonner';
 
 interface WorkCenterTabConfig {
@@ -321,7 +321,6 @@ export default function WorkCenterProductionReportClient() {
           : (woInfo?.l1 && woInfo?.l2 ? (Number(woInfo.l1) + Number(woInfo.l2)) / 2 : Number(woInfo?.l1 || woInfo?.l2 || 6.0));
 
         const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(e.remarks);
-        const cutsMeta = extractBandSawCutsFromRemarks(e.remarks);
 
         const outPcs = parsedPcs != null ? parsedPcs : (Number(logRow?.output_pcs || e.output_pcs || 0));
         let rejPcs = parsedRejPcs != null ? parsedRejPcs : (Number(logRow?.rejection_pcs || e.rejection_pcs || 0));
@@ -336,15 +335,7 @@ export default function WorkCenterProductionReportClient() {
         const rawInMtr = Number(e.input_mtr || logRow?.input_qty || 0);
         const inMtr = rawInMtr > 0 ? rawInMtr : (inPcs > 0 && effAvgLen > 0 ? Number((inPcs * effAvgLen).toFixed(3)) : outMtr);
 
-        let rawRejMtr = Number(e.rejection_mtr || logRow?.rejection_qty || 0);
-        const isBandSaw = (e.stage_code || '').toUpperCase() === 'BAND_SAW' || selectedWc === 'BAND_SAW';
-        if (isBandSaw && rawRejMtr === 0) {
-          if (cutsMeta?.scrapMtr != null && Number(cutsMeta.scrapMtr) > 0) {
-            rawRejMtr = Number(cutsMeta.scrapMtr);
-          } else if (inMtr > outMtr) {
-            rawRejMtr = Number((inMtr - outMtr).toFixed(3));
-          }
-        }
+        const rawRejMtr = Number(e.rejection_mtr || logRow?.rejection_qty || 0);
         const rejMtr = rawRejMtr > 0 ? rawRejMtr : (rejPcs > 0 && effAvgLen > 0 ? Number((rejPcs * effAvgLen).toFixed(3)) : 0);
 
         const od = isMhStage && mhInfo?.mh_od ? Number(mhInfo.mh_od) : Number(e.od || woInfo?.size_od || 0);
@@ -352,9 +343,7 @@ export default function WorkCenterProductionReportClient() {
 
         const calculatedInMt = mtFromMtr(inMtr, od, wl);
         const calculatedOutMt = mtFromMtr(outMtr, od, wl);
-        const calculatedRejMt = cutsMeta?.scrapMt != null && Number(cutsMeta.scrapMt) > 0
-          ? Number(cutsMeta.scrapMt)
-          : mtFromMtr(rejMtr, od, wl);
+        const calculatedRejMt = Number(e.rejection_mt || 0) > 0 ? Number(e.rejection_mt) : mtFromMtr(rejMtr, od, wl);
 
         const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING' || selectedWc === 'ROLLING';
         const rawHtcMtr = Number(logRow?.htc_ok ?? e.htc_ok_mtr ?? (e as any).htc_ok ?? 0);
@@ -644,8 +633,8 @@ export default function WorkCenterProductionReportClient() {
           c2Title: 'Rolling OK (HTC)',
           c3Category: 'Work Center Balance',
           c3Title: 'Balance to Roll',
-          c4Category: 'Losses Logged',
-          c4Title: 'Rolling Scrap & Rej',
+          c4Category: 'Rejections Logged',
+          c4Title: 'Rolling Rejections',
           c5Category: 'Performance',
           c5Title: 'Rolling Efficiency',
         };
@@ -657,8 +646,8 @@ export default function WorkCenterProductionReportClient() {
           c2Title: 'Hollow HT OK',
           c3Category: 'Work Center Balance',
           c3Title: 'Furnace Queue Balance',
-          c4Category: 'Losses Logged',
-          c4Title: 'Furnace Losses',
+          c4Category: 'Rejections Logged',
+          c4Title: 'Furnace Rejections',
           c5Category: 'Performance',
           c5Title: 'Furnace Yield',
         };
@@ -670,7 +659,7 @@ export default function WorkCenterProductionReportClient() {
           c2Title: 'Draw Bench OK',
           c3Category: 'Work Center Balance',
           c3Title: 'Draw Bench Balance',
-          c4Category: 'Losses Logged',
+          c4Category: 'Rejections Logged',
           c4Title: 'Draw Rejections',
           c5Category: 'Performance',
           c5Title: 'Drawing Yield',
@@ -683,8 +672,8 @@ export default function WorkCenterProductionReportClient() {
           c2Title: 'Final HT OK',
           c3Category: 'Work Center Balance',
           c3Title: 'Furnace Balance',
-          c4Category: 'Losses Logged',
-          c4Title: 'HT Losses',
+          c4Category: 'Rejections Logged',
+          c4Title: 'HT Rejections',
           c5Category: 'Performance',
           c5Title: 'Furnace Yield',
         };
@@ -696,10 +685,10 @@ export default function WorkCenterProductionReportClient() {
           c2Title: 'Band Saw Cut OK',
           c3Category: 'Work Center Balance',
           c3Title: 'Saw Station Balance',
-          c4Category: 'Losses Logged',
-          c4Title: 'Cutting Scrap',
+          c4Category: 'Rejections Logged',
+          c4Title: 'Band Saw Rejections',
           c5Category: 'Performance',
-          c5Title: 'Cutting Recovery',
+          c5Title: 'Band Saw Yield',
         };
       case 'VDI':
         return {
@@ -709,8 +698,8 @@ export default function WorkCenterProductionReportClient() {
           c2Title: 'VDI Passed OK',
           c3Category: 'Work Center Balance',
           c3Title: 'VDI Inspection Balance',
-          c4Category: 'Losses Logged',
-          c4Title: 'QC Rejections & Salvage',
+          c4Category: 'Rejections Logged',
+          c4Title: 'QC Rejections',
           c5Category: 'Performance',
           c5Title: 'Quality Pass Rate',
         };
@@ -722,8 +711,8 @@ export default function WorkCenterProductionReportClient() {
           c2Title: 'Finishing Bundled OK',
           c3Category: 'Work Center Balance',
           c3Title: 'Finishing Line Balance',
-          c4Category: 'Losses Logged',
-          c4Title: 'Finishing Scrap',
+          c4Category: 'Rejections Logged',
+          c4Title: 'Finishing Rejections',
           c5Category: 'Performance',
           c5Title: 'Bundling Yield',
         };
@@ -736,8 +725,8 @@ export default function WorkCenterProductionReportClient() {
           c2Title: 'Total Production OK',
           c3Category: 'Work Center Balance',
           c3Title: 'Active Mill WIP',
-          c4Category: 'Losses Logged',
-          c4Title: 'Total Defects & Scrap',
+          c4Category: 'Rejections Logged',
+          c4Title: 'Total Rejections',
           c5Category: 'Performance',
           c5Title: 'Overall Plant Yield',
         };
@@ -1189,7 +1178,9 @@ export default function WorkCenterProductionReportClient() {
                   <span className="text-lg sm:text-xl font-black font-mono text-rose-950 tabular-nums">
                     {fmt(metrics.rejPcs, 0)}
                   </span>
-                  <span className="text-[10px] font-bold text-rose-700 uppercase">PCS</span>
+                  <span className="text-[10px] font-bold text-rose-700 uppercase">
+                    {selectedWc === 'BAND_SAW' || selectedWc === 'VDI' || selectedWc === 'FINISHING' ? 'Cut PCS' : 'PCS'}
+                  </span>
                 </div>
                 <span className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-md font-mono bg-rose-100 text-rose-950 border border-rose-300 tabular-nums whitespace-nowrap shadow-2xs">
                   <span className="text-xs sm:text-sm font-black">{fmt(metrics.rejMt)}</span>
@@ -1198,7 +1189,7 @@ export default function WorkCenterProductionReportClient() {
               </div>
             </div>
             <div className="pt-2 border-t border-rose-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-rose-800 print:text-black">
-              <span className="whitespace-nowrap">Scrap Length</span>
+              <span className="whitespace-nowrap">Rejected Length</span>
               <span className="font-bold text-rose-950 whitespace-nowrap">{fmt(metrics.rejMtr)} MTR</span>
             </div>
           </div>
