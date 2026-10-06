@@ -144,13 +144,12 @@ export default function WorkCenterProductionReportClient() {
     setLoading(true);
     try {
       const s = createClient();
-      const stageArg = selectedWc === 'ALL' ? null : selectedWc;
       const routeArg = selectedRoute === 'ALL' ? null : selectedRoute;
 
       const [prodRes, woRes, routeRes, qcRes, wipRes] = await Promise.all([
         s.rpc('get_production_entries', {
           p_search: debouncedSearch.trim() || null,
-          p_stage_code: stageArg,
+          p_stage_code: null, // query all stages for seamless preceding-stage balancing and instant tab switching
           p_route_code: routeArg,
           p_from_date: fromDate || null,
           p_to_date: toDate || null,
@@ -162,9 +161,7 @@ export default function WorkCenterProductionReportClient() {
           .select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2, process_route_id')
           .limit(5000),
         s.from('process_routes').select('id, route_code, route_name').eq('active', true),
-        (selectedWc === 'VDI' || selectedWc === 'ALL')
-          ? s.from('qc_inspections').select('*').order('created_at', { ascending: false }).limit(2500)
-          : Promise.resolve({ data: [] as any[], error: null }),
+        s.from('qc_inspections').select('*').order('created_at', { ascending: false }).limit(2500),
         s.from('vw_route_stage_wip').select('*'),
       ]);
 
@@ -463,14 +460,17 @@ export default function WorkCenterProductionReportClient() {
     } finally {
       setLoading(false);
     }
-  }, [selectedWc, debouncedSearch, fromDate, toDate, selectedRoute]);
+  }, [debouncedSearch, fromDate, toDate, selectedRoute]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Filtered entries
-  const filteredEntries = entries;
+  // Filtered entries strictly for the currently active work center
+  const filteredEntries = useMemo(() => {
+    if (selectedWc === 'ALL') return entries;
+    return entries.filter((e) => (e.stage_code || '').toUpperCase() === selectedWc);
+  }, [entries, selectedWc]);
 
   // Work Center Metrics: Pure Production OK & Rejections Logged by Users
   const metrics = useMemo(() => {
@@ -482,7 +482,7 @@ export default function WorkCenterProductionReportClient() {
     let rejMt = 0;
 
     filteredEntries.forEach((e) => {
-      const isRolling = e.stage_code === 'ROLLING' || selectedWc === 'ROLLING';
+      const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING';
       const okPcs = isRolling && Number(e.htc_ok_pcs || 0) > 0 ? Number(e.htc_ok_pcs) : Number(e.output_pcs || 0);
       const okMtr = isRolling && Number(e.htc_ok_mtr || 0) > 0 ? Number(e.htc_ok_mtr) : Number(e.output_mtr || 0);
       const okMt = Number(e.output_mt || 0);
@@ -509,10 +509,11 @@ export default function WorkCenterProductionReportClient() {
       rejMt,
       yieldPct,
     };
-  }, [filteredEntries, selectedWc]);
+  }, [filteredEntries]);
 
   // Feeder Balance Calculations:
-  // "IF any workcenter Recieved 500 Nos from last work center and done production of 100 Nos then we have 400 Nos balance."
+  // Preceding Stage OK -> Current Stage OK -> Stage Active WIP Balance
+  // "Stage WIP is calculated directly: Stage Active WIP = Preceding Stage OK - Current Stage OK"
   const feederMetrics = useMemo(() => {
     const lastWcName = LAST_WC_MAP[selectedWc] || 'Preceding Stage';
     const searchTerm = debouncedSearch.trim().toLowerCase();
@@ -530,6 +531,10 @@ export default function WorkCenterProductionReportClient() {
       let totalPlanMt = 0;
 
       const relevantPlans = rollingPlansData.filter((p) => {
+        if (selectedRoute !== 'ALL') {
+          const rCode = (p as any).route_code || (p as any).status?.route_code;
+          if (rCode && rCode !== selectedRoute) return false;
+        }
         if (isSearchFiltered) {
           const pNo = (p.plan_no || '').toLowerCase();
           return pNo.includes(searchTerm);
@@ -576,6 +581,81 @@ export default function WorkCenterProductionReportClient() {
       };
     }
 
+    if (selectedWc === 'ALL') {
+      const donePcs = metrics.outputPcs;
+      const doneMtr = metrics.outputMtr;
+      const doneMt = metrics.outputMt;
+      const relevantWip = wipData.filter((r) => {
+        if (selectedRoute !== 'ALL' && r.route_code !== selectedRoute) return false;
+        if (isSearchFiltered) {
+          const woNo = (r.work_order_no || '').toLowerCase();
+          const cust = (r.customer_name || '').toLowerCase();
+          return activeWoNos.has(woNo) || woNo.includes(searchTerm) || cust.includes(searchTerm);
+        }
+        return true;
+      });
+      const balancePcs = relevantWip.reduce((acc, r) => acc + Number(r.current_wip_pcs || 0), 0);
+      const balanceMt = relevantWip.reduce((acc, r) => acc + Number(r.current_wip_mt || 0), 0);
+      const balanceMtr = relevantWip.reduce((acc, r) => acc + Number(r.current_wip || 0), 0);
+      return {
+        lastWcName,
+        receivedPcs: donePcs + balancePcs,
+        receivedMtr: doneMtr + balanceMtr,
+        receivedMt: doneMt + balanceMt,
+        balancePcs,
+        balanceMtr,
+        balanceMt,
+      };
+    }
+
+    // Determine preceding stage for stage-to-stage direct balance (AGENTS.md Rule 1)
+    let precedingStageCode = 'ROLLING';
+    if (selectedWc === 'HOLLOW_HEAT_TREATMENT') {
+      precedingStageCode = 'ROLLING';
+    } else if (selectedWc === 'DRAW') {
+      precedingStageCode = selectedRoute.includes('ALLOY') ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING';
+    } else if (selectedWc === 'HEAT_TREATMENT') {
+      precedingStageCode = 'DRAW';
+    } else if (selectedWc === 'BAND_SAW') {
+      precedingStageCode = selectedRoute.includes('HFS') ? 'ROLLING' : 'HEAT_TREATMENT';
+    } else if (selectedWc === 'VDI') {
+      precedingStageCode = 'BAND_SAW';
+    } else if (selectedWc === 'FINISHING') {
+      precedingStageCode = 'VDI';
+    }
+
+    const precedingEntries = entries.filter((e) => {
+      const eStage = (e.stage_code || '').toUpperCase();
+      if (selectedWc === 'DRAW' && selectedRoute === 'ALL') {
+        if (eStage !== 'ROLLING' && eStage !== 'HOLLOW_HEAT_TREATMENT') return false;
+      } else if (selectedWc === 'BAND_SAW' && selectedRoute === 'ALL') {
+        if (eStage !== 'HEAT_TREATMENT' && eStage !== 'ROLLING' && eStage !== 'HOLLOW_HEAT_TREATMENT') return false;
+      } else if (eStage !== precedingStageCode) {
+        return false;
+      }
+      if (selectedRoute !== 'ALL' && e.route_code !== selectedRoute) return false;
+      if (isSearchFiltered) {
+        const woNo = (e.work_order_no || '').toLowerCase();
+        const cust = (e.customer_name || '').toLowerCase();
+        return activeWoNos.has(woNo) || woNo.includes(searchTerm) || cust.includes(searchTerm);
+      }
+      return true;
+    });
+
+    let feederOkPcs = 0;
+    let feederOkMtr = 0;
+    let feederOkMt = 0;
+
+    precedingEntries.forEach((e) => {
+      const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING';
+      const okPcs = isRolling && Number(e.htc_ok_pcs || 0) > 0 ? Number(e.htc_ok_pcs) : Number(e.output_pcs || 0);
+      const okMtr = isRolling && Number(e.htc_ok_mtr || 0) > 0 ? Number(e.htc_ok_mtr) : Number(e.output_mtr || 0);
+      const okMt = Number(e.output_mt || 0);
+      feederOkPcs += okPcs;
+      feederOkMtr += okMtr;
+      feederOkMt += okMt;
+    });
+
     const relevantWip = wipData.filter((r) => {
       if (selectedWc !== 'ALL' && r.stage_code !== selectedWc) return false;
       if (selectedRoute !== 'ALL' && r.route_code !== selectedRoute) return false;
@@ -587,18 +667,24 @@ export default function WorkCenterProductionReportClient() {
       return true;
     });
 
-    const balancePcs = relevantWip.reduce((acc, r) => acc + Number(r.current_wip_pcs || 0), 0);
-    const balanceMt = relevantWip.reduce((acc, r) => acc + Number(r.current_wip_mt || 0), 0);
-    const balanceMtr = relevantWip.reduce((acc, r) => acc + Number(r.current_wip || 0), 0);
+    const fallbackWipPcs = relevantWip.reduce((acc, r) => acc + Number(r.current_wip_pcs || 0), 0);
+    const fallbackWipMt = relevantWip.reduce((acc, r) => acc + Number(r.current_wip_mt || 0), 0);
+    const fallbackWipMtr = relevantWip.reduce((acc, r) => acc + Number(r.current_wip || 0), 0);
 
     const donePcs = metrics.outputPcs;
     const doneMt = metrics.outputMt;
     const doneMtr = metrics.outputMtr;
 
-    // Strict Stage Balancing: Received = Done + Balance  =>  Balance = Received - Done
-    const receivedPcs = donePcs + balancePcs;
-    const receivedMt = doneMt + balanceMt;
-    const receivedMtr = doneMtr + balanceMtr;
+    // Strict Stage Balancing:
+    // If preceding stage production is in scope, Received = feederOk (exactly matches upstream Production OK).
+    // If work orders were rolled prior to date filter, ensure Received >= Done.
+    const receivedPcs = feederOkPcs > 0 ? feederOkPcs : (donePcs + fallbackWipPcs);
+    const receivedMt = feederOkMt > 0 ? feederOkMt : (doneMt + fallbackWipMt);
+    const receivedMtr = feederOkMtr > 0 ? feederOkMtr : (doneMtr + fallbackWipMtr);
+
+    const balancePcs = Math.max(0, receivedPcs - donePcs);
+    const balanceMtr = Math.max(0, receivedMtr - doneMtr);
+    const balanceMt = Math.max(0, receivedMt - doneMt);
 
     return {
       lastWcName,
@@ -609,7 +695,7 @@ export default function WorkCenterProductionReportClient() {
       balanceMtr,
       balanceMt,
     };
-  }, [selectedWc, metrics, rollingPlansData, wipData, selectedRoute, debouncedSearch, filteredEntries]);
+  }, [selectedWc, metrics, rollingPlansData, wipData, selectedRoute, debouncedSearch, filteredEntries, entries]);
 
   const activeWcConfig = useMemo(() => {
     return WORK_CENTERS.find((w) => w.code === selectedWc) || WORK_CENTERS[0];
@@ -633,7 +719,7 @@ export default function WorkCenterProductionReportClient() {
       case 'HOLLOW_HEAT_TREATMENT':
         return {
           c1Category: 'Received from',
-          c1Title: 'Rolling HTC Output',
+          c1Title: 'Rolling OK (HTC)',
           c2Category: 'Production Done',
           c2Title: 'Hollow HT OK',
           c3Category: 'Work Center Balance',
@@ -646,7 +732,7 @@ export default function WorkCenterProductionReportClient() {
       case 'DRAW':
         return {
           c1Category: 'Received from',
-          c1Title: 'Rolling / Hollow HT',
+          c1Title: selectedRoute === 'CDS' ? 'Rolling OK (HTC)' : 'Rolling / Hollow HT (HTC)',
           c2Category: 'Production Done',
           c2Title: 'Draw Bench OK',
           c3Category: 'Work Center Balance',
@@ -723,7 +809,7 @@ export default function WorkCenterProductionReportClient() {
           c5Title: 'Overall Plant Yield',
         };
     }
-  }, [selectedWc]);
+  }, [selectedWc, selectedRoute]);
 
   const setQuickDate = (preset: 'today' | 'yesterday' | '7days' | 'month') => {
     const today = new Date();
