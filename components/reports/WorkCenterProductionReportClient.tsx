@@ -320,49 +320,41 @@ export default function WorkCenterProductionReportClient() {
           ? (plan?.mh_l1 && plan?.mh_l2 ? (Number(plan.mh_l1) + Number(plan.mh_l2)) / 2 : Number(plan?.mh_l1 || plan?.mh_l2 || mhInfo?.mh_l1 || mhInfo?.mh_l2 || 6.0))
           : (woInfo?.l1 && woInfo?.l2 ? (Number(woInfo.l1) + Number(woInfo.l2)) / 2 : Number(woInfo?.l1 || woInfo?.l2 || 6.0));
 
-        const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(e.remarks);
+        const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(logRow?.remarks || e.remarks);
 
-        const outPcs = parsedPcs != null ? parsedPcs : (Number(logRow?.output_pcs || e.output_pcs || 0));
-        let rejPcs = parsedRejPcs != null ? parsedRejPcs : (Number(logRow?.rejection_pcs || e.rejection_pcs || 0));
-        const inPcs = Number(e.input_pcs || 0) > 0
-          ? Number(e.input_pcs)
+        // Strictly use user-entered pieces and rejections from log remarks/database
+        const outPcs = parsedPcs != null ? parsedPcs : Number(logRow?.output_pcs ?? e.output_pcs ?? 0);
+        const rejPcs = parsedRejPcs != null ? parsedRejPcs : Number(logRow?.rejection_pcs ?? e.rejection_pcs ?? 0);
+        const inPcs = Number(logRow?.input_pcs ?? e.input_pcs ?? 0) > 0
+          ? Number(logRow?.input_pcs ?? e.input_pcs)
           : Math.max(outPcs + rejPcs, outPcs);
 
-        // Preserve actual measured meters from DB if recorded (> 0)
-        const rawOutMtr = Number(e.output_mtr || logRow?.output_qty || 0);
-        const outMtr = rawOutMtr > 0 ? rawOutMtr : (outPcs > 0 && effAvgLen > 0 ? Number((outPcs * effAvgLen).toFixed(3)) : 0);
-
-        const rawInMtr = Number(e.input_mtr || logRow?.input_qty || 0);
-        const inMtr = rawInMtr > 0 ? rawInMtr : (inPcs > 0 && effAvgLen > 0 ? Number((inPcs * effAvgLen).toFixed(3)) : outMtr);
-
-        const rawRejMtr = Number(e.rejection_mtr || logRow?.rejection_qty || 0);
-        const rejMtr = rawRejMtr > 0 ? rawRejMtr : (rejPcs > 0 && effAvgLen > 0 ? Number((rejPcs * effAvgLen).toFixed(3)) : 0);
+        // Strictly use exact meters entered by user in the database log
+        const outMtr = Number(logRow?.output_qty ?? e.output_mtr ?? 0);
+        const rejMtr = Number(logRow?.rejection_qty ?? e.rejection_mtr ?? 0);
+        const inMtr = Number(logRow?.input_qty ?? e.input_mtr ?? (outMtr + rejMtr));
 
         const od = isMhStage && mhInfo?.mh_od ? Number(mhInfo.mh_od) : Number(e.od || woInfo?.size_od || 0);
         const wl = isMhStage && mhInfo?.mh_wt ? Number(mhInfo.mh_wt) : Number(e.wl || woInfo?.size_wt || 0);
 
         const calculatedInMt = mtFromMtr(inMtr, od, wl);
         const calculatedOutMt = mtFromMtr(outMtr, od, wl);
-        const calculatedRejMt = Number(e.rejection_mt || 0) > 0 ? Number(e.rejection_mt) : mtFromMtr(rejMtr, od, wl);
+        const calculatedRejMt = mtFromMtr(rejMtr, od, wl);
 
         const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING' || selectedWc === 'ROLLING';
         const rawHtcMtr = Number(logRow?.htc_ok ?? e.htc_ok_mtr ?? (e as any).htc_ok ?? 0);
         const htcOkMtr = isRolling
-          ? Math.min(outMtr, rawHtcMtr > 0 ? rawHtcMtr : Math.max(0, outMtr - rejMtr))
+          ? (rawHtcMtr > 0 ? rawHtcMtr : Math.max(0, outMtr - rejMtr))
           : 0;
 
-        const htcMatch = (e.remarks || logRow?.remarks || '').match(/\[HTC(?:_OK)?(?:_PCS)?:(\d+)\]/i);
+        const htcMatch = (logRow?.remarks || e.remarks || '').match(/\[HTC(?:_OK)?(?:_PCS)?:(\d+)\]/i);
         const remarkHtcPcs = htcMatch ? parseInt(htcMatch[1], 10) : null;
 
+        // User logged HTC OK PCS: strictly what operator entered
         const htcOkPcs = isRolling
-          ? Math.max(
-            0,
-            remarkHtcPcs != null && remarkHtcPcs > 0
-              ? Math.min(outPcs, remarkHtcPcs)
-              : Number(e.htc_ok_pcs || 0) > 0
-                ? Math.min(outPcs, Math.round(Number(e.htc_ok_pcs)))
-                : Math.max(0, outPcs - rejPcs)
-          )
+          ? (remarkHtcPcs != null && remarkHtcPcs > 0
+              ? remarkHtcPcs
+              : Math.max(0, outPcs - rejPcs))
           : 0;
 
         return {
