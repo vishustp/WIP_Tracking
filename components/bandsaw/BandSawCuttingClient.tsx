@@ -475,7 +475,7 @@ export default function BandSawCuttingClient() {
                     const lenLabel = l1 > 0 && l2 > 0 ? `${l1}m - ${l2}m` : l1 > 0 ? `${l1}m` : '6.0m';
 
                     return (
-                      <tr key={row.id || `${row.work_order_id}_${row.heat_lot_no || 'std'}`} className="group hover:bg-slate-50/70 transition-colors">
+                      <tr key={row.work_order_id} className="group hover:bg-slate-50/70 transition-colors">
                         <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-3.5 px-4 font-mono font-bold text-slate-900 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[180px]">
                           <div className="flex items-center gap-1.5">
                             <span>WO #{row.work_order_no}</span>
@@ -492,7 +492,11 @@ export default function BandSawCuttingClient() {
                           )}
                         </td>
                         <td className="py-3 px-3">
-                          {row.heat_lot_no ? (
+                          {row.heat_lots && row.heat_lots.length > 1 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs" title={row.heat_lots.map((l) => l.lot_no).join(', ')}>
+                              {row.heat_lots.length} Lots
+                            </span>
+                          ) : row.heat_lot_no ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
                               {row.heat_lot_no}
                             </span>

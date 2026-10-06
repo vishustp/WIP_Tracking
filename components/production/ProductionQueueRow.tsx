@@ -268,7 +268,11 @@ export function ProductionQueueRow({
       {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'BAND_SAW') && (
         <td className="py-2.5 px-3 align-middle">
           {stage === 'BAND_SAW' ? (
-            row.heat_lot_no ? (
+            row.heat_lots && row.heat_lots.length > 1 ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs" title={row.heat_lots.map((l) => l.lot_no).join(', ')}>
+                {row.heat_lots.length} Lots
+              </span>
+            ) : row.heat_lot_no ? (
               <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
                 {row.heat_lot_no}
               </span>

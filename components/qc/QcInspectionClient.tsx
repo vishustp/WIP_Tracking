@@ -337,99 +337,7 @@ export default function QcInspectionClient() {
         const sharedAvailMtr = Math.max(0, totalCampaignCutMtr - campaignAlreadyInspectedMtr);
         const sharedAvailMt = mtFromMtr(sharedAvailMtr, od, wt);
 
-        // Calculate per-lot available WIP for Campaign pool (Option 2)
-        const lotCampaignInspectionsMap = new Map<string, { pcs: number; mtr: number }>();
-        for (const q of campaignInspections) {
-          const lot = (q.heat_lot_no || '').trim();
-          if (!lot) continue;
-          const pcs = Number(q.inspected_pcs || 0) || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0));
-          const mtr = Number(q.inspected_mtr || 0);
-          if (!lotCampaignInspectionsMap.has(lot)) {
-            lotCampaignInspectionsMap.set(lot, { pcs, mtr });
-          } else {
-            const ex = lotCampaignInspectionsMap.get(lot)!;
-            ex.pcs += pcs;
-            ex.mtr += mtr;
-          }
-        }
-
-        let addedCampaignLotRows = 0;
-        let sumAssignedCampaignPcs = 0;
-        let sumAssignedCampaignMtr = 0;
-
-        if (campaignLots.length > 0) {
-          for (const lot of campaignLots) {
-            const lotInsp = lotCampaignInspectionsMap.get(lot.lot_no) || { pcs: 0, mtr: 0 };
-            const lotAvailPcs = Math.max(0, lot.pcs - lotInsp.pcs);
-            const lotAvailMtr = Math.max(0, Number((lot.mtr - lotInsp.mtr).toFixed(3)));
-            if (lotAvailPcs >= 1) {
-              addedCampaignLotRows++;
-              sumAssignedCampaignPcs += lotAvailPcs;
-              sumAssignedCampaignMtr += lotAvailMtr;
-              items.push({
-                work_order_id: wo.id,
-                work_order_no: wo.work_order_no,
-                customer_name: wo.customer_name || null,
-                specification: wo.specification || wo.grade || null,
-                size_od: od,
-                size_wt: wt,
-                l1,
-                l2,
-                avg_length: avgLen,
-                process_route_id: routeId || null,
-                route_code: routeCode,
-                feeder_source_label: feederLabel,
-                feeder_stage_code: feederStageCode,
-                ht_ok_pcs: lot.pcs,
-                ht_ok_mtr: lot.mtr,
-                ht_ok_mt: mtFromMtr(lot.mtr, od, wt),
-                already_inspected_pcs: lotInsp.pcs,
-                available_ht_ok_pcs: lotAvailPcs,
-                available_ht_ok_mtr: lotAvailMtr,
-                available_ht_ok_mt: mtFromMtr(lotAvailMtr, od, wt),
-                heat_lot_no: lot.lot_no,
-                heat_lots: [lot],
-                is_master: true,
-                master_plan_no: campaign.plan_no,
-                child_work_orders: campaign.child_work_orders,
-              });
-            }
-          }
-        }
-
-        // Add unassigned or fallback single row if pieces remain
-        if (sharedAvailPcs > sumAssignedCampaignPcs) {
-          const unassignedPcs = sharedAvailPcs - sumAssignedCampaignPcs;
-          const unassignedMtr = Math.max(0, Number((sharedAvailMtr - sumAssignedCampaignMtr).toFixed(3)));
-          if (unassignedPcs >= 1) {
-            items.push({
-              work_order_id: wo.id,
-              work_order_no: wo.work_order_no,
-              customer_name: wo.customer_name || null,
-              specification: wo.specification || wo.grade || null,
-              size_od: od,
-              size_wt: wt,
-              l1,
-              l2,
-              avg_length: avgLen,
-              process_route_id: routeId || null,
-              route_code: routeCode,
-              feeder_source_label: feederLabel,
-              feeder_stage_code: feederStageCode,
-              ht_ok_pcs: unassignedPcs,
-              ht_ok_mtr: unassignedMtr,
-              ht_ok_mt: mtFromMtr(unassignedMtr, od, wt),
-              already_inspected_pcs: 0,
-              available_ht_ok_pcs: unassignedPcs,
-              available_ht_ok_mtr: unassignedMtr,
-              available_ht_ok_mt: mtFromMtr(unassignedMtr, od, wt),
-              heat_lot_no: null,
-              is_master: true,
-              master_plan_no: campaign.plan_no,
-              child_work_orders: campaign.child_work_orders,
-            });
-          }
-        } else if (addedCampaignLotRows === 0 && sharedAvailPcs >= 1) {
+        if (sharedAvailPcs >= 1) {
           items.push({
             work_order_id: wo.id,
             work_order_no: wo.work_order_no,
@@ -452,6 +360,7 @@ export default function QcInspectionClient() {
             available_ht_ok_mtr: sharedAvailMtr,
             available_ht_ok_mt: sharedAvailMt,
             heat_lot_no: campaignHeatLotNo,
+            heat_lots: campaignLots,
             is_master: true,
             master_plan_no: campaign.plan_no,
             child_work_orders: campaign.child_work_orders,
@@ -503,129 +412,34 @@ export default function QcInspectionClient() {
         const availableMt = mtFromMtr(availableMtr, od, wt);
 
         if (availablePcs >= 1) {
-          const lotInspectionsMap = new Map<string, { pcs: number; mtr: number }>();
-          for (const q of woInspections) {
-            const lot = (q.heat_lot_no || '').trim();
-            if (!lot) continue;
-            const pcs = Number(q.inspected_pcs || 0) || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0));
-            const mtr = Number(q.inspected_mtr || 0);
-            if (!lotInspectionsMap.has(lot)) {
-              lotInspectionsMap.set(lot, { pcs, mtr });
-            } else {
-              const ex = lotInspectionsMap.get(lot)!;
-              ex.pcs += pcs;
-              ex.mtr += mtr;
-            }
-          }
-
-          let addedWoLotRows = 0;
-          let sumAssignedWoPcs = 0;
-          let sumAssignedWoMtr = 0;
-
-          if (woLots.length > 0) {
-            for (const lot of woLots) {
-              const lotInsp = lotInspectionsMap.get(lot.lot_no) || { pcs: 0, mtr: 0 };
-              const lotAvailPcs = Math.max(0, lot.pcs - lotInsp.pcs);
-              const lotAvailMtr = Math.max(0, Number((lot.mtr - lotInsp.mtr).toFixed(3)));
-              if (lotAvailPcs >= 1) {
-                addedWoLotRows++;
-                sumAssignedWoPcs += lotAvailPcs;
-                sumAssignedWoMtr += lotAvailMtr;
-                items.push({
-                  work_order_id: wo.id,
-                  work_order_no: wo.work_order_no,
-                  customer_name: wo.customer_name || null,
-                  specification: wo.specification || wo.grade || null,
-                  size_od: od,
-                  size_wt: wt,
-                  l1,
-                  l2,
-                  avg_length: avgLen,
-                  process_route_id: routeId || null,
-                  route_code: routeCode,
-                  feeder_source_label: feederLabel,
-                  feeder_stage_code: feederStageCode,
-                  ht_ok_pcs: lot.pcs,
-                  ht_ok_mtr: lot.mtr,
-                  ht_ok_mt: mtFromMtr(lot.mtr, od, wt),
-                  already_inspected_pcs: lotInsp.pcs,
-                  available_ht_ok_pcs: lotAvailPcs,
-                  available_ht_ok_mtr: lotAvailMtr,
-                  available_ht_ok_mt: mtFromMtr(lotAvailMtr, od, wt),
-                  heat_lot_no: lot.lot_no,
-                  heat_lots: [lot],
-                  is_child: !!childInfo,
-                  master_wo_id: childInfo?.master_wo_id,
-                  master_wo_no: childInfo?.master_wo_no,
-                  master_plan_no: childInfo?.master_plan_no,
-                });
-              }
-            }
-          }
-
-          // Remaining unassigned pieces
-          if (availablePcs > sumAssignedWoPcs) {
-            const unassignedPcs = availablePcs - sumAssignedWoPcs;
-            const unassignedMtr = Math.max(0, Number((availableMtr - sumAssignedWoMtr).toFixed(3)));
-            if (unassignedPcs >= 1) {
-              items.push({
-                work_order_id: wo.id,
-                work_order_no: wo.work_order_no,
-                customer_name: wo.customer_name || null,
-                specification: wo.specification || wo.grade || null,
-                size_od: od,
-                size_wt: wt,
-                l1,
-                l2,
-                avg_length: avgLen,
-                process_route_id: routeId || null,
-                route_code: routeCode,
-                feeder_source_label: feederLabel,
-                feeder_stage_code: feederStageCode,
-                ht_ok_pcs: unassignedPcs,
-                ht_ok_mtr: unassignedMtr,
-                ht_ok_mt: mtFromMtr(unassignedMtr, od, wt),
-                already_inspected_pcs: 0,
-                available_ht_ok_pcs: unassignedPcs,
-                available_ht_ok_mtr: unassignedMtr,
-                available_ht_ok_mt: mtFromMtr(unassignedMtr, od, wt),
-                heat_lot_no: null,
-                is_child: !!childInfo,
-                master_wo_id: childInfo?.master_wo_id,
-                master_wo_no: childInfo?.master_wo_no,
-                master_plan_no: childInfo?.master_plan_no,
-              });
-            }
-          } else if (addedWoLotRows === 0) {
-            // Fallback single row
-            items.push({
-              work_order_id: wo.id,
-              work_order_no: wo.work_order_no,
-              customer_name: wo.customer_name || null,
-              specification: wo.specification || wo.grade || null,
-              size_od: od,
-              size_wt: wt,
-              l1,
-              l2,
-              avg_length: avgLen,
-              process_route_id: routeId || null,
-              route_code: routeCode,
-              feeder_source_label: feederLabel,
-              feeder_stage_code: feederStageCode,
-              ht_ok_pcs: bandSawCutPcs,
-              ht_ok_mtr: bandSawCutMtr,
-              ht_ok_mt: effectiveCutMt,
-              already_inspected_pcs: alreadyInspectedPcs,
-              available_ht_ok_pcs: availablePcs,
-              available_ht_ok_mtr: availableMtr,
-              available_ht_ok_mt: availableMt,
-              heat_lot_no: woHeatLotNo,
-              is_child: !!childInfo,
-              master_wo_id: childInfo?.master_wo_id,
-              master_wo_no: childInfo?.master_wo_no,
-              master_plan_no: childInfo?.master_plan_no,
-            });
-          }
+          items.push({
+            work_order_id: wo.id,
+            work_order_no: wo.work_order_no,
+            customer_name: wo.customer_name || null,
+            specification: wo.specification || wo.grade || null,
+            size_od: od,
+            size_wt: wt,
+            l1,
+            l2,
+            avg_length: avgLen,
+            process_route_id: routeId || null,
+            route_code: routeCode,
+            feeder_source_label: feederLabel,
+            feeder_stage_code: feederStageCode,
+            ht_ok_pcs: bandSawCutPcs,
+            ht_ok_mtr: bandSawCutMtr,
+            ht_ok_mt: effectiveCutMt,
+            already_inspected_pcs: alreadyInspectedPcs,
+            available_ht_ok_pcs: availablePcs,
+            available_ht_ok_mtr: availableMtr,
+            available_ht_ok_mt: availableMt,
+            heat_lot_no: woHeatLotNo,
+            heat_lots: woLots,
+            is_child: !!childInfo,
+            master_wo_id: childInfo?.master_wo_id,
+            master_wo_no: childInfo?.master_wo_no,
+            master_plan_no: childInfo?.master_plan_no,
+          });
         }
       }
     });
@@ -1586,7 +1400,7 @@ export default function QcInspectionClient() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredQueue.map((item) => (
-                      <tr key={`${item.work_order_id}_${item.heat_lot_no || 'std'}`} className="hover:bg-slate-50/60 transition-colors">
+                      <tr key={item.work_order_id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="py-3 px-3.5 font-bold font-mono text-slate-900 text-sm">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{item.work_order_no}</span>
@@ -1622,7 +1436,11 @@ export default function QcInspectionClient() {
                           )}
                         </td>
                         <td className="py-3 px-3">
-                          {item.heat_lot_no ? (
+                          {item.heat_lots && item.heat_lots.length > 1 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs" title={item.heat_lots.map((l) => l.lot_no).join(', ')}>
+                              {item.heat_lots.length} Lots
+                            </span>
+                          ) : item.heat_lot_no ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
                               {item.heat_lot_no}
                             </span>

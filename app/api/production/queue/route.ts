@@ -44,26 +44,6 @@ export async function GET(req: NextRequest) {
             (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
           )
         );
-      } else if (targetStage === "BAND_SAW") {
-        for (const { bandSawLotRows } of memoryCache.allCalculatedRows.values()) {
-          if (bandSawLotRows && bandSawLotRows.length > 0) {
-            selectedRows.push(
-              ...bandSawLotRows.filter(
-                (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
-              )
-            );
-          }
-        }
-      } else if (targetStage === "VDI") {
-        for (const { vdiLotRows } of memoryCache.allCalculatedRows.values()) {
-          if (vdiLotRows && vdiLotRows.length > 0) {
-            selectedRows.push(
-              ...vdiLotRows.filter(
-                (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
-              )
-            );
-          }
-        }
       } else {
         for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
           const row = queueRows[targetStage];
@@ -1752,26 +1732,6 @@ export async function GET(req: NextRequest) {
           (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
         )
       );
-    } else if (targetStage === "BAND_SAW") {
-      for (const { bandSawLotRows } of allCalculatedRows.values()) {
-        if (bandSawLotRows && bandSawLotRows.length > 0) {
-          selectedRows.push(
-            ...bandSawLotRows.filter(
-              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
-            )
-          );
-        }
-      }
-    } else if (targetStage === "VDI") {
-      for (const { vdiLotRows } of allCalculatedRows.values()) {
-        if (vdiLotRows && vdiLotRows.length > 0) {
-          selectedRows.push(
-            ...vdiLotRows.filter(
-              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
-            )
-          );
-        }
-      }
     } else {
       for (const { queueRows } of allCalculatedRows.values()) {
         const row = queueRows[targetStage];
