@@ -873,7 +873,7 @@ export default function WorkCenterProductionReportClient() {
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-500 transition cursor-pointer"
           >
             <Printer className="h-4 w-4" />
-            Print Shift Sheet
+            Print Production Report
           </button>
         </div>
       </div>
@@ -914,7 +914,7 @@ export default function WorkCenterProductionReportClient() {
                 RASHMI GREEN HYDROGEN STEEL PVT. LTD.
               </h2>
               <div className="text-xs font-bold text-slate-700 print:text-black uppercase">
-                (SEAMLESS DIVISION) · {activeWcConfig.label} · Daily Shift Production Log
+                (SEAMLESS DIVISION) · {activeWcConfig.label} · Production Log
               </div>
               <div className="text-[11px] text-slate-500 print:text-black">
                 {activeWcConfig.description}
@@ -1270,7 +1270,7 @@ export default function WorkCenterProductionReportClient() {
                 <tr>
                   <td colSpan={11} className="p-8 text-center text-slate-500">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
-                    Loading shift production records...
+                    Loading production records...
                   </td>
                 </tr>
               ) : filteredEntries.length === 0 ? (
@@ -1416,10 +1416,10 @@ export default function WorkCenterProductionReportClient() {
         </div>
       </div>
 
-      {/* Formal 4-Part Shop Floor Shift Sign-Off Block */}
+      {/* Formal 4-Part Shop Floor Verification Sign-Off Block */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs print:border-black print:shadow-none break-inside-avoid">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-4 print:text-black">
-          Shop Floor Shift Verification & Authorization Sign-Off ({activeWcConfig.label})
+          Shop Floor Production Verification & Authorization Sign-Off ({activeWcConfig.label})
         </h3>
 
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-xs">
@@ -1432,8 +1432,8 @@ export default function WorkCenterProductionReportClient() {
           </div>
 
           <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50 print:bg-white print:border-black">
-            <div className="font-bold text-slate-800 print:text-black">Shift In-Charge</div>
-            <div className="text-[11px] text-slate-500 mb-8 print:text-black">Work Center Shift Supervisor</div>
+            <div className="font-bold text-slate-800 print:text-black">Production In-Charge</div>
+            <div className="text-[11px] text-slate-500 mb-8 print:text-black">Work Center Supervisor</div>
             <div className="border-t border-dashed border-slate-300 pt-1 text-[11px] text-slate-400 print:text-black print:border-black">
               Signature & Date
             </div>
