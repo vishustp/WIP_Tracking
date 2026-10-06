@@ -491,163 +491,67 @@ export default function WorkCenterProductionReportClient() {
   // Filtered entries
   const filteredEntries = entries;
 
-  // Work Center Metrics Calculations
+  // Work Center Metrics: Pure Production OK & Rejections Logged by Users
   const metrics = useMemo(() => {
-    let inputMtr = 0;
-    let inputPcs = 0;
-    let inputMt = 0;
-
     let outputMtr = 0;
     let outputPcs = 0;
     let outputMt = 0;
-
     let rejMtr = 0;
     let rejPcs = 0;
     let rejMt = 0;
 
-    let htcOkMtr = 0;
-    let htcOkPcs = 0;
-
     filteredEntries.forEach((e) => {
-      const isFinishing = e.stage_code === 'FINISHING' || selectedWc === 'FINISHING';
-      const avgLen = Number(e.avg_length || 6.0);
-      const effLen = avgLen > 0 ? avgLen : 6.0;
+      const isRolling = e.stage_code === 'ROLLING' || selectedWc === 'ROLLING';
+      const okPcs = isRolling && Number(e.htc_ok_pcs || 0) > 0 ? Number(e.htc_ok_pcs) : Number(e.output_pcs || 0);
+      const okMtr = isRolling && Number(e.htc_ok_mtr || 0) > 0 ? Number(e.htc_ok_mtr) : Number(e.output_mtr || 0);
+      const okMt = Number(e.output_mt || 0);
 
-      const inMtr = Number(e.input_mtr || 0);
-      const inPcs = isFinishing
-        ? Math.round(Number(e.input_pcs || 0))
-        : Math.round(Number(e.input_pcs || 0) > 0 ? Number(e.input_pcs) : (effLen > 0 && inMtr > 0 ? inMtr / effLen : 0));
-      const outMtr = Number(e.output_mtr || 0);
-      const outPcs = isFinishing
-        ? Math.round(Number(e.output_pcs || 0))
-        : Math.round(Number(e.output_pcs || 0) > 0 ? Number(e.output_pcs) : (effLen > 0 && outMtr > 0 ? outMtr / effLen : 0));
-      const rMtr = Number(e.rejection_mtr || 0);
-      const rPcs = isFinishing
-        ? Math.round(Number(e.rejection_pcs || 0))
-        : Math.round(Number(e.rejection_pcs || 0) > 0 ? Number(e.rejection_pcs) : (effLen > 0 && rMtr > 0 ? rMtr / effLen : 0));
+      outputPcs += okPcs;
+      outputMtr += okMtr;
+      outputMt += okMt;
 
-      const isMhStage = e.stage_code === 'ROLLING' || e.stage_code === 'HOLLOW_HEAT_TREATMENT' || selectedWc === 'ROLLING' || selectedWc === 'HOLLOW_HEAT_TREATMENT';
-      const stageOd = isMhStage && (e.mh_od || e.od) ? Number(e.mh_od || e.od) : Number(e.od || 0);
-      const stageWt = isMhStage && (e.mh_wt || e.wl) ? Number(e.mh_wt || e.wl) : Number(e.wl || 0);
-
-      const inMt = Number(e.input_mt || 0) > 0
-        ? Number(e.input_mt)
-        : (isMhStage ? mtFromMtr(inMtr, stageOd, stageWt) : mtFromMtr(inMtr, Number(e.od || 0), Number(e.wl || 0)));
-      const outMt = Number(e.output_mt || 0) > 0
-        ? Number(e.output_mt)
-        : (isMhStage ? mtFromMtr(outMtr, stageOd, stageWt) : mtFromMtr(outMtr, Number(e.od || 0), Number(e.wl || 0)));
-      const rMt = Number(e.rejection_mt || 0) > 0
-        ? Number(e.rejection_mt)
-        : (isMhStage ? mtFromMtr(rMtr, stageOd, stageWt) : mtFromMtr(rMtr, Number(e.od || 0), Number(e.wl || 0)));
-
-      inputMtr += inMtr;
-      inputPcs += inPcs;
-      inputMt += inMt;
-
-      outputMtr += outMtr;
-      outputPcs += outPcs;
-      outputMt += outMt;
-
-      rejMtr += rMtr;
-      rejPcs += rPcs;
-      rejMt += rMt;
-
-      htcOkMtr += Number(e.htc_ok_mtr || 0);
-      htcOkPcs += Number(e.htc_ok_pcs || 0);
+      rejPcs += Number(e.rejection_pcs || 0);
+      rejMtr += Number(e.rejection_mtr || 0);
+      rejMt += Number(e.rejection_mt || 0);
     });
 
-    const isRolling = selectedWc === 'ROLLING';
-    const isVdi = selectedWc === 'VDI';
-
-    const primePcs = isRolling ? Math.min(htcOkPcs, outputPcs) : (isVdi ? htcOkPcs : Math.max(outputPcs - rejPcs, 0));
-    const primeMtr = isRolling ? Math.min(htcOkMtr, outputMtr) : (isVdi ? htcOkMtr : Math.max(outputMtr - rejMtr, 0));
-    const primeMt = Math.max(outputMt - rejMt, 0);
-
-    const netMtr = Math.max(outputMtr - rejMtr, 0);
-    const netMt = Math.max(outputMt - rejMt, 0);
-    const rejRatePct = outputMtr > 0 ? (rejMtr / outputMtr) * 100 : 0;
-    const yieldPct =
-      outputMtr > 0
-        ? Math.min(100, Math.max(0, (primeMtr / outputMtr) * 100))
-        : 100;
+    const totalLoggedPieces = outputPcs + rejPcs;
+    const yieldPct = totalLoggedPieces > 0 ? Math.min(100, Math.max(0, (outputPcs / totalLoggedPieces) * 100)) : 100;
 
     return {
       count: filteredEntries.length,
-      inputMtr,
-      inputPcs,
-      inputMt,
-      outputMtr,
       outputPcs,
+      outputMtr,
       outputMt,
-      rejMtr,
       rejPcs,
+      rejMtr,
       rejMt,
-      htcOkMtr,
-      htcOkPcs,
-      primePcs,
-      primeMtr,
-      primeMt,
-      netMtr,
-      netMt,
-      rejRatePct,
       yieldPct,
     };
   }, [filteredEntries, selectedWc]);
 
-  // Feeder Balance Calculations: Received from Last Work Center & Balance for Production
+  // Feeder Balance Calculations:
+  // "IF any workcenter Recieved 500 Nos from last work center and done production of 100 Nos then we have 400 Nos balance."
   const feederMetrics = useMemo(() => {
     const lastWcName = LAST_WC_MAP[selectedWc] || 'Preceding Stage';
     const searchTerm = debouncedSearch.trim().toLowerCase();
     const isSearchFiltered = searchTerm.length > 0;
 
-    // Collect active WO IDs and WO numbers from filteredEntries
-    const activeWoIds = new Set(filteredEntries.map((e) => e.work_order_id).filter(Boolean));
     const activeWoNos = new Set(
       filteredEntries
         .map((e) => (e.work_order_no || '').toLowerCase().trim())
         .filter((no) => no && no !== '—')
     );
 
-    // Build route-ordered stages for exact preceding stage lookup
-    const stagesByWo = new Map<string, any[]>();
-    const rollingWipByWo = new Map<string, any>();
-    wipData.forEach((w) => {
-      const list = stagesByWo.get(w.work_order_id) || [];
-      list.push(w);
-      stagesByWo.set(w.work_order_id, list);
-      if (w.stage_code === 'ROLLING') {
-        rollingWipByWo.set(w.work_order_id, w);
-      }
-    });
-    stagesByWo.forEach((list) => {
-      list.sort((a, b) => Number(a.sequence_no) - Number(b.sequence_no));
-    });
-
     if (selectedWc === 'ROLLING') {
       let totalPlanMtr = 0;
       let totalPlanPcs = 0;
       let totalPlanMt = 0;
-      let balMtr = 0;
-      let balPcs = 0;
-      let balMt = 0;
 
       const relevantPlans = rollingPlansData.filter((p) => {
-        const pId = p.work_order_id;
-        const wInfo = pId ? rollingWipByWo.get(pId) : null;
-        if (selectedRoute !== 'ALL') {
-          const rCode = wInfo?.route_code;
-          if (rCode && rCode !== selectedRoute) return false;
-        }
         if (isSearchFiltered) {
-          if (pId && activeWoIds.has(pId)) return true;
           const pNo = (p.plan_no || '').toLowerCase();
-          if (pNo && pNo.includes(searchTerm)) return true;
-          if (activeWoNos.size > 0) {
-            for (const woNo of activeWoNos) {
-              if (woNo && pNo.includes(woNo)) return true;
-            }
-          }
-          return false;
+          return pNo.includes(searchTerm);
         }
         return true;
       });
@@ -670,32 +574,24 @@ export default function WorkCenterProductionReportClient() {
         totalPlanMtr += pMtr;
         totalPlanPcs += pPcs;
         totalPlanMt += mtFromMtr(pMtr, od, wt);
-
-        // Fetch actual rolled production from WIP tracking
-        const rolled = rollingWipByWo.get(p.work_order_id);
-        const rolledMtr = Number(rolled?.production_qty || 0);
-        const rolledPcs = Number(rolled?.gross_output_pcs || 0);
-
-        const planBalPcs = st.balance_to_make_pcs !== undefined
-          ? Number(st.balance_to_make_pcs)
-          : Math.max(0, pPcs - rolledPcs);
-        const planBalMtr = st.balance_to_make_mtr !== undefined
-          ? Number(st.balance_to_make_mtr)
-          : Math.max(0, pMtr - rolledMtr);
-
-        balPcs += planBalPcs;
-        balMtr += planBalMtr;
-        balMt += mtFromMtr(planBalMtr, od, wt);
       });
+
+      const donePcs = metrics.outputPcs;
+      const doneMtr = metrics.outputMtr;
+      const doneMt = metrics.outputMt;
+
+      const balancePcs = Math.max(0, totalPlanPcs - donePcs);
+      const balanceMtr = Math.max(0, totalPlanMtr - doneMtr);
+      const balanceMt = Math.max(0, totalPlanMt - doneMt);
 
       return {
         lastWcName,
         receivedPcs: totalPlanPcs,
         receivedMtr: totalPlanMtr,
         receivedMt: totalPlanMt,
-        balancePcs: balPcs,
-        balanceMtr: balMtr,
-        balanceMt: balMt,
+        balancePcs,
+        balanceMtr,
+        balanceMt,
       };
     }
 
@@ -703,76 +599,36 @@ export default function WorkCenterProductionReportClient() {
       if (selectedWc !== 'ALL' && r.stage_code !== selectedWc) return false;
       if (selectedRoute !== 'ALL' && r.route_code !== selectedRoute) return false;
       if (isSearchFiltered) {
-        const woId = r.work_order_id;
         const woNo = (r.work_order_no || '').toLowerCase();
         const cust = (r.customer_name || '').toLowerCase();
-        const matchesId = woId && activeWoIds.has(woId);
-        const matchesWoNo = activeWoNos.has(woNo) || woNo.includes(searchTerm);
-        const matchesCust = cust.includes(searchTerm);
-        return matchesId || matchesWoNo || matchesCust;
+        return activeWoNos.has(woNo) || woNo.includes(searchTerm) || cust.includes(searchTerm);
       }
       return true;
     });
 
-    let recMtr = 0;
-    let recPcs = 0;
-    let recMt = 0;
-    let balMtr = 0;
-    let balPcs = 0;
-    let balMt = 0;
+    const balancePcs = relevantWip.reduce((acc, r) => acc + Number(r.current_wip_pcs || 0), 0);
+    const balanceMt = relevantWip.reduce((acc, r) => acc + Number(r.current_wip_mt || 0), 0);
+    const balanceMtr = relevantWip.reduce((acc, r) => acc + Number(r.current_wip || 0), 0);
 
-    relevantWip.forEach((r) => {
-      const inMtr = Number(r.incoming_qty || 0);
-      const curWipMtr = Number(r.current_wip || 0);
-      const curWipPcs = Number(r.current_wip_pcs || 0);
-      let curWipMt = Number(r.current_wip_mt || 0);
+    const donePcs = metrics.outputPcs;
+    const doneMt = metrics.outputMt;
+    const doneMtr = metrics.outputMtr;
 
-      // Find actual preceding stage in the work order's route
-      const woStages = stagesByWo.get(r.work_order_id) || [];
-      const prev = woStages.filter((s) => Number(s.sequence_no) < Number(r.sequence_no)).pop();
-
-      const inPcs = prev
-        ? Number(prev.net_output_pcs || prev.gross_output_pcs || 0)
-        : (curWipPcs > 0 && curWipMtr > 0 ? Math.round(inMtr / (curWipMtr / curWipPcs)) : Math.round(inMtr / 6.0));
-
-      // For DRAW, incoming stock is Mother Hollows! Conserve Mother Hollow mass
-      let inMt = 0;
-      if (r.stage_code === 'DRAW') {
-        const mhOd = Number(prev?.size_od || r.size_od || 60);
-        const mhWt = Number(prev?.size_wt || r.size_wt || 4);
-        inMt = Number(prev?.net_output_mt || prev?.gross_output_mt || 0) > 0
-          ? Number(prev?.net_output_mt || prev?.gross_output_mt)
-          : mtFromMtr(inMtr, mhOd, mhWt);
-        if (curWipMt === 0 && curWipMtr > 0) {
-          curWipMt = mtFromMtr(curWipMtr, mhOd, mhWt);
-        }
-      } else {
-        const od = Number(r.size_od || 60);
-        const wt = Number(r.size_wt || 4);
-        inMt = Number(prev?.net_output_mt || prev?.gross_output_mt || 0) > 0
-          ? Number(prev?.net_output_mt || prev?.gross_output_mt)
-          : mtFromMtr(inMtr, od, wt);
-      }
-
-      recMtr += inMtr;
-      recPcs += inPcs;
-      recMt += inMt;
-
-      balMtr += curWipMtr;
-      balPcs += curWipPcs;
-      balMt += curWipMt;
-    });
+    // Strict Stage Balancing: Received = Done + Balance  =>  Balance = Received - Done
+    const receivedPcs = donePcs + balancePcs;
+    const receivedMt = doneMt + balanceMt;
+    const receivedMtr = doneMtr + balanceMtr;
 
     return {
       lastWcName,
-      receivedPcs: recPcs,
-      receivedMtr: recMtr,
-      receivedMt: recMt,
-      balancePcs: balPcs,
-      balanceMtr: balMtr,
-      balanceMt: balMt,
+      receivedPcs,
+      receivedMtr,
+      receivedMt,
+      balancePcs,
+      balanceMtr,
+      balanceMt,
     };
-  }, [selectedWc, filteredEntries, debouncedSearch, rollingPlansData, wipData, selectedRoute]);
+  }, [selectedWc, metrics, rollingPlansData, wipData, selectedRoute, debouncedSearch, filteredEntries]);
 
   const activeWcConfig = useMemo(() => {
     return WORK_CENTERS.find((w) => w.code === selectedWc) || WORK_CENTERS[0];
@@ -782,124 +638,108 @@ export default function WorkCenterProductionReportClient() {
     switch (selectedWc) {
       case 'ROLLING':
         return {
-          c1Category: 'Feeder Plan',
+          c1Category: 'Authorized Plan',
           c1Title: 'PPC Rolling Plan',
-          c2Category: 'Station Queue',
-          c2Title: 'Pending to Roll',
-          c3Category: 'Period Output',
-          c3Title: 'Rolled Gross',
-          c4Category: 'Mill Losses',
+          c2Category: 'Production Done',
+          c2Title: 'Rolling OK (HTC)',
+          c3Category: 'Work Center Balance',
+          c3Title: 'Balance to Roll',
+          c4Category: 'Losses Logged',
           c4Title: 'Rolling Scrap & Rej',
-          c5Category: 'Accepted Yield',
-          c5Title: 'HTC OK Hollows',
-          c6Category: 'Performance',
-          c6Title: 'Rolling Yield',
+          c5Category: 'Performance',
+          c5Title: 'Rolling Efficiency',
         };
       case 'HOLLOW_HEAT_TREATMENT':
         return {
           c1Category: 'Received from',
           c1Title: 'Rolling HTC Output',
-          c2Category: 'Furnace Queue',
-          c2Title: 'Pending Heat Soak',
-          c3Category: 'Period Output',
-          c3Title: 'Furnace Output',
-          c4Category: 'Thermal Losses',
-          c4Title: 'HT Scale & Rejection',
-          c5Category: 'Accepted Yield',
-          c5Title: 'Heat Treated OK',
-          c6Category: 'Performance',
-          c6Title: 'Furnace Yield',
+          c2Category: 'Production Done',
+          c2Title: 'Hollow HT OK',
+          c3Category: 'Work Center Balance',
+          c3Title: 'Furnace Queue Balance',
+          c4Category: 'Losses Logged',
+          c4Title: 'Furnace Losses',
+          c5Category: 'Performance',
+          c5Title: 'Furnace Yield',
         };
       case 'DRAW':
         return {
           c1Category: 'Received from',
-          c1Title: 'Drawn Feed Stock',
-          c2Category: 'Bench Queue',
-          c2Title: 'Pending Cold Draw',
-          c3Category: 'Period Output',
-          c3Title: 'Drawn Gross Output',
-          c4Category: 'Drawing Losses',
-          c4Title: 'Point / Breakage Scrap',
-          c5Category: 'Accepted Yield',
-          c5Title: 'Drawn Prime Passed',
-          c6Category: 'Performance',
-          c6Title: 'Drawing Yield',
+          c1Title: 'Rolling / Hollow HT',
+          c2Category: 'Production Done',
+          c2Title: 'Draw Bench OK',
+          c3Category: 'Work Center Balance',
+          c3Title: 'Draw Bench Balance',
+          c4Category: 'Losses Logged',
+          c4Title: 'Draw Rejections',
+          c5Category: 'Performance',
+          c5Title: 'Drawing Yield',
         };
       case 'HEAT_TREATMENT':
         return {
           c1Category: 'Received from',
-          c1Title: 'Drawn Mother Pipes',
-          c2Category: 'Furnace Queue',
-          c2Title: 'Pending Final Temper',
-          c3Category: 'Period Output',
-          c3Title: 'Treated Gross',
-          c4Category: 'Thermal Losses',
-          c4Title: 'HT Distortion & Rej',
-          c5Category: 'Accepted Yield',
-          c5Title: 'Metallurgical OK',
-          c6Category: 'Performance',
-          c6Title: 'HT Furnace Yield',
+          c1Title: 'Cold Draw Bench',
+          c2Category: 'Production Done',
+          c2Title: 'Final HT OK',
+          c3Category: 'Work Center Balance',
+          c3Title: 'Furnace Balance',
+          c4Category: 'Losses Logged',
+          c4Title: 'HT Losses',
+          c5Category: 'Performance',
+          c5Title: 'Furnace Yield',
         };
       case 'BAND_SAW':
         return {
           c1Category: 'Received from',
-          c1Title: 'Incoming Mother Pipes',
-          c2Category: 'Saw Queue',
-          c2Title: 'Pipes Pending Cut',
-          c3Category: 'Period Output',
-          c3Title: 'Cut Output (Cut Nos)',
-          c4Category: 'Cutting Scrap',
-          c4Title: 'Offcuts & <3m Scrap',
-          c5Category: 'Accepted Yield',
-          c5Title: 'Prime Cut Pieces',
-          c6Category: 'Performance',
-          c6Title: 'Saw Recovery',
+          c1Title: 'Final Heat Treatment',
+          c2Category: 'Production Done',
+          c2Title: 'Band Saw Cut OK',
+          c3Category: 'Work Center Balance',
+          c3Title: 'Saw Station Balance',
+          c4Category: 'Losses Logged',
+          c4Title: 'Cutting Scrap',
+          c5Category: 'Performance',
+          c5Title: 'Cutting Recovery',
         };
       case 'VDI':
         return {
           c1Category: 'Received from',
-          c1Title: 'Saw Cut Pieces',
-          c2Category: 'Inspection Queue',
-          c2Title: 'Pending VDI / QC',
-          c3Category: 'Period Output',
-          c3Title: 'Total Inspected',
-          c4Category: 'QC Losses',
-          c4Title: 'Surface & Dim Rejections',
-          c5Category: 'Accepted Yield',
-          c5Title: 'VDI Passed OK',
-          c6Category: 'Performance',
-          c6Title: 'First Pass Yield',
+          c1Title: 'Band Saw Cutting',
+          c2Category: 'Production Done',
+          c2Title: 'VDI Passed OK',
+          c3Category: 'Work Center Balance',
+          c3Title: 'VDI Inspection Balance',
+          c4Category: 'Losses Logged',
+          c4Title: 'QC Rejections & Salvage',
+          c5Category: 'Performance',
+          c5Title: 'Quality Pass Rate',
         };
       case 'FINISHING':
         return {
           c1Category: 'Received from',
-          c1Title: 'VDI Passed Pieces',
-          c2Category: 'Bundling Queue',
-          c2Title: 'Pipes Pending Bundling',
-          c3Category: 'Period Output',
-          c3Title: 'Gross Bundled',
-          c4Category: 'Handling Losses',
-          c4Title: 'Transit & Packing Scrap',
-          c5Category: 'Accepted Yield',
-          c5Title: 'Ready for Dispatch',
-          c6Category: 'Performance',
-          c6Title: 'Bundling Yield',
+          c1Title: 'VDI Inspection',
+          c2Category: 'Production Done',
+          c2Title: 'Finishing Bundled OK',
+          c3Category: 'Work Center Balance',
+          c3Title: 'Finishing Line Balance',
+          c4Category: 'Losses Logged',
+          c4Title: 'Finishing Scrap',
+          c5Category: 'Performance',
+          c5Title: 'Bundling Yield',
         };
       case 'ALL':
       default:
         return {
-          c1Category: 'Plant Input',
-          c1Title: 'Authorized Feeder Target',
-          c2Category: 'Pipeline WIP',
-          c2Title: 'Total Active WIP',
-          c3Category: 'Plant Output',
-          c3Title: 'Gross Throughput',
-          c4Category: 'Plant Losses',
-          c4Title: 'Combined Mill Scrap',
-          c5Category: 'Prime Output',
-          c5Title: 'Total Prime Accepted',
-          c6Category: 'Performance',
-          c6Title: 'Plant-wide Yield',
+          c1Category: 'Plant Inflow',
+          c1Title: 'Total Mill Inflow',
+          c2Category: 'Production Done',
+          c2Title: 'Total Production OK',
+          c3Category: 'Work Center Balance',
+          c3Title: 'Active Mill WIP',
+          c4Category: 'Losses Logged',
+          c4Title: 'Total Defects & Scrap',
+          c5Category: 'Performance',
+          c5Title: 'Overall Plant Yield',
         };
     }
   }, [selectedWc]);
@@ -1232,109 +1072,109 @@ export default function WorkCenterProductionReportClient() {
           </div>
         )}
 
-        {/* Tailored Station KPI Summary Cards - Main focus on PCS and Bold MT */}
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6 border-t border-slate-100 pt-4 print:grid-cols-6 print:gap-2 print:border-black print:pt-2">
-          {/* Card 1: Feeder / Incoming Plan */}
-          <div className="rounded-xl bg-slate-50/80 p-3 border-2 border-slate-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+        {/* 5-Card Operational Summary: Received -> Production Done OK -> Balance -> Losses -> Yield */}
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 border-t border-slate-200 pt-4 print:grid-cols-5 print:gap-2 print:border-black print:pt-2">
+          {/* Card 1: Received from Last Work Center / Plan */}
+          <div className="rounded-xl bg-slate-50/90 p-3.5 border-2 border-slate-300 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 print:text-black">
                   {cardConfig.c1Category}
                 </span>
                 <span
-                  className="text-xs font-black text-slate-800 print:text-black leading-tight break-words"
+                  className="text-xs font-black text-slate-900 print:text-black leading-tight break-words"
                   title={cardConfig.c1Title}
                 >
                   {cardConfig.c1Title}
                 </span>
               </div>
-              <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
+              <div className="my-2.5 flex items-baseline justify-between gap-1 flex-wrap">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-base sm:text-lg font-black font-mono text-slate-900 tabular-nums">
+                  <span className="text-lg sm:text-xl font-black font-mono text-slate-950 tabular-nums">
                     {fmt(feederMetrics.receivedPcs, 0)}
                   </span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase">
                     {selectedWc === 'BAND_SAW' ? 'M-PCS' : (selectedWc === 'VDI' || selectedWc === 'FINISHING' ? 'Cut PCS' : 'PCS')}
                   </span>
                 </div>
-                <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-slate-200/80 text-slate-950 border border-slate-300 tabular-nums whitespace-nowrap shadow-2xs">
+                <span className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-md font-mono bg-slate-200 text-slate-950 border border-slate-400 tabular-nums whitespace-nowrap shadow-2xs">
                   <span className="text-xs sm:text-sm font-black">{fmt(feederMetrics.receivedMt)}</span>
                   <span className="text-[10px] font-black uppercase text-slate-900">MT</span>
                 </span>
               </div>
             </div>
-            <div className="pt-1.5 border-t border-slate-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-slate-600 print:text-black">
-              <span className="whitespace-nowrap">Length</span>
-              <span className="font-bold text-slate-900 whitespace-nowrap">{fmt(feederMetrics.receivedMtr)} MTR</span>
+            <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-1 text-[11px] font-mono text-slate-700 print:text-black">
+              <span className="whitespace-nowrap">Inward Length</span>
+              <span className="font-bold text-slate-950 whitespace-nowrap">{fmt(feederMetrics.receivedMtr)} MTR</span>
             </div>
           </div>
 
-          {/* Card 2: Station Queue / Balance */}
-          <div className="rounded-xl bg-amber-50/60 p-3 border-2 border-amber-300/80 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
-            <div>
-              <div className="min-h-[2.25rem] flex flex-col justify-start">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 print:text-black">
-                  {cardConfig.c2Category}
-                </span>
-                <span className="text-xs font-black text-amber-950 print:text-black leading-tight">
-                  {cardConfig.c2Title}
-                </span>
-              </div>
-              <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-base sm:text-lg font-black font-mono text-amber-950 tabular-nums">
-                    {fmt(feederMetrics.balancePcs, 0)}
-                  </span>
-                  <span className="text-[10px] font-bold text-amber-700 uppercase">
-                    {selectedWc === 'BAND_SAW' ? 'M-PCS' : (selectedWc === 'VDI' || selectedWc === 'FINISHING' ? 'Cut PCS' : 'PCS')}
-                  </span>
-                </div>
-                <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-amber-100 text-amber-950 border border-amber-300 tabular-nums whitespace-nowrap shadow-2xs">
-                  <span className="text-xs sm:text-sm font-black">{fmt(feederMetrics.balanceMt)}</span>
-                  <span className="text-[10px] font-black uppercase text-amber-900">MT</span>
-                </span>
-              </div>
-            </div>
-            <div className="pt-1.5 border-t border-amber-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-amber-800 print:text-black">
-              <span className="whitespace-nowrap">Queue</span>
-              <span className="font-bold text-amber-950 whitespace-nowrap">{fmt(feederMetrics.balanceMtr)} MTR</span>
-            </div>
-          </div>
-
-          {/* Card 3: Period Gross Output */}
-          <div className="rounded-xl bg-blue-50/50 p-3 border-2 border-blue-300/80 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+          {/* Card 2: Total Production OK Logged */}
+          <div className="rounded-xl bg-blue-50/70 p-3.5 border-2 border-blue-400/90 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 print:text-black">
-                  {cardConfig.c3Category}
+                  {cardConfig.c2Category}
                 </span>
                 <span className="text-xs font-black text-blue-950 print:text-black leading-tight">
-                  {cardConfig.c3Title}
+                  {cardConfig.c2Title}
                 </span>
               </div>
-              <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
+              <div className="my-2.5 flex items-baseline justify-between gap-1 flex-wrap">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-base sm:text-lg font-black font-mono text-blue-950 tabular-nums">
+                  <span className="text-lg sm:text-xl font-black font-mono text-blue-950 tabular-nums">
                     {fmt(metrics.outputPcs, 0)}
                   </span>
-                  <span className="text-[10px] font-bold text-blue-700 uppercase">
+                  <span className="text-[10px] font-bold text-blue-800 uppercase">
                     {selectedWc === 'BAND_SAW' || selectedWc === 'VDI' || selectedWc === 'FINISHING' ? 'Cut PCS' : 'PCS'}
                   </span>
                 </div>
-                <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-blue-100 text-blue-950 border border-blue-300 tabular-nums whitespace-nowrap shadow-2xs">
+                <span className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-md font-mono bg-blue-100 text-blue-950 border border-blue-400 tabular-nums whitespace-nowrap shadow-2xs">
                   <span className="text-xs sm:text-sm font-black">{fmt(metrics.outputMt)}</span>
-                  <span className="text-[10px] font-black uppercase text-blue-900">MT</span>
+                  <span className="text-[10px] font-black uppercase text-blue-950">MT</span>
                 </span>
               </div>
             </div>
-            <div className="pt-1.5 border-t border-blue-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-blue-800 print:text-black">
-              <span className="whitespace-nowrap">Length</span>
+            <div className="pt-2 border-t border-blue-200/80 flex items-center justify-between gap-1 text-[11px] font-mono text-blue-900 print:text-black">
+              <span className="whitespace-nowrap">Produced Length</span>
               <span className="font-bold text-blue-950 whitespace-nowrap">{fmt(metrics.outputMtr)} MTR</span>
             </div>
           </div>
 
-          {/* Card 4: Mill Losses */}
-          <div className="rounded-xl bg-rose-50/50 p-3 border-2 border-rose-300/80 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+          {/* Card 3: Work Center Balance (Received - Production OK) */}
+          <div className="rounded-xl bg-amber-50/70 p-3.5 border-2 border-amber-400/90 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+            <div>
+              <div className="min-h-[2.25rem] flex flex-col justify-start">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 print:text-black">
+                  {cardConfig.c3Category}
+                </span>
+                <span className="text-xs font-black text-amber-950 print:text-black leading-tight">
+                  {cardConfig.c3Title}
+                </span>
+              </div>
+              <div className="my-2.5 flex items-baseline justify-between gap-1 flex-wrap">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg sm:text-xl font-black font-mono text-amber-950 tabular-nums">
+                    {fmt(feederMetrics.balancePcs, 0)}
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-800 uppercase">
+                    {selectedWc === 'BAND_SAW' ? 'M-PCS' : (selectedWc === 'VDI' || selectedWc === 'FINISHING' ? 'Cut PCS' : 'PCS')}
+                  </span>
+                </div>
+                <span className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-md font-mono bg-amber-100 text-amber-950 border border-amber-400 tabular-nums whitespace-nowrap shadow-2xs">
+                  <span className="text-xs sm:text-sm font-black">{fmt(feederMetrics.balanceMt)}</span>
+                  <span className="text-[10px] font-black uppercase text-amber-950">MT</span>
+                </span>
+              </div>
+            </div>
+            <div className="pt-2 border-t border-amber-200/80 flex items-center justify-between gap-1 text-[11px] font-mono text-amber-900 print:text-black">
+              <span className="whitespace-nowrap">Balance Queue</span>
+              <span className="font-bold text-amber-950 whitespace-nowrap">{fmt(feederMetrics.balanceMtr)} MTR</span>
+            </div>
+          </div>
+
+          {/* Card 4: Defects / Rejections Logged */}
+          <div className="rounded-xl bg-rose-50/70 p-3.5 border-2 border-rose-300 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 print:text-black">
@@ -1344,30 +1184,27 @@ export default function WorkCenterProductionReportClient() {
                   {cardConfig.c4Title}
                 </span>
               </div>
-              <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
+              <div className="my-2.5 flex items-baseline justify-between gap-1 flex-wrap">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-base sm:text-lg font-black font-mono text-rose-950 tabular-nums">
+                  <span className="text-lg sm:text-xl font-black font-mono text-rose-950 tabular-nums">
                     {fmt(metrics.rejPcs, 0)}
                   </span>
                   <span className="text-[10px] font-bold text-rose-700 uppercase">PCS</span>
                 </div>
-                <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-rose-100 text-rose-950 border border-rose-300 tabular-nums whitespace-nowrap shadow-2xs">
+                <span className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-md font-mono bg-rose-100 text-rose-950 border border-rose-300 tabular-nums whitespace-nowrap shadow-2xs">
                   <span className="text-xs sm:text-sm font-black">{fmt(metrics.rejMt)}</span>
                   <span className="text-[10px] font-black uppercase text-rose-900">MT</span>
                 </span>
               </div>
             </div>
-            <div className="pt-1.5 border-t border-rose-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-rose-800 print:text-black">
-              <span className="whitespace-nowrap">Loss Rate</span>
-              <span className="font-bold text-rose-950 whitespace-nowrap">
-                {fmt(metrics.rejRatePct, 1)}%{' '}
-                <span className="text-[10px] font-normal text-rose-700">({fmt(metrics.rejMtr)}m)</span>
-              </span>
+            <div className="pt-2 border-t border-rose-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-rose-800 print:text-black">
+              <span className="whitespace-nowrap">Scrap Length</span>
+              <span className="font-bold text-rose-950 whitespace-nowrap">{fmt(metrics.rejMtr)} MTR</span>
             </div>
           </div>
 
-          {/* Card 5: Net Accepted Prime Output */}
-          <div className="rounded-xl bg-emerald-50/50 p-3 border-2 border-emerald-300/80 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+          {/* Card 5: Efficiency / Station Yield */}
+          <div className="rounded-xl bg-emerald-50/70 p-3.5 border-2 border-emerald-300 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 print:text-black">
@@ -1377,160 +1214,121 @@ export default function WorkCenterProductionReportClient() {
                   {cardConfig.c5Title}
                 </span>
               </div>
-              <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-base sm:text-lg font-black font-mono text-emerald-950 tabular-nums">
-                    {fmt(metrics.primePcs, 0)}
-                  </span>
-                  <span className="text-[10px] font-bold text-emerald-700 uppercase">
-                    {selectedWc === 'BAND_SAW' || selectedWc === 'VDI' || selectedWc === 'FINISHING' ? 'Cut PCS' : 'PCS'}
-                  </span>
-                </div>
-                <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 tabular-nums whitespace-nowrap shadow-2xs">
-                  <span className="text-xs sm:text-sm font-black">{fmt(metrics.primeMt)}</span>
-                  <span className="text-[10px] font-black uppercase text-emerald-900">MT</span>
-                </span>
-              </div>
-            </div>
-            <div className="pt-1.5 border-t border-emerald-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-emerald-800 print:text-black">
-              <span className="whitespace-nowrap">
-                {selectedWc === 'ROLLING' ? 'HTC OK Length' : (selectedWc === 'VDI' ? 'Passed Length' : (selectedWc === 'BAND_SAW' ? 'Prime Cut Length' : 'Net Length'))}
-              </span>
-              <span className="font-bold text-emerald-950 whitespace-nowrap">
-                {fmt(metrics.primeMtr)} MTR
-              </span>
-            </div>
-          </div>
-
-          {/* Card 6: Efficiency / Station Yield */}
-          <div className="rounded-xl bg-indigo-50/50 p-3 border-2 border-indigo-300/80 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
-            <div>
-              <div className="min-h-[2.25rem] flex flex-col justify-start">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 print:text-black">
-                  {cardConfig.c6Category}
-                </span>
-                <span className="text-xs font-black text-indigo-950 print:text-black leading-tight">
-                  {cardConfig.c6Title}
-                </span>
-              </div>
-              <div className="my-2 flex items-baseline justify-between gap-1">
-                <span className="text-xl sm:text-2xl font-black text-indigo-950 font-mono tabular-nums print:text-black">
+              <div className="my-2.5 flex items-baseline justify-between gap-1">
+                <span className="text-xl sm:text-2xl font-black text-emerald-950 font-mono tabular-nums print:text-black">
                   {fmt(metrics.yieldPct, 1)}%
                 </span>
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-indigo-100 text-indigo-900 border border-indigo-300 tabular-nums whitespace-nowrap">
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 tabular-nums whitespace-nowrap">
                   Yield
                 </span>
               </div>
             </div>
-            <div className="pt-1.5 border-t border-indigo-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-slate-600 print:text-black">
-              <span className="whitespace-nowrap">Batches Logged</span>
-              <span className="font-bold text-indigo-950 whitespace-nowrap">{metrics.count}</span>
+            <div className="pt-2 border-t border-emerald-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-slate-700 print:text-black">
+              <span className="whitespace-nowrap">Entries Logged</span>
+              <span className="font-bold text-emerald-950 whitespace-nowrap">{metrics.count}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Production Log Detailed Table */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden print:border-black print:shadow-none">
+      {/* Production Log Detailed Table - Exclusively Production OK & Logged Details */}
+      <div className="rounded-xl border border-slate-300 bg-white shadow-xs overflow-hidden print:border-black print:shadow-none">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-100/90 font-bold uppercase tracking-wider text-slate-700 print:bg-slate-200 print:border-black print:text-black">
-                <th className="px-3 py-2.5 whitespace-nowrap">Date & Time</th>
-                <th className="px-3 py-2.5 whitespace-nowrap">Work Order #</th>
-                <th className="px-3 py-2.5">Customer & Grade</th>
-                <th className="px-3 py-2.5 whitespace-nowrap">Heat / Lot No</th>
-                <th className="px-3 py-2.5 whitespace-nowrap">Pipe Size (OD × WT)</th>
+              <tr className="border-b border-slate-300 bg-slate-100/95 font-bold uppercase tracking-wider text-slate-800 print:bg-slate-200 print:border-black print:text-black">
+                <th className="px-3 py-3 whitespace-nowrap">Date & Time</th>
+                <th className="px-3 py-3 whitespace-nowrap">Work Order #</th>
+                <th className="px-3 py-3">Customer & Grade</th>
+                <th className="px-3 py-3 whitespace-nowrap">Heat / Lot No</th>
+                <th className="px-3 py-3 whitespace-nowrap">Pipe Size (OD × WT)</th>
 
-                {/* Input Columns */}
-                <th className="px-3 py-2.5 text-right whitespace-nowrap bg-slate-200/70 text-slate-800 border-l border-slate-300">
-                  INPUT (PCS)
+                {/* Exclusive Production OK Columns */}
+                <th className="px-3 py-3 text-right whitespace-nowrap font-black text-blue-950 bg-blue-100/80 border-l border-blue-300 print:border-black print:bg-white print:text-black">
+                  PRODUCTION OK (PCS) ★
                 </th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap bg-slate-200/70 text-slate-800 border-r border-slate-300">
-                  INPUT (MTR)
+                <th className="px-3 py-3 text-right whitespace-nowrap font-black text-blue-950 bg-blue-100/80 border-r border-blue-200 print:border-black print:bg-white print:text-black">
+                  PRODUCTION OK (MTR)
                 </th>
-
-                {/* Primary Output Columns */}
-                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-indigo-950 bg-indigo-100/90 border-l border-indigo-300 print:border-black print:bg-white print:text-black">
-                  OUTPUT (PCS) ★
-                </th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-blue-950 bg-blue-100/90 border-r border-blue-200 print:border-black print:bg-white print:text-black">
-                  OUTPUT (MTR)
-                </th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap font-black text-emerald-950 bg-emerald-100/90 border-r border-emerald-300 print:border-black print:bg-white print:text-black">
+                <th className="px-3 py-3 text-right whitespace-nowrap font-black text-slate-950 bg-slate-200/90 border-r border-slate-300 print:border-black print:bg-white print:text-black">
                   WEIGHT (MT) ★
                 </th>
 
-                <th className="px-3 py-2.5 text-right whitespace-nowrap bg-rose-50 text-rose-900 border-r border-rose-200">Rej (Pcs / m)</th>
-                <th className="px-3 py-2.5 text-right whitespace-nowrap bg-emerald-50 text-emerald-900 border-r border-emerald-200">
-                  {selectedWc === 'ROLLING' ? 'HTC OK' : selectedWc === 'VDI' ? 'VDI OK (QC)' : 'Net Accepted'}
+                <th className="px-3 py-3 text-right whitespace-nowrap bg-rose-50 text-rose-900 border-r border-rose-200">
+                  Rejection Logged
                 </th>
-                <th className="px-3 py-2.5 text-center whitespace-nowrap">Yield %</th>
-                <th className="px-3 py-2.5">Operator Remarks</th>
+                <th className="px-3 py-3 text-center whitespace-nowrap">
+                  Yield %
+                </th>
+                <th className="px-3 py-3">
+                  Operator Remarks
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 print:divide-black">
               {loading ? (
                 <tr>
-                  <td colSpan={14} className="p-8 text-center text-slate-500">
+                  <td colSpan={11} className="p-8 text-center text-slate-500">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                     Loading shift production records...
                   </td>
                 </tr>
               ) : filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="p-8 text-center text-slate-500">
+                  <td colSpan={11} className="p-8 text-center text-slate-500">
                     No production entries logged for {activeWcConfig.label} during this time frame.
                   </td>
                 </tr>
               ) : (
                 filteredEntries.map((e) => {
-                  const netMtr = Math.max(e.output_mtr - e.rejection_mtr, 0);
-                  const netPcs = Math.max(e.output_pcs - e.rejection_pcs, 0);
-                  const entryYield =
-                    e.input_mtr > 0
-                      ? Math.min(100, Math.max(0, (netMtr / e.input_mtr) * 100))
-                      : e.output_mtr > 0
-                        ? Math.min(100, Math.max(0, (netMtr / e.output_mtr) * 100))
-                        : 100;
+                  const isRolling = e.stage_code === 'ROLLING' || selectedWc === 'ROLLING';
+                  const okPcs = isRolling && Number(e.htc_ok_pcs || 0) > 0 ? Number(e.htc_ok_pcs) : Number(e.output_pcs || 0);
+                  const okMtr = isRolling && Number(e.htc_ok_mtr || 0) > 0 ? Number(e.htc_ok_mtr) : Number(e.output_mtr || 0);
+                  const okMt = Number(e.output_mt || 0);
+                  const rejPcs = Number(e.rejection_pcs || 0);
+                  const rejMtr = Number(e.rejection_mtr || 0);
+                  const rejMt = Number(e.rejection_mt || 0);
+
+                  const totalPcs = okPcs + rejPcs;
+                  const entryYield = totalPcs > 0 ? Math.min(100, Math.max(0, (okPcs / totalPcs) * 100)) : 100;
 
                   return (
-                    <tr key={e.id} className="hover:bg-slate-50/50 print:text-black">
-                      <td className="px-3 py-2 font-mono whitespace-nowrap text-slate-800 print:text-black">
-                        <div>{e.process_date}</div>
-                        <div className="text-[10px] text-slate-400 print:text-black">
+                    <tr key={e.id} className="hover:bg-slate-50/60 transition-colors print:text-black">
+                      <td className="px-3 py-2.5 font-mono whitespace-nowrap text-slate-800 print:text-black">
+                        <div className="font-bold">{e.process_date}</div>
+                        <div className="text-[10px] text-slate-500 print:text-black">
                           {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </td>
 
-                      <td className="px-3 py-2 font-mono font-bold text-slate-900 whitespace-nowrap print:text-black">
+                      <td className="px-3 py-2.5 font-mono font-bold text-slate-900 whitespace-nowrap print:text-black">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <button
                             type="button"
                             onClick={() => setSearch(e.work_order_no)}
                             className="hover:underline hover:text-blue-600 text-left cursor-pointer transition-colors"
-                            title={`Click to dynamically filter all cards & records for ${e.work_order_no}`}
+                            title={`Click to filter for ${e.work_order_no}`}
                           >
                             {e.work_order_no}
                           </button>
                           {e.plan_no && (
-                            <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 border border-sky-200 text-sky-800 px-1.5 py-0.2 text-[9px] font-bold font-mono tracking-tight print:border print:border-black">
+                            <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 border border-sky-300 text-sky-800 px-1.5 py-0.2 text-[9px] font-bold font-mono tracking-tight print:border print:border-black">
                               PLAN: {e.plan_no}{e.revision_no && Number(e.revision_no) > 0 ? ` (R${e.revision_no})` : ''}
                             </span>
                           )}
                         </div>
                       </td>
 
-                      <td className="px-3 py-2 max-w-[170px] truncate">
-                        <div className="font-semibold text-slate-800 print:text-black">{e.customer_name || 'Standard Stock'}</div>
-                        <div className="text-[10px] font-mono text-slate-500 print:text-black">
-                          Grade: <span className="font-semibold text-slate-700">{e.grade || '—'}</span> · Route: {e.route_code}
+                      <td className="px-3 py-2.5 max-w-[180px] truncate">
+                        <div className="font-semibold text-slate-900 print:text-black">{e.customer_name || 'Standard Stock'}</div>
+                        <div className="text-[10px] font-mono text-slate-600 print:text-black">
+                          Grade: <span className="font-semibold text-slate-800">{e.grade || '—'}</span> · Route: {e.route_code}
                         </div>
                       </td>
 
-                      <td className="px-3 py-2 font-mono font-bold text-slate-800 whitespace-nowrap print:text-black">
+                      <td className="px-3 py-2.5 font-mono font-bold text-slate-800 whitespace-nowrap print:text-black">
                         {e.heat_lot_no ? (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-800 print:border print:border-black font-black">
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-900 border border-slate-200 print:border print:border-black font-black">
                             {e.heat_lot_no}
                           </span>
                         ) : (
@@ -1538,64 +1336,44 @@ export default function WorkCenterProductionReportClient() {
                         )}
                       </td>
 
-                      <td className="px-3 py-2 font-mono text-slate-700 whitespace-nowrap print:text-black">
+                      <td className="px-3 py-2.5 font-mono text-slate-800 whitespace-nowrap print:text-black font-semibold">
                         {e.od && e.wl ? `${fmt(e.od)} × ${fmt(e.wl)} mm` : '—'}
                       </td>
 
-                      {/* Input PCS */}
-                      <td className="px-3 py-2 text-right font-mono bg-slate-50/70 border-l border-slate-200 print:bg-white print:border-black">
-                        <span className="font-bold text-slate-800">{fmt(e.input_pcs, 0)}</span>
-                      </td>
-
-                      {/* Input MTR */}
-                      <td className="px-3 py-2 text-right font-mono text-slate-700 bg-slate-50/70 border-r border-slate-200 print:text-black">
-                        {fmt(e.input_mtr)}
-                      </td>
-
-                      {/* Primary Focus Cells: Output PCS (Highlighted, Bold) */}
-                      <td className="px-3 py-2 text-right font-mono bg-indigo-50/60 border-l border-indigo-200 print:bg-white print:border-black">
-                        <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-indigo-950 bg-indigo-100/90 border border-indigo-300 print:bg-white print:border-black print:text-black">
-                          {fmt(e.output_pcs, 0)}
+                      {/* Hero Output Cell: Production OK PCS (Highlighted, Bold) */}
+                      <td className="px-3 py-2.5 text-right font-mono bg-blue-50/50 border-l border-blue-200 print:bg-white print:border-black">
+                        <span className="inline-block px-2.5 py-1 rounded-md font-black text-xs sm:text-sm text-blue-950 bg-blue-100/90 border border-blue-300 print:bg-white print:border-black print:text-black shadow-2xs">
+                          {fmt(okPcs, 0)}
                         </span>
                       </td>
 
-                      {/* Output MTR */}
-                      <td className="px-3 py-2 text-right font-mono font-bold text-blue-700 print:text-black">
-                        {fmt(e.output_mtr)}
+                      {/* Production OK MTR */}
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-blue-900 print:text-black">
+                        {fmt(okMtr)}
                       </td>
 
-                      {/* Primary Focus Cells: Output MT (Highlighted, Bold) */}
-                      <td className="px-3 py-2 text-right font-mono bg-emerald-50/60 border-r border-emerald-200 print:bg-white print:border-black">
-                        <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-emerald-950 bg-emerald-100/90 border border-emerald-300 print:bg-white print:border-black print:text-black">
-                          {fmt(e.output_mt)}
+                      {/* Hero Output Cell: Production OK MT (Bold, Highlighted) */}
+                      <td className="px-3 py-2.5 text-right font-mono bg-slate-100/70 border-r border-slate-300 print:bg-white print:border-black">
+                        <span className="inline-block px-2.5 py-1 rounded-md font-black text-xs sm:text-sm text-slate-950 bg-slate-200/90 border border-slate-400 print:bg-white print:border-black print:text-black shadow-2xs">
+                          {fmt(okMt)} <span className="text-[10px] uppercase font-black text-slate-700 ml-0.5">MT</span>
                         </span>
                       </td>
 
-                      {/* Rejection */}
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-rose-600 bg-rose-50/30 border-r border-rose-100 print:text-black">
-                        {e.rejection_pcs > 0 || e.rejection_mtr > 0 ? (
+                      {/* Rejection Logged */}
+                      <td className="px-3 py-2.5 text-right font-mono font-semibold text-rose-700 bg-rose-50/30 border-r border-rose-100 print:text-black">
+                        {rejPcs > 0 || rejMt > 0 || rejMtr > 0 ? (
                           <span>
-                            {fmt(e.rejection_pcs, 0)} pcs ({fmt(e.rejection_mtr)}m)
+                            {fmt(rejPcs, 0)} pcs {rejMt > 0 ? `(${fmt(rejMt)} MT)` : `(${fmt(rejMtr)}m)`}
                           </span>
                         ) : (
-                          '0'
+                          <span className="text-slate-400 font-normal">—</span>
                         )}
                       </td>
 
-                      {/* HTC OK / VDI OK / Net Accepted */}
-                      <td className="px-3 py-2 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30 border-r border-emerald-100 print:text-black">
-                        {e.stage_code === 'ROLLING' || selectedWc === 'ROLLING' ? (
-                          <span>{fmt(e.htc_ok_pcs, 0)} pcs ({fmt(e.htc_ok_mtr)}m)</span>
-                        ) : selectedWc === 'VDI' || e.stage_code === 'VDI' ? (
-                          <span>{fmt(e.output_pcs, 0)} pcs ({fmt(e.output_mtr)}m)</span>
-                        ) : (
-                          <span>{fmt(netPcs, 0)} pcs ({fmt(netMtr)}m)</span>
-                        )}
-                      </td>
-
-                      <td className="px-3 py-2 text-center font-mono font-bold print:text-black">
+                      {/* Yield % */}
+                      <td className="px-3 py-2.5 text-center font-mono font-bold print:text-black">
                         <span
-                          className={`rounded px-1.5 py-0.2 text-[11px] ${entryYield >= 90
+                          className={`rounded px-1.5 py-0.5 text-[11px] ${entryYield >= 90
                               ? 'bg-emerald-100 text-emerald-800'
                               : entryYield >= 80
                                 ? 'bg-amber-100 text-amber-800'
@@ -1606,7 +1384,7 @@ export default function WorkCenterProductionReportClient() {
                         </span>
                       </td>
 
-                      <td className="px-3 py-2 text-slate-600 max-w-[180px] truncate text-xs print:text-black">
+                      <td className="px-3 py-2.5 text-slate-600 max-w-[200px] truncate text-xs print:text-black">
                         {e.remarks || '—'}
                       </td>
                     </tr>
@@ -1618,27 +1396,22 @@ export default function WorkCenterProductionReportClient() {
         </div>
 
         {/* Table Summary Footer with highlighted PCS and MT */}
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 print:bg-slate-100 print:border-black gap-2">
+        <div className="border-t-2 border-slate-300 bg-slate-50 px-4 py-3 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 print:bg-slate-100 print:border-black gap-2">
           <div>
-            Total Shift Logs: <span className="font-mono">{filteredEntries.length}</span> entries
+            Total Production Logs: <span className="font-mono font-black text-slate-950">{filteredEntries.length}</span> records
           </div>
           <div className="flex flex-wrap items-center gap-3 font-mono">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-100 text-indigo-950 font-black text-xs sm:text-sm border border-indigo-300 print:border-black print:bg-white print:text-black">
-              {selectedWc === 'FINISHING'
-                ? `ACCEPTED: ${fmt(Math.max(metrics.outputPcs - metrics.rejPcs, 0), 0)} PCS`
-                : `TOTAL: ${fmt(metrics.outputPcs, 0)} PCS`}
+            <span className="inline-flex items-center px-3 py-1 rounded-md bg-blue-100 text-blue-950 font-black text-xs sm:text-sm border border-blue-400 shadow-2xs">
+              TOTAL OK: {fmt(metrics.outputPcs, 0)} PCS
             </span>
-            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-950 font-black text-xs sm:text-sm border border-emerald-300 print:border-black print:bg-white print:text-black">
-              {selectedWc === 'FINISHING'
-                ? `NET: ${fmt(metrics.netMt)} MT`
-                : `TOTAL: ${fmt(metrics.outputMt)} MT`}
+            <span className="inline-flex items-center px-3 py-1 rounded-md bg-slate-200 text-slate-950 font-black text-xs sm:text-sm border border-slate-400 shadow-2xs">
+              TOTAL OK: {fmt(metrics.outputMt)} MT
             </span>
-            <span className="text-blue-700 font-semibold">Gross: {fmt(metrics.outputMtr)} MTR</span>
-            <span className="text-rose-600 font-semibold">Rej: {fmt(metrics.rejMtr)} MTR</span>
-            <span className="text-emerald-700 font-semibold">
-              {selectedWc === 'FINISHING' ? 'VDI Accepted' : 'Prime'}: {fmt(metrics.netMtr)} MTR
-            </span>
-            <span className="text-indigo-700 font-semibold">Yield: {fmt(metrics.yieldPct, 1)}%</span>
+            <span className="text-blue-900 font-black">Length: {fmt(metrics.outputMtr)} MTR</span>
+            {metrics.rejPcs > 0 || metrics.rejMt > 0 ? (
+              <span className="text-rose-700 font-bold">Rej: {fmt(metrics.rejPcs, 0)} PCS ({fmt(metrics.rejMt)} MT)</span>
+            ) : null}
+            <span className="text-emerald-800 font-black">Yield: {fmt(metrics.yieldPct, 1)}%</span>
           </div>
         </div>
       </div>
