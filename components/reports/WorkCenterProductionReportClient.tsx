@@ -724,6 +724,132 @@ export default function WorkCenterProductionReportClient() {
     return WORK_CENTERS.find((w) => w.code === selectedWc) || WORK_CENTERS[0];
   }, [selectedWc]);
 
+  const cardConfig = useMemo(() => {
+    switch (selectedWc) {
+      case 'ROLLING':
+        return {
+          c1Category: 'Feeder Plan',
+          c1Title: 'PPC Rolling Plan',
+          c2Category: 'Station Queue',
+          c2Title: 'Pending to Roll',
+          c3Category: 'Period Output',
+          c3Title: 'Rolled Gross',
+          c4Category: 'Mill Losses',
+          c4Title: 'Rolling Scrap & Rej',
+          c5Category: 'Accepted Yield',
+          c5Title: 'HTC OK Hollows',
+          c6Category: 'Performance',
+          c6Title: 'Rolling Yield',
+        };
+      case 'HOLLOW_HEAT_TREATMENT':
+        return {
+          c1Category: 'Received from',
+          c1Title: 'Rolling HTC Output',
+          c2Category: 'Furnace Queue',
+          c2Title: 'Pending Heat Soak',
+          c3Category: 'Period Output',
+          c3Title: 'Furnace Output',
+          c4Category: 'Thermal Losses',
+          c4Title: 'HT Scale & Rejection',
+          c5Category: 'Accepted Yield',
+          c5Title: 'Heat Treated OK',
+          c6Category: 'Performance',
+          c6Title: 'Furnace Yield',
+        };
+      case 'DRAW':
+        return {
+          c1Category: 'Received from',
+          c1Title: 'Drawn Feed Stock',
+          c2Category: 'Bench Queue',
+          c2Title: 'Pending Cold Draw',
+          c3Category: 'Period Output',
+          c3Title: 'Drawn Gross Output',
+          c4Category: 'Drawing Losses',
+          c4Title: 'Point / Breakage Scrap',
+          c5Category: 'Accepted Yield',
+          c5Title: 'Drawn Prime Passed',
+          c6Category: 'Performance',
+          c6Title: 'Drawing Yield',
+        };
+      case 'HEAT_TREATMENT':
+        return {
+          c1Category: 'Received from',
+          c1Title: 'Drawn Mother Pipes',
+          c2Category: 'Furnace Queue',
+          c2Title: 'Pending Final Temper',
+          c3Category: 'Period Output',
+          c3Title: 'Treated Gross',
+          c4Category: 'Thermal Losses',
+          c4Title: 'HT Distortion & Rej',
+          c5Category: 'Accepted Yield',
+          c5Title: 'Metallurgical OK',
+          c6Category: 'Performance',
+          c6Title: 'HT Furnace Yield',
+        };
+      case 'BAND_SAW':
+        return {
+          c1Category: 'Received from',
+          c1Title: 'Incoming Mother Pipes',
+          c2Category: 'Saw Queue',
+          c2Title: 'Pipes Pending Cut',
+          c3Category: 'Period Output',
+          c3Title: 'Cut Output (Cut Nos)',
+          c4Category: 'Cutting Scrap',
+          c4Title: 'Offcuts & <3m Scrap',
+          c5Category: 'Accepted Yield',
+          c5Title: 'Prime Cut Pieces',
+          c6Category: 'Performance',
+          c6Title: 'Saw Recovery',
+        };
+      case 'VDI':
+        return {
+          c1Category: 'Received from',
+          c1Title: 'Saw Cut Pieces',
+          c2Category: 'Inspection Queue',
+          c2Title: 'Pending VDI / QC',
+          c3Category: 'Period Output',
+          c3Title: 'Total Inspected',
+          c4Category: 'QC Losses',
+          c4Title: 'Surface & Dim Rejections',
+          c5Category: 'Accepted Yield',
+          c5Title: 'VDI Passed OK',
+          c6Category: 'Performance',
+          c6Title: 'First Pass Yield',
+        };
+      case 'FINISHING':
+        return {
+          c1Category: 'Received from',
+          c1Title: 'VDI Passed Pieces',
+          c2Category: 'Bundling Queue',
+          c2Title: 'Pipes Pending Bundling',
+          c3Category: 'Period Output',
+          c3Title: 'Gross Bundled',
+          c4Category: 'Handling Losses',
+          c4Title: 'Transit & Packing Scrap',
+          c5Category: 'Accepted Yield',
+          c5Title: 'Ready for Dispatch',
+          c6Category: 'Performance',
+          c6Title: 'Bundling Yield',
+        };
+      case 'ALL':
+      default:
+        return {
+          c1Category: 'Plant Input',
+          c1Title: 'Authorized Feeder Target',
+          c2Category: 'Pipeline WIP',
+          c2Title: 'Total Active WIP',
+          c3Category: 'Plant Output',
+          c3Title: 'Gross Throughput',
+          c4Category: 'Plant Losses',
+          c4Title: 'Combined Mill Scrap',
+          c5Category: 'Prime Output',
+          c5Title: 'Total Prime Accepted',
+          c6Category: 'Performance',
+          c6Title: 'Plant-wide Yield',
+        };
+    }
+  }, [selectedWc]);
+
   const setQuickDate = (preset: 'today' | 'yesterday' | '7days' | 'month') => {
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
@@ -1052,20 +1178,20 @@ export default function WorkCenterProductionReportClient() {
           </div>
         )}
 
-        {/* Tailored Station KPI Summary Cards - Main focus on PCS and MT */}
+        {/* Tailored Station KPI Summary Cards - Main focus on PCS and Bold MT */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6 border-t border-slate-100 pt-4 print:grid-cols-6 print:gap-2 print:border-black print:pt-2">
-          {/* Card 1: Received from <Last Work Center Name> */}
-          <div className="rounded-xl bg-slate-50 p-3 border-2 border-slate-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+          {/* Card 1: Feeder / Incoming Plan */}
+          <div className="rounded-xl bg-slate-50/80 p-3 border-2 border-slate-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 print:text-black">
-                  Received from
+                  {cardConfig.c1Category}
                 </span>
                 <span
                   className="text-xs font-black text-slate-800 print:text-black leading-tight break-words"
-                  title={feederMetrics.lastWcName}
+                  title={cardConfig.c1Title}
                 >
-                  {feederMetrics.lastWcName}
+                  {cardConfig.c1Title}
                 </span>
               </div>
               <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
@@ -1075,8 +1201,9 @@ export default function WorkCenterProductionReportClient() {
                   </span>
                   <span className="text-[10px] font-bold text-slate-500 uppercase">PCS</span>
                 </div>
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 tabular-nums whitespace-nowrap">
-                  {fmt(feederMetrics.receivedMt)} MT
+                <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-slate-200/80 text-slate-950 border border-slate-300 tabular-nums whitespace-nowrap shadow-2xs">
+                  <span className="text-xs sm:text-sm font-black">{fmt(feederMetrics.receivedMt)}</span>
+                  <span className="text-[10px] font-black uppercase text-slate-900">MT</span>
                 </span>
               </div>
             </div>
@@ -1086,15 +1213,15 @@ export default function WorkCenterProductionReportClient() {
             </div>
           </div>
 
-          {/* Card 2: Balance for Production */}
-          <div className="rounded-xl bg-amber-50/50 p-3 border-2 border-amber-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+          {/* Card 2: Station Queue / Balance */}
+          <div className="rounded-xl bg-amber-50/60 p-3 border-2 border-amber-300/80 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 print:text-black">
-                  Station Queue
+                  {cardConfig.c2Category}
                 </span>
                 <span className="text-xs font-black text-amber-950 print:text-black leading-tight">
-                  Balance for Production
+                  {cardConfig.c2Title}
                 </span>
               </div>
               <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
@@ -1104,8 +1231,9 @@ export default function WorkCenterProductionReportClient() {
                   </span>
                   <span className="text-[10px] font-bold text-amber-700 uppercase">PCS</span>
                 </div>
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 tabular-nums whitespace-nowrap">
-                  {fmt(feederMetrics.balanceMt)} MT
+                <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-amber-100 text-amber-950 border border-amber-300 tabular-nums whitespace-nowrap shadow-2xs">
+                  <span className="text-xs sm:text-sm font-black">{fmt(feederMetrics.balanceMt)}</span>
+                  <span className="text-[10px] font-black uppercase text-amber-900">MT</span>
                 </span>
               </div>
             </div>
@@ -1115,15 +1243,15 @@ export default function WorkCenterProductionReportClient() {
             </div>
           </div>
 
-          {/* Card 3: Gross Output */}
-          <div className="rounded-xl bg-blue-50/40 p-3 border-2 border-blue-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+          {/* Card 3: Period Gross Output */}
+          <div className="rounded-xl bg-blue-50/50 p-3 border-2 border-blue-300/80 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 print:text-black">
-                  Period Output
+                  {cardConfig.c3Category}
                 </span>
                 <span className="text-xs font-black text-blue-950 print:text-black leading-tight">
-                  Gross Output
+                  {cardConfig.c3Title}
                 </span>
               </div>
               <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
@@ -1133,8 +1261,9 @@ export default function WorkCenterProductionReportClient() {
                   </span>
                   <span className="text-[10px] font-bold text-blue-700 uppercase">PCS</span>
                 </div>
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 tabular-nums whitespace-nowrap">
-                  {fmt(metrics.outputMt)} MT
+                <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-blue-100 text-blue-950 border border-blue-300 tabular-nums whitespace-nowrap shadow-2xs">
+                  <span className="text-xs sm:text-sm font-black">{fmt(metrics.outputMt)}</span>
+                  <span className="text-[10px] font-black uppercase text-blue-900">MT</span>
                 </span>
               </div>
             </div>
@@ -1144,15 +1273,15 @@ export default function WorkCenterProductionReportClient() {
             </div>
           </div>
 
-          {/* Card 4: Scrap & Rejection */}
-          <div className="rounded-xl bg-rose-50/40 p-3 border-2 border-rose-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+          {/* Card 4: Mill Losses */}
+          <div className="rounded-xl bg-rose-50/50 p-3 border-2 border-rose-300/80 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 print:text-black">
-                  Mill Losses
+                  {cardConfig.c4Category}
                 </span>
                 <span className="text-xs font-black text-rose-950 print:text-black leading-tight">
-                  Scrap & Rejection
+                  {cardConfig.c4Title}
                 </span>
               </div>
               <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
@@ -1162,8 +1291,9 @@ export default function WorkCenterProductionReportClient() {
                   </span>
                   <span className="text-[10px] font-bold text-rose-700 uppercase">PCS</span>
                 </div>
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-rose-100 text-rose-900 border border-rose-300 tabular-nums whitespace-nowrap">
-                  {fmt(metrics.rejMt)} MT
+                <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-rose-100 text-rose-950 border border-rose-300 tabular-nums whitespace-nowrap shadow-2xs">
+                  <span className="text-xs sm:text-sm font-black">{fmt(metrics.rejMt)}</span>
+                  <span className="text-[10px] font-black uppercase text-rose-900">MT</span>
                 </span>
               </div>
             </div>
@@ -1176,19 +1306,15 @@ export default function WorkCenterProductionReportClient() {
             </div>
           </div>
 
-          {/* Card 5: Prime / Net Accepted / HTC OK */}
-          <div className="rounded-xl bg-emerald-50/40 p-3 border-2 border-emerald-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+          {/* Card 5: Net Accepted Prime Output */}
+          <div className="rounded-xl bg-emerald-50/50 p-3 border-2 border-emerald-300/80 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 print:text-black">
-                  Accepted Yield
+                  {cardConfig.c5Category}
                 </span>
                 <span className="text-xs font-black text-emerald-950 print:text-black leading-tight">
-                  {selectedWc === 'ROLLING'
-                    ? 'HTC OK Output'
-                    : selectedWc === 'FINISHING'
-                      ? 'VDI HT OK Output'
-                      : 'Prime / Net Accepted'}
+                  {cardConfig.c5Title}
                 </span>
               </div>
               <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
@@ -1198,8 +1324,9 @@ export default function WorkCenterProductionReportClient() {
                   </span>
                   <span className="text-[10px] font-bold text-emerald-700 uppercase">PCS</span>
                 </div>
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-100 text-emerald-900 border border-emerald-300 tabular-nums whitespace-nowrap">
-                  {fmt(metrics.netMt)} MT
+                <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 tabular-nums whitespace-nowrap shadow-2xs">
+                  <span className="text-xs sm:text-sm font-black">{fmt(metrics.netMt)}</span>
+                  <span className="text-[10px] font-black uppercase text-emerald-900">MT</span>
                 </span>
               </div>
             </div>
@@ -1211,15 +1338,15 @@ export default function WorkCenterProductionReportClient() {
             </div>
           </div>
 
-          {/* Card 6: Station Yield Efficiency */}
-          <div className="rounded-xl bg-indigo-50/40 p-3 border-2 border-indigo-200 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
+          {/* Card 6: Efficiency / Station Yield */}
+          <div className="rounded-xl bg-indigo-50/50 p-3 border-2 border-indigo-300/80 print:bg-white print:border-black shadow-2xs flex flex-col justify-between min-w-0">
             <div>
               <div className="min-h-[2.25rem] flex flex-col justify-start">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 print:text-black">
-                  Performance
+                  {cardConfig.c6Category}
                 </span>
                 <span className="text-xs font-black text-indigo-950 print:text-black leading-tight">
-                  Station Yield
+                  {cardConfig.c6Title}
                 </span>
               </div>
               <div className="my-2 flex items-baseline justify-between gap-1">
