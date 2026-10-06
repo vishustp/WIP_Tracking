@@ -8,12 +8,7 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
   Tooltip,
-  CartesianGrid,
 } from 'recharts';
 import {
   Layers,
@@ -153,6 +148,24 @@ export type TrendDataPoint = {
   finishing: number;
 };
 
+export type YesterdayStation = {
+  code: string;
+  name: string;
+  shortName: string;
+  pcs: number;
+  mt: number;
+  mtr: number;
+};
+
+export type YesterdayProductionData = {
+  date: string;
+  formattedDate: string;
+  totalPcs: number;
+  totalMt: number;
+  totalMtr: number;
+  stations: YesterdayStation[];
+};
+
 interface Props {
   kpi: KPI | null;
   wip: WIPRow[];
@@ -160,6 +173,7 @@ interface Props {
   recentProduction?: RecentProductionItem[];
   agingData?: AgingItem[];
   trendData?: TrendDataPoint[];
+  yesterdayProduction?: YesterdayProductionData;
 }
 
 // 6 Real Canonical Post-Rolling WIP Work Centers (Rolling is feeder stage, WIP can't be at Rolling)
@@ -172,7 +186,15 @@ const CANONICAL_WIP_WORK_CENTERS = [
   { code: 'FINISHING', name: 'Finishing', fullName: 'Finishing & Dispatch', icon: CheckCircle2, color: '#06b6d4', badgeBg: 'bg-cyan-50/90 border-cyan-200 text-cyan-900' },
 ];
 
-export default function DashboardClient({ kpi, wip, pending, recentProduction = [], agingData = [], trendData = [] }: Props) {
+export default function DashboardClient({
+  kpi,
+  wip,
+  pending,
+  recentProduction = [],
+  agingData = [],
+  trendData = [],
+  yesterdayProduction,
+}: Props) {
   const [localPriorities, setLocalPriorities] = useState<Record<string, PriorityItem>>({});
 
   useEffect(() => {
@@ -661,46 +683,102 @@ export default function DashboardClient({ kpi, wip, pending, recentProduction = 
           </div>
         </div>
 
-        {/* Col 2: Stage-wise Trend Last 7 Days (5 cols) */}
+        {/* Col 2: Yesterday's Production Station-wise (5 cols) */}
         <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4 flex flex-col justify-between">
           <div>
-            <h3 className="text-sm font-bold text-slate-900 tracking-tight">Stage-wise Trend (Last 7 Days)</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Daily finished output progression across project work centers</p>
-          </div>
-
-          <div className="h-44 w-full my-2">
-            {trendData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trendData} margin={{ top: 8, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: '8px', fontSize: '11px', border: '1px solid #e2e8f0' }}
-                    formatter={(v: any, n: any) => [`${formatNum(v, 1)} MT`, n]}
-                  />
-                  <Line type="monotone" dataKey="hollowHt" name="Hollow HT" stroke="#f97316" strokeWidth={2} dot={{ r: 2.5 }} />
-                  <Line type="monotone" dataKey="draw" name="Draw" stroke="#3b82f6" strokeWidth={2} dot={{ r: 2.5 }} />
-                  <Line type="monotone" dataKey="heatTreatment" name="Heat Treatment" stroke="#10b981" strokeWidth={2} dot={{ r: 2.5 }} />
-                  <Line type="monotone" dataKey="bandSaw" name="Bandsaw" stroke="#eab308" strokeWidth={2} dot={{ r: 2.5 }} />
-                  <Line type="monotone" dataKey="finishing" name="Finishing" stroke="#06b6d4" strokeWidth={2} dot={{ r: 2.5 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-200 rounded-lg">
-                <Factory className="h-8 w-8 text-slate-300 mb-1" />
-                <span className="text-xs font-semibold text-slate-600">No output logs recorded in past 7 days</span>
-                <span className="text-[11px] text-slate-400">Production activity will plot automatically</span>
+            <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-900 tracking-tight">Yesterday&apos;s Production</h3>
+                  <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 font-mono">
+                    <Calendar className="h-2.5 w-2.5 text-slate-500" />
+                    {yesterdayProduction?.formattedDate || 'Yesterday'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">Station-wise output in Nos and Metric Tonnes</p>
               </div>
-            )}
+              <div className="text-right shrink-0">
+                <div className="text-[11px] font-semibold text-slate-500 font-mono">
+                  {formatNum(yesterdayProduction?.totalPcs || 0)} <span className="text-[10px] uppercase font-bold text-slate-400">Nos</span>
+                </div>
+                <div className="text-sm font-black font-mono text-slate-950 bg-slate-100/90 px-2.5 py-0.5 rounded border border-slate-200 inline-block mt-0.5">
+                  {formatNum(yesterdayProduction?.totalMt || 0, 2)} <span className="font-black text-slate-900">MT</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Station-wise Rows */}
+            <div className="mt-2 space-y-1">
+              {(yesterdayProduction?.stations || []).map((station) => {
+                const colorMap: Record<string, string> = {
+                  ROLLING: '#6366f1',
+                  HOLLOW_HEAT_TREATMENT: '#f97316',
+                  DRAW: '#3b82f6',
+                  HEAT_TREATMENT: '#10b981',
+                  BAND_SAW: '#eab308',
+                  VDI: '#8b5cf6',
+                  FINISHING: '#06b6d4',
+                };
+                const stColor = colorMap[station.code] || '#64748b';
+                const hasProd = station.pcs > 0 || station.mt > 0;
+
+                return (
+                  <Link
+                    key={station.code}
+                    href={`/reports/production?wc=${station.code}`}
+                    className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg border transition-all ${
+                      hasProd
+                        ? 'bg-slate-50/60 border-slate-200/80 hover:bg-blue-50/50 hover:border-blue-200'
+                        : 'bg-white border-slate-100 hover:bg-slate-50 hover:border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full shrink-0 shadow-2xs"
+                        style={{ backgroundColor: stColor }}
+                      />
+                      <span className="text-xs font-bold text-slate-800 group-hover:text-blue-700 truncate">
+                        {station.shortName || station.name}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-4 shrink-0 font-mono">
+                      <div className="text-right min-w-[65px]">
+                        <span className={`text-xs ${hasProd ? 'font-semibold text-slate-700' : 'text-slate-400 font-normal'}`}>
+                          {formatNum(station.pcs)}
+                        </span>
+                        <span className="text-[10px] text-slate-400 ml-1">Nos</span>
+                      </div>
+
+                      <div className="text-right min-w-[85px]">
+                        <span className={`text-xs font-black font-mono tracking-tight ${hasProd ? 'text-slate-950' : 'text-slate-400'}`}>
+                          {formatNum(station.mt, 2)}
+                        </span>
+                        <span className={`text-[11px] font-black ml-1 ${hasProd ? 'text-slate-900' : 'text-slate-400'}`}>
+                          MT
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-center gap-4 text-[11px] font-semibold text-slate-600 flex-wrap">
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#f97316]" />Hollow HT</span>
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#3b82f6]" />Draw</span>
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#10b981]" />Heat Treatment</span>
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#eab308]" />Bandsaw</span>
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#06b6d4]" />Finishing</span>
+          {/* Footer */}
+          <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>
+              Active Yesterday:{' '}
+              <strong className="text-slate-800">
+                {(yesterdayProduction?.stations || []).filter((s) => s.pcs > 0 || s.mt > 0).length} of {(yesterdayProduction?.stations || []).length || 7} Stations
+              </strong>
+            </span>
+            <Link
+              href="/reports/production"
+              className="font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
+            >
+              Production Report <ArrowRight className="h-3 w-3" />
+            </Link>
           </div>
         </div>
 

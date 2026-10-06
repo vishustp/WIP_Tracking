@@ -13,6 +13,7 @@ export default async function Dashboard() {
   let recentProduction: any[] = [];
   let agingData: any[] = [];
   let trendData: any[] = [];
+  let yesterdayProduction: any = null;
 
   try {
     const supabase = await createClient();
@@ -476,6 +477,141 @@ export default async function Dashboard() {
       };
     });
 
+    // Calculate Yesterday's Production strictly station-wise in Nos and MT
+    const nowUtc = new Date();
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(nowUtc.getTime() + (nowUtc.getTimezoneOffset() * 60 * 1000) + istOffsetMs);
+    const istYesterday = new Date(istNow);
+    istYesterday.setDate(istYesterday.getDate() - 1);
+
+    const yYear = istYesterday.getFullYear();
+    const yMonth = String(istYesterday.getMonth() + 1).padStart(2, '0');
+    const yDay = String(istYesterday.getDate()).padStart(2, '0');
+    const yesterdayDateStr = `${yYear}-${yMonth}-${yDay}`;
+    const yesterdayDateLabel = istYesterday.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    const localYesterday = new Date(nowUtc);
+    localYesterday.setDate(localYesterday.getDate() - 1);
+    const localYesterdayStr = `${localYesterday.getFullYear()}-${String(localYesterday.getMonth() + 1).padStart(2, '0')}-${String(localYesterday.getDate()).padStart(2, '0')}`;
+    const utcYesterdayStr = localYesterday.toISOString().slice(0, 10);
+
+    const stationsConfig = [
+      { code: 'ROLLING', name: 'Hot Rolling', shortName: 'Rolling' },
+      { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow Heat Treatment', shortName: 'Hollow HT' },
+      { code: 'DRAW', name: 'Cold Draw Bench', shortName: 'Draw' },
+      { code: 'HEAT_TREATMENT', name: 'Final Heat Treatment', shortName: 'Heat Treatment' },
+      { code: 'BAND_SAW', name: 'Band Saw Cutting', shortName: 'Band Saw' },
+      { code: 'VDI', name: 'VDI / QC Inspection', shortName: 'VDI' },
+      { code: 'FINISHING', name: 'Finishing & Bundling', shortName: 'Finishing' },
+    ];
+
+    const yesterdayStationMap = new Map(
+      stationsConfig.map((s) => [s.code, { ...s, pcs: 0, mt: 0, mtr: 0 }])
+    );
+
+    const yesterdayLogs = productionLogs.filter((pl) => {
+      const logDate = pl.process_date
+        ? String(pl.process_date).slice(0, 10)
+        : pl.created_at
+        ? String(pl.created_at).slice(0, 10)
+        : '';
+      return logDate === yesterdayDateStr || logDate === localYesterdayStr || logDate === utcYesterdayStr;
+    });
+
+    for (const pl of yesterdayLogs) {
+      const rawCode = (pl.process_stages?.stage_code || pl.stage_code || '').toUpperCase();
+      let code = '';
+      if (rawCode.includes('ROLL')) code = 'ROLLING';
+      else if (rawCode.includes('HOLLOW') || rawCode === 'HTC') code = 'HOLLOW_HEAT_TREATMENT';
+      else if (rawCode.includes('DRAW') || rawCode.includes('PILGER')) code = 'DRAW';
+      else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') code = 'HEAT_TREATMENT';
+      else if (rawCode.includes('SAW') || rawCode.includes('CUT')) code = 'BAND_SAW';
+      else if (rawCode.includes('VDI') || rawCode.includes('QC')) code = 'VDI';
+      else if (rawCode.includes('FINISH')) code = 'FINISHING';
+
+      const targetSt = yesterdayStationMap.get(code);
+      if (!targetSt) continue;
+
+      const wo = woMap.get(pl.work_order_id);
+      const planMh = hierarchyMaps.mhMap.get(pl.work_order_id) || hierarchyMaps.mhMap.get(String(wo?.work_order_no).trim());
+      const isRolling = code === 'ROLLING';
+      const isDraw = code === 'DRAW';
+      const od = isRolling && planMh?.mh_od ? Number(planMh.mh_od) : Number(wo?.size_od || 0);
+      const wt = isRolling && planMh?.mh_wt ? Number(planMh.mh_wt) : Number(wo?.size_wt || 0);
+      const outMtr = Number(pl.output_qty || 0);
+      let outMt = od > 0 && wt > 0 ? mtFromMtr(outMtr, od, wt) : 0;
+      const { pcs: pPcs } = extractPcsFromRemarks(pl.remarks);
+      const avgLen = isRolling
+        ? Number(planMh?.mh_avg_length || 4.49)
+        : Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : wo?.l1 || 6.0);
+      const calcPcs = pPcs !== null && pPcs > 0 ? pPcs : (outMtr > 0 && avgLen > 0 ? Math.round(outMtr / avgLen) : 0);
+
+      // Mass conservation for cold drawing (AGENTS.md Rule 3)
+      if (isDraw && planMh?.mh_od && planMh?.mh_wt) {
+        const mhLen = Number(planMh.mh_avg_length || (planMh.mh_l1 && planMh.mh_l2 ? (Number(planMh.mh_l1) + Number(planMh.mh_l2)) / 2 : planMh.mh_l1 || 4.49));
+        if (calcPcs > 0 && mhLen > 0) {
+          const drawnConservedMt = mtFromMtr(calcPcs * mhLen, Number(planMh.mh_od), Number(planMh.mh_wt));
+          if (drawnConservedMt > outMt) {
+            outMt = drawnConservedMt;
+          }
+        }
+      }
+
+      targetSt.pcs += calcPcs;
+      targetSt.mt += outMt;
+      targetSt.mtr += outMtr;
+    }
+
+    // Also reconcile VDI inspections if recorded in qc_inspections
+    const vdiSt = yesterdayStationMap.get('VDI');
+    if (vdiSt) {
+      let qcOkPcs = 0;
+      let qcOkMt = 0;
+      let qcOkMtr = 0;
+      for (const qc of qcInspections) {
+        const qDate = qc.inspection_date ? String(qc.inspection_date).slice(0, 10) : '';
+        if (qDate === yesterdayDateStr || qDate === localYesterdayStr || qDate === utcYesterdayStr) {
+          qcOkPcs += Number(qc.vdi_ok_pcs || 0);
+          qcOkMtr += Number(qc.vdi_ok_mtr || 0);
+          if (qc.vdi_ok_mt) {
+            qcOkMt += Number(qc.vdi_ok_mt);
+          } else {
+            const wo = woMap.get(qc.work_order_id);
+            if (wo?.size_od && wo?.size_wt) {
+              qcOkMt += mtFromMtr(Number(qc.vdi_ok_mtr || 0), Number(wo.size_od), Number(wo.size_wt));
+            }
+          }
+        }
+      }
+      if (qcOkPcs > vdiSt.pcs || qcOkMt > vdiSt.mt) {
+        vdiSt.pcs = Math.max(vdiSt.pcs, qcOkPcs);
+        vdiSt.mt = Math.max(vdiSt.mt, qcOkMt);
+        vdiSt.mtr = Math.max(vdiSt.mtr, qcOkMtr);
+      }
+    }
+
+    const stationsList = Array.from(yesterdayStationMap.values()).map((s) => ({
+      code: s.code,
+      name: s.name,
+      shortName: s.shortName,
+      pcs: s.pcs,
+      mt: Number(s.mt.toFixed(2)),
+      mtr: Number(s.mtr.toFixed(1)),
+    }));
+
+    const yesterdayTotalPcs = stationsList.reduce((acc, s) => acc + s.pcs, 0);
+    const yesterdayTotalMt = Number(stationsList.reduce((acc, s) => acc + s.mt, 0).toFixed(2));
+    const yesterdayTotalMtr = Number(stationsList.reduce((acc, s) => acc + s.mtr, 0).toFixed(1));
+
+    yesterdayProduction = {
+      date: yesterdayDateStr,
+      formattedDate: yesterdayDateLabel,
+      totalPcs: yesterdayTotalPcs,
+      totalMt: yesterdayTotalMt,
+      totalMtr: yesterdayTotalMtr,
+      stations: stationsList,
+    };
+
   } catch (err) {
     console.warn('[Dashboard] Supabase query failed:', err);
   }
@@ -488,6 +624,7 @@ export default async function Dashboard() {
       recentProduction={recentProduction}
       agingData={agingData}
       trendData={trendData}
+      yesterdayProduction={yesterdayProduction}
     />
   );
 }
