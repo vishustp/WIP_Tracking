@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { ProductionEntry, StageCode } from '@/types';
-import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
+import { mtFromMtr, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 import { toast } from 'sonner';
 
 interface WorkCenterTabConfig {
@@ -314,34 +314,52 @@ export default function WorkCenterProductionReportClient() {
           }
         }
 
-        const isMhStage = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOLLOW_HEAT_TREATMENT' || (e.stage_code || '').toUpperCase() === 'DRAW';
+        const isMhStage = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOLLOW_HEAT_TREATMENT';
         const mhInfo = plan?.mh_od ? plan : (effectiveWoId ? planMhMap.get(effectiveWoId) : null) || (e.work_order_no ? planMhMap.get(String(e.work_order_no).trim()) : null);
         const effAvgLen = isMhStage
           ? (plan?.mh_l1 && plan?.mh_l2 ? (Number(plan.mh_l1) + Number(plan.mh_l2)) / 2 : Number(plan?.mh_l1 || plan?.mh_l2 || mhInfo?.mh_l1 || mhInfo?.mh_l2 || 6.0))
           : (woInfo?.l1 && woInfo?.l2 ? (Number(woInfo.l1) + Number(woInfo.l2)) / 2 : Number(woInfo?.l1 || woInfo?.l2 || 6.0));
 
         const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(e.remarks);
+        const cutsMeta = extractBandSawCutsFromRemarks(e.remarks);
+
         const outPcs = parsedPcs != null ? parsedPcs : (Number(logRow?.output_pcs || e.output_pcs || 0));
-        const rejPcs = parsedRejPcs != null ? parsedRejPcs : (Number(logRow?.rejection_pcs || e.rejection_pcs || 0));
+        let rejPcs = parsedRejPcs != null ? parsedRejPcs : (Number(logRow?.rejection_pcs || e.rejection_pcs || 0));
         const inPcs = Number(e.input_pcs || 0) > 0
           ? Number(e.input_pcs)
           : Math.max(outPcs + rejPcs, outPcs);
 
-        const outMtr = outPcs > 0 && effAvgLen > 0 ? Number((outPcs * effAvgLen).toFixed(3)) : Number(e.output_mtr || logRow?.output_qty || 0);
-        const rejMtr = rejPcs > 0 && effAvgLen > 0 ? Number((rejPcs * effAvgLen).toFixed(3)) : Number(e.rejection_mtr || logRow?.rejection_qty || 0);
-        const inMtr = inPcs > 0 && effAvgLen > 0 ? Number((inPcs * effAvgLen).toFixed(3)) : (Number(e.input_mtr || logRow?.input_qty || 0) > 0 ? Number(e.input_mtr || logRow?.input_qty) : Math.max(outMtr + rejMtr, outMtr));
+        // Preserve actual measured meters from DB if recorded (> 0)
+        const rawOutMtr = Number(e.output_mtr || logRow?.output_qty || 0);
+        const outMtr = rawOutMtr > 0 ? rawOutMtr : (outPcs > 0 && effAvgLen > 0 ? Number((outPcs * effAvgLen).toFixed(3)) : 0);
+
+        const rawInMtr = Number(e.input_mtr || logRow?.input_qty || 0);
+        const inMtr = rawInMtr > 0 ? rawInMtr : (inPcs > 0 && effAvgLen > 0 ? Number((inPcs * effAvgLen).toFixed(3)) : outMtr);
+
+        let rawRejMtr = Number(e.rejection_mtr || logRow?.rejection_qty || 0);
+        const isBandSaw = (e.stage_code || '').toUpperCase() === 'BAND_SAW' || selectedWc === 'BAND_SAW';
+        if (isBandSaw && rawRejMtr === 0) {
+          if (cutsMeta?.scrapMtr != null && Number(cutsMeta.scrapMtr) > 0) {
+            rawRejMtr = Number(cutsMeta.scrapMtr);
+          } else if (inMtr > outMtr) {
+            rawRejMtr = Number((inMtr - outMtr).toFixed(3));
+          }
+        }
+        const rejMtr = rawRejMtr > 0 ? rawRejMtr : (rejPcs > 0 && effAvgLen > 0 ? Number((rejPcs * effAvgLen).toFixed(3)) : 0);
 
         const od = isMhStage && mhInfo?.mh_od ? Number(mhInfo.mh_od) : Number(e.od || woInfo?.size_od || 0);
         const wl = isMhStage && mhInfo?.mh_wt ? Number(mhInfo.mh_wt) : Number(e.wl || woInfo?.size_wt || 0);
 
         const calculatedInMt = mtFromMtr(inMtr, od, wl);
         const calculatedOutMt = mtFromMtr(outMtr, od, wl);
-        const calculatedRejMt = mtFromMtr(rejMtr, od, wl);
+        const calculatedRejMt = cutsMeta?.scrapMt != null && Number(cutsMeta.scrapMt) > 0
+          ? Number(cutsMeta.scrapMt)
+          : mtFromMtr(rejMtr, od, wl);
 
         const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING' || selectedWc === 'ROLLING';
         const rawHtcMtr = Number(logRow?.htc_ok ?? e.htc_ok_mtr ?? (e as any).htc_ok ?? 0);
         const htcOkMtr = isRolling
-          ? (rawHtcMtr > 0 ? rawHtcMtr : Math.max(0, outMtr - rejMtr))
+          ? Math.min(outMtr, rawHtcMtr > 0 ? rawHtcMtr : Math.max(0, outMtr - rejMtr))
           : 0;
 
         const htcMatch = (e.remarks || logRow?.remarks || '').match(/\[HTC(?:_OK)?(?:_PCS)?:(\d+)\]/i);
@@ -415,6 +433,10 @@ export default function WorkCenterProductionReportClient() {
           const routeInfo = wo?.process_route_id ? routeMap.get(wo.process_route_id) : null;
           if (selectedRoute !== 'ALL' && routeInfo?.route_code !== selectedRoute) return;
 
+          // For VDI:
+          // Card 3: Total Inspected = inPcs / inMtr / inMt
+          // Card 4: QC Losses = rejPcs / rejMtr / rejMt
+          // Card 5: VDI Passed OK = outPcs / outMtr / outMt
           qcEntries.push({
             id: q.id,
             work_order_id: q.work_order_id,
@@ -430,19 +452,21 @@ export default function WorkCenterProductionReportClient() {
             avg_length: Number(wo?.avg_length || 6.0),
             input_pcs: inPcs > 0 ? inPcs : (outPcs + rejPcs),
             input_mtr: inMtr > 0 ? inMtr : (outMtr + rejMtr),
-            input_mt: mtFromMtr(inMtr, od, wl),
-            output_pcs: outPcs,
-            output_mtr: outMtr,
-            output_mt: mtFromMtr(outMtr, od, wl),
+            input_mt: Number(q.inspected_mt || 0) || mtFromMtr(inMtr, od, wl),
+            output_pcs: inPcs > 0 ? inPcs : (outPcs + rejPcs),
+            output_mtr: inMtr > 0 ? inMtr : (outMtr + rejMtr),
+            output_mt: Number(q.inspected_mt || 0) || mtFromMtr(inMtr, od, wl),
             rejection_pcs: rejPcs,
             rejection_mtr: rejMtr,
-            rejection_mt: mtFromMtr(rejMtr, od, wl),
+            rejection_mt: Number(q.vdi_rejection_mt || 0) + Number(q.vdi_salvage_mt || 0) || mtFromMtr(rejMtr, od, wl),
             htc_ok_pcs: outPcs,
             htc_ok_mtr: outMtr,
+            htc_ok_mt: Number(q.vdi_ok_mt || 0) || mtFromMtr(outMtr, od, wl),
             heat_lot_no: q.heat_lot_no || '',
             remarks: q.remarks ? `[VDI QC] ${q.remarks}` : '[VDI QC]',
             created_at: q.created_at,
-          } as ProductionEntry);
+            can_modify: false,
+          } as unknown as ProductionEntry);
         });
       }
 
@@ -502,19 +526,19 @@ export default function WorkCenterProductionReportClient() {
         ? Math.round(Number(e.rejection_pcs || 0))
         : Math.round(Number(e.rejection_pcs || 0) > 0 ? Number(e.rejection_pcs) : (effLen > 0 && rMtr > 0 ? rMtr / effLen : 0));
 
-      const isMhStage = e.stage_code === 'ROLLING' || e.stage_code === 'HOLLOW_HEAT_TREATMENT' || e.stage_code === 'DRAW' || selectedWc === 'ROLLING' || selectedWc === 'HOLLOW_HEAT_TREATMENT' || selectedWc === 'DRAW';
+      const isMhStage = e.stage_code === 'ROLLING' || e.stage_code === 'HOLLOW_HEAT_TREATMENT' || selectedWc === 'ROLLING' || selectedWc === 'HOLLOW_HEAT_TREATMENT';
       const stageOd = isMhStage && (e.mh_od || e.od) ? Number(e.mh_od || e.od) : Number(e.od || 0);
       const stageWt = isMhStage && (e.mh_wt || e.wl) ? Number(e.mh_wt || e.wl) : Number(e.wl || 0);
 
-      const inMt = isFinishing
-        ? mtFromMtr(inMtr, Number(e.od || 0), Number(e.wl || 0)) || Number(e.input_mt || 0)
-        : (isMhStage ? mtFromMtr(inMtr, stageOd, stageWt) : (Number(e.input_mt || 0) || mtFromMtr(inMtr, stageOd, stageWt)));
-      const outMt = isFinishing
-        ? mtFromMtr(outMtr, Number(e.od || 0), Number(e.wl || 0)) || Number(e.output_mt || 0)
-        : (isMhStage ? mtFromMtr(outMtr, stageOd, stageWt) : (Number(e.output_mt || 0) || mtFromMtr(outMtr, stageOd, stageWt)));
-      const rMt = isFinishing
-        ? mtFromMtr(rMtr, Number(e.od || 0), Number(e.wl || 0)) || Number(e.rejection_mt || 0)
-        : (isMhStage ? mtFromMtr(rMtr, stageOd, stageWt) : (Number(e.rejection_mt || 0) || mtFromMtr(rMtr, stageOd, stageWt)));
+      const inMt = Number(e.input_mt || 0) > 0
+        ? Number(e.input_mt)
+        : (isMhStage ? mtFromMtr(inMtr, stageOd, stageWt) : mtFromMtr(inMtr, Number(e.od || 0), Number(e.wl || 0)));
+      const outMt = Number(e.output_mt || 0) > 0
+        ? Number(e.output_mt)
+        : (isMhStage ? mtFromMtr(outMtr, stageOd, stageWt) : mtFromMtr(outMtr, Number(e.od || 0), Number(e.wl || 0)));
+      const rMt = Number(e.rejection_mt || 0) > 0
+        ? Number(e.rejection_mt)
+        : (isMhStage ? mtFromMtr(rMtr, stageOd, stageWt) : mtFromMtr(rMtr, Number(e.od || 0), Number(e.wl || 0)));
 
       inputMtr += inMtr;
       inputPcs += inPcs;
@@ -532,15 +556,20 @@ export default function WorkCenterProductionReportClient() {
       htcOkPcs += Number(e.htc_ok_pcs || 0);
     });
 
+    const isRolling = selectedWc === 'ROLLING';
+    const isVdi = selectedWc === 'VDI';
+
+    const primePcs = isRolling ? Math.min(htcOkPcs, outputPcs) : (isVdi ? htcOkPcs : Math.max(outputPcs - rejPcs, 0));
+    const primeMtr = isRolling ? Math.min(htcOkMtr, outputMtr) : (isVdi ? htcOkMtr : Math.max(outputMtr - rejMtr, 0));
+    const primeMt = Math.max(outputMt - rejMt, 0);
+
     const netMtr = Math.max(outputMtr - rejMtr, 0);
     const netMt = Math.max(outputMt - rejMt, 0);
     const rejRatePct = outputMtr > 0 ? (rejMtr / outputMtr) * 100 : 0;
     const yieldPct =
-      inputMtr > 0
-        ? Math.min(100, Math.max(0, (netMtr / inputMtr) * 100))
-        : outputMtr > 0
-          ? Math.min(100, Math.max(0, (netMtr / outputMtr) * 100))
-          : 100;
+      outputMtr > 0
+        ? Math.min(100, Math.max(0, (primeMtr / outputMtr) * 100))
+        : 100;
 
     return {
       count: filteredEntries.length,
@@ -555,6 +584,9 @@ export default function WorkCenterProductionReportClient() {
       rejMt,
       htcOkMtr,
       htcOkPcs,
+      primePcs,
+      primeMtr,
+      primeMt,
       netMtr,
       netMt,
       rejRatePct,
@@ -576,14 +608,19 @@ export default function WorkCenterProductionReportClient() {
         .filter((no) => no && no !== '—')
     );
 
-    // Index all WIP rows by work_order_id and sequence_no to get exact preceding stage output and rolling outputs
-    const wipByWoAndSeq = new Map<string, any>();
+    // Build route-ordered stages for exact preceding stage lookup
+    const stagesByWo = new Map<string, any[]>();
     const rollingWipByWo = new Map<string, any>();
     wipData.forEach((w) => {
-      wipByWoAndSeq.set(`${w.work_order_id}_${w.sequence_no}`, w);
+      const list = stagesByWo.get(w.work_order_id) || [];
+      list.push(w);
+      stagesByWo.set(w.work_order_id, list);
       if (w.stage_code === 'ROLLING') {
         rollingWipByWo.set(w.work_order_id, w);
       }
+    });
+    stagesByWo.forEach((list) => {
+      list.sort((a, b) => Number(a.sequence_no) - Number(b.sequence_no));
     });
 
     if (selectedWc === 'ROLLING') {
@@ -688,17 +725,34 @@ export default function WorkCenterProductionReportClient() {
       const inMtr = Number(r.incoming_qty || 0);
       const curWipMtr = Number(r.current_wip || 0);
       const curWipPcs = Number(r.current_wip_pcs || 0);
-      const curWipMt = Number(r.current_wip_mt || 0);
+      let curWipMt = Number(r.current_wip_mt || 0);
 
-      const od = Number(r.size_od || 60);
-      const wt = Number(r.size_wt || 4);
+      // Find actual preceding stage in the work order's route
+      const woStages = stagesByWo.get(r.work_order_id) || [];
+      const prev = woStages.filter((s) => Number(s.sequence_no) < Number(r.sequence_no)).pop();
 
-      // Option A: Look up actual pieces produced by the preceding stage
-      const prev = wipByWoAndSeq.get(`${r.work_order_id}_${Number(r.sequence_no) - 1}`);
       const inPcs = prev
         ? Number(prev.net_output_pcs || prev.gross_output_pcs || 0)
         : (curWipPcs > 0 && curWipMtr > 0 ? Math.round(inMtr / (curWipMtr / curWipPcs)) : Math.round(inMtr / 6.0));
-      const inMt = mtFromMtr(inMtr, od, wt);
+
+      // For DRAW, incoming stock is Mother Hollows! Conserve Mother Hollow mass
+      let inMt = 0;
+      if (r.stage_code === 'DRAW') {
+        const mhOd = Number(prev?.size_od || r.size_od || 60);
+        const mhWt = Number(prev?.size_wt || r.size_wt || 4);
+        inMt = Number(prev?.net_output_mt || prev?.gross_output_mt || 0) > 0
+          ? Number(prev?.net_output_mt || prev?.gross_output_mt)
+          : mtFromMtr(inMtr, mhOd, mhWt);
+        if (curWipMt === 0 && curWipMtr > 0) {
+          curWipMt = mtFromMtr(curWipMtr, mhOd, mhWt);
+        }
+      } else {
+        const od = Number(r.size_od || 60);
+        const wt = Number(r.size_wt || 4);
+        inMt = Number(prev?.net_output_mt || prev?.gross_output_mt || 0) > 0
+          ? Number(prev?.net_output_mt || prev?.gross_output_mt)
+          : mtFromMtr(inMtr, od, wt);
+      }
 
       recMtr += inMtr;
       recPcs += inPcs;
@@ -1199,7 +1253,9 @@ export default function WorkCenterProductionReportClient() {
                   <span className="text-base sm:text-lg font-black font-mono text-slate-900 tabular-nums">
                     {fmt(feederMetrics.receivedPcs, 0)}
                   </span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">PCS</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">
+                    {selectedWc === 'BAND_SAW' ? 'M-PCS' : (selectedWc === 'VDI' || selectedWc === 'FINISHING' ? 'Cut PCS' : 'PCS')}
+                  </span>
                 </div>
                 <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-slate-200/80 text-slate-950 border border-slate-300 tabular-nums whitespace-nowrap shadow-2xs">
                   <span className="text-xs sm:text-sm font-black">{fmt(feederMetrics.receivedMt)}</span>
@@ -1229,7 +1285,9 @@ export default function WorkCenterProductionReportClient() {
                   <span className="text-base sm:text-lg font-black font-mono text-amber-950 tabular-nums">
                     {fmt(feederMetrics.balancePcs, 0)}
                   </span>
-                  <span className="text-[10px] font-bold text-amber-700 uppercase">PCS</span>
+                  <span className="text-[10px] font-bold text-amber-700 uppercase">
+                    {selectedWc === 'BAND_SAW' ? 'M-PCS' : (selectedWc === 'VDI' || selectedWc === 'FINISHING' ? 'Cut PCS' : 'PCS')}
+                  </span>
                 </div>
                 <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-amber-100 text-amber-950 border border-amber-300 tabular-nums whitespace-nowrap shadow-2xs">
                   <span className="text-xs sm:text-sm font-black">{fmt(feederMetrics.balanceMt)}</span>
@@ -1259,7 +1317,9 @@ export default function WorkCenterProductionReportClient() {
                   <span className="text-base sm:text-lg font-black font-mono text-blue-950 tabular-nums">
                     {fmt(metrics.outputPcs, 0)}
                   </span>
-                  <span className="text-[10px] font-bold text-blue-700 uppercase">PCS</span>
+                  <span className="text-[10px] font-bold text-blue-700 uppercase">
+                    {selectedWc === 'BAND_SAW' || selectedWc === 'VDI' || selectedWc === 'FINISHING' ? 'Cut PCS' : 'PCS'}
+                  </span>
                 </div>
                 <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-blue-100 text-blue-950 border border-blue-300 tabular-nums whitespace-nowrap shadow-2xs">
                   <span className="text-xs sm:text-sm font-black">{fmt(metrics.outputMt)}</span>
@@ -1320,20 +1380,24 @@ export default function WorkCenterProductionReportClient() {
               <div className="my-2 flex items-baseline justify-between gap-1 flex-wrap">
                 <div className="flex items-baseline gap-1">
                   <span className="text-base sm:text-lg font-black font-mono text-emerald-950 tabular-nums">
-                    {fmt(selectedWc === 'ROLLING' ? metrics.htcOkPcs : Math.max(metrics.outputPcs - metrics.rejPcs, 0), 0)}
+                    {fmt(metrics.primePcs, 0)}
                   </span>
-                  <span className="text-[10px] font-bold text-emerald-700 uppercase">PCS</span>
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase">
+                    {selectedWc === 'BAND_SAW' || selectedWc === 'VDI' || selectedWc === 'FINISHING' ? 'Cut PCS' : 'PCS'}
+                  </span>
                 </div>
                 <span className="inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded-md font-mono bg-emerald-100 text-emerald-950 border border-emerald-300 tabular-nums whitespace-nowrap shadow-2xs">
-                  <span className="text-xs sm:text-sm font-black">{fmt(metrics.netMt)}</span>
+                  <span className="text-xs sm:text-sm font-black">{fmt(metrics.primeMt)}</span>
                   <span className="text-[10px] font-black uppercase text-emerald-900">MT</span>
                 </span>
               </div>
             </div>
             <div className="pt-1.5 border-t border-emerald-200/70 flex items-center justify-between gap-1 text-[11px] font-mono text-emerald-800 print:text-black">
-              <span className="whitespace-nowrap">{selectedWc === 'ROLLING' ? 'HTC OK Length' : 'Net Length'}</span>
+              <span className="whitespace-nowrap">
+                {selectedWc === 'ROLLING' ? 'HTC OK Length' : (selectedWc === 'VDI' ? 'Passed Length' : (selectedWc === 'BAND_SAW' ? 'Prime Cut Length' : 'Net Length'))}
+              </span>
               <span className="font-bold text-emerald-950 whitespace-nowrap">
-                {fmt(selectedWc === 'ROLLING' ? metrics.htcOkMtr : metrics.netMtr)} MTR
+                {fmt(metrics.primeMtr)} MTR
               </span>
             </div>
           </div>
