@@ -5,6 +5,7 @@ export type WorkCenterCode =
   | 'ROLLING'
   | 'HOLLOW_HEAT_TREATMENT'
   | 'DRAW'
+  | 'PILGER'
   | 'HEAT_TREATMENT'
   | 'BAND_SAW'
   | 'VDI'
@@ -17,6 +18,7 @@ export type UserRole =
   | 'manager'
   | 'rolling_incharge'
   | 'draw_operator'
+  | 'pilger_operator'
   | 'band_saw_operator'
   | 'qa_inspector'
   | 'finishing_operator'
@@ -29,6 +31,7 @@ export interface FormPermissions {
   production_rolling?: AccessLevel;
   production_hollow_ht?: AccessLevel;
   production_draw?: AccessLevel;
+  production_pilger?: AccessLevel;
   production_ht?: AccessLevel;
   production_band_saw?: AccessLevel;
   production_vdi?: AccessLevel;

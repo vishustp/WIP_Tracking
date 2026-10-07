@@ -184,6 +184,7 @@ export async function GET(req: NextRequest) {
     const rollingStageId = stageCodeToId.get("ROLLING");
     const hollowHtStageId = stageCodeToId.get("HOLLOW_HEAT_TREATMENT");
     const drawStageId = stageCodeToId.get("DRAW");
+    const pilgerStageId = stageCodeToId.get("PILGER");
     const htStageId = stageCodeToId.get("HEAT_TREATMENT");
     const bandSawStageId = stageCodeToId.get("BAND_SAW");
     const vdiStageId = stageCodeToId.get("VDI");
@@ -259,6 +260,7 @@ export async function GET(req: NextRequest) {
       ROLLING: { label: "Rolling Mill", stage_code: "ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      PILGER: { label: "Cold Pilger Mill", stage_code: "PILGER", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       BAND_SAW: { label: "Band Saw", stage_code: "BAND_SAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       VDI: { label: "VDI / QC Inspection", stage_code: "VDI", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
@@ -523,6 +525,7 @@ export async function GET(req: NextRequest) {
 
       const isCds = routeCode === "CDS" || routeCode === "ALLOY_CDS";
       const isAlloy = routeCode.includes("ALLOY");
+      const isSsSteel = routeCode === "SS_STEEL";
 
       const l1 = Number(wo.l1 || 6);
       const l2 = Number(wo.l2 || 6.5);
@@ -675,6 +678,30 @@ export async function GET(req: NextRequest) {
       let drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;
       let drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
+      // 3.5 Pilger Stage Metrics (for SS_STEEL route)
+      const pilgerLogs = getStageLogs(woId, pilgerStageId);
+      const pilgerOutPcs = sumPcs(pilgerLogs, avgLength);
+      const pilgerRejPcs = sumRejPcs(pilgerLogs, avgLength);
+      const pilgerNetPcs = Math.max(0, pilgerOutPcs - pilgerRejPcs);
+      const rawPilgerOut = sumQty(pilgerLogs, "output_qty");
+      const rawPilgerRej = sumQty(pilgerLogs, "rejection_qty");
+      const pilgerOutMtr = rawPilgerOut > 0 ? rawPilgerOut : (avgLength > 0 ? Number((pilgerOutPcs * avgLength).toFixed(3)) : 0);
+      const pilgerRejMtr = rawPilgerRej > 0 ? rawPilgerRej : (avgLength > 0 ? Number((pilgerRejPcs * avgLength).toFixed(3)) : 0);
+      const pilgerNetMtr = Math.max(0, pilgerOutMtr - pilgerRejMtr);
+
+      const pilgerDivIn = getStageDivIn(woId, "PILGER");
+      const pilgerDivOut = getStageDivOut(woId, "PILGER");
+      const pilgerDivInPcs = avgLength > 0 ? Math.round(pilgerDivIn / avgLength) : 0;
+      const pilgerDivOutPcs = avgLength > 0 ? Math.round(pilgerDivOut / avgLength) : 0;
+
+      const pilgerIncomingPcs = rollHtcOkPcs;
+      let pilgerAvailPcs = isSsSteel
+        ? Math.max(0, pilgerIncomingPcs + pilgerDivInPcs - pilgerOutPcs - pilgerRejPcs - pilgerDivOutPcs)
+        : 0;
+      const effPilgerLen = effMhAvg > 0 ? effMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength);
+      let pilgerAvailMtr = effPilgerLen > 0 ? Number((pilgerAvailPcs * effPilgerLen).toFixed(3)) : 0;
+      let pilgerAvailMt = mtFromMtr(pilgerAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
+
       // 4. Heat Treatment Stage Metrics (adjusted for HT Diversions & Downstream Consumption)
       const htLogs = getStageLogs(woId, htStageId);
       const htOutPcs = sumPcs(htLogs, avgLength);
@@ -690,6 +717,13 @@ export async function GET(req: NextRequest) {
       const htDivOut = getStageDivOut(woId, "HEAT_TREATMENT");
       const htDivInPcs = avgLength > 0 ? Math.round(htDivIn / avgLength) : 0;
       const htDivOutPcs = avgLength > 0 ? Math.round(htDivOut / avgLength) : 0;
+
+      const htIncomingPcs = isSsSteel ? pilgerNetPcs : drawNetPcs;
+      let htAvailPcs = (isCds || isSsSteel)
+        ? Math.max(0, htIncomingPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs)
+        : 0;
+      let htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
+      let htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Check QC Inspections for this WO (or related campaign)
       const directWoQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
@@ -760,13 +794,13 @@ export async function GET(req: NextRequest) {
       const finRejMtr = avgLength > 0 ? Number((finRejPcs * avgLength).toFixed(3)) : 0;
       const finNetMtr = avgLength > 0 ? Number((finNetPcs * avgLength).toFixed(3)) : 0;
 
-      // Heat treatment incoming: strictly from Draw net output pieces minus downstream processed
+      // Heat treatment incoming: strictly from Draw (or Pilger) net output pieces minus downstream processed
       const htPassedPcs = Math.max(htOutPcs + htRejPcs, bandSawOutPcs + bandSawRejPcs, qcInspectedPcs, finOutPcs + finRejPcs);
-      const htAvailPcs = isCds
-        ? Math.max(0, drawNetPcs + htDivInPcs - htPassedPcs - htDivOutPcs)
+      htAvailPcs = (isCds || isSsSteel)
+        ? Math.max(0, htIncomingPcs + htDivInPcs - htPassedPcs - htDivOutPcs)
         : 0;
-      const htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
-      const htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+      htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
+      htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Apply downstream consumption to Draw availability
       const downstreamDrawPassed = Math.max(drawOutPcs + drawRejPcs, htPassedPcs);
@@ -776,9 +810,17 @@ export async function GET(req: NextRequest) {
         drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
       }
 
-      const bandSawIncomingPcs = !isCds
-        ? (isAlloy ? hollowHtNetPcs : rollHtcOkPcs)
-        : htNetPcs;
+      // Apply downstream consumption to Pilger availability
+      const downstreamPilgerPassed = Math.max(pilgerOutPcs + pilgerRejPcs, htPassedPcs);
+      if (isSsSteel) {
+        pilgerAvailPcs = Math.max(0, pilgerIncomingPcs + pilgerDivInPcs - downstreamPilgerPassed - pilgerDivOutPcs);
+        pilgerAvailMtr = effPilgerLen > 0 ? Number((pilgerAvailPcs * effPilgerLen).toFixed(3)) : 0;
+        pilgerAvailMt = mtFromMtr(pilgerAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
+      }
+
+      const bandSawIncomingPcs = (isCds || isSsSteel)
+        ? htNetPcs
+        : (isAlloy ? hollowHtNetPcs : rollHtcOkPcs);
 
       // Deduct whichever is greater: explicit Band Saw cuts, downstream VDI inspected pieces, or downstream Finishing
       const bandSawPassedPcs = Math.max(bandSawOutPcs + bandSawRejPcs, qcInspectedPcs, finOutPcs + finRejPcs);
@@ -905,6 +947,44 @@ export async function GET(req: NextRequest) {
         });
       }
 
+      if (isSsSteel) {
+        pipeline.push({
+          stage_code: "PILGER",
+          stage_name: "Cold Pilger Mill",
+          sequence_no: 2,
+          available_mtr: pilgerAvailMtr,
+          available_pcs: pilgerAvailPcs,
+          available_mt: pilgerAvailMt,
+          gross_output_mtr: pilgerOutMtr,
+          gross_output_pcs: pilgerOutPcs,
+          gross_output_mt: mtFromMtr(pilgerOutMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+          rejection_mtr: pilgerRejMtr,
+          rejection_pcs: pilgerRejPcs,
+          rejection_mt: mtFromMtr(pilgerRejMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+          net_output_mtr: pilgerNetMtr,
+          net_output_pcs: pilgerNetPcs,
+          net_output_mt: mtFromMtr(pilgerNetMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+        });
+
+        pipeline.push({
+          stage_code: "HEAT_TREATMENT",
+          stage_name: "Heat Treatment",
+          sequence_no: 3,
+          available_mtr: htAvailMtr,
+          available_pcs: htAvailPcs,
+          available_mt: htAvailMt,
+          gross_output_mtr: htOutMtr,
+          gross_output_pcs: htOutPcs,
+          gross_output_mt: mtFromMtr(htOutMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+          rejection_mtr: htRejMtr,
+          rejection_pcs: htRejPcs,
+          rejection_mt: mtFromMtr(htRejMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+          net_output_mtr: htNetMtr,
+          net_output_pcs: htNetPcs,
+          net_output_mt: mtFromMtr(htNetMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+        });
+      }
+
       pipeline.push({
         stage_code: "BAND_SAW",
         stage_name: "Band Saw",
@@ -979,7 +1059,13 @@ export async function GET(req: NextRequest) {
         workCenterSummary.DRAW.availMt += drawAvailMt;
         workCenterSummary.DRAW.count += 1;
       }
-      if (isCds && (htAvailMtr >= 1.0 || htAvailPcs >= 1)) {
+      if (isSsSteel && (pilgerAvailMtr >= 1.0 || pilgerAvailPcs >= 1)) {
+        workCenterSummary.PILGER.availMtr += pilgerAvailMtr;
+        workCenterSummary.PILGER.availPcs += pilgerAvailPcs;
+        workCenterSummary.PILGER.availMt += pilgerAvailMt;
+        workCenterSummary.PILGER.count += 1;
+      }
+      if ((isCds || isSsSteel) && (htAvailMtr >= 1.0 || htAvailPcs >= 1)) {
         workCenterSummary.HEAT_TREATMENT.availMtr += htAvailMtr;
         workCenterSummary.HEAT_TREATMENT.availPcs += htAvailPcs;
         workCenterSummary.HEAT_TREATMENT.availMt += htAvailMt;
@@ -1184,8 +1270,27 @@ export async function GET(req: NextRequest) {
                 feeder_stage_code: isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING",
               }
             : null,
+        PILGER:
+          isSsSteel && (pilgerAvailMtr >= 1.0 || pilgerAvailPcs >= 1)
+            ? {
+                ...baseRowData,
+                od: mhOd > 0 ? mhOd : woOd,
+                wl: mhWt > 0 ? mhWt : woWt,
+                avg_length: effPilgerLen > 0 ? effPilgerLen : avgLength,
+                stage_code: "PILGER",
+                balance_to_make_mtr: pilgerAvailMtr,
+                balance_to_make_pcs: pilgerAvailPcs,
+                balance_to_make_mt: pilgerAvailMt,
+                max_allowed_mtr: pilgerAvailMtr,
+                max_allowed_pcs: pilgerAvailPcs,
+                prev_stage_code: "ROLLING",
+                prev_htc_ok: rollHtcOkMtr,
+                feeder_source_label: "Rolling HTC OK",
+                feeder_stage_code: "ROLLING",
+              }
+            : null,
         HEAT_TREATMENT:
-          isCds && (htAvailMtr >= 1.0 || htAvailPcs >= 1)
+          (isCds || isSsSteel) && (htAvailMtr >= 1.0 || htAvailPcs >= 1)
             ? {
                 ...baseRowData,
                 stage_code: "HEAT_TREATMENT",
@@ -1194,10 +1299,10 @@ export async function GET(req: NextRequest) {
                 balance_to_make_mt: htAvailMt,
                 max_allowed_mtr: htAvailMtr,
                 max_allowed_pcs: htAvailPcs,
-                prev_stage_code: "DRAW",
-                prev_net_output: drawNetMtr,
-                feeder_source_label: "Draw Bench Net OK",
-                feeder_stage_code: "DRAW",
+                prev_stage_code: isSsSteel ? "PILGER" : "DRAW",
+                prev_net_output: isSsSteel ? pilgerNetMtr : drawNetMtr,
+                feeder_source_label: isSsSteel ? "Cold Pilger Mill Net OK" : "Draw Bench Net OK",
+                feeder_stage_code: isSsSteel ? "PILGER" : "DRAW",
               }
             : null,
         BAND_SAW:
@@ -1212,11 +1317,11 @@ export async function GET(req: NextRequest) {
                 balance_to_make_mt: bandSawAvailMt,
                 max_allowed_mtr: bandSawAvailMtr,
                 max_allowed_pcs: bandSawAvailPcs,
-                prev_stage_code: isCds ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
-                prev_htc_ok: !isCds && !isAlloy ? rollHtcOkMtr : undefined,
-                prev_net_output: isCds ? htNetMtr : (isAlloy ? hollowHtNetMtr : undefined),
-                feeder_source_label: isCds ? "Heat Treatment Net OK" : (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK"),
-                feeder_stage_code: isCds ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
+                prev_stage_code: (isCds || isSsSteel) ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
+                prev_htc_ok: !isCds && !isAlloy && !isSsSteel ? rollHtcOkMtr : undefined,
+                prev_net_output: (isCds || isSsSteel) ? htNetMtr : (isAlloy ? hollowHtNetMtr : undefined),
+                feeder_source_label: (isCds || isSsSteel) ? "Heat Treatment Net OK" : (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK"),
+                feeder_stage_code: (isCds || isSsSteel) ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
               }
             : null,
         VDI:

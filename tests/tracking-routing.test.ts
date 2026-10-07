@@ -9,8 +9,9 @@ describe('Work Order Tracking Route Stage Validation', () => {
   function getRouteStages(routeCode: string) {
     const code = routeCode.toUpperCase();
     const hasHtcInRoute = code === 'ALLOY_CDS' || code === 'ALLOY_HFS' || code.includes('ALLOY');
-    const hasDrawInRoute = code === 'CDS' || code === 'ALLOY_CDS' || code.includes('CDS');
-    const hasHtInRoute = code === 'CDS' || code === 'ALLOY_CDS' || code.includes('CDS');
+    const hasDrawInRoute = code === 'CDS' || code === 'ALLOY_CDS' || (code.includes('CDS') && !code.includes('SS'));
+    const hasPilgerInRoute = code === 'SS_STEEL' || code.includes('PILGER');
+    const hasHtInRoute = code === 'CDS' || code === 'ALLOY_CDS' || code === 'SS_STEEL' || code.includes('CDS');
     const hasBandSawInRoute = true;
     const hasVdiInRoute = true;
     const hasFinishingInRoute = true;
@@ -18,6 +19,7 @@ describe('Work Order Tracking Route Stage Validation', () => {
     return {
       hasHtcInRoute,
       hasDrawInRoute,
+      hasPilgerInRoute,
       hasHtInRoute,
       hasBandSawInRoute,
       hasVdiInRoute,
@@ -29,6 +31,7 @@ describe('Work Order Tracking Route Stage Validation', () => {
     const route = getRouteStages('HFS');
     expect(route.hasHtcInRoute).toBe(false);
     expect(route.hasDrawInRoute).toBe(false); // Draw Bench must NOT be in route!
+    expect(route.hasPilgerInRoute).toBe(false);
     expect(route.hasHtInRoute).toBe(false);   // Heat Treatment must NOT be in route!
     expect(route.hasBandSawInRoute).toBe(true);
     expect(route.hasVdiInRoute).toBe(true);
@@ -39,6 +42,7 @@ describe('Work Order Tracking Route Stage Validation', () => {
     const route = getRouteStages('ALLOY_HFS');
     expect(route.hasHtcInRoute).toBe(true);  // Hollow HT is in route
     expect(route.hasDrawInRoute).toBe(false); // Draw Bench must NOT be in route!
+    expect(route.hasPilgerInRoute).toBe(false);
     expect(route.hasHtInRoute).toBe(false);   // Final HT must NOT be in route!
     expect(route.hasBandSawInRoute).toBe(true);
     expect(route.hasVdiInRoute).toBe(true);
@@ -49,6 +53,7 @@ describe('Work Order Tracking Route Stage Validation', () => {
     const route = getRouteStages('CDS');
     expect(route.hasHtcInRoute).toBe(false); // Hollow HT not in standard carbon CDS
     expect(route.hasDrawInRoute).toBe(true);  // Draw Bench is in route
+    expect(route.hasPilgerInRoute).toBe(false);
     expect(route.hasHtInRoute).toBe(true);    // Heat Treatment is in route
     expect(route.hasBandSawInRoute).toBe(true);
     expect(route.hasVdiInRoute).toBe(true);
@@ -59,10 +64,22 @@ describe('Work Order Tracking Route Stage Validation', () => {
     const route = getRouteStages('ALLOY_CDS');
     expect(route.hasHtcInRoute).toBe(true);
     expect(route.hasDrawInRoute).toBe(true);
+    expect(route.hasPilgerInRoute).toBe(false);
     expect(route.hasHtInRoute).toBe(true);
     expect(route.hasBandSawInRoute).toBe(true);
     expect(route.hasVdiInRoute).toBe(true);
     expect(route.hasFinishingInRoute).toBe(true);
+  });
+
+  it('correctly flags stages for SS_STEEL route', () => {
+    const route = getRouteStages('SS_STEEL');
+    expect(route.hasHtcInRoute).toBe(false);    // Hollow HT is NOT in SS_STEEL route
+    expect(route.hasDrawInRoute).toBe(false);   // Draw bench is NOT in SS_STEEL route
+    expect(route.hasPilgerInRoute).toBe(true);  // Cold Pilger is in route
+    expect(route.hasHtInRoute).toBe(true);      // Solution Anneal Heat Treatment is in route
+    expect(route.hasBandSawInRoute).toBe(true); // Band saw cutting is in route
+    expect(route.hasVdiInRoute).toBe(true);     // VDI inspection is in route
+    expect(route.hasFinishingInRoute).toBe(true); // Finishing is in route
   });
 
   it('ensures Draw Bench WIP is 0 when route is HFS even with positive rolling output', () => {

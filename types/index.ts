@@ -2,6 +2,7 @@ export type StageCode =
   | "ROLLING"
   | "HOLLOW_HEAT_TREATMENT"
   | "DRAW"
+  | "PILGER"
   | "HEAT_TREATMENT"
   | "BAND_SAW"
   | "VDI"
@@ -189,6 +190,7 @@ export const STAGES: { code: StageCode; label: string }[] = [
   { code: "ROLLING", label: "Rolling" },
   { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
   { code: "DRAW", label: "Draw" },
+  { code: "PILGER", label: "Cold Pilger Mill" },
   { code: "HEAT_TREATMENT", label: "Heat Treatment" },
   { code: "BAND_SAW", label: "Band Saw" },
   { code: "VDI", label: "VDI / QC" },

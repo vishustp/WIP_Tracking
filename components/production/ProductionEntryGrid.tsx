@@ -271,7 +271,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         const customAvg = dynL1 > 0 && dynL2 > 0 ? (dynL1 + dynL2) / 2 : dynL1 || dynL2 || 0;
 
         const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
-        const isDrawStage = stage === 'DRAW';
+        const isDrawStage = stage === 'DRAW' || stage === 'PILGER';
         const planMh = planMhMap.get(r.work_order_id) || (r.work_order_no ? planMhMap.get(String(r.work_order_no).trim()) : undefined);
         const mhOd = Number(r.mh_od || planMh?.mh_od || 0);
         const mhWt = Number(r.mh_wt || planMh?.mh_wt || 0);
@@ -417,6 +417,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         count: 0,
       },
       DRAW: { label: 'Draw Bench', stage_code: 'DRAW', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      PILGER: { label: 'Cold Pilger Mill', stage_code: 'PILGER', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HEAT_TREATMENT: { label: 'Heat Treatment', stage_code: 'HEAT_TREATMENT', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       BAND_SAW: { label: 'Band Saw', stage_code: 'BAND_SAW', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       VDI: { label: 'VDI / QC Inspection', stage_code: 'VDI', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
@@ -429,6 +430,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       if (raw === 'HOLLOW_HEAT_TREATMENT' || raw.includes('HOLLOW')) return 'HOLLOW_HEAT_TREATMENT';
       if (raw === 'ROLLING' || raw.includes('ROLL')) return 'ROLLING';
       if (raw === 'DRAW' || raw.includes('DRAW')) return 'DRAW';
+      if (raw === 'PILGER' || raw.includes('PILGER')) return 'PILGER';
       if (raw === 'HEAT_TREATMENT' || raw.includes('HEAT')) return 'HEAT_TREATMENT';
       if (raw === 'BAND_SAW' || raw.includes('BAND') || raw.includes('SAW') || raw.includes('CUT')) return 'BAND_SAW';
       if (raw === 'VDI' || raw.includes('VDI') || raw.includes('INSPECT')) return 'VDI';
@@ -447,7 +449,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
           const mtr = Number(w.current_wip ?? w.available_mtr ?? 0);
           let pcs = Number(w.current_wip_pcs ?? w.available_pcs ?? 0);
-          const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW';
+          const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW' || sc === 'PILGER';
           const planMh = planMhMap.get(w.work_order_id) || (w.work_order_no ? planMhMap.get(String(w.work_order_no).trim()) : undefined);
           const mhAvgLen = Number(w.mh_avg_length || w.mh_l1 || planMh?.mh_avg_length || planMh?.mh_l1 || 0);
           const avgLen = isMhStage && mhAvgLen > 0 ? mhAvgLen : Number(w.avg_length || 6.0);
@@ -853,6 +855,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
     if (!entry) return 6.0;
     const isMhStage = entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
     const isDraw = entry.stage_code === 'DRAW';
+    const isPilger = entry.stage_code === 'PILGER';
     const isHeatTreatment = entry.stage_code === 'HEAT_TREATMENT';
     const rowMatch = rows.find((r) => r.work_order_no === entry.work_order_no || r.work_order_id === entry.work_order_id);
     const planMh =
@@ -876,7 +879,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       return mhLen > 0 ? mhLen : 4.4;
     }
 
-    if (isDraw || isHeatTreatment) {
+    if (isDraw || isPilger || isHeatTreatment) {
       const mhOd = Number(entry.mh_od || rowMatch?.mh_od || planMh?.mh_od || 0);
       const mhWt = Number(entry.mh_wt || rowMatch?.mh_wt || planMh?.mh_wt || 0);
       const finOd = Number(entry.od || rowMatch?.od || 0);

@@ -44,15 +44,16 @@ const GROUP_OPTIONS: { value: UserGroup; label: string; description: string; bad
 ];
 
 const WORK_CENTER_OPTIONS: { value: WorkCenterCode; label: string; stages: string[] }[] = [
-  { value: 'ALL', label: 'All Work Centers (Global Access)', stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'] },
+  { value: 'ALL', label: 'All Work Centers (Global Access)', stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'PILGER', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'] },
   { value: 'ROLLING', label: 'Hot Rolling & Piercing Mill', stages: ['ROLLING'] },
   { value: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment (Furnace)', stages: ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'] },
-  { value: 'DRAW', label: 'Cold Draw Bench & Pilgering', stages: ['DRAW'] },
+  { value: 'DRAW', label: 'Cold Draw Bench', stages: ['DRAW'] },
+  { value: 'PILGER', label: 'Cold Pilger Mill', stages: ['PILGER'] },
   { value: 'HEAT_TREATMENT', label: 'Final Heat Treatment (Furnace)', stages: ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'] },
   { value: 'BAND_SAW', label: 'Band Saw Cutting Station', stages: ['BAND_SAW', 'FINISHING'] },
   { value: 'VDI', label: 'Visual Dimension Inspection (VDI / QC)', stages: ['VDI'] },
   { value: 'FINISHING', label: 'Finishing & NDT Inspection', stages: ['BAND_SAW', 'FINISHING'] },
-  { value: 'QA', label: 'Quality Assurance & Metallurgical Lab', stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'] },
+  { value: 'QA', label: 'Quality Assurance & Metallurgical Lab', stages: ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'PILGER', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'] },
   { value: 'AUDIT', label: 'Audit & Compliance (Read-only)', stages: [] },
 ];
 
@@ -60,7 +61,8 @@ const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color:
   { value: 'admin', label: 'PPC Administrator', department: 'Production Planning & Control (PPC)', color: 'bg-blue-600 text-white', defaultGroup: 'admin', defaultWorkCenter: 'ALL' },
   { value: 'manager', label: 'Plant Operations Head', department: 'Plant Operations & Engineering', color: 'bg-purple-600 text-white', defaultGroup: 'super_user', defaultWorkCenter: 'ALL' },
   { value: 'rolling_incharge', label: 'Rolling Mill In-charge', department: 'Hot Rolling & Piercing Mill', color: 'bg-amber-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'ROLLING' },
-  { value: 'draw_operator', label: 'Cold Draw Operator', department: 'Cold Draw Bench & Pilgering', color: 'bg-indigo-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'DRAW' },
+  { value: 'draw_operator', label: 'Cold Draw Operator', department: 'Cold Draw Bench', color: 'bg-indigo-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'DRAW' },
+  { value: 'pilger_operator', label: 'Cold Pilger Operator', department: 'Cold Pilger Mill', color: 'bg-cyan-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'PILGER' },
   { value: 'band_saw_operator', label: 'Band Saw Operator', department: 'Band Saw Cutting Station', color: 'bg-rose-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'BAND_SAW' },
   { value: 'qa_inspector', label: 'Quality & NDT Inspector', department: 'Quality Assurance & Metallurgical Lab', color: 'bg-emerald-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'QA' },
   { value: 'finishing_operator', label: 'Finishing & NDT Operator', department: 'Finishing & NDT Inspection', color: 'bg-teal-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'FINISHING' },

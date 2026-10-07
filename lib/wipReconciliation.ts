@@ -95,6 +95,7 @@ export function reconcileWorkOrderWip(
   const routeCode = (options.route_code || 'CDS').toUpperCase();
   const isCds = routeCode.includes('CDS');
   const isAlloy = routeCode.includes('ALLOY');
+  const isSsSteel = routeCode === 'SS_STEEL';
 
   const sortedStages = [...stages].sort((a, b) => a.sequence_no - b.sequence_no);
 
@@ -235,10 +236,26 @@ export function reconcileWorkOrderWip(
       stageLen = actualMhLen; // Mother hollow pieces waiting to be drawn
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
+    } else if (sc === 'PILGER') {
+      // SS_STEEL: Feeder is directly Rolling HTC OK
+      incomingPcs = rollHtcPcs;
+      stageLen = actualMhLen; // Mother hollow pieces waiting to be pilgered
+      stageOd = mhOd > 0 ? mhOd : stageOd;
+      stageWt = mhWt > 0 ? mhWt : stageWt;
     } else if (sc === 'HEAT_TREATMENT') {
-      // Only Cold Drawn routes (CDS / ALLOY_CDS) go to post-draw Heat Treatment (fed from Draw Bench)
-      // Carbon HFS does NOT go through Heat Treatment.
-      if (isCds) {
+      // For Cold Drawn (CDS / ALLOY_CDS): Feeder is Draw Bench
+      // For SS_STEEL: Feeder is Cold Pilger Mill (PILGER)
+      if (isSsSteel) {
+        const pilgerProd = stageProdMap.get('PILGER');
+        incomingPcs = pilgerProd?.prodPcs || 0;
+        const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
+        const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
+        if (finUnitWeight > 0 && mhUnitWeight > 0) {
+          stageLen = Number((actualMhLen * (mhUnitWeight / finUnitWeight)).toFixed(3));
+        } else {
+          stageLen = finalAvgLen;
+        }
+      } else if (isCds) {
         const drawProd = stageProdMap.get('DRAW');
         incomingPcs = drawProd?.prodPcs || 0;
         // Actual physical elongated drawn length conserving full mass:

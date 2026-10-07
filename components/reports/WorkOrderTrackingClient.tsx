@@ -143,6 +143,7 @@ const STAGES_ORDER = [
   { code: 'ROLLING', label: 'Rolling Mill', short: 'ROLL', bg: 'bg-blue-50 text-blue-900 border-blue-200' },
   { code: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment', short: 'HTC', bg: 'bg-amber-50 text-amber-900 border-amber-200' },
   { code: 'DRAW', label: 'Draw Bench', short: 'DRAW', bg: 'bg-indigo-50 text-indigo-900 border-indigo-200' },
+  { code: 'PILGER', label: 'Cold Pilger Mill', short: 'PILGER', bg: 'bg-cyan-50 text-cyan-900 border-cyan-200' },
   { code: 'HEAT_TREATMENT', label: 'Heat Treatment', short: 'HT', bg: 'bg-orange-50 text-orange-900 border-orange-200' },
   { code: 'BAND_SAW', label: 'Band Saw', short: 'SAW', bg: 'bg-yellow-50 text-yellow-900 border-yellow-200' },
   { code: 'VDI', label: 'VDI / QC', short: 'VDI', bg: 'bg-purple-50 text-purple-900 border-purple-200' },
@@ -437,9 +438,11 @@ export default function WorkOrderTrackingClient() {
       const planRoute = processRoutes.find((r) => r.id === plan?.process_route_id);
       const woWipRows = stageWip.filter((s) => s.work_order_id === wo.id || s.work_order_id === effectiveMasterWoId);
       const routeCode = (planRoute?.route_code || woWipRows[0]?.route_code || '').toUpperCase();
+      const isSsSteelRoute = routeCode === 'SS_STEEL' || woWipRows.some((s) => s.stage_code === 'PILGER');
       const hasHtcInRoute = routeCode === 'ALLOY_CDS' || routeCode === 'ALLOY_HFS' || routeCode.includes('ALLOY') || woWipRows.some((s) => s.stage_code === 'HOLLOW_HEAT_TREATMENT');
+      const hasPilgerInRoute = isSsSteelRoute;
       const hasDrawInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS' || routeCode.includes('CDS') || woWipRows.some((s) => s.stage_code === 'DRAW');
-      const hasHtInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS' || routeCode.includes('CDS') || woWipRows.some((s) => s.stage_code === 'HEAT_TREATMENT');
+      const hasHtInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS' || routeCode.includes('CDS') || isSsSteelRoute || woWipRows.some((s) => s.stage_code === 'HEAT_TREATMENT');
       const hasBandSawInRoute = true;
 
       // Rolling production stats (tracked under master campaign or single order)
@@ -501,6 +504,16 @@ export default function WorkOrderTrackingClient() {
       const drawRejMtr = masterDrawLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
       const drawRejPcsLogged = masterDrawLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const drawRejPcs = drawRejPcsLogged > 0 ? drawRejPcsLogged : (avgLen > 0 ? Math.round(drawRejMtr / avgLen) : 0);
+
+      // Cold Pilger Mill stats
+      const masterPilgerLogs = masterLogs.filter((l) => l.stage_code === 'PILGER');
+      const pilgerOutMtr = masterPilgerLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const pilgerOutPcsLogged = masterPilgerLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
+      const pilgerOutPcs = pilgerOutPcsLogged > 0 ? pilgerOutPcsLogged : (avgLen > 0 ? Math.round(pilgerOutMtr / avgLen) : 0);
+
+      const pilgerRejMtr = masterPilgerLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const pilgerRejPcsLogged = masterPilgerLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
+      const pilgerRejPcs = pilgerRejPcsLogged > 0 ? pilgerRejPcsLogged : (avgLen > 0 ? Math.round(pilgerRejMtr / avgLen) : 0);
 
       // Heat Treatment stats
       const masterHtLogs = masterLogs.filter((l) => l.stage_code === 'HEAT_TREATMENT');
@@ -587,6 +600,7 @@ export default function WorkOrderTrackingClient() {
         if (childInfo && stageCode !== 'FINISHING') {
           if (
             (stageCode === 'HOLLOW_HEAT_TREATMENT' && !hasHtcInRoute) ||
+            (stageCode === 'PILGER' && !hasPilgerInRoute) ||
             (stageCode === 'DRAW' && !hasDrawInRoute) ||
             (stageCode === 'HEAT_TREATMENT' && !hasHtInRoute)
           ) {
@@ -852,6 +866,79 @@ export default function WorkOrderTrackingClient() {
           };
         }
 
+        if (stageCode === 'PILGER') {
+          const divIn = getStageDivIn(effectiveMasterWoId, 'PILGER');
+          const divOut = getStageDivOut(effectiveMasterWoId, 'PILGER');
+          if (!hasPilgerInRoute) {
+            return {
+              ...stageDef,
+              isBundled: false,
+              isNotInRoute: true,
+              planMtr: 0,
+              planPcs: 0,
+              outMtr: 0,
+              outPcs: 0,
+              rejMtr: 0,
+              rejPcs: 0,
+              htcOkMtr: 0,
+              htcOkPcs: 0,
+              wipMtr: 0,
+              wipPcs: 0,
+              wipMt: 0,
+              logsCount: 0,
+              dwellDays: 0,
+              agingSeverity: 'NORMAL',
+              divertedInMtr: divIn,
+              divertedOutMtr: divOut,
+            };
+          }
+
+          const incomingPcs = rollingHtcOkPcs;
+          const effPilgerLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
+          const divInPcs = effPilgerLen > 0 ? Math.round(divIn / effPilgerLen) : 0;
+          const divOutPcs = effPilgerLen > 0 ? Math.round(divOut / effPilgerLen) : 0;
+          const consumedPcs = pilgerOutPcs + pilgerRejPcs;
+
+          let wipPcs = 0;
+          if (incomingPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
+          }
+          const wipMtr = effPilgerLen > 0 ? Number((wipPcs * effPilgerLen).toFixed(3)) : 0;
+          let parsedPlanStatus: any = {};
+          try {
+            parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
+          } catch {}
+          const pilgerMhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
+          const pilgerMhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
+          const wipMt = mtFromMtr(wipMtr, pilgerMhOd, pilgerMhWt);
+          const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterPilgerLogs, masterRollLogs);
+
+          const stageOutMtr = avgLen > 0 ? Number((pilgerOutPcs * avgLen).toFixed(3)) : pilgerOutMtr;
+          const stageRejMtr = avgLen > 0 ? Number((pilgerRejPcs * avgLen).toFixed(3)) : pilgerRejMtr;
+
+          return {
+            ...stageDef,
+            isBundled: false,
+            isNotInRoute: false,
+            planMtr: 0,
+            planPcs: 0,
+            outMtr: stageOutMtr,
+            outPcs: pilgerOutPcs,
+            rejMtr: stageRejMtr,
+            rejPcs: pilgerRejPcs,
+            htcOkMtr: 0,
+            htcOkPcs: 0,
+            wipMtr,
+            wipPcs,
+            wipMt,
+            logsCount: masterPilgerLogs.length,
+            dwellDays,
+            agingSeverity,
+            divertedInMtr: divIn,
+            divertedOutMtr: divOut,
+          };
+        }
+
         if (stageCode === 'HEAT_TREATMENT') {
           const divIn = getStageDivIn(effectiveMasterWoId, 'HEAT_TREATMENT');
           const divOut = getStageDivOut(effectiveMasterWoId, 'HEAT_TREATMENT');
@@ -879,18 +966,24 @@ export default function WorkOrderTrackingClient() {
             };
           }
 
-          const drawNetPcs = Math.max(0, drawOutPcs - drawRejPcs);
+          const incomingNetPcs = hasPilgerInRoute
+            ? Math.max(0, pilgerOutPcs - pilgerRejPcs)
+            : Math.max(0, drawOutPcs - drawRejPcs);
           const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
           const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
           const consumedPcs = htOutPcs + htRejPcs;
 
           let wipPcs = 0;
-          if (drawNetPcs > 0 || divInPcs > 0) {
-            wipPcs = Math.max(0, drawNetPcs + divInPcs - consumedPcs - divOutPcs);
+          if (incomingNetPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, incomingNetPcs + divInPcs - consumedPcs - divOutPcs);
           }
           const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
           const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
-          const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterHtLogs, masterDrawLogs);
+          const { dwellDays, agingSeverity } = getStageAging(
+            wipMtr,
+            masterHtLogs,
+            hasPilgerInRoute ? masterPilgerLogs : masterDrawLogs
+          );
 
           const stageOutMtr = avgLen > 0 ? Number((htOutPcs * avgLen).toFixed(3)) : htOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((htRejPcs * avgLen).toFixed(3)) : htRejMtr;
@@ -924,14 +1017,16 @@ export default function WorkOrderTrackingClient() {
           // Feeding rule from AGENTS.md:
           // - HFS: incoming from Rolling HTC OK
           // - ALLOY_HFS: incoming from Hollow HT OK
-          // - CDS / ALLOY_CDS: incoming from Heat Treatment OK (or Draw OK if no HT)
+          // - CDS / ALLOY_CDS / SS_STEEL: incoming from Heat Treatment OK (or Draw/Pilger OK if no HT)
           let incomingPcs = 0;
-          if (!hasDrawInRoute) {
+          if (!hasDrawInRoute && !hasPilgerInRoute) {
             // HFS or ALLOY_HFS
             incomingPcs = hasHtcInRoute ? Math.max(0, htcOutPcs - htcRejPcs) : rollingHtcOkPcs;
           } else {
-            // CDS or ALLOY_CDS
-            incomingPcs = htOutPcs > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs);
+            // CDS, ALLOY_CDS, or SS_STEEL
+            incomingPcs = htOutPcs > 0
+              ? Math.max(0, htOutPcs - htRejPcs)
+              : (hasPilgerInRoute ? Math.max(0, pilgerOutPcs - pilgerRejPcs) : Math.max(0, drawOutPcs - drawRejPcs));
           }
           const isHfsLike = !hasDrawInRoute;
           const effLen = isHfsLike && mhAvgLen > 0 ? mhAvgLen : avgLen;

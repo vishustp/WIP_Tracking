@@ -33,8 +33,8 @@ export function EditEntryModal({
   avgLength,
 }: EditEntryModalProps) {
   const isMhStage = editing.stage_code === 'ROLLING' || editing.stage_code === 'HOLLOW_HEAT_TREATMENT';
-  const isDrawOrHt = editing.stage_code === 'DRAW' || editing.stage_code === 'HEAT_TREATMENT';
-  const hasL1L2 = editing.stage_code === 'DRAW' || editing.stage_code === 'HEAT_TREATMENT' || editing.stage_code === 'BAND_SAW' || editing.stage_code === 'VDI' || editing.stage_code === 'FINISHING';
+  const isDrawOrHt = editing.stage_code === 'DRAW' || editing.stage_code === 'PILGER' || editing.stage_code === 'HEAT_TREATMENT';
+  const hasL1L2 = editing.stage_code === 'DRAW' || editing.stage_code === 'PILGER' || editing.stage_code === 'HEAT_TREATMENT' || editing.stage_code === 'BAND_SAW' || editing.stage_code === 'VDI' || editing.stage_code === 'FINISHING';
   const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(editing.remarks);
 
   const l1Match = (editing.remarks || '').match(/\[L1:([0-9.]+)\]/i);

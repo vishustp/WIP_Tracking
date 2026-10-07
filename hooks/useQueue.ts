@@ -301,6 +301,7 @@ export function useQueue(stage: StageCode) {
       // In Finishing: ALL Master and Child Work Orders will be displayed!
       const isMasterOnlyStage =
         s === "DRAW" ||
+        s === "PILGER" ||
         s === "HOLLOW_HEAT_TREATMENT" ||
         s === "HEAT_TREATMENT" ||
         s === "BAND_SAW" ||
@@ -566,6 +567,7 @@ export function useQueue(stage: StageCode) {
       } else if (isMasterOnlyStage) {
         const hollowHtStageId = stages.find((st: any) => st.stage_code === "HOLLOW_HEAT_TREATMENT")?.id;
         const drawStageId = stages.find((st: any) => st.stage_code === "DRAW")?.id;
+        const pilgerStageId = stages.find((st: any) => st.stage_code === "PILGER")?.id;
         const htStageId = stages.find((st: any) => st.stage_code === "HEAT_TREATMENT")?.id;
 
         // Filter out any child work orders
@@ -649,6 +651,13 @@ export function useQueue(stage: StageCode) {
             const drawRejPcs = tubeAvg > 0 ? Math.round(drawRejMtr / tubeAvg) : 0;
             const drawNetPcs = Math.max(0, drawOutPcs - drawRejPcs);
 
+            const pilgerLogs = masterLogs.filter((l: any) => l.stage_id === pilgerStageId);
+            const pilgerOutMtr = pilgerLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+            const pilgerRejMtr = pilgerLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+            const pilgerOutPcs = tubeAvg > 0 ? Math.round(pilgerOutMtr / tubeAvg) : 0;
+            const pilgerRejPcs = tubeAvg > 0 ? Math.round(pilgerRejMtr / tubeAvg) : 0;
+            const pilgerNetPcs = Math.max(0, pilgerOutPcs - pilgerRejPcs);
+
             const htLogs = masterLogs.filter((l: any) => l.stage_id === htStageId);
             const htOutMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
             const htRejMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
@@ -661,6 +670,8 @@ export function useQueue(stage: StageCode) {
             const hhtDivOut = getStageDivOut(r.work_order_id, "HOLLOW_HEAT_TREATMENT");
             const drawDivIn = getStageDivIn(r.work_order_id, "DRAW");
             const drawDivOut = getStageDivOut(r.work_order_id, "DRAW");
+            const pilgerDivIn = getStageDivIn(r.work_order_id, "PILGER");
+            const pilgerDivOut = getStageDivOut(r.work_order_id, "PILGER");
             const htDivIn = getStageDivIn(r.work_order_id, "HEAT_TREATMENT");
             const htDivOut = getStageDivOut(r.work_order_id, "HEAT_TREATMENT");
 
@@ -681,10 +692,18 @@ export function useQueue(stage: StageCode) {
               const drawDivOutPcs = effDrawLen > 0 ? Math.round(drawDivOut / effDrawLen) : 0;
               availPcs = Math.max(0, incomingPcs + drawDivInPcs - drawOutPcs - drawRejPcs - drawDivOutPcs);
               availMtr = effDrawLen > 0 ? Number((availPcs * effDrawLen).toFixed(2)) : 0;
+            } else if (s === "PILGER") {
+              const incomingPcs = rollHtcOkPcs;
+              const effPilgerLen = mhAvg > 0 ? mhAvg : tubeAvg;
+              const pilgerDivInPcs = effPilgerLen > 0 ? Math.round(pilgerDivIn / effPilgerLen) : 0;
+              const pilgerDivOutPcs = effPilgerLen > 0 ? Math.round(pilgerDivOut / effPilgerLen) : 0;
+              availPcs = Math.max(0, incomingPcs + pilgerDivInPcs - pilgerOutPcs - pilgerRejPcs - pilgerDivOutPcs);
+              availMtr = effPilgerLen > 0 ? Number((availPcs * effPilgerLen).toFixed(2)) : 0;
             } else if (s === "HEAT_TREATMENT") {
               const htDivInPcs = tubeAvg > 0 ? Math.round(htDivIn / tubeAvg) : 0;
               const htDivOutPcs = tubeAvg > 0 ? Math.round(htDivOut / tubeAvg) : 0;
-              availPcs = Math.max(0, drawNetPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs);
+              const incomingPcs = r.route_code === "SS_STEEL" ? pilgerNetPcs : drawNetPcs;
+              availPcs = Math.max(0, incomingPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs);
               availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(2)) : 0;
             } else if (s === "VDI") {
               const isHfs = r.route_code === "HFS" || r.route_code === "ALLOY_HFS";
@@ -708,7 +727,7 @@ export function useQueue(stage: StageCode) {
                 : (effLen > 0 ? Number((availPcs * effLen).toFixed(2)) : 0);
             }
 
-            const isMhWip = (s as string) === "ROLLING" || s === "HOLLOW_HEAT_TREATMENT" || s === "DRAW";
+            const isMhWip = (s as string) === "ROLLING" || s === "HOLLOW_HEAT_TREATMENT" || s === "DRAW" || s === "PILGER";
             const effectiveOd = isMhWip && mhOd > 0 ? mhOd : Number(r.od || 0);
             const effectiveWt = isMhWip && mhWt > 0 ? mhWt : Number(r.wl || 0);
             const availMt = Math.max(effectiveOd - effectiveWt, 0) * Math.max(effectiveWt, 0) * 0.0246615 * 0.001 * availMtr;

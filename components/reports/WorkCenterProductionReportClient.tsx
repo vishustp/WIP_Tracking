@@ -51,11 +51,19 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'DRAW',
-    label: 'Cold Draw Bench & Pilger',
+    label: 'Cold Draw Bench',
     shortLabel: 'Cold Draw',
-    description: 'Cold drawing, plug drawing, and cold pilger reduction to final dimensions.',
+    description: 'Cold drawing, plug drawing, and cold reduction to final dimensions.',
     icon: Wrench,
     color: 'border-indigo-500 text-indigo-700 bg-indigo-50',
+  },
+  {
+    code: 'PILGER',
+    label: 'Cold Pilger Mill',
+    shortLabel: 'Pilger',
+    description: 'Cold pilgering and roll-die reduction of stainless steel hollows.',
+    icon: Wrench,
+    color: 'border-cyan-500 text-cyan-700 bg-cyan-50',
   },
   {
     code: 'HEAT_TREATMENT',
@@ -106,7 +114,8 @@ const LAST_WC_MAP: Record<string, string> = {
   ROLLING: 'PPC Rolling Plan',
   HOLLOW_HEAT_TREATMENT: 'Hot Rolling Mill',
   DRAW: 'Hollow HT / Rolling',
-  HEAT_TREATMENT: 'Cold Draw Bench',
+  PILGER: 'Hot Rolling Mill',
+  HEAT_TREATMENT: 'Cold Draw / Pilger',
   BAND_SAW: 'Final Heat Treatment',
   VDI: 'Band Saw Cutting',
   FINISHING: 'VDI',
@@ -625,8 +634,10 @@ export default function WorkCenterProductionReportClient() {
       precedingStageCode = 'ROLLING';
     } else if (selectedWc === 'DRAW') {
       precedingStageCode = selectedRoute.includes('ALLOY') ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING';
+    } else if (selectedWc === 'PILGER') {
+      precedingStageCode = 'ROLLING';
     } else if (selectedWc === 'HEAT_TREATMENT') {
-      precedingStageCode = 'DRAW';
+      precedingStageCode = selectedRoute === 'SS_STEEL' ? 'PILGER' : 'DRAW';
     } else if (selectedWc === 'BAND_SAW') {
       precedingStageCode = selectedRoute.includes('HFS') ? 'ROLLING' : 'HEAT_TREATMENT';
     } else if (selectedWc === 'VDI') {
@@ -639,6 +650,8 @@ export default function WorkCenterProductionReportClient() {
       const eStage = (e.stage_code || '').toUpperCase();
       if (selectedWc === 'DRAW' && selectedRoute === 'ALL') {
         if (eStage !== 'ROLLING' && eStage !== 'HOLLOW_HEAT_TREATMENT') return false;
+      } else if (selectedWc === 'HEAT_TREATMENT' && selectedRoute === 'ALL') {
+        if (eStage !== 'DRAW' && eStage !== 'PILGER') return false;
       } else if (selectedWc === 'BAND_SAW' && selectedRoute === 'ALL') {
         if (eStage !== 'HEAT_TREATMENT' && eStage !== 'ROLLING' && eStage !== 'HOLLOW_HEAT_TREATMENT') return false;
       } else if (eStage !== precedingStageCode) {
@@ -753,10 +766,23 @@ export default function WorkCenterProductionReportClient() {
           c5Category: 'Performance',
           c5Title: 'Drawing Yield',
         };
+      case 'PILGER':
+        return {
+          c1Category: 'Received from',
+          c1Title: 'Rolling OK (HTC)',
+          c2Category: 'Production Done',
+          c2Title: 'Pilger OK',
+          c3Category: 'Work Center Balance',
+          c3Title: 'Pilger Balance',
+          c4Category: 'Rejections Logged',
+          c4Title: 'Pilger Rejections',
+          c5Category: 'Performance',
+          c5Title: 'Pilger Yield',
+        };
       case 'HEAT_TREATMENT':
         return {
           c1Category: 'Received from',
-          c1Title: 'Cold Draw Bench',
+          c1Title: selectedRoute === 'SS_STEEL' ? 'Cold Pilger Mill' : 'Cold Draw Bench',
           c2Category: 'Production Done',
           c2Title: 'Final HT OK',
           c3Category: 'Work Center Balance',

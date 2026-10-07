@@ -24,6 +24,7 @@ const STAGE_DISPLAY_NAMES: Record<StageCode, string> = {
   ROLLING: "ROLLING MILL",
   HOLLOW_HEAT_TREATMENT: "HOLLOW HT",
   DRAW: "DRAW BENCH",
+  PILGER: "COLD PILGER",
   HEAT_TREATMENT: "HEAT TREATMENT",
   BAND_SAW: "BAND SAW",
   VDI: "VDI / QC",
@@ -40,6 +41,7 @@ export function WipSummaryCards({
     "ROLLING",
     "HOLLOW_HEAT_TREATMENT",
     "DRAW",
+    "PILGER",
     "HEAT_TREATMENT",
     "FINISHING",
   ];
@@ -52,7 +54,7 @@ export function WipSummaryCards({
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6 lg:grid-cols-6">
         {orderedStages.map((stgCode) => {
           const wc = workCenterSummary.find((x) => x.stage_code === stgCode) || {
             label: STAGE_DISPLAY_NAMES[stgCode] || stgCode,

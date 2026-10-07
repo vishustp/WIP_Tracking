@@ -349,6 +349,22 @@ export function inferRouteFromMaterialOrSpec(
   const mat = (materialCode || '').toUpperCase().trim();
   const sp = `${spec || ''} ${grade || ''}`.toUpperCase().trim();
 
+  const isStainless =
+    sp.includes('STAINLESS') ||
+    sp.includes('A312') ||
+    sp.includes('TP304') ||
+    sp.includes('TP316') ||
+    sp.includes('304L') ||
+    sp.includes('316L') ||
+    sp.includes('SS 304') ||
+    sp.includes('SS 316') ||
+    mat.startsWith('SS') ||
+    mat.includes('STAINLESS');
+
+  if (isStainless) {
+    return { route_code: 'SS_STEEL', route_name: 'Stainless Steel' };
+  }
+
   const isAlloy =
     sp.includes('ALLOY') ||
     sp.includes('213') ||
