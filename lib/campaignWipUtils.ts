@@ -111,9 +111,26 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
   const planMh = mhMap.get(woId) || mhMap.get(String(wo?.work_order_no).trim());
   const routeCode = rows[0]?.route_code || 'CDS';
 
+  // Direct production logs per stage for this work order
+  const directStageLogsMap = new Map<string, { mtr: number; pcs: number; rejMtr: number; rejPcs: number }>();
+  productionLogs.forEach((l: any) => {
+    if (l.work_order_id === woId) {
+      const sc = (l.process_stages?.stage_code || l.stage_code || '').toUpperCase();
+      if (!sc) return;
+      const cur = directStageLogsMap.get(sc) || { mtr: 0, pcs: 0, rejMtr: 0, rejPcs: 0 };
+      cur.mtr += Number(l.output_qty || 0);
+      cur.rejMtr += Number(l.rejection_qty || 0);
+      const { pcs: pPcs, rejPcs: rPcs } = extractPcsFromRemarks(l.remarks);
+      if (pPcs != null) cur.pcs += pPcs;
+      if (rPcs != null) cur.rejPcs += rPcs;
+      directStageLogsMap.set(sc, cur);
+    }
+  });
+
+  const rollLog = directStageLogsMap.get('ROLLING');
   const rollStage = rows.find((r: any) => (r.stage_code || '').toUpperCase() === 'ROLLING');
-  const rollPcs = Number(rollStage?.gross_output_pcs || 0);
-  const rollMtr = Number(rollStage?.gross_output_mtr || rollStage?.production_qty || 0);
+  const rollPcs = Number(rollLog?.pcs || rollStage?.gross_output_pcs || 0);
+  const rollMtr = Number(rollLog?.mtr || rollStage?.gross_output_mtr || rollStage?.production_qty || 0);
   const actualMhLen = (rollPcs > 0 && rollMtr > 0)
     ? Number((rollMtr / rollPcs).toFixed(3))
     : Number(planMh?.mh_avg_length || 6.0);
@@ -136,19 +153,8 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
   });
 
   // Direct Finishing production logs for this specific work order
-  let directFinMtr = 0;
-  let directFinPcs = 0;
-  productionLogs.forEach((l: any) => {
-    if (l.work_order_id === woId) {
-      const sc = (l.process_stages?.stage_code || l.stage_code || '').toUpperCase();
-      const isFinLog = (finishingStageId && l.stage_id === finishingStageId) || sc === 'FINISHING' || sc === 'CUTTING';
-      if (isFinLog) {
-        directFinMtr += Number(l.output_qty || 0);
-        const { pcs: pPcs } = extractPcsFromRemarks(l.remarks);
-        directFinPcs += pPcs || 0;
-      }
-    }
-  });
+  let directFinMtr = directStageLogsMap.get('FINISHING')?.mtr || directStageLogsMap.get('CUTTING')?.mtr || 0;
+  let directFinPcs = directStageLogsMap.get('FINISHING')?.pcs || directStageLogsMap.get('CUTTING')?.pcs || 0;
 
   // Campaign aggregation for Master work orders
   const campaignMembers = campaignMembersMap.get(woId);
@@ -175,6 +181,15 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
         campaignFinMtr += Number(l.output_qty || 0);
         const { pcs: pPcs } = extractPcsFromRemarks(l.remarks);
         campaignFinPcs += pPcs || (actualMhLen > 0 ? Math.round(Number(l.output_qty || 0) / actualMhLen) : 0);
+      } else if (campaignMembers.has(l.work_order_id) && l.work_order_id !== woId && sc) {
+        // Pool pre-finishing production across campaign members under Master
+        const cur = directStageLogsMap.get(sc) || { mtr: 0, pcs: 0, rejMtr: 0, rejPcs: 0 };
+        cur.mtr += Number(l.output_qty || 0);
+        cur.rejMtr += Number(l.rejection_qty || 0);
+        const { pcs: pPcs, rejPcs: rPcs } = extractPcsFromRemarks(l.remarks);
+        if (pPcs != null) cur.pcs += pPcs;
+        if (rPcs != null) cur.rejPcs += rPcs;
+        directStageLogsMap.set(sc, cur);
       }
     });
   }
@@ -211,20 +226,26 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
       const rawRejMtr = Number(r.rejection_mtr || 0);
       const rawRejPcs = Number(r.rejection_pcs || 0);
 
-      let grossMtr = rawMtr;
-      let grossPcs = rawPcs;
-      let rejMtr = rawRejMtr;
-      let rejPcs = rawRejPcs;
-      let netMtr = Number(r.net_output_mtr || 0);
-      let netPcs = Number(r.net_output_pcs || 0);
+      const stageLog = directStageLogsMap.get(sc);
+      const logPcs = stageLog?.pcs || 0;
+      const logMtr = stageLog?.mtr || 0;
+      const logRejPcs = stageLog?.rejPcs || 0;
+      const logRejMtr = stageLog?.rejMtr || 0;
+
+      let grossMtr = logMtr > 0 ? logMtr : rawMtr;
+      let grossPcs = logPcs > 0 ? logPcs : rawPcs;
+      let rejMtr = logRejMtr > 0 ? logRejMtr : rawRejMtr;
+      let rejPcs = logRejPcs > 0 ? logRejPcs : rawRejPcs;
+      let netMtr = Math.max(0, grossMtr - rejMtr);
+      let netPcs = Math.max(0, grossPcs - rejPcs);
       let incomingPcsOverride: number | undefined = undefined;
       let incomingMtrOverride: number | undefined = undefined;
 
       const stageAvgLen = Number(r.avg_length || (r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0));
 
       if (isRoll) {
-        grossMtr = rollMtr > 0 ? rollMtr : rawMtr;
-        grossPcs = rollPcs > 0 ? rollPcs : rawPcs;
+        grossMtr = rollMtr > 0 ? rollMtr : grossMtr;
+        grossPcs = rollPcs > 0 ? rollPcs : grossPcs;
         rejMtr = rawRejMtr;
         rejPcs = rawRejPcs;
         netMtr = Math.max(0, grossMtr - rejMtr);

@@ -353,7 +353,7 @@ export function reconcileWorkOrderWip(
 
     const wipMtr = wipPcs > 0
       ? (stageLen > 0 ? Number((wipPcs * stageLen).toFixed(2)) : rawWipMtr)
-      : (rawWipMtr >= (stageLen > 0 ? stageLen * 0.5 : 1.0) ? rawWipMtr : 0);
+      : (totalIncomingPcs === 0 && rawWipMtr >= (stageLen > 0 ? stageLen * 0.5 : 1.0) ? rawWipMtr : 0);
     const wipMt = mtFromMtr(wipMtr, stageOd, stageWt);
 
     reconciledStages.push({

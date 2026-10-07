@@ -585,5 +585,121 @@ describe('PCS-First Route-Aware WIP Reconciliation', () => {
     expect(bs!.reconciled_wip_pcs).toBe(671);
     expect(bs!.capped_wip_pcs).toBe(671);
   });
+
+  it('ensures Draw Bench WIP is strictly 0 when Draw entry is completed as per Rolling HTC OK (e.g. WO 6278)', () => {
+    // Scenario modeled after WO 6278:
+    // Rolling HTC OK: 119 PCS (868.7m at 7.3m avg)
+    // Draw Bench output: 119 PCS (868.7m)
+    // Downstream Heat Treatment: 118 PCS (1392.4m)
+    // Band Saw: 118 PCS (1392.4m)
+    const stages: StageWipInput[] = [
+      {
+        stage_code: 'ROLLING',
+        sequence_no: 1,
+        gross_output_mtr: 868.7,
+        gross_output_pcs: 119,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 868.7,
+        net_output_pcs: 119,
+        od: 47,
+        wt: 5.5,
+        avg_length: 7.3,
+      },
+      {
+        stage_code: 'DRAW',
+        sequence_no: 2,
+        gross_output_mtr: 868.7,
+        gross_output_pcs: 119,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 868.7,
+        net_output_pcs: 119,
+        od: 38.1,
+        wt: 3.66,
+        avg_length: 7.3,
+      },
+      {
+        stage_code: 'HEAT_TREATMENT',
+        sequence_no: 3,
+        gross_output_mtr: 1392.4,
+        gross_output_pcs: 118,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 1392.4,
+        net_output_pcs: 118,
+        od: 38.1,
+        wt: 3.66,
+        avg_length: 11.8,
+      },
+      {
+        stage_code: 'BAND_SAW',
+        sequence_no: 4,
+        gross_output_mtr: 1392.4,
+        gross_output_pcs: 118,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 1392.4,
+        net_output_pcs: 118,
+        od: 38.1,
+        wt: 3.66,
+        avg_length: 11.8,
+      },
+      {
+        stage_code: 'VDI',
+        sequence_no: 5,
+        gross_output_mtr: 1368.8,
+        gross_output_pcs: 116,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 1368.8,
+        net_output_pcs: 116,
+        od: 38.1,
+        wt: 3.66,
+        avg_length: 11.8,
+      },
+      {
+        stage_code: 'FINISHING',
+        sequence_no: 6,
+        gross_output_mtr: 1262.6,
+        gross_output_pcs: 107,
+        rejection_mtr: 0,
+        rejection_pcs: 0,
+        net_output_mtr: 1262.6,
+        net_output_pcs: 107,
+        od: 38.1,
+        wt: 3.66,
+        avg_length: 11.8,
+      },
+    ];
+
+    const result = reconcileWorkOrderWip(stages, {
+      route_code: 'CDS',
+      mh_od: 47,
+      mh_wt: 5.5,
+      mh_avg_length: 7.3,
+      final_avg_length: 11.8,
+      multiple: 1,
+    });
+
+    const draw = result.stages.find((s) => s.stage_code === 'DRAW');
+    expect(draw).toBeDefined();
+    expect(draw!.incoming_pcs).toBe(119);
+    expect(draw!.production_pcs).toBe(119);
+    expect(draw!.reconciled_wip_pcs).toBe(0);
+    expect(draw!.capped_wip_pcs).toBe(0);
+    expect(draw!.reconciled_wip_mtr).toBe(0);
+    expect(draw!.capped_wip_mtr).toBe(0);
+
+    const ht = result.stages.find((s) => s.stage_code === 'HEAT_TREATMENT');
+    expect(ht).toBeDefined();
+    expect(ht!.incoming_pcs).toBe(119);
+    expect(ht!.production_pcs).toBe(118);
+    expect(ht!.capped_wip_pcs).toBe(1);
+
+    const fin = result.stages.find((s) => s.stage_code === 'FINISHING');
+    expect(fin).toBeDefined();
+    expect(fin!.capped_wip_pcs).toBe(9); // 116 incoming - 107 finished = 9 pcs
+  });
 });
 

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { mtFromMtr, fmt, parseDiversionStages } from '@/lib/productionUtils';
+import { mtFromMtr, fmt, parseDiversionStages, extractPcsFromRemarks } from '@/lib/productionUtils';
 import { exportJsonToExcel } from '@/lib/excelUtils';
 import {
   Search,
@@ -443,63 +443,83 @@ export default function WorkOrderTrackingClient() {
       const hasBandSawInRoute = true;
 
       // Rolling production stats (tracked under master campaign or single order)
+      const getLogPcs = (l: any) => {
+        if (Number(l.output_pcs || 0) > 0) return Number(l.output_pcs);
+        const { pcs } = extractPcsFromRemarks(l.remarks);
+        return pcs || 0;
+      };
+      const getLogRejPcs = (l: any) => {
+        if (Number(l.rejection_pcs || 0) > 0) return Number(l.rejection_pcs);
+        const { rejPcs } = extractPcsFromRemarks(l.remarks);
+        return rejPcs || 0;
+      };
+      const getLogHtcOkPcs = (l: any) => {
+        if (Number(l.htc_ok_pcs || 0) > 0) return Number(l.htc_ok_pcs);
+        if (Number(l.htc_ok || 0) > 0) {
+          const { pcs } = extractPcsFromRemarks(l.remarks);
+          return pcs || (mhAvgLen > 0 ? Math.round(Number(l.htc_ok) / mhAvgLen) : 0);
+        }
+        return 0;
+      };
+
+      // Rolling production stats (tracked under master campaign or single order)
       const mhAvgLen = (plan?.mh_l1 && plan?.mh_l2 ? (plan.mh_l1 + plan.mh_l2) / 2 : plan?.mh_l1 || plan?.mh_l2) || avgLen;
       const masterRollLogs = masterLogs.filter((l) => l.stage_code === 'ROLLING');
       const rollingOutMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const rollingOutPcsLogged = masterRollLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const rollingOutPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const rollingOutPcs = rollingOutPcsLogged > 0 ? rollingOutPcsLogged : (mhAvgLen > 0 ? Math.round(rollingOutMtr / mhAvgLen) : 0);
 
       const rollingRejMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const rollingRejPcsLogged = masterRollLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const rollingRejPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const rollingRejPcs = rollingRejPcsLogged > 0 ? rollingRejPcsLogged : (mhAvgLen > 0 ? Math.round(rollingRejMtr / mhAvgLen) : 0);
 
       // Strictly HTC OK quantity from rolling!
       const rollingHtcOkMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty || 0), 0);
-      const rollingHtcOkPcsLogged = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_pcs || 0), 0);
+      const rollingHtcOkPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogHtcOkPcs(l), 0);
       const rollingHtcOkPcs = rollingHtcOkPcsLogged > 0 ? rollingHtcOkPcsLogged : (mhAvgLen > 0 ? Math.round(rollingHtcOkMtr / mhAvgLen) : 0);
 
       // Hollow Heat Treatment (HTC) stats
       const masterHtcLogs = masterLogs.filter((l) => l.stage_code === 'HOLLOW_HEAT_TREATMENT');
       const htcOutMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const htcOutPcsLogged = masterHtcLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const htcOutPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const htcOutPcs = htcOutPcsLogged > 0 ? htcOutPcsLogged : (mhAvgLen > 0 ? Math.round(htcOutMtr / mhAvgLen) : 0);
 
       const htcRejMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const htcRejPcsLogged = masterHtcLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const htcRejPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const htcRejPcs = htcRejPcsLogged > 0 ? htcRejPcsLogged : (mhAvgLen > 0 ? Math.round(htcRejMtr / mhAvgLen) : 0);
 
       const htcOkMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty || 0), 0);
-      const htcOkPcsLogged = masterHtcLogs.reduce((sum, l) => sum + Number(l.htc_ok_pcs || 0), 0);
+      const htcOkPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogHtcOkPcs(l), 0);
       const htcOkPcs = htcOkPcsLogged > 0 ? htcOkPcsLogged : (mhAvgLen > 0 ? Math.round(htcOkMtr / mhAvgLen) : 0);
 
       // Draw Bench stats
       const masterDrawLogs = masterLogs.filter((l) => l.stage_code === 'DRAW');
       const drawOutMtr = masterDrawLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const drawOutPcsLogged = masterDrawLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const drawOutPcsLogged = masterDrawLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const drawOutPcs = drawOutPcsLogged > 0 ? drawOutPcsLogged : (avgLen > 0 ? Math.round(drawOutMtr / avgLen) : 0);
 
       const drawRejMtr = masterDrawLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const drawRejPcsLogged = masterDrawLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const drawRejPcsLogged = masterDrawLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const drawRejPcs = drawRejPcsLogged > 0 ? drawRejPcsLogged : (avgLen > 0 ? Math.round(drawRejMtr / avgLen) : 0);
 
       // Heat Treatment stats
       const masterHtLogs = masterLogs.filter((l) => l.stage_code === 'HEAT_TREATMENT');
       const htOutMtr = masterHtLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const htOutPcsLogged = masterHtLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const htOutPcsLogged = masterHtLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const htOutPcs = htOutPcsLogged > 0 ? htOutPcsLogged : (avgLen > 0 ? Math.round(htOutMtr / avgLen) : 0);
 
       const htRejMtr = masterHtLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const htRejPcsLogged = masterHtLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const htRejPcsLogged = masterHtLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const htRejPcs = htRejPcsLogged > 0 ? htRejPcsLogged : (avgLen > 0 ? Math.round(htRejMtr / avgLen) : 0);
 
       // Band Saw stats
       const masterBandSawLogs = masterLogs.filter((l) => l.stage_code === 'BAND_SAW');
       const bandSawOutMtr = masterBandSawLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const bandSawOutPcsLogged = masterBandSawLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const bandSawOutPcsLogged = masterBandSawLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const bandSawOutPcs = bandSawOutPcsLogged > 0 ? bandSawOutPcsLogged : (avgLen > 0 ? Math.round(bandSawOutMtr / avgLen) : 0);
 
       const bandSawRejMtr = masterBandSawLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const bandSawRejPcsLogged = masterBandSawLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const bandSawRejPcsLogged = masterBandSawLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const bandSawRejPcs = bandSawRejPcsLogged > 0 ? bandSawRejPcsLogged : (avgLen > 0 ? Math.round(bandSawRejMtr / avgLen) : 0);
 
       // VDI stats from production_logs AND qc_inspections
@@ -516,11 +536,11 @@ export default function WorkOrderTrackingClient() {
         : woLogs.filter((l) => l.stage_code === 'VDI');
 
       const logVdiOutMtr = masterVdiLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const logVdiOutPcsLogged = masterVdiLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const logVdiOutPcsLogged = masterVdiLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const logVdiOutPcs = logVdiOutPcsLogged > 0 ? logVdiOutPcsLogged : (avgLen > 0 ? Math.round(logVdiOutMtr / avgLen) : 0);
 
       const logVdiRejMtr = masterVdiLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const logVdiRejPcsLogged = masterVdiLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const logVdiRejPcsLogged = masterVdiLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const logVdiRejPcs = logVdiRejPcsLogged > 0 ? logVdiRejPcsLogged : (avgLen > 0 ? Math.round(logVdiRejMtr / avgLen) : 0);
 
       const vdiOutMtr = Math.max(logVdiOutMtr, qcVdiOkMtr);
@@ -531,11 +551,11 @@ export default function WorkOrderTrackingClient() {
       // Finishing stats (tracked PER WORK ORDER)
       const finLogs = woLogs.filter((l) => l.stage_code === 'FINISHING');
       const finOutMtr = finLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const finOutPcsLogged = finLogs.reduce((sum, l) => sum + Number(l.output_pcs || 0), 0);
+      const finOutPcsLogged = finLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const finOutPcs = finOutPcsLogged > 0 ? finOutPcsLogged : (avgLen > 0 ? Math.round(finOutMtr / avgLen) : 0);
 
       const finRejMtr = finLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const finRejPcsLogged = finLogs.reduce((sum, l) => sum + Number(l.rejection_pcs || 0), 0);
+      const finRejPcsLogged = finLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const finRejPcs = finRejPcsLogged > 0 ? finRejPcsLogged : (avgLen > 0 ? Math.round(finRejMtr / avgLen) : 0);
 
       // Planned rolling target
