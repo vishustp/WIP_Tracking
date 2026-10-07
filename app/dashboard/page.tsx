@@ -17,7 +17,7 @@ export default async function Dashboard() {
 
   try {
     const supabase = await createClient();
-    const [kpiRes, wipRes, pendingRes, plansRes, woRes, qcRes, prodRes, usersRes, agingRes, routeStagesRes] = await Promise.all([
+    const [kpiRes, wipRes, pendingRes, plansRes, woRes, qcRes, prodRes, usersRes, agingRes, routeStagesRes, stagesRes] = await Promise.all([
       supabase.from('vw_dashboard_kpis').select('*').maybeSingle(),
       supabase
         .from('vw_route_stage_wip')
@@ -37,11 +37,12 @@ export default async function Dashboard() {
       supabase
         .from('work_orders')
         .select('id,work_order_no,customer_name,ordered_qty_mt,ordered_qty_mtr,size_od,size_wt,grade,target_date,status,l1,l2'),
-      supabase.from('qc_inspections').select('work_order_id,vdi_ok_mtr,vdi_ok_pcs,vdi_rejection_mtr,vdi_salvage_mtr,vdi_rejection_pcs,vdi_salvage_pcs'),
+      supabase.from('qc_inspections').select('id,work_order_id,vdi_ok_mtr,vdi_ok_pcs,vdi_ok_mt,vdi_rejection_mtr,vdi_salvage_mtr,vdi_rejection_pcs,vdi_salvage_pcs,inspection_date,created_at'),
       supabase.from('production_logs').select('id,work_order_id,stage_id,output_qty,rejection_qty,remarks,process_date,created_at,created_by,process_stages(stage_code,stage_name)'),
       supabase.from('app_users').select('id,auth_user_id,employee_name,email'),
       supabase.from('vw_wip_aging').select('*').gt('current_wip', 0).order('days_stuck', { ascending: false }).limit(50),
       supabase.from('route_stages').select('route_id,stage_id,sequence_no,process_stages(stage_code)').order('sequence_no', { ascending: true }),
+      supabase.from('process_stages').select('id,stage_code,stage_name'),
     ]);
 
     const rawWip = (wipRes.data ?? []) as any[];
@@ -50,6 +51,11 @@ export default async function Dashboard() {
     const qcInspections = (qcRes.data ?? []) as any[];
     const productionLogs = (prodRes.data ?? []) as any[];
     const appUsers = (usersRes.data ?? []) as any[];
+    const processStages = (stagesRes?.data ?? []) as any[];
+    const stageIdToCodeMap = new Map<string, string>();
+    processStages.forEach((s: any) => {
+      if (s.id && s.stage_code) stageIdToCodeMap.set(s.id, s.stage_code);
+    });
     const woMap = new Map(workOrders.map((w: any) => [w.id, w]));
 
     // Build user mapping for operators
@@ -515,11 +521,24 @@ export default async function Dashboard() {
         : pl.created_at
         ? String(pl.created_at).slice(0, 10)
         : '';
-      return logDate === yesterdayDateStr || logDate === localYesterdayStr || logDate === utcYesterdayStr;
+      const istCreatedAt = pl.created_at
+        ? new Date(new Date(pl.created_at).getTime() + istOffsetMs).toISOString().slice(0, 10)
+        : '';
+      return (
+        logDate === yesterdayDateStr ||
+        logDate === localYesterdayStr ||
+        logDate === utcYesterdayStr ||
+        istCreatedAt === yesterdayDateStr
+      );
     });
 
     for (const pl of yesterdayLogs) {
-      const rawCode = (pl.process_stages?.stage_code || pl.stage_code || '').toUpperCase();
+      const rawCode = (
+        pl.process_stages?.stage_code ||
+        pl.stage_code ||
+        stageIdToCodeMap.get(pl.stage_id) ||
+        ''
+      ).toUpperCase();
       let code = '';
       if (rawCode.includes('ROLL')) code = 'ROLLING';
       else if (rawCode.includes('HOLLOW') || rawCode === 'HTC') code = 'HOLLOW_HEAT_TREATMENT';
@@ -527,7 +546,7 @@ export default async function Dashboard() {
       else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') code = 'HEAT_TREATMENT';
       else if (rawCode.includes('SAW') || rawCode.includes('CUT')) code = 'BAND_SAW';
       else if (rawCode.includes('VDI') || rawCode.includes('QC')) code = 'VDI';
-      else if (rawCode.includes('FINISH')) code = 'FINISHING';
+      else if (rawCode.includes('FINISH') || rawCode.includes('BUNDL') || rawCode === 'FINISHING') code = 'FINISHING';
 
       const targetSt = yesterdayStationMap.get(code);
       if (!targetSt) continue;
@@ -570,20 +589,34 @@ export default async function Dashboard() {
       let qcOkMtr = 0;
       for (const qc of qcInspections) {
         const qDate = qc.inspection_date ? String(qc.inspection_date).slice(0, 10) : '';
-        if (qDate === yesterdayDateStr || qDate === localYesterdayStr || qDate === utcYesterdayStr) {
-          qcOkPcs += Number(qc.vdi_ok_pcs || 0);
-          qcOkMtr += Number(qc.vdi_ok_mtr || 0);
+        const istCreatedAt = qc.created_at
+          ? new Date(new Date(qc.created_at).getTime() + istOffsetMs).toISOString().slice(0, 10)
+          : '';
+        const utcCreatedAt = qc.created_at ? String(qc.created_at).slice(0, 10) : '';
+
+        const isYesterday =
+          qDate === yesterdayDateStr ||
+          qDate === localYesterdayStr ||
+          qDate === utcYesterdayStr ||
+          istCreatedAt === yesterdayDateStr ||
+          utcCreatedAt === yesterdayDateStr;
+
+        if (isYesterday) {
+          const okPcs = Number(qc.vdi_ok_pcs || 0);
+          const okMtr = Number(qc.vdi_ok_mtr || 0);
+          qcOkPcs += okPcs;
+          qcOkMtr += okMtr;
           if (qc.vdi_ok_mt) {
             qcOkMt += Number(qc.vdi_ok_mt);
           } else {
             const wo = woMap.get(qc.work_order_id);
             if (wo?.size_od && wo?.size_wt) {
-              qcOkMt += mtFromMtr(Number(qc.vdi_ok_mtr || 0), Number(wo.size_od), Number(wo.size_wt));
+              qcOkMt += mtFromMtr(okMtr, Number(wo.size_od), Number(wo.size_wt));
             }
           }
         }
       }
-      if (qcOkPcs > vdiSt.pcs || qcOkMt > vdiSt.mt) {
+      if (qcOkPcs > 0 || qcOkMt > 0 || qcOkMtr > 0) {
         vdiSt.pcs = Math.max(vdiSt.pcs, qcOkPcs);
         vdiSt.mt = Math.max(vdiSt.mt, qcOkMt);
         vdiSt.mtr = Math.max(vdiSt.mtr, qcOkMtr);

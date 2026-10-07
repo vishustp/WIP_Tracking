@@ -26,9 +26,8 @@ const DEFAULT_SALVAGE_REASONS = [
   'Other / Custom Defect'
 ];
 
-function getYesterdayDateStr(): string {
+function getCurrentDateStr(): string {
   const d = new Date();
-  d.setDate(d.getDate() - 1);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -67,7 +66,7 @@ export default function QcInspectionClient() {
   const [targetWorkOrderId, setTargetWorkOrderId] = useState<string>('');
 
   // Form inputs
-  const [formDate, setFormDate] = useState(() => getYesterdayDateStr());
+  const [formDate, setFormDate] = useState(() => getCurrentDateStr());
   const [inspectedPcs, setInspectedPcs] = useState('');
   const [vdiOkPcs, setVdiOkPcs] = useState('');
   const [vdiSalvagePcs, setVdiSalvagePcs] = useState('');
@@ -85,7 +84,7 @@ export default function QcInspectionClient() {
   const [reworkModalOpen, setReworkModalOpen] = useState(false);
   const [reworkTargetWo, setReworkTargetWo] = useState<QcSalvageQueueItem | null>(null);
   const [reworkTargetInspection, setReworkTargetInspection] = useState<QcInspection | null>(null);
-  const [reworkDate, setReworkDate] = useState(() => getYesterdayDateStr());
+  const [reworkDate, setReworkDate] = useState(() => getCurrentDateStr());
   const [reworkVdiOkPcs, setReworkVdiOkPcs] = useState('');
   const [reworkDivertedPcs, setReworkDivertedPcs] = useState('');
   const [reworkTargetWoId, setReworkTargetWoId] = useState('');
@@ -690,7 +689,7 @@ export default function QcInspectionClient() {
     setSelectedQueueItem(item);
     setTargetWorkOrderId(item.work_order_id);
     setEditingInspection(null);
-    setFormDate(getYesterdayDateStr());
+    setFormDate(getCurrentDateStr());
     setFormHeatLotNo(item.heat_lot_no || '');
     setInspectedPcs(String(item.available_ht_ok_pcs));
     setVdiOkPcs(String(item.available_ht_ok_pcs));
@@ -984,7 +983,7 @@ export default function QcInspectionClient() {
     }
     setReworkTargetWo(item);
     setReworkTargetInspection(inspection || null);
-    setReworkDate(getYesterdayDateStr());
+    setReworkDate(getCurrentDateStr());
 
     const availPcs = inspection
       ? Number(inspection.vdi_salvage_pcs || 0)
