@@ -18,6 +18,7 @@ import {
   attachCustomLengthToRemarks,
   extractCustomLengthFromRemarks,
   attachBundleTypeToRemarks,
+  extractBundleTypeFromRemarks,
 } from '@/lib/productionUtils';
 import { StageCode, STAGES, Row, ProductionEntry } from '@/types';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
@@ -900,9 +901,29 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
     editHtcPcs: string;
     editHeatLot: string;
     editRemarks: string;
+    editL1?: string;
+    editL2?: string;
   }) {
     if (!editing) return;
-    const finalRemarks = attachPcsToRemarks(payload.editRemarks, n(payload.editPcs), n(payload.editRejectionPcs));
+    let finalRemarks = attachPcsToRemarks(
+      payload.editRemarks,
+      n(payload.editPcs),
+      n(payload.editRejectionPcs),
+      payload.editL1,
+      payload.editL2
+    );
+
+    // If original remarks contained commercial bundle type, preserve it
+    const bundleType = extractBundleTypeFromRemarks(editing.remarks);
+    if (bundleType === 'COMMERCIAL' && !finalRemarks.includes('[BUNDLE_TYPE:')) {
+      finalRemarks = attachBundleTypeToRemarks(finalRemarks, 'COMMERCIAL');
+    }
+
+    // If original remarks contained cuts JSON, preserve it
+    const cutsMatch = (editing.remarks || '').match(/\[CUTS:(\{[\s\S]*?\})\]/i);
+    if (cutsMatch && !finalRemarks.includes('[CUTS:')) {
+      finalRemarks = `${cutsMatch[0]} ${finalRemarks}`.trim();
+    }
 
     const res = await fetch('/api/production/update', {
       method: 'POST',

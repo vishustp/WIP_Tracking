@@ -226,6 +226,22 @@ export function attachPcsToRemarks(
   return clean ? `${clean} ${tags.join(" ")}` : tags.join(" ");
 }
 
+export function cleanRemarksFromSystemTags(remarks: string | null | undefined): string {
+  if (!remarks) return "";
+  return remarks
+    // 1. Nested CUTS JSON tag
+    .replace(/\[CUTS:\{[\s\S]*?\}\](?=\s*(?:\[|$))/gi, "")
+    .replace(/\[CUTS:[^\]]*\]/gi, "")
+    // 2. All bracketed system tags like [TAG:VALUE]
+    .replace(/\[[A-Za-z0-9_]+(?::\s*[^\]]*)?\]/gi, "")
+    // 3. Leftover dangling braces/brackets from old formats
+    .replace(/^\s*\}\]\s*/, "")
+    .replace(/\s*\}\]\s*$/, "")
+    // 4. Normalize spaces
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function extractPcsFromRemarks(remarks: string | null | undefined): {
   pcs: number | null;
   rejPcs: number | null;
@@ -248,18 +264,7 @@ export function extractPcsFromRemarks(remarks: string | null | undefined): {
     }
   }
 
-  const cleanRemarks = remarks
-    .replace(/\[CUTS:\{[\s\S]*?\}\](?=\s*(?:\[|$))/gi, "")
-    .replace(/\[CUTS:[^\]]+\]/gi, "")
-    .replace(/\[PCS:[^\]]+\]/gi, "")
-    .replace(/\[REJ_PCS:[^\]]+\]/gi, "")
-    .replace(/\[REJ:[^\]]+\]/gi, "")
-    .replace(/\[L1:[^\]]+\]/gi, "")
-    .replace(/\[L2:[^\]]+\]/gi, "")
-    .replace(/\[AVG:[^\]]+\]/gi, "")
-    .replace(/^\s*\}\]\s*/, "")
-    .replace(/\s*\}\]\s*$/, "")
-    .trim();
+  const cleanRemarks = cleanRemarksFromSystemTags(remarks);
   return { pcs, rejPcs, cleanRemarks };
 }
 
@@ -299,18 +304,7 @@ export function extractCustomLengthFromRemarks(remarks: string | null | undefine
   const l1 = l1Match ? parseFloat(l1Match[1]) : null;
   const l2 = l2Match ? parseFloat(l2Match[1]) : null;
   const avg = avgMatch ? parseFloat(avgMatch[1]) : null;
-  const cleanRemarks = remarks
-    .replace(/\[CUTS:\{[\s\S]*?\}\](?=\s*(?:\[|$))/gi, "")
-    .replace(/\[CUTS:[^\]]+\]/gi, "")
-    .replace(/\[L1:[^\]]+\]/gi, "")
-    .replace(/\[L2:[^\]]+\]/gi, "")
-    .replace(/\[AVG:[^\]]+\]/gi, "")
-    .replace(/\[PCS:[^\]]+\]/gi, "")
-    .replace(/\[REJ_PCS:[^\]]+\]/gi, "")
-    .replace(/\[REJ:[^\]]+\]/gi, "")
-    .replace(/^\s*\}\]\s*/, "")
-    .replace(/\s*\}\]\s*$/, "")
-    .trim();
+  const cleanRemarks = cleanRemarksFromSystemTags(remarks);
   return { l1, l2, avg, cleanRemarks };
 }
 
@@ -436,18 +430,7 @@ export function extractBandSawCutsFromRemarks(remarks: string | null | undefined
     clean = clean.replace(`[CUTS:${rawJson}]`, "");
   }
 
-  const cleanRemarks = clean
-    .replace(/\[CUTS:\{[\s\S]*?\}\](?=\s*(?:\[|$))/gi, "")
-    .replace(/\[CUTS:[^\]]+\]/gi, "")
-    .replace(/\[L1:[^\]]+\]/gi, "")
-    .replace(/\[L2:[^\]]+\]/gi, "")
-    .replace(/\[AVG:[^\]]+\]/gi, "")
-    .replace(/\[PCS:[^\]]+\]/gi, "")
-    .replace(/\[REJ_PCS:[^\]]+\]/gi, "")
-    .replace(/\[REJ:[^\]]+\]/gi, "")
-    .replace(/^\s*\}\]\s*/, "")
-    .replace(/\s*\}\]\s*$/, "")
-    .trim();
+  const cleanRemarks = cleanRemarksFromSystemTags(clean);
 
   return { cuts, motherPcs, yieldPct, offcutMtr, scrapMtr, scrapMt, scrapPct, cleanRemarks };
 }

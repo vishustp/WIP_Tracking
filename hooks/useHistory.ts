@@ -345,7 +345,7 @@ export function useHistory(
           rolling_plan_id: plan?.id || logRow?.rolling_plan_id,
           plan_no: plan?.plan_no,
           revision_no: plan?.revision_no,
-          remarks: cleanRemarks || entry.remarks,
+          remarks: cleanRemarks,
           mh_avg_length: mhLen > 0 ? mhLen : undefined,
           mh_od: effOd,
           mh_wt: effWt,

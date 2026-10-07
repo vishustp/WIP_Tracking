@@ -379,7 +379,7 @@ export default function WorkCenterProductionReportClient() {
           rejection_mt: calculatedRejMt,
           htc_ok_pcs: htcOkPcs,
           htc_ok_mtr: htcOkMtr,
-          remarks: cleanRemarks || e.remarks,
+          remarks: cleanRemarks,
         };
       });
 

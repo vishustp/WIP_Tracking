@@ -20,6 +20,8 @@ export interface EditEntryModalProps {
     editHtcPcs: string;
     editHeatLot: string;
     editRemarks: string;
+    editL1?: string;
+    editL2?: string;
   }) => Promise<void>;
   avgLength: number;
 }
@@ -127,7 +129,7 @@ export function EditEntryModal({
   const [editHtcMtr, setEditHtcMtr] = useState(String(editing.htc_ok_mtr || ''));
   const [editHtcPcs, setEditHtcPcs] = useState(String(effHtcPcs));
   const [editHeatLot, setEditHeatLot] = useState(editing.heat_lot_no || '');
-  const [editRemarks, setEditRemarks] = useState(cleanRemarks || editing.remarks || '');
+  const [editRemarks, setEditRemarks] = useState(cleanRemarks || '');
   const [saving, setSaving] = useState(false);
   const [localError, setLocalError] = useState('');
 
@@ -273,9 +275,10 @@ export function EditEntryModal({
 
     setSaving(true);
     try {
+      const userRemarks = editRemarks.trim();
       const finalRemarks = hasL1L2
-        ? `${cleanRemarks} [L1:${editL1 || 0}] [L2:${editL2 || 0}]`.trim()
-        : editRemarks;
+        ? (userRemarks ? `${userRemarks} [L1:${editL1 || 0}] [L2:${editL2 || 0}]` : `[L1:${editL1 || 0}] [L2:${editL2 || 0}]`).trim()
+        : userRemarks;
 
       await onSave({
         editDate,
@@ -287,6 +290,8 @@ export function EditEntryModal({
         editHtcPcs,
         editHeatLot,
         editRemarks: finalRemarks,
+        editL1: hasL1L2 ? editL1 : undefined,
+        editL2: hasL1L2 ? editL2 : undefined,
       });
     } catch (err: unknown) {
       const msg =

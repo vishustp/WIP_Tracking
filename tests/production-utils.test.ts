@@ -15,6 +15,7 @@ import {
   attachBandSawCutsToRemarks,
   extractBandSawCutsFromRemarks,
   normalizeSpecification,
+  cleanRemarksFromSystemTags,
 } from "../lib/productionUtils";
 
 describe("Production Utils Unit Tests", () => {
@@ -371,7 +372,17 @@ describe("Production Utils Unit Tests", () => {
       expect(htcMatch).not.toBeNull();
       expect(parseInt(htcMatch![1], 10)).toBe(78);
     });
+
+    it("cleanRemarksFromSystemTags() completely strips all backend tags and returns empty string if no user text", () => {
+      expect(cleanRemarksFromSystemTags("[PCS:119]")).toBe("");
+      expect(cleanRemarksFromSystemTags("[L1:11.8] [L2:11.8] [PCS:118]")).toBe("");
+      expect(cleanRemarksFromSystemTags("[BUNDLE_TYPE: COMMERCIAL] [PCS:45]")).toBe("");
+      expect(cleanRemarksFromSystemTags("[CUTS:{\"m_pcs\":10}] [PCS:10]")).toBe("");
+      expect(cleanRemarksFromSystemTags("Shift A finished [PCS:119]")).toBe("Shift A finished");
+      expect(cleanRemarksFromSystemTags("Visual OK [L1:6] [L2:6] [PCS:25] [REJ_PCS:2]")).toBe("Visual OK");
+    });
   });
 });
+
 
 
