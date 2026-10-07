@@ -158,7 +158,7 @@ export default function WorkCenterProductionReportClient() {
         }),
         s
           .from('work_orders')
-          .select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2, process_route_id')
+          .select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2')
           .limit(5000),
         s.from('process_routes').select('id, route_code, route_name').eq('active', true),
         s.from('qc_inspections').select('*').order('created_at', { ascending: false }).limit(2500),
@@ -387,7 +387,7 @@ export default function WorkCenterProductionReportClient() {
       const qcEntries: ProductionEntry[] = [];
       if (qcRes?.data && Array.isArray(qcRes.data)) {
         qcRes.data.forEach((q: any) => {
-          const wo = woMap.get(q.work_order_id);
+          const wo = woMap.get(q.work_order_id) || (q.work_order_no ? woMap.get(String(q.work_order_no).trim()) : undefined);
           const qDate = q.inspection_date ? String(q.inspection_date).slice(0, 10) : String(q.created_at).slice(0, 10);
           if (fromDate && qDate < fromDate) return;
           if (toDate && qDate > toDate) return;
@@ -400,16 +400,24 @@ export default function WorkCenterProductionReportClient() {
             if (!matchWo && !matchCust && !matchHeat && !matchRem) return;
           }
 
-          const od = Number(wo?.size_od || 0);
-          const wl = Number(wo?.size_wt || 0);
+          const woPlans = q.work_order_id ? (plansByWoMap.get(q.work_order_id) || []) : [];
+          const plan = woPlans[0];
+          const planMh = q.work_order_id ? planMhMap.get(q.work_order_id) : undefined;
+
+          const od = Number(wo?.size_od || q.od || planMh?.mh_od || plan?.mh_od || 0);
+          const wl = Number(wo?.size_wt || q.wl || planMh?.mh_wt || plan?.mh_wt || 0);
           const inPcs = Number(q.inspected_pcs || 0);
           const inMtr = Number(q.inspected_mtr || 0);
           const outPcs = Number(q.vdi_ok_pcs || 0);
           const outMtr = Number(q.vdi_ok_mtr || 0);
           const rejPcs = Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0);
           const rejMtr = Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0);
-          const routeInfo = wo?.process_route_id ? routeMap.get(wo.process_route_id) : null;
-          if (selectedRoute !== 'ALL' && routeInfo?.route_code !== selectedRoute) return;
+
+          const routeId = q.process_route_id || plan?.process_route_id;
+          const routeInfo = routeId ? routeMap.get(routeId) : null;
+          const wipRow = wipData.find((w: any) => w.work_order_id === q.work_order_id);
+          const routeCode = routeInfo?.route_code || wipRow?.route_code || 'HFS';
+          if (selectedRoute !== 'ALL' && routeCode !== selectedRoute) return;
 
           // For VDI:
           // Card 3: Total Inspected = inPcs / inMtr / inMt
@@ -420,11 +428,14 @@ export default function WorkCenterProductionReportClient() {
             work_order_id: q.work_order_id,
             work_order_no: wo?.work_order_no || '—',
             customer_name: wo?.customer_name || 'Standard Stock',
-            route_code: routeInfo?.route_code || 'HFS',
+            grade: wo?.grade || wo?.specification || '—',
+            route_code: routeCode,
             stage_code: 'VDI',
             process_date: qDate,
             od,
             wl,
+            plan_no: plan?.plan_no,
+            revision_no: plan?.revision_no,
             l1: Number(wo?.l1 || 0),
             l2: Number(wo?.l2 || 0),
             avg_length: Number(wo?.avg_length || 6.0),
@@ -1406,7 +1417,11 @@ export default function WorkCenterProductionReportClient() {
                       </td>
 
                       <td className="px-3 py-2.5 font-mono text-slate-800 whitespace-nowrap print:text-black font-semibold">
-                        {e.od && e.wl ? `${fmt(e.od)} × ${fmt(e.wl)} mm` : '—'}
+                        {Number(e.od) > 0 && Number(e.wl) > 0
+                          ? `${fmt(e.od)} × ${fmt(e.wl)} mm`
+                          : Number(e.od) > 0
+                          ? `${fmt(e.od)} mm`
+                          : '—'}
                       </td>
 
                       {/* Hero Output Cell: Production OK PCS (Highlighted, Bold) */}
