@@ -1,6 +1,7 @@
 // lib/mill-rejections/client.ts
 
 import { createClient } from '@/lib/supabase/client';
+import { cleanRemarksFromSystemTags } from '@/lib/productionUtils';
 import {
   MillRejectionEntry,
   MillRejectionSummaryKpis,
@@ -38,7 +39,7 @@ function mapStageToCategory(stageCode: string): { category: MillRejectionCategor
 }
 
 /**
- * Fetches all shop floor rejections logged in production_logs
+ * Fetches all shop floor rejections logged in production_logs (via get_production_entries RPC)
  * and QC inspections (VDI Salvage & VDI Rejection)
  */
 export async function fetchMillRejectionsAndSalvage(
@@ -51,121 +52,76 @@ export async function fetchMillRejectionsAndSalvage(
   try {
     const supabase = createClient();
 
-    // 1. Production Logs Query (rejection_qty > 0 or rejection_pcs > 0)
-    let prodQuery = supabase
-      .from('production_logs')
-      .select(`
-        id,
-        work_order_id,
-        stage_id,
-        process_date,
-        input_qty,
-        output_qty,
-        rejection_qty,
-        rejection_pcs,
-        heat_lot_no,
-        remarks,
-        created_by,
-        created_at,
-        process_stages:stage_id (
-          id,
-          stage_code,
-          stage_name
-        ),
-        work_orders:work_order_id (
-          id,
-          work_order_no,
-          customer_name,
-          grade,
-          specification,
-          size_od,
-          size_wt,
-          l1,
-          l2
-        )
-      `)
-      .or('rejection_qty.gt.0,rejection_pcs.gt.0')
-      .order('process_date', { ascending: false });
+    // 1. Call get_production_entries RPC (security definer with full route, stage, and WO joins)
+    // 2. Query qc_inspections for VDI Salvage & VDI Rejection
+    // 3. Query vw_route_stage_wip to attach work order metadata to QC inspections
+    const [prodRes, qcRes, wipRes] = await Promise.all([
+      supabase.rpc('get_production_entries', {
+        p_search: null,
+        p_stage_code: null,
+        p_route_code: null,
+        p_from_date: filters.fromDate || null,
+        p_to_date: filters.toDate || null,
+        p_limit: 5000,
+        p_offset: 0,
+      }),
+      supabase
+        .from('qc_inspections')
+        .select('*')
+        .or('vdi_salvage_pcs.gt.0,vdi_rejection_pcs.gt.0')
+        .order('inspection_date', { ascending: false }),
+      supabase
+        .from('vw_route_stage_wip')
+        .select('work_order_id, work_order_no, customer_name, size_od, size_wt'),
+    ]);
 
-    if (filters.fromDate) {
-      prodQuery = prodQuery.gte('process_date', filters.fromDate);
-    }
-    if (filters.toDate) {
-      prodQuery = prodQuery.lte('process_date', filters.toDate);
+    if (prodRes.error && qcRes.error) {
+      return {
+        data: [],
+        kpis: getEmptyKpis(),
+        error: `Production: ${prodRes.error.message}; QC: ${qcRes.error.message}`,
+      };
     }
 
-    // 2. QC Inspections Query (vdi_salvage_pcs > 0 or vdi_rejection_pcs > 0)
-    let qcQuery = supabase
-      .from('qc_inspections')
-      .select(`
-        id,
-        work_order_id,
-        inspection_date,
-        inspected_pcs,
-        inspected_mtr,
-        vdi_ok_pcs,
-        vdi_ok_mtr,
-        vdi_salvage_pcs,
-        vdi_salvage_mtr,
-        vdi_salvage_mt,
-        vdi_rejection_pcs,
-        vdi_rejection_mtr,
-        vdi_rejection_mt,
-        salvage_reasons,
-        remarks,
-        created_by,
-        created_at,
-        work_orders:work_order_id (
-          id,
-          work_order_no,
-          customer_name,
-          grade,
-          specification,
-          size_od,
-          size_wt,
-          l1,
-          l2
-        )
-      `)
-      .or('vdi_salvage_pcs.gt.0,vdi_rejection_pcs.gt.0,vdi_salvage_mtr.gt.0,vdi_rejection_mtr.gt.0')
-      .order('inspection_date', { ascending: false });
-
-    if (filters.fromDate) {
-      qcQuery = qcQuery.gte('inspection_date', filters.fromDate);
-    }
-    if (filters.toDate) {
-      qcQuery = qcQuery.lte('inspection_date', filters.toDate);
-    }
-
-    const [{ data: prodLogs, error: prodErr }, { data: qcLogs, error: qcErr }] =
-      await Promise.all([prodQuery, qcQuery]);
-
-    if (prodErr && qcErr) {
-      return { data: [], kpis: getEmptyKpis(), error: `${prodErr.message}; ${qcErr.message}` };
-    }
+    // Work order lookup map for QC inspections
+    const woMap = new Map<string, { work_order_no: string; customer_name: string; size_od: number; size_wt: number }>();
+    (wipRes.data || []).forEach((w: any) => {
+      if (w.work_order_id && !woMap.has(w.work_order_id)) {
+        woMap.set(w.work_order_id, {
+          work_order_no: w.work_order_no || '—',
+          customer_name: w.customer_name || '—',
+          size_od: Number(w.size_od || 0),
+          size_wt: Number(w.size_wt || 0),
+        });
+      }
+    });
 
     const entries: MillRejectionEntry[] = [];
 
-    // Parse Production Logs
-    (prodLogs || []).forEach((pl: any) => {
-      const wo = pl.work_orders;
-      const ps = pl.process_stages;
-      const stageCode = ps?.stage_code || '';
+    // Parse Production Logs from get_production_entries
+    const rawProd = (prodRes.data || []) as any[];
+    rawProd.forEach((pl) => {
+      const rejMtr = Number(pl.rejection_mtr || 0);
+      const rejPcs = Math.round(Number(pl.rejection_pcs || 0));
+
+      // Only process entries where rejection was logged
+      if (rejMtr <= 0 && rejPcs <= 0) return;
+
+      const stageCode = pl.stage_code || '';
       const { category, name } = mapStageToCategory(stageCode);
 
-      const l1 = Number(wo?.l1 || 0);
-      const l2 = Number(wo?.l2 || 0);
-      const avgLen = l1 && l2 ? (l1 + l2) / 2 : l1 || 6.0;
+      const l1 = Number(pl.l1 || 0);
+      const l2 = Number(pl.l2 || 0);
+      const avgLen = Number(pl.avg_length || (l1 && l2 ? (l1 + l2) / 2 : l1 || 6.0));
 
-      const od = Number(wo?.size_od || 0);
-      const wt = Number(wo?.size_wt || 0);
+      const od = Number(pl.od || 0);
+      const wt = Number(pl.wl || 0);
 
-      const rejPcs = Math.round(Number(pl.rejection_pcs || 0));
-      const rejMtr = Number(pl.rejection_qty || 0);
-
-      const finalPcs = rejPcs > 0 ? rejPcs : (avgLen > 0 ? Math.round(rejMtr / avgLen) : 0);
+      const finalPcs = rejPcs > 0 ? rejPcs : (avgLen > 0 ? Math.round(rejMtr / avgLen) : 1);
       const finalMtr = rejMtr > 0 ? rejMtr : (finalPcs * avgLen);
-      const finalMt = computePipeWeight(finalMtr, od, wt);
+      const finalMt = Number(pl.rejection_mt || computePipeWeight(finalMtr, od, wt));
+
+      const cleanRemarks = cleanRemarksFromSystemTags(pl.remarks);
 
       entries.push({
         id: `pl-${pl.id}`,
@@ -175,10 +131,10 @@ export async function fetchMillRejectionsAndSalvage(
         workCenterName: name,
         stageCode,
         dispositionType: 'REJECTION',
-        workOrderId: pl.work_order_id,
-        workOrderNo: wo?.work_order_no || '—',
-        customerName: wo?.customer_name || '—',
-        grade: wo?.grade || '—',
+        workOrderId: pl.id, // entry reference
+        workOrderNo: pl.work_order_no || '—',
+        customerName: pl.customer_name || '—',
+        grade: '—',
         sizeOd: od,
         sizeWt: wt,
         avgLength: avgLen,
@@ -186,21 +142,29 @@ export async function fetchMillRejectionsAndSalvage(
         pcs: finalPcs,
         mtr: finalMtr,
         mt: finalMt,
-        remarks: pl.remarks || '',
-        loggedBy: pl.created_by || 'Production Operator',
+        remarks: cleanRemarks || 'Production scrap logged by operator',
+        loggedBy: 'Production Operator',
         createdAt: pl.created_at,
       });
     });
 
-    // Parse QC Inspections (split into Salvage and Rejection lines)
-    (qcLogs || []).forEach((qc: any) => {
-      const wo = qc.work_orders;
-      const l1 = Number(wo?.l1 || 0);
-      const l2 = Number(wo?.l2 || 0);
-      const avgLen = l1 && l2 ? (l1 + l2) / 2 : l1 || 6.0;
+    // Parse QC Inspections (split into VDI Salvage and VDI Rejection lines)
+    const rawQc = (qcRes.data || []) as any[];
+    rawQc.forEach((qc) => {
+      // Date filter check for QC
+      if (filters.fromDate && qc.inspection_date < filters.fromDate) return;
+      if (filters.toDate && qc.inspection_date > filters.toDate) return;
 
-      const od = Number(wo?.size_od || 0);
-      const wt = Number(wo?.size_wt || 0);
+      const woMeta = woMap.get(qc.work_order_id) || {
+        work_order_no: '—',
+        customer_name: '—',
+        size_od: 0,
+        size_wt: 0,
+      };
+
+      const od = woMeta.size_od;
+      const wt = woMeta.size_wt;
+      const avgLen = 6.0; // default estimated pipe length for QC if unjoined
 
       // VDI Salvage Line
       const salPcs = Math.round(Number(qc.vdi_salvage_pcs || 0));
@@ -210,7 +174,10 @@ export async function fetchMillRejectionsAndSalvage(
       if (salPcs > 0 || salMtr > 0) {
         let reasonsTxt = '';
         if (Array.isArray(qc.salvage_reasons)) {
-          reasonsTxt = qc.salvage_reasons.map((r: any) => typeof r === 'string' ? r : r.reason || r.label).filter(Boolean).join(', ');
+          reasonsTxt = qc.salvage_reasons
+            .map((r: any) => (typeof r === 'string' ? r : r.reason || r.label))
+            .filter(Boolean)
+            .join(', ');
         }
         const fullRemarks = [reasonsTxt, qc.remarks].filter(Boolean).join(' | ');
 
@@ -223,9 +190,9 @@ export async function fetchMillRejectionsAndSalvage(
           stageCode: 'VDI',
           dispositionType: 'SALVAGE',
           workOrderId: qc.work_order_id,
-          workOrderNo: wo?.work_order_no || '—',
-          customerName: wo?.customer_name || '—',
-          grade: wo?.grade || '—',
+          workOrderNo: woMeta.work_order_no,
+          customerName: woMeta.customer_name,
+          grade: '—',
           sizeOd: od,
           sizeWt: wt,
           avgLength: avgLen,
@@ -254,9 +221,9 @@ export async function fetchMillRejectionsAndSalvage(
           stageCode: 'VDI',
           dispositionType: 'REJECTION',
           workOrderId: qc.work_order_id,
-          workOrderNo: wo?.work_order_no || '—',
-          customerName: wo?.customer_name || '—',
-          grade: wo?.grade || '—',
+          workOrderNo: woMeta.work_order_no,
+          customerName: woMeta.customer_name,
+          grade: '—',
           sizeOd: od,
           sizeWt: wt,
           avgLength: avgLen,
@@ -273,9 +240,9 @@ export async function fetchMillRejectionsAndSalvage(
 
     // Sort by Date descending, then created_at descending
     entries.sort((a, b) => {
-      const cmpDate = b.date.localeCompare(a.date);
+      const cmpDate = (b.date || '').localeCompare(a.date || '');
       if (cmpDate !== 0) return cmpDate;
-      return b.createdAt.localeCompare(a.createdAt);
+      return (b.createdAt || '').localeCompare(a.createdAt || '');
     });
 
     // In-memory filters for category, dispositionType, search
@@ -288,16 +255,16 @@ export async function fetchMillRejectionsAndSalvage(
     }
     if (filters.search && filters.search.trim()) {
       const q = filters.search.trim().toLowerCase();
-      filtered = filtered.filter((e) =>
-        e.workOrderNo.toLowerCase().includes(q) ||
-        e.customerName.toLowerCase().includes(q) ||
-        e.grade.toLowerCase().includes(q) ||
-        e.remarks.toLowerCase().includes(q) ||
-        (e.heatLotNo && e.heatLotNo.toLowerCase().includes(q))
+      filtered = filtered.filter(
+        (e) =>
+          e.workOrderNo.toLowerCase().includes(q) ||
+          e.customerName.toLowerCase().includes(q) ||
+          e.remarks.toLowerCase().includes(q) ||
+          (e.heatLotNo && e.heatLotNo.toLowerCase().includes(q))
       );
     }
 
-    // Compute KPIs across all retrieved entries (or filtered)
+    // Compute KPIs across all retrieved entries
     const kpis: MillRejectionSummaryKpis = {
       totalRollingPcs: 0,
       totalRollingMt: 0,
