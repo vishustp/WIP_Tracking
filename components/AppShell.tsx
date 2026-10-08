@@ -102,7 +102,7 @@ const navSections = [
       { href: '/production', label: 'Production Entry', icon: ClipboardCheck },
       { href: '/band-saw', label: 'Band Saw Cutting', icon: Scissors },
       { href: '/qc/vdi', label: 'VDI Entries', icon: ClipboardList },
-      { href: '/rejections', label: 'Rejection & Salvage', icon: AlertOctagon },
+      { href: '/rejections', label: 'Second Declaration', icon: AlertOctagon },
     ],
   },
   {
@@ -126,7 +126,8 @@ const navSections = [
       { href: '/reports/production', label: 'Production Report', icon: Factory },
       { href: '/reports/aging', label: 'Aging Report', icon: Clock },
       { href: '/reports/diversions', label: 'Material Diversion Report', icon: Shuffle },
-      { href: '/reports/rejections', label: 'Salvage & Rejection Report', icon: AlertTriangle },
+      { href: '/reports/rejections', label: 'Second Declaration Report', icon: AlertOctagon },
+      { href: '/reports/mill-rejections', label: 'Mill Rejection & Salvage', icon: AlertTriangle },
       { href: '/reports/scrap', label: 'Scrap Generation Report', icon: Recycle },
     ],
   },

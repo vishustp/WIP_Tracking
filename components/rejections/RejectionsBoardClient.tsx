@@ -138,10 +138,10 @@ export default function RejectionsBoardClient() {
             </span>
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                Material Rejection & Salvage Console
+                Second Declaration Console
               </h1>
               <p className="text-sm text-slate-500">
-                Universal mill rejection declarations, 3-tier QC/PPC authorization, and active WIP deductions
+                Universal mill second & salvage declarations, 3-tier QC/PPC authorization, and active WIP deductions
               </p>
             </div>
           </div>
@@ -164,7 +164,7 @@ export default function RejectionsBoardClient() {
               className="inline-flex items-center space-x-2 px-4 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-lg shadow-sm transition-colors"
             >
               <PlusCircle className="w-4 h-4" />
-              <span>Declare Rejection</span>
+              <span>Declare Second</span>
             </button>
           )}
         </div>

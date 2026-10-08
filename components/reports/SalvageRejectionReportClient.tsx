@@ -203,7 +203,7 @@ export default function SalvageRejectionReportClient() {
               SEAMLESS STEEL PIPE MANUFACTURING MILL
             </h1>
             <h2 className="text-sm font-semibold text-slate-700 tracking-wider mt-0.5">
-              OFFICIAL QUALITY SALVAGE & MATERIAL REJECTION REPORT
+              OFFICIAL SECOND & SALVAGE MATERIAL DECLARATION REPORT
             </h2>
             <div className="text-xs text-slate-500 mt-1 font-mono">
               ISO 9001:2015 & IBR Quality Audit Record • Document No: QAD-SALVAGE-01
@@ -226,10 +226,10 @@ export default function SalvageRejectionReportClient() {
             </span>
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                Salvage & Rejection Material Report
+                Second Declaration Report
               </h1>
               <p className="text-sm text-slate-500">
-                Plant-wide audit ledger of defect material, QC inspections, PPC write-offs, and remarks
+                Plant-wide audit ledger of second declarations, QC inspections, PPC write-offs, and remarks
               </p>
             </div>
           </div>
@@ -241,7 +241,7 @@ export default function SalvageRejectionReportClient() {
             className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-lg shadow-sm transition-colors cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Declare Rejection</span>
+            <span>Declare Second</span>
           </button>
 
           <Link

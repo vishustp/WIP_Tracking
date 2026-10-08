@@ -71,9 +71,10 @@ export function ProductionToolbar({
             <Link
               href="/rejections"
               className="inline-flex items-center gap-1.5 h-9 rounded-lg border border-amber-300 bg-amber-50/80 px-3 text-xs font-semibold text-amber-800 shadow-2xs hover:bg-amber-100 transition active:scale-[0.97]"
+              title="Second & Salvage Declarations"
             >
               <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-              <span>Rejections</span>
+              <span>Second Decl.</span>
             </Link>
 
             <Button

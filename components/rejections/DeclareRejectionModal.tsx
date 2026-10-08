@@ -202,9 +202,9 @@ export default function DeclareRejectionModal({
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-slate-900">Declare Material Rejection</h3>
+              <h3 className="text-lg font-bold text-slate-900">Declare Material as Second / Salvage</h3>
               <p className="text-xs text-slate-500">
-                Log rejected material from any work center for QC verification and PPC write-off
+                Log second or salvage material from any work center for QC verification and PPC write-off
               </p>
             </div>
           </div>
