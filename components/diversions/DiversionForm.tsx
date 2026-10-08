@@ -310,9 +310,26 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   if (stageRows.length > 0) {
     stageBreakdown = stageRows.map((stg: any) => {
       const sc = stg.stage_code;
-      const curWipMtr = Number(stg.current_wip || 0);
-      const curWipPcs = Number(stg.current_wip_pcs ?? (avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0));
-      const curWipMt = Number(stg.current_wip_mt ?? (curWipMtr * mtPerMtr));
+      let curWipMtr = Number(stg.current_wip || 0);
+      let curWipPcs = Number(stg.current_wip_pcs ?? (avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0));
+      let curWipMt = Number(stg.current_wip_mt ?? (curWipMtr * mtPerMtr));
+
+      // Reconcile Finishing WIP if VDI QC inspection exists (guarding against database view double-deduction of salvage)
+      if (sc === 'FINISHING' && qcList.length > 0) {
+        const totalVdiOkMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+        if (totalVdiOkMtr > 0) {
+          const divIn = Number(stg.diversion_in || 0);
+          const divOut = Number(stg.diversion_out || 0);
+          const prodMtr = Number(stg.production_qty || 0);
+          const rejMtr = Number(stg.rejection_qty || 0);
+          const trueFinWipMtr = Math.max(0, totalVdiOkMtr + divIn - prodMtr - rejMtr - divOut);
+          if (Math.abs(trueFinWipMtr - curWipMtr) > 0.01) {
+            curWipMtr = Number(trueFinWipMtr.toFixed(3));
+            curWipPcs = avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0;
+            curWipMt = curWipMtr * mtPerMtr;
+          }
+        }
+      }
 
       return {
         stage_code: sc,

@@ -496,11 +496,6 @@ export default async function Dashboard() {
     const yesterdayDateStr = `${yYear}-${yMonth}-${yDay}`;
     const yesterdayDateLabel = istYesterday.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
-    const localYesterday = new Date(nowUtc);
-    localYesterday.setDate(localYesterday.getDate() - 1);
-    const localYesterdayStr = `${localYesterday.getFullYear()}-${String(localYesterday.getMonth() + 1).padStart(2, '0')}-${String(localYesterday.getDate()).padStart(2, '0')}`;
-    const utcYesterdayStr = localYesterday.toISOString().slice(0, 10);
-
     const stationsConfig = [
       { code: 'ROLLING', name: 'Hot Rolling', shortName: 'Rolling' },
       { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow Heat Treatment', shortName: 'Hollow HT' },
@@ -516,20 +511,13 @@ export default async function Dashboard() {
     );
 
     const yesterdayLogs = productionLogs.filter((pl) => {
+      // Strictly use process_date (operational date) to match the Production Report
       const logDate = pl.process_date
         ? String(pl.process_date).slice(0, 10)
         : pl.created_at
-        ? String(pl.created_at).slice(0, 10)
-        : '';
-      const istCreatedAt = pl.created_at
         ? new Date(new Date(pl.created_at).getTime() + istOffsetMs).toISOString().slice(0, 10)
         : '';
-      return (
-        logDate === yesterdayDateStr ||
-        logDate === localYesterdayStr ||
-        logDate === utcYesterdayStr ||
-        istCreatedAt === yesterdayDateStr
-      );
+      return logDate === yesterdayDateStr;
     });
 
     for (const pl of yesterdayLogs) {
@@ -588,18 +576,14 @@ export default async function Dashboard() {
       let qcOkMt = 0;
       let qcOkMtr = 0;
       for (const qc of qcInspections) {
-        const qDate = qc.inspection_date ? String(qc.inspection_date).slice(0, 10) : '';
-        const istCreatedAt = qc.created_at
+        // Strictly use inspection_date (operational date) to match the Production Report
+        const qDate = qc.inspection_date
+          ? String(qc.inspection_date).slice(0, 10)
+          : qc.created_at
           ? new Date(new Date(qc.created_at).getTime() + istOffsetMs).toISOString().slice(0, 10)
           : '';
-        const utcCreatedAt = qc.created_at ? String(qc.created_at).slice(0, 10) : '';
 
-        const isYesterday =
-          qDate === yesterdayDateStr ||
-          qDate === localYesterdayStr ||
-          qDate === utcYesterdayStr ||
-          istCreatedAt === yesterdayDateStr ||
-          utcCreatedAt === yesterdayDateStr;
+        const isYesterday = qDate === yesterdayDateStr;
 
         if (isYesterday) {
           const okPcs = Number(qc.vdi_ok_pcs || 0);
