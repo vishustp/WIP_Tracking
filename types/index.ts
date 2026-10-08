@@ -87,6 +87,10 @@ export interface Row {
   heat_lots?: HeatLotInfo[];
   remarks: string;
 
+  // Pending Rejection Hold info
+  pending_rejection_pcs?: number | null;
+  pending_rejection_mtr?: number | null;
+
   // Work Center WIP Breakdown across the entire route
   work_centers_wip?: WorkCenterWipInfo[];
 

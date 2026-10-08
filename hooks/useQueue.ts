@@ -70,8 +70,8 @@ export function useQueue(stage: StageCode) {
     try {
       const supabase = createClient();
 
-      // 1. Fetch standard queue, plans, process stages, production logs, qc, and diversions
-      const [queueRes, plansRes, stagesRes, logsRes, qcRes, divsRes] = await Promise.all([
+      // 1. Fetch standard queue, plans, process stages, production logs, qc, diversions, and pending rejections
+      const [queueRes, plansRes, stagesRes, logsRes, qcRes, divsRes, rejsRes] = await Promise.all([
         supabase.rpc("get_production_entry_queue", { p_stage_code: s }),
         supabase
           .from("rolling_plans")
@@ -93,7 +93,20 @@ export function useQueue(stage: StageCode) {
         supabase
           .from("diversion_plans")
           .select("source_wo_id, target_wo_id, diverted_qty, work_center, reason"),
+        supabase
+          .from("rejection_declarations")
+          .select("work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, status")
+          .in("status", ["PENDING_QC", "PENDING_PPC"]),
       ]);
+
+      const pendingHoldMap = new Map<string, { pcs: number; mtr: number }>();
+      ((rejsRes?.data as any[]) || []).forEach((rd) => {
+        const k = `${rd.work_order_id}_${rd.work_center}`;
+        const cur = pendingHoldMap.get(k) || { pcs: 0, mtr: 0 };
+        const pcs = Number(rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0);
+        const mtr = Number(rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0);
+        pendingHoldMap.set(k, { pcs: cur.pcs + pcs, mtr: cur.mtr + mtr });
+      });
 
       let rawQueueData = queueRes.data;
       if (queueRes.error) {
@@ -977,9 +990,36 @@ export function useQueue(stage: StageCode) {
           }
         }
 
-        setRows(processedRows);
+        const attachPendingHold = (rList: any[]) =>
+          rList.map((r) => {
+            const k = `${r.work_order_id}_${r.stage_code}`;
+            const hold = pendingHoldMap.get(k);
+            if (hold && (hold.pcs > 0 || hold.mtr > 0)) {
+              return {
+                ...r,
+                pending_rejection_pcs: hold.pcs,
+                pending_rejection_mtr: hold.mtr,
+              };
+            }
+            return r;
+          });
+
+        setRows(attachPendingHold(processedRows));
       } else {
-        setRows(rawRows);
+        const attachPendingHold = (rList: any[]) =>
+          rList.map((r) => {
+            const k = `${r.work_order_id}_${r.stage_code}`;
+            const hold = pendingHoldMap.get(k);
+            if (hold && (hold.pcs > 0 || hold.mtr > 0)) {
+              return {
+                ...r,
+                pending_rejection_pcs: hold.pcs,
+                pending_rejection_mtr: hold.mtr,
+              };
+            }
+            return r;
+          });
+        setRows(attachPendingHold(rawRows));
       }
     } catch (err: any) {
       setError(err?.message || "Failed to load queue");

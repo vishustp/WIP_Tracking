@@ -1,6 +1,6 @@
 'use client';
 
-import { Package, Crown, Scissors } from 'lucide-react';
+import { Package, Crown, Scissors, AlertTriangle } from 'lucide-react';
 import { Row, StageCode } from '@/types';
 import { calc, fmt, n, mtFromMtr } from '@/lib/productionUtils';
 
@@ -113,6 +113,12 @@ export function ProductionQueueRow({
             `Avail: ${fmt(availPcs)} PCS`
           )}
         </div>
+        {Number(row.pending_rejection_pcs || row.pending_rejection_mtr || 0) > 0 && (
+          <div className="mt-1 inline-flex items-center gap-1 rounded bg-amber-50 text-amber-900 border border-amber-300 px-1.5 py-0.5 text-[10px] font-bold">
+            <AlertTriangle size={11} className="text-amber-700 shrink-0" />
+            <span>{row.pending_rejection_pcs || 0} PCS ({fmt(row.pending_rejection_mtr, 'm')}) Under Review</span>
+          </div>
+        )}
       </td>
 
       {/* Length Inputs (L1 / L2) for Draw, HT, Band Saw, VDI, Finishing */}

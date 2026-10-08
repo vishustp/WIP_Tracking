@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { RefreshCw, FileSpreadsheet, AlertTriangle } from 'lucide-react';
 import { StageCode, STAGES } from '@/types';
 import { Button } from '@/components/ui/button';
 
@@ -66,6 +66,14 @@ export function ProductionToolbar({
             >
               <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
               <span>Excel Import</span>
+            </Link>
+
+            <Link
+              href="/rejections"
+              className="inline-flex items-center gap-1.5 h-9 rounded-lg border border-amber-300 bg-amber-50/80 px-3 text-xs font-semibold text-amber-800 shadow-2xs hover:bg-amber-100 transition active:scale-[0.97]"
+            >
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+              <span>Rejections</span>
             </Link>
 
             <Button
