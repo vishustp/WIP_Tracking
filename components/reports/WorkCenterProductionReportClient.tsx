@@ -201,7 +201,7 @@ export default function WorkCenterProductionReportClient() {
       const entryIds = raw.map((e) => e.id).filter(Boolean);
       const planByIdMap = new Map<string, any>();
       const plansByWoMap = new Map<string, any[]>();
-      const planMhMap = new Map<string, { mh_od: number; mh_wt: number; mh_l1?: number; mh_l2?: number }>();
+      const planMhMap = new Map<string, { mh_od: number; mh_wt: number; mh_l1?: number; mh_l2?: number; mh_avg_length?: number }>();
       const logMap = new Map<string, any>();
 
       try {
@@ -345,6 +345,8 @@ export default function WorkCenterProductionReportClient() {
         const inMtr = Number(logRow?.input_qty ?? e.input_mtr ?? (outMtr + rejMtr));
 
         const isDraw = (e.stage_code || '').toUpperCase() === 'DRAW' || (e.stage_code || '').toUpperCase() === 'PILGER';
+        const od = Number(isMhStage && mhInfo?.mh_od ? mhInfo.mh_od : (e.od || woInfo?.size_od || 0));
+        const wl = Number(isMhStage && mhInfo?.mh_wt ? mhInfo.mh_wt : (e.wl || woInfo?.size_wt || 0));
         const calculatedInMt = mtFromMtr(inMtr, od, wl);
         let calculatedOutMt = mtFromMtr(outMtr, od, wl);
         const calculatedRejMt = mtFromMtr(rejMtr, od, wl);

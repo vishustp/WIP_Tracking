@@ -1,6 +1,8 @@
 // lib/rejections/types.ts
 import { RejectionReasonCategory, RejectionStatus, StageCode, RejectionDeclaration } from '@/types';
 
+export type { RejectionDeclaration, RejectionReasonCategory, RejectionStatus };
+
 export const REJECTION_REASON_CATEGORIES: RejectionReasonCategory[] = [
   'SMALL_QTY_NO_REPROCESS',
   'SURFACE_DEFECT',
