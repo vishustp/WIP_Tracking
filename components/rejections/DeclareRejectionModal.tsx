@@ -66,11 +66,15 @@ export default function DeclareRejectionModal({
       const supabase = createClient();
       const { data, error } = await supabase
         .from('work_orders')
-        .select('id, work_order_no, customer_name, grade, size_od, size_wt, avg_length, l1, l2')
+        .select('id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2')
         .order('work_order_no', { ascending: true });
 
       if (!error && data) {
-        setWorkOrders(data as WorkOrderOption[]);
+        const mapped: WorkOrderOption[] = data.map((wo: any) => ({
+          ...wo,
+          avg_length: wo.l1 && wo.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : Number(wo.l1 || 6.0),
+        }));
+        setWorkOrders(mapped);
       }
       setLoadingOrders(false);
     }

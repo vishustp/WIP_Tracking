@@ -497,6 +497,8 @@ export interface RejectionDeclaration {
     grade?: string | null;
     size_od?: number | null;
     size_wt?: number | null;
+    l1?: number | null;
+    l2?: number | null;
     avg_length?: number | null;
   };
 }

@@ -62,8 +62,7 @@ export async function fetchRejections(
           size_od,
           size_wt,
           l1,
-          l2,
-          avg_length
+          l2
         )
       `)
       .order('declared_at', { ascending: false });
@@ -93,7 +92,14 @@ export async function fetchRejections(
       return { data: [], error: error.message };
     }
 
-    let results = (data || []) as RejectionDeclaration[];
+    let results = ((data || []) as any[]).map((r) => {
+      if (r.work_orders) {
+        const wo = r.work_orders;
+        const avgLen = wo.l1 && wo.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : Number(wo.l1 || 6.0);
+        wo.avg_length = avgLen;
+      }
+      return r as RejectionDeclaration;
+    });
 
     // In-memory search filter for WO#, Customer, Grade, or Declaration#
     if (filters.search && filters.search.trim()) {

@@ -53,7 +53,8 @@ export default function VerifyRejectionModal({
     setVerifiedPcs(pcs);
 
     if (declaration?.work_orders) {
-      const avgLen = Number(declaration.work_orders.avg_length || 6.0);
+      const wo = declaration.work_orders;
+      const avgLen = Number(wo.avg_length || (wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : wo.l1) || 6.0);
       const od = Number(declaration.work_orders.size_od || 0);
       const wt = Number(declaration.work_orders.size_wt || 0);
       const { mtr, mt } = calculateRejectionMetrics(pcs, avgLen, od, wt);

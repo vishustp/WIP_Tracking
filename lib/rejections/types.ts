@@ -92,7 +92,7 @@ export function calculateRejectionMetrics(
  * Role permissions checks
  */
 export function canDeclareRejection(roleOrTitle?: string | null): boolean {
-  if (!roleOrTitle) return false;
+  if (!roleOrTitle) return true;
   const lower = roleOrTitle.toLowerCase();
   return (
     lower.includes('admin') ||
@@ -106,7 +106,8 @@ export function canDeclareRejection(roleOrTitle?: string | null): boolean {
     lower.includes('finishing') ||
     lower.includes('saw') ||
     lower.includes('qa') ||
-    lower.includes('inspector')
+    lower.includes('inspector') ||
+    lower.includes('user')
   );
 }
 

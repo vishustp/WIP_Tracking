@@ -18,7 +18,10 @@ import {
   ShieldCheck,
   TrendingDown,
   Info,
+  PlusCircle,
+  ExternalLink,
 } from 'lucide-react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { RejectionDeclaration } from '@/types';
 import {
@@ -30,6 +33,7 @@ import {
   generateRejectionReportCsv,
 } from '@/lib/rejections/types';
 import { fetchRejections } from '@/lib/rejections/client';
+import DeclareRejectionModal from '@/components/rejections/DeclareRejectionModal';
 
 const WORK_CENTER_COLOR_MAP: Record<string, string> = {
   ROLLING: 'bg-orange-100 text-orange-800 border-orange-200',
@@ -50,6 +54,7 @@ export default function SalvageRejectionReportClient() {
   const [loading, setLoading] = useState(true);
 
   // Filters
+  const [declareModalOpen, setDeclareModalOpen] = useState(false);
   const [workCenter, setWorkCenter] = useState('ALL');
   const [status, setStatus] = useState('ALL');
   const [reasonCategory, setReasonCategory] = useState('ALL');
@@ -230,11 +235,28 @@ export default function SalvageRejectionReportClient() {
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => setDeclareModalOpen(true)}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-lg shadow-sm transition-colors cursor-pointer"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>Declare Rejection</span>
+          </button>
+
+          <Link
+            href="/rejections"
+            className="inline-flex items-center space-x-1.5 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 shadow-sm cursor-pointer"
+            title="Open Operations Console"
+          >
+            <ExternalLink className="w-4 h-4 text-slate-500" />
+            <span className="hidden sm:inline">Operations Board</span>
+          </Link>
+
           <button
             onClick={loadData}
             disabled={loading}
-            className="inline-flex items-center space-x-1.5 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 shadow-sm"
+            className="inline-flex items-center space-x-1.5 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 shadow-sm cursor-pointer"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
@@ -243,7 +265,7 @@ export default function SalvageRejectionReportClient() {
           <button
             onClick={handleExportCsv}
             disabled={records.length === 0}
-            className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 shadow-sm"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 shadow-sm cursor-pointer"
           >
             <Download className="w-4 h-4" />
             <span>Export CSV</span>
@@ -251,7 +273,7 @@ export default function SalvageRejectionReportClient() {
 
           <button
             onClick={handlePrint}
-            className="inline-flex items-center space-x-1.5 px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm"
+            className="inline-flex items-center space-x-1.5 px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm cursor-pointer"
           >
             <Printer className="w-4 h-4" />
             <span>Print Report</span>
@@ -598,6 +620,16 @@ export default function SalvageRejectionReportClient() {
           <div className="text-[10px] text-slate-500">WIP Ledger Scrap Write-Off Authorized</div>
         </div>
       </div>
+
+      {/* Declare Rejection Modal */}
+      <DeclareRejectionModal
+        isOpen={declareModalOpen}
+        onClose={() => setDeclareModalOpen(false)}
+        onSuccess={() => {
+          setDeclareModalOpen(false);
+          loadData();
+        }}
+      />
     </div>
   );
 }
