@@ -433,4 +433,67 @@ export interface BandSawQueueItem {
   available_mother_mt: number;
   plan_no?: string;
   is_master?: boolean;
-}
+}
+
+export type RejectionReasonCategory =
+  | 'SMALL_QTY_NO_REPROCESS'
+  | 'SURFACE_DEFECT'
+  | 'WALL_THICKNESS_OFF'
+  | 'CRACK'
+  | 'BEND'
+  | 'DIMENSIONAL_OFF_SPEC'
+  | 'OTHER';
+
+export type RejectionStatus =
+  | 'PENDING_QC'
+  | 'PENDING_PPC'
+  | 'APPROVED'
+  | 'REJECTED_BY_QC'
+  | 'REJECTED_BY_PPC';
+
+export interface RejectionDeclaration {
+  id: string;
+  declaration_no: string;
+  work_order_id: string;
+  process_route_id?: string | null;
+  stage_id?: string | null;
+  work_center: StageCode | string;
+  rejected_pcs: number;
+  rejected_mtr: number;
+  rejected_mt: number;
+  heat_lot_no?: string | null;
+  reason_category: RejectionReasonCategory;
+  production_remarks: string;
+  declared_by: string;
+  declared_by_user_id?: string | null;
+  declared_at: string;
+  status: RejectionStatus;
+  qc_verified_pcs?: number | null;
+  qc_verified_mtr?: number | null;
+  qc_verified_mt?: number | null;
+  qc_remarks?: string | null;
+  qc_verified_by?: string | null;
+  qc_verified_by_user_id?: string | null;
+  qc_verified_at?: string | null;
+  ppc_approved_pcs?: number | null;
+  ppc_approved_mtr?: number | null;
+  ppc_approved_mt?: number | null;
+  ppc_remarks?: string | null;
+  ppc_approved_by?: string | null;
+  ppc_approved_by_user_id?: string | null;
+  ppc_approved_at?: string | null;
+  created_at: string;
+  updated_at?: string;
+
+  // Joined work order fields
+  work_orders?: {
+    id: string;
+    work_order_no: string;
+    customer_name?: string | null;
+    grade?: string | null;
+    size_od?: number | null;
+    size_wt?: number | null;
+    avg_length?: number | null;
+  };
+}
+
