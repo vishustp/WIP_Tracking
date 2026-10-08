@@ -244,6 +244,8 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/reports/diversions',
     '/reports/scrap',
     '/reports/training',
+    '/rejections',
+    '/reports/rejections',
   ];
 
   return allowedUserRoutes.some((allowed) => href === allowed || href.startsWith(allowed + '/'));
@@ -275,6 +277,9 @@ export function isRouteVisible(user: AppUserProfile | null | undefined, href: st
   }
   if (href === '/excel-import' || href.startsWith('/excel-import/')) {
     return perms.excel_import === 'edit' || perms.excel_import === 'view';
+  }
+  if (href === '/rejections' || href.startsWith('/rejections/')) {
+    return true;
   }
   if (href === '/band-saw' || href.startsWith('/band-saw/')) {
     return perms.production_band_saw !== 'none' || isUserAuthorizedForStage(user, 'BAND_SAW');

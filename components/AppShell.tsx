@@ -12,7 +12,7 @@ import {
   User, ShieldCheck, ChevronDown, Activity, Clock,
   ClipboardCheck, FileText, Beaker, Layers, Scissors, History,
   Search, Calendar, Bell, Users, SlidersHorizontal, AlertTriangle, ScrollText,
-  Palette, Check, Loader2, ChevronRight, Lock, ArrowUpDown, Recycle
+  Palette, Check, Loader2, ChevronRight, Lock, ArrowUpDown, Recycle, AlertOctagon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
@@ -102,6 +102,7 @@ const navSections = [
       { href: '/production', label: 'Production Entry', icon: ClipboardCheck },
       { href: '/band-saw', label: 'Band Saw Cutting', icon: Scissors },
       { href: '/qc/vdi', label: 'VDI Entries', icon: ClipboardList },
+      { href: '/rejections', label: 'Rejection & Salvage', icon: AlertOctagon },
     ],
   },
   {
@@ -124,7 +125,8 @@ const navSections = [
       { href: '/reports/tracking', label: 'Work Order Tracking', icon: Activity },
       { href: '/reports/production', label: 'Production Report', icon: Factory },
       { href: '/reports/aging', label: 'Aging Report', icon: Clock },
-      { href: '/reports/diversions', label: 'Rejection Report', icon: AlertTriangle },
+      { href: '/reports/diversions', label: 'Material Diversion Report', icon: Shuffle },
+      { href: '/reports/rejections', label: 'Salvage & Rejection Report', icon: AlertTriangle },
       { href: '/reports/scrap', label: 'Scrap Generation Report', icon: Recycle },
     ],
   },
