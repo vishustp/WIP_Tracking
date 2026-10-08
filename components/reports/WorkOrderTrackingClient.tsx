@@ -1132,22 +1132,27 @@ export default function WorkOrderTrackingClient() {
         }
 
         // FINISHING stage:
-        // Target is the actual Customer Ordered Quantity for this work order!
+        // Target is the actual Customer Total Ordered Quantity for this work order!
         const isUomPcs = String(wo.uom || '').toUpperCase() === 'PCS';
-        const targetPcs = childInfo?.planned_pcs
-          ? Number(childInfo.planned_pcs)
-          : Number(wo.ordered_qty_pcs || (isUomPcs ? wo.ordered_qty : 0)) ||
-            (avgLen > 0 ? Math.round(Number(wo.ordered_qty_mtr || wo.ordered_qty) / avgLen) : Number(wo.ordered_qty));
+        const totalOrderPcs = isUomPcs
+          ? Number(wo.ordered_qty || wo.ordered_qty_pcs || 0)
+          : Number(wo.ordered_qty_pcs || 0) > 0
+          ? Number(wo.ordered_qty_pcs)
+          : avgLen > 0
+          ? Math.round(Number(wo.ordered_qty || wo.ordered_qty_mtr || 0) / avgLen)
+          : Math.round(Number(wo.ordered_qty || 0));
 
-        const targetMtr = childInfo?.planned_mtr
-          ? Number(childInfo.planned_mtr)
+        const totalOrderMtr = !isUomPcs
+          ? Number(wo.ordered_qty || wo.ordered_qty_mtr || 0)
           : Number(wo.ordered_qty_mtr || 0) > 0
           ? Number(wo.ordered_qty_mtr)
-          : !isUomPcs
-          ? Number(wo.ordered_qty)
-          : targetPcs > 0 && avgLen > 0
-          ? targetPcs * avgLen
-          : Number(wo.ordered_qty);
+          : avgLen > 0
+          ? Number((totalOrderPcs * avgLen).toFixed(2))
+          : totalOrderPcs;
+
+        // Target in Finishing is strictly Total Order Qty in the work order's UOM
+        const targetPcs = totalOrderPcs;
+        const targetMtr = totalOrderMtr;
 
         const precedingOutPcs = vdiOutPcs > 0
           ? Math.max(0, vdiOutPcs - vdiRejPcs)
@@ -1177,8 +1182,8 @@ export default function WorkOrderTrackingClient() {
         const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
         const { dwellDays, agingSeverity } = getStageAging(wipMtr, finLogs, masterHtLogs.length > 0 ? masterHtLogs : masterDrawLogs);
 
-        const stageFinOutMtr = avgLen > 0 ? Number((finOutPcs * avgLen).toFixed(3)) : finOutMtr;
-        const stageFinRejMtr = avgLen > 0 ? Number((finRejPcs * avgLen).toFixed(3)) : finRejMtr;
+        const stageFinOutMtr = finOutMtr > 0 ? finOutMtr : (avgLen > 0 ? Number((finOutPcs * avgLen).toFixed(3)) : 0);
+        const stageFinRejMtr = finRejMtr > 0 ? finRejMtr : (avgLen > 0 ? Number((finRejPcs * avgLen).toFixed(3)) : 0);
 
         return {
           ...stageDef,
@@ -1187,9 +1192,9 @@ export default function WorkOrderTrackingClient() {
           targetPcs,
           planMtr: targetMtr,
           planPcs: targetPcs,
-          outMtr: finOutMtr,
+          outMtr: stageFinOutMtr,
           outPcs: finOutPcs,
-          rejMtr: finRejMtr,
+          rejMtr: stageFinRejMtr,
           rejPcs: finRejPcs,
           htcOkMtr: 0,
           htcOkPcs: 0,
@@ -1214,7 +1219,10 @@ export default function WorkOrderTrackingClient() {
       const targetVolumeMtr = stagesData.find((s) => s.code === 'FINISHING')?.targetMtr || wo.ordered_qty;
       const targetVolumePcs = stagesData.find((s) => s.code === 'FINISHING')?.targetPcs || (avgLen > 0 ? Math.round(wo.ordered_qty / avgLen) : 0);
 
-      const completionPct = targetVolumeMtr > 0 ? Math.min(100, Math.round((finishingOutMtr / targetVolumeMtr) * 100)) : 0;
+      const isUomPcs = String(wo.uom || '').toUpperCase() === 'PCS';
+      const completionPct = isUomPcs
+        ? (targetVolumePcs > 0 ? Math.min(100, Math.round((finishingOutPcs / targetVolumePcs) * 100)) : 0)
+        : (targetVolumeMtr > 0 ? Math.min(100, Math.round((finishingOutMtr / targetVolumeMtr) * 100)) : 0);
       const processYieldPct =
         finishingOutMtr + totalRejMtr > 0
           ? Math.round((finishingOutMtr / (finishingOutMtr + totalRejMtr)) * 100)
@@ -1717,6 +1725,7 @@ export default function WorkOrderTrackingClient() {
                   const rBandSaw = data.stagesData.find((s) => s.code === 'BAND_SAW');
                   const rVdi = data.stagesData.find((s) => s.code === 'VDI');
                   const rFin = data.stagesData.find((s) => s.code === 'FINISHING');
+                  const isUomPcs = String(wo.uom || '').toUpperCase() === 'PCS';
 
                   return (
                     <React.Fragment key={wo.id}>
@@ -2289,7 +2298,9 @@ export default function WorkOrderTrackingClient() {
                               <span>Target:</span>
                               <div className="flex items-center gap-1">
                                 <span className="font-mono font-bold text-slate-700">
-                                  {fmt(rFin?.targetPcs || 0)} Pcs
+                                  {isUomPcs
+                                    ? `${fmt(rFin?.targetPcs ?? wo.ordered_qty)} ${wo.uom || 'PCS'}`
+                                    : `${fmt(rFin?.targetMtr ?? wo.ordered_qty)} ${wo.uom || 'MTR'}`}
                                 </span>
                                 <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
                                   QC <ArrowRight size={8} />
@@ -2299,7 +2310,14 @@ export default function WorkOrderTrackingClient() {
 
                             <div className="flex justify-between text-slate-600">
                               <span>Finished:</span>
-                              <span className="font-mono font-bold text-emerald-800 text-[13px]">{fmt(rFin?.outPcs || 0)} Nos</span>
+                              <div className="text-right">
+                                <span className="font-mono font-bold text-emerald-800 text-[13px]">{fmt(rFin?.outPcs || 0)} Nos</span>
+                                {!isUomPcs && Number(rFin?.outMtr || 0) > 0 && (
+                                  <div className="text-[10px] text-emerald-700 font-mono">
+                                    {fmt(rFin?.outMtr || 0)} {wo.uom || 'MTR'}
+                                  </div>
+                                )}
+                              </div>
                             </div>
 
                             {Number(rFin?.rejPcs || 0) > 0 && (
@@ -2435,11 +2453,16 @@ export default function WorkOrderTrackingClient() {
                                       const cL1 = Number(child.l1 || childWoMatch?.l1 || 0);
                                       const cL2 = Number(child.l2 || childWoMatch?.l2 || 0);
                                       const cLenStr = cL1 > 0 && cL2 > 0 ? (cL1 === cL2 ? `${cL1}m` : `${cL1}-${cL2}m`) : cL1 > 0 ? `${cL1}m` : '6.0m';
-                                      const cFin = cData?.stagesData?.find((s) => s.code === 'FINISHING');
-                                      const cTargetPcs = cFin?.targetPcs || child.planned_pcs || child.total_order_pcs || 0;
-                                      const cFinOutPcs = cFin?.outPcs || 0;
-                                      const cWipPcs = cFin?.wipPcs || 0;
-                                      const cCompletionPct = cData?.completionPct || (cTargetPcs > 0 ? Math.min(100, Math.round((cFinOutPcs / cTargetPcs) * 100)) : 0);
+                                      const childFin = cData?.stagesData?.find((s) => s.code === 'FINISHING');
+                                      const childIsUomPcs = String(childWoMatch?.uom || child.uom || wo.uom || '').toUpperCase() === 'PCS';
+                                      const childUom = childWoMatch?.uom || child.uom || (childIsUomPcs ? 'PCS' : 'MTR');
+                                      const cTarget = childIsUomPcs
+                                        ? (childFin?.targetPcs ?? Number(childWoMatch?.ordered_qty || childWoMatch?.ordered_qty_pcs || child.planned_pcs || child.total_order_pcs || 0))
+                                        : (childFin?.targetMtr ?? Number(childWoMatch?.ordered_qty || childWoMatch?.ordered_qty_mtr || child.planned_mtr || child.total_order_mtr || 0));
+                                      const cFinOutPcs = childFin?.outPcs || 0;
+                                      const cFinOutMtr = childFin?.outMtr || 0;
+                                      const cWipPcs = childFin?.wipPcs || 0;
+                                      const cCompletionPct = cData?.completionPct || (cTarget > 0 ? Math.min(100, Math.round(((childIsUomPcs ? cFinOutPcs : cFinOutMtr) / cTarget) * 100)) : 0);
 
                                       return (
                                         <tr key={childId || cIdx} className="hover:bg-slate-50/70">
@@ -2459,7 +2482,7 @@ export default function WorkOrderTrackingClient() {
                                               {' • '}Target: <strong className="text-amber-700">{cLenStr}</strong>
                                             </div>
                                             <div className="text-[10px] text-slate-400 pl-3">
-                                              Planned: <strong className="text-slate-700 font-mono">{fmt(child.planned_pcs || child.total_order_pcs || 0)} Pcs</strong>
+                                              Ord: <strong className="text-slate-700 font-mono">{fmt(childWoMatch?.ordered_qty || child.planned_pcs || child.total_order_pcs || 0)} {childUom}</strong>
                                             </div>
                                           </td>
 
@@ -2509,11 +2532,18 @@ export default function WorkOrderTrackingClient() {
                                             <div className="space-y-0.5 text-right font-mono">
                                               <div className="flex justify-between text-[10.5px]">
                                                 <span className="text-slate-500 font-sans">Target:</span>
-                                                <span className="font-bold text-slate-700">{fmt(cTargetPcs)} Pcs</span>
+                                                <span className="font-bold text-slate-700">{fmt(cTarget)} {childUom}</span>
                                               </div>
                                               <div className="flex justify-between text-[10.5px]">
                                                 <span className="text-slate-600 font-sans">Finished:</span>
-                                                <span className="font-bold text-emerald-800">{fmt(cFinOutPcs)} Nos</span>
+                                                <div>
+                                                  <span className="font-bold text-emerald-800">{fmt(cFinOutPcs)} Nos</span>
+                                                  {!childIsUomPcs && cFinOutMtr > 0 && (
+                                                    <div className="text-[9.5px] text-emerald-700 font-mono">
+                                                      {fmt(cFinOutMtr)} {childUom}
+                                                    </div>
+                                                  )}
+                                                </div>
                                               </div>
                                               <div className="flex justify-between text-[10px] text-emerald-900 pt-0.5 border-t border-emerald-200">
                                                 <span className="font-sans">Stock WIP:</span>
