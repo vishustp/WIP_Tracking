@@ -16,13 +16,15 @@ import {
 import { toast } from 'sonner';
 
 const DEFAULT_SALVAGE_REASONS = [
-  'Bend / Straightening Required',
-  'Surface Scratch / Dent / Mark',
-  'OD / WT Dimensional Variation',
-  'End Cut / Trimming Required',
-  'Crack / Seam Flaw Detected',
-  'Ovality / Out of Round',
-  'Rust / Scale Deposit',
+  'Bend / Str Mark / OD Wave',
+  'OD, ID Dent / Pitting / Mechanical Mark',
+  'OD, WT, Length Variation',
+  'End / Point Uncut/ Sink Required',
+  'Bevel Not OK/Taper Cut',
+  'Crack Detected',
+  'OD, ID Chattering / Line',
+  'OD, ID Spiral/ Lamination/ Chipping ',
+  'Grade Mix',
   'Other / Custom Defect'
 ];
 
