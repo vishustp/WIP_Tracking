@@ -245,11 +245,13 @@ export default function WorkCenterProductionReportClient() {
               if (!mhWt) mhWt = Number(meta?.mh_wt || meta?.cust_wt || meta?.sm?.rolling_wt || meta?.sm?.cust_wt || meta?.sizing_mill?.rolling_wt || 0);
               if (!mhL1) mhL1 = Number(meta?.mh_l1 || meta?.l1 || 0);
               if (!mhL2) mhL2 = Number(meta?.mh_l2 || meta?.l2 || 0);
+              let mhAvg = Number(rp.mh_avg_length || 0);
+              if (!mhAvg) mhAvg = Number(meta?.mh_avg_length || meta?.sm?.sm_len || meta?.eff_len || (mhL1 && mhL2 ? (mhL1 + mhL2) / 2 : mhL1 || 4.49));
               if (Array.isArray(meta?.child_work_orders)) {
                 childIds = meta.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean);
                 meta.child_work_orders.forEach((c: any) => {
                   if (c.work_order_no && mhOd > 0 && mhWt > 0) {
-                    planMhMap.set(String(c.work_order_no).trim(), { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2 });
+                    planMhMap.set(String(c.work_order_no).trim(), { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: mhAvg });
                   }
                 });
               }
@@ -257,9 +259,10 @@ export default function WorkCenterProductionReportClient() {
           }
 
           if (mhOd > 0 && mhWt > 0) {
-            if (rp.work_order_id) planMhMap.set(rp.work_order_id, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2 });
+            const mhPayload = { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2, mh_avg_length: Number((rp.status as any)?.sm?.sm_len || (rp.status as any)?.eff_len || (mhL1 && mhL2 ? (mhL1 + mhL2) / 2 : mhL1 || 4.49)) };
+            if (rp.work_order_id) planMhMap.set(rp.work_order_id, mhPayload);
             for (const cId of childIds) {
-              planMhMap.set(cId, { mh_od: mhOd, mh_wt: mhWt, mh_l1: mhL1, mh_l2: mhL2 });
+              planMhMap.set(cId, mhPayload);
             }
           }
 
@@ -273,6 +276,7 @@ export default function WorkCenterProductionReportClient() {
             mh_wt: mhWt || undefined,
             mh_l1: mhL1 || undefined,
             mh_l2: mhL2 || undefined,
+            mh_avg_length: Number((rp.status as any)?.sm?.sm_len || (rp.status as any)?.eff_len || (mhL1 && mhL2 ? (mhL1 + mhL2) / 2 : mhL1 || 4.49)),
             created_at: rp.created_at,
           };
 
@@ -340,12 +344,21 @@ export default function WorkCenterProductionReportClient() {
         const rejMtr = Number(logRow?.rejection_qty ?? e.rejection_mtr ?? 0);
         const inMtr = Number(logRow?.input_qty ?? e.input_mtr ?? (outMtr + rejMtr));
 
-        const od = isMhStage && mhInfo?.mh_od ? Number(mhInfo.mh_od) : Number(e.od || woInfo?.size_od || 0);
-        const wl = isMhStage && mhInfo?.mh_wt ? Number(mhInfo.mh_wt) : Number(e.wl || woInfo?.size_wt || 0);
-
+        const isDraw = (e.stage_code || '').toUpperCase() === 'DRAW' || (e.stage_code || '').toUpperCase() === 'PILGER';
         const calculatedInMt = mtFromMtr(inMtr, od, wl);
-        const calculatedOutMt = mtFromMtr(outMtr, od, wl);
+        let calculatedOutMt = mtFromMtr(outMtr, od, wl);
         const calculatedRejMt = mtFromMtr(rejMtr, od, wl);
+
+        // Mass conservation for cold drawing (AGENTS.md Rule 3: Mass_In = Mass_Out)
+        if (isDraw && mhInfo?.mh_od && mhInfo?.mh_wt) {
+          const mhLen = Number(mhInfo.mh_avg_length || (mhInfo.mh_l1 && mhInfo.mh_l2 ? (Number(mhInfo.mh_l1) + Number(mhInfo.mh_l2)) / 2 : mhInfo.mh_l1 || 4.49));
+          if (outPcs > 0 && mhLen > 0) {
+            const drawnConservedMt = mtFromMtr(outPcs * mhLen, Number(mhInfo.mh_od), Number(mhInfo.mh_wt));
+            if (drawnConservedMt > calculatedOutMt) {
+              calculatedOutMt = drawnConservedMt;
+            }
+          }
+        }
 
         const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING';
         const rawHtcMtr = Number(logRow?.htc_ok ?? e.htc_ok_mtr ?? (e as any).htc_ok ?? 0);
