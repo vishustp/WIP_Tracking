@@ -869,15 +869,22 @@ export async function GET(req: NextRequest) {
       // VDI Stage WIP (Waiting for QC Inspection)
       const vdiDivIn = getStageDivIn(woId, "VDI");
       const vdiDivOut = getStageDivOut(woId, "VDI");
-      const vdiDivInPcs = avgLength > 0 ? Math.round(vdiDivIn / avgLength) : 0;
+      let vdiDivInPcs = avgLength > 0 ? Math.round(vdiDivIn / avgLength) : 0;
+      let effVdiDivInMtr = vdiDivIn;
       const vdiDivOutPcs = avgLength > 0 ? Math.round(vdiDivOut / avgLength) : 0;
 
       // VDI incoming: strictly from Band Saw Net Output Pieces
       const vdiIncomingPcs = bandSawLogs.length > 0 ? bandSawNetPcs : 0;
       const vdiIncomingMtr = bandSawLogs.length > 0 ? bandSawNetMtr : 0;
 
+      // When material was diverted into VDI without Band Saw cuts, and inspection was completed or downstream bundling started:
+      if (bandSawLogs.length === 0 && vdiDivIn > 0 && qcInspectedPcs > 0 && (finOutPcs > 0 || qcInspectedPcs >= vdiDivInPcs * 0.9)) {
+        vdiDivInPcs = Math.min(vdiDivInPcs, qcInspectedPcs);
+        effVdiDivInMtr = Math.min(effVdiDivInMtr, qcInspectedMtr);
+      }
+
       const vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
-      let vdiAvailMtr = Math.max(0, Number((vdiIncomingMtr + vdiDivIn - qcInspectedMtr - vdiDivOut).toFixed(3)));
+      let vdiAvailMtr = Math.max(0, Number((vdiIncomingMtr + effVdiDivInMtr - qcInspectedMtr - vdiDivOut).toFixed(3)));
       if (vdiAvailMtr === 0 && vdiAvailPcs > 0 && avgLength > 0) {
         vdiAvailMtr = Number((vdiAvailPcs * avgLength).toFixed(3));
       }

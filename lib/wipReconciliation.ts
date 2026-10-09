@@ -352,10 +352,20 @@ export function reconcileWorkOrderWip(
     const effectivePassedPcs = Math.max(curPassedPcs, maxDownstreamPcs);
 
     // Diversion adjustments for this specific stage (Rule 1 & Rule 2)
-    const divInPcs = Number(cur.diversion_in_pcs || 0);
+    let divInPcs = Number(cur.diversion_in_pcs || 0);
     const divOutPcs = Number(cur.diversion_out_pcs || 0);
-    const divInMtr = Number(cur.diversion_in_mtr || (stageLen > 0 ? Number((divInPcs * stageLen).toFixed(2)) : 0));
+    let divInMtr = Number(cur.diversion_in_mtr || (stageLen > 0 ? Number((divInPcs * stageLen).toFixed(2)) : 0));
     const divOutMtr = Number(cur.diversion_out_mtr || (stageLen > 0 ? Number((divOutPcs * stageLen).toFixed(2)) : 0));
+
+    // When material entered VDI via diversion without upstream cutting,
+    // and inspection has passed to downstream finishing, any trimming shortfall is not active WIP.
+    if (sc === 'VDI' && incomingPcs === 0 && divInPcs > 0 && curProd.prodPcs > 0) {
+      const downFin = stageProdMap.get('FINISHING');
+      if ((downFin && downFin.prodPcs > 0) || curProd.prodPcs >= divInPcs * 0.9) {
+        divInPcs = Math.min(divInPcs, curProd.prodPcs);
+        divInMtr = Math.min(divInMtr, curProd.prodMtr);
+      }
+    }
 
     // Core Formula (Rule 1 & Rule 2 Option B):
     // Queue WIP (PCS) = Incoming Feeder + Diversion In - Effective Passed OK - Diversion Out

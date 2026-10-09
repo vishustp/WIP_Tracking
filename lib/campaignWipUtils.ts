@@ -243,6 +243,11 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
       const logRejPcs = stageLog?.rejPcs || 0;
       const logRejMtr = stageLog?.rejMtr || 0;
 
+      const bsLog = directStageLogsMap.get('BAND_SAW');
+      const hasActualBsLogs = Boolean(bsLog && ((bsLog.pcs || 0) > 0 || (bsLog.mtr || 0) > 0));
+      const vdiRow = stageRows.find((sr: any) => (sr.stage_code || '').toUpperCase() === 'VDI');
+      const vdiHasDivIn = Number(vdiRow?.diversion_in || 0) > 0;
+
       let grossMtr = logMtr > 0 ? logMtr : rawMtr;
       let grossPcs = logPcs > 0 ? logPcs : rawPcs;
       let rejMtr = logRejMtr > 0 ? logRejMtr : rawRejMtr;
@@ -254,7 +259,16 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
 
       const stageAvgLen = Number(r.avg_length || (r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0));
 
-      if (isRoll) {
+      if (sc === 'BAND_SAW' && !hasActualBsLogs && vdiHasDivIn) {
+        // If Band Saw has no actual production logs and material arrived via diversion at VDI,
+        // Band Saw was never run on this work order; do not use synthesized downstream output.
+        grossMtr = 0;
+        grossPcs = 0;
+        rejMtr = 0;
+        rejPcs = 0;
+        netMtr = 0;
+        netPcs = 0;
+      } else if (isRoll) {
         grossMtr = rollMtr > 0 ? rollMtr : grossMtr;
         grossPcs = rollPcs > 0 ? rollPcs : grossPcs;
         rejMtr = rawRejMtr;
@@ -262,6 +276,10 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
         netMtr = Math.max(0, grossMtr - rejMtr);
         netPcs = Math.max(0, grossPcs - rejPcs);
       } else if (isVdi) {
+        if (!hasActualBsLogs && vdiHasDivIn) {
+          incomingPcsOverride = 0;
+          incomingMtrOverride = 0;
+        }
         if (isMaster) {
           grossMtr = Math.max(rawMtr, campaignVdiOkMtr + campaignVdiRejMtr);
           grossPcs = Math.max(rawPcs, campaignVdiOkPcs + campaignVdiRejPcs);
@@ -305,10 +323,23 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
         }
       }
 
-      const divInMtr = Number(r.diversion_in || 0);
-      const divOutMtr = Number(r.diversion_out || 0);
-      const divInPcs = stageAvgLen > 0 ? Math.round(divInMtr / stageAvgLen) : 0;
-      const divOutPcs = stageAvgLen > 0 ? Math.round(divOutMtr / stageAvgLen) : 0;
+      let divInMtr = Number(r.diversion_in || 0);
+      let divOutMtr = Number(r.diversion_out || 0);
+      let divInPcs = stageAvgLen > 0 ? Math.round(divInMtr / stageAvgLen) : 0;
+      let divOutPcs = stageAvgLen > 0 ? Math.round(divOutMtr / stageAvgLen) : 0;
+
+      if (sc === 'VDI' && divInMtr > 0 && !hasActualBsLogs) {
+        const inspectedPcs = isMaster ? (campaignVdiOkPcs + campaignVdiRejPcs) : (directVdiOkPcs + directVdiRejPcs);
+        const inspectedMtr = isMaster ? (campaignVdiOkMtr + campaignVdiRejMtr) : (directVdiOkMtr + directVdiRejMtr);
+        const finPcs = isMaster ? campaignFinPcs : directFinPcs;
+        if (inspectedPcs > 0 && (finPcs > 0 || inspectedPcs >= divInPcs * 0.9)) {
+          // The entire physical lot was inspected at VDI and passed downstream.
+          // Any difference between theoretical diverted meters and measured cut meters is trimming shortfall,
+          // not active pieces waiting on the floor.
+          divInPcs = Math.min(divInPcs, inspectedPcs);
+          divInMtr = Math.min(divInMtr, inspectedMtr);
+        }
+      }
 
       return {
         stage_code: sc,

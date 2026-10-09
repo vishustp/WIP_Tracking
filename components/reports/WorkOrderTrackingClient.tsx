@@ -1083,8 +1083,8 @@ export default function WorkOrderTrackingClient() {
         if (stageCode === 'VDI') {
           const divIn = getStageDivIn(effectiveMasterWoId, 'VDI');
           const divOut = getStageDivOut(effectiveMasterWoId, 'VDI');
-          const incomingPcs = bandSawOutPcs > 0 ? Math.max(0, bandSawOutPcs - bandSawRejPcs) : (htOutPcs > 0 ? Math.max(0, htOutPcs - htRejPcs) : Math.max(0, drawOutPcs - drawRejPcs));
-          const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
+          const incomingPcs = bandSawOutPcs > 0 ? Math.max(0, bandSawOutPcs - bandSawRejPcs) : 0;
+          let divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
           const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
 
           const qcInspectedPcs = relevantVdiQcList.reduce(
@@ -1092,6 +1092,11 @@ export default function WorkOrderTrackingClient() {
             0
           );
           const consumedPcs = Math.max(qcInspectedPcs, vdiOutPcs + vdiRejPcs);
+
+          // If no upstream Band Saw cuts and material arrived via VDI diversion, bound divInPcs by inspected lot if downstream finishing has commenced
+          if (bandSawOutPcs === 0 && divIn > 0 && qcInspectedPcs > 0 && (finOutPcs > 0 || qcInspectedPcs >= divInPcs * 0.9)) {
+            divInPcs = Math.min(divInPcs, qcInspectedPcs);
+          }
 
           let wipPcs = 0;
           if (incomingPcs > 0 || divInPcs > 0) {
