@@ -17,3 +17,5 @@ Thumbs.db
 *.zip
 scratch/
 backups/
+.superpowers/
+.impeccable/

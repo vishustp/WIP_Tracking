@@ -17,6 +17,12 @@ import {
   Filter,
   ClipboardCheck,
   X,
+  ShieldCheck,
+  ChevronRight,
+  Scale,
+  Sparkles,
+  ArrowRight,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { ProductionEntry, StageCode } from '@/types';
@@ -25,6 +31,7 @@ import { toast } from 'sonner';
 
 interface WorkCenterTabConfig {
   code: string;
+  stepNumber: string;
   label: string;
   shortLabel: string;
   description: string;
@@ -35,14 +42,16 @@ interface WorkCenterTabConfig {
 const WORK_CENTERS: WorkCenterTabConfig[] = [
   {
     code: 'ROLLING',
+    stepNumber: '01',
     label: 'Hot Rolling Mill',
-    shortLabel: 'Rolling',
+    shortLabel: 'Rolling Mill',
     description: 'Hot billet piercing, mother hollow rolling, and initial hot sizing.',
     icon: Flame,
     color: 'border-amber-500 text-amber-700 bg-amber-50',
   },
   {
     code: 'HOLLOW_HEAT_TREATMENT',
+    stepNumber: '02',
     label: 'Hollow Heat Treatment',
     shortLabel: 'Hollow HT',
     description: 'Mother hollow annealing and stress relieving prior to pilgering/draw.',
@@ -51,6 +60,7 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'DRAW',
+    stepNumber: '03',
     label: 'Cold Draw Bench',
     shortLabel: 'Cold Draw',
     description: 'Cold drawing, plug drawing, and cold reduction to final dimensions.',
@@ -59,14 +69,16 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'PILGER',
+    stepNumber: '04',
     label: 'Cold Pilger Mill',
-    shortLabel: 'Pilger',
+    shortLabel: 'Pilger Mill',
     description: 'Cold pilgering and roll-die reduction of stainless steel hollows.',
     icon: Wrench,
     color: 'border-cyan-500 text-cyan-700 bg-cyan-50',
   },
   {
     code: 'HEAT_TREATMENT',
+    stepNumber: '05',
     label: 'Final Heat Treatment',
     shortLabel: 'Final HT',
     description: 'Quench, temper, normalizing, and final metallurgical property conditioning.',
@@ -75,6 +87,7 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'BAND_SAW',
+    stepNumber: '06',
     label: 'Band Saw Cutting',
     shortLabel: 'Band Saw',
     description: 'Precision pipe cutting into customer finished lengths prior to inspection.',
@@ -83,25 +96,28 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'VDI',
-    label: 'VDI',
-    shortLabel: 'VDI',
+    stepNumber: '07',
+    label: 'Visual & Dimension Inspection',
+    shortLabel: 'VDI Inspection',
     description: 'Visual Dimension Inspection: OD, WT, length verification, surface inspection, and QA disposition.',
     icon: ClipboardCheck,
     color: 'border-purple-500 text-purple-700 bg-purple-50',
   },
   {
     code: 'FINISHING',
-    label: 'BUNDLING',
-    shortLabel: 'BUNDLING',
-    description: 'BUNDLING.',
+    stepNumber: '08',
+    label: 'Bundling & Dispatch Line',
+    shortLabel: 'Bundling',
+    description: 'Final bundle assembly, weighing, stenciling, color coding, and warehouse staging.',
     icon: Factory,
     color: 'border-teal-500 text-teal-700 bg-teal-50',
   },
   {
     code: 'ALL',
+    stepNumber: 'ALL',
     label: 'All Work Centers Combined',
-    shortLabel: 'Plant Summary',
-    description: 'Consolidated plant-wide cross-station throughput and yield overview.',
+    shortLabel: 'Plant Consolidated',
+    description: 'Consolidated plant-wide cross-station throughput, total tonnage, and overall yield.',
     icon: Layers,
     color: 'border-blue-500 text-blue-700 bg-blue-50',
   },
@@ -141,6 +157,8 @@ export default function WorkCenterProductionReportClient() {
     return d.toISOString().slice(0, 10);
   });
   const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [activePreset, setActivePreset] = useState<'today' | 'yesterday' | '7days' | 'month' | 'custom'>('7days');
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -489,6 +507,7 @@ export default function WorkCenterProductionReportClient() {
       );
 
       setEntries(combined);
+      setLastRefreshedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     } catch (err: any) {
       toast.error(err?.message || 'Failed to load production entries.');
       setEntries([]);
@@ -864,6 +883,7 @@ export default function WorkCenterProductionReportClient() {
   }, [selectedWc, selectedRoute]);
 
   const setQuickDate = (preset: 'today' | 'yesterday' | '7days' | 'month') => {
+    setActivePreset(preset);
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
 
@@ -952,20 +972,37 @@ export default function WorkCenterProductionReportClient() {
   return (
     <div className="space-y-6 print:space-y-4 print:p-0">
       {/* Screen Toolbar / Header Actions */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-100 px-2.5 py-0.5 text-xs font-bold text-blue-800 border border-blue-200">
-              <Factory className="h-3.5 w-3.5 text-blue-700" />
-              SHOP FLOOR CIRCULATION
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 dark:bg-slate-800 text-slate-100 dark:text-slate-200 px-2.5 py-1 text-[11px] font-bold tracking-wider uppercase shadow-2xs border border-slate-700/60">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              CONTROLLED SHOP FLOOR DOCUMENT
             </span>
-            <span className="text-xs font-semibold text-slate-500">Document Ref: RGHS/PRD-SOP-03</span>
+            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 text-[11px] font-mono font-semibold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+              <ShieldCheck className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+              DOC REF: RGHS/PRD-SOP-03
+            </span>
+            {lastRefreshedAt && (
+              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 hidden sm:inline-flex items-center gap-1">
+                <Clock className="h-3 w-3 text-slate-400" />
+                Synced: {lastRefreshedAt}
+              </span>
+            )}
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 mt-1">
-            Work Center Shift Production Report
-          </h1>
-          <p className="text-xs text-slate-500">
-            Dedicated station-by-station production tracking, gross output, rejections, yield, and supervisor sign-offs.
+          <div className="mt-2 flex items-baseline gap-3 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white font-sans">
+              Work Center Shift Production Report
+            </h1>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              Station: {activeWcConfig.label}
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
+            Live station output ledger, shift throughput, scrap accounting, and supervisory authorization log.
           </p>
         </div>
 
@@ -973,85 +1010,116 @@ export default function WorkCenterProductionReportClient() {
           <button
             type="button"
             onClick={loadData}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer active:scale-95 disabled:opacity-60"
+            title="Reload live production data"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-blue-600' : 'text-slate-500 dark:text-slate-400'}`} />
-            Refresh
+            <span>Refresh</span>
           </button>
           <button
             type="button"
             onClick={exportCSV}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer active:scale-95"
+            title="Export filtered records to CSV"
           >
             <Download className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
-            Export CSV
+            <span>Export CSV</span>
           </button>
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-500 transition cursor-pointer"
+            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 dark:bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-slate-800 dark:hover:bg-blue-500 transition cursor-pointer active:scale-95"
+            title="Print formal production report"
           >
             <Printer className="h-4 w-4" />
-            Print Production Report
+            <span>Print Report</span>
           </button>
         </div>
       </div>
 
-      {/* Dedicated Work Center Tabs Selector (hidden on print) */}
+      {/* Dedicated Work Center Process Track Selector (hidden on print) */}
       <div className="print:hidden">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
-          {WORK_CENTERS.map((wc) => {
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin">
+          {WORK_CENTERS.map((wc, index) => {
             const isSelected = selectedWc === wc.code;
             const Icon = wc.icon;
             return (
-              <button
-                key={wc.code}
-                type="button"
-                onClick={() => setSelectedWc(wc.code)}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all whitespace-nowrap cursor-pointer border ${isSelected
-                    ? `${wc.color} shadow-xs border-current ring-1 ring-current/20`
-                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
+              <React.Fragment key={wc.code}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedWc(wc.code)}
+                  className={`group inline-flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap cursor-pointer border ${
+                    isSelected
+                      ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 border-slate-900 dark:border-slate-100 shadow-xs ring-2 ring-slate-900/10 dark:ring-white/10'
+                      : 'bg-white dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:text-slate-900 dark:hover:text-white'
                   }`}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{wc.label}</span>
-              </button>
+                  aria-pressed={isSelected}
+                >
+                  <span
+                    className={`inline-flex items-center justify-center h-5 w-5 rounded-md font-mono text-[10px] font-black transition-colors ${
+                      isSelected
+                        ? 'bg-white/20 dark:bg-slate-900/20 text-white dark:text-slate-900'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 group-hover:bg-slate-200 dark:group-hover:bg-slate-600'
+                    }`}
+                  >
+                    {wc.stepNumber}
+                  </span>
+                  <Icon className={`h-3.5 w-3.5 ${isSelected ? 'text-white dark:text-slate-900' : 'text-slate-500 dark:text-slate-400'}`} />
+                  <span>{wc.shortLabel}</span>
+                </button>
+                {index < WORK_CENTERS.length - 2 && (
+                  <ChevronRight className="h-3 w-3 text-slate-300 dark:text-slate-600 shrink-0 hidden lg:block" />
+                )}
+              </React.Fragment>
             );
           })}
         </div>
       </div>
 
-      {/* Printable Formal Header */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs print:border-black print:p-3 print:shadow-none">
-        <div className="flex items-start justify-between border-b border-slate-200 pb-4 print:border-black print:pb-2">
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-lg print:border print:border-black">
-              RG
+      {/* Formal Header & Filter Controls Card */}
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-2xs print:border-black print:p-2 print:shadow-none">
+        {/* Plant Formal Letterhead */}
+        <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-4 print:border-black print:pb-2">
+          <div className="flex items-center gap-3.5">
+            <div className="h-12 w-12 rounded-xl bg-slate-950 text-white flex flex-col items-center justify-center font-black text-lg border border-slate-800 shadow-xs print:border print:border-black print:bg-white print:text-black shrink-0">
+              <span className="font-mono tracking-tight leading-none text-emerald-400 print:text-black text-sm">RG</span>
+              <span className="text-[9px] font-mono tracking-widest text-slate-400 print:text-black leading-none mt-0.5">STEEL</span>
             </div>
             <div>
-              <h2 className="text-base font-black uppercase tracking-wide text-slate-900 print:text-black">
-                RASHMI GREEN HYDROGEN STEEL PVT. LTD.
-              </h2>
-              <div className="text-xs font-bold text-slate-700 print:text-black uppercase">
-                (SEAMLESS DIVISION) · {activeWcConfig.label} · Production Log
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-black uppercase tracking-wide text-slate-900 dark:text-white print:text-black">
+                  RASHMI GREEN HYDROGEN STEEL PVT. LTD.
+                </h2>
+                <span className="text-[10px] font-mono font-bold uppercase rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 border border-slate-200 dark:border-slate-700 print:border-black print:text-black">
+                  SEAMLESS PIPE DIVISION
+                </span>
               </div>
-              <div className="text-[11px] text-slate-500 print:text-black">
+              <div className="text-xs font-bold text-slate-700 dark:text-slate-300 print:text-black uppercase mt-0.5">
+                Work Center: <span className="text-blue-700 dark:text-blue-400 print:text-black font-black">{activeWcConfig.label}</span> · Production Shift Log
+              </div>
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 print:text-black max-w-xl">
                 {activeWcConfig.description}
               </div>
             </div>
           </div>
 
-          <div className="text-right text-xs space-y-0.5 print:text-black">
-            <div className="font-mono font-bold text-slate-900">DOC: RGHS/PRD-LOG/03</div>
-            <div className="text-slate-500">Work Center Code: {activeWcConfig.code}</div>
-            <div className="text-slate-500 font-mono">
-              Period: {fromDate} to {toDate}
+          <div className="text-right text-xs space-y-1 print:text-black font-mono shrink-0 pl-3">
+            <div className="font-bold text-slate-900 dark:text-white print:text-black text-[13px]">
+              DOC: RGHS/PRD-LOG/03
+            </div>
+            <div className="text-slate-500 dark:text-slate-400 print:text-black text-[11px]">
+              Station ID: <span className="font-bold text-slate-700 dark:text-slate-200">WC-{activeWcConfig.code}</span>
+            </div>
+            <div className="text-slate-500 dark:text-slate-400 print:text-black text-[11px]">
+              Period: <span className="font-bold text-slate-700 dark:text-slate-200">{fromDate}</span> to <span className="font-bold text-slate-700 dark:text-slate-200">{toDate}</span>
             </div>
           </div>
         </div>
 
-        {/* Filter Controls (hidden when printing) */}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 print:hidden">
+        {/* Filter Controls Bar (hidden when printing) */}
+        <div className="mt-4 pt-1 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 print:hidden">
+          {/* Search */}
           <div>
             <label
               htmlFor="wc-filter-search"
@@ -1067,7 +1135,7 @@ export default function WorkCenterProductionReportClient() {
                 placeholder="e.g. WO-101 or HT-98"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 pl-8 pr-8 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-hidden"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/90 pl-8 pr-8 py-1.5 text-xs font-mono text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-slate-500 dark:focus:border-slate-400 focus:ring-1 focus:ring-slate-500 focus:outline-hidden"
               />
               {search && (
                 <button
@@ -1083,6 +1151,7 @@ export default function WorkCenterProductionReportClient() {
             </div>
           </div>
 
+          {/* Process Route */}
           <div>
             <label
               htmlFor="wc-filter-route"
@@ -1094,7 +1163,7 @@ export default function WorkCenterProductionReportClient() {
               id="wc-filter-route"
               value={selectedRoute}
               onChange={(e) => setSelectedRoute(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-hidden cursor-pointer"
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/90 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:border-slate-500 dark:focus:border-slate-400 focus:ring-1 focus:ring-slate-500 focus:outline-hidden cursor-pointer"
             >
               <option value="ALL">All Routes (CDS, HFS, etc.)</option>
               {routesList.map((r) => (
@@ -1105,42 +1174,60 @@ export default function WorkCenterProductionReportClient() {
             </select>
           </div>
 
+          {/* Quick Date Segmented Switch */}
           <div>
             <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-              Quick Date Filter
+              Date Preset
             </span>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700">
               <button
                 type="button"
                 onClick={() => setQuickDate('today')}
-                className="flex-1 min-h-[36px] px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer active:scale-95 text-center flex items-center justify-center"
+                className={`flex-1 py-1 px-1.5 rounded-md text-xs font-bold transition cursor-pointer text-center ${
+                  activePreset === 'today'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
               >
                 Today
               </button>
               <button
                 type="button"
                 onClick={() => setQuickDate('yesterday')}
-                className="flex-1 min-h-[36px] px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer active:scale-95 text-center flex items-center justify-center"
+                className={`flex-1 py-1 px-1.5 rounded-md text-xs font-bold transition cursor-pointer text-center ${
+                  activePreset === 'yesterday'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
               >
-                Yesterday
+                Yday
               </button>
               <button
                 type="button"
                 onClick={() => setQuickDate('7days')}
-                className="flex-1 min-h-[36px] px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer active:scale-95 text-center flex items-center justify-center"
+                className={`flex-1 py-1 px-1.5 rounded-md text-xs font-bold transition cursor-pointer text-center ${
+                  activePreset === '7days'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
               >
                 7 Days
               </button>
               <button
                 type="button"
                 onClick={() => setQuickDate('month')}
-                className="flex-1 min-h-[36px] px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer active:scale-95 text-center flex items-center justify-center"
+                className={`flex-1 py-1 px-1.5 rounded-md text-xs font-bold transition cursor-pointer text-center ${
+                  activePreset === 'month'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
               >
                 Month
               </button>
             </div>
           </div>
 
+          {/* From Date */}
           <div>
             <label
               htmlFor="wc-filter-from-date"
@@ -1152,11 +1239,15 @@ export default function WorkCenterProductionReportClient() {
               id="wc-filter-from-date"
               type="date"
               value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-100 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-hidden"
+              onChange={(e) => {
+                setFromDate(e.target.value);
+                setActivePreset('custom');
+              }}
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/90 px-2.5 py-1.5 text-xs font-mono font-medium text-slate-800 dark:text-slate-100 focus:border-slate-500 dark:focus:border-slate-400 focus:ring-1 focus:ring-slate-500 focus:outline-hidden"
             />
           </div>
 
+          {/* To Date */}
           <div>
             <label
               htmlFor="wc-filter-to-date"
@@ -1168,31 +1259,37 @@ export default function WorkCenterProductionReportClient() {
               id="wc-filter-to-date"
               type="date"
               value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-100 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-hidden"
+              onChange={(e) => {
+                setToDate(e.target.value);
+                setActivePreset('custom');
+              }}
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/90 px-2.5 py-1.5 text-xs font-mono font-medium text-slate-800 dark:text-slate-100 focus:border-slate-500 dark:focus:border-slate-400 focus:ring-1 focus:ring-slate-500 focus:outline-hidden"
             />
           </div>
         </div>
 
         {/* Dynamic Filter Scope Banner */}
         {(debouncedSearch.trim() || selectedRoute !== 'ALL') && (
-          <div className="mt-3 flex items-center justify-between bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-1.5 text-xs text-blue-900 dark:text-blue-200 print:hidden">
+          <div className="mt-3.5 flex items-center justify-between bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-800 dark:text-slate-200 print:hidden">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1 rounded bg-blue-200/80 dark:bg-blue-900/60 px-1.5 py-0.5 text-[10px] font-bold text-blue-900 dark:text-blue-200 uppercase">
-                Dynamic Scope
+              <span className="inline-flex items-center gap-1 rounded bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                Active Filter
               </span>
               <span>
-                Summary metrics &amp; records scoped to:
+                Showing filtered results for:
                 {selectedRoute !== 'ALL' && (
-                  <span className="ml-1.5 inline-flex items-center rounded bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.5 font-mono font-bold text-indigo-900 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-700 text-[11px]">
+                  <span className="ml-1.5 inline-flex items-center rounded bg-indigo-50 dark:bg-indigo-950/70 px-1.5 py-0.5 font-mono font-bold text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[11px]">
                     Route: {selectedRoute}
                   </span>
                 )}
                 {debouncedSearch.trim() && (
-                  <span className="ml-1.5 font-bold text-blue-950 dark:text-blue-100 font-mono">
+                  <span className="ml-1.5 font-bold text-slate-900 dark:text-white font-mono bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                     &ldquo;{debouncedSearch}&rdquo;
                   </span>
                 )}
+                <span className="ml-2 font-mono text-slate-500 dark:text-slate-400">
+                  ({filteredEntries.length} matching {filteredEntries.length === 1 ? 'record' : 'records'})
+                </span>
               </span>
             </div>
             <button
@@ -1201,60 +1298,65 @@ export default function WorkCenterProductionReportClient() {
                 setSearch('');
                 setSelectedRoute('ALL');
               }}
-              className="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100 font-bold underline cursor-pointer text-[11px]"
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-bold underline cursor-pointer text-[11px] shrink-0 ml-2"
             >
-              Clear All Filters (Show Station Totals)
+              Clear Filters
             </button>
           </div>
         )}
       </div>
 
-      {/* Production Log Detailed Table - Exclusively Production OK & Logged Details */}
-      <div className="rounded-xl border border-slate-300 bg-white shadow-xs overflow-hidden print:border-black print:shadow-none">
+      {/* Production Log Detailed Table */}
+      <div className="rounded-xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/90 shadow-2xs overflow-hidden print:border-black print:shadow-none">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-slate-300 bg-slate-100/95 font-bold uppercase tracking-wider text-slate-800 print:bg-slate-200 print:border-black print:text-black">
-                <th className="px-3 py-3 whitespace-nowrap">Date & Time</th>
-                <th className="px-3 py-3 whitespace-nowrap">Work Order #</th>
-                <th className="px-3 py-3">Customer & Grade</th>
-                <th className="px-3 py-3 whitespace-nowrap">Heat / Lot No</th>
-                <th className="px-3 py-3 whitespace-nowrap">Pipe Size (OD × WT)</th>
+              <tr className="sticky top-0 z-10 border-b-2 border-slate-300 dark:border-slate-700 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 print:bg-slate-200 print:border-black print:text-black">
+                <th scope="col" className="px-3.5 py-3 whitespace-nowrap">Date & Time</th>
+                <th scope="col" className="px-3.5 py-3 whitespace-nowrap">Work Order #</th>
+                <th scope="col" className="px-3.5 py-3">Customer & Grade</th>
+                <th scope="col" className="px-3.5 py-3 whitespace-nowrap">Heat / Lot No</th>
+                <th scope="col" className="px-3.5 py-3 whitespace-nowrap">Pipe Size (OD × WT)</th>
 
                 {/* Exclusive Production OK Columns */}
-                <th className="px-3 py-3 text-right whitespace-nowrap font-black text-blue-950 bg-blue-100/80 border-l border-blue-300 print:border-black print:bg-white print:text-black">
+                <th scope="col" className="px-3.5 py-3 text-right whitespace-nowrap font-black text-blue-950 dark:text-blue-200 bg-blue-100/70 dark:bg-blue-950/40 border-l border-blue-200 dark:border-blue-800 print:border-black print:bg-white print:text-black">
                   PRODUCTION OK (PCS) ★
                 </th>
-                <th className="px-3 py-3 text-right whitespace-nowrap font-black text-blue-950 bg-blue-100/80 border-r border-blue-200 print:border-black print:bg-white print:text-black">
+                <th scope="col" className="px-3.5 py-3 text-right whitespace-nowrap font-black text-blue-950 dark:text-blue-200 bg-blue-100/70 dark:bg-blue-950/40 border-r border-blue-200 dark:border-blue-800 print:border-black print:bg-white print:text-black">
                   PRODUCTION OK (MTR)
                 </th>
-                <th className="px-3 py-3 text-right whitespace-nowrap font-black text-slate-950 bg-slate-200/90 border-r border-slate-300 print:border-black print:bg-white print:text-black">
+                <th scope="col" className="px-3.5 py-3 text-right whitespace-nowrap font-black text-slate-950 dark:text-slate-100 bg-slate-200/80 dark:bg-slate-800/80 border-r border-slate-300 dark:border-slate-700 print:border-black print:bg-white print:text-black">
                   WEIGHT (MT) ★
                 </th>
 
-                <th className="px-3 py-3 text-right whitespace-nowrap bg-rose-50 text-rose-900 border-r border-rose-200">
+                <th scope="col" className="px-3.5 py-3 text-right whitespace-nowrap bg-rose-50/80 dark:bg-rose-950/30 text-rose-900 dark:text-rose-300 border-r border-rose-200 dark:border-rose-900/60 print:border-black print:text-black">
                   Rejection Logged
                 </th>
-                <th className="px-3 py-3 text-center whitespace-nowrap">
+                <th scope="col" className="px-3.5 py-3 text-center whitespace-nowrap">
                   Yield %
                 </th>
-                <th className="px-3 py-3">
+                <th scope="col" className="px-3.5 py-3 min-w-[140px]">
                   Operator Remarks
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 print:divide-black">
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800/80 print:divide-black">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-500">
-                    <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
-                    Loading production records...
+                  <td colSpan={11} className="p-12 text-center text-slate-500 dark:text-slate-400">
+                    <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-3 text-blue-600" />
+                    <p className="font-semibold text-slate-700 dark:text-slate-300">Loading production records...</p>
+                    <p className="text-xs text-slate-400 mt-1">Retrieving logs from station ledger</p>
                   </td>
                 </tr>
               ) : filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-500">
-                    No production entries logged for {activeWcConfig.label} during this time frame.
+                  <td colSpan={11} className="p-12 text-center text-slate-500 dark:text-slate-400">
+                    <Factory className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                    <p className="font-bold text-slate-800 dark:text-slate-200">No production entries logged</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      No logs found for {activeWcConfig.label} during the period {fromDate} to {toDate}.
+                    </p>
                   </td>
                 </tr>
               ) : (
@@ -1271,43 +1373,48 @@ export default function WorkCenterProductionReportClient() {
                   const entryYield = totalPcs > 0 ? Math.min(100, Math.max(0, (okPcs / totalPcs) * 100)) : 100;
 
                   return (
-                    <tr key={e.id} className="hover:bg-slate-50/60 transition-colors print:text-black">
-                      <td className="px-3 py-2.5 font-mono whitespace-nowrap text-slate-800 print:text-black">
+                    <tr
+                      key={e.id}
+                      className="even:bg-slate-50/40 dark:even:bg-slate-900/40 hover:bg-slate-100/60 dark:hover:bg-slate-800/50 transition-colors print:text-black"
+                    >
+                      <td className="px-3.5 py-2.5 font-mono whitespace-nowrap text-slate-800 dark:text-slate-200 print:text-black">
                         <div className="font-bold">{e.process_date}</div>
-                        <div className="text-[10px] text-slate-500 print:text-black">
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 print:text-black">
                           {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </td>
 
-                      <td className="px-3 py-2.5 font-mono font-bold text-slate-900 whitespace-nowrap print:text-black">
+                      <td className="px-3.5 py-2.5 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap print:text-black">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <button
                             type="button"
                             onClick={() => setSearch(e.work_order_no)}
-                            className="hover:underline hover:text-blue-600 dark:hover:text-blue-400 text-left cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-blue-500 rounded-xs"
-                            title={`Click to filter for ${e.work_order_no}`}
+                            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-left cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-blue-500 rounded-xs"
+                            title={`Filter records for WO #${e.work_order_no}`}
                             aria-label={`Filter records for work order ${e.work_order_no}`}
                           >
                             {e.work_order_no}
                           </button>
                           {e.plan_no && (
-                            <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 border border-sky-300 text-sky-800 px-1.5 py-0.2 text-[9px] font-bold font-mono tracking-tight print:border print:border-black">
+                            <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 dark:bg-sky-950/70 border border-sky-300 dark:border-sky-800 text-sky-800 dark:text-sky-300 px-1.5 py-0.2 text-[9px] font-bold font-mono tracking-tight print:border print:border-black">
                               PLAN: {e.plan_no}{e.revision_no && Number(e.revision_no) > 0 ? ` (R${e.revision_no})` : ''}
                             </span>
                           )}
                         </div>
                       </td>
 
-                      <td className="px-3 py-2.5 max-w-[180px] truncate">
-                        <div className="font-semibold text-slate-900 print:text-black">{e.customer_name || 'Standard Stock'}</div>
-                        <div className="text-[10px] font-mono text-slate-600 print:text-black">
-                          Grade: <span className="font-semibold text-slate-800">{e.grade || '—'}</span> · Route: {e.route_code}
+                      <td className="px-3.5 py-2.5 max-w-[200px]">
+                        <div className="font-semibold text-slate-900 dark:text-slate-100 truncate print:text-black">
+                          {e.customer_name || 'Standard Stock'}
+                        </div>
+                        <div className="text-[10px] font-mono text-slate-600 dark:text-slate-400 print:text-black">
+                          Grade: <span className="font-semibold text-slate-800 dark:text-slate-200">{e.grade || '—'}</span> · Route: {e.route_code}
                         </div>
                       </td>
 
-                      <td className="px-3 py-2.5 font-mono font-bold text-slate-800 whitespace-nowrap print:text-black">
+                      <td className="px-3.5 py-2.5 font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap print:text-black">
                         {e.heat_lot_no ? (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-900 border border-slate-200 print:border print:border-black font-black">
+                          <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 print:border print:border-black font-black text-[11px]">
                             {e.heat_lot_no}
                           </span>
                         ) : (
@@ -1315,7 +1422,7 @@ export default function WorkCenterProductionReportClient() {
                         )}
                       </td>
 
-                      <td className="px-3 py-2.5 font-mono text-slate-800 whitespace-nowrap print:text-black font-semibold">
+                      <td className="px-3.5 py-2.5 font-mono text-slate-800 dark:text-slate-200 whitespace-nowrap print:text-black font-semibold text-right tabular-nums">
                         {Number(e.od) > 0 && Number(e.wl) > 0
                           ? `${fmt(e.od)} × ${fmt(e.wl)} mm`
                           : Number(e.od) > 0
@@ -1323,29 +1430,29 @@ export default function WorkCenterProductionReportClient() {
                           : '—'}
                       </td>
 
-                      {/* Hero Output Cell: Production OK PCS (Highlighted, Bold) */}
-                      <td className="px-3 py-2.5 text-right font-mono bg-blue-50/50 border-l border-blue-200 print:bg-white print:border-black">
-                        <span className="inline-block px-2.5 py-1 rounded-md font-black text-xs sm:text-sm text-blue-950 bg-blue-100/90 border border-blue-300 print:bg-white print:border-black print:text-black shadow-2xs">
+                      {/* Hero Output Cell: Production OK PCS */}
+                      <td className="px-3.5 py-2.5 text-right font-mono bg-blue-50/40 dark:bg-blue-950/20 border-l border-blue-200 dark:border-blue-900/60 print:bg-white print:border-black tabular-nums">
+                        <span className="inline-block px-2.5 py-1 rounded-md font-black text-xs sm:text-sm text-blue-950 dark:text-blue-100 bg-blue-100/90 dark:bg-blue-900/60 border border-blue-300 dark:border-blue-700 print:bg-white print:border-black print:text-black shadow-2xs">
                           {fmt(okPcs, 0)}
                         </span>
                       </td>
 
                       {/* Production OK MTR */}
-                      <td className="px-3 py-2.5 text-right font-mono font-bold text-blue-900 print:text-black">
+                      <td className="px-3.5 py-2.5 text-right font-mono font-bold text-blue-900 dark:text-blue-300 print:text-black tabular-nums">
                         {fmt(okMtr)}
                       </td>
 
-                      {/* Hero Output Cell: Production OK MT (Bold, Highlighted) */}
-                      <td className="px-3 py-2.5 text-right font-mono bg-slate-100/70 border-r border-slate-300 print:bg-white print:border-black">
-                        <span className="inline-block px-2.5 py-1 rounded-md font-black text-xs sm:text-sm text-slate-950 bg-slate-200/90 border border-slate-400 print:bg-white print:border-black print:text-black shadow-2xs">
-                          {fmt(okMt)} <span className="text-[10px] uppercase font-black text-slate-700 ml-0.5">MT</span>
+                      {/* Hero Output Cell: Production OK MT */}
+                      <td className="px-3.5 py-2.5 text-right font-mono bg-slate-100/60 dark:bg-slate-800/40 border-r border-slate-300 dark:border-slate-700 print:bg-white print:border-black tabular-nums">
+                        <span className="inline-block px-2.5 py-1 rounded-md font-black text-xs sm:text-sm text-slate-950 dark:text-white bg-slate-200/90 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 print:bg-white print:border-black print:text-black shadow-2xs">
+                          {fmt(okMt)} <span className="text-[10px] uppercase font-black text-slate-600 dark:text-slate-400 ml-0.5">MT</span>
                         </span>
                       </td>
 
                       {/* Rejection Logged */}
-                      <td className="px-3 py-2.5 text-right font-mono font-semibold text-rose-700 bg-rose-50/30 border-r border-rose-100 print:text-black">
+                      <td className="px-3.5 py-2.5 text-right font-mono font-semibold text-rose-700 dark:text-rose-400 bg-rose-50/30 dark:bg-rose-950/10 border-r border-rose-100 dark:border-rose-900/40 print:text-black tabular-nums">
                         {rejPcs > 0 || rejMt > 0 || rejMtr > 0 ? (
-                          <span>
+                          <span className="inline-flex items-center gap-1 text-rose-700 dark:text-rose-300 font-bold">
                             {fmt(rejPcs, 0)} pcs {rejMt > 0 ? `(${fmt(rejMt)} MT)` : `(${fmt(rejMtr)}m)`}
                           </span>
                         ) : (
@@ -1354,20 +1461,21 @@ export default function WorkCenterProductionReportClient() {
                       </td>
 
                       {/* Yield % */}
-                      <td className="px-3 py-2.5 text-center font-mono font-bold print:text-black">
+                      <td className="px-3.5 py-2.5 text-center font-mono font-bold print:text-black tabular-nums">
                         <span
-                          className={`rounded px-1.5 py-0.5 text-[11px] ${entryYield >= 90
-                              ? 'bg-emerald-100 text-emerald-800'
+                          className={`inline-block rounded-md px-2 py-0.5 text-[11px] font-black ${
+                            entryYield >= 90
+                              ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
                               : entryYield >= 80
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-rose-100 text-rose-800'
-                            } print:border print:border-black print:bg-white print:text-black`}
+                              ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                              : 'bg-rose-100 text-rose-900 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
+                          } print:border print:border-black print:bg-white print:text-black`}
                         >
                           {fmt(entryYield, 1)}%
                         </span>
                       </td>
 
-                      <td className="px-3 py-2.5 text-slate-600 max-w-[200px] truncate text-xs print:text-black">
+                      <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400 max-w-[220px] truncate text-xs print:text-black" title={e.remarks || ''}>
                         {e.remarks || '—'}
                       </td>
                     </tr>
@@ -1378,63 +1486,85 @@ export default function WorkCenterProductionReportClient() {
           </table>
         </div>
 
-        {/* Table Summary Footer with highlighted PCS and MT */}
-        <div className="border-t-2 border-slate-300 bg-slate-50 px-4 py-3 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 print:bg-slate-100 print:border-black gap-2">
-          <div>
-            Total Production Logs: <span className="font-mono font-black text-slate-950">{filteredEntries.length}</span> records
+        {/* Table Summary Footer with Station Aggregates */}
+        <div className="border-t-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/90 px-4 py-3.5 text-xs flex flex-wrap items-center justify-between font-bold text-slate-800 dark:text-slate-200 print:bg-slate-100 print:border-black gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Station Summary:</span>
+            <span className="font-mono font-black text-slate-950 dark:text-white bg-slate-200/80 dark:bg-slate-800 px-2 py-0.5 rounded text-xs border border-slate-300 dark:border-slate-700">
+              {filteredEntries.length} {filteredEntries.length === 1 ? 'Record' : 'Records'} Logged
+            </span>
           </div>
-          <div className="flex flex-wrap items-center gap-3 font-mono">
-            <span className="inline-flex items-center px-3 py-1 rounded-md bg-blue-100 text-blue-950 font-black text-xs sm:text-sm border border-blue-400 shadow-2xs">
+
+          <div className="flex flex-wrap items-center gap-2.5 font-mono">
+            <span className="inline-flex items-center px-3 py-1 rounded-md bg-blue-100 dark:bg-blue-950/80 text-blue-950 dark:text-blue-100 font-black text-xs sm:text-sm border border-blue-400 dark:border-blue-700 shadow-2xs tabular-nums">
               TOTAL OK: {fmt(metrics.outputPcs, 0)} PCS
             </span>
-            <span className="inline-flex items-center px-3 py-1 rounded-md bg-slate-200 text-slate-950 font-black text-xs sm:text-sm border border-slate-400 shadow-2xs">
+            <span className="inline-flex items-center px-3 py-1 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-950 dark:text-slate-100 font-black text-xs sm:text-sm border border-slate-400 dark:border-slate-600 shadow-2xs tabular-nums">
               TOTAL OK: {fmt(metrics.outputMt)} MT
             </span>
-            <span className="text-blue-900 font-black">Length: {fmt(metrics.outputMtr)} MTR</span>
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800/80 text-blue-900 dark:text-blue-300 font-black text-xs border border-slate-300 dark:border-slate-700 tabular-nums">
+              Length: {fmt(metrics.outputMtr)} MTR
+            </span>
             {metrics.rejPcs > 0 || metrics.rejMt > 0 ? (
-              <span className="text-rose-700 font-bold">Rej: {fmt(metrics.rejPcs, 0)} PCS ({fmt(metrics.rejMt)} MT)</span>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 font-bold text-xs border border-rose-300 dark:border-rose-800 tabular-nums">
+                Rej: {fmt(metrics.rejPcs, 0)} PCS ({fmt(metrics.rejMt)} MT)
+              </span>
             ) : null}
-            <span className="text-emerald-800 font-black">Yield: {fmt(metrics.yieldPct, 1)}%</span>
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-300 font-black text-xs border border-emerald-300 dark:border-emerald-800 tabular-nums">
+              Yield: {fmt(metrics.yieldPct, 1)}%
+            </span>
           </div>
         </div>
       </div>
 
       {/* Formal 4-Part Shop Floor Verification Sign-Off Block */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs print:border-black print:shadow-none break-inside-avoid">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-4 print:text-black">
-          Shop Floor Production Verification & Authorization Sign-Off ({activeWcConfig.label})
-        </h3>
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-2xs print:border-black print:shadow-none break-inside-avoid">
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4 print:border-black">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-slate-700 dark:text-slate-300 print:text-black" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 print:text-black">
+              Shop Floor Production Verification & Authorization Sign-Off ({activeWcConfig.label})
+            </h3>
+          </div>
+          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 print:text-black">
+            SOP MANDATORY CLEARANCE
+          </span>
+        </div>
 
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-xs">
-          <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50 print:bg-white print:border-black">
-            <div className="font-bold text-slate-800 print:text-black">Machine Operator</div>
-            <div className="text-[11px] text-slate-500 mb-8 print:text-black">{activeWcConfig.shortLabel} Line Operator</div>
-            <div className="border-t border-dashed border-slate-300 pt-1 text-[11px] text-slate-400 print:text-black print:border-black">
-              Signature & Employee ID
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3 bg-slate-50/50 dark:bg-slate-850/50 print:bg-white print:border-black">
+            <div className="font-bold text-slate-800 dark:text-slate-200 print:text-black">Machine Operator</div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mb-6 print:text-black">{activeWcConfig.shortLabel} Line Operator</div>
+            <div className="border-t border-dashed border-slate-300 dark:border-slate-700 pt-1.5 text-[11px] text-slate-400 dark:text-slate-500 print:text-black print:border-black space-y-0.5">
+              <div>Signature: ________________</div>
+              <div>Emp ID: _________________</div>
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50 print:bg-white print:border-black">
-            <div className="font-bold text-slate-800 print:text-black">Production In-Charge</div>
-            <div className="text-[11px] text-slate-500 mb-8 print:text-black">Work Center Supervisor</div>
-            <div className="border-t border-dashed border-slate-300 pt-1 text-[11px] text-slate-400 print:text-black print:border-black">
-              Signature & Date
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3 bg-slate-50/50 dark:bg-slate-850/50 print:bg-white print:border-black">
+            <div className="font-bold text-slate-800 dark:text-slate-200 print:text-black">Production In-Charge</div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mb-6 print:text-black">Work Center Supervisor</div>
+            <div className="border-t border-dashed border-slate-300 dark:border-slate-700 pt-1.5 text-[11px] text-slate-400 dark:text-slate-500 print:text-black print:border-black space-y-0.5">
+              <div>Signature: ________________</div>
+              <div>Shift Date: _______________</div>
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50 print:bg-white print:border-black">
-            <div className="font-bold text-slate-800 print:text-black">Quality & NDT Inspector</div>
-            <div className="text-[11px] text-slate-500 mb-8 print:text-black">QA / Metallurgical Lab</div>
-            <div className="border-t border-dashed border-slate-300 pt-1 text-[11px] text-slate-400 print:text-black print:border-black">
-              Signature & Clearance Stamp
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3 bg-slate-50/50 dark:bg-slate-850/50 print:bg-white print:border-black">
+            <div className="font-bold text-slate-800 dark:text-slate-200 print:text-black">Quality & NDT Inspector</div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mb-6 print:text-black">QA / Metallurgical Lab</div>
+            <div className="border-t border-dashed border-slate-300 dark:border-slate-700 pt-1.5 text-[11px] text-slate-400 dark:text-slate-500 print:text-black print:border-black space-y-0.5">
+              <div>Clearance: _______________</div>
+              <div>Inspection Stamp: ________</div>
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 p-3 bg-slate-50/50 print:bg-white print:border-black">
-            <div className="font-bold text-slate-800 print:text-black">Department Head</div>
-            <div className="text-[11px] text-slate-500 mb-8 print:text-black">Production Manager / GM Works</div>
-            <div className="border-t border-dashed border-slate-300 pt-1 text-[11px] text-slate-400 print:text-black print:border-black">
-              Signature & Approval
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3 bg-slate-50/50 dark:bg-slate-850/50 print:bg-white print:border-black">
+            <div className="font-bold text-slate-800 dark:text-slate-200 print:text-black">Department Head</div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 mb-6 print:text-black">Production Manager / GM Works</div>
+            <div className="border-t border-dashed border-slate-300 dark:border-slate-700 pt-1.5 text-[11px] text-slate-400 dark:text-slate-500 print:text-black print:border-black space-y-0.5">
+              <div>Approval: ________________</div>
+              <div>Authorization Date: _______</div>
             </div>
           </div>
         </div>
