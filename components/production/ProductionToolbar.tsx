@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { RefreshCw, FileSpreadsheet, AlertTriangle } from 'lucide-react';
+import { RefreshCw, FileSpreadsheet, AlertTriangle, CalendarDays } from 'lucide-react';
 import { StageCode, STAGES } from '@/types';
 import { Button } from '@/components/ui/button';
 
@@ -66,6 +66,15 @@ export function ProductionToolbar({
             >
               <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
               <span>Excel Import</span>
+            </Link>
+
+            <Link
+              href="/daily-plans"
+              className="inline-flex items-center gap-1.5 h-9 rounded-lg border border-blue-300 bg-blue-50/80 px-3 text-xs font-semibold text-blue-800 shadow-2xs hover:bg-blue-100 transition active:scale-[0.97]"
+              title="View & Set Daily Shift Planning Targets"
+            >
+              <CalendarDays className="h-3.5 w-3.5 text-blue-600" />
+              <span>Daily Plan</span>
             </Link>
 
             <Link

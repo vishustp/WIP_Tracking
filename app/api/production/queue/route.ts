@@ -29,6 +29,43 @@ function invalidateQueueCache() {
   memoryCache = null;
 }
 
+async function enrichWithDailyPlans(admin: any, rows: Row[], stage: StageCode) {
+  if (!rows || rows.length === 0 || !admin) return;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: dailyPlans, error } = await admin
+      .from('daily_production_plans')
+      .select('work_order_id, work_center, target_pcs, machine_id, priority_rank')
+      .eq('plan_date', today);
+
+    if (error || !dailyPlans || dailyPlans.length === 0) return;
+
+    const planMap = new Map<string, any>();
+    dailyPlans.forEach((dp: any) => {
+      planMap.set(`${dp.work_order_id}_${dp.work_center}`, dp);
+    });
+
+    rows.forEach((r) => {
+      const dp = planMap.get(`${r.work_order_id}_${stage}`);
+      if (dp) {
+        r.daily_plan_target_pcs = Number(dp.target_pcs || 0);
+        r.daily_plan_machine = dp.machine_id;
+        r.daily_plan_priority = dp.priority_rank;
+      }
+    });
+
+    rows.sort((a, b) => {
+      const aHas = (a.daily_plan_target_pcs || 0) > 0 ? 1 : 0;
+      const bHas = (b.daily_plan_target_pcs || 0) > 0 ? 1 : 0;
+      if (aHas !== bHas) return bHas - aHas;
+      if (aHas && bHas) return (a.daily_plan_priority || 1) - (b.daily_plan_priority || 1);
+      return 0;
+    });
+  } catch {
+    // Fail-safe if daily_production_plans table is missing or query fails
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -1862,14 +1899,8 @@ export async function GET(req: NextRequest) {
       availMt: Number(s.availMt.toFixed(2)),
     }));
 
-    // Save to memory cache for fast consecutive reads across tabs
-    memoryCache = {
-      timestamp: Date.now(),
-      allCalculatedRows,
-      rollingPlanRows,
-      childFinishingRows,
-      workCenterSummary,
-    };
+    // Enrich queue rows with today's daily production plan targets
+    await enrichWithDailyPlans(admin, selectedRows, targetStage);
 
     return NextResponse.json(
       {

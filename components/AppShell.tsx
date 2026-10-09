@@ -12,7 +12,8 @@ import {
   User, ShieldCheck, ChevronDown, Activity, Clock,
   ClipboardCheck, FileText, Beaker, Layers, Scissors, History,
   Search, Calendar, Bell, Users, SlidersHorizontal, AlertTriangle, ScrollText,
-  Palette, Check, Loader2, ChevronRight, Lock, ArrowUpDown, Recycle, AlertOctagon
+  Palette, Check, Loader2, ChevronRight, Lock, ArrowUpDown, Recycle, AlertOctagon,
+  CalendarDays
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
@@ -110,6 +111,7 @@ const navSections = [
     items: [
       { href: '/work-orders', label: 'Work Orders', icon: FileText },
       { href: '/order-priority', label: 'Order Priority Sheet', icon: ArrowUpDown },
+      { href: '/daily-plans', label: 'Daily Planning', icon: CalendarDays },
       { href: '/rolling-plans', label: 'Rolling Plan', icon: CalendarClock },
       { href: '/diversions', label: 'Diversion', icon: Shuffle },
       { href: '/excel-import', label: 'Excel Import', icon: FileSpreadsheet },

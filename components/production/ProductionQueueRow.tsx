@@ -69,6 +69,11 @@ export function ProductionQueueRow({
               <Crown size={10} /> MASTER
             </span>
           )}
+          {row.daily_plan_target_pcs && Number(row.daily_plan_target_pcs) > 0 && (
+            <span className="inline-flex items-center gap-1 rounded bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.2 text-[10px] font-mono font-bold tracking-tight shadow-2xs">
+              ★ TODAY'S TARGET: {row.daily_plan_target_pcs} PCS{row.daily_plan_machine ? ` (${row.daily_plan_machine})` : ''}
+            </span>
+          )}
         </div>
 
         <div className="text-xs text-slate-600 font-medium mt-0.5 truncate max-w-[220px]">
