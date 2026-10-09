@@ -87,6 +87,7 @@ export interface PrepareCampaignWipParams {
   productionLogs: any[];
   hierarchyMaps: CampaignHierarchyMaps;
   finishingStageId?: string;
+  stageCodeById?: Map<string, string>;
 }
 
 export interface PreparedCampaignWipResult {
@@ -105,7 +106,7 @@ export interface PreparedCampaignWipResult {
  * and downstream finishing stage synthesis.
  */
 export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams): PreparedCampaignWipResult {
-  const { woId, wo, rows, qcInspections, productionLogs, hierarchyMaps, finishingStageId } = params;
+  const { woId, wo, rows, qcInspections, productionLogs, hierarchyMaps, finishingStageId, stageCodeById } = params;
   const { campaignMembersMap, childToMasterMap, mhMap } = hierarchyMaps;
 
   const planMh = mhMap.get(woId) || mhMap.get(String(wo?.work_order_no).trim());
@@ -115,7 +116,12 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
   const directStageLogsMap = new Map<string, { mtr: number; pcs: number; rejMtr: number; rejPcs: number }>();
   productionLogs.forEach((l: any) => {
     if (l.work_order_id === woId) {
-      const sc = (l.process_stages?.stage_code || l.stage_code || '').toUpperCase();
+      const sc = (
+        l.process_stages?.stage_code ||
+        l.stage_code ||
+        (stageCodeById && stageCodeById.get(l.stage_id)) ||
+        ''
+      ).toUpperCase();
       if (!sc) return;
       const cur = directStageLogsMap.get(sc) || { mtr: 0, pcs: 0, rejMtr: 0, rejPcs: 0 };
       cur.mtr += Number(l.output_qty || 0);
@@ -175,7 +181,12 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
       }
     });
     productionLogs.forEach((l: any) => {
-      const sc = (l.process_stages?.stage_code || l.stage_code || '').toUpperCase();
+      const sc = (
+        l.process_stages?.stage_code ||
+        l.stage_code ||
+        (stageCodeById && stageCodeById.get(l.stage_id)) ||
+        ''
+      ).toUpperCase();
       const isFinLog = (finishingStageId && l.stage_id === finishingStageId) || sc === 'FINISHING' || sc === 'CUTTING';
       if (campaignMembers.has(l.work_order_id) && isFinLog) {
         campaignFinMtr += Number(l.output_qty || 0);

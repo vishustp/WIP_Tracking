@@ -88,6 +88,7 @@ export default async function Dashboard() {
         qcInspections,
         productionLogs,
         hierarchyMaps,
+        stageCodeById: stageIdToCodeMap,
       });
 
       // Add only post-rolling stages with active WIP to the dashboard
