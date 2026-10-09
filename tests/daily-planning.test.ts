@@ -121,6 +121,18 @@ describe('Daily Planning Helper Utilities', () => {
       expect(eligible).toHaveLength(2);
       expect(eligible.map((i) => i.work_order_id)).toEqual(['1', '4']);
     });
+
+    it('correctly filters queue rows structured with balance_to_make_pcs and balance_to_make_mtr', () => {
+      const queue = [
+        { work_order_id: 'w1', balance_to_make_pcs: 60, balance_to_make_mtr: 387 },
+        { work_order_id: 'w2', balance_to_make_pcs: 0, balance_to_make_mtr: 0 },
+        { work_order_id: 'w3', balance_to_make_pcs: 234, balance_to_make_mtr: 1659.06 },
+      ];
+
+      const eligible = filterEligibleWipQueue(queue as any[]);
+      expect(eligible).toHaveLength(2);
+      expect(eligible.map((i) => i.work_order_id)).toEqual(['w1', 'w3']);
+    });
   });
 
   describe('buildDailyPlanCsv', () => {

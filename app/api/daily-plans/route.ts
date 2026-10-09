@@ -1,6 +1,6 @@
 // app/api/daily-plans/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/client';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { DailyPlanItemWithWorkOrder } from '@/types/dailyPlanning';
 import { calculatePlanCompliance } from '@/lib/planning/dailyPlanningHelper';
 
@@ -13,7 +13,10 @@ export async function GET(request: NextRequest) {
     const shift = searchParams.get('shift');
     const workCenter = searchParams.get('work_center');
 
-    const supabase = createClient();
+    const supabase = createAdminClient();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database service is temporarily unavailable.', plans: [] }, { status: 500 });
+    }
 
     // Query daily production plans
     let query = supabase
@@ -167,7 +170,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = createClient();
+    const supabase = createAdminClient();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database service is temporarily unavailable.' }, { status: 500 });
+    }
 
     const planPayload = {
       plan_date,
@@ -222,7 +228,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing plan id' }, { status: 400 });
     }
 
-    const supabase = createClient();
+    const supabase = createAdminClient();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database service is temporarily unavailable.' }, { status: 500 });
+    }
     const { error } = await supabase.from('daily_production_plans').delete().eq('id', id);
 
     if (error) {

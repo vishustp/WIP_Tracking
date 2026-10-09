@@ -91,6 +91,7 @@ export default function DailyPlanningConsoleClient() {
 
   const [plans, setPlans] = useState<DailyPlanItemWithWorkOrder[]>([]);
   const [wipQueue, setWipQueue] = useState<any[]>([]);
+  const [workCenterSummaries, setWorkCenterSummaries] = useState<Record<string, { availPcs: number; availMtr: number; count: number }>>({});
   const [loading, setLoading] = useState(true);
   const [queueLoading, setQueueLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -147,7 +148,19 @@ export default function DailyPlanningConsoleClient() {
       });
       if (res.ok) {
         const json = await res.json();
-        setWipQueue(json.rows || []);
+        const rows = Array.isArray(json?.data) ? json.data : Array.isArray(json?.rows) ? json.rows : [];
+        setWipQueue(rows);
+        if (Array.isArray(json?.summary)) {
+          const map: Record<string, { availPcs: number; availMtr: number; count: number }> = {};
+          json.summary.forEach((s: any) => {
+            map[s.stage_code] = {
+              availPcs: Number(s.availPcs || 0),
+              availMtr: Number(s.availMtr || 0),
+              count: Number(s.count || 0),
+            };
+          });
+          setWorkCenterSummaries(map);
+        }
       } else {
         setWipQueue([]);
       }
@@ -190,7 +203,7 @@ export default function DailyPlanningConsoleClient() {
       (r) =>
         (r.work_order_no || '').toLowerCase().includes(q) ||
         (r.customer_name || '').toLowerCase().includes(q) ||
-        (r.grade || '').toLowerCase().includes(q)
+        (r.grade || r.specification || '').toLowerCase().includes(q)
     );
   }, [wipQueue, search]);
 
@@ -214,14 +227,16 @@ export default function DailyPlanningConsoleClient() {
       setNotes(existingPlan.notes || '');
     } else {
       setEditingPlanId(null);
-      const availPcs = Number(item.available_pcs || 0);
-      const availMtr = Number(item.available_mtr || 0);
-      const od = Number(item.od || 60.3);
-      const wt = Number(item.wl || item.wt || 3.91);
+      const availPcs = Number(item.balance_to_make_pcs ?? item.available_pcs ?? 0);
+      const availMtr = Number(item.balance_to_make_mtr ?? item.available_mtr ?? 0);
+      const od = Number(item.od ?? item.size_od ?? 60.3);
+      const wt = Number(item.wl ?? item.wt ?? item.size_wt ?? 3.91);
+      const avgLen = Number(item.avg_length || 6);
 
       setTargetPcs(availPcs);
-      setTargetMtr(availMtr > 0 ? availMtr : mtrFromPcs(availPcs, Number(item.avg_length || 6)));
-      setTargetMt(mtFromMtr(availMtr, od, wt));
+      const calcMtr = availMtr > 0 ? availMtr : mtrFromPcs(availPcs, avgLen);
+      setTargetMtr(Number(calcMtr.toFixed(2)));
+      setTargetMt(Number(mtFromMtr(calcMtr, od, wt).toFixed(3)));
       setMachineId('');
       setChargeNo('');
       setPassNo('');
@@ -446,6 +461,9 @@ export default function DailyPlanningConsoleClient() {
           {STATION_GROUPS.map((grp) => {
             const isSelected = selectedGroupId === grp.id;
             const Icon = grp.icon;
+            const groupTotalPcs = grp.workCenters.reduce((sum, wc) => sum + (workCenterSummaries[wc]?.availPcs || 0), 0);
+            const groupTotalOrders = grp.workCenters.reduce((sum, wc) => sum + (workCenterSummaries[wc]?.count || 0), 0);
+
             return (
               <button
                 key={grp.id}
@@ -462,7 +480,19 @@ export default function DailyPlanningConsoleClient() {
                     <Icon className={`h-5 w-5 ${isSelected ? 'text-white dark:text-slate-900' : 'text-slate-500'}`} />
                     <span className="font-bold text-sm">{grp.label}</span>
                   </div>
-                  <ChevronRight className={`h-4 w-4 ${isSelected ? 'opacity-100' : 'opacity-40'}`} />
+                  {groupTotalOrders > 0 ? (
+                    <span
+                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                        isSelected
+                          ? 'bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900'
+                          : 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300'
+                      }`}
+                    >
+                      {groupTotalOrders} WO · {groupTotalPcs} PCS
+                    </span>
+                  ) : (
+                    <ChevronRight className={`h-4 w-4 ${isSelected ? 'opacity-100' : 'opacity-40'}`} />
+                  )}
                 </div>
                 <p className={`text-[11px] mt-1 line-clamp-1 ${isSelected ? 'text-slate-300 dark:text-slate-700' : 'text-slate-500 dark:text-slate-400'}`}>
                   {grp.description}
@@ -474,22 +504,37 @@ export default function DailyPlanningConsoleClient() {
 
         {/* Sub-Station Tabs */}
         {activeGroup.workCenters.length > 1 && (
-          <div className="mt-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+          <div className="mt-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 flex-wrap">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Sub-Stage:</span>
-            {activeGroup.workCenters.map((wc) => (
-              <button
-                key={wc}
-                type="button"
-                onClick={() => setActiveWc(wc)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer border ${
-                  activeWc === wc
-                    ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700'
-                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                {STATION_LABELS[wc]}
-              </button>
-            ))}
+            {activeGroup.workCenters.map((wc) => {
+              const wcSummary = workCenterSummaries[wc];
+              const wcPcs = wcSummary?.availPcs ?? 0;
+              const wcCount = wcSummary?.count ?? 0;
+
+              return (
+                <button
+                  key={wc}
+                  type="button"
+                  onClick={() => setActiveWc(wc)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border inline-flex items-center gap-2 ${
+                    activeWc === wc
+                      ? 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700 shadow-2xs'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <span>{STATION_LABELS[wc]}</span>
+                  <span
+                    className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      activeWc === wc
+                        ? 'bg-blue-200 dark:bg-blue-800 text-blue-900 dark:text-blue-100'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {wcCount > 0 ? `${wcPcs} PCS` : '0 WIP'}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -506,7 +551,8 @@ export default function DailyPlanningConsoleClient() {
               <p className="text-[10px] text-slate-500">Pipes waiting for processing</p>
             </div>
             <span className="font-mono text-xs font-bold bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-800 dark:text-slate-200">
-              {eligibleQueue.length} Available
+              {eligibleQueue.length} {eligibleQueue.length === 1 ? 'Order' : 'Orders'} (
+              {eligibleQueue.reduce((acc, r) => acc + Number(r.balance_to_make_pcs ?? r.available_pcs ?? 0), 0)} PCS)
             </span>
           </div>
 
@@ -537,42 +583,56 @@ export default function DailyPlanningConsoleClient() {
                 <p className="text-[11px] mt-1">Requires upstream production output first.</p>
               </div>
             ) : (
-              eligibleQueue.map((item) => (
-                <div
-                  key={item.work_order_id || item.id}
-                  className="p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
-                        {item.work_order_no}
-                      </span>
-                      {item.grade && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                          {item.grade}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                      {item.customer_name || 'Standard Stock'} · {item.od} × {item.wl || item.wt} mm
-                    </div>
-                    <div className="mt-1 flex items-center gap-3 text-[11px] font-mono font-semibold">
-                      <span className="text-blue-700 dark:text-blue-300">
-                        Available: {item.available_pcs || 0} PCS ({fmt(item.available_mtr)} m)
-                      </span>
-                    </div>
-                  </div>
+              eligibleQueue.map((item) => {
+                const availPcs = Number(item.balance_to_make_pcs ?? item.available_pcs ?? 0);
+                const availMtr = Number(item.balance_to_make_mtr ?? item.available_mtr ?? 0);
+                const availMt = Number(item.balance_to_make_mt ?? item.available_mt ?? 0);
+                const itemGrade = item.grade || item.specification || '—';
+                const itemOd = item.od ?? item.size_od ?? 0;
+                const itemWt = item.wl ?? item.wt ?? item.size_wt ?? 0;
 
-                  <button
-                    type="button"
-                    onClick={() => openScheduleModal(item)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95 shrink-0"
+                return (
+                  <div
+                    key={item.work_order_id || item.id}
+                    className="p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition flex items-center justify-between gap-3"
                   >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>Plan</span>
-                  </button>
-                </div>
-              ))
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
+                          {item.work_order_no}
+                        </span>
+                        {itemGrade !== '—' && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                            {itemGrade}
+                          </span>
+                        )}
+                        {item.route_code && (
+                          <span className="text-[9px] font-mono text-slate-400">
+                            {item.route_code}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                        {item.customer_name || 'Standard Stock'} · {itemOd} × {itemWt} mm
+                      </div>
+                      <div className="mt-1 flex items-center gap-3 text-[11px] font-mono font-semibold">
+                        <span className="text-blue-700 dark:text-blue-300">
+                          Available: <strong className="font-bold">{availPcs} PCS</strong> ({fmt(availMtr)} m{availMt > 0 ? ` · ${fmt(availMt)} MT` : ''})
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => openScheduleModal(item)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95 shrink-0"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Plan</span>
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
@@ -741,6 +801,9 @@ export default function DailyPlanningConsoleClient() {
                 <p className="text-xs text-slate-500 mt-0.5">
                   Work Order: <strong className="font-mono text-slate-800 dark:text-slate-200">{modalItem.work_order_no}</strong> ({STATION_LABELS[activeWc]})
                 </p>
+                <p className="text-[11px] text-blue-600 dark:text-blue-400 font-mono mt-0.5 font-semibold">
+                  Queue Available: <strong className="font-bold">{Number(modalItem.balance_to_make_pcs ?? modalItem.available_pcs ?? 0)} PCS</strong> ({fmt(Number(modalItem.balance_to_make_mtr ?? modalItem.available_mtr ?? 0))} m)
+                </p>
               </div>
               <button
                 type="button"
@@ -839,10 +902,10 @@ export default function DailyPlanningConsoleClient() {
                       setTargetPcs(p);
                       const len = Number(modalItem.avg_length || 6);
                       const m = mtrFromPcs(p, len);
-                      setTargetMtr(m);
-                      const od = Number(modalItem.od || 60.3);
-                      const wt = Number(modalItem.wl || modalItem.wt || 3.91);
-                      setTargetMt(mtFromMtr(m, od, wt));
+                      setTargetMtr(Number(m.toFixed(2)));
+                      const od = Number(modalItem.od ?? modalItem.size_od ?? 60.3);
+                      const wt = Number(modalItem.wl ?? modalItem.wt ?? modalItem.size_wt ?? 3.91);
+                      setTargetMt(Number(mtFromMtr(m, od, wt).toFixed(3)));
                     }}
                     className="w-full rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-black text-slate-900 dark:text-white focus:outline-hidden"
                   />
@@ -860,9 +923,9 @@ export default function DailyPlanningConsoleClient() {
                     onChange={(e) => {
                       const m = Number(e.target.value);
                       setTargetMtr(m);
-                      const od = Number(modalItem.od || 60.3);
-                      const wt = Number(modalItem.wl || modalItem.wt || 3.91);
-                      setTargetMt(mtFromMtr(m, od, wt));
+                      const od = Number(modalItem.od ?? modalItem.size_od ?? 60.3);
+                      const wt = Number(modalItem.wl ?? modalItem.wt ?? modalItem.size_wt ?? 3.91);
+                      setTargetMt(Number(mtFromMtr(m, od, wt).toFixed(3)));
                     }}
                     className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white focus:outline-hidden"
                   />

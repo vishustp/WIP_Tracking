@@ -135,8 +135,8 @@ export function groupFurnaceChargesByGrade(
  */
 export function filterEligibleWipQueue(queue: any[]): any[] {
   return (queue || []).filter((item) => {
-    const pcs = Number(item.available_pcs || 0);
-    const mtr = Number(item.available_mtr || 0);
+    const pcs = Number(item.balance_to_make_pcs ?? item.available_pcs ?? 0);
+    const mtr = Number(item.balance_to_make_mtr ?? item.available_mtr ?? 0);
     return pcs > 0 || mtr > 0;
   });
 }
