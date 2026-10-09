@@ -101,6 +101,7 @@ const navSections = [
     label: 'OPERATIONS',
     items: [
       { href: '/production', label: 'Production Entry', icon: ClipboardCheck },
+      { href: '/daily-plans', label: 'Unified Daily Planning', icon: CalendarDays },
       { href: '/band-saw', label: 'Band Saw Cutting', icon: Scissors },
       { href: '/qc/vdi', label: 'VDI Entries', icon: ClipboardList },
       { href: '/rejections', label: 'Second Declaration', icon: AlertOctagon },
@@ -111,7 +112,7 @@ const navSections = [
     items: [
       { href: '/work-orders', label: 'Work Orders', icon: FileText },
       { href: '/order-priority', label: 'Order Priority Sheet', icon: ArrowUpDown },
-      { href: '/daily-plans', label: 'Daily Planning', icon: CalendarDays },
+      { href: '/daily-plans', label: 'Unified Daily Planning', icon: CalendarDays },
       { href: '/rolling-plans', label: 'Rolling Plan', icon: CalendarClock },
       { href: '/diversions', label: 'Diversion', icon: Shuffle },
       { href: '/excel-import', label: 'Excel Import', icon: FileSpreadsheet },

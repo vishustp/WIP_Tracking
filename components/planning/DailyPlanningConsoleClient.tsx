@@ -95,6 +95,7 @@ export default function DailyPlanningConsoleClient() {
   const [loading, setLoading] = useState(true);
   const [queueLoading, setQueueLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   // Search filter
   const [search, setSearch] = useState('');
@@ -125,6 +126,11 @@ export default function DailyPlanningConsoleClient() {
         cache: 'no-store',
       });
       const data = await res.json();
+      if (data.error) {
+        setDbError(data.error);
+      } else {
+        setDbError(null);
+      }
       if (data.plans) {
         setPlans(data.plans);
       } else {
@@ -391,6 +397,42 @@ export default function DailyPlanningConsoleClient() {
           </button>
         </div>
       </div>
+
+      {/* Database Action Required Banner */}
+      {dbError && (
+        <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/95 dark:bg-amber-950/40 p-4 shadow-xs text-xs text-amber-900 dark:text-amber-200 print:hidden">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1.5 flex-1 min-w-0">
+              <div className="font-bold text-sm text-amber-950 dark:text-amber-100 flex items-center gap-2">
+                <span>Database Permission Required</span>
+                <span className="font-mono text-[10px] bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 px-1.5 py-0.5 rounded font-semibold">
+                  Migration 069
+                </span>
+              </div>
+              <p className="text-amber-800 dark:text-amber-300 leading-relaxed">
+                Supabase database responded: <code className="font-mono bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded text-[11px] font-semibold">{dbError}</code>.
+                Please execute the grant statement below in your Supabase SQL Editor to grant table privileges:
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <code className="font-mono text-xs bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 rounded px-2.5 py-1 text-slate-800 dark:text-slate-100 select-all font-semibold">
+                  GRANT ALL ON public.daily_production_plans TO authenticated, anon, service_role;
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('GRANT ALL ON public.daily_production_plans TO authenticated, anon, service_role;');
+                    toast.success('SQL copied to clipboard! Paste into Supabase SQL editor and execute.');
+                  }}
+                  className="rounded bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-semibold px-2.5 py-1 text-xs transition cursor-pointer shadow-2xs"
+                >
+                  Copy SQL
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Date & Shift Filter Bar */}
       <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-4 shadow-2xs print:border-black print:p-2">

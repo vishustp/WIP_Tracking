@@ -258,12 +258,16 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
  * Respects custom permissions set by Admin in the Control Center
  */
 export function isRouteVisible(user: AppUserProfile | null | undefined, href: string): boolean {
-  if (!user) return false;
+  if (!user) {
+    if (['/dashboard', '/production', '/daily-plans', '/reports/wip', '/reports/tracking'].includes(href)) return true;
+    return false;
+  }
   const group: UserGroup = user.group || (user.role === 'admin' ? 'admin' : user.role === 'manager' ? 'super_user' : 'user');
   if (group === 'admin') return true;
 
   if (['/dashboard', '/profile'].includes(href)) return true;
   if (href === '/admin/spec-master' || href === '/spec-master') return true;
+  if (href === '/daily-plans' || href.startsWith('/daily-plans/')) return true;
 
   const perms = user.permissions || getDefaultPermissions(group, user.work_center);
 
@@ -272,9 +276,7 @@ export function isRouteVisible(user: AppUserProfile | null | undefined, href: st
     href === '/work-orders' ||
     href.startsWith('/work-orders/') ||
     href === '/order-priority' ||
-    href.startsWith('/order-priority/') ||
-    href === '/daily-plans' ||
-    href.startsWith('/daily-plans/')
+    href.startsWith('/order-priority/')
   ) {
     return perms.work_order === 'edit' || perms.work_order === 'view' || perms.rolling_plan === 'edit' || perms.rolling_plan === 'view';
   }

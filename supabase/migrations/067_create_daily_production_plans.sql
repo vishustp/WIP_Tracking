@@ -51,3 +51,7 @@ drop policy if exists "allow_delete_daily_production_plans" on public.daily_prod
 create policy "allow_delete_daily_production_plans"
   on public.daily_production_plans for delete
   using (true);
+
+-- Table access grants for all app roles
+grant all on public.daily_production_plans to authenticated, anon, service_role;
+
