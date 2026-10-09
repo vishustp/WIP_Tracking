@@ -684,7 +684,7 @@ export default function DailyPlanningConsoleClient() {
           <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/70 flex items-center justify-between">
             <div>
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                Today's Daily Plan ({STATION_LABELS[activeWc]})
+                Today&apos;s Daily Plan ({STATION_LABELS[activeWc]})
               </h2>
               <p className="text-[10px] text-slate-500">
                 Date: {selectedDate} · Shift: {SHIFT_LABELS[selectedShift]}
@@ -706,7 +706,7 @@ export default function DailyPlanningConsoleClient() {
               <div className="p-12 text-center text-slate-400">
                 <CalendarDays className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No targets scheduled for {STATION_LABELS[activeWc]}</p>
-                <p className="text-[11px] mt-1">Select orders from the left queue to set today's plan.</p>
+                <p className="text-[11px] mt-1">Select orders from the left queue to set today&apos;s plan.</p>
               </div>
             ) : (
               filteredPlans.map((plan) => {
