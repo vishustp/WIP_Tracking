@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 
 import type { SpecMasterRecord } from '@/lib/specMasterDefaults';
 import { DEFAULT_SPEC_MASTER_RECORDS } from '@/lib/specMasterDefaults';
+import { calculateHydroPressurePsi, calculateStandardTolerances } from '@/lib/metallurgy/specEngine';
 import {
   autoPopulateProcessSheet,
   cleanOrFallbackSteelGrade,
@@ -177,11 +178,95 @@ export default function ProcessSheetReportClient() {
 
   const [formData, setFormData] = useState<ProcessSheetFormData>(EMPTY_FORM_DATA);
 
-  // Form actions
+  // Form actions with live mathematical reactivity
   const actions: ProcessSheetFormActions = useMemo(
     () => ({
       updateField: (field, value) => {
-        setFormData((prev) => ({ ...prev, [field]: value }));
+        setFormData((prev) => {
+          const next = { ...prev, [field]: value };
+
+          // 1. Reactive calculation for finished pipe dimensions, process wall, bundle & Barlow hydro
+          if (field === 'custOd' || field === 'custWt' || field === 'isMinWall') {
+            const od = Number(next.custOd) || 0;
+            const wt = Number(next.custWt) || 0;
+            const isMin = Boolean(next.isMinWall);
+
+            if (od > 0 && wt > 0 && od > wt) {
+              const kgMtr = (od - wt) * wt * 0.0246615;
+              next.finalPipeWeight = kgMtr.toFixed(2);
+              next.processWt = (isMin ? wt * 1.05 : wt * 0.97).toFixed(2);
+
+              const l1 = Number(next.finalOrderLen1) || 0;
+              const l2 = Number(next.finalOrderLen2) || 0;
+              const avgLen = Number(next.finalLength) || (l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : l1 || l2 || 0);
+              const wtPerPieceKg = kgMtr * avgLen;
+              if (wtPerPieceKg > 0) {
+                next.bundleQtyPcs = Math.round(2000 / wtPerPieceKg).toString();
+                next.bundleWeightMt = '2 MT';
+              }
+
+              // Barlow Hydro
+              const smysMpa = Number(next.ystMin) || 240;
+              const hydro = calculateHydroPressurePsi(od, wt, smysMpa);
+              if (hydro.pressurePsi > 0) {
+                next.hydroPressurePsi = String(hydro.pressurePsi);
+              }
+
+              // Tolerances
+              const tols = calculateStandardTolerances(
+                od,
+                wt,
+                `${next.materialSpec || ''} ${next.steelGrade || ''}`.trim(),
+                next.routeType || 'HFS'
+              );
+              if (tols.od_min > 0) next.finalTolOdMin = tols.od_min.toFixed(2);
+              if (tols.od_max > 0) next.finalTolOdMax = tols.od_max.toFixed(2);
+              if (tols.wt_min > 0) next.finalTolWtMin = tols.wt_min.toFixed(2);
+              if (tols.wt_max > 0) next.finalTolWtMax = tols.wt_max.toFixed(2);
+            }
+          }
+
+          // 2. Reactive calculation for Mother Hollow, Piercer Shell & Billet
+          if (field === 'motherHollowOd' || field === 'motherHollowWt') {
+            const mhOd = Number(next.motherHollowOd) || 0;
+            const mhWt = Number(next.motherHollowWt) || 0;
+
+            if (mhOd > 0 && mhWt > 0 && mhOd > mhWt) {
+              const mhKgMtr = (mhOd - mhWt) * mhWt * 0.0246615;
+              next.motherHollowKgMtr = mhKgMtr.toFixed(2);
+            }
+
+            if (field === 'motherHollowOd' && mhOd > 0) {
+              const pOd = Number((mhOd * 1.08).toFixed(2));
+              next.piercerOd = pOd.toFixed(2);
+              const pWt = Number(next.piercerWt) || (mhWt > 0 ? Number((mhWt * 1.04).toFixed(2)) : 0);
+              if (pWt > 0 && pOd > pWt) {
+                next.shellWeight = ((pOd - pWt) * pWt * 0.0246615).toFixed(2);
+              }
+
+              const bDia = mhOd > 75 ? 90.0 : 63.0;
+              next.billetDia = bDia.toFixed(2);
+              next.billetSectWt = (((bDia * bDia * 3.14159 * 0.007856) / 4)).toFixed(2);
+            }
+          }
+
+          if (field === 'piercerOd' || field === 'piercerWt') {
+            const pOd = Number(next.piercerOd) || 0;
+            const pWt = Number(next.piercerWt) || 0;
+            if (pOd > 0 && pWt > 0 && pOd > pWt) {
+              next.shellWeight = ((pOd - pWt) * pWt * 0.0246615).toFixed(2);
+            }
+          }
+
+          if (field === 'billetDia') {
+            const bDia = Number(next.billetDia) || 0;
+            if (bDia > 0) {
+              next.billetSectWt = (((bDia * bDia * 3.14159 * 0.007856) / 4)).toFixed(2);
+            }
+          }
+
+          return next;
+        });
       },
       updateFields: (updates) => {
         setFormData((prev) => ({ ...prev, ...updates }));
@@ -302,7 +387,7 @@ export default function ProcessSheetReportClient() {
         s
           .from('rolling_plans')
           .select(
-            'id,plan_no,work_order_id,planned_rolling_date,planned_qty,process_route_id,target_mother_size,multiple,status,mh_od,mh_wt,mh_l1,mh_l2,pass_required'
+            'id,plan_no,work_order_id,planned_rolling_date,planned_qty,process_route_id,multiple,status,mh_od,mh_wt,mh_l1,mh_l2,pass_required'
           )
           .order('created_at', { ascending: false })
           .limit(1000),
@@ -457,6 +542,13 @@ export default function ProcessSheetReportClient() {
               inferred.route_code;
             const effectiveRouteName = route?.route_name || inferred.route_name;
 
+            const targetMotherSize =
+              (r.mh_od && r.mh_wt ? `${r.mh_od}x${r.mh_wt}` : null) ||
+              parsedSt.target_mother_size ||
+              parsedSt.mother_size ||
+              parsedSt.finish_size ||
+              null;
+
             mappedList.push({
               id: `rp-${r.id}-wo-${wo.id}`,
               plan_no: parsedSt.master_plan_no || r.plan_no || 'Plan',
@@ -465,7 +557,7 @@ export default function ProcessSheetReportClient() {
                 r.planned_rolling_date || wo.target_date || new Date().toISOString().split('T')[0],
               planned_qty: Number(r.planned_qty ?? wo.ordered_qty_mtr ?? wo.ordered_qty ?? 0),
               process_route_id: r.process_route_id,
-              target_mother_size: r.target_mother_size || null,
+              target_mother_size: targetMotherSize,
               multiple: Number(r.multiple ?? 1),
               status: parsedSt,
               mh_od: Number(r.mh_od ?? finalOd) || null,
@@ -561,12 +653,30 @@ export default function ProcessSheetReportClient() {
 
       setPlans(mappedList);
 
-      // Only re-fetch if a plan was already explicitly selected
+      // Auto-select plan from URL param or default to first plan if nothing is selected
+      let initialSelected: RollingPlanRecord | undefined;
       if (selectedPlanId) {
-        const existingSelected = mappedList.find((p) => p.id === selectedPlanId);
-        if (existingSelected) {
-          await loadPlanSheet(existingSelected, specMasterList);
+        initialSelected = mappedList.find((p) => p.id === selectedPlanId);
+      }
+      if (!initialSelected && typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const urlWo = params.get('wo') || params.get('work_order') || params.get('wo_no');
+        const urlPlan = params.get('plan') || params.get('plan_no');
+        if (urlWo) {
+          const cleanUrlWo = urlWo.trim().toLowerCase();
+          initialSelected = mappedList.find((p) => p.work_order_no?.toLowerCase() === cleanUrlWo);
+        } else if (urlPlan) {
+          const cleanUrlPlan = urlPlan.trim().toLowerCase();
+          initialSelected = mappedList.find((p) => p.plan_no?.toLowerCase() === cleanUrlPlan);
         }
+      }
+      if (!initialSelected && mappedList.length > 0) {
+        initialSelected = mappedList[0];
+      }
+
+      if (initialSelected) {
+        setSelectedPlanId(initialSelected.id);
+        await loadPlanSheet(initialSelected, specMasterList);
       }
     } catch (err: any) {
       console.error('Error loading work orders for process sheet:', err);

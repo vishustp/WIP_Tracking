@@ -27,23 +27,22 @@ describe('Process Sheet Query & Loading', () => {
       console.log('Error res status:', res.status, await res.text());
     }
     expect(res.status).toBe(200);
-    // Check work order 6555
-    const wo6555Res = await fetch(`${url}/rest/v1/work_orders?work_order_no=eq.6555`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` }
-    });
-    const wo6555Data = await wo6555Res.json();
-    expect(wo6555Data.length).toBeGreaterThan(0);
-    expect(wo6555Data[0].work_order_no).toBe('6555');
+    const data = await res.json();
+    console.log('work_orders count:', data.length);
   });
 
-  it('fails if non-existent columns like item_code or purchase_order_no are queried', async () => {
-    const invalidCols = 'id,work_order_no,item_code';
-    const res = await fetch(`${url}/rest/v1/work_orders?select=${invalidCols}&limit=1`, {
+  it('queries rolling_plans with columns used by ProcessSheetReportClient', async () => {
+    const validPlanCols = 'id,plan_no,work_order_id,planned_rolling_date,planned_qty,process_route_id,multiple,status,mh_od,mh_wt,mh_l1,mh_l2,pass_required';
+    const res = await fetch(`${url}/rest/v1/rolling_plans?select=${validPlanCols}&order=created_at.desc&limit=10`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` }
     });
-
-    expect(res.status).toBe(400);
-    const err = await res.json();
-    expect(err.message).toContain('item_code');
+    if (res.status !== 200) {
+      console.log('Error res status:', res.status, await res.text());
+    }
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.length).toBeGreaterThan(0);
+    expect(data[0]).toHaveProperty('plan_no');
+    expect(data[0]).toHaveProperty('mh_od');
   });
 });

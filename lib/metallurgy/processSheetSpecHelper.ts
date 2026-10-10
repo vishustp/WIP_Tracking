@@ -178,12 +178,9 @@ export function findMatchingSpecMaster(
     combined.includes('E355')
   ) {
     const found =
-      list.find(
-        (r) =>
-          r.spec_key === 'DIN2391_ST52' ||
-          (r.spec_full || '').toUpperCase().includes('2391') ||
-          (r.spec_full || '').toUpperCase().includes('ST 52')
-      ) || DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'DIN2391_ST52');
+      list.find((r) => r.spec_key === 'DIN2391_ST52') ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'DIN2391_ST52') ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes('ST 52'));
     if (found) return found;
   }
   if (
@@ -192,106 +189,133 @@ export function findMatchingSpecMaster(
     combined.includes('E235')
   ) {
     const found =
-      list.find(
-        (r) =>
-          r.spec_key === 'DIN2391_ST35' ||
-          (r.spec_full || '').toUpperCase().includes('ST 35')
-      ) || DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'DIN2391_ST35');
+      list.find((r) => r.spec_key === 'DIN2391_ST35') ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'DIN2391_ST35') ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes('ST 35'));
     if (found) return found;
   }
   if (combined.includes('192')) {
-    const found = list.find(
-      (r) => r.spec_key === 'SA192' || (r.spec_full || '').toUpperCase().includes('192')
-    );
+    const found =
+      list.find((r) => r.spec_key === 'SA192') ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'SA192') ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes('192'));
     if (found) return found;
   }
   if (combined.includes('179')) {
-    const found = list.find(
-      (r) => r.spec_key === 'SA179' || (r.spec_full || '').toUpperCase().includes('179')
-    );
+    const found =
+      list.find((r) => r.spec_key === 'SA179') ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'SA179') ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes('179'));
     if (found) return found;
   }
   if (combined.includes('210')) {
     const isGrC =
       combined.includes('GR C') || combined.includes('GR.C') || combined.includes('GRADE C');
-    const found = list.find(
-      (r) =>
-        r.spec_key === (isGrC ? 'A210_C' : 'A210') ||
-        (r.spec_full || '').toUpperCase().includes('210')
-    );
+    const targetKey = isGrC ? 'A210_C' : 'A210';
+    const found =
+      list.find((r) => r.spec_key === targetKey) ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === targetKey) ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes(isGrC ? 'GR C' : 'GR A-1')) ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes('210'));
     if (found) return found;
   }
   if (combined.includes('3059')) {
     let key = 'BS3059_360';
-    if (combined.includes('620') || combined.includes('622')) key = 'BS3059_620';
-    else if (combined.includes('440')) key = 'BS3059_440';
-    else if (combined.includes('320')) key = 'BS3059_320';
-    const found = list.find(
-      (r) => r.spec_key === key || (r.spec_full || '').toUpperCase().includes('3059')
-    );
+    let gradeSnippet = '360';
+    if (combined.includes('620') || combined.includes('622')) {
+      key = 'BS3059_620';
+      gradeSnippet = '620';
+    } else if (combined.includes('440')) {
+      key = 'BS3059_440';
+      gradeSnippet = '440';
+    } else if (combined.includes('320')) {
+      key = 'BS3059_320';
+      gradeSnippet = '320';
+    }
+    const found =
+      list.find((r) => r.spec_key === key) ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === key) ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes(gradeSnippet)) ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes('3059'));
     if (found) return found;
   }
   if (combined.includes('213')) {
     let key = 'A213_T11';
-    if (combined.includes('T22')) key = 'A213_T22';
-    else if (combined.includes('T12')) key = 'A213_T12';
-    const found = list.find(
-      (r) => r.spec_key === key || (r.spec_full || '').toUpperCase().includes('213')
-    );
+    let gradeSnippet = 'T11';
+    if (combined.includes('T22') || combined.includes('P22')) {
+      key = 'A213_T22';
+      gradeSnippet = 'T22';
+    } else if (combined.includes('T12') || combined.includes('P12')) {
+      key = 'A213_T12';
+      gradeSnippet = 'T12';
+    }
+    const found =
+      list.find((r) => r.spec_key === key) ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === key) ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes(gradeSnippet)) ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes('213'));
     if (found) return found;
   }
   if (combined.includes('335')) {
     let key = 'A335_P11';
-    if (combined.includes('P22')) key = 'A335_P22';
-    const found = list.find(
-      (r) => r.spec_key === key || (r.spec_full || '').toUpperCase().includes('335')
-    );
+    let gradeSnippet = 'P11';
+    if (combined.includes('P22') || combined.includes('T22')) {
+      key = 'A335_P22';
+      gradeSnippet = 'P22';
+    }
+    const found =
+      list.find((r) => r.spec_key === key) ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === key) ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes(gradeSnippet)) ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes('335'));
     if (found) return found;
   }
   if (combined.includes('35.8') || combined.includes('17175')) {
-    const found = list.find(
-      (r) => r.spec_key === 'ST35_8' || (r.spec_full || '').toUpperCase().includes('35.8')
-    );
+    const found =
+      list.find((r) => r.spec_key === 'ST35_8') ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'ST35_8') ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes('35.8'));
     if (found) return found;
   }
   if (combined.includes('1010')) {
-    const found = list.find(
-      (r) => r.spec_key === 'SAE_1010' || (r.spec_full || '').toUpperCase().includes('1010')
-    );
+    const found =
+      list.find((r) => r.spec_key === 'SAE_1010') ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'SAE_1010');
     if (found) return found;
   }
   if (combined.includes('900DP') || combined.includes('MS 900')) {
-    const found = list.find(
-      (r) => r.spec_key === 'MS_900DP' || (r.spec_full || '').toUpperCase().includes('900DP')
-    );
+    const found =
+      list.find((r) => r.spec_key === 'MS_900DP') ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'MS_900DP');
     if (found) return found;
   }
   if (combined.includes('312') || combined.includes('316')) {
-    const found = list.find(
-      (r) => r.spec_key === 'A312_316L' || (r.spec_full || '').toUpperCase().includes('316')
-    );
+    const found =
+      list.find((r) => r.spec_key === 'A312_316L') ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'A312_316L');
     if (found) return found;
   }
   if (combined.includes('304')) {
-    const found = list.find(
-      (r) => r.spec_key === 'A312_304L' || (r.spec_full || '').toUpperCase().includes('304')
-    );
+    const found =
+      list.find((r) => r.spec_key === 'A312_304L') ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'A312_304L');
     if (found) return found;
   }
   if (combined.includes('A53') || combined.includes('53 GR') || combined.includes('53-B')) {
-    const found = list.find(
-      (r) => r.spec_key === 'A53' || (r.spec_full || '').toUpperCase().includes('A53')
-    );
+    const found =
+      list.find((r) => r.spec_key === 'A53') ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === 'A53');
     if (found) return found;
   }
   if (combined.includes('106') || combined.includes('SA106') || combined.includes('1018')) {
     const isGrC =
       combined.includes('GR C') || combined.includes('GR.C') || combined.includes('GRADE C');
-    const found = list.find(
-      (r) =>
-        r.spec_key === (isGrC ? 'SA106_C' : 'A106') ||
-        (r.spec_full || '').toUpperCase().includes('106')
-    );
+    const targetKey = isGrC ? 'SA106_C' : 'A106';
+    const found =
+      list.find((r) => r.spec_key === targetKey) ||
+      DEFAULT_SPEC_MASTER_RECORDS.find((r) => r.spec_key === targetKey) ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes(isGrC ? 'GR C' : 'GR B')) ||
+      list.find((r) => (r.spec_full || '').toUpperCase().includes('106'));
     if (found) return found;
   }
 
@@ -431,11 +455,20 @@ export function cleanOrFallbackSteelGrade(
   if (sp.includes('213') && sp.includes('T22')) {
     return '2.25Cr - 1Mo';
   }
+  if (sp.includes('213') && sp.includes('T12')) {
+    return '1Cr - 0.5Mo';
+  }
   if (sp.includes('335') && sp.includes('P11')) {
     return '1.25Cr - 0.5Mo';
   }
   if (sp.includes('335') && sp.includes('P22')) {
     return '2.25Cr - 1Mo';
+  }
+  if (sp.includes('335') && sp.includes('P12')) {
+    return '1Cr - 0.5Mo';
+  }
+  if (sp.includes('T91') || sp.includes('P91')) {
+    return '9Cr - 1Mo - V';
   }
   if (sp.includes('210') && (sp.includes('GR C') || sp.includes('GR.C') || sp.includes('GRADE C'))) {
     return 'SAE 1026';
@@ -555,13 +588,27 @@ export function autoPopulateProcessSheet(
   const wtPerPieceKg = kgMtr * avgLen;
   const calcBundleQtyPcs = wtPerPieceKg > 0 ? Math.round(2000 / wtPerPieceKg) : 0;
 
-  const mhOd = Number(parsedSt.sizing_mill?.cust_od || plan.mh_od || targetOd || 0);
-  const mhWt = Number(parsedSt.sizing_mill?.rolling_wt || plan.mh_wt || targetWt || 0);
+  // Parse target_mother_size (e.g. '73.0x7.75' or '88.90x5.49') if present
+  let parsedMotherOd = 0;
+  let parsedMotherWt = 0;
+  if (plan.target_mother_size) {
+    const match = String(plan.target_mother_size).match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)/);
+    if (match) {
+      parsedMotherOd = Number(match[1]) || 0;
+      parsedMotherWt = Number(match[2]) || 0;
+    }
+  }
+
+  const mhOd = Number(parsedSt.sizing_mill?.cust_od || plan.mh_od || parsedMotherOd || targetOd || 0);
+  const mhWt = Number(parsedSt.sizing_mill?.rolling_wt || plan.mh_wt || parsedMotherWt || targetWt || 0);
   const smLen = parsedSt.sizing_mill?.sm_len || plan.mh_l1 || (avgLen > 0 ? avgLen.toFixed(3) : '');
   const hfsLen = plan.mh_l2 || (avgLen > 0 ? avgLen.toFixed(3) : '');
 
+  const mhKgMtr = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 : 0;
+
   const piercOd = Number(parsedSt.piercer_mill?.pm_od || (mhOd > 0 ? (mhOd * 1.08).toFixed(2) : 0));
   const piercWt = Number(parsedSt.piercer_mill?.pm_wt || (mhWt > 0 ? (mhWt * 1.04).toFixed(2) : 0));
+  const piercKgMtr = piercOd > piercWt && piercWt > 0 ? (piercOd - piercWt) * piercWt * 0.0246615 : 0;
 
   const bDia = Number(parsedSt.billet?.rm_od || (mhOd > 75 ? 90.0 : mhOd > 0 ? 63.0 : 0));
   const bSect = bDia > 0 ? Number(parsedSt.billet?.weight_kg || (((bDia * bDia * 3.14159 * 0.007856) / 4).toFixed(2))) : 0;
@@ -657,14 +704,18 @@ export function autoPopulateProcessSheet(
     motherHollowOd: mhOd > 0 ? mhOd.toFixed(2) : '',
     motherHollowWt: mhWt > 0 ? mhWt.toFixed(2) : '',
     rollingWt: mhWt > 0 ? mhWt.toFixed(2) : '',
-    motherHollowKgMtr: kgMtr > 0 ? kgMtr.toFixed(2) : '',
+    motherHollowKgMtr: mhKgMtr > 0 ? mhKgMtr.toFixed(2) : (kgMtr > 0 ? kgMtr.toFixed(2) : ''),
     smLength: smLen ? smLen.toString() : '',
     hfsFinalLength: hfsLen ? hfsLen.toString() : '',
 
     piercerOd: piercOd > 0 ? piercOd.toFixed(2) : '',
     piercerWt: piercWt > 0 ? piercWt.toFixed(2) : '',
     piercerShellLen: parsedSt.piercer_mill?.pm_len ? String(parsedSt.piercer_mill.pm_len) : avgLen > 0 ? (avgLen * 0.88).toFixed(2) : '',
-    shellWeight: parsedSt.piercer_mill?.pm_kg_mtr ? String(parsedSt.piercer_mill.pm_kg_mtr) : kgMtr > 0 ? (kgMtr * 1.13).toFixed(2) : '',
+    shellWeight: parsedSt.piercer_mill?.pm_kg_mtr
+      ? String(parsedSt.piercer_mill.pm_kg_mtr)
+      : piercKgMtr > 0
+        ? piercKgMtr.toFixed(2)
+        : (kgMtr > 0 ? (kgMtr * 1.13).toFixed(2) : ''),
 
     billetDia: bDia > 0 ? bDia.toFixed(2) : '',
     billetSectWt: bSect > 0 ? bSect.toFixed(2) : '',
