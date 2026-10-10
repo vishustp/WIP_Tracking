@@ -537,9 +537,18 @@ export function autoPopulateProcessSheet(
     candidateRoute = inferred.route_code;
   }
 
+  const isSs =
+    candidateRoute === 'SS_STEEL' ||
+    candidateRoute.includes('STAINLESS') ||
+    (candidateRoute.includes('SS') && !candidateRoute.includes('HFS') && !candidateRoute.includes('CDS')) ||
+    inferred.route_code === 'SS_STEEL';
   const isCds = candidateRoute.includes('CDS') || inferred.route_code.includes('CDS');
   const isAlloy = candidateRoute.includes('ALLOY') || inferred.route_code.includes('ALLOY');
-  const resolvedRoute = isAlloy ? (isCds ? 'ALLOY_CDS' : 'ALLOY_HFS') : (isCds ? 'CDS' : 'HFS');
+  const resolvedRoute = isSs
+    ? 'SS_STEEL'
+    : isAlloy
+      ? (isCds ? 'ALLOY_CDS' : 'ALLOY_HFS')
+      : (isCds ? 'CDS' : 'HFS');
 
   const cleanWo = String(plan.work_order_no || '').trim();
   const effectiveWoNo = plan.is_diversion ? `${cleanWo}-Div` : cleanWo;
@@ -639,9 +648,11 @@ export function autoPopulateProcessSheet(
     initialTols = calculateStandardTolerances(targetOd, targetWt, fullSpecGrade || matchedMaster?.spec_full || '', resolvedRoute);
   }
 
-  const defaultRouteSequence = isCds
-    ? 'BILLET CUTTING # WHF # PIERCER LXC 50 # SIZING # STR # CUTTING # VDI # STP # POINTING # DB # ANNEALING # STR # CUTTING # HUT # HYDRO # VDI # BLACK VARNISH # BUNDLING'
-    : 'BILLET CUTTING # WHF # PIERCER LXC 50 # SIZING # STR # CUTTING # VDI # FINISHING # HYDRO # BLACK VARNISH # BUNDLING';
+  const defaultRouteSequence = isSs
+    ? 'BILLET CUTTING # WHF # PIERCER LXC 50 # SIZING # STR # PILGER # SOLUTION ANNEALING # CUTTING # VDI # FINISHING # HYDRO # PASSIVATION # BUNDLING'
+    : isCds
+      ? 'BILLET CUTTING # WHF # PIERCER LXC 50 # SIZING # STR # CUTTING # VDI # STP # POINTING # DB # ANNEALING # STR # CUTTING # HUT # HYDRO # VDI # BLACK VARNISH # BUNDLING'
+      : 'BILLET CUTTING # WHF # PIERCER LXC 50 # SIZING # STR # CUTTING # VDI # FINISHING # HYDRO # BLACK VARNISH # BUNDLING';
 
   const markingSingle = buildMarkingString('single', {
     routeCode: resolvedRoute,

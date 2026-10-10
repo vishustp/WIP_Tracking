@@ -1028,7 +1028,7 @@ export default function WorkOrderTrackingClient() {
               ? Math.max(0, htOutPcs - htRejPcs)
               : (hasPilgerInRoute ? Math.max(0, pilgerOutPcs - pilgerRejPcs) : Math.max(0, drawOutPcs - drawRejPcs));
           }
-          const isHfsLike = !hasDrawInRoute;
+          const isHfsLike = !hasDrawInRoute && !hasPilgerInRoute;
           const effLen = isHfsLike && mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = effLen > 0 ? Math.round(divIn / effLen) : 0;
           const divOutPcs = effLen > 0 ? Math.round(divOut / effLen) : 0;

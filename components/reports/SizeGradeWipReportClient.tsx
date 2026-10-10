@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 import { mtFromMtr, extractPcsFromRemarks, normalizeGrade } from '@/lib/productionUtils';
 import { reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
 
-type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING';
+type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'PILGER' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING';
 
 interface ContributingOrder {
   work_order_id: string;
@@ -303,6 +303,7 @@ export default function SizeGradeWipReportClient() {
         const woPieceLedger = new Map<string, {
           rolledPcs: number;
           hhtPcs: number;
+          pilgerPcs: number;
           drawPcs: number;
           htPcs: number;
           bandSawPcs: number;
@@ -316,6 +317,7 @@ export default function SizeGradeWipReportClient() {
           const entry = woPieceLedger.get(log.work_order_id) || {
             rolledPcs: 0,
             hhtPcs: 0,
+            pilgerPcs: 0,
             drawPcs: 0,
             htPcs: 0,
             bandSawPcs: 0,
@@ -332,6 +334,8 @@ export default function SizeGradeWipReportClient() {
             entry.htcOkPcs += pcs;
           } else if (stage === 'HOLLOW_HEAT_TREATMENT') {
             entry.hhtPcs += pcs;
+          } else if (stage === 'PILGER') {
+            entry.pilgerPcs += pcs;
           } else if (stage === 'DRAW') {
             entry.drawPcs += pcs;
           } else if (stage === 'HEAT_TREATMENT') {
@@ -356,6 +360,7 @@ export default function SizeGradeWipReportClient() {
           const entry = woPieceLedger.get(qc.work_order_id) || {
             rolledPcs: 0,
             hhtPcs: 0,
+            pilgerPcs: 0,
             drawPcs: 0,
             htPcs: 0,
             bandSawPcs: 0,
@@ -372,6 +377,7 @@ export default function SizeGradeWipReportClient() {
             const masterEntry = woPieceLedger.get(masterWoId) || {
               rolledPcs: 0,
               hhtPcs: 0,
+              pilgerPcs: 0,
               drawPcs: 0,
               htPcs: 0,
               bandSawPcs: 0,
@@ -460,6 +466,7 @@ export default function SizeGradeWipReportClient() {
               customer_name: wo?.customer_name || originalRow.customer_name,
               stage_code: recStage.stage_code,
               stage_name: recStage.stage_code === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
+                          recStage.stage_code === 'PILGER' ? 'Cold Pilger Mill' :
                           recStage.stage_code === 'DRAW' ? 'Cold Draw Bench' :
                           recStage.stage_code === 'HEAT_TREATMENT' ? 'Final Heat Treatment' :
                           recStage.stage_code === 'BAND_SAW' ? 'Band Saw Cutting' :
@@ -607,7 +614,7 @@ export default function SizeGradeWipReportClient() {
         group.htc_mtr += mtr;
         group.htc_pcs += pcs;
         group.htc_mt += mt;
-      } else if (stage === 'DRAW') {
+      } else if (stage === 'DRAW' || stage === 'PILGER') {
         group.draw_mtr += mtr;
         group.draw_pcs += pcs;
         group.draw_mt += mt;
@@ -977,7 +984,7 @@ export default function SizeGradeWipReportClient() {
         {/* 4. Cold Draw */}
         <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
           <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Cold Draw</span>
+            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Cold Draw / Pilger</span>
             <TrendingUp className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
           </div>
           <div className="mt-2 space-y-1 font-mono text-[11px]">
@@ -1290,7 +1297,7 @@ export default function SizeGradeWipReportClient() {
                     Hollow HT (HTC)
                   </th>
                   <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
-                    Cold Draw Bench
+                    Cold Draw / Pilger
                   </th>
                   <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
                     Final Heat Treatment

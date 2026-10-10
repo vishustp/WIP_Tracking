@@ -11,6 +11,7 @@ This file serves as the canonical system instruction for all AI agents and devel
   - **ALLOY_CDS**: $\text{Hollow HT Queue} = \text{Rolling HTC OK} - \text{Hollow HT OK}$; $\text{Draw Bench Queue} = \text{Hollow HT OK} - \text{Draw OK}$
   - **HFS (Hot Finished)**: $\text{Band Saw Queue} = \text{Rolling HTC OK} - \text{Band Saw OK}$
   - **ALLOY_HFS**: $\text{Hollow HT Queue} = \text{Rolling HTC OK} - \text{Hollow HT OK}$; $\text{Band Saw Queue} = \text{Hollow HT OK} - \text{Band Saw OK}$
+  - **SS_STEEL (Stainless Steel)**: $\text{Pilger Queue} = \text{Rolling HTC OK} - \text{Pilger OK}$; $\text{Final HT Queue} = \text{Pilger OK} - \text{Final HT OK}$; $\text{Band Saw Queue} = \text{Final HT OK} - \text{Band Saw OK}$
 
 ## 2. Universal Rejection Handling (Option B) Across All Work Centers
 - Rejections generated at any work center do NOT vanish as dead scrap.

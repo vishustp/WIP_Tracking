@@ -205,7 +205,8 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const isHfs = routeCode === 'HFS' || routeCode === 'ALLOY_HFS';
   const hasHtcInRoute = routeCode === 'ALLOY_HFS' || routeCode === 'ALLOY_CDS';
   const hasDrawInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS';
-  const hasHtInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS';
+  const hasPilgerInRoute = routeCode === 'SS_STEEL';
+  const hasHtInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS' || routeCode === 'SS_STEEL';
 
   // Check campaign / child mapping
   let masterWoId = id;
@@ -249,6 +250,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const rollLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'ROLLING');
   const htcLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'HOLLOW_HEAT_TREATMENT');
   const drawLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'DRAW');
+  const pilgerLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'PILGER');
   const htLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'HEAT_TREATMENT');
   const finLogs = logs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'FINISHING');
 
@@ -266,6 +268,10 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const drawOutMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
   const drawRejMtr = drawLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
   const drawNetMtr = Math.max(0, drawOutMtr - drawRejMtr);
+
+  const pilgerOutMtr = pilgerLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+  const pilgerRejMtr = pilgerLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+  const pilgerNetMtr = Math.max(0, pilgerOutMtr - pilgerRejMtr);
 
   const htOutMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
   const htRejMtr = htLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
@@ -303,7 +309,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const rollingHtcOkBaseMtr = rollingHtcOkMtr > 0 ? rollingHtcOkMtr : rollingNetMtr;
   const effectiveHtcOkFinishedMtr = rollingHtcOkBaseMtr * planMultiple;
   const finishingShippedMtr = finOutMtr; // Only actual dispatched finished goods leave the plant
-  const totalRejectionSalvageMtr = Math.max(0, qcVdiRejMtr + rollingRejMtr + htcRejMtr + drawRejMtr + htRejMtr + finRejMtr);
+  const totalRejectionSalvageMtr = Math.max(0, qcVdiRejMtr + rollingRejMtr + htcRejMtr + drawRejMtr + pilgerRejMtr + htRejMtr + finRejMtr);
 
   let stageBreakdown: any[] = [];
 
@@ -351,11 +357,12 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     const stageDefinitions = [
       { stage_code: 'ROLLING', stage_name: 'Rolling Mill (Mother Hollow)', sequence_no: 1, is_in_route: true },
       { stage_code: 'HOLLOW_HEAT_TREATMENT', stage_name: 'Hollow Heat Treatment', sequence_no: 2, is_in_route: hasHtcInRoute },
-      { stage_code: 'DRAW', stage_name: 'Cold Draw Bench', sequence_no: 3, is_in_route: hasDrawInRoute },
-      { stage_code: 'HEAT_TREATMENT', stage_name: 'Final Heat Treatment', sequence_no: 4, is_in_route: hasHtInRoute },
-      { stage_code: 'BAND_SAW', stage_name: 'Band Saw Cutting', sequence_no: 5, is_in_route: isHfs },
-      { stage_code: 'VDI', stage_name: 'VDI / QC Inspection', sequence_no: 6, is_in_route: true },
-      { stage_code: 'FINISHING', stage_name: 'Finishing & Inspection', sequence_no: 7, is_in_route: true },
+      { stage_code: 'PILGER', stage_name: 'Cold Pilger Mill', sequence_no: 3, is_in_route: hasPilgerInRoute },
+      { stage_code: 'DRAW', stage_name: 'Cold Draw Bench', sequence_no: 4, is_in_route: hasDrawInRoute },
+      { stage_code: 'HEAT_TREATMENT', stage_name: 'Final Heat Treatment', sequence_no: 5, is_in_route: hasHtInRoute },
+      { stage_code: 'BAND_SAW', stage_name: 'Band Saw Cutting', sequence_no: 6, is_in_route: isHfs || routeCode === 'SS_STEEL' },
+      { stage_code: 'VDI', stage_name: 'VDI / QC Inspection', sequence_no: 7, is_in_route: true },
+      { stage_code: 'FINISHING', stage_name: 'Finishing & Inspection', sequence_no: 8, is_in_route: true },
     ];
     stageBreakdown = stageDefinitions.map((stg) => {
       const sc = stg.stage_code;
@@ -427,6 +434,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
 const WORK_CENTERS = [
   { code: 'ROLLING', name: 'Rolling Mill (Mother Hollow)' },
   { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow Heat Treatment' },
+  { code: 'PILGER', name: 'Cold Pilger Mill' },
   { code: 'DRAW', name: 'Cold Draw Bench' },
   { code: 'HEAT_TREATMENT', name: 'Final Heat Treatment' },
   { code: 'BAND_SAW', name: 'Band Saw Cutting' },

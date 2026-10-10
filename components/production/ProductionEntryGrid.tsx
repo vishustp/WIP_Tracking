@@ -123,6 +123,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
   const [serverSummary, setServerSummary] = useState<any[] | null>(null);
   const [childWoIds, setChildWoIds] = useState<Set<string>>(new Set());
   const [planMhMap, setPlanMhMap] = useState<Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null }>>(new Map());
+  const [campaignChildOrdersMap, setCampaignChildOrdersMap] = useState<Map<string, any[]>>(new Map());
 
   // Factory-wide WIP and child order tracking
   const loadFactoryWip = useCallback(async () => {
@@ -144,12 +145,13 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
       const [wipRes, plansRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*'),
-        supabase.from('rolling_plans').select('id, status, work_order_id, mh_od, mh_wt, mh_l1, mh_l2, work_orders(work_order_no)').not('status', 'is', null),
+        supabase.from('rolling_plans').select('id, plan_no, status, work_order_id, mh_od, mh_wt, mh_l1, mh_l2, work_orders(work_order_no)').not('status', 'is', null),
       ]);
       if (wipRes.data) setFactoryWip(wipRes.data);
       if (plansRes.data) {
         const cIds = new Set<string>();
         const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null }>();
+        const campaignChildMap = new Map<string, any[]>();
 
         for (const p of plansRes.data) {
           try {
@@ -168,7 +170,16 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
             }
 
             if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
-              for (const c of parsed.child_work_orders) {
+              const children = parsed.child_work_orders;
+              if (p.work_order_id) campaignChildMap.set(p.work_order_id, children);
+              if (parsed.master_wo_id) campaignChildMap.set(parsed.master_wo_id, children);
+              if (parsed.master_wo_no) campaignChildMap.set(String(parsed.master_wo_no).trim(), children);
+              if ((p as any).work_orders?.work_order_no) campaignChildMap.set(String((p as any).work_orders.work_order_no).trim(), children);
+              if (p.id) campaignChildMap.set(p.id, children);
+              if ((p as any).plan_no) campaignChildMap.set(String((p as any).plan_no).trim(), children);
+              if (parsed.plan_no) campaignChildMap.set(String(parsed.plan_no).trim(), children);
+
+              for (const c of children) {
                 const cId = c.work_order_id || c.id;
                 if (cId) {
                   cIds.add(cId);
@@ -187,6 +198,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         }
         setChildWoIds(cIds);
         setPlanMhMap(mhMap);
+        setCampaignChildOrdersMap(campaignChildMap);
       }
     } catch {
       // ignore
@@ -215,24 +227,59 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
     }));
   };
 
-  // Filter queue rows by Work Order No, Customer, Grade, or Master Plan No
+  // Filter queue rows by Work Order No, Customer, Grade, Master Plan No, or Child Work Orders
   const filteredRows = useMemo(() => {
     if (!woFilter.trim()) return rows;
     const q = woFilter.toLowerCase().trim();
-    return rows.filter(
-      (r) =>
-        (r.work_order_no || '').toLowerCase().includes(q) ||
-        (r.customer_name || '').toLowerCase().includes(q) ||
-        (r.specification || '').toLowerCase().includes(q) ||
-        (r.master_plan_no || '').toLowerCase().includes(q) ||
-        (r.child_work_orders &&
-          r.child_work_orders.some(
-            (c: any) =>
-              (c.work_order_no || '').toLowerCase().includes(q) ||
-              (c.customer_name || '').toLowerCase().includes(q)
-          ))
-    );
-  }, [rows, woFilter]);
+    const cleanQ = q.replace(/[^a-z0-9]/g, '');
+
+    const textMatches = (val?: string | null) => {
+      if (!val) return false;
+      const str = String(val).toLowerCase();
+      if (str.includes(q)) return true;
+      if (cleanQ.length > 0 && str.replace(/[^a-z0-9]/g, '').includes(cleanQ)) return true;
+      return false;
+    };
+
+    return rows.filter((r) => {
+      // 1. Check direct row fields
+      if (
+        textMatches(r.work_order_no) ||
+        textMatches(r.customer_name) ||
+        textMatches(r.specification) ||
+        textMatches(r.master_plan_no) ||
+        textMatches(r.plan_no) ||
+        textMatches(r.master_wo_no)
+      ) {
+        return true;
+      }
+
+      // 2. Check child work orders (attached on row or loaded from campaign plan map)
+      const children: any[] =
+        r.child_work_orders && r.child_work_orders.length > 0
+          ? r.child_work_orders
+          : campaignChildOrdersMap.get(r.work_order_id) ||
+            (r.work_order_no ? campaignChildOrdersMap.get(r.work_order_no) : null) ||
+            (r.plan_id ? campaignChildOrdersMap.get(r.plan_id) : null) ||
+            [];
+
+      if (
+        children.some((c: any) =>
+          textMatches(c.work_order_no) ||
+          textMatches(c.wo_no) ||
+          textMatches(c.order_no) ||
+          textMatches(c.customer_name) ||
+          textMatches(c.grade) ||
+          textMatches(c.specification) ||
+          textMatches(c.finish_size)
+        )
+      ) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [rows, woFilter, campaignChildOrdersMap]);
 
   // Toggle all rows expansion
   // Toggle all rows expansion

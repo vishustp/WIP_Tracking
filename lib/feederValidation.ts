@@ -64,6 +64,7 @@ export function computeFeederBalanceForWorkOrder(params: {
 
   const isAlloy = routeCode.toUpperCase().includes('ALLOY');
   const isCds = routeCode.toUpperCase().includes('CDS');
+  const isSsSteel = routeCode.toUpperCase().includes('SS') || routeCode.toUpperCase().includes('STAINLESS');
 
   const getStageLogs = (stageCode: string) => {
     const sId = stageCodeToId.get(stageCode);
@@ -159,7 +160,28 @@ export function computeFeederBalanceForWorkOrder(params: {
     };
   }
 
-  // 3. DRAW
+  // 3. PILGER (Cold Pilger Mill - Stainless Steel route)
+  const pilgerLogs = getStageLogs('PILGER');
+  const pilgerOutPcs = sumStagePcs(pilgerLogs);
+  const pilgerRejPcs = sumStageRejPcs(pilgerLogs);
+  const pilgerNetPcs = Math.max(0, pilgerOutPcs - pilgerRejPcs);
+  const pilgerOutMtr = sumStageOutMtr(pilgerLogs);
+  const pilgerRejMtr = sumStageRejMtr(pilgerLogs);
+  const pilgerNetMtr = Math.max(0, Number((pilgerOutMtr - pilgerRejMtr).toFixed(2)));
+
+  if (targetStage === 'PILGER') {
+    const availPcs = Math.max(0, rollHtcOkPcs - pilgerOutPcs);
+    const availMtr = Math.max(0, Number((rollHtcOkMtr - pilgerOutMtr).toFixed(2)));
+    return {
+      feederStageCode: 'ROLLING',
+      feederLabel: 'Rolling HTC OK',
+      availPcs,
+      availMtr,
+      routeCode,
+    };
+  }
+
+  // 4. DRAW
   const drawIncomingPcs = isAlloy ? (hhtNetPcs > 0 ? hhtNetPcs : rollHtcOkPcs) : rollHtcOkPcs;
   const drawIncomingMtr = isAlloy ? (hhtNetMtr > 0 ? hhtNetMtr : rollHtcOkMtr) : rollHtcOkMtr;
   const drawFeederLabel = isAlloy && hhtNetPcs > 0 ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK';
@@ -184,7 +206,7 @@ export function computeFeederBalanceForWorkOrder(params: {
     };
   }
 
-  // 4. HEAT_TREATMENT
+  // 5. HEAT_TREATMENT
   const htLogs = getStageLogs('HEAT_TREATMENT');
   const htOutPcs = sumStagePcs(htLogs);
   const htRejPcs = sumStageRejPcs(htLogs);
@@ -194,14 +216,20 @@ export function computeFeederBalanceForWorkOrder(params: {
   const htNetMtr = Math.max(0, Number((htOutMtr - htRejMtr).toFixed(2)));
 
   if (targetStage === 'HEAT_TREATMENT') {
-    const htIncomingPcs = isCds ? drawNetPcs : (isAlloy ? hhtNetPcs : rollHtcOkPcs);
-    const htIncomingMtr = isCds ? drawNetMtr : (isAlloy ? hhtNetMtr : rollHtcOkMtr);
-    const htFeederLabel = isCds ? 'Draw Bench Net OK' : (isAlloy ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK');
+    const htIncomingPcs = isSsSteel
+      ? pilgerNetPcs
+      : (isCds ? drawNetPcs : (isAlloy ? hhtNetPcs : rollHtcOkPcs));
+    const htIncomingMtr = isSsSteel
+      ? pilgerNetMtr
+      : (isCds ? drawNetMtr : (isAlloy ? hhtNetMtr : rollHtcOkMtr));
+    const htFeederLabel = isSsSteel
+      ? 'Cold Pilger Mill Net OK'
+      : (isCds ? 'Draw Bench Net OK' : (isAlloy ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK'));
 
     const availPcs = Math.max(0, htIncomingPcs - htOutPcs);
     const availMtr = Math.max(0, Number((htIncomingMtr - htOutMtr).toFixed(2)));
     return {
-      feederStageCode: isCds ? 'DRAW' : (isAlloy ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING'),
+      feederStageCode: isSsSteel ? 'PILGER' : (isCds ? 'DRAW' : (isAlloy ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING')),
       feederLabel: htFeederLabel,
       availPcs,
       availMtr,
@@ -209,10 +237,10 @@ export function computeFeederBalanceForWorkOrder(params: {
     };
   }
 
-  // 5. BAND_SAW
-  const bsIncomingPcs = isCds ? htNetPcs : (isAlloy ? hhtNetPcs : rollHtcOkPcs);
-  const bsIncomingMtr = isCds ? htNetMtr : (isAlloy ? hhtNetMtr : rollHtcOkMtr);
-  const bsFeederLabel = isCds ? 'Heat Treatment Net OK' : (isAlloy ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK');
+  // 6. BAND_SAW
+  const bsIncomingPcs = (isSsSteel || isCds) ? htNetPcs : (isAlloy ? hhtNetPcs : rollHtcOkPcs);
+  const bsIncomingMtr = (isSsSteel || isCds) ? htNetMtr : (isAlloy ? hhtNetMtr : rollHtcOkMtr);
+  const bsFeederLabel = (isSsSteel || isCds) ? 'Heat Treatment Net OK' : (isAlloy ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK');
 
   const bandSawLogs = getStageLogs('BAND_SAW');
   const bandSawOutPcs = sumStagePcs(bandSawLogs);
@@ -226,7 +254,7 @@ export function computeFeederBalanceForWorkOrder(params: {
     const availPcs = Math.max(0, bsIncomingPcs - bandSawOutPcs);
     const availMtr = Math.max(0, Number((bsIncomingMtr - bandSawOutMtr).toFixed(2)));
     return {
-      feederStageCode: isCds ? 'HEAT_TREATMENT' : (isAlloy ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING'),
+      feederStageCode: (isSsSteel || isCds) ? 'HEAT_TREATMENT' : (isAlloy ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING'),
       feederLabel: bsFeederLabel,
       availPcs,
       availMtr,
@@ -234,7 +262,7 @@ export function computeFeederBalanceForWorkOrder(params: {
     };
   }
 
-  // 6. VDI (QC Inspection)
+  // 7. VDI (QC Inspection)
   const woQc = qcInspections.filter((q) => q.work_order_id === workOrder.id);
   const vdiInspectedPcs = woQc.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
   const vdiInspectedMtr = woQc.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
@@ -249,7 +277,7 @@ export function computeFeederBalanceForWorkOrder(params: {
     const availPcs = Math.max(0, vdiIncomingPcs - vdiInspectedPcs);
     const availMtr = Math.max(0, Number((vdiIncomingMtr - vdiInspectedMtr).toFixed(2)));
     return {
-      feederStageCode: bandSawOutPcs > 0 ? 'BAND_SAW' : (isCds ? 'HEAT_TREATMENT' : 'ROLLING'),
+      feederStageCode: bandSawOutPcs > 0 ? 'BAND_SAW' : ((isSsSteel || isCds) ? 'HEAT_TREATMENT' : 'ROLLING'),
       feederLabel: vdiFeederLabel,
       availPcs,
       availMtr,

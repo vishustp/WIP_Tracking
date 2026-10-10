@@ -75,7 +75,7 @@ export function useQueue(stage: StageCode) {
         supabase.rpc("get_production_entry_queue", { p_stage_code: s }),
         supabase
           .from("rolling_plans")
-          .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2")
+          .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2, work_orders(work_order_no)")
           .not("status", "is", null)
           .order("created_at", { ascending: false })
           .limit(250),
@@ -264,7 +264,7 @@ export function useQueue(stage: StageCode) {
               ? Array.from(new Set([...(existing.plan_nos || [existing.plan_no]), planNoStr].filter(Boolean)))
               : [planNoStr].filter(Boolean);
 
-            masterCampaignMap.set(p.work_order_id, {
+            const campaignData = {
               plan_id: p.id,
               plan_no: combinedPlanNos.join(', ') || p.plan_no,
               plan_nos: combinedPlanNos,
@@ -283,16 +283,24 @@ export function useQueue(stage: StageCode) {
               is_issued: isIssued || existing?.is_issued,
               lifecycle_status: lifecycle,
               revision_no: Number(parsed?.revision_no || 0),
-            });
+            };
+
+            if (p.work_order_id) masterCampaignMap.set(p.work_order_id, campaignData);
+            if (parsed.master_wo_id) masterCampaignMap.set(parsed.master_wo_id, campaignData);
+            if (parsed.master_wo_no) masterCampaignMap.set(String(parsed.master_wo_no).trim(), campaignData);
+            if ((p as any).work_orders?.work_order_no) masterCampaignMap.set(String((p as any).work_orders.work_order_no).trim(), campaignData);
 
             for (const child of parsed.child_work_orders) {
-              childWoMap.set(child.work_order_id || child.id, {
+              const cId = child.work_order_id || child.id;
+              const childObj = {
                 ...child,
                 master_wo_id: p.work_order_id,
                 master_wo_no: parsed.master_wo_no,
                 master_plan_no: combinedPlanNos.join(', ') || p.plan_no,
                 master_plan_id: p.id,
-              });
+              };
+              if (cId) childWoMap.set(cId, childObj);
+              if (child.work_order_no) childWoMap.set(String(child.work_order_no).trim(), childObj);
             }
           } else if (parsed?.is_child) {
             childWoMap.set(p.work_order_id, {
@@ -324,8 +332,8 @@ export function useQueue(stage: StageCode) {
       if (s === "ROLLING") {
         // Filter out any child work orders AND only show work orders with an ISSUED rolling plan!
         const filtered = rawRows.filter((r) => {
-          if (childWoMap.has(r.work_order_id)) return false;
-          const campaign = masterCampaignMap.get(r.work_order_id);
+          if (childWoMap.has(r.work_order_id) || (r.work_order_no && childWoMap.has(r.work_order_no))) return false;
+          const campaign = masterCampaignMap.get(r.work_order_id) || (r.work_order_no ? masterCampaignMap.get(r.work_order_no) : null);
           const planInfo = planByWoMap.get(r.work_order_id);
           const isPlanIssued = campaign ? Boolean(campaign.is_issued) : Boolean(planInfo?.is_issued);
           return isPlanIssued;
@@ -333,7 +341,7 @@ export function useQueue(stage: StageCode) {
 
         // Enrich master rows with aggregated campaign WIP and Capping
         const enriched: Row[] = filtered.map((r) => {
-          const campaign = masterCampaignMap.get(r.work_order_id);
+          const campaign = masterCampaignMap.get(r.work_order_id) || (r.work_order_no ? masterCampaignMap.get(r.work_order_no) : null);
           const masterLogs = logs.filter(
             (l: any) =>
               l.work_order_id === r.work_order_id &&
@@ -582,14 +590,15 @@ export function useQueue(stage: StageCode) {
         const drawStageId = stages.find((st: any) => st.stage_code === "DRAW")?.id;
         const pilgerStageId = stages.find((st: any) => st.stage_code === "PILGER")?.id;
         const htStageId = stages.find((st: any) => st.stage_code === "HEAT_TREATMENT")?.id;
+        const bandSawStageId = stages.find((st: any) => st.stage_code === "BAND_SAW")?.id;
 
         // Filter out any child work orders
-        const filtered = rawRows.filter((r) => !childWoMap.has(r.work_order_id));
+        const filtered = rawRows.filter((r) => !childWoMap.has(r.work_order_id) && (!r.work_order_no || !childWoMap.has(r.work_order_no)));
 
         // Enrich master rows with campaign details and strict downstream Rolling HTC OK propagation
         const enriched = filtered
           .flatMap((r) => {
-            const campaign = masterCampaignMap.get(r.work_order_id);
+            const campaign = masterCampaignMap.get(r.work_order_id) || (r.work_order_no ? masterCampaignMap.get(r.work_order_no) : null);
             const masterLogs = logs.filter((l: any) => l.work_order_id === r.work_order_id);
 
             const planInfo = planByWoMap.get(r.work_order_id);
@@ -687,6 +696,15 @@ export function useQueue(stage: StageCode) {
             const pilgerDivOut = getStageDivOut(r.work_order_id, "PILGER");
             const htDivIn = getStageDivIn(r.work_order_id, "HEAT_TREATMENT");
             const htDivOut = getStageDivOut(r.work_order_id, "HEAT_TREATMENT");
+            const bsDivIn = getStageDivIn(r.work_order_id, "BAND_SAW");
+            const bsDivOut = getStageDivOut(r.work_order_id, "BAND_SAW");
+
+            const bandSawLogs = masterLogs.filter((l: any) => bandSawStageId && l.stage_id === bandSawStageId);
+            const bandSawOutMtr = bandSawLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
+            const bandSawRejMtr = bandSawLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
+            const bandSawOutPcs = tubeAvg > 0 ? Math.round(bandSawOutMtr / tubeAvg) : 0;
+            const bandSawRejPcs = tubeAvg > 0 ? Math.round(bandSawRejMtr / tubeAvg) : 0;
+            const bandSawNetPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
 
             let availPcs = 0;
             let availMtr = 0;
@@ -718,11 +736,23 @@ export function useQueue(stage: StageCode) {
               const incomingPcs = r.route_code === "SS_STEEL" ? pilgerNetPcs : drawNetPcs;
               availPcs = Math.max(0, incomingPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs);
               availMtr = tubeAvg > 0 ? Number((availPcs * tubeAvg).toFixed(2)) : 0;
+            } else if (s === "BAND_SAW") {
+              const isHfs = r.route_code === "HFS" || r.route_code === "ALLOY_HFS";
+              const incomingPcs = (r.route_code === "SS_STEEL" || r.route_code === "CDS" || r.route_code === "ALLOY_CDS")
+                ? htNetPcs
+                : (r.route_code === "ALLOY_HFS" ? hollowHtNetPcs : rollHtcOkPcs);
+              const effLen = isHfs ? (mhAvg > 0 ? mhAvg : tubeAvg) : tubeAvg;
+              const bsDivInPcs = effLen > 0 ? Math.round(bsDivIn / effLen) : 0;
+              const bsDivOutPcs = effLen > 0 ? Math.round(bsDivOut / effLen) : 0;
+              availPcs = Math.max(0, incomingPcs + bsDivInPcs - bandSawOutPcs - bandSawRejPcs - bsDivOutPcs);
+              availMtr = effLen > 0 ? Number((availPcs * effLen).toFixed(2)) : 0;
             } else if (s === "VDI") {
               const isHfs = r.route_code === "HFS" || r.route_code === "ALLOY_HFS";
-              const incomingPcs = isHfs
-                ? (r.route_code === "ALLOY_HFS" ? hollowHtNetPcs : rollHtcOkPcs)
-                : htNetPcs;
+              const incomingPcs = bandSawOutPcs > 0
+                ? bandSawNetPcs
+                : (r.route_code === "SS_STEEL" || r.route_code === "CDS" || r.route_code === "ALLOY_CDS"
+                    ? htNetPcs
+                    : (r.route_code === "ALLOY_HFS" ? hollowHtNetPcs : rollHtcOkPcs));
               const effLen = isHfs ? (mhAvg > 0 ? mhAvg : tubeAvg) : tubeAvg;
               const vdiDivIn = getStageDivIn(r.work_order_id, "VDI");
               const vdiDivOut = getStageDivOut(r.work_order_id, "VDI");
@@ -849,8 +879,8 @@ export function useQueue(stage: StageCode) {
         // 1. Process existing rows from queue (e.g. Master orders and standard orders)
         for (const r of rawRows) {
           addedWoIds.add(r.work_order_id);
-          const campaign = masterCampaignMap.get(r.work_order_id);
-          const childInfo = childWoMap.get(r.work_order_id);
+          const campaign = masterCampaignMap.get(r.work_order_id) || (r.work_order_no ? masterCampaignMap.get(r.work_order_no) : null);
+          const childInfo = childWoMap.get(r.work_order_id) || (r.work_order_no ? childWoMap.get(r.work_order_no) : null);
 
           const finDivIn = getStageDivIn(r.work_order_id, "FINISHING");
           const finDivOut = getStageDivOut(r.work_order_id, "FINISHING");
@@ -1010,14 +1040,26 @@ export function useQueue(stage: StageCode) {
           rList.map((r) => {
             const k = `${r.work_order_id}_${r.stage_code}`;
             const hold = pendingHoldMap.get(k);
+            const campaign = masterCampaignMap.get(r.work_order_id) || (r.work_order_no ? masterCampaignMap.get(r.work_order_no) : null);
+            let rowObj = r;
+            if (campaign) {
+              rowObj = {
+                ...rowObj,
+                is_master: true,
+                master_plan_no: campaign.plan_no,
+                campaign_total_mtr: campaign.total_campaign_mtr,
+                campaign_total_pcs: campaign.total_campaign_pcs,
+                child_work_orders: campaign.child_work_orders,
+              };
+            }
             if (hold && (hold.pcs > 0 || hold.mtr > 0)) {
               return {
-                ...r,
+                ...rowObj,
                 pending_rejection_pcs: hold.pcs,
                 pending_rejection_mtr: hold.mtr,
               };
             }
-            return r;
+            return rowObj;
           });
         setRows(attachPendingHold(rawRows));
       }

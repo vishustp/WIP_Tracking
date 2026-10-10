@@ -7,6 +7,7 @@ import { calc, fmt, n, mtFromMtr } from '@/lib/productionUtils';
 export interface ProductionQueueRowProps {
   row: Row;
   stage: StageCode;
+  woFilter?: string;
   isAllowed: boolean;
   onUpdateRow: (
     key: string,
@@ -24,6 +25,7 @@ export interface ProductionQueueRowProps {
 export function ProductionQueueRow({
   row,
   stage,
+  woFilter,
   isAllowed,
   onUpdateRow,
   onToggleExpand,
@@ -34,7 +36,7 @@ export function ProductionQueueRow({
   const d = calc({ ...row, stage_code: stage });
   const isRollingStage = stage === 'ROLLING';
   const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
-  const hasL1L2 = stage === 'DRAW' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
+  const hasL1L2 = stage === 'DRAW' || stage === 'PILGER' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
   const stageOd = isMhStage && row.mh_od ? Number(row.mh_od) : Number(row.od || 0);
   const stageWt = isMhStage && row.mh_wt ? Number(row.mh_wt) : Number(row.wl || 0);
 
@@ -84,6 +86,54 @@ export function ProductionQueueRow({
             {row.od ? `${row.od} × ${row.wl ?? '—'} mm` : '—'} | Avg: {fmt(d.avg, 'm')}
           </span>
         </div>
+
+        {row.child_work_orders && row.child_work_orders.length > 0 && (
+          <div className="mt-1.5 pt-1 border-t border-slate-100">
+            <div className="text-[10px] font-bold uppercase text-slate-500 mb-0.5 flex items-center gap-1">
+              <span>Children ({row.child_work_orders.length}):</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1 max-w-[260px]">
+              {row.child_work_orders.map((c: any, idx: number) => {
+                const cNo = c.work_order_no || c.wo_no || c.order_no || `#${idx + 1}`;
+                const qClean = (woFilter || '').trim().toLowerCase();
+                const qNorm = qClean.replace(/[^a-z0-9]/g, '');
+                const cText = `${cNo} ${c.customer_name || ''} ${c.grade || ''}`.toLowerCase();
+                const cNorm = cText.replace(/[^a-z0-9]/g, '');
+                const isMatched =
+                  qClean.length > 0 &&
+                  (cText.includes(qClean) || (qNorm.length > 0 && cNorm.includes(qNorm)));
+
+                return (
+                  <span
+                    key={c.id || c.work_order_id || idx}
+                    className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-mono font-bold border transition-colors ${
+                      isMatched
+                        ? 'bg-amber-100 text-amber-950 border-amber-400 ring-1 ring-amber-400 font-black shadow-2xs'
+                        : 'bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                    title={`${cNo} | ${c.customer_name || 'Direct'} | ${c.grade || ''} | Planned: ${c.planned_pcs || 0} pcs / ${c.planned_mtr || 0} m`}
+                  >
+                    {isMatched && <span className="text-amber-600 font-black">★</span>}
+                    <span>{cNo}</span>
+                    {c.customer_name && (
+                      <span className="text-[9px] font-normal text-slate-500 truncate max-w-[80px]">
+                        ({c.customer_name})
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {row.is_child && (
+          <div className="mt-1 flex items-center gap-1 text-[10px] font-mono text-indigo-700 bg-indigo-50/80 px-1.5 py-0.5 rounded border border-indigo-200/60 w-fit">
+            <span className="font-bold">Child of:</span>
+            <span>{row.master_wo_no || 'Master Campaign'}</span>
+            {row.master_plan_no && <span className="text-slate-500">({row.master_plan_no})</span>}
+          </div>
+        )}
       </td>
 
       {/* Route */}

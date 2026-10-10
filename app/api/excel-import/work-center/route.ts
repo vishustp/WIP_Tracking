@@ -114,6 +114,15 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // For Cold Pilger Mill, ensure SS_STEEL route handling is active
+      if (work_center === 'PILGER' && routeCode !== 'SS_STEEL') {
+        const ssRoute = routes?.find((r) => r.route_code === 'SS_STEEL');
+        if (ssRoute) {
+          routeId = ssRoute.id;
+          routeCode = ssRoute.route_code;
+        }
+      }
+
       const bal = computeFeederBalanceForWorkOrder({
         workOrder: {
           id: wo.id,

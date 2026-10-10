@@ -53,7 +53,7 @@ export function ProductionQueueTable({
   onSave,
 }: ProductionQueueTableProps) {
   const stageLabel = STAGES.find((x) => x.code === stage)?.label || stage;
-  const hasL1L2 = stage === 'DRAW' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
+  const hasL1L2 = stage === 'DRAW' || stage === 'PILGER' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
@@ -72,7 +72,7 @@ export function ProductionQueueTable({
               type="text"
               value={woFilter}
               onChange={(e) => setWoFilter(e.target.value)}
-              placeholder="Quick filter..."
+              placeholder="Quick filter (WO, Child WO, Customer, Plan)..."
               className="h-8 w-48 sm:w-60 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 placeholder-slate-400 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
             />
             {woFilter && (
@@ -88,7 +88,7 @@ export function ProductionQueueTable({
             )}
           </div>
 
-          {(stage === 'DRAW' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW') && (
+          {(stage === 'DRAW' || stage === 'PILGER' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW') && (
             <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
               <Crown size={12} /> Master Consolidated
             </span>
@@ -170,6 +170,7 @@ export function ProductionQueueTable({
                   key={r.plan_id ? `${r.work_order_id}|${r.route_id}|${r.plan_id}` : `${r.work_order_id}|${r.route_id}`}
                   row={r}
                   stage={stage}
+                  woFilter={woFilter}
                   isAllowed={isAllowed}
                   onUpdateRow={onUpdateRow}
                   onToggleExpand={onToggleRowExpansion}
