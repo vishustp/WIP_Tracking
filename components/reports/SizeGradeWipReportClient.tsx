@@ -30,6 +30,15 @@ import {
 import { toast } from 'sonner';
 import { mtFromMtr, extractPcsFromRemarks, normalizeGrade } from '@/lib/productionUtils';
 import { reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
+import { inferRouteFromMaterialOrSpec } from '@/lib/metallurgy/processSheetSpecHelper';
+
+export const STANDARD_ROUTES: { code: string; name: string }[] = [
+  { code: 'HFS', name: 'Hot Finished Seamless' },
+  { code: 'ALLOY_HFS', name: 'Alloy Hot Finished' },
+  { code: 'CDS', name: 'Cold Drawn Seamless' },
+  { code: 'ALLOY_CDS', name: 'Alloy Cold Drawn' },
+  { code: 'SS_STEEL', name: 'Stainless Steel' },
+];
 
 type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'PILGER' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING';
 
@@ -56,10 +65,13 @@ interface SizeGradeGroup {
   htc_mtr: number;
   htc_pcs: number;
   htc_mt: number;
-  // Cold Draw
+  // Cold Draw / Pilger
   draw_mtr: number;
   draw_pcs: number;
   draw_mt: number;
+  pilger_mtr: number;
+  pilger_pcs: number;
+  pilger_mt: number;
   // Final HT
   ht_mtr: number;
   ht_pcs: number;
@@ -88,9 +100,24 @@ type Unit = 'MTRS' | 'PCS' | 'MT';
 const fmt = (n: number | null | undefined, digits = 2) =>
   n == null || isNaN(n) ? (digits > 0 ? (0).toFixed(digits) : '0') : Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
+export function getRouteBadgeClass(code?: string) {
+  const c = (code || 'HFS').toUpperCase();
+  if (c === 'SS_STEEL') {
+    return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800';
+  }
+  if (c === 'CDS' || c === 'ALLOY_CDS') {
+    return 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800';
+  }
+  if (c === 'ALLOY_HFS') {
+    return 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+  }
+  return 'bg-[var(--bg-surface-subtle,#f1f5f9)] text-[var(--text-main,#334155)] border-[var(--border-subtle,#e2e8f0)]';
+}
+
 export default function SizeGradeWipReportClient() {
   const router = useRouter();
   const [rawWipRows, setRawWipRows] = useState<any[]>([]);
+  const [allRoutes, setAllRoutes] = useState<{ id?: string; route_code: string; route_name: string }[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [unit, setUnit] = useState<Unit>('MTRS');
   const [viewMode, setViewMode] = useState<'matrix' | 'ledger'>('matrix');
@@ -228,6 +255,7 @@ export default function SizeGradeWipReportClient() {
         (routesRes.data || []).forEach((r: any) => {
           routeMap.set(r.id, { route_code: r.route_code, route_name: r.route_name });
         });
+        setAllRoutes(routesRes.data || []);
 
         const gradeMap = new Map<string, string>();
         const woRouteMap = new Map<string, { route_code?: string; route_name?: string }>();
@@ -403,8 +431,6 @@ export default function SizeGradeWipReportClient() {
           const wo = woDetailsMap.get(woId) || woDetailsMap.get(String(rows[0]?.work_order_no).trim());
           const planMh = mhMap.get(woId) || mhMap.get(String(rows[0]?.work_order_no).trim());
           const routeInfo = woRouteMap.get(woId);
-          const routeCode = (rows[0]?.route_code || routeInfo?.route_code || (rows[0]?.route_id ? routeMap.get(rows[0]?.route_id)?.route_code : '') || 'HFS').toUpperCase();
-          const routeName = rows[0]?.route_name || routeInfo?.route_name || (rows[0]?.route_id ? routeMap.get(rows[0]?.route_id)?.route_name : '') || routeCode;
 
           const rollingDate = rollingDateMap.get(woId) || null;
           const resolvedGrade =
@@ -415,6 +441,25 @@ export default function SizeGradeWipReportClient() {
             rows[0]?.grade ||
             rows[0]?.specification ||
             'Standard';
+
+          const hasPilgerStage = rows.some((r: any) => (r.stage_code || '').toUpperCase() === 'PILGER') || (woPieceLedger.get(woId)?.pilgerPcs || 0) > 0;
+          const inferredRoute = inferRouteFromMaterialOrSpec(wo?.material_code || '', wo?.specification || '', resolvedGrade);
+
+          let routeCode = (rows[0]?.route_code || routeInfo?.route_code || (rows[0]?.route_id ? routeMap.get(rows[0]?.route_id)?.route_code : '') || '').toUpperCase();
+          let routeName = rows[0]?.route_name || routeInfo?.route_name || (rows[0]?.route_id ? routeMap.get(rows[0]?.route_id)?.route_name : '');
+
+          if (!routeCode || routeCode === 'HFS') {
+            if (hasPilgerStage || inferredRoute.route_code === 'SS_STEEL') {
+              routeCode = 'SS_STEEL';
+              routeName = 'Stainless Steel';
+            } else if (inferredRoute.route_code && inferredRoute.route_code !== 'HFS') {
+              routeCode = inferredRoute.route_code;
+              routeName = inferredRoute.route_name;
+            } else {
+              routeCode = 'HFS';
+              routeName = 'Hot Finished Seamless';
+            }
+          }
 
           const rollStage = rows.find((r: any) => (r.stage_code || '').toUpperCase() === 'ROLLING');
           const rollLedger = woPieceLedger.get(woId);
@@ -441,6 +486,7 @@ export default function SizeGradeWipReportClient() {
             },
             finishingStageId,
             stageCodeById,
+            routeCode,
           });
 
           for (const recStage of summary.stages) {
@@ -501,16 +547,20 @@ export default function SizeGradeWipReportClient() {
     loadData();
   }, [loadData]);
 
-  // Extract unique process routes
+  // Extract unique process routes (ensuring SS_STEEL, CDS, HFS are always visible)
   const uniqueRoutes = useMemo(() => {
     const map = new Map<string, string>();
+    STANDARD_ROUTES.forEach((r) => map.set(r.code, r.name));
+    allRoutes.forEach((r) => {
+      if (r.route_code) map.set(r.route_code, r.route_name || r.route_code);
+    });
     rawWipRows.forEach((r) => {
       const code = r.route_code || 'HFS';
-      const name = r.route_name || code;
+      const name = r.route_name || map.get(code) || code;
       map.set(code, name);
     });
     return Array.from(map.entries()).map(([code, name]) => ({ code, name }));
-  }, [rawWipRows]);
+  }, [allRoutes, rawWipRows]);
 
   // Extract unique material grades
   const uniqueGrades = useMemo(() => {
@@ -583,6 +633,9 @@ export default function SizeGradeWipReportClient() {
           draw_mtr: 0,
           draw_pcs: 0,
           draw_mt: 0,
+          pilger_mtr: 0,
+          pilger_pcs: 0,
+          pilger_mt: 0,
           ht_mtr: 0,
           ht_pcs: 0,
           ht_mt: 0,
@@ -614,7 +667,14 @@ export default function SizeGradeWipReportClient() {
         group.htc_mtr += mtr;
         group.htc_pcs += pcs;
         group.htc_mt += mt;
-      } else if (stage === 'DRAW' || stage === 'PILGER') {
+      } else if (stage === 'PILGER') {
+        group.pilger_mtr += mtr;
+        group.pilger_pcs += pcs;
+        group.pilger_mt += mt;
+        group.draw_mtr += mtr;
+        group.draw_pcs += pcs;
+        group.draw_mt += mt;
+      } else if (stage === 'DRAW') {
         group.draw_mtr += mtr;
         group.draw_pcs += pcs;
         group.draw_mt += mt;
@@ -984,7 +1044,9 @@ export default function SizeGradeWipReportClient() {
         {/* 4. Cold Draw */}
         <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
           <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
-            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Cold Draw / Pilger</span>
+            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">
+              {selectedRoute === 'SS_STEEL' ? 'Cold Pilger Mill' : selectedRoute === 'CDS' || selectedRoute === 'ALLOY_CDS' ? 'Cold Draw Bench' : 'Cold Draw / Pilger'}
+            </span>
             <TrendingUp className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
           </div>
           <div className="mt-2 space-y-1 font-mono text-[11px]">
@@ -1126,7 +1188,7 @@ export default function SizeGradeWipReportClient() {
               onChange={(e) => setSelectedRoute(e.target.value)}
               className="text-xs h-8 font-medium"
             >
-              <option value="ALL">All Routes (HFS/CDS...)</option>
+              <option value="ALL">All Routes (HFS / CDS / SS...)</option>
               {uniqueRoutes.map((r) => (
                 <option key={r.code} value={r.code}>
                   {r.code} {r.name && r.name !== r.code ? `(${r.name})` : ''}
@@ -1297,7 +1359,7 @@ export default function SizeGradeWipReportClient() {
                     Hollow HT (HTC)
                   </th>
                   <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
-                    Cold Draw / Pilger
+                    {selectedRoute === 'SS_STEEL' ? 'Cold Pilger Mill' : selectedRoute === 'CDS' || selectedRoute === 'ALLOY_CDS' ? 'Cold Draw Bench' : 'Cold Draw / Pilger'}
                   </th>
                   <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
                     Final Heat Treatment
@@ -1468,7 +1530,7 @@ export default function SizeGradeWipReportClient() {
                                             {c.customer_name || 'Generic Customer'}
                                           </td>
                                           <td className="py-1.5 px-2">
-                                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-[var(--bg-surface-subtle,#f1f5f9)] text-[var(--text-main,#334155)] border border-[var(--border-subtle,#e2e8f0)] font-mono">
+                                            <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium border font-mono ${getRouteBadgeClass(c.route_code)}`}>
                                               {c.route_code || 'HFS'}
                                             </span>
                                           </td>
@@ -1580,7 +1642,7 @@ export default function SizeGradeWipReportClient() {
                         {r.customer_name || 'Generic Customer'}
                       </td>
                       <td className="py-2.5 px-3">
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--bg-surface-subtle,#f1f5f9)] text-[var(--text-main,#334155)] border border-[var(--border-subtle,#e2e8f0)] font-mono">
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border font-mono ${getRouteBadgeClass(r.route_code)}`}>
                           {r.route_code || 'HFS'}
                         </span>
                       </td>

@@ -88,6 +88,7 @@ export interface PrepareCampaignWipParams {
   hierarchyMaps: CampaignHierarchyMaps;
   finishingStageId?: string;
   stageCodeById?: Map<string, string>;
+  routeCode?: string;
 }
 
 export interface PreparedCampaignWipResult {
@@ -110,7 +111,8 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
   const { campaignMembersMap, childToMasterMap, mhMap } = hierarchyMaps;
 
   const planMh = mhMap.get(woId) || mhMap.get(String(wo?.work_order_no).trim());
-  const routeCode = rows[0]?.route_code || 'CDS';
+  const hasPilger = rows.some((r) => (r.stage_code || '').toUpperCase() === 'PILGER');
+  const routeCode = (params.routeCode || rows[0]?.route_code || (hasPilger ? 'SS_STEEL' : 'CDS')).toUpperCase();
 
   // Direct production logs per stage for this work order
   const directStageLogsMap = new Map<string, { mtr: number; pcs: number; rejMtr: number; rejPcs: number }>();
