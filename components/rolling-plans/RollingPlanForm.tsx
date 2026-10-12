@@ -351,6 +351,56 @@ function computeGroupSpecs(
   };
 }
 
+function inferBestRoute(wo: WO, routes: Route[], explicitRouteId?: string): Route | undefined {
+  if (explicitRouteId) {
+    const found = routes.find((r) => r.id === explicitRouteId);
+    if (found) return found;
+  }
+  const specText = `${wo.specification || ''} ${wo.grade || ''}`.toUpperCase();
+  const isSs =
+    specText.includes('STAINLESS') ||
+    specText.includes('A312') ||
+    specText.includes('TP304') ||
+    specText.includes('TP316') ||
+    specText.includes('304L') ||
+    specText.includes('316L') ||
+    (wo.grade || '').toUpperCase().startsWith('SS');
+
+  if (isSs) {
+    const ssRoute = routes.find((r) => r.route_code === 'SS_STEEL');
+    if (ssRoute) return ssRoute;
+  }
+
+  const isAlloy =
+    specText.includes('ALLOY') ||
+    specText.includes('T11') ||
+    specText.includes('T22') ||
+    specText.includes('P11') ||
+    specText.includes('P22');
+  const isCds =
+    specText.includes('CDS') ||
+    specText.includes('2391') ||
+    specText.includes('10305') ||
+    specText.includes('ST 52');
+
+  if (isAlloy) {
+    const alRoute = routes.find((r) => r.route_code === (isCds ? 'ALLOY_CDS' : 'ALLOY_HFS'));
+    if (alRoute) return alRoute;
+  }
+
+  if (isCds) {
+    const cdsRoute = routes.find((r) => r.route_code === 'CDS');
+    if (cdsRoute) return cdsRoute;
+  }
+
+  if (wo.grade?.toUpperCase().includes('HFS')) {
+    const hfsRoute = routes.find((r) => r.route_code === 'HFS');
+    if (hfsRoute) return hfsRoute;
+  }
+
+  return routes[0];
+}
+
 function createDefaultGroup(
   wo: WO,
   availMtr: number,
@@ -370,7 +420,19 @@ function createDefaultGroup(
   const specText = `${wo.specification || ''} ${wo.grade || ''}`.toUpperCase();
   const autoIbr = specText.includes('IBR') ? 'IBR' : 'NIBR';
 
-  const catgFromRoute = defaultRoute?.material_category || (wo.grade?.toUpperCase().includes('HFS') ? 'HFS' : 'CDS');
+  const isSs =
+    defaultRoute?.route_code === 'SS_STEEL' ||
+    specText.includes('STAINLESS') ||
+    specText.includes('A312') ||
+    specText.includes('TP304') ||
+    specText.includes('TP316') ||
+    specText.includes('304L') ||
+    specText.includes('316L') ||
+    (wo.grade || '').toUpperCase().startsWith('SS');
+
+  const catgFromRoute = isSs
+    ? 'SS'
+    : defaultRoute?.material_category || (wo.grade?.toUpperCase().includes('HFS') ? 'HFS' : 'CDS');
 
   return {
     id: `grp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -835,6 +897,14 @@ export default function RollingPlanForm() {
 
         if (b?.error) throw new Error(b.error.message);
         const routeList = (b?.data ?? []) as Route[];
+        if (!routeList.some((r) => r.route_code === 'SS_STEEL')) {
+          routeList.push({
+            id: 'e6b388ca-487b-445b-b949-f652366f2324',
+            route_code: 'SS_STEEL',
+            route_name: 'Stainless Steel',
+            material_category: 'Stainless Steel',
+          });
+        }
         setRoutes(routeList);
         if (routeList.length > 0) {
           setRoute((prev) => prev || routeList[0].id);
@@ -849,7 +919,8 @@ export default function RollingPlanForm() {
           const match = woList.find((x) => x.id === initialWoId);
           if (match) {
             const availMtr = await fetchUnplannedQty(match.id);
-            setGroups([createDefaultGroup(match, availMtr, routeList[0]?.id || '', routeList[0])]);
+            const rObj = inferBestRoute(match, routeList) || routeList[0];
+            setGroups([createDefaultGroup(match, availMtr, rObj?.id || '', rObj)]);
           }
         }
       })
@@ -881,8 +952,8 @@ export default function RollingPlanForm() {
     if (!targetWo) return;
 
     const availMtr = await fetchUnplannedQty(woId);
-    const rObj = routes.find((r) => r.id === (route || routes[0]?.id));
-    const newGrp = createDefaultGroup(targetWo, availMtr, route || routes[0]?.id || '', rObj);
+    const rObj = inferBestRoute(targetWo, routes, route) || routes.find((r) => r.id === (route || routes[0]?.id)) || routes[0];
+    const newGrp = createDefaultGroup(targetWo, availMtr, rObj?.id || '', rObj);
     setGroups((prev) => [...prev, newGrp]);
     setAddWoSelectValue('');
     toast.success(`Added ${targetWo.work_order_no} as Setup #${groups.length + 1}.`);
@@ -903,11 +974,11 @@ export default function RollingPlanForm() {
       return;
     }
 
-    const rObj = routes.find((r) => r.id === (route || routes[0]?.id));
     const newGroups: WorkOrderGroup[] = [];
     for (const targetWo of toAdd) {
       const availMtr = await fetchUnplannedQty(targetWo.id);
-      newGroups.push(createDefaultGroup(targetWo, availMtr, route || routes[0]?.id || '', rObj));
+      const rObj = inferBestRoute(targetWo, routes, route) || routes.find((r) => r.id === (route || routes[0]?.id)) || routes[0];
+      newGroups.push(createDefaultGroup(targetWo, availMtr, rObj?.id || '', rObj));
     }
 
     setGroups((prev) => [...prev, ...newGroups]);

@@ -348,7 +348,15 @@ export default function RollingPlanIssueReportClient() {
       setPlans(enrichedPlans);
 
       if (routesRes.data) {
-        setRoutes(routesRes.data);
+        const rList = [...(routesRes.data || [])];
+        if (!rList.some((r) => r.route_code === 'SS_STEEL')) {
+          rList.push({
+            id: 'e6b388ca-487b-445b-b949-f652366f2324',
+            route_code: 'SS_STEEL',
+            route_name: 'Stainless Steel',
+          });
+        }
+        setRoutes(rList);
       }
     } catch (err: any) {
       toast.error(err?.message || 'Failed to load rolling plans.');
