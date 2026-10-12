@@ -529,3 +529,66 @@ export function filterAgingRows(
     return true;
   });
 }
+
+/**
+ * Normalizes raw rows returned by vw_wip_aging (handling differences across migrations,
+ * such as aging_status vs severity and effective_reference_date vs last_activity_date).
+ */
+export function normalizeAgingRow(
+  raw: any,
+  localAcks: RawAcknowledgement[] = [],
+  todayStr: string = new Date().toISOString().slice(0, 10)
+): AgingRow {
+  const daysStuck = Number(raw.days_stuck) || 0;
+
+  // Strict domain rule: > 5 days is CRITICAL, 3-5 days is WARNING, <= 2 days is NORMAL
+  const severity: AgingSeverity = calculateAgingSeverity(daysStuck);
+
+  const lastActivityDate =
+    raw.last_activity_date ||
+    raw.effective_reference_date ||
+    raw.stage_last_log_date ||
+    raw.upstream_last_log_date ||
+    raw.rolling_plan_date ||
+    raw.wo_created_date ||
+    '—';
+
+  const matchLocal = localAcks.find(
+    (a) => a.work_order_id === raw.work_order_id && a.stage_code === raw.stage_code
+  );
+
+  const isLocalAckActive = Boolean(
+    matchLocal && (!matchLocal.snooze_until || matchLocal.snooze_until >= todayStr)
+  );
+
+  const isDbAckActive = Boolean(
+    raw.is_acknowledged && (!raw.ack_snooze_until || raw.ack_snooze_until >= todayStr)
+  );
+
+  const isAcknowledged = isLocalAckActive || isDbAckActive;
+
+  return {
+    work_order_id: String(raw.work_order_id || ''),
+    work_order_no: String(raw.work_order_no || ''),
+    customer_name: raw.customer_name || null,
+    grade: raw.grade || null,
+    od: Number(raw.od ?? raw.size_od) || 0,
+    wt: Number(raw.wt ?? raw.size_wt) || 0,
+    l1: raw.l1 != null ? Number(raw.l1) : null,
+    l2: raw.l2 != null ? Number(raw.l2) : null,
+    stage_id: raw.stage_id ? String(raw.stage_id) : undefined,
+    stage_code: String(raw.stage_code || ''),
+    stage_name: String(raw.stage_name || raw.stage_code || ''),
+    sequence_no: raw.sequence_no != null ? Number(raw.sequence_no) : undefined,
+    current_wip: Number(raw.current_wip) || 0,
+    current_wip_pcs: Number(raw.current_wip_pcs) || 0,
+    available_mt: Number(raw.available_mt ?? raw.current_wip_mt) || 0,
+    last_activity_date: lastActivityDate,
+    days_stuck: daysStuck,
+    severity,
+    is_acknowledged: isAcknowledged,
+    acknowledged_by: matchLocal?.acknowledged_by || raw.acknowledged_by || null,
+    ack_notes: matchLocal?.notes || raw.ack_notes || null,
+    ack_snooze_until: matchLocal?.snooze_until || raw.ack_snooze_until || null,
+  };
+}

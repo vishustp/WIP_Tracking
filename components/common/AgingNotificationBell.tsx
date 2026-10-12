@@ -24,6 +24,7 @@ import {
   type RawRouteStage,
   type RawAcknowledgement,
   computeAgingReportRows,
+  normalizeAgingRow,
 } from '@/lib/reports/agingReportHelper';
 
 export type AgingAlert = AgingRow;
@@ -80,21 +81,9 @@ export default function AgingNotificationBell({
         .order('days_stuck', { ascending: false });
 
       if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
-        const rowsWithLocalAck: AgingAlert[] = viewData.map((r: any) => {
-          const matchLocal = localAcks.find(
-            (a) => a.work_order_id === r.work_order_id && a.stage_code === r.stage_code
-          );
-          if (matchLocal && (!matchLocal.snooze_until || matchLocal.snooze_until >= new Date().toISOString().slice(0, 10))) {
-            return {
-              ...r,
-              is_acknowledged: true,
-              acknowledged_by: matchLocal.acknowledged_by || r.acknowledged_by,
-              ack_notes: matchLocal.notes || r.ack_notes,
-              ack_snooze_until: matchLocal.snooze_until || r.ack_snooze_until,
-            };
-          }
-          return r as AgingAlert;
-        });
+        const rowsWithLocalAck: AgingAlert[] = viewData.map((r: any) =>
+          normalizeAgingRow(r, localAcks)
+        );
 
         setAlerts(rowsWithLocalAck.filter((a) => a.current_wip > 0));
         setLoading(false);
@@ -248,9 +237,9 @@ export default function AgingNotificationBell({
         className={`relative flex h-9 w-9 items-center justify-center rounded-full border transition cursor-pointer focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 ${
           totalCount > 0
             ? criticalCount > 0
-              ? 'border-red-300 bg-red-50/80 text-red-600 hover:bg-red-100 hover:border-red-400'
-              : 'border-amber-300 bg-amber-50/80 text-amber-600 hover:bg-amber-100 hover:border-amber-400'
-            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 shadow-2xs'
+              ? 'border-red-300 dark:border-red-800 bg-red-50/80 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 hover:border-red-400'
+              : 'border-amber-300 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 hover:border-amber-400'
+            : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 shadow-2xs'
         }`}
       >
         <Bell className="h-4 w-4" />
@@ -275,21 +264,23 @@ export default function AgingNotificationBell({
 
       {/* Popover Dropdown Drawer */}
       {open && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border border-slate-200 bg-white shadow-2xl z-50 animate-in fade-in zoom-in-95 text-xs overflow-hidden">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl z-50 animate-in fade-in zoom-in-95 text-xs overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/60 px-4 py-3">
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-900 text-sm">WIP Stagnation Alerts</span>
+                <span className="font-bold text-slate-900 dark:text-slate-100 text-sm">WIP Stagnation Alerts</span>
                 {totalCount > 0 && (
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold font-mono ${
-                    criticalCount > 0 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                    criticalCount > 0
+                      ? 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300'
+                      : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
                   }`}>
                     {totalCount} Active
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                 {isPlantWide
                   ? 'All Plant Work Centers'
                   : `Assigned Department: ${currentUser?.work_center || 'Shop Floor'}`}
@@ -301,26 +292,26 @@ export default function AgingNotificationBell({
               onClick={loadAlerts}
               disabled={loading}
               title="Refresh alerts"
-              className="rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              className="rounded p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
             </button>
           </div>
 
           {/* Alert List */}
-          <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100">
+          <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
             {loading && alerts.length === 0 ? (
-              <div className="flex items-center justify-center py-8 text-slate-400 gap-2">
+              <div className="flex items-center justify-center py-8 text-slate-400 dark:text-slate-500 gap-2">
                 <RefreshCw className="h-4 w-4 animate-spin" />
                 <span>Checking work centers...</span>
               </div>
             ) : filteredAlerts.length === 0 ? (
               <div className="py-8 text-center px-4">
-                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 mb-2">
+                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 mb-2">
                   <CheckCircle className="h-5 w-5" />
                 </div>
-                <div className="font-semibold text-slate-800">All Material Moving Smoothly</div>
-                <p className="text-[11px] text-slate-500 mt-1 max-w-[240px] mx-auto">
+                <div className="font-semibold text-slate-800 dark:text-slate-200">All Material Moving Smoothly</div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-[240px] mx-auto">
                   No lots have exceeded dwell time thresholds at {isPlantWide ? 'any station' : 'your work center'}.
                 </p>
               </div>
@@ -333,8 +324,8 @@ export default function AgingNotificationBell({
                 return (
                   <div
                     key={key}
-                    className={`p-3 transition hover:bg-slate-50/80 ${
-                      isCrit ? 'bg-red-50/25' : 'bg-amber-50/15'
+                    className={`p-3 transition hover:bg-slate-50/80 dark:hover:bg-slate-800/50 ${
+                      isCrit ? 'bg-red-50/25 dark:bg-red-950/20' : 'bg-amber-50/15 dark:bg-amber-950/15'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -343,33 +334,33 @@ export default function AgingNotificationBell({
                           <button
                             type="button"
                             onClick={() => navigateToTracking(alert.work_order_no)}
-                            className="font-bold text-slate-900 hover:text-[#0078d4] font-mono flex items-center gap-1 group"
+                            className="font-bold text-slate-900 dark:text-slate-100 hover:text-[#0078d4] dark:hover:text-blue-400 font-mono flex items-center gap-1 group"
                           >
                             <span>{alert.work_order_no}</span>
-                            <ExternalLink className="h-3 w-3 text-slate-400 group-hover:text-[#0078d4]" />
+                            <ExternalLink className="h-3 w-3 text-slate-400 group-hover:text-[#0078d4] dark:group-hover:text-blue-400" />
                           </button>
                           <span
                             className={`rounded px-1.5 py-0.5 text-[10px] font-black uppercase font-mono ${
                               isCrit
-                                ? 'bg-red-100 text-red-700 border border-red-200'
-                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                ? 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+                                : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
                             }`}
                           >
                             {alert.days_stuck} Days Stuck
                           </span>
                         </div>
 
-                        <div className="text-[11px] text-slate-600 truncate mt-0.5">
+                        <div className="text-[11px] text-slate-600 dark:text-slate-300 truncate mt-0.5">
                           {alert.customer_name || 'Generic Customer'} · {alert.od}×{alert.wt} mm ({alert.grade})
                         </div>
 
-                        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-500">
-                          <span className="flex items-center gap-1 font-semibold text-slate-700">
-                            <Factory className="h-3 w-3 text-slate-400" />
+                        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                          <span className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
+                            <Factory className="h-3 w-3 text-slate-400 dark:text-slate-500" />
                             {alert.stage_name}
                           </span>
                           <span>•</span>
-                          <span className="font-mono font-bold text-slate-800">
+                          <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
                             {Number(alert.current_wip).toLocaleString()} Mtrs
                           </span>
                           <span>({Number(alert.current_wip_pcs).toFixed(0)} pcs)</span>
@@ -378,8 +369,8 @@ export default function AgingNotificationBell({
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-slate-100/80 pt-2">
-                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                    <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-slate-100/80 dark:border-slate-800 pt-2">
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1">
                         <Clock className="h-3 w-3" />
                         Since {alert.last_activity_date}
                       </span>
@@ -389,9 +380,9 @@ export default function AgingNotificationBell({
                           type="button"
                           onClick={() => acknowledgeAlert(alert)}
                           disabled={isAcking}
-                          className="rounded bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 text-[11px] font-medium transition flex items-center gap-1 cursor-pointer"
+                          className="rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 text-[11px] font-medium transition flex items-center gap-1 cursor-pointer border border-slate-200 dark:border-slate-700"
                         >
-                          <CheckCircle className="h-3 w-3 text-slate-500" />
+                          <CheckCircle className="h-3 w-3 text-slate-500 dark:text-slate-400" />
                           <span>{isAcking ? 'Snoozing...' : 'Acknowledge'}</span>
                         </button>
                         <button
@@ -411,11 +402,11 @@ export default function AgingNotificationBell({
           </div>
 
           {/* Footer Navigation to Full Report */}
-          <div className="border-t border-slate-100 bg-slate-50 p-2 text-center">
+          <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 p-2 text-center">
             <button
               type="button"
               onClick={navigateToAgingReport}
-              className="w-full rounded-md py-1.5 text-xs font-semibold text-[#0078d4] hover:bg-blue-50/80 hover:text-[#106ebe] transition flex items-center justify-center gap-1.5 cursor-pointer"
+              className="w-full rounded-md py-1.5 text-xs font-semibold text-[#0078d4] dark:text-blue-400 hover:bg-blue-50/80 dark:hover:bg-blue-950/40 hover:text-[#106ebe] dark:hover:text-blue-300 transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <span>View Full WIP Aging & Bottlenecks Report</span>
               <ChevronRight className="h-3.5 w-3.5" />

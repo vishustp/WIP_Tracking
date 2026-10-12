@@ -6,6 +6,7 @@ import {
   computeAgingReportRows,
   computeAgingKpis,
   filterAgingRows,
+  normalizeAgingRow,
   AGING_STAGES,
   type RawWipRow,
   type RawProductionLog,
@@ -595,6 +596,95 @@ describe('WIP Aging & Bottlenecks Calculation Engine', () => {
       expect(stageCodes).toContain('DRAW');
       expect(stageCodes).toContain('HEAT_TREATMENT');
       expect(stageCodes).toContain('FINISHING');
+    });
+  });
+
+  describe('normalizeAgingRow', () => {
+    it('correctly maps legacy view with aging_status and effective_reference_date', () => {
+      const rawRow = {
+        work_order_id: 'wo-101',
+        work_order_no: '6349',
+        customer_name: 'BHEL Trichy',
+        grade: 'SA210A1',
+        od: 60.3,
+        wt: 4.5,
+        stage_code: 'BAND_SAW',
+        stage_name: 'Band Saw Cutting',
+        current_wip: 1200,
+        current_wip_pcs: 200,
+        available_mt: 3.2,
+        effective_reference_date: '2026-10-01',
+        days_stuck: 11,
+        aging_status: 'CRITICAL',
+      };
+
+      const normalized = normalizeAgingRow(rawRow);
+      expect(normalized.severity).toBe('CRITICAL');
+      expect(normalized.last_activity_date).toBe('2026-10-01');
+      expect(normalized.days_stuck).toBe(11);
+      expect(normalized.is_acknowledged).toBe(false);
+    });
+
+    it('enforces CRITICAL severity when days_stuck > 5 even if view returned undefined severity', () => {
+      const rawRow = {
+        work_order_id: 'wo-102',
+        work_order_no: '6350',
+        stage_code: 'DRAW',
+        days_stuck: 8,
+        // no severity and no aging_status field!
+      };
+
+      const normalized = normalizeAgingRow(rawRow);
+      expect(normalized.severity).toBe('CRITICAL');
+    });
+
+    it('enforces WARNING severity when days_stuck is 3 to 5', () => {
+      const rawRow = {
+        work_order_id: 'wo-103',
+        work_order_no: '6351',
+        stage_code: 'HEAT_TREATMENT',
+        days_stuck: 4,
+      };
+
+      const normalized = normalizeAgingRow(rawRow);
+      expect(normalized.severity).toBe('WARNING');
+    });
+
+    it('enforces NORMAL severity when days_stuck <= 2', () => {
+      const rawRow = {
+        work_order_id: 'wo-104',
+        work_order_no: '6352',
+        stage_code: 'VDI',
+        days_stuck: 1,
+      };
+
+      const normalized = normalizeAgingRow(rawRow);
+      expect(normalized.severity).toBe('NORMAL');
+    });
+
+    it('merges active local acknowledgements properly', () => {
+      const rawRow = {
+        work_order_id: 'wo-105',
+        work_order_no: '6353',
+        stage_code: 'FINISHING',
+        days_stuck: 15,
+        is_acknowledged: false,
+      };
+
+      const localAcks = [
+        {
+          work_order_id: 'wo-105',
+          stage_code: 'FINISHING',
+          acknowledged_by: 'Shift Incharge',
+          notes: 'Waiting for strapping seals',
+          snooze_until: '2026-10-20',
+        },
+      ];
+
+      const normalized = normalizeAgingRow(rawRow, localAcks, '2026-10-12');
+      expect(normalized.is_acknowledged).toBe(true);
+      expect(normalized.acknowledged_by).toBe('Shift Incharge');
+      expect(normalized.ack_notes).toBe('Waiting for strapping seals');
     });
   });
 });

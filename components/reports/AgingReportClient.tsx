@@ -34,6 +34,7 @@ import {
   computeAgingReportRows,
   computeAgingKpis,
   filterAgingRows,
+  normalizeAgingRow,
 } from '@/lib/reports/agingReportHelper';
 
 const fmt = (n: number | null | undefined, digits = 2) =>
@@ -80,24 +81,12 @@ export default function AgingReportClient() {
         .order('days_stuck', { ascending: false });
 
       if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
-        // Merge with local acknowledgements if any
-        const rowsWithLocalAck: AgingRow[] = viewData.map((r: any) => {
-          const matchLocal = localAcks.find(
-            (a) => a.work_order_id === r.work_order_id && a.stage_code === r.stage_code
-          );
-          if (matchLocal && (!matchLocal.snooze_until || matchLocal.snooze_until >= new Date().toISOString().slice(0, 10))) {
-            return {
-              ...r,
-              is_acknowledged: true,
-              acknowledged_by: matchLocal.acknowledged_by || r.acknowledged_by,
-              ack_notes: matchLocal.notes || r.ack_notes,
-              ack_snooze_until: matchLocal.snooze_until || r.ack_snooze_until,
-            };
-          }
-          return r as AgingRow;
-        });
+        // Robust normalization merging database columns & local acknowledgements
+        const normalizedRows: AgingRow[] = viewData.map((r: any) =>
+          normalizeAgingRow(r, localAcks)
+        );
 
-        setRows(rowsWithLocalAck);
+        setRows(normalizedRows);
         setLoading(false);
         return;
       }
@@ -249,18 +238,18 @@ export default function AgingReportClient() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-              <Clock className="h-6 w-6 text-[#0078d4]" />
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Clock className="h-6 w-6 text-[#0078d4] dark:text-blue-400" />
               WIP Aging & Bottlenecks Analysis
             </h1>
-            <span className="rounded-md bg-blue-50 border border-blue-200 px-2.5 py-0.5 text-xs font-bold text-[#0078d4] font-mono">
+            <span className="rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 px-2.5 py-0.5 text-xs font-bold text-[#0078d4] dark:text-blue-400 font-mono">
               {filteredRows.length} Lots
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Real-time material stagnation tracking across plant work centers. Alerts highlight lots exceeding dwell time thresholds.
           </p>
         </div>
@@ -271,7 +260,7 @@ export default function AgingReportClient() {
             variant="outline"
             onClick={loadData}
             disabled={loading}
-            className="text-xs h-9 border-slate-300"
+            className="text-xs h-9 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin text-blue-600' : ''}`} />
             Refresh
@@ -291,69 +280,69 @@ export default function AgingReportClient() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
         {/* Critical Stagnation Card */}
-        <div className="rounded-lg border border-red-200 bg-red-50/40 p-3.5 shadow-2xs">
+        <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50/40 dark:bg-red-950/20 p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-red-900 uppercase tracking-wider">Critical Stagnant (&gt;5 Days)</span>
-            <AlertTriangle className="h-4 w-4 text-red-600" />
+            <span className="text-xs font-bold text-red-900 dark:text-red-200 uppercase tracking-wider">Critical Stagnant (&gt;5 Days)</span>
+            <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-red-700 font-mono tracking-tight">{kpis.criticalLots}</span>
-            <span className="text-xs text-red-600 font-medium">Lots</span>
+            <span className="text-2xl font-black text-red-700 dark:text-red-400 font-mono tracking-tight">{kpis.criticalLots}</span>
+            <span className="text-xs text-red-600 dark:text-red-400 font-medium">Lots</span>
           </div>
-          <div className="mt-1 text-xs text-red-800 font-mono">
+          <div className="mt-1 text-xs text-red-800 dark:text-red-300 font-mono">
             {fmt(kpis.criticalMtr)} Mtrs ({fmt(kpis.criticalMt, 2)} MT)
           </div>
         </div>
 
         {/* Warning Attention Card */}
-        <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3.5 shadow-2xs">
+        <div className="rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">Attention (3–5 Days)</span>
-            <Clock className="h-4 w-4 text-amber-600" />
+            <span className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider">Attention (3–5 Days)</span>
+            <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-amber-700 font-mono tracking-tight">{kpis.warningLots}</span>
-            <span className="text-xs text-amber-600 font-medium">Lots</span>
+            <span className="text-2xl font-black text-amber-700 dark:text-amber-400 font-mono tracking-tight">{kpis.warningLots}</span>
+            <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Lots</span>
           </div>
-          <div className="mt-1 text-xs text-amber-800 font-medium">
+          <div className="mt-1 text-xs text-amber-800 dark:text-amber-300 font-medium">
             Approaching stagnation limit
           </div>
         </div>
 
         {/* Primary Bottleneck Work Center */}
-        <div className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-2xs">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Primary Bottleneck</span>
-            <Factory className="h-4 w-4 text-[#0078d4]" />
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Primary Bottleneck</span>
+            <Factory className="h-4 w-4 text-[#0078d4] dark:text-blue-400" />
           </div>
           <div className="mt-2">
-            <span className="text-sm font-black text-slate-900 truncate block">
+            <span className="text-sm font-black text-slate-900 dark:text-slate-100 truncate block">
               {kpis.topBottleneck}
             </span>
           </div>
-          <div className="mt-1 text-xs text-slate-500">
+          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Work center with most stalled lots
           </div>
         </div>
 
         {/* Average Factory Dwell Time */}
-        <div className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-2xs">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3.5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Avg Plant Dwell Time</span>
-            <TrendingUp className="h-4 w-4 text-slate-500" />
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Avg Plant Dwell Time</span>
+            <TrendingUp className="h-4 w-4 text-slate-500 dark:text-slate-400" />
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{fmt(kpis.avgDays, 1)}</span>
-            <span className="text-xs text-slate-600 font-medium">Days / Station</span>
+            <span className="text-2xl font-black text-slate-900 dark:text-slate-100 font-mono tracking-tight">{fmt(kpis.avgDays, 1)}</span>
+            <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Days / Station</span>
           </div>
-          <div className="mt-1 text-xs text-slate-500 font-mono">
+          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-mono">
             Total WIP: {fmt(kpis.totalWipMtr)} m ({fmt(kpis.totalWipMt, 1)} MT)
           </div>
         </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs">
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-2xs">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {/* Search */}
           <div className="relative">
@@ -363,7 +352,7 @@ export default function AgingReportClient() {
               placeholder="Search WO, customer, grade, size (e.g. 60.3)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 text-xs h-9"
+              className="pl-9 text-xs h-9 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100"
             />
           </div>
 
@@ -372,7 +361,7 @@ export default function AgingReportClient() {
             <Select
               value={selectedStage}
               onChange={(e) => setSelectedStage(e.target.value)}
-              className="text-xs h-9"
+              className="text-xs h-9 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100"
             >
               {AGING_STAGES.map((s) => (
                 <option key={s.code} value={s.code}>
@@ -387,7 +376,7 @@ export default function AgingReportClient() {
             <Select
               value={selectedSeverity}
               onChange={(e) => setSelectedSeverity(e.target.value)}
-              className="text-xs h-9 font-semibold"
+              className="text-xs h-9 font-semibold bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100"
             >
               <option value="ALL">All Severity Tiers</option>
               <option value="CRITICAL">Critical Stagnant (&gt; 5 Days)</option>
@@ -399,10 +388,10 @@ export default function AgingReportClient() {
       </div>
 
       {/* Main Table */}
-      <div className="rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
+      <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs overflow-hidden">
         <div className="overflow-auto max-h-[70vh] relative">
           <table className="w-full text-left text-xs border-collapse">
-            <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
+            <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider text-[11px] shadow-2xs">
               <tr>
                 <th className="py-2.5 px-3">Work Order</th>
                 <th className="py-2.5 px-3">Customer</th>
@@ -416,20 +405,20 @@ export default function AgingReportClient() {
                 <th className="py-2.5 px-3 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                     Calculating station dwell times and physical WIP aging...
                   </td>
                 </tr>
               ) : paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-                    <div className="font-semibold text-slate-700">No stagnant material found</div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">
+                    <div className="font-semibold text-slate-700 dark:text-slate-300">No stagnant material found</div>
+                    <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
                       All physical work orders are within normal inter-stage production cycles.
                     </div>
                   </td>
@@ -444,63 +433,63 @@ export default function AgingReportClient() {
                   return (
                     <tr
                       key={key}
-                      className={`transition hover:bg-blue-50/30 ${
-                        isCrit ? 'bg-red-50/15' : isWarn ? 'bg-amber-50/10' : ''
+                      className={`transition hover:bg-blue-50/30 dark:hover:bg-slate-800/50 ${
+                        isCrit ? 'bg-red-50/15 dark:bg-red-950/20' : isWarn ? 'bg-amber-50/10 dark:bg-amber-950/15' : ''
                       }`}
                     >
                       {/* WO */}
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900 dark:text-slate-100">
                         <button
                           type="button"
                           onClick={() => router.push(`/reports/tracking?wo=${encodeURIComponent(r.work_order_no)}`)}
-                          className="hover:text-[#0078d4] hover:underline flex items-center gap-1 text-left"
+                          className="hover:text-[#0078d4] dark:hover:text-blue-400 hover:underline flex items-center gap-1 text-left"
                         >
                           {r.work_order_no}
                         </button>
                       </td>
 
                       {/* Customer */}
-                      <td className="py-2.5 px-3 text-slate-600 max-w-[150px] truncate">
+                      <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300 max-w-[150px] truncate">
                         {r.customer_name || 'Generic Customer'}
                       </td>
 
                       {/* Grade & Size */}
                       <td className="py-2.5 px-3">
-                        <div className="font-mono font-semibold text-slate-800">
+                        <div className="font-mono font-semibold text-slate-800 dark:text-slate-200">
                           {r.od} × {r.wt} mm
                         </div>
-                        <div className="text-[10px] text-slate-500 truncate font-mono">
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate font-mono">
                           {r.grade}
                         </div>
                       </td>
 
                       {/* Work Center */}
                       <td className="py-2.5 px-3">
-                        <span className="inline-flex items-center gap-1 font-semibold text-slate-700">
-                          <Factory className="h-3 w-3 text-slate-400" />
+                        <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
+                          <Factory className="h-3 w-3 text-slate-400 dark:text-slate-500" />
                           {r.stage_name}
                         </span>
                       </td>
 
                       {/* Physical WIP */}
                       <td className="py-2.5 px-3 text-right font-mono tabular-nums">
-                        <div className="font-bold text-slate-900">{fmt(r.current_wip)} m</div>
-                        <div className="text-[10px] text-slate-500">
+                        <div className="font-bold text-slate-900 dark:text-slate-100">{fmt(r.current_wip)} m</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">
                           {fmt(r.current_wip_pcs, 0)} pcs · {fmt(r.available_mt, 2)} MT
                         </div>
                       </td>
 
                       {/* Last Activity */}
-                      <td className="py-2.5 px-3 font-mono text-slate-600">
+                      <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-300">
                         {r.last_activity_date}
                       </td>
 
                       {/* Days Stuck */}
                       <td className="py-2.5 px-3 text-center">
-                        <span className="font-mono font-black text-sm text-slate-900">
+                        <span className="font-mono font-black text-sm text-slate-900 dark:text-slate-100">
                           {r.days_stuck}
                         </span>
-                        <span className="text-[10px] text-slate-500 block">Days</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Days</span>
                       </td>
 
                       {/* Severity Badge */}
@@ -508,10 +497,10 @@ export default function AgingReportClient() {
                         <span
                           className={`inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider font-mono border ${
                             isCrit
-                              ? 'bg-red-100 text-red-800 border-red-300 animate-pulse'
+                              ? 'bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300 border-red-300 dark:border-red-800 animate-pulse'
                               : isWarn
-                              ? 'bg-amber-100 text-amber-800 border-amber-300'
-                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                              : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
                           }`}
                         >
                           {r.severity}
@@ -523,9 +512,9 @@ export default function AgingReportClient() {
                         {r.is_acknowledged ? (
                           <span
                             title={`Snoozed until ${r.ack_snooze_until || 'active'}${r.ack_notes ? ` - ${r.ack_notes}` : ''}`}
-                            className="inline-flex items-center gap-1 rounded bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 font-mono"
+                            className="inline-flex items-center gap-1 rounded bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 font-mono"
                           >
-                            <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                            <ShieldCheck className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
                             <span>Snoozed</span>
                           </span>
                         ) : isCrit || isWarn ? (
@@ -533,13 +522,13 @@ export default function AgingReportClient() {
                             type="button"
                             onClick={() => handleAcknowledge(r)}
                             disabled={isAcking}
-                            className="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 text-[10px] font-medium transition cursor-pointer"
+                            className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-2 py-1 text-[10px] font-medium transition cursor-pointer border border-slate-200 dark:border-slate-700"
                           >
-                            <Check className="h-3 w-3 text-slate-500" />
+                            <Check className="h-3 w-3 text-slate-500 dark:text-slate-400" />
                             <span>{isAcking ? 'Snoozing...' : 'Acknowledge'}</span>
                           </button>
                         ) : (
-                          <span className="text-slate-400 text-[10px]">Normal</span>
+                          <span className="text-slate-400 dark:text-slate-500 text-[10px]">Normal</span>
                         )}
                       </td>
 
@@ -548,7 +537,7 @@ export default function AgingReportClient() {
                         <button
                           type="button"
                           onClick={() => router.push(`/reports/tracking?wo=${encodeURIComponent(r.work_order_no)}`)}
-                          className="inline-flex items-center gap-1 rounded bg-[#0078d4]/10 hover:bg-[#0078d4]/20 text-[#0078d4] font-semibold px-2.5 py-1 text-[11px] transition cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded bg-[#0078d4]/10 hover:bg-[#0078d4]/20 text-[#0078d4] dark:text-blue-400 font-semibold px-2.5 py-1 text-[11px] transition cursor-pointer"
                         >
                           <span>Track</span>
                           <ArrowRight className="h-3 w-3" />
@@ -564,8 +553,8 @@ export default function AgingReportClient() {
 
         {/* Pagination Bar */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs">
-            <span className="text-slate-500">
+          <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 px-4 py-2 text-xs">
+            <span className="text-slate-500 dark:text-slate-400">
               Showing {(page - 1) * pageSize + 1} to {Math.min(page * pageSize, filteredRows.length)} of {filteredRows.length} lots
             </span>
             <div className="flex items-center gap-2">
@@ -573,18 +562,18 @@ export default function AgingReportClient() {
                 type="button"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => p - 1)}
-                className="rounded border border-slate-300 px-2.5 py-1 text-slate-700 disabled:opacity-40"
+                className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-slate-700 dark:text-slate-300 disabled:opacity-40"
               >
                 Previous
               </button>
-              <span className="font-mono text-slate-700">
+              <span className="font-mono text-slate-700 dark:text-slate-300">
                 {page} / {totalPages}
               </span>
               <button
                 type="button"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
-                className="rounded border border-slate-300 px-2.5 py-1 text-slate-700 disabled:opacity-40"
+                className="rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-slate-700 dark:text-slate-300 disabled:opacity-40"
               >
                 Next
               </button>

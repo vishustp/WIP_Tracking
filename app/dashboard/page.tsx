@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import DashboardClient from '@/components/dashboard/DashboardClient';
 import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
 import { buildCampaignHierarchyMaps, reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
-import { computeAgingReportRows } from '@/lib/reports/agingReportHelper';
+import { computeAgingReportRows, calculateAgingSeverity } from '@/lib/reports/agingReportHelper';
 
 export const dynamic = 'force-dynamic';
 
@@ -380,8 +380,8 @@ export default async function Dashboard() {
           wipPcs: Number(r.current_wip_pcs || 0),
           wipMtr: Number(r.current_wip || 0),
           daysStuck: Number(r.days_stuck || 0),
-          severity: (r.severity as 'CRITICAL' | 'WARNING' | 'NORMAL') || 'NORMAL',
-          lastActivityDate: r.last_activity_date || '—',
+          severity: calculateAgingSeverity(Number(r.days_stuck || 0)),
+          lastActivityDate: r.last_activity_date || r.effective_reference_date || '—',
         }));
     } else {
       // Robust calculation using shared domain engine
