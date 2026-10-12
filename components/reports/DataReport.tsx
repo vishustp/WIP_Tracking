@@ -325,7 +325,7 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
   const paginatedRows = useMemo(() => {
     const start = (page - 1) * pageSize;
     return sortedRows.slice(start, start + pageSize);
-  }, [sortedRows, page]);
+  }, [sortedRows, page, pageSize]);
 
   const totalPages = Math.ceil(sortedRows.length / pageSize) || 1;
 

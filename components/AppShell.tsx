@@ -249,6 +249,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Synchronize documentElement with theme and dark class for tailwind darkMode & native tokens
+  useEffect(() => {
+    const isDarkTheme = theme !== 'light' && theme !== 'cobalt';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.classList.toggle('dark', isDarkTheme);
+  }, [theme]);
+
   if (pathname === '/login') return <>{children}</>;
 
   const handleSelectTheme = (newTheme: AppTheme) => {
@@ -470,12 +477,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Synchronize documentElement with theme and dark class for tailwind darkMode & native tokens
-  useEffect(() => {
-    const isDarkTheme = theme !== 'light' && theme !== 'cobalt';
-    document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.classList.toggle('dark', isDarkTheme);
-  }, [theme]);
 
   const getDropdownClasses = () => {
     switch (theme) {
