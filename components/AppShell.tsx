@@ -151,7 +151,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
-  const [theme, setTheme] = useState<AppTheme>('light');
+  const [theme, setTheme] = useState<AppTheme>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        let saved = localStorage.getItem('app_theme') as string;
+        if (saved === 'navy') saved = 'ocean';
+        if (saved && ['light', 'foundry-dark', 'ocean', 'titanium', 'high-contrast', 'cobalt'].includes(saved)) {
+          return saved as AppTheme;
+        }
+      } catch {
+        // Ignore
+      }
+    }
+    return 'light';
+  });
   const { profile: currentUser, signOut } = useUserSession();
 
   // Search state

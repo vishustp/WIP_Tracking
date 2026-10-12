@@ -18,12 +18,31 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var saved = localStorage.getItem('app_theme');
+                  if (saved === 'navy') saved = 'ocean';
+                  var theme = saved || 'light';
+                  document.documentElement.setAttribute('data-theme', theme);
+                  if (theme !== 'light' && theme !== 'cobalt') {
+                    document.documentElement.classList.add('dark');
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                  }
+                } catch(e) {}
+              })();
+            `,
+          }}
+        />
         <link rel="preconnect" href="https://dzhvbftmuwfyuaarsxtk.supabase.co" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://dzhvbftmuwfyuaarsxtk.supabase.co" />
       </head>
-      <body className={`${inter.className} antialiased bg-canvas-pattern min-h-screen text-[var(--text-main,#0f172a)] transition-colors duration-150`}>
+      <body className={`${inter.className} antialiased bg-canvas-pattern min-h-screen text-slate-900 dark:text-slate-100 transition-colors duration-150`}>
         <UserSessionProvider>
           <AppShell>{children}</AppShell>
         </UserSessionProvider>

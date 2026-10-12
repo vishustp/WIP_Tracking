@@ -114,16 +114,16 @@ export function Modal({
     >
       <div
         ref={modalRef}
-        className={`relative w-full ${maxWidthClasses[maxWidth]} max-w-[calc(100vw-1rem)] rounded-xl bg-[var(--bg-surface,#ffffff)] text-[var(--text-main,#0f172a)] shadow-2xl overflow-hidden border border-[var(--border-subtle,#e2e8f0)] animate-in zoom-in-95 duration-150 my-auto ${className}`}
+        className={`relative w-full ${maxWidthClasses[maxWidth]} max-w-[calc(100vw-1rem)] rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-150 my-auto ${className}`}
       >
-        <div className="flex items-center justify-between border-b border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface-subtle,#f8fafc)] px-4 sm:px-5 py-3">
-          <div id={titleId} className="text-sm sm:text-base font-bold text-[var(--text-main,#0f172a)]">
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-4 sm:px-5 py-3">
+          <div id={titleId} className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">
             {title}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-muted,#94a3b8)] hover:bg-[var(--bg-surface-elevated,#e2e8f0)] hover:text-[var(--text-main,#0f172a)] transition cursor-pointer"
+            className="rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer"
             aria-label="Close modal"
           >
             <X size={18} />

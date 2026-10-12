@@ -25,7 +25,9 @@
   --grid-pattern-dot: rgba(148, 163, 184, 0.28);
 }
 
-[data-theme="foundry-dark"] {
+[data-theme="foundry-dark"],
+.dark:not([data-theme="ocean"]):not([data-theme="titanium"]):not([data-theme="high-contrast"]):not([data-theme="cobalt"]):not([data-theme="light"]),
+:root.dark:not([data-theme="ocean"]):not([data-theme="titanium"]):not([data-theme="high-contrast"]):not([data-theme="cobalt"]):not([data-theme="light"]) {
   color-scheme: dark;
   --bg-canvas: #090d16;
   --bg-surface: #0f172a;
@@ -213,6 +215,77 @@ input.bg-slate-900:-webkit-autofill:active {
   background-color: var(--bg-canvas);
   background-image: radial-gradient(circle at 1px 1px, var(--grid-pattern-dot) 1px, transparent 0);
   background-size: 24px 24px;
+}
+
+/* ─── Universal Theme Token Resolvers ─────────────────────────────────────── */
+/* Ensures elements using arbitrary var(--token,#fallback) syntax dropped by Tailwind extractor
+   render reliably across all themes and dark modes */
+[class*="text-[var(--text-main"],
+.text-theme-text {
+  color: var(--text-main);
+}
+
+[class*="text-[var(--text-muted"],
+.text-theme-text-muted {
+  color: var(--text-muted);
+}
+
+[class*="bg-[var(--bg-surface]"],
+[class*="bg-[var(--bg-surface,"],
+.bg-surface {
+  background-color: var(--bg-surface);
+}
+
+[class*="bg-[var(--bg-surface-elevated"] {
+  background-color: var(--bg-surface-elevated);
+}
+
+[class*="bg-[var(--bg-surface-subtle"] {
+  background-color: var(--bg-surface-subtle);
+}
+
+[class*="hover:bg-[var(--bg-surface-subtle"]:hover {
+  background-color: var(--bg-surface-subtle);
+}
+
+[class*="hover:bg-[var(--bg-surface-elevated"]:hover {
+  background-color: var(--bg-surface-elevated);
+}
+
+[class*="border-[var(--border-subtle"] {
+  border-color: var(--border-subtle);
+}
+
+[class*="border-[var(--border-strong"] {
+  border-color: var(--border-strong);
+}
+
+/* Form controls native dark mode integration */
+select, input, textarea {
+  color-scheme: light dark;
+}
+
+.dark select,
+.dark input,
+.dark textarea,
+[data-theme="foundry-dark"] select,
+[data-theme="foundry-dark"] input,
+[data-theme="foundry-dark"] textarea,
+[data-theme="ocean"] select,
+[data-theme="ocean"] input,
+[data-theme="ocean"] textarea,
+[data-theme="titanium"] select,
+[data-theme="titanium"] input,
+[data-theme="titanium"] textarea,
+[data-theme="high-contrast"] select,
+[data-theme="high-contrast"] input,
+[data-theme="high-contrast"] textarea {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: var(--bg-surface);
+  color: var(--text-main);
 }
 
 @media print {

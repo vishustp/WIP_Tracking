@@ -739,15 +739,15 @@ export default function SizeGradeWipReportClient() {
   // Helper to format values according to currently selected unit with quiet typography
   const formatCell = (mtr: number, pcs: number, mt: number) => {
     if (unit === 'MTRS') {
-      if (mtr > 0) return <span className="text-slate-800 font-medium">{fmt(mtr, 0)} <span className="text-slate-600 text-[10px]">m</span></span>;
-      return <span className="text-slate-500 font-normal">0</span>;
+      if (mtr > 0) return <span className="text-slate-800 dark:text-slate-200 font-medium">{fmt(mtr, 0)} <span className="text-slate-500 dark:text-slate-400 text-[10px]">m</span></span>;
+      return <span className="text-slate-400 dark:text-slate-500 font-normal">0</span>;
     }
     if (unit === 'PCS') {
-      if (pcs > 0) return <span className="text-slate-800 font-medium">{fmt(pcs, 0)} <span className="text-slate-600 text-[10px]">pcs</span></span>;
-      return <span className="text-slate-500 font-normal">0</span>;
+      if (pcs > 0) return <span className="text-slate-800 dark:text-slate-200 font-medium">{fmt(pcs, 0)} <span className="text-slate-500 dark:text-slate-400 text-[10px]">pcs</span></span>;
+      return <span className="text-slate-400 dark:text-slate-500 font-normal">0</span>;
     }
-    if (mt > 0) return <span className="text-slate-800 font-medium">{fmt(mt, 3)} <span className="text-slate-600 text-[10px]">MT</span></span>;
-    return <span className="text-slate-500 font-normal">0</span>;
+    if (mt > 0) return <span className="text-slate-800 dark:text-slate-200 font-medium">{fmt(mt, 3)} <span className="text-slate-500 dark:text-slate-400 text-[10px]">MT</span></span>;
+    return <span className="text-slate-400 dark:text-slate-500 font-normal">0</span>;
   };
 
   const clearAllFilters = useCallback(() => {
@@ -844,18 +844,18 @@ export default function SizeGradeWipReportClient() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200/80 pb-3.5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800 pb-3.5">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
-              <Gauge className="h-5 w-5 text-slate-500" aria-hidden="true" />
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Gauge className="h-5 w-5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
               OD & WT Grade-Wise Station-Wise WIP Status
             </h1>
-            <span className="rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600 font-mono">
+            <span className="rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-300 font-mono">
               As On: {asOnDate}
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Plant-wide physical inventory matrix cross-tabulated across manufacturing work centers by pipe size and specification.
           </p>
         </div>
@@ -866,7 +866,7 @@ export default function SizeGradeWipReportClient() {
           <div
             role="radiogroup"
             aria-label="Display Unit"
-            className="inline-flex rounded-md border border-slate-200 p-0.5 bg-slate-100/70 text-xs shadow-2xs"
+            className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-100/70 dark:bg-slate-800 text-xs shadow-2xs"
           >
             <button
               type="button"
@@ -875,7 +875,7 @@ export default function SizeGradeWipReportClient() {
               aria-label="Display inventory in Meters"
               onClick={() => setUnit('MTRS')}
               className={`px-3 py-1.5 min-h-[32px] rounded font-semibold transition cursor-pointer ${
-                unit === 'MTRS' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                unit === 'MTRS' ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               Meters (m)
@@ -887,7 +887,7 @@ export default function SizeGradeWipReportClient() {
               aria-label="Display inventory in Pieces"
               onClick={() => setUnit('PCS')}
               className={`px-3 py-1.5 min-h-[32px] rounded font-semibold transition cursor-pointer ${
-                unit === 'PCS' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                unit === 'PCS' ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               Pieces (pcs)
@@ -899,7 +899,7 @@ export default function SizeGradeWipReportClient() {
               aria-label="Display inventory in Metric Tons"
               onClick={() => setUnit('MT')}
               className={`px-3 py-1.5 min-h-[32px] rounded font-semibold transition cursor-pointer ${
-                unit === 'MT' ? 'bg-slate-900 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                unit === 'MT' ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               Weight (MT)

@@ -56,11 +56,11 @@ export function ProductionQueueTable({
   const hasL1L2 = stage === 'DRAW' || stage === 'PILGER' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
 
   return (
-    <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] shadow-2xs overflow-hidden">
+    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs overflow-hidden">
       {/* Table Header Strip */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle,#f1f5f9)] bg-[var(--bg-surface,#ffffff)] px-4 sm:px-5 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 sm:px-5 py-3.5">
         <div className="flex items-center gap-2">
-          <h2 className="text-base font-bold text-[var(--text-main,#0f172a)] tracking-tight">
+          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 tracking-tight">
             {stageLabel} Queue
           </h2>
         </div>
@@ -73,13 +73,13 @@ export function ProductionQueueTable({
               value={woFilter}
               onChange={(e) => setWoFilter(e.target.value)}
               placeholder="Quick filter (WO, Child WO, Customer, Plan)..."
-              className="h-8 w-48 sm:w-60 rounded-md border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-3 text-xs font-medium text-[var(--text-main,#0f172a)] placeholder:[var(--text-muted,#94a3b8)] shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
+              className="h-8 w-48 sm:w-60 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
             />
             {woFilter && (
               <button
                 type="button"
                 onClick={() => setWoFilter('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 min-w-[28px] min-h-[28px] flex items-center justify-center text-[var(--text-muted,#94a3b8)] hover:text-[var(--text-main,#0f172a)] cursor-pointer"
+                className="absolute right-2 top-1/2 -translate-y-1/2 min-w-[28px] min-h-[28px] flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
                 title="Clear filter"
                 aria-label="Clear quick filter"
               >
@@ -135,13 +135,13 @@ export function ProductionQueueTable({
       ) : (
         <div className="overflow-x-auto max-h-[580px] overflow-y-auto relative">
           <table className="min-w-full text-xs border-collapse">
-            <thead className="sticky top-0 z-20 border-b border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface-subtle,#f1f5f9)] backdrop-blur-xs text-[var(--text-main,#0f172a)] font-semibold shadow-xs">
+            <thead className="sticky top-0 z-20 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-semibold shadow-xs">
               <tr>
-                <th className="sticky left-0 top-0 z-30 py-2.5 px-3 sm:px-4 text-left font-bold text-[var(--text-main,#0f172a)] bg-[var(--bg-surface-subtle,#f1f5f9)] border-r border-[var(--border-subtle,#e2e8f0)] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] min-w-[220px] sm:min-w-[260px]">
+                <th className="sticky left-0 top-0 z-30 py-2.5 px-3 sm:px-4 text-left font-bold text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] min-w-[220px] sm:min-w-[260px]">
                   Order Information
                 </th>
-                <th className="py-2.5 px-2.5 text-center font-bold text-[var(--text-muted,#64748b)] whitespace-nowrap">Route</th>
-                <th className="py-2.5 px-3 sm:px-4 text-left font-bold text-[var(--text-muted,#64748b)] whitespace-nowrap">Balance</th>
+                <th className="py-2.5 px-2.5 text-center font-bold text-slate-600 dark:text-slate-400 whitespace-nowrap">Route</th>
+                <th className="py-2.5 px-3 sm:px-4 text-left font-bold text-slate-600 dark:text-slate-400 whitespace-nowrap">Balance</th>
                 {hasL1L2 && (
                   <th className="py-2.5 px-3 text-center font-bold text-amber-900 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/50 border-x border-amber-200 dark:border-amber-800 whitespace-nowrap">
                     Length (L1 / L2)
@@ -157,14 +157,14 @@ export function ProductionQueueTable({
                   {stage === 'ROLLING' ? 'HTC OK (Nos)' : 'OK Nos (Net)'}
                 </th>
                 {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'BAND_SAW') && (
-                  <th className="py-2.5 px-3 text-left font-bold text-[var(--text-muted,#64748b)] whitespace-nowrap">Heat Lot No.</th>
+                  <th className="py-2.5 px-3 text-left font-bold text-slate-600 dark:text-slate-400 whitespace-nowrap">Heat Lot No.</th>
                 )}
-                <th className="sticky right-0 top-0 z-30 py-2.5 px-3 text-center font-bold text-[var(--text-main,#0f172a)] bg-[var(--bg-surface-subtle,#f1f5f9)] border-l border-[var(--border-subtle,#e2e8f0)] shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)] whitespace-nowrap">
+                <th className="sticky right-0 top-0 z-30 py-2.5 px-3 text-center font-bold text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)] whitespace-nowrap">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {filteredRows.map((r) => (
                 <ProductionQueueRow
                   key={r.plan_id ? `${r.work_order_id}|${r.route_id}|${r.plan_id}` : `${r.work_order_id}|${r.route_id}`}

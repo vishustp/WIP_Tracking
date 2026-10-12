@@ -350,17 +350,17 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
   const renderStatusBadge = (statusVal: any) => {
     if (!statusVal) return '—';
     const s = String(statusVal).trim();
-    let badgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
+    let badgeClass = 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
     if (s === 'Pending Plan') {
-      badgeClass = 'bg-indigo-50 text-indigo-700 border-indigo-200';
+      badgeClass = 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800';
     } else if (s === 'Scheduled') {
-      badgeClass = 'bg-sky-50 text-sky-700 border-sky-200';
+      badgeClass = 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/70 dark:text-sky-300 dark:border-sky-800';
     } else if (s === 'In Progress') {
-      badgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
+      badgeClass = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800';
     } else if (s === 'Completed') {
-      badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800';
     } else if (s.toLowerCase().includes('cancel') || s.toLowerCase().includes('reject')) {
-      badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+      badgeClass = 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-800';
     }
     return (
       <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold border ${badgeClass}`}>
@@ -434,16 +434,16 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
       {rows.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {/* Work Orders Total */}
-          <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted,#64748b)]">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-3 shadow-2xs">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Work Orders
             </div>
             <div className="mt-1 flex items-baseline justify-between">
-              <span className="text-xl font-bold font-mono tabular-nums text-[var(--text-main,#0f172a)]">
+              <span className="text-xl font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100">
                 {filtered.length}
               </span>
               {filtered.length !== rows.length && (
-                <span className="text-[11px] text-[var(--text-muted,#64748b)] font-mono">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                   of {rows.length}
                 </span>
               )}
@@ -452,15 +452,15 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
 
           {/* Ordered Quantity Volume */}
           {kpiMetrics.hasOrdered && (
-            <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted,#64748b)]">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-3 shadow-2xs">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Total Ordered
               </div>
               <div className="mt-1 flex items-baseline justify-between">
-                <span className="text-xl font-bold font-mono tabular-nums text-[var(--text-main,#0f172a)]">
+                <span className="text-xl font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100">
                   {kpiMetrics.totalOrdered.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                 </span>
-                <span className="text-[10px] font-bold uppercase text-[var(--text-muted,#64748b)]">
+                <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
                   Qty
                 </span>
               </div>
@@ -469,8 +469,8 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
 
           {/* Balance Pending Volume */}
           {kpiMetrics.hasPending && (
-            <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted,#64748b)]">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-3 shadow-2xs">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Balance Pending
               </div>
               <div className="mt-1 flex items-baseline justify-between">
@@ -483,7 +483,7 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                 >
                   {kpiMetrics.totalPending.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                 </span>
-                <span className="text-[10px] font-bold uppercase text-[var(--text-muted,#64748b)]">
+                <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
                   Rem.
                 </span>
               </div>
@@ -503,10 +503,10 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                   ? 'border-rose-400 bg-rose-50/80 dark:bg-rose-950/40 ring-1 ring-rose-400'
                   : kpiMetrics.overdueCount > 0
                   ? 'border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 hover:border-rose-300'
-                  : 'border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] hover:border-slate-300'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 hover:border-slate-300 dark:hover:border-slate-700'
               }`}
             >
-              <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted,#64748b)]">
+              <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 <span>Overdue Orders</span>
                 {kpiMetrics.overdueCount > 0 && (
                   <AlertTriangle size={12} className="text-rose-500 animate-pulse" />
@@ -517,7 +517,7 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                   className={`text-xl font-bold font-mono tabular-nums ${
                     kpiMetrics.overdueCount > 0
                       ? 'text-rose-600 dark:text-rose-400'
-                      : 'text-[var(--text-main,#0f172a)]'
+                      : 'text-slate-900 dark:text-slate-100'
                   }`}
                 >
                   {kpiMetrics.overdueCount}
@@ -535,8 +535,8 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
       <div className="flex flex-col gap-2">
         {effectiveStatusKey && availableStatuses.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1">
-              <Filter size={12} className="text-slate-400" /> Status:
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1 flex items-center gap-1">
+              <Filter size={12} className="text-slate-400 dark:text-slate-500" /> Status:
             </span>
             <button
               type="button"
@@ -595,8 +595,8 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
         {/* Date Quick Filter Pills */}
         {effectiveDateKey && (
           <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1">
-              <Calendar size={12} className="text-slate-400" /> Deadline:
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1 flex items-center gap-1">
+              <Calendar size={12} className="text-slate-400 dark:text-slate-500" /> Deadline:
             </span>
             {(
               [
@@ -751,15 +751,15 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
 
       {/* Report Content */}
       {loading ? (
-        <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-8 text-center text-sm text-[var(--text-muted,#64748b)]">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-8 text-center text-sm text-slate-500 dark:text-slate-400">
           <RefreshCw size={24} className="mx-auto mb-2 animate-spin opacity-50" />
           Loading report data...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-8 text-center text-sm text-[var(--text-muted,#64748b)]">
-          <p className="font-semibold text-[var(--text-main,#0f172a)]">No records found matching criteria.</p>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-8 text-center text-sm text-slate-500 dark:text-slate-400">
+          <p className="font-semibold text-slate-900 dark:text-slate-100">No records found matching criteria.</p>
           {isFilterActive && (
-            <p className="text-xs text-[var(--text-muted,#64748b)] mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Try resetting the status filter or clearing your search query.
             </p>
           )}
@@ -770,7 +770,7 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
           <div className={`sm:hidden ${viewMode === 'table' ? 'hidden' : 'space-y-2.5'}`}>
             {/* Mobile Sort Controls */}
             <div className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
                 Sort:
               </span>
               <select
@@ -814,15 +814,15 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
               return (
                 <div
                   key={r.id ?? r.work_order_id ?? i}
-                  className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] text-[var(--text-main,#0f172a)] p-3.5 shadow-xs space-y-2"
+                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 text-slate-900 dark:text-slate-100 p-3.5 shadow-xs space-y-2"
                 >
-                  <div className="flex items-center justify-between border-b border-[var(--border-subtle,#f1f5f9)] pb-2">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                     <div>
-                      <span className="text-sm font-bold text-[var(--text-main,#0f172a)]">
+                      <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
                         {formatValue(r[primaryKey])}
                       </span>
                       {secondaryKey && (
-                        <div className="text-xs text-[var(--text-muted,#64748b)]">
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
                           {formatValue(r[secondaryKey])}
                         </div>
                       )}
@@ -836,12 +836,12 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                       const isNum = isNumericKey(c.key);
                       return (
                         <div key={c.key} className="space-y-0.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted,#94a3b8)] block truncate">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
                             {c.label}
                           </span>
                           <span
                             className={`text-xs block truncate ${
-                              isNum ? 'font-mono tabular-nums text-[var(--text-main,#0f172a)] font-medium' : 'text-[var(--text-main,#0f172a)]'
+                              isNum ? 'font-mono tabular-nums text-slate-900 dark:text-slate-100 font-medium' : 'text-slate-800 dark:text-slate-200'
                             }`}
                           >
                             {formatValue(r[c.key])}
@@ -856,10 +856,10 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
           </div>
 
           {/* Desktop Table View (and visible on mobile if table chosen) */}
-          <div className={`rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] shadow-xs overflow-hidden ${viewMode === 'cards' ? 'hidden sm:block' : 'block'}`}>
+          <div className={`rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 shadow-xs overflow-hidden ${viewMode === 'cards' ? 'hidden sm:block' : 'block'}`}>
             <div className="overflow-auto max-h-[70vh] relative">
               <table className="min-w-full text-xs">
-                <thead className="sticky top-0 z-20 border-b border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface-subtle,#f1f5f9)] shadow-2xs text-[var(--text-main,#0f172a)] select-none">
+                <thead className="sticky top-0 z-20 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 shadow-2xs text-slate-700 dark:text-slate-300 select-none">
                   <tr>
                     {columns.map((c) => {
                       const isNum = isNumericKey(c.key);
@@ -870,10 +870,10 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                         <th
                           key={c.key}
                           onClick={() => handleSort(c.key)}
-                          className={`whitespace-nowrap px-3 py-2.5 font-bold uppercase tracking-wider text-[11px] cursor-pointer hover:bg-[var(--bg-surface-elevated,#e2e8f0)] active:scale-[0.99] transition-all duration-150 ease-out group motion-reduce:transition-none motion-reduce:transform-none ${
+                          className={`whitespace-nowrap px-3 py-2.5 font-bold uppercase tracking-wider text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-[0.99] transition-all duration-150 ease-out group motion-reduce:transition-none motion-reduce:transform-none ${
                             isSorted
                               ? 'text-blue-600 dark:text-blue-400 bg-blue-50/60 dark:bg-blue-950/30'
-                              : 'text-[var(--text-muted,#64748b)]'
+                              : 'text-slate-600 dark:text-slate-400'
                           } ${alignClass}`}
                           aria-sort={
                             isSorted
@@ -916,9 +916,9 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                     })}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[var(--border-subtle,#f1f5f9)] transition-opacity duration-150 ease-out motion-reduce:transition-none">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 transition-opacity duration-150 ease-out motion-reduce:transition-none">
                   {paginatedRows.map((r, i) => (
-                    <tr key={r.id ?? r.work_order_id ?? i} className="hover:bg-[var(--bg-surface-subtle,#f8fafc)] transition-colors duration-100 ease-out">
+                    <tr key={r.id ?? r.work_order_id ?? i} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors duration-100 ease-out">
                       {columns.map((c, colIdx) => {
                         const val = r[c.key];
                         const isNum = isNumericKey(c.key);
@@ -940,9 +940,9 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                         return (
                           <td
                             key={c.key}
-                            className={`whitespace-nowrap px-3 py-2 text-[var(--text-main,#0f172a)] ${
-                              colIdx === 0 ? 'font-bold font-mono' : ''
-                            } ${isNum ? 'text-right font-mono tabular-nums font-medium' : 'text-left'}`}
+                            className={`whitespace-nowrap px-3 py-2 text-slate-800 dark:text-slate-200 ${
+                              colIdx === 0 ? 'font-bold font-mono text-slate-900 dark:text-slate-100' : ''
+                            } ${isNum ? 'text-right font-mono tabular-nums font-medium text-slate-900 dark:text-slate-100' : 'text-left'}`}
                           >
                             {colIdx === 0 && val ? (
                               <div className="inline-flex items-center gap-1.5 group/cell">
@@ -982,28 +982,28 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
             </div>
 
             {/* Pagination / Row Counter Footer */}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-subtle,#e2e8f0)] px-4 py-2.5 bg-[var(--bg-surface-subtle,#f8fafc)] text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 dark:border-slate-800 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 text-xs">
               <div className="flex items-center gap-3">
-                <span className="text-[var(--text-muted,#64748b)] font-medium">
+                <span className="text-slate-600 dark:text-slate-400 font-medium">
                   Showing {filtered.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} of{' '}
-                  <span className="font-mono font-semibold text-[var(--text-main,#0f172a)]">{filtered.length}</span> records
+                  <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{filtered.length}</span> records
                 </span>
 
                 {/* Page Size Selector */}
-                <div className="flex items-center gap-1.5 border-l border-[var(--border-subtle,#e2e8f0)] pl-3">
-                  <span className="text-[11px] text-[var(--text-muted,#64748b)] hidden sm:inline">Per page:</span>
+                <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-800 pl-3">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:inline">Per page:</span>
                   <select
                     value={pageSize}
                     onChange={(e) => {
                       setPageSize(Number(e.target.value));
                       setPage(1);
                     }}
-                    className="h-6 rounded border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] px-1.5 text-xs font-mono text-[var(--text-main,#0f172a)] focus:border-blue-500 cursor-pointer"
+                    className="h-6 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1.5 text-xs font-mono text-slate-800 dark:text-slate-200 focus:border-blue-500 cursor-pointer"
                   >
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                    <option value={500}>500</option>
+                    <option className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" value={25}>25</option>
+                    <option className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" value={50}>50</option>
+                    <option className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" value={100}>100</option>
+                    <option className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100" value={500}>500</option>
                   </select>
                 </div>
               </div>
@@ -1014,20 +1014,20 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                     type="button"
                     disabled={page === 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="min-h-[36px] min-w-[36px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center rounded-lg text-[var(--text-muted,#64748b)] hover:bg-[var(--bg-surface-elevated,#e2e8f0)] hover:text-[var(--text-main,#0f172a)] disabled:opacity-30 transition-all duration-150 hover:scale-110 active:scale-90 disabled:hover:scale-100 cursor-pointer motion-reduce:transition-none motion-reduce:transform-none"
+                    className="min-h-[36px] min-w-[36px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-30 transition-all duration-150 hover:scale-110 active:scale-90 disabled:hover:scale-100 cursor-pointer motion-reduce:transition-none motion-reduce:transform-none"
                     title="Previous page"
                     aria-label="Previous page"
                   >
                     <ChevronLeft size={16} />
                   </button>
-                  <span className="px-2.5 font-medium text-[var(--text-main,#0f172a)] font-mono">
+                  <span className="px-2.5 font-medium text-slate-900 dark:text-slate-100 font-mono">
                     Page {page} of {totalPages}
                   </span>
                   <button
                     type="button"
                     disabled={page === totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="min-h-[36px] min-w-[36px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center rounded-lg text-[var(--text-muted,#64748b)] hover:bg-[var(--bg-surface-elevated,#e2e8f0)] hover:text-[var(--text-main,#0f172a)] disabled:opacity-30 transition-all duration-150 hover:scale-110 active:scale-90 disabled:hover:scale-100 cursor-pointer motion-reduce:transition-none motion-reduce:transform-none"
+                    className="min-h-[36px] min-w-[36px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-30 transition-all duration-150 hover:scale-110 active:scale-90 disabled:hover:scale-100 cursor-pointer motion-reduce:transition-none motion-reduce:transform-none"
                     title="Next page"
                     aria-label="Next page"
                   >
