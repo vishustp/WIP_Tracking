@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { exportJsonToExcel } from '@/lib/excelUtils';
 import { createClient } from '@/lib/supabase/client';
 import { Input } from '@/components/ui/input';
@@ -40,7 +42,7 @@ export default function DataReport({ title, view, columns, searchKeys, statusKey
     return statusKey || columns.find((c) => c.key === 'status' || c.key.toLowerCase().includes('status'))?.key;
   }, [statusKey, columns]);
 
-  const loadData = async (isManualRefresh = false) => {
+  const loadData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) setRefreshing(true);
     else setLoading(true);
     try {
@@ -56,11 +58,11 @@ export default function DataReport({ title, view, columns, searchKeys, statusKey
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [view]);
 
   useEffect(() => {
     void loadData();
-  }, [view]);
+  }, [loadData]);
 
   // Extract distinct statuses and order them logically
   const availableStatuses = useMemo(() => {
