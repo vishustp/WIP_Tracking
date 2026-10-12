@@ -912,9 +912,9 @@ export default function SizeGradeWipReportClient() {
             onClick={loadData}
             disabled={loading}
             aria-label="Refresh live WIP matrix data"
-            className="text-xs h-8 border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
+            className="text-xs h-8"
           >
-            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin text-slate-600' : 'text-slate-500'}`} />
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
 
@@ -922,7 +922,7 @@ export default function SizeGradeWipReportClient() {
             type="button"
             onClick={exportExcel}
             aria-label="Export WIP matrix to Excel spreadsheet"
-            className="text-xs h-8 bg-slate-900 hover:bg-slate-800 text-white font-medium flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-transform"
+            className="text-xs h-8 bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-100 font-medium flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-transform"
           >
             <Download className="h-3.5 w-3.5 text-slate-300" />
             Export Matrix
@@ -960,148 +960,148 @@ export default function SizeGradeWipReportClient() {
         </div>
 
         {/* 2. Hollow HT */}
-        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Hollow HT</span>
-            <Flame className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
+            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Hollow HT</span>
+            <Flame className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
           </div>
           <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htcPcs, 0)}</span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htcPcs, 0)}</span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htcMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htcMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htcMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htcMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
             </div>
           </div>
         </div>
 
         {/* 4. Cold Draw */}
-        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Cold Draw / Pilger</span>
-            <TrendingUp className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
+            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Cold Draw / Pilger</span>
+            <TrendingUp className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
           </div>
           <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.drawPcs, 0)}</span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.drawPcs, 0)}</span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.drawMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.drawMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.drawMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.drawMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
             </div>
           </div>
         </div>
 
         {/* 5. Final HT */}
-        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Final HT</span>
-            <Layers className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
+            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Final HT</span>
+            <Layers className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
           </div>
           <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htPcs, 0)}</span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htPcs, 0)}</span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.htMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
             </div>
           </div>
         </div>
 
         {/* 6. Band Saw Cutting */}
-        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Band Saw</span>
-            <Scissors className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
+            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Band Saw</span>
+            <Scissors className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
           </div>
           <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.bandSawPcs, 0)}</span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.bandSawPcs, 0)}</span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.bandSawMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.bandSawMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.bandSawMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.bandSawMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
             </div>
           </div>
         </div>
 
         {/* 7. VDI Inspection */}
-        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">VDI / QC</span>
-            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
+            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">VDI / QC</span>
+            <Search className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
           </div>
           <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.vdiPcs, 0)}</span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.vdiPcs, 0)}</span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.vdiMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.vdiMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.vdiMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.vdiMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
             </div>
           </div>
         </div>
 
         {/* 8. Finishing (FG) */}
-        <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-100">
-            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider truncate">Finishing</span>
-            <CheckCircle2 className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
+            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Finishing</span>
+            <CheckCircle2 className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
           </div>
           <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.finishingPcs, 0)}</span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.finishingPcs, 0)}</span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.finishingMtr, 0)} <span className="text-[9px] text-slate-600 font-normal">m</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.finishingMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
             </div>
-            <div className="flex items-baseline justify-between text-slate-600">
-              <span className="text-[10px] uppercase text-slate-600 font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-slate-900">{fmt(kpis.finishingMt, 2)} <span className="text-[9px] text-slate-600 font-normal">MT</span></span>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.finishingMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
             </div>
           </div>
         </div>
       </div>
 
       {/* Filter Toolbar */}
-      <div className="bg-white p-3 rounded-lg border border-slate-200/90 shadow-2xs space-y-2.5">
+      <div className="bg-[var(--bg-surface,#ffffff)] p-3 rounded-lg border border-[var(--border-subtle,#e2e8f0)] shadow-2xs space-y-2.5">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
           {/* Search Size or Grade */}
           <div className="relative lg:col-span-3">
-            <label htmlFor="wip-matrix-search" className="block text-[11px] font-semibold text-slate-600 mb-1">
+            <label htmlFor="wip-matrix-search" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
               Search Keywords
             </label>
             <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)]" aria-hidden="true" />
               <Input
                 id="wip-matrix-search"
                 type="text"
@@ -1109,14 +1109,14 @@ export default function SizeGradeWipReportClient() {
                 aria-label="Search by size, grade, work order, or process route"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 text-xs h-8 border-slate-200 focus:border-slate-400"
+                className="pl-8 text-xs h-8 border-[var(--border-subtle,#cbd5e1)] focus:border-[var(--border-strong,#64748b)]"
               />
             </div>
           </div>
 
           {/* Route Dropdown Filter */}
           <div className="lg:col-span-2">
-            <label htmlFor="wip-matrix-route" className="block text-[11px] font-semibold text-slate-600 mb-1">
+            <label htmlFor="wip-matrix-route" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
               Process Route
             </label>
             <Select
@@ -1124,7 +1124,7 @@ export default function SizeGradeWipReportClient() {
               aria-label="Filter by process route"
               value={selectedRoute}
               onChange={(e) => setSelectedRoute(e.target.value)}
-              className="text-xs h-8 font-medium border-slate-200"
+              className="text-xs h-8 font-medium"
             >
               <option value="ALL">All Routes (HFS/CDS...)</option>
               {uniqueRoutes.map((r) => (
@@ -1137,7 +1137,7 @@ export default function SizeGradeWipReportClient() {
 
           {/* Grade Dropdown */}
           <div className="lg:col-span-2">
-            <label htmlFor="wip-matrix-grade" className="block text-[11px] font-semibold text-slate-600 mb-1">
+            <label htmlFor="wip-matrix-grade" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
               Material Grade
             </label>
             <Select
@@ -1145,7 +1145,7 @@ export default function SizeGradeWipReportClient() {
               aria-label="Filter by material grade"
               value={selectedGrade}
               onChange={(e) => setSelectedGrade(e.target.value)}
-              className="text-xs h-8 border-slate-200"
+              className="text-xs h-8"
             >
               <option value="ALL">All Material Grades</option>
               {uniqueGrades.map((g) => (
@@ -1158,7 +1158,7 @@ export default function SizeGradeWipReportClient() {
 
           {/* OD Range Filter */}
           <div className="lg:col-span-2">
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">OD Range (mm)</label>
+            <label className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">OD Range (mm)</label>
             <div className="flex items-center gap-1">
               <Input
                 type="number"
@@ -1166,25 +1166,25 @@ export default function SizeGradeWipReportClient() {
                 aria-label="Minimum Outer Diameter in millimeters"
                 value={fromOd}
                 onChange={(e) => setFromOd(e.target.value)}
-                className="text-xs h-8 w-full font-mono border-slate-200"
+                className="text-xs h-8 w-full font-mono"
               />
-              <span className="text-slate-400 text-xs shrink-0" aria-hidden="true">-</span>
+              <span className="text-[var(--text-muted,#94a3b8)] text-xs shrink-0" aria-hidden="true">-</span>
               <Input
                 type="number"
                 placeholder="Max OD"
                 aria-label="Maximum Outer Diameter in millimeters"
                 value={toOd}
                 onChange={(e) => setToOd(e.target.value)}
-                className="text-xs h-8 w-full font-mono border-slate-200"
+                className="text-xs h-8 w-full font-mono"
               />
             </div>
           </div>
 
           {/* Rolling Production Date Range Filter */}
           <div className="lg:col-span-3">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 mb-1">
-              <span className="flex items-center gap-1 text-slate-700 font-semibold">
-                <Calendar className="h-3 w-3 text-slate-400" aria-hidden="true" />
+            <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
+              <span className="flex items-center gap-1 text-[var(--text-main,#1e293b)] font-semibold">
+                <Calendar className="h-3 w-3 text-[var(--text-muted,#94a3b8)]" aria-hidden="true" />
                 Rolling Date Range:
               </span>
               {(fromRollingDate || toRollingDate) && (
@@ -1195,7 +1195,7 @@ export default function SizeGradeWipReportClient() {
                     setFromRollingDate('');
                     setToRollingDate('');
                   }}
-                  className="text-[10px] text-slate-500 hover:text-slate-800 underline font-medium cursor-pointer"
+                  className="text-[10px] text-[var(--text-muted,#64748b)] hover:text-[var(--text-main,#0f172a)] underline font-medium cursor-pointer"
                 >
                   Clear Date
                 </button>
@@ -1208,29 +1208,29 @@ export default function SizeGradeWipReportClient() {
                 aria-label="From Rolling Production Date"
                 value={fromRollingDate}
                 onChange={(e) => setFromRollingDate(e.target.value)}
-                className="text-[11px] h-8 font-mono px-1.5 w-full bg-white border-slate-200"
+                className="text-[11px] h-8 font-mono px-1.5 w-full bg-[var(--bg-surface,#ffffff)]"
               />
-              <span className="text-slate-400 text-xs shrink-0" aria-hidden="true">to</span>
+              <span className="text-[var(--text-muted,#94a3b8)] text-xs shrink-0" aria-hidden="true">to</span>
               <Input
                 type="date"
                 title="To Rolling Date"
                 aria-label="To Rolling Production Date"
                 value={toRollingDate}
                 onChange={(e) => setToRollingDate(e.target.value)}
-                className="text-[11px] h-8 font-mono px-1.5 w-full bg-white border-slate-200"
+                className="text-[11px] h-8 font-mono px-1.5 w-full bg-[var(--bg-surface,#ffffff)]"
               />
             </div>
           </div>
         </div>
 
         {/* View Mode Switcher & Controls */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-subtle,#f1f5f9)] pt-2">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-medium">View Mode:</span>
+            <span className="text-xs text-[var(--text-muted,#64748b)] font-medium">View Mode:</span>
             <div
               role="tablist"
               aria-label="Report View Mode"
-              className="inline-flex rounded-md border border-slate-200 p-0.5 bg-slate-50 text-xs"
+              className="inline-flex rounded-md border border-[var(--border-subtle,#e2e8f0)] p-0.5 bg-[var(--bg-surface-subtle,#f8fafc)] text-xs"
             >
               <button
                 type="button"
@@ -1238,7 +1238,7 @@ export default function SizeGradeWipReportClient() {
                 aria-selected={viewMode === 'matrix'}
                 onClick={() => setViewMode('matrix')}
                 className={`px-3 py-1 min-h-[30px] rounded font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                  viewMode === 'matrix' ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/60' : 'text-slate-500 hover:text-slate-800'
+                  viewMode === 'matrix' ? 'bg-[var(--bg-surface,#ffffff)] text-[var(--text-main,#0f172a)] shadow-2xs border border-[var(--border-subtle,#e2e8f0)]' : 'text-[var(--text-muted,#64748b)] hover:text-[var(--text-main,#0f172a)]'
                 }`}
               >
                 <LayoutGrid size={13} aria-hidden="true" />
@@ -1250,7 +1250,7 @@ export default function SizeGradeWipReportClient() {
                 aria-selected={viewMode === 'ledger'}
                 onClick={() => setViewMode('ledger')}
                 className={`px-3 py-1 min-h-[30px] rounded font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                  viewMode === 'ledger' ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/60' : 'text-slate-500 hover:text-slate-800'
+                  viewMode === 'ledger' ? 'bg-[var(--bg-surface,#ffffff)] text-[var(--text-main,#0f172a)] shadow-2xs border border-[var(--border-subtle,#e2e8f0)]' : 'text-[var(--text-muted,#64748b)] hover:text-[var(--text-main,#0f172a)]'
                 }`}
               >
                 <TableIcon size={13} aria-hidden="true" />
@@ -1264,7 +1264,7 @@ export default function SizeGradeWipReportClient() {
               <button
                 type="button"
                 onClick={clearAllFilters}
-                className="text-xs font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
+                className="text-xs font-semibold text-rose-700 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-300 hover:underline cursor-pointer min-h-[36px] flex items-center"
               >
                 Clear All Filters
               </button>
@@ -1274,7 +1274,7 @@ export default function SizeGradeWipReportClient() {
                 type="button"
                 onClick={toggleAll}
                 aria-label={matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse all work order details' : 'Expand all work order details'}
-                className="text-xs font-medium text-slate-600 hover:text-slate-900 hover:underline cursor-pointer"
+                className="text-xs font-medium text-[var(--text-muted,#475569)] hover:text-[var(--text-main,#0f172a)] hover:underline cursor-pointer min-h-[36px] flex items-center"
               >
                 {matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse All Details' : 'Expand All WO Details'}
               </button>
@@ -1285,52 +1285,52 @@ export default function SizeGradeWipReportClient() {
 
       {/* MATRIX VIEW */}
       {viewMode === 'matrix' && (
-        <div className="rounded-lg border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
+        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] shadow-2xs overflow-hidden">
           <div className="overflow-auto max-h-[70vh] relative">
             <table className="w-full text-left text-xs border-collapse min-w-[1200px]">
-              <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
+              <thead className="sticky top-0 z-20 bg-[var(--bg-surface-subtle,#f8fafc)] backdrop-blur-xs border-b border-[var(--border-subtle,#e2e8f0)] text-[var(--text-muted,#475569)] font-semibold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
                 <tr>
-                  <th className="sticky left-0 top-0 z-30 bg-slate-50 py-2.5 px-3 w-10 text-center bg-clip-padding"></th>
-                  <th className="sticky left-10 top-0 z-30 bg-slate-50 py-2.5 px-3 bg-clip-padding min-w-[120px]">Size (OD × WT)</th>
-                  <th className="sticky left-[160px] top-0 z-30 bg-slate-50 py-2.5 px-3 bg-clip-padding border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[100px]">Grade</th>
-                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
+                  <th className="sticky left-0 top-0 z-30 bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 w-10 text-center bg-clip-padding"></th>
+                  <th className="sticky left-10 top-0 z-30 bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 bg-clip-padding min-w-[120px]">Size (OD × WT)</th>
+                  <th className="sticky left-[160px] top-0 z-30 bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 bg-clip-padding border-r border-[var(--border-subtle,#e2e8f0)] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[100px]">Grade</th>
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
                     Hollow HT (HTC)
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
                     Cold Draw / Pilger
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
                     Final Heat Treatment
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
                     Band Saw Cutting
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
                     VDI / QC Inspection
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-slate-200/70 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
                     Finishing (FG)
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-slate-200 bg-slate-100/70 font-bold text-slate-800 bg-clip-padding">
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface-subtle,#f1f5f9)] font-bold text-[var(--text-main,#0f172a)] bg-clip-padding">
                     Total Plant WIP
                   </th>
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[var(--border-subtle,#f1f5f9)]">
                 {loading && matrixGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-slate-400">
-                      <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-slate-500" />
+                    <td colSpan={11} className="py-12 text-center text-[var(--text-muted,#94a3b8)]">
+                      <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-[var(--text-muted,#64748b)]" />
                       Aggregating OD, WT and Grade station-wise WIP matrix...
                     </td>
                   </tr>
                 ) : matrixGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-slate-400">
-                      <CheckCircle2 className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                      <div className="font-semibold text-slate-700">No matching WIP inventory found</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
+                    <td colSpan={11} className="py-12 text-center text-[var(--text-muted,#94a3b8)]">
+                      <CheckCircle2 className="h-8 w-8 text-[var(--text-muted,#cbd5e1)] mx-auto mb-2" />
+                      <div className="font-semibold text-[var(--text-main,#1e293b)]">No matching WIP inventory found</div>
+                      <div className="text-[11px] text-[var(--text-muted,#94a3b8)] mt-0.5">
                         {hasActiveFilters
                           ? 'Try clearing active filters to see available physical inventory.'
                           : 'No active physical WIP currently recorded in the plant.'}
@@ -1342,7 +1342,7 @@ export default function SizeGradeWipReportClient() {
                             size="sm"
                             variant="outline"
                             onClick={clearAllFilters}
-                            className="text-xs h-8 border-slate-300 bg-white hover:bg-slate-50 font-semibold"
+                            className="text-xs h-8 font-semibold"
                           >
                             Clear All Filters
                           </Button>
@@ -1368,87 +1368,87 @@ export default function SizeGradeWipReportClient() {
                               toggleGroup(g.key);
                             }
                           }}
-                          className={`group transition cursor-pointer hover:bg-slate-50/80 focus:outline-none focus-visible:bg-slate-100/80 ${
-                            isExpanded ? 'bg-slate-50/50' : ''
+                          className={`group transition cursor-pointer hover:bg-[var(--bg-surface-subtle,#f8fafc)] focus:outline-none focus-visible:bg-[var(--bg-surface-subtle,#f1f5f9)] ${
+                            isExpanded ? 'bg-[var(--bg-surface-subtle,#f8fafc)]' : ''
                           }`}
                         >
                           {/* Chevron (Sticky Left) */}
-                          <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-2.5 px-3 text-center text-slate-400 w-10">
+                          <td className="sticky left-0 z-10 bg-[var(--bg-surface,#ffffff)] group-hover:bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 text-center text-[var(--text-muted,#94a3b8)] w-10">
                             <ChevronRight
                               size={14}
                               aria-hidden="true"
                               className={`transition-transform duration-200 ${
-                                isExpanded ? 'rotate-90 text-slate-700' : 'rotate-0 text-slate-400'
+                                isExpanded ? 'rotate-90 text-[var(--text-main,#334155)]' : 'rotate-0 text-[var(--text-muted,#94a3b8)]'
                               }`}
                             />
                           </td>
 
                           {/* Size (OD × WT) (Sticky Left) */}
-                          <td className="sticky left-10 z-10 bg-white group-hover:bg-slate-50 py-2.5 px-3 font-mono font-bold text-slate-800 text-[12px] min-w-[120px]">
-                            {g.od} × {g.wt} <span className="text-[11px] text-slate-400 font-normal">mm</span>
+                          <td className="sticky left-10 z-10 bg-[var(--bg-surface,#ffffff)] group-hover:bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 font-mono font-bold text-[var(--text-main,#0f172a)] text-[12px] min-w-[120px]">
+                            {g.od} × {g.wt} <span className="text-[11px] text-[var(--text-muted,#94a3b8)] font-normal">mm</span>
                           </td>
 
                           {/* Grade (Sticky Left) */}
-                          <td className="sticky left-[160px] z-10 bg-white group-hover:bg-slate-50 py-2.5 px-3 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[100px]">
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200/80 font-mono">
+                          <td className="sticky left-[160px] z-10 bg-[var(--bg-surface,#ffffff)] group-hover:bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 border-r border-[var(--border-subtle,#e2e8f0)] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[100px]">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-[var(--bg-surface-subtle,#f1f5f9)] text-[var(--text-main,#334155)] border border-[var(--border-subtle,#e2e8f0)] font-mono">
                               {g.grade}
                             </span>
                           </td>
 
                           {/* Hollow HT */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
                             {formatCell(g.htc_mtr, g.htc_pcs, g.htc_mt)}
                           </td>
 
                           {/* Cold Draw */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
                             {formatCell(g.draw_mtr, g.draw_pcs, g.draw_mt)}
                           </td>
 
                           {/* Final HT */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
                             {formatCell(g.ht_mtr, g.ht_pcs, g.ht_mt)}
                           </td>
 
                           {/* Band Saw */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
                             {formatCell(g.band_saw_mtr, g.band_saw_pcs, g.band_saw_mt)}
                           </td>
 
                           {/* VDI */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
                             {formatCell(g.vdi_mtr, g.vdi_pcs, g.vdi_mt)}
                           </td>
 
                           {/* Finishing */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-slate-100">
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
                             {formatCell(g.finishing_mtr, g.finishing_pcs, g.finishing_mt)}
                           </td>
 
                           {/* Total Row WIP */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 bg-slate-50/70 border-l border-slate-200 text-[12px]">
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-[var(--text-main,#0f172a)] bg-[var(--bg-surface-subtle,#f8fafc)] border-l border-[var(--border-subtle,#e2e8f0)] text-[12px]">
                             {formatCell(g.total_mtr, g.total_pcs, g.total_mt)}
                           </td>
                         </tr>
 
                         {/* Inline Contributing Work Orders Sub-Table */}
                         {isExpanded && (
-                          <tr className="bg-slate-50/60">
-                            <td colSpan={11} className="py-3 px-6 border-y border-slate-200">
-                              <div className="rounded border border-slate-200 bg-white p-3 shadow-2xs space-y-2">
-                                <div className="text-xs font-semibold text-slate-700 flex items-center justify-between border-b border-slate-100 pb-1.5">
+                          <tr className="bg-[var(--bg-surface-subtle,#f8fafc)]">
+                            <td colSpan={11} className="py-3 px-6 border-y border-[var(--border-subtle,#e2e8f0)]">
+                              <div className="rounded border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs space-y-2">
+                                <div className="text-xs font-semibold text-[var(--text-main,#334155)] flex items-center justify-between border-b border-[var(--border-subtle,#f1f5f9)] pb-1.5">
                                   <div className="flex items-center gap-1.5">
-                                    <Package className="h-3.5 w-3.5 text-slate-500" />
+                                    <Package className="h-3.5 w-3.5 text-[var(--text-muted,#64748b)]" />
                                     Contributing Work Orders for {g.od} × {g.wt} mm ({g.grade}):
                                   </div>
-                                  <span className="font-mono text-[11px] text-slate-500 font-normal">
+                                  <span className="font-mono text-[11px] text-[var(--text-muted,#64748b)] font-normal">
                                     {g.contributing.length} Active Lots
                                   </span>
                                 </div>
 
                                 <div className="overflow-x-auto">
                                   <table className="w-full text-xs text-left">
-                                    <thead className="text-[10px] uppercase font-semibold text-slate-500 border-b border-slate-200">
+                                    <thead className="text-[10px] uppercase font-semibold text-[var(--text-muted,#64748b)] border-b border-[var(--border-subtle,#e2e8f0)]">
                                       <tr>
                                         <th className="py-1 px-2">Work Order No</th>
                                         <th className="py-1 px-2">Customer</th>
@@ -1458,26 +1458,26 @@ export default function SizeGradeWipReportClient() {
                                         <th className="py-1 px-2 text-right">Action</th>
                                       </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100">
+                                    <tbody className="divide-y divide-[var(--border-subtle,#f1f5f9)]">
                                       {g.contributing.map((c, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50/80">
-                                          <td className="py-1.5 px-2 font-mono font-bold text-slate-800">
+                                        <tr key={idx} className="hover:bg-[var(--bg-surface-subtle,#f8fafc)]">
+                                          <td className="py-1.5 px-2 font-mono font-bold text-[var(--text-main,#0f172a)]">
                                             {c.work_order_no}
                                           </td>
-                                          <td className="py-1.5 px-2 text-slate-600 truncate max-w-[200px]">
+                                          <td className="py-1.5 px-2 text-[var(--text-muted,#475569)] truncate max-w-[200px]">
                                             {c.customer_name || 'Generic Customer'}
                                           </td>
                                           <td className="py-1.5 px-2">
-                                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 font-mono">
+                                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-[var(--bg-surface-subtle,#f1f5f9)] text-[var(--text-main,#334155)] border border-[var(--border-subtle,#e2e8f0)] font-mono">
                                               {c.route_code || 'HFS'}
                                             </span>
                                           </td>
                                           <td className="py-1.5 px-2">
-                                            <span className="font-medium text-slate-700">
+                                            <span className="font-medium text-[var(--text-main,#334155)]">
                                               {c.stage_name}
                                             </span>
                                           </td>
-                                          <td className="py-1.5 px-2 text-right font-mono font-semibold text-slate-800">
+                                          <td className="py-1.5 px-2 text-right font-mono font-semibold text-[var(--text-main,#0f172a)]">
                                             {formatCell(c.wip_mtr, c.wip_pcs, c.wip_mt)}
                                           </td>
                                           <td className="py-1.5 px-2 text-right">
@@ -1487,7 +1487,7 @@ export default function SizeGradeWipReportClient() {
                                                 e.stopPropagation();
                                                 router.push(`/reports/tracking?wo=${encodeURIComponent(c.work_order_no)}`);
                                               }}
-                                              className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-950 hover:underline font-semibold"
+                                              className="inline-flex items-center gap-1 text-[11px] text-[var(--text-main,#334155)] hover:text-blue-600 dark:hover:text-blue-400 hover:underline font-semibold"
                                             >
                                               <span>Track</span>
                                               <ArrowRight size={11} />
@@ -1510,30 +1510,30 @@ export default function SizeGradeWipReportClient() {
 
               {/* Total Summary Footer */}
               {matrixGroups.length > 0 && (
-                <tfoot className="bg-slate-50/90 border-t-2 border-slate-200 font-semibold text-slate-800 text-xs">
+                <tfoot className="bg-[var(--bg-surface-subtle,#f8fafc)] border-t-2 border-[var(--border-subtle,#cbd5e1)] font-semibold text-[var(--text-main,#0f172a)] text-xs">
                   <tr>
-                    <td colSpan={3} className="py-2.5 px-3 uppercase tracking-wider text-right font-bold text-slate-700">
+                    <td colSpan={3} className="py-2.5 px-3 uppercase tracking-wider text-right font-bold text-[var(--text-main,#334155)]">
                       Total Plant Inventory:
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
                       {formatCell(kpis.htcMtr, kpis.htcPcs, kpis.htcMt)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
                       {formatCell(kpis.drawMtr, kpis.drawPcs, kpis.drawMt)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
                       {formatCell(kpis.htMtr, kpis.htPcs, kpis.htMt)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
                       {formatCell(kpis.bandSawMtr, kpis.bandSawPcs, kpis.bandSawMt)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
                       {formatCell(kpis.vdiMtr, kpis.vdiPcs, kpis.vdiMt)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800 border-l border-slate-200/60">
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
                       {formatCell(kpis.finishingMtr, kpis.finishingPcs, kpis.finishingMt)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 bg-slate-100/90 border-l border-slate-300 text-[12px]">
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-[var(--text-main,#0f172a)] bg-[var(--bg-surface-subtle,#f1f5f9)] border-l border-[var(--border-subtle,#cbd5e1)] text-[12px]">
                       {formatCell(kpis.totalWipMtr, kpis.totalWipPcs, kpis.totalWipMt)}
                     </td>
                   </tr>
@@ -1546,10 +1546,10 @@ export default function SizeGradeWipReportClient() {
 
       {/* LEDGER WORK ORDER DETAIL VIEW */}
       {viewMode === 'ledger' && (
-        <div className="rounded-lg border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
+        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] shadow-2xs overflow-hidden">
           <div className="overflow-auto max-h-[70vh] relative">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
+              <thead className="sticky top-0 z-20 bg-[var(--bg-surface-subtle,#f8fafc)] backdrop-blur-xs border-b border-[var(--border-subtle,#e2e8f0)] text-[var(--text-muted,#475569)] font-semibold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
                 <tr>
                   <th className="py-2.5 px-3 bg-clip-padding">Work Order #</th>
                   <th className="py-2.5 px-3 bg-clip-padding">Customer</th>
@@ -1563,52 +1563,52 @@ export default function SizeGradeWipReportClient() {
                   <th className="py-2.5 px-3 text-right bg-clip-padding">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[var(--border-subtle,#f1f5f9)]">
                 {filteredRawRows.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-400">
+                    <td colSpan={10} className="py-12 text-center text-[var(--text-muted,#94a3b8)]">
                       No active work orders matching filters.
                     </td>
                   </tr>
                 ) : (
                   filteredRawRows.map((r, i) => (
-                    <tr key={i} className="hover:bg-slate-50/80 transition">
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
+                    <tr key={i} className="hover:bg-[var(--bg-surface-subtle,#f8fafc)] transition">
+                      <td className="py-2.5 px-3 font-mono font-bold text-[var(--text-main,#0f172a)]">
                         {r.work_order_no}
                       </td>
-                      <td className="py-2.5 px-3 text-slate-600 truncate max-w-[160px]">
+                      <td className="py-2.5 px-3 text-[var(--text-muted,#475569)] truncate max-w-[160px]">
                         {r.customer_name || 'Generic Customer'}
                       </td>
                       <td className="py-2.5 px-3">
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 font-mono">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--bg-surface-subtle,#f1f5f9)] text-[var(--text-main,#334155)] border border-[var(--border-subtle,#e2e8f0)] font-mono">
                           {r.route_code || 'HFS'}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
+                      <td className="py-2.5 px-3 font-mono font-bold text-[var(--text-main,#0f172a)]">
                         {r.od} × {r.wt} mm
                       </td>
                       <td className="py-2.5 px-3">
-                        <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
+                        <span className="font-mono text-[var(--text-main,#334155)] bg-[var(--bg-surface-subtle,#f1f5f9)] px-1.5 py-0.5 rounded text-[11px] border border-[var(--border-subtle,#e2e8f0)]">
                           {r.grade}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 font-medium text-slate-700">
+                      <td className="py-2.5 px-3 font-medium text-[var(--text-main,#334155)]">
                         {r.stage_name || r.stage_code}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-800">
+                      <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)]">
                         {fmt(r.current_wip)} m
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-500">
+                      <td className="py-2.5 px-3 text-right font-mono text-[var(--text-muted,#64748b)]">
                         {fmt(r.current_wip_pcs, 0)}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-500">
+                      <td className="py-2.5 px-3 text-right font-mono text-[var(--text-muted,#64748b)]">
                         {fmt(r.available_mt, 3)}
                       </td>
                       <td className="py-2.5 px-3 text-right">
                         <button
                           type="button"
                           onClick={() => router.push(`/reports/tracking?wo=${encodeURIComponent(r.work_order_no)}`)}
-                          className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-950 hover:underline font-semibold"
+                          className="inline-flex items-center gap-1 text-[11px] text-[var(--text-main,#334155)] hover:text-blue-600 dark:hover:text-blue-400 hover:underline font-semibold"
                         >
                           <span>Track</span>
                           <ArrowRight size={11} />

@@ -161,4 +161,117 @@ describe('Pending Orders Status Filter and DataReport logic', () => {
     const noMatch = filterRows(sampleRows, 'status', 'In Progress', 'L&T', searchKeys);
     expect(noMatch).toHaveLength(0);
   });
+
+  function sortRows<T extends Record<string, any>>(
+    rows: T[],
+    sortKey: string | null,
+    sortDirection: 'asc' | 'desc',
+    isNumeric: (k: string) => boolean
+  ) {
+    if (!sortKey) return rows;
+    const isNum = isNumeric(sortKey);
+
+    return [...rows].sort((a, b) => {
+      const valA = a[sortKey];
+      const valB = b[sortKey];
+
+      if (valA === valB) return 0;
+      if (valA === null || valA === undefined || valA === '') return 1;
+      if (valB === null || valB === undefined || valB === '') return -1;
+
+      if (isNum || typeof valA === 'number' || typeof valB === 'number') {
+        const numA = typeof valA === 'number' ? valA : parseFloat(String(valA).replace(/,/g, ''));
+        const numB = typeof valB === 'number' ? valB : parseFloat(String(valB).replace(/,/g, ''));
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return sortDirection === 'asc' ? numA - numB : numB - numA;
+        }
+      }
+
+      const strA = String(valA);
+      const strB = String(valB);
+      const cmp = strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  const isNumericKey = (k: string) =>
+    ['ordered_qty', 'planned_qty', 'produced_qty', 'total_pending', 'od', 'wt'].includes(k);
+
+  it('correctly sorts numeric columns in ascending and descending order', () => {
+    // Sort by OD ascending
+    const ascOD = sortRows(sampleRows, 'od', 'asc', isNumericKey);
+    expect(ascOD.map((r) => r.od)).toEqual([38.1, 44.5, 50.8, 60.3]);
+
+    // Sort by OD descending
+    const descOD = sortRows(sampleRows, 'od', 'desc', isNumericKey);
+    expect(descOD.map((r) => r.od)).toEqual([60.3, 50.8, 44.5, 38.1]);
+
+    // Sort by ordered_qty descending
+    const descQty = sortRows(sampleRows, 'ordered_qty', 'desc', isNumericKey);
+    expect(descQty.map((r) => r.work_order_no)).toEqual(['WO-102', 'WO-104', 'WO-101', 'WO-103']);
+  });
+
+  it('correctly sorts string columns alphabetically', () => {
+    // Sort by customer ascending: BHEL, ISGEC, L&T, Thermax
+    const ascCustomer = sortRows(sampleRows, 'customer', 'asc', isNumericKey);
+    expect(ascCustomer.map((r) => r.customer)).toEqual(['BHEL', 'ISGEC', 'L&T', 'Thermax']);
+
+    // Sort by customer descending
+    const descCustomer = sortRows(sampleRows, 'customer', 'desc', isNumericKey);
+    expect(descCustomer.map((r) => r.customer)).toEqual(['Thermax', 'L&T', 'ISGEC', 'BHEL']);
+  });
+
+  it('places null or empty values at the end regardless of sort direction', () => {
+    const withNulls = [
+      { id: 1, val: 50 },
+      { id: 2, val: null },
+      { id: 3, val: 10 },
+      { id: 4, val: '' },
+    ];
+    const asc = sortRows(withNulls, 'val', 'asc', () => true);
+    expect(asc.map((r) => r.id)).toEqual([3, 1, 2, 4]);
+
+    const desc = sortRows(withNulls, 'val', 'desc', () => true);
+    expect(desc.map((r) => r.id)).toEqual([1, 3, 2, 4]);
+  });
+
+  it('correctly aggregates KPI metrics across work orders', () => {
+    let totalOrdered = 0;
+    let totalPending = 0;
+    let overdueCount = 0;
+    const refDate = '2026-10-26'; // Between WO-103 (10-25) and WO-101 (10-30)
+
+    for (const r of sampleRows) {
+      totalOrdered += r.ordered_qty;
+      totalPending += r.total_pending;
+      const isCompleted = r.status.toLowerCase().includes('complete');
+      if (r.target_date < refDate && !isCompleted) {
+        overdueCount++;
+      }
+    }
+
+    expect(totalOrdered).toBe(1200 + 2500 + 800 + 1500); // 6000
+    expect(totalPending).toBe(600 + 2500 + 800 + 0); // 3900
+    // WO-103 (10-25, Scheduled) is overdue, WO-104 (10-05) is Completed (not counted)
+    expect(overdueCount).toBe(1);
+  });
+
+  it('correctly filters rows by overdue status', () => {
+    const refDate = '2026-10-26';
+    const overdueRows = sampleRows.filter((r) => {
+      const isCompleted = r.status.toLowerCase().includes('complete');
+      return r.target_date < refDate && !isCompleted;
+    });
+
+    expect(overdueRows).toHaveLength(1);
+    expect(overdueRows[0].work_order_no).toBe('WO-103');
+  });
+
+  it('correctly adjusts total pages when changing page size', () => {
+    const totalItems = 120;
+    expect(Math.ceil(totalItems / 25)).toBe(5);
+    expect(Math.ceil(totalItems / 50)).toBe(3);
+    expect(Math.ceil(totalItems / 100)).toBe(2);
+    expect(Math.ceil(totalItems / 500)).toBe(1);
+  });
 });

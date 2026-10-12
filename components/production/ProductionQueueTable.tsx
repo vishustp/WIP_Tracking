@@ -56,11 +56,11 @@ export function ProductionQueueTable({
   const hasL1L2 = stage === 'DRAW' || stage === 'PILGER' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
+    <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] shadow-2xs overflow-hidden">
       {/* Table Header Strip */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-white px-5 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle,#f1f5f9)] bg-[var(--bg-surface,#ffffff)] px-4 sm:px-5 py-3.5">
         <div className="flex items-center gap-2">
-          <h2 className="text-base font-bold text-slate-900 tracking-tight">
+          <h2 className="text-base font-bold text-[var(--text-main,#0f172a)] tracking-tight">
             {stageLabel} Queue
           </h2>
         </div>
@@ -73,13 +73,13 @@ export function ProductionQueueTable({
               value={woFilter}
               onChange={(e) => setWoFilter(e.target.value)}
               placeholder="Quick filter (WO, Child WO, Customer, Plan)..."
-              className="h-8 w-48 sm:w-60 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-800 placeholder-slate-400 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
+              className="h-8 w-48 sm:w-60 rounded-md border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-3 text-xs font-medium text-[var(--text-main,#0f172a)] placeholder:[var(--text-muted,#94a3b8)] shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
             />
             {woFilter && (
               <button
                 type="button"
                 onClick={() => setWoFilter('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                className="absolute right-2 top-1/2 -translate-y-1/2 min-w-[28px] min-h-[28px] flex items-center justify-center text-[var(--text-muted,#94a3b8)] hover:text-[var(--text-main,#0f172a)] cursor-pointer"
                 title="Clear filter"
                 aria-label="Clear quick filter"
               >
@@ -89,12 +89,12 @@ export function ProductionQueueTable({
           </div>
 
           {(stage === 'DRAW' || stage === 'PILGER' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW') && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200/80 dark:border-indigo-800 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
               <Crown size={12} /> Master Consolidated
             </span>
           )}
           {stage === 'FINISHING' && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-200/80 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 dark:bg-teal-950/70 border border-teal-200/80 dark:border-teal-800 px-2.5 py-0.5 text-xs font-semibold text-teal-700 dark:text-teal-300">
               <Package size={12} /> Finishing & Bundling
             </span>
           )}
@@ -104,7 +104,7 @@ export function ProductionQueueTable({
       {/* Queue Loading / Empty States */}
       {queueLoading ? (
         <div className="p-8 space-y-3">
-          <div className="flex items-center justify-center gap-2 text-xs font-medium text-slate-500 mb-4">
+          <div className="flex items-center justify-center gap-2 text-xs font-medium text-[var(--text-muted,#64748b)] mb-4">
             <RefreshCw size={14} className="animate-spin text-brand-600" />
             <span>Loading work order production queue...</span>
           </div>
@@ -135,31 +135,31 @@ export function ProductionQueueTable({
       ) : (
         <div className="overflow-x-auto max-h-[580px] overflow-y-auto relative">
           <table className="min-w-full text-xs border-collapse">
-            <thead className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100/95 backdrop-blur-xs text-slate-800 font-semibold shadow-xs">
+            <thead className="sticky top-0 z-20 border-b border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface-subtle,#f1f5f9)] backdrop-blur-xs text-[var(--text-main,#0f172a)] font-semibold shadow-xs">
               <tr>
-                <th className="sticky left-0 top-0 z-30 py-2.5 px-3 sm:px-4 text-left font-bold text-slate-900 bg-slate-100 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] min-w-[220px] sm:min-w-[260px]">
+                <th className="sticky left-0 top-0 z-30 py-2.5 px-3 sm:px-4 text-left font-bold text-[var(--text-main,#0f172a)] bg-[var(--bg-surface-subtle,#f1f5f9)] border-r border-[var(--border-subtle,#e2e8f0)] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] min-w-[220px] sm:min-w-[260px]">
                   Order Information
                 </th>
-                <th className="py-2.5 px-2.5 text-center font-bold text-slate-700 whitespace-nowrap">Route</th>
-                <th className="py-2.5 px-3 sm:px-4 text-left font-bold text-slate-700 whitespace-nowrap">Balance</th>
+                <th className="py-2.5 px-2.5 text-center font-bold text-[var(--text-muted,#64748b)] whitespace-nowrap">Route</th>
+                <th className="py-2.5 px-3 sm:px-4 text-left font-bold text-[var(--text-muted,#64748b)] whitespace-nowrap">Balance</th>
                 {hasL1L2 && (
-                  <th className="py-2.5 px-3 text-center font-bold text-slate-800 bg-[#fef9c3] border-x border-amber-200 whitespace-nowrap">
+                  <th className="py-2.5 px-3 text-center font-bold text-amber-900 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/50 border-x border-amber-200 dark:border-amber-800 whitespace-nowrap">
                     Length (L1 / L2)
                   </th>
                 )}
-                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#e0f2fe] border-x border-sky-100 whitespace-nowrap">
+                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-sky-900 dark:text-sky-300 bg-sky-50/80 dark:bg-sky-950/50 border-x border-sky-100 dark:border-sky-800 whitespace-nowrap">
                   Production*
                 </th>
-                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#ffe4e6] border-r border-rose-100 whitespace-nowrap">
+                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-rose-900 dark:text-rose-300 bg-rose-50/80 dark:bg-rose-950/50 border-r border-rose-100 dark:border-rose-800 whitespace-nowrap">
                   Rejection
                 </th>
-                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-slate-800 bg-[#d1fae5] border-r border-emerald-100 whitespace-nowrap">
+                <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-emerald-900 dark:text-emerald-300 bg-emerald-50/80 dark:bg-emerald-950/50 border-r border-emerald-100 dark:border-emerald-800 whitespace-nowrap">
                   {stage === 'ROLLING' ? 'HTC OK (Nos)' : 'OK Nos (Net)'}
                 </th>
                 {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'BAND_SAW') && (
-                  <th className="py-2.5 px-3 text-left font-bold text-slate-700 whitespace-nowrap">Heat Lot No.</th>
+                  <th className="py-2.5 px-3 text-left font-bold text-[var(--text-muted,#64748b)] whitespace-nowrap">Heat Lot No.</th>
                 )}
-                <th className="sticky right-0 top-0 z-30 py-2.5 px-3 text-center font-bold text-slate-800 bg-slate-100 border-l border-slate-200 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)] whitespace-nowrap">
+                <th className="sticky right-0 top-0 z-30 py-2.5 px-3 text-center font-bold text-[var(--text-main,#0f172a)] bg-[var(--bg-surface-subtle,#f1f5f9)] border-l border-[var(--border-subtle,#e2e8f0)] shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)] whitespace-nowrap">
                   Actions
                 </th>
               </tr>

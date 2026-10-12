@@ -524,29 +524,29 @@ export default function DashboardClient({
           return (
             <div
               key={card.title}
-              className="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-3.5 flex flex-col justify-between transition-all hover:shadow-xs hover:border-slate-300"
+              className="bg-[var(--bg-surface,#ffffff)] rounded-xl border border-[var(--border-subtle,#e2e8f0)] shadow-2xs p-3.5 flex flex-col justify-between transition-all hover:shadow-xs hover:border-[var(--border-strong,#cbd5e1)]"
             >
               <div className="flex items-start justify-between">
                 <div className={`p-2 rounded-lg ${card.iconBg} shrink-0`}>
                   <Icon className="h-4 w-4" />
                 </div>
                 <div className="flex flex-col text-right">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-tight truncate max-w-[130px]">
+                  <span className="text-xs font-bold text-[var(--text-muted,#64748b)] uppercase tracking-tight truncate max-w-[130px]">
                     {card.title}
                   </span>
                   <div className="flex items-baseline justify-end gap-1.5 mt-1 flex-wrap">
-                    <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight font-mono">
-                      {card.mt} <span className="text-xs sm:text-sm font-black text-slate-900">MT</span>
+                    <span className="text-xl sm:text-2xl font-black text-[var(--text-main,#0f172a)] tracking-tight font-mono">
+                      {card.mt} <span className="text-xs sm:text-sm font-black text-[var(--text-main,#0f172a)]">MT</span>
                     </span>
-                    <span className="text-xs font-medium text-slate-500 font-mono">
-                      {card.nos} <span className="text-[10px] text-slate-400 font-sans">Nos</span>
+                    <span className="text-xs font-medium text-[var(--text-muted,#64748b)] font-mono">
+                      {card.nos} <span className="text-[10px] opacity-75 font-sans">Nos</span>
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium truncate max-w-[110px]">
+              <div className="mt-3 pt-2 border-t border-[var(--border-subtle,#f1f5f9)] flex items-center justify-between text-xs">
+                <span className="text-[var(--text-muted,#64748b)] font-medium truncate max-w-[110px]">
                   {card.subText}
                 </span>
                 <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${card.badgeColor}`}>
@@ -561,22 +561,22 @@ export default function DashboardClient({
       {/* ========================================================================= */}
       {/* ROW 2: WIP BY PROCESS STAGE (7 CANONICAL PROJECT WORK CENTERS)             */}
       {/* ========================================================================= */}
-      <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4 sm:p-5">
+      <div className="bg-[var(--bg-surface,#ffffff)] rounded-xl border border-[var(--border-subtle,#e2e8f0)] shadow-2xs p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <h2 className="text-base font-bold text-[var(--text-main,#0f172a)] tracking-tight flex items-center gap-2">
               <span>WIP by Process Stage</span>
-              <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+              <span className="text-xs font-semibold text-[var(--text-muted,#64748b)] bg-[var(--bg-surface-subtle,#f1f5f9)] px-2 py-0.5 rounded-full border border-[var(--border-subtle,#e2e8f0)]">
                 6 Post-Rolling Work Centers
               </span>
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-[var(--text-muted,#64748b)] mt-0.5">
               Live Work-in-Progress balance across active seamless pipe manufacturing stages
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500">Total WIP:</span>
-            <span className="text-sm font-black font-mono text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+            <span className="text-xs font-semibold text-[var(--text-muted,#64748b)]">Total WIP:</span>
+            <span className="text-sm font-black font-mono text-[var(--text-main,#0f172a)] bg-[var(--bg-surface-subtle,#f1f5f9)] px-2.5 py-1 rounded-lg border border-[var(--border-subtle,#e2e8f0)]">
               {formatNum(totalPlantWipMt, 1)} MT
             </span>
           </div>
@@ -594,7 +594,7 @@ export default function DashboardClient({
                       {stage.name}
                     </span>
 
-                    <div className="my-2 p-2 rounded-full bg-white/90 shadow-2xs border border-white">
+                    <div className="my-2 p-2 rounded-full bg-[var(--bg-surface,#ffffff)] shadow-2xs border border-[var(--border-subtle,#e2e8f0)]">
                       <Icon className="h-4 w-4" style={{ color: stage.color }} />
                     </div>
 
@@ -624,10 +624,10 @@ export default function DashboardClient({
       {/* ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Col 1: WIP Distribution Donut Chart (4 cols) */}
-        <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4 flex flex-col justify-between">
+        <div className="lg:col-span-4 bg-[var(--bg-surface,#ffffff)] rounded-xl border border-[var(--border-subtle,#e2e8f0)] shadow-2xs p-4 flex flex-col justify-between">
           <div>
-            <h3 className="text-sm font-bold text-slate-900 tracking-tight">WIP Distribution</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Stage share of total active WIP tonnage</p>
+            <h3 className="text-sm font-bold text-[var(--text-main,#0f172a)] tracking-tight">WIP Distribution</h3>
+            <p className="text-xs text-[var(--text-muted,#64748b)] mt-0.5">Stage share of total active WIP tonnage</p>
           </div>
 
           <div className="my-2 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -648,15 +648,21 @@ export default function DashboardClient({
                   </Pie>
                   <Tooltip
                     formatter={(val: any, name: any) => [`${formatNum(val, 1)} MT`, name]}
-                    contentStyle={{ borderRadius: '8px', fontSize: '12px', border: '1px solid #e2e8f0' }}
+                    contentStyle={{
+                      borderRadius: '8px',
+                      fontSize: '0.8125rem',
+                      backgroundColor: 'var(--bg-surface-elevated, #ffffff)',
+                      borderColor: 'var(--border-subtle, #e2e8f0)',
+                      color: 'var(--text-main, #0f172a)'
+                    }}
                   />
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-                <span className="text-base font-black font-mono text-slate-900 leading-none">
+                <span className="text-base font-black font-mono text-[var(--text-main,#0f172a)] leading-none">
                   {formatNum(totalPlantWipMt, 0)}
                 </span>
-                <span className="text-[10px] font-bold text-slate-500 mt-0.5">MT Total</span>
+                <span className="text-[10px] font-bold text-[var(--text-muted,#64748b)] mt-0.5">MT Total</span>
               </div>
             </div>
 
@@ -684,18 +690,18 @@ export default function DashboardClient({
         </div>
 
         {/* Col 2: Yesterday's Production Station-wise (5 cols) */}
-        <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4 flex flex-col justify-between">
+        <div className="lg:col-span-5 bg-[var(--bg-surface,#ffffff)] rounded-xl border border-[var(--border-subtle,#e2e8f0)] shadow-2xs p-4 flex flex-col justify-between">
           <div>
-            <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-100">
+            <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-[var(--border-subtle,#f1f5f9)]">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-slate-900 tracking-tight">Yesterday&apos;s Production</h3>
-                  <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 font-mono">
-                    <Calendar className="h-2.5 w-2.5 text-slate-500" />
+                  <h3 className="text-sm font-bold text-[var(--text-main,#0f172a)] tracking-tight">Yesterday&apos;s Production</h3>
+                  <span className="inline-flex items-center gap-1 rounded bg-[var(--bg-surface-subtle,#f1f5f9)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-main,#0f172a)] font-mono border border-[var(--border-subtle,#e2e8f0)]">
+                    <Calendar className="h-2.5 w-2.5 text-[var(--text-muted,#64748b)]" />
                     {yesterdayProduction?.formattedDate || 'Yesterday'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">Station-wise output in Nos and Metric Tonnes</p>
+                <p className="text-xs text-[var(--text-muted,#64748b)] mt-0.5">Station-wise output in Nos and Metric Tonnes</p>
               </div>
               <div className="text-right shrink-0">
                 <div className="text-[11px] font-semibold text-slate-500 font-mono">
@@ -728,8 +734,8 @@ export default function DashboardClient({
                     href={`/reports/production?wc=${station.code}`}
                     className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg border transition-all ${
                       hasProd
-                        ? 'bg-slate-50/60 border-slate-200/80 hover:bg-blue-50/50 hover:border-blue-200'
-                        : 'bg-white border-slate-100 hover:bg-slate-50 hover:border-slate-200'
+                        ? 'bg-[var(--bg-surface-subtle,#f8fafc)] border-[var(--border-subtle,#e2e8f0)] hover:bg-blue-50/50 dark:hover:bg-blue-950/30 hover:border-blue-200 dark:hover:border-blue-800'
+                        : 'bg-[var(--bg-surface,#ffffff)] border-[var(--border-subtle,#f1f5f9)] hover:bg-[var(--bg-surface-subtle,#f8fafc)] hover:border-[var(--border-strong,#cbd5e1)]'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -783,13 +789,13 @@ export default function DashboardClient({
         </div>
 
         {/* Col 3: Top 5 Bottlenecks (3 cols) */}
-        <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4 flex flex-col justify-between">
+        <div className="lg:col-span-3 bg-[var(--bg-surface,#ffffff)] rounded-xl border border-[var(--border-subtle,#e2e8f0)] shadow-2xs p-4 flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-slate-900 tracking-tight">Top Bottlenecks</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Highest WIP buildup</p>
+              <h3 className="text-sm font-bold text-[var(--text-main,#0f172a)] tracking-tight">Top Bottlenecks</h3>
+              <p className="text-xs text-[var(--text-muted,#64748b)] mt-0.5">Highest WIP buildup</p>
             </div>
-            <span className="text-xs font-bold text-slate-500 font-mono">MT</span>
+            <span className="text-xs font-bold text-[var(--text-muted,#64748b)] font-mono">MT</span>
           </div>
 
           <div className="space-y-2 my-2">
@@ -829,11 +835,11 @@ export default function DashboardClient({
       {/* ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Left: Priority / Delayed Work Orders (7 cols) */}
-        <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4">
+        <div className="lg:col-span-7 bg-[var(--bg-surface,#ffffff)] rounded-xl border border-[var(--border-subtle,#e2e8f0)] shadow-2xs p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-sm font-bold text-slate-900 tracking-tight">Priority / Delayed Work Orders</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Orders requiring immediate shop-floor tracking</p>
+              <h3 className="text-sm font-bold text-[var(--text-main,#0f172a)] tracking-tight">Priority / Delayed Work Orders</h3>
+              <p className="text-xs text-[var(--text-muted,#64748b)] mt-0.5">Orders requiring immediate shop-floor tracking</p>
             </div>
             <Link
               href="/order-priority"
@@ -892,19 +898,19 @@ export default function DashboardClient({
         </div>
 
         {/* Right: WIP Aging Report (5 cols) */}
-        <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4 flex flex-col justify-between">
+        <div className="lg:col-span-5 bg-[var(--bg-surface,#ffffff)] rounded-xl border border-[var(--border-subtle,#e2e8f0)] shadow-2xs p-4 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-slate-900 tracking-tight">WIP Aging Report</h3>
+                  <h3 className="text-sm font-bold text-[var(--text-main,#0f172a)] tracking-tight">WIP Aging Report</h3>
                   {criticalAgingCount > 0 && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 dark:bg-red-950/70 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
                       {criticalAgingCount} Critical
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">Material stagnation & station dwell times</p>
+                <p className="text-xs text-[var(--text-muted,#64748b)] mt-0.5">Material stagnation & station dwell times</p>
               </div>
               <Link
                 href="/reports/aging"

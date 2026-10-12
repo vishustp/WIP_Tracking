@@ -52,33 +52,33 @@ export function ProductionQueueRow({
   return (
     <tr className="group hover:bg-slate-50/70 transition-colors">
       {/* Order Information (Frozen Left Column) */}
-      <td className="sticky left-0 z-10 py-2.5 px-3 sm:px-4 align-middle bg-white group-hover:bg-slate-50 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[220px] sm:min-w-[260px]">
-        <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+      <td className="sticky left-0 z-10 py-2.5 px-3 sm:px-4 align-middle bg-[var(--bg-surface,#ffffff)] group-hover:bg-[var(--bg-surface-subtle,#f8fafc)] border-r border-[var(--border-subtle,#e2e8f0)] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[220px] sm:min-w-[260px] text-[var(--text-main,#0f172a)]">
+        <div className="font-bold text-[var(--text-main,#0f172a)] flex items-center gap-1.5 flex-wrap">
           <span className="text-xs sm:text-sm font-extrabold">{row.work_order_no}</span>
           {isRollingStage && (row.master_plan_no || row.plan_no) && (
-            <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 text-sky-800 px-1.5 py-0.5 text-[10px] font-bold uppercase">
+            <span className="inline-flex items-center gap-0.5 rounded bg-sky-100 dark:bg-sky-950/70 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800 px-1.5 py-0.5 text-[10px] font-bold uppercase">
               PLAN: {row.master_plan_no || row.plan_no}
               {Number(row.revision_no || 0) > 0 ? ` (R${String(row.revision_no)})` : ''}
             </span>
           )}
           {isRollingStage && (
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.2 text-[9px] font-bold uppercase">
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.2 text-[9px] font-bold uppercase">
               ISSUED
             </span>
           )}
           {row.is_master && (
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-indigo-100 text-indigo-800 px-2 py-0.2 text-[9px] font-bold uppercase">
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-2 py-0.2 text-[9px] font-bold uppercase">
               <Crown size={10} /> MASTER
             </span>
           )}
           {row.daily_plan_target_pcs && Number(row.daily_plan_target_pcs) > 0 && (
-            <span className="inline-flex items-center gap-1 rounded bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.2 text-[10px] font-mono font-bold tracking-tight shadow-2xs">
+            <span className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-1.5 py-0.2 text-[10px] font-mono font-bold tracking-tight shadow-2xs">
               ★ TODAY&apos;S TARGET: {row.daily_plan_target_pcs} PCS{row.daily_plan_machine ? ` (${row.daily_plan_machine})` : ''}
             </span>
           )}
         </div>
 
-        <div className="text-xs text-slate-600 font-medium mt-0.5 truncate max-w-[220px]">
+        <div className="text-xs text-[var(--text-muted,#64748b)] font-medium mt-0.5 truncate max-w-[220px]">
           {row.customer_name || '—'}
         </div>
         <div className="text-[11px] text-slate-400 font-mono mt-0.5">
@@ -196,10 +196,10 @@ export function ProductionQueueRow({
                   onUpdateRow(key, 'mtr', (Number(row.pcs) * avgVal).toFixed(2));
                 }
               }}
-              className="w-14 rounded border border-amber-300 bg-white px-1.5 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500 disabled:bg-slate-100 disabled:text-slate-400"
+              className="w-14 rounded border border-amber-300 dark:border-amber-700 bg-[var(--bg-surface,#ffffff)] px-1.5 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
               title="L1 (Length Min / Cut Length in meters)"
             />
-            <span className="text-slate-400 text-xs">-</span>
+            <span className="text-[var(--text-muted,#94a3b8)] text-xs">-</span>
             <input
               type="number"
               min="0"
@@ -216,7 +216,7 @@ export function ProductionQueueRow({
                   onUpdateRow(key, 'mtr', (Number(row.pcs) * avgVal).toFixed(2));
                 }
               }}
-              className="w-14 rounded border border-amber-300 bg-white px-1.5 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500 disabled:bg-slate-100 disabled:text-slate-400"
+              className="w-14 rounded border border-amber-300 dark:border-amber-700 bg-[var(--bg-surface,#ffffff)] px-1.5 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
               title="L2 (Length Max / Cut Length in meters)"
             />
           </div>
@@ -224,7 +224,7 @@ export function ProductionQueueRow({
       )}
 
       {/* Production Inputs (PCS & MTR) */}
-      <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#f0f9ff]/60 border-x border-sky-100">
+      <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#f0f9ff]/60 dark:bg-sky-950/20 border-x border-sky-100 dark:border-sky-900/40">
         <div className="flex items-center justify-center gap-1.5">
           <input
             type="number"
@@ -246,7 +246,7 @@ export function ProductionQueueRow({
                 onUpdateRow(key, 'mtr', '');
               }
             }}
-            className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-slate-100 disabled:text-slate-400"
+            className="w-16 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
           />
           <input
             type="number"
@@ -256,13 +256,13 @@ export function ProductionQueueRow({
             disabled={!isAllowed}
             value={row.mtr}
             onChange={(e) => onUpdateRow(key, 'mtr', e.target.value)}
-            className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-slate-100 disabled:text-slate-400"
+            className="w-20 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
           />
         </div>
       </td>
 
       {/* Rejection Inputs (PCS & MTR) */}
-      <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#fff1f2]/60 border-r border-rose-100">
+      <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#fff1f2]/60 dark:bg-rose-950/20 border-r border-rose-100 dark:border-rose-900/40">
         <div className="flex items-center justify-center gap-1.5">
           <input
             type="number"
@@ -272,7 +272,7 @@ export function ProductionQueueRow({
             disabled={!isAllowed}
             value={row.rejection_pcs}
             onChange={(e) => onUpdateRow(key, 'rejection_pcs', e.target.value)}
-            className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-slate-100 disabled:text-slate-400"
+            className="w-16 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
           />
           <input
             type="number"
@@ -282,14 +282,14 @@ export function ProductionQueueRow({
             disabled={!isAllowed}
             value={row.rejection_mtr}
             onChange={(e) => onUpdateRow(key, 'rejection_mtr', e.target.value)}
-            className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-slate-100 disabled:text-slate-400"
+            className="w-20 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
           />
         </div>
       </td>
 
       {/* OK Nos Column (HTC OK for Rolling, Auto-calculated Net OK for other stages) */}
       {stage === 'ROLLING' ? (
-        <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#ecfdf5]/60 border-r border-emerald-100">
+        <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#ecfdf5]/60 dark:bg-emerald-950/20 border-r border-emerald-100 dark:border-emerald-900/40">
           <div className="flex items-center justify-center gap-1.5">
             <input
               type="number"
@@ -299,12 +299,12 @@ export function ProductionQueueRow({
               disabled={!isAllowed}
               value={row.htc_ok_pcs}
               onChange={(e) => onUpdateRow(key, 'htc_ok_pcs', e.target.value)}
-              className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-center font-mono text-xs font-semibold text-slate-800 shadow-2xs focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-400"
+              className="w-16 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
             />
           </div>
         </td>
       ) : (
-        <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#ecfdf5]/60 border-r border-emerald-100 text-center">
+        <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#ecfdf5]/60 dark:bg-emerald-950/20 border-r border-emerald-100 dark:border-emerald-900/40 text-center">
           {(() => {
             const pPcs = n(row.pcs);
             const rPcs = n(row.rejection_pcs);
@@ -314,12 +314,12 @@ export function ProductionQueueRow({
             const okMtr = Math.max(0, pMtr - rMtr);
 
             return pPcs > 0 || pMtr > 0 ? (
-              <div className="inline-flex flex-col items-center justify-center bg-emerald-100/70 border border-emerald-300 px-2 py-0.5 rounded text-emerald-900 font-mono font-extrabold text-xs shadow-2xs">
+              <div className="inline-flex flex-col items-center justify-center bg-emerald-100/70 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded text-emerald-900 dark:text-emerald-200 font-mono font-extrabold text-xs shadow-2xs">
                 <span>{okPcs > 0 ? `${fmt(okPcs)} PCS` : (okMtr > 0 ? `${fmt(okMtr)} m` : '0 PCS')}</span>
-                {okMtr > 0 && okPcs > 0 && <span className="text-[10px] text-emerald-700 font-normal">{fmt(okMtr)} m</span>}
+                {okMtr > 0 && okPcs > 0 && <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-normal">{fmt(okMtr)} m</span>}
               </div>
             ) : (
-              <span className="text-slate-400 font-mono">—</span>
+              <span className="text-[var(--text-muted,#94a3b8)] font-mono">—</span>
             );
           })()}
         </td>
@@ -330,15 +330,15 @@ export function ProductionQueueRow({
         <td className="py-2.5 px-3 align-middle">
           {stage === 'BAND_SAW' ? (
             row.heat_lots && row.heat_lots.length > 1 ? (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs" title={row.heat_lots.map((l) => l.lot_no).join(', ')}>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 shadow-2xs" title={row.heat_lots.map((l) => l.lot_no).join(', ')}>
                 {row.heat_lots.length} Lots
               </span>
             ) : row.heat_lot_no ? (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 shadow-2xs">
                 {row.heat_lot_no}
               </span>
             ) : (
-              <span className="text-slate-400 font-mono text-xs">—</span>
+              <span className="text-[var(--text-muted,#94a3b8)] font-mono text-xs">—</span>
             )
           ) : (
             <input
@@ -347,19 +347,19 @@ export function ProductionQueueRow({
               disabled={!isAllowed}
               value={row.heat_lot_no}
               onChange={(e) => onUpdateRow(key, 'heat_lot_no', e.target.value)}
-              className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-900 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-slate-100 disabled:text-slate-400"
+              className="w-24 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-xs font-medium text-[var(--text-main,#0f172a)] shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
             />
           )}
         </td>
       )}
 
       {/* Actions (Sticky Right Column) */}
-      <td className="sticky right-0 z-10 py-2.5 px-3 align-middle text-center bg-white group-hover:bg-slate-50 border-l border-slate-200 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)]">
+      <td className="sticky right-0 z-10 py-2.5 px-3 align-middle text-center bg-[var(--bg-surface,#ffffff)] group-hover:bg-[var(--bg-surface-subtle,#f8fafc)] border-l border-[var(--border-subtle,#e2e8f0)] shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.06)]">
         <div className="flex items-center justify-center gap-1.5">
           <button
             type="button"
             onClick={() => onToggleExpand(key)}
-            className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-800 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            className="inline-flex items-center gap-1 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2.5 py-1 text-xs font-bold text-[var(--text-main,#1e293b)] shadow-2xs hover:bg-[var(--bg-surface-subtle,#f8fafc)] transition cursor-pointer"
           >
             WIP Flow
           </button>
@@ -367,7 +367,7 @@ export function ProductionQueueRow({
             <button
               type="button"
               onClick={() => onOpenBandSawCutting(row)}
-              className="inline-flex items-center gap-1 rounded border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-800 shadow-2xs hover:bg-indigo-100 transition cursor-pointer"
+              className="inline-flex items-center gap-1 rounded border border-indigo-300 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 text-xs font-bold text-indigo-800 dark:text-indigo-200 shadow-2xs hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition cursor-pointer"
               title="Open Multi-Length Band Saw Cutting Form"
             >
               <Scissors size={12} className="rotate-90" /> Cut Form

@@ -1,10 +1,23 @@
 import type { Config } from 'tailwindcss';
 
 export default {
+  darkMode: 'class',
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
+        surface: {
+          DEFAULT: 'var(--bg-surface)',
+          elevated: 'var(--bg-surface-elevated)',
+          subtle: 'var(--bg-surface-subtle)',
+          canvas: 'var(--bg-canvas)',
+        },
+        theme: {
+          border: 'var(--border-subtle)',
+          'border-strong': 'var(--border-strong)',
+          text: 'var(--text-main)',
+          'text-muted': 'var(--text-muted)',
+        },
         brand: {
           50: '#f0f7ff',
           100: '#e0effe',

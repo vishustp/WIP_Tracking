@@ -683,47 +683,47 @@ export function BandSawCuttingModal({
                   WO #{row.work_order_no}
                 </span>
                 {row.route_code && (
-                  <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+                  <span className="rounded-md border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] px-2 py-0.5 text-xs font-semibold text-[var(--text-main,#334155)]">
                     {row.route_code}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-[var(--text-muted,#475569)]">
                 {row.customer_name ? (
-                  <span className="font-medium text-slate-800">{row.customer_name}</span>
+                  <span className="font-medium text-[var(--text-main,#1e293b)]">{row.customer_name}</span>
                 ) : (
                   'Standard Order'
                 )}{' '}
-                • Grade: <span className="font-semibold text-slate-800">{row.specification || 'SAE-1018'}</span>
+                • Grade: <span className="font-semibold text-[var(--text-main,#1e293b)]">{row.specification || 'SAE-1018'}</span>
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 text-right">
               {/* Target Order Length Spec */}
-              <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-1.5 shadow-2xs text-left">
-                <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1">
+              <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 dark:bg-amber-950/30 px-3 py-1.5 shadow-2xs text-left">
+                <div className="text-[10px] font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1">
                   <span>Order Length</span>
-                  {lengthTypeStr && <span className="text-amber-700 font-normal">{lengthTypeStr}</span>}
+                  {lengthTypeStr && <span className="text-amber-700 dark:text-amber-400 font-normal">{lengthTypeStr}</span>}
                 </div>
-                <div className="font-mono text-xs font-extrabold text-amber-950">
+                <div className="font-mono text-xs font-extrabold text-amber-950 dark:text-amber-200">
                   {orderLengthStr}
                 </div>
                 {(l1 > 0 || l2 > 0) && (
-                  <div className="text-[9.5px] font-mono text-amber-700/90">
+                  <div className="text-[9.5px] font-mono text-amber-700/90 dark:text-amber-400">
                     L1: {l1 > 0 ? `${l1}m` : '-'} {l2 > 0 ? `| L2: ${l2}m` : ''}
                   </div>
                 )}
               </div>
 
-              <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-1.5 shadow-2xs text-left">
-                <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">HT Lot No.</div>
-                <div className="font-mono text-xs font-bold text-amber-950 truncate max-w-[140px]" title={row.heat_lot_no || 'Standard'}>
+              <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 dark:bg-amber-950/30 px-3 py-1.5 shadow-2xs text-left">
+                <div className="text-[10px] font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider">HT Lot No.</div>
+                <div className="font-mono text-xs font-bold text-amber-950 dark:text-amber-200 truncate max-w-[140px]" title={row.heat_lot_no || 'Standard'}>
                   {row.heat_lot_no || 'Standard'}
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-200/80 bg-white/90 px-3 py-1.5 shadow-2xs text-left">
-                <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">Pipe Size (OD × WT)</div>
-                <div className="font-mono text-xs font-bold text-slate-800">
+              <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] px-3 py-1.5 shadow-2xs text-left">
+                <div className="text-[10px] font-medium text-[var(--text-muted,#64748b)] uppercase tracking-wider">Pipe Size (OD × WT)</div>
+                <div className="font-mono text-xs font-bold text-[var(--text-main,#1e293b)]">
                   {pipeOd} mm × {pipeWt} mm
                 </div>
               </div>
@@ -765,13 +765,13 @@ export function BandSawCuttingModal({
                 return (
                   <div
                     key={child.work_order_id || child.id || idx}
-                    className="flex items-center justify-between rounded-lg border border-blue-200/80 bg-white p-2.5 shadow-2xs hover:border-blue-400 hover:shadow-xs transition"
+                    className="flex items-center justify-between rounded-lg border border-blue-200/80 dark:border-blue-900/60 bg-[var(--bg-surface,#ffffff)] p-2.5 shadow-2xs hover:border-blue-400 hover:shadow-xs transition"
                   >
                     <div className="min-w-0 pr-2">
-                      <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-slate-900">
+                      <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-[var(--text-main,#0f172a)]">
                         <span>WO #{child.work_order_no}</span>
                       </div>
-                      <div className="text-[10.5px] text-slate-600 truncate">
+                      <div className="text-[10.5px] text-[var(--text-muted,#475569)] truncate">
                         {child.customer_name || 'Standard'}
                       </div>
                       <div className="text-[10px] font-semibold text-slate-500 mt-0.5">
@@ -798,15 +798,15 @@ export function BandSawCuttingModal({
         )}
 
         {/* Section 1: Mother Pipe Processing & Live Balance Tracker */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+        <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface-subtle,#f8fafc)] p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
-              <Layers size={14} className="text-indigo-600" />
+            <h4 className="flex items-center gap-2 text-xs font-bold text-[var(--text-main,#1e293b)] uppercase tracking-wider">
+              <Layers size={14} className="text-indigo-600 dark:text-indigo-400" />
               1. Mother Pipes Input &amp; Live Balance Tracker
             </h4>
-            <span className="text-[11px] font-medium text-slate-500">
+            <span className="text-[11px] font-medium text-[var(--text-muted,#64748b)]">
               Feeder:{' '}
-              <strong className="text-slate-700">
+              <strong className="text-[var(--text-main,#334155)]">
                 {row.feeder_source_label || 'Heat Treatment Net Output'}
               </strong>
             </span>
@@ -814,20 +814,20 @@ export function BandSawCuttingModal({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
-              <label className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-700">
-                <Calendar size={12} className="text-indigo-600" />
+              <label className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-[var(--text-main,#334155)]">
+                <Calendar size={12} className="text-indigo-600 dark:text-indigo-400" />
                 Cutting Date <span className="text-rose-500">*</span>
               </label>
               <Input
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="h-9 font-semibold text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white shadow-2xs"
+                className="h-9 font-semibold text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-[var(--bg-surface,#ffffff)] shadow-2xs"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-semibold text-slate-700">
+              <label className="mb-1 block text-[11px] font-semibold text-[var(--text-main,#334155)]">
                 Mother Pipes Processed (Pcs) <span className="text-rose-500">*</span>
               </label>
               <Input
@@ -836,13 +836,13 @@ export function BandSawCuttingModal({
                 max={availMotherPcs > 0 ? availMotherPcs * 2 : 9999}
                 value={motherPcsInput}
                 onChange={(e) => setMotherPcsInput(e.target.value)}
-                className="h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500 bg-white"
+                className="h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500 bg-[var(--bg-surface,#ffffff)]"
                 placeholder="e.g. 10"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-semibold text-slate-700">
+              <label className="mb-1 block text-[11px] font-semibold text-[var(--text-main,#334155)]">
                 Mother Pipe Avg Length (Mtr) <span className="text-rose-500">*</span>
               </label>
               <Input
@@ -851,84 +851,84 @@ export function BandSawCuttingModal({
                 min="0.5"
                 value={motherAvgLenInput}
                 onChange={(e) => setMotherAvgLenInput(e.target.value)}
-                className="h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500 bg-white"
+                className="h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500 bg-[var(--bg-surface,#ffffff)]"
                 placeholder="e.g. 12.00"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+              <label className="mb-1 block text-[11px] font-semibold text-[var(--text-muted,#64748b)]">
                 Total Mother Input Length
               </label>
-              <div className="flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 font-mono text-xs font-bold text-slate-800 shadow-2xs">
+              <div className="flex h-9 items-center rounded-md border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] px-3 font-mono text-xs font-bold text-[var(--text-main,#1e293b)] shadow-2xs">
                 {fmt(totalMotherMtr)} MTR
               </div>
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] font-semibold text-slate-500">
+              <label className="mb-1 block text-[11px] font-semibold text-[var(--text-muted,#64748b)]">
                 Total Mother Input Weight
               </label>
-              <div className="flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 font-mono text-xs font-bold text-slate-800 shadow-2xs">
+              <div className="flex h-9 items-center rounded-md border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] px-3 font-mono text-xs font-bold text-[var(--text-main,#1e293b)] shadow-2xs">
                 {fmt(totalMotherMt, 3)} MT
               </div>
             </div>
           </div>
 
           {/* Live Mother Pipe Balance Card */}
-          <div className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-2xs">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2 mb-2">
+          <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle,#f1f5f9)] pb-2 mb-2">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted,#64748b)]">
                   Mother Pipe Live Balance Status:
                 </span>
                 {remainingMotherPcs > 0 ? (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
                     <CheckCircle2 size={11} />
                     Partial Processing ({remainingMotherPcs} PCS Remaining in Queue)
                   </span>
                 ) : remainingMotherPcs === 0 ? (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-300">
                     <CheckCircle2 size={11} />
                     100% Mother Pipes Processed in Batch
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
                     <AlertCircle size={11} />
                     Processing {Math.abs(remainingMotherPcs)} Pcs &gt; Available Queue
                   </span>
                 )}
               </div>
-              <div className="text-[11px] text-slate-500 font-mono">
-                Available: <strong className="text-slate-800">{availMotherPcs} PCS</strong> ({fmt(availMotherMtr)}m / {fmt(availMotherMt, 3)} MT)
+              <div className="text-[11px] text-[var(--text-muted,#64748b)] font-mono">
+                Available: <strong className="text-[var(--text-main,#1e293b)]">{availMotherPcs} PCS</strong> ({fmt(availMotherMtr)}m / {fmt(availMotherMt, 3)} MT)
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3 text-center text-xs">
-              <div className="rounded-md bg-slate-50 p-2 border border-slate-100">
-                <div className="text-[10px] text-slate-500 font-semibold uppercase">Total Queue Available</div>
-                <div className="font-mono font-bold text-slate-800 text-sm mt-0.5">
-                  {availMotherPcs} PCS <span className="text-xs text-slate-500 font-normal">({fmt(availMotherMt, 3)} MT)</span>
+              <div className="rounded-md bg-[var(--bg-surface-subtle,#f8fafc)] p-2 border border-[var(--border-subtle,#e2e8f0)]">
+                <div className="text-[10px] text-[var(--text-muted,#64748b)] font-semibold uppercase">Total Queue Available</div>
+                <div className="font-mono font-bold text-[var(--text-main,#1e293b)] text-sm mt-0.5">
+                  {availMotherPcs} PCS <span className="text-xs text-[var(--text-muted,#64748b)] font-normal">({fmt(availMotherMt, 3)} MT)</span>
                 </div>
               </div>
 
-              <div className="rounded-md bg-indigo-50/60 p-2 border border-indigo-100">
-                <div className="text-[10px] text-indigo-700 font-semibold uppercase">Processed This Batch</div>
-                <div className="font-mono font-bold text-indigo-950 text-sm mt-0.5">
-                  {motherPcsNum} PCS <span className="text-xs text-indigo-700 font-normal">({fmt(totalMotherMt, 3)} MT)</span>
+              <div className="rounded-md bg-indigo-50/60 dark:bg-indigo-950/30 p-2 border border-indigo-100 dark:border-indigo-900">
+                <div className="text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold uppercase">Processed This Batch</div>
+                <div className="font-mono font-bold text-indigo-950 dark:text-indigo-200 text-sm mt-0.5">
+                  {motherPcsNum} PCS <span className="text-xs text-indigo-700 dark:text-indigo-400 font-normal">({fmt(totalMotherMt, 3)} MT)</span>
                 </div>
               </div>
 
               <div className={`rounded-md p-2 border ${
-                remainingMotherPcs >= 0 ? 'bg-emerald-50/60 border-emerald-100' : 'bg-rose-50 border-rose-100'
+                remainingMotherPcs >= 0 ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900' : 'bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900'
               }`}>
                 <div className={`text-[10px] font-semibold uppercase ${
-                  remainingMotherPcs >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                  remainingMotherPcs >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
                 }`}>
                   Remaining Mother Balance
                 </div>
                 <div className={`font-mono font-bold text-sm mt-0.5 ${
-                  remainingMotherPcs >= 0 ? 'text-emerald-950' : 'text-rose-700'
+                  remainingMotherPcs >= 0 ? 'text-emerald-950 dark:text-emerald-200' : 'text-rose-700 dark:text-rose-300'
                 }`}>
                   {remainingMotherPcs} PCS <span className="text-xs font-normal">({fmt(remainingMotherMt, 3)} MT)</span>
                 </div>
@@ -938,13 +938,13 @@ export function BandSawCuttingModal({
         </div>
 
         {/* Section 2: Multi-Length Cutting Schedule & Smart Pattern Builder */}
-        <div className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden space-y-0">
+        <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] shadow-2xs overflow-hidden space-y-0">
           {/* Header & Quick Action Presets */}
-          <div className="border-b border-slate-100 bg-slate-50/90 p-4 space-y-3">
+          <div className="border-b border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface-subtle,#f8fafc)] p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h4 className="flex items-center gap-2 text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  <Scissors size={14} className="text-indigo-600" />
+                <h4 className="flex items-center gap-2 text-xs font-bold text-[var(--text-main,#0f172a)] uppercase tracking-wider">
+                  <Scissors size={14} className="text-indigo-600 dark:text-indigo-400" />
                   2. Multi-Length Cut Schedule &amp; Smart Pattern Builder
                 </h4>
                 <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mt-0.5">
@@ -1027,11 +1027,11 @@ export function BandSawCuttingModal({
               <button
                 type="button"
                 onClick={() => applyEqualMultiples(2)}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-700 transition-all text-xs"
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] px-2.5 py-1 font-semibold text-[var(--text-main,#334155)] hover:border-indigo-300 hover:bg-indigo-50/60 dark:hover:bg-indigo-950/40 hover:text-indigo-600 transition-all text-xs"
                 title="Cut each mother pipe into 2 equal parts"
               >
                 <span>⚡ 2-Multiple (Half Cut)</span>
-                <span className="text-[10px] font-mono text-slate-400">
+                <span className="text-[10px] font-mono text-[var(--text-muted,#94a3b8)]">
                   (~{Number((motherAvgLenNum / 2).toFixed(2))}m)
                 </span>
               </button>
@@ -1039,11 +1039,11 @@ export function BandSawCuttingModal({
               <button
                 type="button"
                 onClick={() => applyEqualMultiples(3)}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-700 transition-all text-xs"
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] px-2.5 py-1 font-semibold text-[var(--text-main,#334155)] hover:border-indigo-300 hover:bg-indigo-50/60 dark:hover:bg-indigo-950/40 hover:text-indigo-600 transition-all text-xs"
                 title="Cut each mother pipe into 3 equal parts"
               >
                 <span>⚡ 3-Multiple (Thirds)</span>
-                <span className="text-[10px] font-mono text-slate-400">
+                <span className="text-[10px] font-mono text-[var(--text-muted,#94a3b8)]">
                   (~{Number((motherAvgLenNum / 3).toFixed(2))}m)
                 </span>
               </button>
@@ -1053,8 +1053,8 @@ export function BandSawCuttingModal({
                 onClick={() => setShowCustomTargetInput((prev) => !prev)}
                 className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-semibold text-xs transition-all ${
                   showCustomTargetInput
-                    ? 'border-indigo-400 bg-indigo-50 text-indigo-800'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/60'
+                    ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200'
+                    : 'border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] text-[var(--text-main,#334155)] hover:border-indigo-300 hover:bg-indigo-50/60'
                 }`}
               >
                 <span>⚡ Target Cut + Remainder</span>
@@ -1065,8 +1065,8 @@ export function BandSawCuttingModal({
                 onClick={() => setShowCombinationInput((prev) => !prev)}
                 className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 font-semibold text-xs transition-all ${
                   showCombinationInput
-                    ? 'border-indigo-400 bg-indigo-50 text-indigo-800'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/60'
+                    ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200'
+                    : 'border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] text-[var(--text-main,#334155)] hover:border-indigo-300 hover:bg-indigo-50/60'
                 }`}
               >
                 <span>⚡ 2-Length Combination (e.g. 6.00m + 5.54m)</span>
@@ -1075,8 +1075,8 @@ export function BandSawCuttingModal({
 
             {/* Inline Custom Target Cut Input */}
             {showCustomTargetInput && (
-              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-2.5 animate-fadeIn">
-                <span className="text-xs font-semibold text-indigo-900">Enter Target Required Length:</span>
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/30 p-2.5 animate-fadeIn">
+                <span className="text-xs font-semibold text-indigo-900 dark:text-indigo-200">Enter Target Required Length:</span>
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
@@ -1085,10 +1085,10 @@ export function BandSawCuttingModal({
                     max={motherAvgLenNum}
                     value={customTargetLen}
                     onChange={(e) => setCustomTargetLen(e.target.value)}
-                    className="h-8 w-28 bg-white font-mono text-xs font-bold"
+                    className="h-8 w-28 bg-[var(--bg-surface,#ffffff)] font-mono text-xs font-bold"
                     placeholder="e.g. 5.50"
                   />
-                  <span className="text-xs text-slate-600 font-medium">Mtr</span>
+                  <span className="text-xs text-[var(--text-muted,#475569)] font-medium">Mtr</span>
                 </div>
                 <Button
                   type="button"
@@ -1101,7 +1101,7 @@ export function BandSawCuttingModal({
                 <button
                   type="button"
                   onClick={() => setShowCustomTargetInput(false)}
-                  className="text-xs text-slate-500 hover:text-slate-700"
+                  className="text-xs text-[var(--text-muted,#64748b)] hover:text-[var(--text-main,#0f172a)]"
                 >
                   Cancel
                 </button>
@@ -1110,33 +1110,33 @@ export function BandSawCuttingModal({
 
             {/* Inline 2-Length Combination Input */}
             {showCombinationInput && (
-              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-2.5 animate-fadeIn">
-                <span className="text-xs font-semibold text-indigo-900">Combination Cuts per Mother Pipe:</span>
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/30 p-2.5 animate-fadeIn">
+                <span className="text-xs font-semibold text-indigo-900 dark:text-indigo-200">Combination Cuts per Mother Pipe:</span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-slate-600">Cut 1:</span>
+                  <span className="text-[11px] text-[var(--text-muted,#475569)]">Cut 1:</span>
                   <Input
                     type="number"
                     step="0.01"
                     min="0.1"
                     value={combCut1}
                     onChange={(e) => setCombCut1(e.target.value)}
-                    className="h-8 w-24 bg-white font-mono text-xs font-bold"
+                    className="h-8 w-24 bg-[var(--bg-surface,#ffffff)] font-mono text-xs font-bold"
                     placeholder="6.00"
                   />
-                  <span className="text-xs text-slate-500">m +</span>
+                  <span className="text-xs text-[var(--text-muted,#64748b)]">m +</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-slate-600">Cut 2:</span>
+                  <span className="text-[11px] text-[var(--text-muted,#475569)]">Cut 2:</span>
                   <Input
                     type="number"
                     step="0.01"
                     min="0.1"
                     value={combCut2}
                     onChange={(e) => setCombCut2(e.target.value)}
-                    className="h-8 w-24 bg-white font-mono text-xs font-bold"
+                    className="h-8 w-24 bg-[var(--bg-surface,#ffffff)] font-mono text-xs font-bold"
                     placeholder="5.54"
                   />
-                  <span className="text-xs text-slate-500">m</span>
+                  <span className="text-xs text-[var(--text-muted,#64748b)]">m</span>
                 </div>
                 <div className="text-xs font-mono text-indigo-900">
                   = {(parseFloat(combCut1) || 0) + (parseFloat(combCut2) || 0)}m{' '}
@@ -1194,13 +1194,13 @@ export function BandSawCuttingModal({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   {/* Group A */}
-                  <div className="rounded-lg border border-purple-200 bg-white p-3 space-y-2">
-                    <div className="font-bold text-purple-900 text-[11px] uppercase">
+                  <div className="rounded-lg border border-purple-200 dark:border-purple-900 bg-[var(--bg-surface,#ffffff)] p-3 space-y-2">
+                    <div className="font-bold text-purple-900 dark:text-purple-200 text-[11px] uppercase">
                       Sub-Batch A (e.g. 5.50m 2-Multiple Cut)
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="text-[10px] text-slate-500 font-semibold">Mother Pipes</label>
+                        <label className="text-[10px] text-[var(--text-muted,#64748b)] font-semibold">Mother Pipes</label>
                         <Input
                           type="number"
                           min="1"
@@ -1211,7 +1211,7 @@ export function BandSawCuttingModal({
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-slate-500 font-semibold">Cut Length (m)</label>
+                        <label className="text-[10px] text-[var(--text-muted,#64748b)] font-semibold">Cut Length (m)</label>
                         <Input
                           type="number"
                           step="0.01"
@@ -1222,7 +1222,7 @@ export function BandSawCuttingModal({
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-slate-500 font-semibold">Cuts / Pipe</label>
+                        <label className="text-[10px] text-[var(--text-muted,#64748b)] font-semibold">Cuts / Pipe</label>
                         <Input
                           type="number"
                           min="1"
@@ -1233,19 +1233,19 @@ export function BandSawCuttingModal({
                         />
                       </div>
                     </div>
-                    <div className="text-[10px] text-slate-600 font-mono">
+                    <div className="text-[10px] text-[var(--text-muted,#64748b)] font-mono">
                       Output: {(parseInt(batchGroupA_Pcs, 10) || 0) * (parseInt(batchGroupA_Multiplier, 10) || 1)} pcs @ {batchGroupA_CutLen}m
                     </div>
                   </div>
 
                   {/* Group B */}
-                  <div className="rounded-lg border border-indigo-200 bg-white p-3 space-y-2">
-                    <div className="font-bold text-indigo-900 text-[11px] uppercase">
+                  <div className="rounded-lg border border-indigo-200 dark:border-indigo-900 bg-[var(--bg-surface,#ffffff)] p-3 space-y-2">
+                    <div className="font-bold text-indigo-900 dark:text-indigo-200 text-[11px] uppercase">
                       Sub-Batch B (e.g. 11.00m Long Cut)
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="text-[10px] text-slate-500 font-semibold">Mother Pipes</label>
+                        <label className="text-[10px] text-[var(--text-muted,#64748b)] font-semibold">Mother Pipes</label>
                         <Input
                           type="number"
                           min="0"
@@ -1256,7 +1256,7 @@ export function BandSawCuttingModal({
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-slate-500 font-semibold">Cut Length (m)</label>
+                        <label className="text-[10px] text-[var(--text-muted,#64748b)] font-semibold">Cut Length (m)</label>
                         <Input
                           type="number"
                           step="0.01"
@@ -1267,7 +1267,7 @@ export function BandSawCuttingModal({
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] text-slate-500 font-semibold">Cuts / Pipe</label>
+                        <label className="text-[10px] text-[var(--text-muted,#64748b)] font-semibold">Cuts / Pipe</label>
                         <Input
                           type="number"
                           min="1"
@@ -1278,7 +1278,7 @@ export function BandSawCuttingModal({
                         />
                       </div>
                     </div>
-                    <div className="text-[10px] text-slate-600 font-mono">
+                    <div className="text-[10px] text-[var(--text-muted,#64748b)] font-mono">
                       Output: {(parseInt(batchGroupB_Pcs, 10) || 0) * (parseInt(batchGroupB_Multiplier, 10) || 1)} pcs @ {batchGroupB_CutLen}m
                     </div>
                   </div>
@@ -1308,14 +1308,14 @@ export function BandSawCuttingModal({
             )}
 
             {/* Visual Single-Pipe Slicing Representation */}
-            <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+            <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-1.5 font-semibold text-slate-800">
-                  <Layers size={13} className="text-indigo-600" />
+                <div className="flex items-center gap-1.5 font-semibold text-[var(--text-main,#1e293b)]">
+                  <Layers size={13} className="text-indigo-600 dark:text-indigo-400" />
                   <span>Single Mother Pipe Utilization Visualizer ({motherAvgLenNum}m Pipe):</span>
                 </div>
                 <div className="flex items-center gap-2 font-mono text-xs">
-                  <span className="font-bold text-slate-800">
+                  <span className="font-bold text-[var(--text-main,#1e293b)]">
                     Cuts per Pipe: {singlePipeUtilization.cutsTotal}m / {motherAvgLenNum}m ({singlePipeUtilization.pct}%)
                   </span>
                   <span className="rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[11px] font-bold text-amber-900">
@@ -1436,7 +1436,7 @@ export function BandSawCuttingModal({
                               e.target.value as BandSawCutCategory
                             )
                           }
-                          className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-800 shadow-2xs focus:border-indigo-500 focus:outline-hidden"
+                          className="h-8 w-full rounded-md border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] px-2 text-xs font-medium text-[var(--text-main,#1e293b)] shadow-2xs focus:border-indigo-500 focus:outline-hidden"
                         >
                           <option value="PRIME">Prime Pipe Cut (Required in Order)</option>
                           <option value="SECONDARY">Secondary / Multi Cut (Required in Order)</option>
@@ -1445,10 +1445,10 @@ export function BandSawCuttingModal({
                           <option value="SCRAP_NOT_REQUIRED">Scrap (Not Required in Order)</option>
                         </select>
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800">
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-[var(--text-main,#1e293b)]">
                         {fmt(itemMtr)} m
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-700">
+                      <td className="py-2.5 px-3 text-right font-mono text-[var(--text-muted,#475569)]">
                         {fmt(itemMt, 3)} MT
                       </td>
                       <td className="py-2.5 px-3 text-center">
@@ -1457,7 +1457,7 @@ export function BandSawCuttingModal({
                           onClick={() => handleRemoveCutItem(item.id)}
                           aria-label="Remove cut row"
                           title="Remove cut row"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-rose-600 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-300 transition-colors shadow-2xs focus-visible:ring-2 focus-visible:ring-rose-500"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-800 dark:hover:text-rose-300 hover:border-rose-300 transition-colors shadow-2xs focus-visible:ring-2 focus-visible:ring-rose-500"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -1470,14 +1470,14 @@ export function BandSawCuttingModal({
           </div>
 
           {/* Table Summary Strip */}
-          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/90 px-4 py-3 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface-subtle,#f8fafc)] px-4 py-3 text-xs">
             <div className="flex items-center gap-4">
               <div>
-                <span className="text-slate-500 font-medium">Order Required Cuts: </span>
-                <span className="font-mono font-bold text-indigo-700 text-sm">
+                <span className="text-[var(--text-muted,#64748b)] font-medium">Order Required Cuts: </span>
+                <span className="font-mono font-bold text-indigo-700 dark:text-indigo-400 text-sm">
                   {totalPrimeCutPcs} PCS
                 </span>
-                <span className="font-mono text-slate-600 text-xs ml-1">
+                <span className="font-mono text-[var(--text-muted,#475569)] text-xs ml-1">
                   ({fmt(totalPrimeCutMtr)} m / {fmt(totalPrimeCutMt, 3)} MT)
                 </span>
               </div>
@@ -1485,8 +1485,8 @@ export function BandSawCuttingModal({
 
             {/* Yield & Efficiency Gauge */}
             <div className="flex items-center gap-3">
-              <span className="text-[11px] font-semibold text-slate-600">Cutting Yield:</span>
-              <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 shadow-2xs">
+              <span className="text-[11px] font-semibold text-[var(--text-muted,#64748b)]">Cutting Yield:</span>
+              <div className="flex items-center gap-1.5 rounded-full border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] px-2.5 py-0.5 shadow-2xs">
                 <div
                   className={`h-2 w-2 rounded-full ${
                     yieldPct >= 92 ? 'bg-emerald-500' : yieldPct >= 80 ? 'bg-amber-500' : 'bg-rose-500'
@@ -1495,10 +1495,10 @@ export function BandSawCuttingModal({
                 <span
                   className={`font-mono text-xs font-bold ${
                     yieldPct >= 92
-                      ? 'text-emerald-700'
+                      ? 'text-emerald-700 dark:text-emerald-400'
                       : yieldPct >= 80
-                      ? 'text-amber-700'
-                      : 'text-rose-700'
+                      ? 'text-amber-700 dark:text-amber-400'
+                      : 'text-rose-700 dark:text-rose-400'
                   }`}
                 >
                   {yieldPct.toFixed(1)}%
@@ -1511,8 +1511,8 @@ export function BandSawCuttingModal({
         {/* Section 3: Rejections, Operator Inputs & Scrap Material Balance Breakdown */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Left Panel: Defect Rejections & Operator Info */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-3">
-            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+          <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-4 shadow-2xs space-y-3">
+            <h4 className="text-xs font-bold text-[var(--text-main,#0f172a)] uppercase tracking-wider flex items-center gap-2">
               <AlertCircle size={14} className="text-amber-600" />
               Rejection Cuts &amp; Process Details
             </h4>
@@ -1705,16 +1705,16 @@ export function BandSawCuttingModal({
                   )}
 
                   {/* Total Scrap Highlight Card */}
-                  <div className="mt-2 flex items-center justify-between rounded-md bg-white border border-amber-300 p-2 shadow-2xs">
-                    <span className="font-bold text-amber-950 text-xs flex items-center gap-1">
-                      <TrendingUp size={13} className="text-amber-600" />
+                  <div className="mt-2 flex items-center justify-between rounded-md bg-[var(--bg-surface,#ffffff)] border border-amber-300 dark:border-amber-700 p-2 shadow-2xs">
+                    <span className="font-bold text-amber-950 dark:text-amber-300 text-xs flex items-center gap-1">
+                      <TrendingUp size={13} className="text-amber-600 dark:text-amber-400" />
                       TOTAL SCRAP GENERATED:
                     </span>
                     <div className="text-right">
-                      <span className="font-mono text-sm font-black text-amber-900">
+                      <span className="font-mono text-sm font-black text-amber-900 dark:text-amber-200">
                         {fmt(totalScrapMt, 3)} MT
                       </span>
-                      <span className="text-[11px] font-mono text-amber-700 ml-1.5">
+                      <span className="text-[11px] font-mono text-amber-700 dark:text-amber-400 ml-1.5">
                         ({fmt(totalScrapMtr)}m • {scrapPct}%)
                       </span>
                     </div>
@@ -1723,11 +1723,11 @@ export function BandSawCuttingModal({
               </div>
 
               {/* Feed to VDI Notice */}
-              <div className="text-[11px] text-slate-600 bg-white rounded-md p-2 border border-slate-200">
+              <div className="text-[11px] text-[var(--text-muted,#475569)] bg-[var(--bg-surface,#ffffff)] rounded-md p-2 border border-[var(--border-subtle,#e2e8f0)]">
                 <p>
                   ✓ <strong>{netVdiFeedPcs} Prime Cuts ({fmt(netVdiFeedMt, 3)} MT)</strong> feed into{' '}
-                  <strong className="text-indigo-800">VDI QC Inspection</strong>. Balance scrap of{' '}
-                  <strong className="text-amber-800">{fmt(totalScrapMt, 3)} MT</strong> logged to material ledger.
+                  <strong className="text-indigo-800 dark:text-indigo-400">VDI QC Inspection</strong>. Balance scrap of{' '}
+                  <strong className="text-amber-800 dark:text-amber-400">{fmt(totalScrapMt, 3)} MT</strong> logged to material ledger.
                 </p>
               </div>
             </div>

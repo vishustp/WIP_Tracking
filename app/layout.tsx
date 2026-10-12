@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://dzhvbftmuwfyuaarsxtk.supabase.co" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://dzhvbftmuwfyuaarsxtk.supabase.co" />
       </head>
-      <body className={`${inter.className} antialiased bg-canvas-pattern min-h-screen text-slate-900`}>
+      <body className={`${inter.className} antialiased bg-canvas-pattern min-h-screen text-[var(--text-main,#0f172a)] transition-colors duration-150`}>
         <UserSessionProvider>
           <AppShell>{children}</AppShell>
         </UserSessionProvider>

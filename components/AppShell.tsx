@@ -470,6 +470,64 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Synchronize documentElement with theme and dark class for tailwind darkMode & native tokens
+  useEffect(() => {
+    const isDarkTheme = theme !== 'light' && theme !== 'cobalt';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.classList.toggle('dark', isDarkTheme);
+  }, [theme]);
+
+  const getDropdownClasses = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'bg-[#0f172a] border border-slate-700 text-slate-100 shadow-2xl';
+      case 'ocean':
+        return 'bg-[#0e213d] border border-[#1c3a64] text-white shadow-2xl';
+      case 'titanium':
+        return 'bg-[#1e1e22] border border-zinc-700 text-zinc-100 shadow-2xl';
+      case 'high-contrast':
+        return 'bg-black border border-white text-white shadow-2xl';
+      case 'cobalt':
+      case 'light':
+      default:
+        return 'bg-white border border-slate-200 text-slate-800 shadow-2xl';
+    }
+  };
+
+  const getDropdownItemHoverClass = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'hover:bg-slate-800 hover:text-white text-slate-200';
+      case 'ocean':
+        return 'hover:bg-[#142845] hover:text-white text-blue-100';
+      case 'titanium':
+        return 'hover:bg-zinc-800 hover:text-white text-zinc-200';
+      case 'high-contrast':
+        return 'hover:bg-neutral-800 hover:text-amber-300 text-white';
+      case 'cobalt':
+      case 'light':
+      default:
+        return 'hover:bg-slate-100 hover:text-slate-900 text-slate-700';
+    }
+  };
+
+  const getDropdownDividerClass = () => {
+    switch (theme) {
+      case 'foundry-dark':
+        return 'border-slate-800';
+      case 'ocean':
+        return 'border-[#142845]';
+      case 'titanium':
+        return 'border-zinc-800';
+      case 'high-contrast':
+        return 'border-neutral-700';
+      case 'cobalt':
+      case 'light':
+      default:
+        return 'border-slate-100';
+    }
+  };
+
   return (
     <div data-theme={theme} className={`min-h-screen ${getContentBgClass()} font-sans flex flex-col antialiased`}>
       <a
@@ -488,7 +546,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-3.5 min-w-0">
           <button
             type="button"
-            className={`lg:hidden rounded-lg p-1.5 transition ${
+            className={`lg:hidden rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center p-2 transition cursor-pointer ${
               isLight
                 ? 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 : 'text-white/80 hover:bg-white/10 hover:text-white'
@@ -620,63 +678,67 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Live Autocomplete Dropdown */}
             {searchOpen && (
-              <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95 text-slate-800 text-xs">
+              <div className={`absolute left-0 right-0 top-full mt-1.5 rounded-xl p-2 z-50 animate-in fade-in zoom-in-95 text-xs ${getDropdownClasses()}`}>
                 {searchLoading ? (
-                  <div className="flex items-center justify-center py-3 text-slate-500 gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                  <div className="flex items-center justify-center py-3 text-slate-400 gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
                     <span className="text-xs">Searching work orders...</span>
                   </div>
                 ) : searchResults.length > 0 ? (
                   <div className="space-y-1">
                     <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
                       <span>Matching Work Orders</span>
-                      <span className="font-mono text-[10px] text-blue-600">{searchResults.length} found</span>
+                      <span className="font-mono text-[10px] text-blue-500 font-bold">{searchResults.length} found</span>
                     </div>
                     {searchResults.map((item) => (
                       <button
                         key={item.id}
                         type="button"
                         onClick={() => handleSelectSearchResult(item.work_order_no)}
-                        className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-blue-50/70 transition cursor-pointer text-left group"
+                        className={`w-full flex items-center justify-between p-2 rounded-lg transition cursor-pointer text-left group ${getDropdownItemHoverClass()}`}
                       >
                         <div className="flex flex-col min-w-0 pr-2">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-blue-600 group-hover:text-blue-700 text-xs">
+                            <span className="font-mono font-bold text-blue-500 group-hover:text-blue-400 text-xs">
                               {item.work_order_no}
                             </span>
                             {item.status && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                isDark
+                                  ? 'bg-slate-800 text-slate-300 border-slate-700'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}>
                                 {item.status}
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                          <div className="text-[11px] opacity-75 truncate mt-0.5">
                             {item.customer_name ? `${item.customer_name} • ` : ''}
                             {item.grade ? `${item.grade} • ` : ''}
                             {item.size_od && item.size_wt ? `${item.size_od} × ${item.size_wt} mm` : ''}
                           </div>
                         </div>
-                        <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 shrink-0" />
+                        <ChevronRight className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100 group-hover:text-blue-500 shrink-0" />
                       </button>
                     ))}
-                    <div className="pt-1.5 mt-1 border-t border-slate-100 flex items-center justify-between px-2 text-[11px] text-slate-500">
-                      <span>Press <strong className="text-slate-700">Enter</strong> to open Tracking Report</span>
+                    <div className={`pt-1.5 mt-1 border-t ${getDropdownDividerClass()} flex items-center justify-between px-2 text-[11px] opacity-80`}>
+                      <span>Press <strong>Enter</strong> to open Tracking Report</span>
                       <button
                         type="button"
                         onClick={handleSearchSubmit}
-                        className="text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
+                        className="text-blue-500 hover:text-blue-400 font-semibold cursor-pointer"
                       >
                         View in Report &rarr;
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div className="p-3 text-center text-slate-500">
+                  <div className="p-3 text-center text-slate-400">
                     <p className="font-medium text-xs">No work orders matching &ldquo;{searchQuery}&rdquo;</p>
                     <button
                       type="button"
                       onClick={handleSearchSubmit}
-                      className="mt-1 text-xs text-blue-600 hover:underline font-semibold cursor-pointer"
+                      className="mt-1 text-xs text-blue-500 hover:underline font-semibold cursor-pointer"
                     >
                       Search tracking report anyway &rarr;
                     </button>
@@ -693,7 +755,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <button
             type="button"
             onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
-            className={`md:hidden p-2 rounded-lg transition cursor-pointer ${
+            className={`md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-lg transition cursor-pointer ${
               theme === 'light'
                 ? 'text-slate-600 hover:bg-slate-100'
                 : 'text-white/80 hover:bg-white/10'
@@ -711,7 +773,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               title={`Current Theme: ${currentThemeConfig.name}`}
               aria-expanded={themeDropdownOpen}
               aria-label="Select application theme"
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold border transition cursor-pointer ${getThemeButtonClasses()}`}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 min-h-[38px] text-xs font-semibold border transition cursor-pointer ${getThemeButtonClasses()}`}
             >
               <Palette className={`h-4 w-4 shrink-0 ${isLight ? 'text-blue-600' : theme === 'titanium' ? 'text-emerald-400' : theme === 'high-contrast' ? 'text-amber-400' : 'text-cyan-300'}`} />
               <span className="hidden sm:inline font-medium">Theme</span>
@@ -723,13 +785,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Theme Dropdown Menu */}
             {themeDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-76 rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 text-xs text-slate-800">
-                <div className="px-2 py-1.5 border-b border-slate-100 mb-1 flex items-center justify-between">
-                  <div className="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
-                    <Palette className="h-3.5 w-3.5 text-blue-600" />
+              <div className={`absolute right-0 mt-2 w-76 rounded-xl p-2.5 z-50 animate-in fade-in zoom-in-95 text-xs ${getDropdownClasses()}`}>
+                <div className={`px-2 py-1.5 border-b ${getDropdownDividerClass()} mb-1 flex items-center justify-between`}>
+                  <div className="font-bold flex items-center gap-1.5 text-xs">
+                    <Palette className="h-3.5 w-3.5 text-blue-500" />
                     <span>Select Interface Theme</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-mono">{THEMES.length} themes</span>
+                  <span className="text-[10px] opacity-70 font-mono">{THEMES.length} themes</span>
                 </div>
 
                 <div className="space-y-1 py-1">
@@ -742,32 +804,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         onClick={() => handleSelectTheme(t.id)}
                         className={`flex w-full items-start gap-3 p-2 rounded-lg text-left transition cursor-pointer border ${
                           isSelected
-                            ? 'bg-blue-50/80 border-blue-200 text-slate-900 ring-1 ring-blue-500/20'
-                            : 'border-transparent hover:bg-slate-50 hover:border-slate-200 text-slate-700'
+                            ? isDark
+                              ? 'bg-blue-950/70 border-blue-600 text-white ring-1 ring-blue-500/40'
+                              : 'bg-blue-50/80 border-blue-200 text-slate-900 ring-1 ring-blue-500/20'
+                            : `border-transparent ${getDropdownItemHoverClass()}`
                         }`}
                       >
                         {/* Preview swatch representing Topbar + Sidebar */}
-                        <div className="flex flex-col gap-0.5 shrink-0 mt-0.5 p-1 rounded bg-slate-100 border border-slate-200 shadow-2xs">
+                        <div className={`flex flex-col gap-0.5 shrink-0 mt-0.5 p-1 rounded shadow-2xs border ${
+                          isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                        }`}>
                           <div className={`h-2.5 w-7 rounded-xs ${t.headerSwatch}`} />
                           <div className={`h-4 w-7 rounded-xs ${t.sidebarSwatch}`} />
                         </div>
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
-                            <span className="font-bold text-xs text-slate-900 truncate">{t.name}</span>
+                            <span className="font-bold text-xs truncate">{t.name}</span>
                             {t.badge && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                              <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase border ${
+                                isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}>
                                 {t.badge}
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-500 leading-tight mt-0.5 line-clamp-2">
+                          <p className="text-[11px] opacity-75 leading-tight mt-0.5 line-clamp-2">
                             {t.desc}
                           </p>
                         </div>
 
                         {isSelected && (
-                          <Check className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+                          <Check className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
                         )}
                       </button>
                     );
@@ -856,15 +924,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* User Dropdown */}
             {userDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95 text-xs text-slate-800">
-                <div className="px-2.5 py-2 border-b border-slate-100">
-                  <div className="font-bold text-slate-900 text-sm">
+              <div className={`absolute right-0 mt-2 w-64 rounded-xl p-2 z-50 animate-in fade-in zoom-in-95 text-xs ${getDropdownClasses()}`}>
+                <div className={`px-2.5 py-2 border-b ${getDropdownDividerClass()}`}>
+                  <div className="font-bold text-sm">
                     {currentUser?.name || currentUser?.email || 'Finishing Operator'}
                   </div>
-                  <div className="text-xs text-slate-500 font-mono mt-0.5">
+                  <div className="text-xs opacity-75 font-mono mt-0.5">
                     {currentUser?.email || 'finishing@rashmigroup.com'}
                   </div>
-                  <div className="mt-1.5 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                  <div className={`mt-1.5 inline-flex items-center px-2 py-0.5 rounded text-xs font-bold border ${
+                    isDark
+                      ? 'bg-blue-950/70 text-blue-300 border-blue-800'
+                      : 'bg-blue-50 text-blue-700 border border-blue-200'
+                  }`}>
                     {currentUser?.role_title || 'Production'} ({userGroup.toUpperCase()})
                   </div>
                 </div>
@@ -876,9 +948,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       router.push('/profile');
                       setUserDropdownOpen(false);
                     }}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer text-xs"
+                    className={`flex w-full items-center gap-2 px-2.5 py-2 rounded-lg transition cursor-pointer text-xs ${getDropdownItemHoverClass()}`}
                   >
-                    <User className="h-4 w-4 text-blue-600" />
+                    <User className="h-4 w-4 text-blue-500" />
                     <span>User Profile & Security</span>
                   </button>
 
@@ -889,9 +961,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         router.push('/admin');
                         setUserDropdownOpen(false);
                       }}
-                      className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer text-xs"
+                      className={`flex w-full items-center gap-2 px-2.5 py-2 rounded-lg transition cursor-pointer text-xs ${getDropdownItemHoverClass()}`}
                     >
-                      <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                      <ShieldCheck className="h-4 w-4 text-emerald-500" />
                       <span>Admin Control Panel</span>
                     </button>
                   )}
@@ -902,18 +974,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       router.push('/admin/spec-master');
                       setUserDropdownOpen(false);
                     }}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition cursor-pointer text-xs"
+                    className={`flex w-full items-center gap-2 px-2.5 py-2 rounded-lg transition cursor-pointer text-xs ${getDropdownItemHoverClass()}`}
                   >
-                    <Beaker className="h-4 w-4 text-amber-600" />
+                    <Beaker className="h-4 w-4 text-amber-500" />
                     <span>Material Spec Master</span>
                   </button>
                 </div>
 
-                <div className="pt-1.5 mt-1 border-t border-slate-100">
+                <div className={`pt-1.5 mt-1 border-t ${getDropdownDividerClass()}`}>
                   <button
                     type="button"
                     onClick={signOut}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition cursor-pointer font-semibold text-xs"
+                    className="flex w-full items-center gap-2 px-2.5 py-2 rounded-lg text-rose-500 hover:bg-rose-500/10 transition cursor-pointer font-semibold text-xs"
                   >
                     <LogOut className="h-4 w-4" />
                     <span>Sign Out</span>
@@ -927,20 +999,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Search Bar Expansion */}
       {mobileSearchOpen && (
-        <div className="md:hidden bg-white border-b border-slate-200 px-4 py-2.5 shadow-sm">
+        <div className={`md:hidden px-4 py-2.5 border-b shadow-sm ${
+          isLight ? 'bg-white border-slate-200' :
+          theme === 'foundry-dark' ? 'bg-[#0f172a] border-slate-800' :
+          theme === 'ocean' ? 'bg-[#0a192f] border-[#142845]' :
+          theme === 'titanium' ? 'bg-[#18181b] border-zinc-800' :
+          theme === 'high-contrast' ? 'bg-black border-neutral-700' :
+          'bg-[#16325c] border-blue-900'
+        }`}>
           <form onSubmit={handleSearchSubmit} className="relative flex items-center">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
+            <Search className={`absolute left-3 top-2.5 h-4 w-4 pointer-events-none ${isLight ? 'text-slate-400' : 'text-slate-300'}`} />
             <input
               type="text"
               placeholder="Search Work Order / Customer..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-100 text-slate-900 text-sm rounded-lg pl-9 pr-9 py-2 border border-slate-200 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500"
+              className={`w-full text-sm rounded-lg pl-9 pr-12 py-2.5 border focus:outline-none focus:ring-2 ${getSearchInputClasses()}`}
               autoFocus
             />
             <button
               type="submit"
-              className="absolute right-2.5 top-2.5 text-blue-600 hover:text-blue-800"
+              className="absolute right-2 top-1.5 min-w-[36px] min-h-[36px] flex items-center justify-center text-blue-500 hover:text-blue-400 cursor-pointer"
               aria-label="Submit search"
             >
               <Search className="h-4 w-4" />
