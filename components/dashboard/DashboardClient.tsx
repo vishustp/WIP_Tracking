@@ -178,12 +178,12 @@ interface Props {
 
 // 6 Real Canonical Post-Rolling WIP Work Centers (Rolling is feeder stage, WIP can't be at Rolling)
 const CANONICAL_WIP_WORK_CENTERS = [
-  { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow HT', fullName: 'Hollow Heat Treatment', icon: Flame, color: '#f97316', badgeBg: 'bg-orange-50/90 border-orange-200 text-orange-900' },
-  { code: 'DRAW', name: 'Draw', fullName: 'Cold Draw Bench', icon: Wrench, color: '#3b82f6', badgeBg: 'bg-blue-50/90 border-blue-200 text-blue-900' },
-  { code: 'HEAT_TREATMENT', name: 'Heat Treatment', fullName: 'Final Heat Treatment', icon: Flame, color: '#10b981', badgeBg: 'bg-emerald-50/90 border-emerald-200 text-emerald-900' },
-  { code: 'BAND_SAW', name: 'Bandsaw', fullName: 'Band Saw Cutting', icon: Disc, color: '#eab308', badgeBg: 'bg-amber-50/90 border-amber-200 text-amber-900' },
-  { code: 'VDI', name: 'VDI', fullName: 'VDI / QC Inspection', icon: Package, color: '#8b5cf6', badgeBg: 'bg-purple-50/90 border-purple-200 text-purple-900' },
-  { code: 'FINISHING', name: 'Finishing', fullName: 'Finishing & Dispatch', icon: CheckCircle2, color: '#06b6d4', badgeBg: 'bg-cyan-50/90 border-cyan-200 text-cyan-900' },
+  { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow HT', fullName: 'Hollow Heat Treatment', icon: Flame, color: '#f97316', badgeBg: 'bg-orange-50/90 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800 text-orange-900 dark:text-orange-200' },
+  { code: 'DRAW', name: 'Draw', fullName: 'Cold Draw Bench', icon: Wrench, color: '#3b82f6', badgeBg: 'bg-blue-50/90 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200' },
+  { code: 'HEAT_TREATMENT', name: 'Heat Treatment', fullName: 'Final Heat Treatment', icon: Flame, color: '#10b981', badgeBg: 'bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200' },
+  { code: 'BAND_SAW', name: 'Bandsaw', fullName: 'Band Saw Cutting', icon: Disc, color: '#eab308', badgeBg: 'bg-amber-50/90 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200' },
+  { code: 'VDI', name: 'VDI', fullName: 'VDI / QC Inspection', icon: Package, color: '#8b5cf6', badgeBg: 'bg-purple-50/90 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800 text-purple-900 dark:text-purple-200' },
+  { code: 'FINISHING', name: 'Finishing', fullName: 'Finishing & Dispatch', icon: CheckCircle2, color: '#06b6d4', badgeBg: 'bg-cyan-50/90 dark:bg-cyan-950/30 border-cyan-200 dark:border-cyan-800 text-cyan-900 dark:text-cyan-200' },
 ];
 
 export default function DashboardClient({
@@ -277,9 +277,9 @@ export default function DashboardClient({
         nos: formatNum(rollingNos, 0),
         subText: `${monthLabel} Hot Mill`,
         icon: Factory,
-        iconBg: 'bg-orange-100 text-orange-600',
+        iconBg: 'bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400',
         badge: 'Monthly',
-        badgeColor: 'text-orange-700 bg-orange-50 border-orange-200',
+        badgeColor: 'text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-800',
       },
       {
         title: 'Monthly Draw',
@@ -287,9 +287,9 @@ export default function DashboardClient({
         nos: formatNum(drawNos, 0),
         subText: `${monthLabel} Cold Draw`,
         icon: Wrench,
-        iconBg: 'bg-blue-100 text-blue-600',
+        iconBg: 'bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400',
         badge: 'Monthly',
-        badgeColor: 'text-blue-700 bg-blue-50 border-blue-200',
+        badgeColor: 'text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800',
       },
       {
         title: 'Monthly HT',
@@ -297,9 +297,9 @@ export default function DashboardClient({
         nos: formatNum(htNos, 0),
         subText: `${monthLabel} Furnace`,
         icon: Flame,
-        iconBg: 'bg-emerald-100 text-emerald-600',
+        iconBg: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400',
         badge: 'Monthly',
-        badgeColor: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+        badgeColor: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800',
       },
       {
         title: 'Monthly Bundling',
@@ -307,9 +307,9 @@ export default function DashboardClient({
         nos: formatNum(finishingNos, 0),
         subText: `${monthLabel} Bundled`,
         icon: CheckCircle2,
-        iconBg: 'bg-cyan-100 text-cyan-600',
+        iconBg: 'bg-cyan-100 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400',
         badge: 'Monthly',
-        badgeColor: 'text-cyan-700 bg-cyan-50 border-cyan-200',
+        badgeColor: 'text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/40 border-cyan-200 dark:border-cyan-800',
       },
       {
         title: 'Total WIP',
@@ -317,9 +317,9 @@ export default function DashboardClient({
         nos: formatNum(wipNos, 0),
         subText: 'Plant In-Process',
         icon: Layers,
-        iconBg: 'bg-indigo-100 text-indigo-600',
+        iconBg: 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400',
         badge: 'Plant WIP',
-        badgeColor: 'text-indigo-700 bg-indigo-50 border-indigo-200',
+        badgeColor: 'text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800',
       },
     ];
   }, [totalPlantWipMt, kpi]);
@@ -369,11 +369,11 @@ export default function DashboardClient({
       .sort((a, b) => b.mt - a.mt);
 
     const colors = [
-      { badgeBg: 'bg-red-500', pillBg: 'bg-red-50 text-red-700 border-red-200' },
-      { badgeBg: 'bg-orange-500', pillBg: 'bg-orange-50 text-orange-700 border-orange-200' },
-      { badgeBg: 'bg-amber-500', pillBg: 'bg-amber-50 text-amber-700 border-amber-200' },
-      { badgeBg: 'bg-blue-500', pillBg: 'bg-blue-50 text-blue-700 border-blue-200' },
-      { badgeBg: 'bg-indigo-500', pillBg: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+      { badgeBg: 'bg-red-500', pillBg: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800' },
+      { badgeBg: 'bg-orange-500', pillBg: 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800' },
+      { badgeBg: 'bg-amber-500', pillBg: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800' },
+      { badgeBg: 'bg-blue-500', pillBg: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' },
+      { badgeBg: 'bg-indigo-500', pillBg: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' },
     ];
 
     return sorted.slice(0, 5).map((item, idx) => ({
@@ -383,7 +383,7 @@ export default function DashboardClient({
       mt: item.mt,
       pcs: item.pcs,
       badgeBg: colors[idx]?.badgeBg || 'bg-slate-500',
-      pillBg: colors[idx]?.pillBg || 'bg-slate-50 text-slate-700 border-slate-200',
+      pillBg: colors[idx]?.pillBg || 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700',
     }));
   }, [stageWipMap]);
 
@@ -423,27 +423,27 @@ export default function DashboardClient({
       const effectiveDate = prio?.completion_date !== undefined ? prio.completion_date : row.target_date;
 
       let statusLabel = 'On Track';
-      let statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      let statusColor = 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
 
       if (effectiveDate) {
         const itemTime = new Date(effectiveDate).getTime();
         const diffDays = Math.ceil((itemTime - todayTime) / (1000 * 60 * 60 * 24));
         if (diffDays < 0) {
           statusLabel = `${Math.abs(diffDays)}d Overdue`;
-          statusColor = 'bg-rose-50 text-rose-700 border-rose-200 font-bold';
+          statusColor = 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800 font-bold';
         } else if (diffDays === 0) {
           statusLabel = 'Due Today';
-          statusColor = 'bg-amber-50 text-amber-800 border-amber-300 font-bold';
+          statusColor = 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800 font-bold';
         } else if (diffDays <= 3) {
           statusLabel = `${diffDays}d Due`;
-          statusColor = 'bg-amber-50 text-amber-700 border-amber-200 font-semibold';
+          statusColor = 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 font-semibold';
         } else if (diffDays <= 7) {
           statusLabel = `${diffDays}d Due`;
-          statusColor = 'bg-blue-50 text-blue-700 border-blue-200 font-medium';
+          statusColor = 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 font-medium';
         }
       } else {
         statusLabel = 'No Date';
-        statusColor = 'bg-slate-50 text-slate-500 border-slate-200';
+        statusColor = 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700';
       }
 
       // Find current stage for this WO
@@ -590,7 +590,7 @@ export default function DashboardClient({
               return (
                 <div key={stage.code} className="flex items-center flex-1">
                   <div className={`flex-1 rounded-xl border p-3 flex flex-col items-center justify-center transition-all hover:scale-[1.02] cursor-default ${stage.badgeBg}`}>
-                    <span className="text-xs font-bold text-slate-800 text-center tracking-tight truncate w-full">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100 text-center tracking-tight truncate w-full">
                       {stage.name}
                     </span>
 
@@ -598,11 +598,11 @@ export default function DashboardClient({
                       <Icon className="h-4 w-4" style={{ color: stage.color }} />
                     </div>
 
-                    <span className="text-sm font-black font-mono tracking-tight text-slate-950">
+                    <span className="text-sm font-black font-mono tracking-tight text-slate-950 dark:text-white">
                       {formatNum(stage.mt, 1)} MT
                     </span>
 
-                    <div className="flex items-center gap-1 mt-1 text-[11px] font-semibold text-slate-600">
+                    <div className="flex items-center gap-1 mt-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                       <span>{formatNum(stage.pcs)} PCS</span>
                     </div>
                   </div>
@@ -669,23 +669,23 @@ export default function DashboardClient({
             {/* Stage legend table */}
             <div className="flex-1 w-full space-y-1.5 text-xs">
               {distributionData.map((item) => (
-                <div key={item.name} className="flex items-center justify-between py-0.5 border-b border-slate-50">
+                <div key={item.name} className="flex items-center justify-between py-0.5 border-b border-slate-100 dark:border-slate-800/60">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                    <span className="font-semibold text-slate-700 truncate">{item.name}</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">{item.name}</span>
                   </div>
                   <div className="flex items-center gap-2 font-mono shrink-0 pl-2">
-                    <span className="font-bold text-slate-900">{formatNum(item.mt, 1)} MT</span>
-                    <span className="text-slate-400 text-[11px] w-10 text-right">{item.pct}</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100">{formatNum(item.mt, 1)} MT</span>
+                    <span className="text-slate-500 dark:text-slate-400 text-[11px] w-10 text-right">{item.pct}</span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="pt-2 border-t border-[var(--border-subtle,#e2e8f0)] flex items-center justify-between text-xs text-[var(--text-muted,#64748b)]">
             <span>Active Pipeline Stages:</span>
-            <span className="font-bold text-slate-800">{distributionData.filter(d => d.mt > 0).length} Stages</span>
+            <span className="font-bold text-[var(--text-main,#0f172a)]">{distributionData.filter(d => d.mt > 0).length} Stages</span>
           </div>
         </div>
 
@@ -704,11 +704,11 @@ export default function DashboardClient({
                 <p className="text-xs text-[var(--text-muted,#64748b)] mt-0.5">Station-wise output in Nos and Metric Tonnes</p>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-[11px] font-semibold text-slate-500 font-mono">
-                  {formatNum(yesterdayProduction?.totalPcs || 0)} <span className="text-[10px] uppercase font-bold text-slate-400">Nos</span>
+                <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 font-mono">
+                  {formatNum(yesterdayProduction?.totalPcs || 0)} <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Nos</span>
                 </div>
-                <div className="text-sm font-black font-mono text-slate-950 bg-slate-100/90 px-2.5 py-0.5 rounded border border-slate-200 inline-block mt-0.5">
-                  {formatNum(yesterdayProduction?.totalMt || 0, 2)} <span className="font-black text-slate-900">MT</span>
+                <div className="text-sm font-black font-mono text-slate-950 dark:text-slate-100 bg-slate-100/90 dark:bg-slate-800 px-2.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 inline-block mt-0.5">
+                  {formatNum(yesterdayProduction?.totalMt || 0, 2)} <span className="font-black text-slate-900 dark:text-slate-200">MT</span>
                 </div>
               </div>
             </div>
@@ -743,24 +743,24 @@ export default function DashboardClient({
                         className="h-2.5 w-2.5 rounded-full shrink-0 shadow-2xs"
                         style={{ backgroundColor: stColor }}
                       />
-                      <span className="text-xs font-bold text-slate-800 group-hover:text-blue-700 truncate">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
                         {station.shortName || station.name}
                       </span>
                     </div>
 
                     <div className="flex items-center gap-4 shrink-0 font-mono">
                       <div className="text-right min-w-[65px]">
-                        <span className={`text-xs ${hasProd ? 'font-semibold text-slate-700' : 'text-slate-400 font-normal'}`}>
+                        <span className={`text-xs ${hasProd ? 'font-semibold text-slate-800 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500 font-normal'}`}>
                           {formatNum(station.pcs)}
                         </span>
-                        <span className="text-[10px] text-slate-400 ml-1">Nos</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-1">Nos</span>
                       </div>
 
                       <div className="text-right min-w-[85px]">
-                        <span className={`text-xs font-black font-mono tracking-tight ${hasProd ? 'text-slate-950' : 'text-slate-400'}`}>
+                        <span className={`text-xs font-black font-mono tracking-tight ${hasProd ? 'text-slate-950 dark:text-white' : 'text-slate-400 dark:text-slate-500'}`}>
                           {formatNum(station.mt, 2)}
                         </span>
-                        <span className={`text-[11px] font-black ml-1 ${hasProd ? 'text-slate-900' : 'text-slate-400'}`}>
+                        <span className={`text-[11px] font-black ml-1 ${hasProd ? 'text-slate-900 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500'}`}>
                           MT
                         </span>
                       </div>
@@ -772,16 +772,16 @@ export default function DashboardClient({
           </div>
 
           {/* Footer */}
-          <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="pt-2 mt-2 border-t border-[var(--border-subtle,#e2e8f0)] flex items-center justify-between text-xs text-[var(--text-muted,#64748b)]">
             <span>
               Active Yesterday:{' '}
-              <strong className="text-slate-800">
+              <strong className="text-[var(--text-main,#0f172a)]">
                 {(yesterdayProduction?.stations || []).filter((s) => s.pcs > 0 || s.mt > 0).length} of {(yesterdayProduction?.stations || []).length || 7} Stations
               </strong>
             </span>
             <Link
               href="/reports/production"
-              className="font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
+              className="font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 inline-flex items-center gap-1"
             >
               Production Report <ArrowRight className="h-3 w-3" />
             </Link>
@@ -812,18 +812,18 @@ export default function DashboardClient({
                   <span className="text-xs font-bold truncate max-w-[110px]">{item.stage}</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-black font-mono">{formatNum(item.mt, 1)}</span>
-                  <span className="text-[10px] font-normal text-slate-500 block leading-none">{formatNum(item.pcs)} pcs</span>
+                  <span className="text-xs font-black font-mono text-slate-900 dark:text-slate-100">{formatNum(item.mt, 1)}</span>
+                  <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400 block leading-none">{formatNum(item.pcs)} pcs</span>
                 </div>
               </Link>
             ))}
           </div>
 
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-            <Link href="/reports/aging" className="text-xs font-semibold text-slate-500 hover:text-slate-700 inline-flex items-center gap-1">
+          <div className="pt-2 border-t border-[var(--border-subtle,#e2e8f0)] flex items-center justify-between">
+            <Link href="/reports/aging" className="text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 inline-flex items-center gap-1">
               Aging <ArrowRight className="h-3 w-3" />
             </Link>
-            <Link href="/reports/wip" className="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
+            <Link href="/reports/wip" className="text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 inline-flex items-center gap-1">
               View Detailed WIP <ExternalLink className="h-3 w-3" />
             </Link>
           </div>
@@ -852,7 +852,7 @@ export default function DashboardClient({
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-tight bg-slate-50/70">
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tight bg-slate-50/70 dark:bg-slate-800/50">
                   <th className="py-2 px-2.5">WO No</th>
                   <th className="py-2 px-2">Customer</th>
                   <th className="py-2 px-2">Grade</th>
@@ -863,31 +863,31 @@ export default function DashboardClient({
                   <th className="py-2 px-2 text-right">Due Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {priorityWorkOrders.length > 0 ? (
                   priorityWorkOrders.map((row) => (
-                    <tr key={row.woNo} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-2 px-2.5 font-mono font-bold text-blue-700 whitespace-nowrap">
+                    <tr key={row.woNo} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="py-2 px-2.5 font-mono font-bold text-blue-700 dark:text-blue-400 whitespace-nowrap">
                         <Link href={`/reports/tracking?search=${encodeURIComponent(row.woNo)}`} className="hover:underline">
                           {row.woNo}
                         </Link>
                       </td>
-                      <td className="py-2 px-2 font-medium text-slate-800 truncate max-w-[120px]">{row.customer}</td>
-                      <td className="py-2 px-2 font-mono text-slate-600">{row.grade}</td>
-                      <td className="py-2 px-2 font-mono text-slate-600 whitespace-nowrap">{row.size}</td>
-                      <td className="py-2 px-2 font-medium text-slate-700 whitespace-nowrap">{row.stage}</td>
-                      <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">{row.wipMt}</td>
+                      <td className="py-2 px-2 font-medium text-slate-800 dark:text-slate-200 truncate max-w-[120px]">{row.customer}</td>
+                      <td className="py-2 px-2 font-mono text-slate-600 dark:text-slate-400">{row.grade}</td>
+                      <td className="py-2 px-2 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">{row.size}</td>
+                      <td className="py-2 px-2 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{row.stage}</td>
+                      <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100">{row.wipMt}</td>
                       <td className="py-2 px-2 text-center whitespace-nowrap">
                         <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${row.statusColor}`}>
                           {row.status}
                         </span>
                       </td>
-                      <td className="py-2 px-2 text-right font-mono text-slate-600 whitespace-nowrap">{row.dueDate}</td>
+                      <td className="py-2 px-2 text-right font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">{row.dueDate}</td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className="py-6 text-center text-xs text-slate-500 font-medium">
+                    <td colSpan={8} className="py-6 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
                       No delayed or pending orders. All work orders are on schedule.
                     </td>
                   </tr>
@@ -923,7 +923,7 @@ export default function DashboardClient({
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-tight bg-slate-50/70">
+                  <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tight bg-slate-50/70 dark:bg-slate-800/50">
                     <th className="py-2 px-2.5">WO No</th>
                     <th className="py-2 px-2">Stage</th>
                     <th className="py-2 px-2 text-right">Physical WIP</th>
@@ -931,33 +931,33 @@ export default function DashboardClient({
                     <th className="py-2 px-2 text-center">Severity</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {dashboardAgingList.length > 0 ? (
                     dashboardAgingList.map((row) => (
-                      <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-2 px-2.5 font-mono font-bold text-blue-700 whitespace-nowrap">
+                      <tr key={row.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                        <td className="py-2 px-2.5 font-mono font-bold text-blue-700 dark:text-blue-400 whitespace-nowrap">
                           <Link href={`/reports/tracking?search=${encodeURIComponent(row.woNo)}`} className="hover:underline">
                             {row.woNo}
                           </Link>
                         </td>
-                        <td className="py-2 px-2 font-medium text-slate-800 whitespace-nowrap">{row.stage}</td>
-                        <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
-                          {row.wipMt} <span className="text-[10px] text-slate-500 font-normal">MT</span>
+                        <td className="py-2 px-2 font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">{row.stage}</td>
+                        <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                          {row.wipMt} <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">MT</span>
                           {row.wipPcs > 0 && (
-                            <span className="block text-[10px] text-slate-500 font-normal leading-none">{formatNum(row.wipPcs)} pcs</span>
+                            <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal leading-none">{formatNum(row.wipPcs)} pcs</span>
                           )}
                         </td>
-                        <td className="py-2 px-2 text-center font-mono font-black text-slate-900 whitespace-nowrap">
+                        <td className="py-2 px-2 text-center font-mono font-black text-slate-900 dark:text-slate-100 whitespace-nowrap">
                           {row.daysStuck}d
                         </td>
                         <td className="py-2 px-2 text-center whitespace-nowrap">
                           <span
                             className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${
                               row.severity === 'CRITICAL'
-                                ? 'bg-red-50 text-red-700 border-red-200'
+                                ? 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
                                 : row.severity === 'WARNING'
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                             }`}
                           >
                             {row.severity === 'CRITICAL' ? '> 5 Days' : row.severity === 'WARNING' ? '3-5 Days' : '≤ 2 Days'}
@@ -967,7 +967,7 @@ export default function DashboardClient({
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={5} className="py-6 text-center text-xs text-slate-500 font-medium">
+                      <td colSpan={5} className="py-6 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
                         <CheckCircle2 className="h-5 w-5 text-emerald-500 mx-auto mb-1.5" />
                         No stagnant material found. All physical WIP is progressing normally.
                       </td>
