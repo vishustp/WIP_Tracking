@@ -119,7 +119,7 @@ export default function SizeGradeWipReportClient() {
   const [rawWipRows, setRawWipRows] = useState<any[]>([]);
   const [allRoutes, setAllRoutes] = useState<{ id?: string; route_code: string; route_name: string }[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [unit, setUnit] = useState<Unit>('MTRS');
+  const [unit, setUnit] = useState<Unit>('PCS');
   const [viewMode, setViewMode] = useState<'matrix' | 'ledger'>('matrix');
 
   // Filters
@@ -931,18 +931,6 @@ export default function SizeGradeWipReportClient() {
             <button
               type="button"
               role="radio"
-              aria-checked={unit === 'MTRS'}
-              aria-label="Display inventory in Meters"
-              onClick={() => setUnit('MTRS')}
-              className={`px-3 py-1.5 min-h-[32px] rounded font-semibold transition cursor-pointer ${
-                unit === 'MTRS' ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              Meters (m)
-            </button>
-            <button
-              type="button"
-              role="radio"
               aria-checked={unit === 'PCS'}
               aria-label="Display inventory in Pieces"
               onClick={() => setUnit('PCS')}
@@ -951,6 +939,18 @@ export default function SizeGradeWipReportClient() {
               }`}
             >
               Pieces (pcs)
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={unit === 'MTRS'}
+              aria-label="Display inventory in Meters"
+              onClick={() => setUnit('MTRS')}
+              className={`px-3 py-1.5 min-h-[32px] rounded font-semibold transition cursor-pointer ${
+                unit === 'MTRS' ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Meters (m)
             </button>
             <button
               type="button"

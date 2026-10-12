@@ -289,8 +289,8 @@ export default function AgingReportClient() {
             <span className="text-2xl font-black text-red-700 dark:text-red-400 font-mono tracking-tight">{kpis.criticalLots}</span>
             <span className="text-xs text-red-600 dark:text-red-400 font-medium">Lots</span>
           </div>
-          <div className="mt-1 text-xs text-red-800 dark:text-red-300 font-mono">
-            {fmt(kpis.criticalMtr)} Mtrs ({fmt(kpis.criticalMt, 2)} MT)
+          <div className="mt-1 text-xs text-red-800 dark:text-red-300 font-mono font-medium">
+            <span className="font-bold text-red-900 dark:text-red-100">{fmt(kpis.criticalPcs, 0)} PCS</span> · {fmt(kpis.criticalMtr)} m ({fmt(kpis.criticalMt, 2)} MT)
           </div>
         </div>
 
@@ -335,8 +335,8 @@ export default function AgingReportClient() {
             <span className="text-2xl font-black text-slate-900 dark:text-slate-100 font-mono tracking-tight">{fmt(kpis.avgDays, 1)}</span>
             <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Days / Station</span>
           </div>
-          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-mono">
-            Total WIP: {fmt(kpis.totalWipMtr)} m ({fmt(kpis.totalWipMt, 1)} MT)
+          <div className="mt-1 text-xs text-slate-600 dark:text-slate-300 font-mono">
+            Total WIP: <span className="font-bold text-slate-900 dark:text-slate-100">{fmt(kpis.totalWipPcs, 0)} PCS</span> · {fmt(kpis.totalWipMtr)} m ({fmt(kpis.totalWipMt, 1)} MT)
           </div>
         </div>
       </div>
@@ -397,7 +397,7 @@ export default function AgingReportClient() {
                 <th className="py-2.5 px-3">Customer</th>
                 <th className="py-2.5 px-3">Grade & Size</th>
                 <th className="py-2.5 px-3">Work Center</th>
-                <th className="py-2.5 px-3 text-right">Physical WIP</th>
+                <th className="py-2.5 px-3 text-right">Physical WIP (PCS / MTR)</th>
                 <th className="py-2.5 px-3">Last Activity</th>
                 <th className="py-2.5 px-3 text-center">Days Stuck</th>
                 <th className="py-2.5 px-3 text-center">Severity</th>
@@ -471,11 +471,18 @@ export default function AgingReportClient() {
                         </span>
                       </td>
 
-                      {/* Physical WIP */}
+                      {/* Physical WIP with Highlighted PCS */}
                       <td className="py-2.5 px-3 text-right font-mono tabular-nums">
-                        <div className="font-bold text-slate-900 dark:text-slate-100">{fmt(r.current_wip)} m</div>
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                          {fmt(r.current_wip_pcs, 0)} pcs · {fmt(r.available_mt, 2)} MT
+                        <div className="flex items-center justify-end gap-1 mb-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-black bg-blue-100 text-blue-800 border border-blue-300 dark:bg-blue-950/60 dark:text-blue-200 dark:border-blue-700 shadow-2xs">
+                            <span className="font-mono text-[13px]">{fmt(r.current_wip_pcs, 0)}</span>
+                            <span className="text-[10px] uppercase font-sans font-bold tracking-wider">PCS</span>
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-medium text-slate-700 dark:text-slate-300">
+                          {fmt(r.current_wip)} <span className="text-[10px] text-slate-500 dark:text-slate-400">m</span>
+                          <span className="mx-1 text-slate-300 dark:text-slate-600">·</span>
+                          {fmt(r.available_mt, 2)} <span className="text-[10px] text-slate-500 dark:text-slate-400">MT</span>
                         </div>
                       </td>
 

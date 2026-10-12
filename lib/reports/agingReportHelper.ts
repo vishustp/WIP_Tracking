@@ -32,8 +32,10 @@ export interface AgingKpiSummary {
   criticalLots: number;
   warningLots: number;
   normalLots: number;
+  criticalPcs: number;
   criticalMtr: number;
   criticalMt: number;
+  totalWipPcs: number;
   totalWipMtr: number;
   totalWipMt: number;
   avgDays: number;
@@ -333,7 +335,15 @@ export function computeAgingReportRows(options: {
 
       const grade = wo?.grade || r.grade || 'ASTM A106 Gr B';
       const currentWipMtr = Number(r.current_wip) || 0;
-      const currentWipPcs = Number(r.current_wip_pcs) || 0;
+      let currentWipPcs = Number(r.current_wip_pcs) || 0;
+      if (currentWipPcs <= 0 && currentWipMtr > 0) {
+        const l1 = Number(r.l1 ?? wo?.l1) || 0;
+        const l2 = Number(r.l2 ?? wo?.l2) || 0;
+        const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
+        if (avgLen > 0) {
+          currentWipPcs = Math.max(1, Math.round(currentWipMtr / avgLen));
+        }
+      }
 
       // Conserved mass formula (OD - WT) * WT * 0.0246615 * 0.001 * meters
       const computedMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * currentWipMtr;
@@ -406,6 +416,9 @@ export function computeAgingKpis(rows: AgingRow[]): AgingKpiSummary {
   const warningLots = rows.filter((r) => r.severity === 'WARNING').length;
   const normalLots = rows.filter((r) => r.severity === 'NORMAL').length;
 
+  const criticalPcs = rows
+    .filter((r) => r.severity === 'CRITICAL')
+    .reduce((sum, r) => sum + (r.current_wip_pcs || 0), 0);
   const criticalMtr = rows
     .filter((r) => r.severity === 'CRITICAL')
     .reduce((sum, r) => sum + r.current_wip, 0);
@@ -413,6 +426,7 @@ export function computeAgingKpis(rows: AgingRow[]): AgingKpiSummary {
     .filter((r) => r.severity === 'CRITICAL')
     .reduce((sum, r) => sum + r.available_mt, 0);
 
+  const totalWipPcs = rows.reduce((sum, r) => sum + (r.current_wip_pcs || 0), 0);
   const totalWipMtr = rows.reduce((sum, r) => sum + r.current_wip, 0);
   const totalWipMt = rows.reduce((sum, r) => sum + r.available_mt, 0);
 
@@ -455,8 +469,10 @@ export function computeAgingKpis(rows: AgingRow[]): AgingKpiSummary {
         criticalLots,
         warningLots,
         normalLots,
+        criticalPcs,
         criticalMtr,
         criticalMt,
+        totalWipPcs,
         totalWipMtr,
         totalWipMt,
         avgDays,
@@ -468,8 +484,10 @@ export function computeAgingKpis(rows: AgingRow[]): AgingKpiSummary {
       criticalLots,
       warningLots,
       normalLots,
+      criticalPcs,
       criticalMtr,
       criticalMt,
+      totalWipPcs,
       totalWipMtr,
       totalWipMt,
       avgDays,
@@ -482,8 +500,10 @@ export function computeAgingKpis(rows: AgingRow[]): AgingKpiSummary {
     criticalLots,
     warningLots,
     normalLots,
+    criticalPcs,
     criticalMtr,
     criticalMt,
+    totalWipPcs,
     totalWipMtr,
     totalWipMt,
     avgDays,
@@ -567,6 +587,17 @@ export function normalizeAgingRow(
 
   const isAcknowledged = isLocalAckActive || isDbAckActive;
 
+  const currentWip = Number(raw.current_wip) || 0;
+  let currentWipPcs = Number(raw.current_wip_pcs) || 0;
+  if (currentWipPcs <= 0 && currentWip > 0) {
+    const l1 = Number(raw.l1) || 0;
+    const l2 = Number(raw.l2) || 0;
+    const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
+    if (avgLen > 0) {
+      currentWipPcs = Math.max(1, Math.round(currentWip / avgLen));
+    }
+  }
+
   return {
     work_order_id: String(raw.work_order_id || ''),
     work_order_no: String(raw.work_order_no || ''),
@@ -580,8 +611,8 @@ export function normalizeAgingRow(
     stage_code: String(raw.stage_code || ''),
     stage_name: String(raw.stage_name || raw.stage_code || ''),
     sequence_no: raw.sequence_no != null ? Number(raw.sequence_no) : undefined,
-    current_wip: Number(raw.current_wip) || 0,
-    current_wip_pcs: Number(raw.current_wip_pcs) || 0,
+    current_wip: currentWip,
+    current_wip_pcs: currentWipPcs,
     available_mt: Number(raw.available_mt ?? raw.current_wip_mt) || 0,
     last_activity_date: lastActivityDate,
     days_stuck: daysStuck,
