@@ -35,7 +35,9 @@ export async function GET(req: NextRequest) {
 
     // 2. Fetch created_by from production_logs and operators from app_users
     const [{ data: logs }, { data: appUsers }] = await Promise.all([
-      admin.from('production_logs').select('id, created_by, created_at'),
+      admin
+        .from('production_logs')
+        .select('id, created_by, created_at, work_order_id, work_orders(id, grade, specification)'),
       admin.from('app_users').select('id, auth_user_id, employee_name, email'),
     ]);
 
@@ -53,6 +55,8 @@ export async function GET(req: NextRequest) {
     const enriched = (entries || []).map((e: any) => {
       const l = logMap.get(e.id);
       const opName = l?.created_by ? userMap.get(l.created_by) : null;
+      const woGrade = (l?.work_orders as any)?.grade || (l?.work_orders as any)?.specification || null;
+      const woSpec = (l?.work_orders as any)?.specification || (l?.work_orders as any)?.grade || null;
       let outputPcs = e.output_pcs;
       let rejPcs = e.rejection_pcs;
       if (e.remarks) {
@@ -70,6 +74,9 @@ export async function GET(req: NextRequest) {
       }
       return {
         ...e,
+        work_order_id: e.work_order_id || l?.work_order_id || null,
+        grade: e.grade || woGrade,
+        specification: e.specification || woSpec,
         output_pcs: outputPcs,
         rejection_pcs: rejPcs,
         created_by: l?.created_by,

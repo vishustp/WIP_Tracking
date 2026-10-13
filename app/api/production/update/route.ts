@@ -25,6 +25,8 @@ export async function POST(req: NextRequest) {
     const {
       id,
       process_date,
+      input_qty,
+      input_pcs,
       output_qty,
       output_pcs,
       rejection_qty,
@@ -129,7 +131,9 @@ export async function POST(req: NextRequest) {
     const updatePayload: Record<string, any> = {
       process_date: process_date || targetLog.process_date,
       output_qty: output_qty !== undefined ? Number(output_qty) : targetLog.output_qty,
-      input_qty: output_qty !== undefined ? Number(output_qty) : targetLog.input_qty,
+      input_qty: input_qty !== undefined
+        ? Number(input_qty)
+        : (stageCode === 'BAND_SAW' ? targetLog.input_qty : (output_qty !== undefined ? Number(output_qty) : targetLog.input_qty)),
       rejection_qty: rejection_qty !== undefined ? Number(rejection_qty) : targetLog.rejection_qty,
       heat_lot_no: heat_lot_no !== undefined ? (heat_lot_no?.trim() || null) : targetLog.heat_lot_no,
       remarks: updatedRemarks,

@@ -287,6 +287,37 @@ describe("Production Utils Unit Tests", () => {
       expect(parsedUser.cleanRemarks).toBe("Smooth cut");
     });
 
+    it("Band Saw multi-cut: preserves multiple cut lengths, mother pipes, offcuts, scrap, and classification in remarks", () => {
+      const cuts = [
+        { length_mtr: 6.0, cut_pcs: 10, cut_category: "PRIME" },
+        { length_mtr: 5.5, cut_pcs: 5, cut_category: "SECONDARY" },
+        { length_mtr: 3.2, cut_pcs: 2, cut_category: "OFFCUT" },
+      ];
+      const tagged = attachBandSawCutsToRemarks(
+        "Corrected sawing record",
+        cuts,
+        15, // motherPcs
+        94.2, // yieldPct
+        6.4, // offcutMtr
+        2.5, // scrapMtr
+        0.021, // scrapMt
+        2.6, // scrapPct
+        6.0,
+        6.5
+      );
+
+      const parsed = extractBandSawCutsFromRemarks(tagged);
+      expect(parsed.cuts).toHaveLength(3);
+      expect(parsed.cuts![0]).toEqual({ len: 6.0, pcs: 10, cat: "PRIME" });
+      expect(parsed.cuts![1]).toEqual({ len: 5.5, pcs: 5, cat: "SECONDARY" });
+      expect(parsed.cuts![2]).toEqual({ len: 3.2, pcs: 2, cat: "OFFCUT" });
+      expect(parsed.motherPcs).toBe(15);
+      expect(parsed.yieldPct).toBe(94.2);
+      expect(parsed.offcutMtr).toBe(6.4);
+      expect(parsed.scrapMtr).toBe(2.5);
+      expect(parsed.cleanRemarks).toBe("Corrected sawing record");
+    });
+
     it("Draw mass conservation: conserved drawn MT equals mother hollow rolled MT for equivalent pieces", () => {
       // 338 pieces drawn from MH 70 x 5.25 at 4.40m length
       const mhOd = 70;

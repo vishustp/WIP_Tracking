@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
+import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, normalizeGrade } from '@/lib/productionUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
 import type { AppUserProfile } from '@/lib/users/types';
 import type { Row, ProductionEntry } from '@/types';
@@ -635,6 +635,13 @@ export default function BandSawCuttingClient() {
                               </span>
                             ) : null}
                           </div>
+                          {(entry.grade || entry.specification) && (
+                            <div className="mt-0.5">
+                              <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                {normalizeGrade(entry.grade || entry.specification)}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-3 font-mono">
                           {entry.heat_lot_no ? (
@@ -649,36 +656,55 @@ export default function BandSawCuttingClient() {
                           {entry.od} × {entry.wl} mm
                         </td>
                         <td className="py-3 px-4">
-                          {cuts && cuts.length > 0 ? (
-                            <div className="flex flex-wrap gap-1.5 items-center">
-                              {cuts.map((c, i) => (
-                                <span
-                                  key={i}
-                                  className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 font-mono text-[11px] font-semibold text-indigo-800"
-                                >
-                                  {c.pcs} pcs @ {c.len}m
-                                </span>
-                              ))}
-                              {offcutMtr && offcutMtr > 0 ? (
-                                <span className="inline-flex items-center rounded-md bg-blue-50 border border-blue-200 px-1.5 py-0.5 font-mono text-[10px] font-medium text-blue-800">
-                                  Offcut: {offcutMtr}m
-                                </span>
-                              ) : null}
-                              {scrapMt && scrapMt > 0 ? (
-                                <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-900">
-                                  Scrap: {fmt(scrapMt, 3)} MT {scrapPct ? `(${scrapPct}%)` : ''}
-                                </span>
-                              ) : scrapMtr && scrapMtr > 0 ? (
-                                <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-900">
-                                  Scrap: {scrapMtr}m
-                                </span>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 font-mono text-xs">
-                              {entry.output_mtr}m ({netPcs} pcs)
-                            </span>
-                          )}
+                          <div className="space-y-1">
+                            {motherPcs && motherPcs > 0 ? (
+                              <div className="text-[10px] font-semibold text-slate-500 flex items-center gap-1">
+                                <span className="text-slate-400">Mother In:</span>
+                                <span className="font-mono text-slate-800 font-bold">{motherPcs} PCS</span>
+                                {entry.input_mtr ? (
+                                  <span className="font-mono text-slate-500">({fmt(Number(entry.input_mtr))}m)</span>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {cuts && cuts.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5 items-center">
+                                {cuts.map((c, i) => (
+                                  <span
+                                    key={i}
+                                    className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 font-mono text-[11px] font-semibold text-indigo-800"
+                                  >
+                                    {c.pcs} pcs @ {c.len}m
+                                    {c.cat && c.cat !== 'PRIME' && (
+                                      <span className="text-[9px] text-indigo-500 font-normal">({c.cat})</span>
+                                    )}
+                                  </span>
+                                ))}
+                                {offcutMtr && offcutMtr > 0 ? (
+                                  <span className="inline-flex items-center rounded-md bg-blue-50 border border-blue-200 px-1.5 py-0.5 font-mono text-[10px] font-medium text-blue-800">
+                                    Offcut: {offcutMtr}m
+                                  </span>
+                                ) : null}
+                                {scrapMt && scrapMt > 0 ? (
+                                  <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-900">
+                                    Scrap: {fmt(scrapMt, 3)} MT {scrapPct ? `(${scrapPct}%)` : ''}
+                                  </span>
+                                ) : scrapMtr && scrapMtr > 0 ? (
+                                  <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-900">
+                                    Scrap: {scrapMtr}m
+                                  </span>
+                                ) : null}
+                                {(Number(entry.rejection_mtr || 0) > 0 || Number(entry.rejection_pcs || 0) > 0) && (
+                                  <span className="inline-flex items-center rounded-md bg-rose-50 border border-rose-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-rose-800">
+                                    Defect Rej: {entry.rejection_pcs || 0} pcs ({fmt(Number(entry.rejection_mtr || 0))}m)
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-mono text-xs">
+                                {entry.output_mtr}m ({netPcs} pcs)
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight font-bold text-indigo-700 text-sm">
                           {netPcs} PCS
@@ -767,6 +793,7 @@ export default function BandSawCuttingClient() {
       {editingEntry && (
         <BandSawEditModal
           entry={editingEntry}
+          queueRow={queueRows.find((q) => q.work_order_no === editingEntry.work_order_no) || null}
           isOpen={!!editingEntry}
           onClose={() => setEditingEntry(null)}
           onSuccess={fetchData}
