@@ -188,7 +188,7 @@ export default function BandSawCuttingClient() {
   const avgYieldPct = useMemo(() => {
     const validYields = historyEntries
       .map((e) => extractBandSawCutsFromRemarks(e.remarks).yieldPct)
-      .filter((y): y is number => y !== null && y > 0);
+      .filter((y): y is number => y !== null && y !== undefined && !isNaN(y));
     if (validYields.length === 0) return 96.5;
     return validYields.reduce((a, b) => a + b, 0) / validYields.length;
   }, [historyEntries]);
@@ -612,11 +612,31 @@ export default function BandSawCuttingClient() {
                     const netPcs =
                       cuts?.reduce((s, c) => s + Number(c.pcs || 0), 0) ||
                       (entry.avg_length && entry.output_mtr ? Math.round(entry.output_mtr / entry.avg_length) : 0);
+
+                    // Compute true prime cut meters from cuts breakdown when available
+                    const primeCutMtrFromCuts = cuts && cuts.length > 0
+                      ? cuts
+                          .filter((c) => (c.cat as any) === 'PRIME' || !c.cat || (c.cat as any) === 'SECONDARY')
+                          .reduce((sum, c) => sum + Number((c.len * c.pcs).toFixed(2)), 0)
+                      : null;
+
+                    const displayMtr = primeCutMtrFromCuts !== null
+                      ? primeCutMtrFromCuts
+                      : Number(entry.output_mtr || 0);
+
                     const entryMt = mtFromMtr(
-                      Number(entry.output_mtr || 0),
+                      displayMtr,
                       Number(entry.od || 0),
                       Number(entry.wl || 0)
                     );
+
+                    const displayYield = yieldPct !== null && yieldPct !== undefined && !isNaN(Number(yieldPct))
+                      ? Number(yieldPct)
+                      : (() => {
+                          const inMtr = Number(entry.input_mtr || 0);
+                          if (inMtr > 0) return Number(((displayMtr / inMtr) * 100).toFixed(1));
+                          return 100.0;
+                        })();
 
                     return (
                       <tr key={entry.id} className="hover:bg-slate-50/70 transition-colors">
@@ -710,7 +730,7 @@ export default function BandSawCuttingClient() {
                           {netPcs} PCS
                         </td>
                         <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight font-semibold text-slate-800">
-                          {fmt(Number(entry.output_mtr || 0))} m
+                          {fmt(displayMtr)} m
                         </td>
                         <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-700">
                           {fmt(entryMt, 3)} MT
@@ -718,12 +738,14 @@ export default function BandSawCuttingClient() {
                         <td className="py-3 px-3 text-center">
                           <span
                             className={`inline-block rounded-full px-2 py-0.5 font-mono text-[10px] font-bold ${
-                              (yieldPct || 100) >= 90
+                              displayYield >= 90
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : displayYield >= 70
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200'
                             }`}
                           >
-                            {(yieldPct || 100).toFixed(1)}%
+                            {displayYield.toFixed(1)}%
                           </span>
                         </td>
                         <td className="py-3 px-3">

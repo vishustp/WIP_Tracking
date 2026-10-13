@@ -216,8 +216,8 @@ export function BandSawEditModal({
   const isBalanced = Math.abs(balanceDiff) <= 0.05;
 
   // Yield & Scrap Percentages
-  const yieldPct = totalMotherMtr > 0 ? (totalPrimeCutMtr / totalMotherMtr) * 100 : 96.5;
-  const scrapPct = totalMotherMtr > 0 ? ((effectiveScrapMtr + totalTrimScrapMtr) / totalMotherMtr) * 100 : 3.5;
+  const yieldPct = totalMotherMtr > 0 ? (totalPrimeCutMtr / totalMotherMtr) * 100 : (totalAccountedMtr > 0 ? (totalPrimeCutMtr / totalAccountedMtr) * 100 : 0);
+  const scrapPct = totalMotherMtr > 0 ? ((effectiveScrapMtr + totalTrimScrapMtr) / totalMotherMtr) * 100 : (totalAccountedMtr > 0 ? ((effectiveScrapMtr + totalTrimScrapMtr) / totalAccountedMtr) * 100 : 0);
 
   // Handlers for cut table
   const handleAddCutItem = (presetLen?: number) => {
