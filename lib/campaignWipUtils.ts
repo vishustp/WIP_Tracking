@@ -326,8 +326,13 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
           grossPcs = Math.max(rawPcs, directFinPcs);
           netMtr = Math.max(0, grossMtr - rejMtr);
           netPcs = Math.max(0, grossPcs - rejPcs);
-          const vdiPassedPcs = isMaster ? campaignVdiOkPcs : directVdiOkPcs;
-          const vdiPassedMtr = isMaster ? campaignVdiOkMtr : directVdiOkMtr;
+          const vdiPassedPcsRaw = isMaster ? campaignVdiOkPcs : directVdiOkPcs;
+          const vdiPassedMtrRaw = isMaster ? campaignVdiOkMtr : directVdiOkMtr;
+          const vdiRow = stageRows.find((sr: any) => (sr.stage_code || '').toUpperCase() === 'VDI');
+          const vdiDivOutMtr = Number(vdiRow?.diversion_out || 0);
+          const vdiDivOutPcs = stageAvgLen > 0 ? Math.round(vdiDivOutMtr / stageAvgLen) : 0;
+          const vdiPassedPcs = Math.max(0, vdiPassedPcsRaw - vdiDivOutPcs);
+          const vdiPassedMtr = Math.max(0, vdiPassedMtrRaw - vdiDivOutMtr);
           incomingPcsOverride = vdiPassedPcs > 0 ? vdiPassedPcs : Number(r.incoming_qty_pcs || (stageAvgLen > 0 ? Math.round(Number(r.incoming_qty || 0) / stageAvgLen) : 0));
           incomingMtrOverride = vdiPassedMtr > 0 ? vdiPassedMtr : Number(r.incoming_qty || 0);
         }

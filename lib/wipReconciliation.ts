@@ -305,9 +305,12 @@ export function reconcileWorkOrderWip(
       incomingPcs = bsProd?.prodPcs || 0;
       stageLen = finalAvgLen;
     } else if (sc === 'FINISHING') {
-      // Feeder is VDI OK pieces
+      // Feeder is VDI OK pieces minus any VDI diversions out
       const vdiProd = stageProdMap.get('VDI');
-      incomingPcs = vdiProd?.prodPcs || 0;
+      const vdiStageInput = sortedStages.find(s => s.stage_code === 'VDI');
+      const vdiDivOutPcs = Number(vdiStageInput?.diversion_out_pcs || 0);
+      const vdiPassedPcs = Math.max(0, (vdiProd?.prodPcs || 0) - vdiDivOutPcs);
+      incomingPcs = cur.incoming_pcs !== undefined ? Number(cur.incoming_pcs) : vdiPassedPcs;
       stageLen = finalAvgLen;
     } else {
       // Fallback: previous stage production

@@ -118,8 +118,11 @@ describe('Stainless Steel (SS_STEEL) Route & PILGER Work Center Feeder Validatio
       route_id: 'route-ss',
       work_order_no: 'WO-SS-101',
       route_code: 'SS_STEEL',
+      od: 38.1,
+      wl: 3.5,
       l1: 6,
       l2: 6,
+      avg_length: 6,
       pcs: '15',
       mtr: '90',
       balance_to_make_pcs: 10, // only 10 available from Pilger

@@ -892,8 +892,9 @@ export async function GET(req: NextRequest) {
 
       const finDivIn = getStageDivIn(woId, "FINISHING");
       const finDivOut = getStageDivOut(woId, "FINISHING");
+      const totalFinDivOut = finDivOut + vdiDivOut;
       const finDivInPcs = avgLength > 0 ? Math.round(finDivIn / avgLength) : 0;
-      const finDivOutPcs = avgLength > 0 ? Math.round(finDivOut / avgLength) : 0;
+      const finDivOutPcs = avgLength > 0 ? Math.round(totalFinDivOut / avgLength) : 0;
 
       const isCampaignMaster = Boolean(campaign && Array.isArray(campaign.child_work_orders) && campaign.child_work_orders.length > 0);
       // For Master campaign WO, finishing WIP only comes from QC records done directly against this master WO.
@@ -903,7 +904,7 @@ export async function GET(req: NextRequest) {
 
       const finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finConsumedPcs - finDivOutPcs);
       const finIncomingMtr = avgLength > 0 ? Number((finIncomingPcs * avgLength).toFixed(3)) : 0;
-      let finAvailMtr = Math.max(0, Number((finIncomingMtr + finDivIn - (finOutMtr + finRejMtr) - finDivOut).toFixed(3)));
+      let finAvailMtr = Math.max(0, Number((finIncomingMtr + finDivIn - (finOutMtr + finRejMtr) - totalFinDivOut).toFixed(3)));
       if (finAvailMtr === 0 && finAvailPcs > 0 && avgLength > 0) {
         finAvailMtr = Number((finAvailPcs * avgLength).toFixed(3));
       }
@@ -1770,8 +1771,10 @@ export async function GET(req: NextRequest) {
       // Child order diversions in Finishing
       const childFinDivIn = getStageDivIn(childId, "FINISHING");
       const childFinDivOut = getStageDivOut(childId, "FINISHING");
+      const childVdiDivOut = getStageDivOut(childId, "VDI");
+      const childTotalDivOut = childFinDivOut + childVdiDivOut;
       const childFinDivInPcs = avgLength > 0 ? Math.round(childFinDivIn / avgLength) : 0;
-      const childFinDivOutPcs = avgLength > 0 ? Math.round(childFinDivOut / avgLength) : 0;
+      const childFinDivOutPcs = avgLength > 0 ? Math.round(childTotalDivOut / avgLength) : 0;
 
       // Available WIP at Finishing for this child work order is strictly its VDI OK pcs (+ diversion) minus finished pcs
       const childAvailPcs = Math.max(0, childVdiOkPcs + childFinDivInPcs - childFinOutPcs - childFinRejPcs - childFinDivOutPcs);

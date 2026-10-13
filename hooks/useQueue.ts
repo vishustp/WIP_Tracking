@@ -884,9 +884,11 @@ export function useQueue(stage: StageCode) {
 
           const finDivIn = getStageDivIn(r.work_order_id, "FINISHING");
           const finDivOut = getStageDivOut(r.work_order_id, "FINISHING");
+          const vdiDivOut = getStageDivOut(r.work_order_id, "VDI");
+          const totalFinDivOut = finDivOut + vdiDivOut;
           const effAvg = Number(r.avg_length) || 6;
           const finDivInPcs = effAvg > 0 ? Math.round(finDivIn / effAvg) : 0;
-          const finDivOutPcs = effAvg > 0 ? Math.round(finDivOut / effAvg) : 0;
+          const finDivOutPcs = effAvg > 0 ? Math.round(totalFinDivOut / effAvg) : 0;
 
           // Check QC inspections for this WO
           const woQc = qcInspections.filter((q: any) => q.work_order_id === r.work_order_id);
@@ -957,8 +959,10 @@ export function useQueue(stage: StageCode) {
 
               const childDivIn = getStageDivIn(childId, "FINISHING");
               const childDivOut = getStageDivOut(childId, "FINISHING");
+              const childVdiDivOut = getStageDivOut(childId, "VDI");
+              const childTotalDivOut = childDivOut + childVdiDivOut;
               const childDivInPcs = avgLen > 0 ? Math.round(childDivIn / avgLen) : 0;
-              const childDivOutPcs = avgLen > 0 ? Math.round(childDivOut / avgLen) : 0;
+              const childDivOutPcs = avgLen > 0 ? Math.round(childTotalDivOut / avgLen) : 0;
 
               const childAvailPcs = Math.max(0, childQcOk + childDivInPcs - childFinishedPcs - childDivOutPcs);
               const childAvailMtr = avgLen > 0 ? Number((childAvailPcs * avgLen).toFixed(2)) : 0;

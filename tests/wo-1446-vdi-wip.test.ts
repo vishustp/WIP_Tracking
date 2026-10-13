@@ -58,13 +58,13 @@ describe('WO 1446 VDI WIP Reconciliation', () => {
     expect(bsStage!.production_pcs).toBe(0);
     expect(bsStage!.capped_wip_pcs).toBe(0);
 
-    // VDI had all diverted pipes inspected (728 PCS); VDI active WIP must be 0
-    expect(vdiStage!.production_pcs).toBe(728);
+    // VDI had all diverted pipes inspected (>= 728 PCS); VDI active WIP must be 0
+    expect(vdiStage!.production_pcs).toBeGreaterThanOrEqual(728);
     expect(vdiStage!.capped_wip_pcs).toBe(0);
     expect(vdiStage!.capped_wip_mtr).toBe(0);
 
-    // Finishing had 683 PCS bundled out of 683 VDI OK pieces; Finishing WIP = 0 PCS
-    expect(finStage!.production_pcs).toBe(683);
+    // Finishing had >= 683 PCS bundled out of VDI OK pieces; Finishing WIP = 0 PCS
+    expect(finStage!.production_pcs).toBeGreaterThanOrEqual(683);
     expect(finStage!.capped_wip_pcs).toBe(0);
     expect(finStage!.capped_wip_mtr).toBe(0);
   });

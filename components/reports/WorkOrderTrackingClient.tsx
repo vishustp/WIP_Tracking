@@ -1171,8 +1171,10 @@ export default function WorkOrderTrackingClient() {
 
         const divIn = getStageDivIn(wo.id, 'FINISHING');
         const divOut = getStageDivOut(wo.id, 'FINISHING');
+        const vdiDivOut = getStageDivOut(wo.id, 'VDI');
+        const totalDivOut = divOut + vdiDivOut;
         const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
-        const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
+        const divOutPcs = avgLen > 0 ? Math.round(totalDivOut / avgLen) : 0;
 
         let wipPcs = 0;
         const consumedPcs = finOutPcs + finRejPcs;

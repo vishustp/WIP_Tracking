@@ -370,6 +370,69 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
       expect(targetFinAfter!.reconciled_wip_mtr).toBe(0);
       expect(targetFinAfter!.reconciled_wip_mt).toBe(0);
     });
+
+    it('clears Finishing WIP when prime inspected material is diverted at VDI (e.g. WO 6349)', async () => {
+      const { reconcileWorkOrderWip } = await import('@/lib/wipReconciliation');
+
+      // WO 6349:
+      // Band saw cut: 953 pcs (9530m)
+      // VDI inspected: 754 pcs OK (7540m), 69 pcs rejected (690m)
+      // Finishing bundled: 736 pcs (7360m)
+      // Diversion out at VDI: 18 pcs (180m) prime reallocation [FROM_STAGE: VDI]
+      const wo6349Stages = [
+        {
+          stage_code: 'BAND_SAW',
+          sequence_no: 4,
+          gross_output_mtr: 9530,
+          gross_output_pcs: 953,
+          rejection_mtr: 0,
+          rejection_pcs: 0,
+          net_output_mtr: 9530,
+          net_output_pcs: 953,
+          od: 63.5,
+          wt: 5.2,
+          avg_length: 10.0,
+        },
+        {
+          stage_code: 'VDI',
+          sequence_no: 5,
+          gross_output_mtr: 7540,
+          gross_output_pcs: 754,
+          rejection_mtr: 690,
+          rejection_pcs: 69,
+          net_output_mtr: 6850,
+          net_output_pcs: 685,
+          diversion_out_mtr: 180,
+          diversion_out_pcs: 18,
+          od: 63.5,
+          wt: 5.2,
+          avg_length: 10.0,
+        },
+        {
+          stage_code: 'FINISHING',
+          sequence_no: 6,
+          gross_output_mtr: 7360,
+          gross_output_pcs: 736,
+          rejection_mtr: 0,
+          rejection_pcs: 0,
+          net_output_mtr: 7360,
+          net_output_pcs: 736,
+          od: 63.5,
+          wt: 5.2,
+          avg_length: 10.0,
+        },
+      ];
+
+      const result = reconcileWorkOrderWip(wo6349Stages, { route_code: 'CDS', final_avg_length: 10.0 });
+      const finStage = result.stages.find((s) => s.stage_code === 'FINISHING');
+
+      // Finishing incoming is net VDI OK (754 - 18 = 736 pcs).
+      // Since 736 pcs were bundled, remaining finishing WIP MUST be 0!
+      expect(finStage!.incoming_pcs).toBe(736);
+      expect(finStage!.reconciled_wip_pcs).toBe(0);
+      expect(finStage!.reconciled_wip_mtr).toBe(0);
+      expect(finStage!.reconciled_wip_mt).toBe(0);
+    });
   });
 });
 
