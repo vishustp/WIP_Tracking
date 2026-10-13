@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { attachPcsToRemarks, extractPcsFromRemarks } from '@/lib/productionUtils';
+import { attachPcsToRemarks, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 import { requireAuth } from '@/lib/supabase/authGuard';
 
 export async function POST(req: NextRequest) {
@@ -79,6 +79,25 @@ export async function POST(req: NextRequest) {
       const outPcs = Number(item.output_pcs || 0);
       const htcMtr = Number(item.htc_ok || 0);
       const htcPcs = Number(item.htc_ok_pcs || 0);
+
+      // Rule: Production output cannot be 0.00 m or 0 PCS
+      if (outMtr <= 0 || outPcs <= 0) {
+        return NextResponse.json(
+          { error: `Production output must be greater than 0.00 m and 0 PCS (received ${outMtr} m, ${outPcs} PCS).` },
+          { status: 400 }
+        );
+      }
+
+      // Rule: Band Saw cuts cannot have length <= 0
+      if (item.stage_code === 'BAND_SAW' && item.remarks) {
+        const { cuts } = extractBandSawCutsFromRemarks(item.remarks);
+        if (cuts && cuts.some((c: any) => Number(c.len || 0) <= 0 || Number(c.pcs || 0) <= 0)) {
+          return NextResponse.json(
+            { error: 'All Band Saw cut pieces must have a length greater than 0.00 m and piece count ≥ 1.' },
+            { status: 400 }
+          );
+        }
+      }
 
       // Rule: Rolling HTC OK strictly required
       if (item.stage_code === 'ROLLING' && (outMtr > 0 || outPcs > 0)) {

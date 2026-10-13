@@ -575,8 +575,12 @@ export function BandSawCuttingModal({
       setError('Please enter valid Mother Pipes Processed (≥ 1).');
       return;
     }
-    if (totalPrimeCutPcs <= 0 && totalPrimeCutMtr <= 0) {
-      setError('Please specify at least one cut length item with positive pieces.');
+    if (totalPrimeCutPcs <= 0 || totalPrimeCutMtr <= 0 || totalPrimeCutMt <= 0) {
+      setError('Production output must be greater than 0.00 m, 0 PCS, and 0.000 MT.');
+      return;
+    }
+    if (cutItems.some((c) => Number(c.length_mtr) <= 0 || Number(c.cut_pcs) <= 0)) {
+      setError('Each cut item must have a valid length (> 0.00 m) and piece count (≥ 1).');
       return;
     }
     if (totalAllCutMtr > totalMotherMtr * 1.15) {

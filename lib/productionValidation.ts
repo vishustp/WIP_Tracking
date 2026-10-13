@@ -19,11 +19,11 @@ export function validateProductionEntry(
     });
   }
 
-  // 2. Production quantity check
-  if (d.pcs <= 0 && d.mtr <= 0) {
+  // 2. Production quantity check (strictly requires > 0.00 m, > 0 PCS, and > 0.000 MT)
+  if (d.pcs <= 0 || d.mtr <= 0 || d.mt <= 0) {
     errors.push({
       workOrder: row.work_order_no,
-      message: "Production quantity (PCS or MTR) must be greater than zero.",
+      message: "Production quantity must be greater than 0.00 m, 0 PCS, and 0.000 MT.",
     });
   }
 

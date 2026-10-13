@@ -415,6 +415,28 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       expect(errors.length).toBeGreaterThan(0);
       expect(errors[0].message).toContain("Standard 4-Meter Scrap Rule");
     });
+
+    it("strictly blocks saving 0.00 m, 0 PCS, or 0.000 MT in production", () => {
+      const zeroMtrRow: Row = {
+        ...baseRow,
+        stage_code: "BAND_SAW",
+        pcs: "10",
+        mtr: "0",
+      };
+      const errorsMtr = validateProductionEntry(zeroMtrRow, "BAND_SAW");
+      expect(errorsMtr.length).toBeGreaterThan(0);
+      expect(errorsMtr[0].message).toContain("must be greater than 0.00 m, 0 PCS, and 0.000 MT");
+
+      const zeroPcsRow: Row = {
+        ...baseRow,
+        stage_code: "BAND_SAW",
+        pcs: "0",
+        mtr: "50",
+      };
+      const errorsPcs = validateProductionEntry(zeroPcsRow, "BAND_SAW");
+      expect(errorsPcs.length).toBeGreaterThan(0);
+      expect(errorsPcs[0].message).toContain("must be greater than 0.00 m, 0 PCS, and 0.000 MT");
+    });
   });
 });
 

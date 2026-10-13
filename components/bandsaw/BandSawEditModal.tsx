@@ -269,8 +269,13 @@ export function BandSawEditModal({
   };
 
   const handleSave = async () => {
-    if (totalPrimeCutPcs <= 0 && totalOffcutPcs <= 0) {
-      setError('Please enter at least 1 valid cut piece.');
+    if (totalPrimeCutPcs <= 0 || totalPrimeCutMtr <= 0 || totalPrimeCutMt <= 0) {
+      setError('Production output must be greater than 0.00 m, 0 PCS, and 0.000 MT.');
+      return;
+    }
+
+    if (cutItems.some((c) => Number(c.length_mtr) <= 0 || Number(c.cut_pcs) <= 0)) {
+      setError('Each cut item must have a valid length (> 0.00 m) and piece count (≥ 1).');
       return;
     }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAuth } from '@/lib/supabase/authGuard';
-import { attachPcsToRemarks } from '@/lib/productionUtils';
+import { attachPcsToRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -107,6 +107,29 @@ export async function POST(req: NextRequest) {
       if (laterLogs && laterLogs.length > 0) {
         return NextResponse.json(
           { error: 'Only the latest production entry for this Work Order can be edited by regular operators. Contact an Administrator for override.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate output_qty and output_pcs cannot be <= 0
+    if (output_qty !== undefined && Number(output_qty) <= 0) {
+      return NextResponse.json(
+        { error: 'Production output quantity must be greater than 0.00 m and 0.000 MT.' },
+        { status: 400 }
+      );
+    }
+    if (output_pcs !== undefined && Number(output_pcs) <= 0) {
+      return NextResponse.json(
+        { error: 'Production output pieces must be greater than 0 PCS.' },
+        { status: 400 }
+      );
+    }
+    if (stageCode === 'BAND_SAW' && remarks) {
+      const { cuts } = extractBandSawCutsFromRemarks(remarks);
+      if (cuts && cuts.some((c: any) => Number(c.len || 0) <= 0 || Number(c.pcs || 0) <= 0)) {
+        return NextResponse.json(
+          { error: 'All Band Saw cut pieces must have a length greater than 0.00 m and piece count ≥ 1.' },
           { status: 400 }
         );
       }
