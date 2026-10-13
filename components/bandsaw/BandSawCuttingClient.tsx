@@ -701,7 +701,7 @@ export default function BandSawCuttingClient() {
                                 ))}
                                 {offcutMtr && offcutMtr > 0 ? (
                                   <span className="inline-flex items-center rounded-md bg-blue-50 border border-blue-200 px-1.5 py-0.5 font-mono text-[10px] font-medium text-blue-800">
-                                    Offcut: {offcutMtr}m
+                                    Offcut: {fmt(offcutMtr, 'm')}
                                   </span>
                                 ) : null}
                                 {scrapMt && scrapMt > 0 ? (
@@ -710,18 +710,18 @@ export default function BandSawCuttingClient() {
                                   </span>
                                 ) : scrapMtr && scrapMtr > 0 ? (
                                   <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-900">
-                                    Scrap: {scrapMtr}m
+                                    Scrap: {fmt(scrapMtr, 'm')}
                                   </span>
                                 ) : null}
                                 {(Number(entry.rejection_mtr || 0) > 0 || Number(entry.rejection_pcs || 0) > 0) && (
                                   <span className="inline-flex items-center rounded-md bg-rose-50 border border-rose-200 px-1.5 py-0.5 font-mono text-[10px] font-bold text-rose-800">
-                                    Defect Rej: {entry.rejection_pcs || 0} pcs ({fmt(Number(entry.rejection_mtr || 0))}m)
+                                    Defect Rej: {entry.rejection_pcs || 0} pcs ({fmt(Number(entry.rejection_mtr || 0), 'm')})
                                   </span>
                                 )}
                               </div>
                             ) : (
                               <span className="text-slate-400 font-mono text-xs">
-                                {entry.output_mtr}m ({netPcs} pcs)
+                                {fmt(entry.output_mtr, 'm')} ({netPcs} pcs)
                               </span>
                             )}
                           </div>

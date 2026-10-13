@@ -281,7 +281,7 @@ export function BandSawEditModal({
 
     if (totalAccountedMtr > totalMotherMtr * 1.15) {
       setError(
-        `Total cuts (${totalAccountedMtr}m) exceed incoming mother pipes (${totalMotherMtr}m). Please adjust mother pipes or cut lengths.`
+        `Total cuts (${fmt(totalAccountedMtr, 'm')}) exceed incoming mother pipes (${fmt(totalMotherMtr, 'm')}). Please adjust mother pipes or cut lengths.`
       );
       return;
     }
@@ -447,7 +447,7 @@ export function BandSawEditModal({
                 {fmt(originalOutputMtr)}m ({originalOutputPcs} PCS)
               </strong>{' '}
               Prime Cuts. Recorded Scrap:{' '}
-              <span className="font-mono font-semibold">{parsed.scrapMtr !== null ? `${parsed.scrapMtr}m` : '0m'}</span>.
+              <span className="font-mono font-semibold">{parsed.scrapMtr !== null ? fmt(parsed.scrapMtr, 'm') : '0m'}</span>.
               {entry.heat_lot_no && (
                 <>
                   {' '}Heat/Lot:{' '}
@@ -794,7 +794,7 @@ export function BandSawEditModal({
                 {yieldPct.toFixed(1)}%
               </span>
               <span className="text-[11px] text-emerald-600 font-medium block">
-                {totalOffcutMtr > 0 ? `+${totalOffcutMtr}m Offcut` : 'Zero Offcut Loss'}
+                {totalOffcutMtr > 0 ? `+${fmt(totalOffcutMtr, 'm')} Offcut` : 'Zero Offcut Loss'}
               </span>
             </div>
           </div>

@@ -351,16 +351,16 @@ export default function QcInspectionClient() {
         const campaignDivOutPcs = avgLen > 0 ? Math.round(campaignDivOut / avgLen) : 0;
 
         const totalCampaignIncomingPcs = totalCampaignCutPcs + campaignDivInPcs;
-        const totalCampaignIncomingMtr = totalCampaignCutMtr + campaignDivIn;
+        const totalCampaignIncomingMtr = Number((totalCampaignCutMtr + campaignDivIn).toFixed(2));
 
         // Total inspected so far across the ENTIRE campaign pool
         const campaignInspections = qcInspections.filter((q) => allCampaignWoIds.has(q.work_order_id));
         const campaignAlreadyInspectedPcs = campaignInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
-        const campaignAlreadyInspectedMtr = campaignInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
+        const campaignAlreadyInspectedMtr = Number(campaignInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0).toFixed(2));
 
         // Shared total remaining WIP balance at VDI for the entire campaign
         const sharedAvailPcs = Math.max(0, totalCampaignIncomingPcs - campaignAlreadyInspectedPcs - campaignDivOutPcs);
-        const sharedAvailMtr = Math.max(0, totalCampaignIncomingMtr - campaignAlreadyInspectedMtr - campaignDivOut);
+        const sharedAvailMtr = Number(Math.max(0, totalCampaignIncomingMtr - campaignAlreadyInspectedMtr - campaignDivOut).toFixed(2));
         const sharedAvailMt = mtFromMtr(sharedAvailMtr, od, wt);
 
         if (sharedAvailPcs >= 1) {
@@ -428,15 +428,15 @@ export default function QcInspectionClient() {
         });
 
         const totalIncomingPcs = bandSawCutPcs + vdiDivInPcs;
-        const totalIncomingMtr = bandSawCutMtr + vdiDivIn;
+        const totalIncomingMtr = Number((bandSawCutMtr + vdiDivIn).toFixed(2));
         const effectiveCutMt = mtFromMtr(totalIncomingMtr, od, wt);
 
         const woInspections = qcInspections.filter((q) => q.work_order_id === wo.id);
         const alreadyInspectedPcs = woInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
-        const alreadyInspectedMtr = woInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0);
+        const alreadyInspectedMtr = Number(woInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0).toFixed(2));
 
         const availablePcs = Math.max(0, totalIncomingPcs - alreadyInspectedPcs - vdiDivOutPcs);
-        const availableMtr = Math.max(0, totalIncomingMtr - alreadyInspectedMtr - vdiDivOut);
+        const availableMtr = Number(Math.max(0, totalIncomingMtr - alreadyInspectedMtr - vdiDivOut).toFixed(2));
         const availableMt = mtFromMtr(availableMtr, od, wt);
 
         if (availablePcs >= 1) {
@@ -1506,7 +1506,7 @@ export default function QcInspectionClient() {
                         </td>
                         <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight bg-blue-50/40 dark:bg-blue-950/30 text-blue-950 dark:text-blue-200">
                           <div className="font-black text-sm text-blue-900 dark:text-blue-300">{fmt(item.available_ht_ok_pcs)} Nos</div>
-                          <div className="text-[10px] text-blue-700 dark:text-blue-400 font-semibold">{fmt(item.available_ht_ok_mt, ' MT')} · {item.available_ht_ok_mtr}m</div>
+                          <div className="text-[10px] text-blue-700 dark:text-blue-400 font-semibold">{fmt(item.available_ht_ok_mt, ' MT')} · {fmt(item.available_ht_ok_mtr, 'm')}</div>
                         </td>
                         <td className="py-3 px-3.5 text-center">
                           <button
@@ -1596,7 +1596,7 @@ export default function QcInspectionClient() {
                         </td>
                         <td className="py-3 px-3 text-right font-mono bg-amber-50/50 dark:bg-amber-950/30 text-amber-950 dark:text-amber-200">
                           <div className="font-black text-sm text-amber-900 dark:text-amber-300">{fmt(item.total_salvage_pcs)} Nos</div>
-                          <div className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">{fmt(item.total_salvage_mt, ' MT')} · {item.total_salvage_mtr}m</div>
+                          <div className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">{fmt(item.total_salvage_mt, ' MT')} · {fmt(item.total_salvage_mtr, 'm')}</div>
                         </td>
                         <td className="py-3 px-3 max-w-[220px]">
                           {item.salvage_reasons && item.salvage_reasons.length > 0 ? (
@@ -2010,7 +2010,7 @@ export default function QcInspectionClient() {
                     className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
                   />
                   <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                    {formMetrics.inspMt} MT · {formMetrics.inspMtr}m
+                    {formMetrics.inspMt} MT · {fmt(formMetrics.inspMtr, 'm')}
                   </div>
                 </div>
 
@@ -2026,7 +2026,7 @@ export default function QcInspectionClient() {
                     className="w-full rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-emerald-900 dark:text-emerald-300 focus:ring-2 focus:ring-emerald-500"
                   />
                   <div className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400">
-                    {formMetrics.okMt} MT · {formMetrics.okMtr}m
+                    {formMetrics.okMt} MT · {fmt(formMetrics.okMtr, 'm')}
                   </div>
                 </div>
 
@@ -2041,7 +2041,7 @@ export default function QcInspectionClient() {
                     className="w-full rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-amber-900 dark:text-amber-300 focus:ring-2 focus:ring-amber-500"
                   />
                   <div className="text-[11px] font-mono text-amber-700 dark:text-amber-400">
-                    {formMetrics.salMt} MT · {formMetrics.salMtr}m
+                    {formMetrics.salMt} MT · {fmt(formMetrics.salMtr, 'm')}
                   </div>
                 </div>
 
@@ -2056,7 +2056,7 @@ export default function QcInspectionClient() {
                     className="w-full rounded-lg border border-rose-300 dark:border-rose-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-rose-900 dark:text-rose-300 focus:ring-2 focus:ring-rose-500"
                   />
                   <div className="text-[11px] font-mono text-rose-700 dark:text-rose-400">
-                    {formMetrics.rejMt} MT · {formMetrics.rejMtr}m
+                    {formMetrics.rejMt} MT · {fmt(formMetrics.rejMtr, 'm')}
                   </div>
                 </div>
               </div>
@@ -2287,7 +2287,7 @@ export default function QcInspectionClient() {
                     {reworkFormMetrics.availPcs} Nos
                   </span>
                   <span className="text-[10px] text-amber-700 dark:text-amber-400 block font-mono">
-                    {reworkFormMetrics.availMt} MT · {reworkFormMetrics.availMtr}m
+                    {reworkFormMetrics.availMt} MT · {fmt(reworkFormMetrics.availMtr, 'm')}
                   </span>
                 </div>
               </div>
@@ -2352,7 +2352,7 @@ export default function QcInspectionClient() {
                       className="w-full rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-emerald-900 dark:text-emerald-300 focus:ring-2 focus:ring-emerald-500"
                     />
                     <div className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400">
-                      {reworkFormMetrics.okMt} MT · {reworkFormMetrics.okMtr}m
+                      {reworkFormMetrics.okMt} MT · {fmt(reworkFormMetrics.okMtr, 'm')}
                     </div>
                     <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-tight">
                       Releases directly to Finishing Queue for Work Order #{reworkTargetWo.work_order_no}.
@@ -2379,7 +2379,7 @@ export default function QcInspectionClient() {
                       className="w-full rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-blue-900 dark:text-blue-300 focus:ring-2 focus:ring-blue-500"
                     />
                     <div className="text-[11px] font-mono text-blue-700 dark:text-blue-400">
-                      {reworkFormMetrics.divMt} MT · {reworkFormMetrics.divMtr}m
+                      {reworkFormMetrics.divMt} MT · {fmt(reworkFormMetrics.divMtr, 'm')}
                     </div>
                     <p className="text-[10px] text-blue-800 dark:text-blue-300/80 leading-tight">
                       Diverts reworked tubes to another Work Order.
@@ -2406,7 +2406,7 @@ export default function QcInspectionClient() {
                       className="w-full rounded-lg border border-rose-300 dark:border-rose-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-rose-900 dark:text-rose-300 focus:ring-2 focus:ring-rose-500"
                     />
                     <div className="text-[11px] font-mono text-rose-700 dark:text-rose-400">
-                      {reworkFormMetrics.rejMt} MT · {reworkFormMetrics.rejMtr}m
+                      {reworkFormMetrics.rejMt} MT · {fmt(reworkFormMetrics.rejMtr, 'm')}
                     </div>
                     <p className="text-[10px] text-rose-800 dark:text-rose-300/80 leading-tight">
                       Material unrecoverable after rework attempt.
@@ -2420,7 +2420,7 @@ export default function QcInspectionClient() {
                 <div className="rounded-xl border border-blue-200 dark:border-blue-800/70 bg-blue-50/50 dark:bg-blue-950/20 p-4 space-y-3 animate-in fade-in duration-150">
                   <div className="flex items-center gap-2 text-blue-900 dark:text-blue-200 font-bold text-xs">
                     <GitFork size={15} />
-                    Target Work Order for Diversion ({reworkFormMetrics.divPcs} Nos / {reworkFormMetrics.divMtr}m)
+                    Target Work Order for Diversion ({reworkFormMetrics.divPcs} Nos / {fmt(reworkFormMetrics.divMtr, 'm')})
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>

@@ -585,7 +585,7 @@ export function BandSawCuttingModal({
     }
     if (totalAllCutMtr > totalMotherMtr * 1.15) {
       setError(
-        `Total cut length (${totalAllCutMtr}m) significantly exceeds mother pipe length (${totalMotherMtr}m). Please verify cut pieces.`
+        `Total cut length (${fmt(totalAllCutMtr, 'm')}) significantly exceeds mother pipe length (${fmt(totalMotherMtr, 'm')}). Please verify cut pieces.`
       );
       return;
     }
@@ -656,7 +656,7 @@ export function BandSawCuttingModal({
       }
 
       toast.success(
-        `Band Saw cut recorded: ${netVdiFeedPcs} prime cut pieces (${netVdiFeedMtr}m / ${fmt(netVdiFeedMt, 3)} MT) sent to VDI QC queue! Scrap: ${fmt(totalScrapMt, 3)} MT (${scrapPct}%).`,
+        `Band Saw cut recorded: ${netVdiFeedPcs} prime cut pieces (${fmt(netVdiFeedMtr, 'm')} / ${fmt(netVdiFeedMt, 3)} MT) sent to VDI QC queue! Scrap: ${fmt(totalScrapMt, 3)} MT (${scrapPct}%).`,
         { duration: 4000 }
       );
       onSuccess();
@@ -1351,9 +1351,9 @@ export function BandSawCuttingModal({
                           ? 'bg-blue-400'
                           : 'bg-amber-400'
                       }`}
-                      title={`${c.length_mtr}m (${c.cut_category}) - ${itemPct.toFixed(1)}% of pipe`}
+                      title={`${Number(c.length_mtr).toFixed(2)}m (${c.cut_category}) - ${itemPct.toFixed(1)}% of pipe`}
                     >
-                      {itemPct >= 15 ? `${c.length_mtr}m` : ''}
+                      {itemPct >= 15 ? `${Number(c.length_mtr).toFixed(2)}m` : ''}
                     </div>
                   );
                 })}

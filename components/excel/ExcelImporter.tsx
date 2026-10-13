@@ -44,6 +44,7 @@ import {
   Info,
 } from 'lucide-react';
 import { StageCode } from '@/types';
+import { fmt } from '@/lib/productionUtils';
 
 export type WorkCenterImportTab =
   | 'WORK_ORDERS'
@@ -1950,10 +1951,10 @@ export default function ExcelImporter() {
                               {r.l1 != null && r.l2 != null ? `${r.l1} - ${r.l2}m` : r.l1 != null ? `${r.l1}m` : '—'}
                             </td>
                             <td className="py-2 px-3 font-mono text-[11px]">{r.process_date}</td>
-                            <td className="py-2 px-3 text-right font-mono">{r.inspected_pcs} pcs / {r.inspected_mtr}m</td>
-                            <td className="py-2 px-3 text-right font-mono text-emerald-700 font-bold">{r.vdi_ok_pcs} pcs / {r.vdi_ok_mtr}m</td>
-                            <td className="py-2 px-3 text-right font-mono text-amber-700">{r.vdi_salvage_pcs} pcs / {r.vdi_salvage_mtr}m</td>
-                            <td className="py-2 px-3 text-right font-mono text-rose-700">{r.vdi_rejection_pcs} pcs / {r.vdi_rejection_mtr}m</td>
+                            <td className="py-2 px-3 text-right font-mono">{r.inspected_pcs} pcs / {r.inspected_mtr != null ? fmt(r.inspected_mtr, 'm') : '—'}</td>
+                            <td className="py-2 px-3 text-right font-mono text-emerald-700 font-bold">{r.vdi_ok_pcs} pcs / {r.vdi_ok_mtr != null ? fmt(r.vdi_ok_mtr, 'm') : '—'}</td>
+                            <td className="py-2 px-3 text-right font-mono text-amber-700">{r.vdi_salvage_pcs} pcs / {r.vdi_salvage_mtr != null ? fmt(r.vdi_salvage_mtr, 'm') : '—'}</td>
+                            <td className="py-2 px-3 text-right font-mono text-rose-700">{r.vdi_rejection_pcs} pcs / {r.vdi_rejection_mtr != null ? fmt(r.vdi_rejection_mtr, 'm') : '—'}</td>
                             <td className="py-2 px-3 text-slate-700 max-w-[140px] truncate">{r.salvage_reason || '—'}</td>
                             <td className="py-2 px-3 text-slate-600">{r.operator_name || '—'}</td>
                           </>
@@ -1967,10 +1968,10 @@ export default function ExcelImporter() {
                             </td>
                             <td className="py-2 px-3 font-mono text-[11px]">{r.process_date} (Shift {r.shift})</td>
                             <td className="py-2 px-3 font-mono text-[11px] text-indigo-700">{r.heat_lot_no || '—'}</td>
-                            <td className="py-2 px-3 text-right font-mono">{r.input_pcs || '—'} pcs / {r.input_mtr || '—'}m</td>
-                            <td className="py-2 px-3 text-right font-mono text-indigo-700 font-bold">{r.output_pcs || '—'} pcs / {r.output_mtr || '—'}m</td>
-                            <td className="py-2 px-3 text-right font-mono text-emerald-700 font-bold">{r.htc_ok_pcs || '—'} pcs / {r.htc_ok_mtr || '—'}m</td>
-                            <td className="py-2 px-3 text-right font-mono text-rose-600">{r.rejection_pcs || '0'} pcs / {r.rejection_mtr || '0'}m</td>
+                            <td className="py-2 px-3 text-right font-mono">{r.input_pcs || '—'} pcs / {r.input_mtr != null ? fmt(r.input_mtr, 'm') : '—'}</td>
+                            <td className="py-2 px-3 text-right font-mono text-indigo-700 font-bold">{r.output_pcs || '—'} pcs / {r.output_mtr != null ? fmt(r.output_mtr, 'm') : '—'}</td>
+                            <td className="py-2 px-3 text-right font-mono text-emerald-700 font-bold">{r.htc_ok_pcs || '—'} pcs / {r.htc_ok_mtr != null ? fmt(r.htc_ok_mtr, 'm') : '—'}</td>
+                            <td className="py-2 px-3 text-right font-mono text-rose-600">{r.rejection_pcs || '0'} pcs / {r.rejection_mtr != null ? fmt(r.rejection_mtr, 'm') : '0.00m'}</td>
                             <td className="py-2 px-3 text-slate-600">{r.operator_name || '—'}</td>
                             <td className="py-2 px-3 text-slate-500 max-w-[130px] truncate">{r.remarks || '—'}</td>
                           </>
@@ -1984,9 +1985,9 @@ export default function ExcelImporter() {
                             </td>
                             <td className="py-2 px-3 font-mono text-[11px]">{r.process_date} (Shift {r.shift})</td>
                             <td className="py-2 px-3 font-mono text-[11px] text-indigo-700">{r.heat_lot_no || '—'}</td>
-                            <td className="py-2 px-3 text-right font-mono">{r.input_pcs || '—'} pcs / {r.input_mtr || '—'}m</td>
-                            <td className="py-2 px-3 text-right font-mono text-indigo-700 font-bold">{r.output_pcs || '—'} pcs / {r.output_mtr || '—'}m</td>
-                            <td className="py-2 px-3 text-right font-mono text-rose-600">{r.rejection_pcs || '0'} pcs / {r.rejection_mtr || '0'}m</td>
+                            <td className="py-2 px-3 text-right font-mono">{r.input_pcs || '—'} pcs / {r.input_mtr != null ? fmt(r.input_mtr, 'm') : '—'}</td>
+                            <td className="py-2 px-3 text-right font-mono text-indigo-700 font-bold">{r.output_pcs || '—'} pcs / {r.output_mtr != null ? fmt(r.output_mtr, 'm') : '—'}</td>
+                            <td className="py-2 px-3 text-right font-mono text-rose-600">{r.rejection_pcs || '0'} pcs / {r.rejection_mtr != null ? fmt(r.rejection_mtr, 'm') : '0.00m'}</td>
                             {activeTab === 'BAND_SAW' && <td className="py-2 px-3 text-right font-mono font-medium">{r.scrap_mt || '—'}</td>}
                             {activeTab === 'FINISHING' && <td className="py-2 px-3 font-mono text-indigo-700 font-medium">{r.bundle_no || '—'}</td>}
                             <td className="py-2 px-3 text-slate-600">{r.operator_name || '—'}</td>

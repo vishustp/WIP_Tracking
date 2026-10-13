@@ -4,6 +4,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/button';
 import { Trash2, ShieldAlert } from 'lucide-react';
 import { ProductionEntry } from '@/types';
+import { fmt } from '@/lib/productionUtils';
 
 export interface DeleteEntryModalProps {
   targetEntry: ProductionEntry;
@@ -66,7 +67,7 @@ export function DeleteEntryModal({
           <div className="flex justify-between text-slate-600">
             <span>Output Quantity:</span>
             <span className="font-mono font-bold text-slate-900">
-              {targetEntry.output_mtr} MTR ({targetEntry.output_pcs || 0} PCS)
+              {fmt(targetEntry.output_mtr, ' MTR')} ({targetEntry.output_pcs || 0} PCS)
             </span>
           </div>
           <div className="flex justify-between text-slate-600 border-t border-slate-200/60 pt-1.5">
