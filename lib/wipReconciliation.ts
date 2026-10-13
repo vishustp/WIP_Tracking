@@ -22,6 +22,7 @@ export interface StageWipInput {
   mh_od?: number;
   mh_wt?: number;
   mh_avg_length?: number;
+  mother_pcs?: number;
 }
 
 export interface ReconciledStageWip {
@@ -149,13 +150,13 @@ export function reconcileWorkOrderWip(
   }
 
   // 3. Collect stage production & rejection in PCS
-  const stageProdMap = new Map<string, { prodPcs: number; rejPcs: number; prodMtr: number; rejMtr: number }>();
+  const stageProdMap = new Map<string, { prodPcs: number; rejPcs: number; prodMtr: number; rejMtr: number; motherPcs?: number }>();
   for (const s of sortedStages) {
     const prodPcs = Number(s.gross_output_pcs || s.net_output_pcs || 0);
     const rejPcs = Number(s.rejection_pcs || 0);
     const prodMtr = Number(s.gross_output_mtr || s.net_output_mtr || 0);
     const rejMtr = Number(s.rejection_mtr || 0);
-    stageProdMap.set(s.stage_code, { prodPcs, rejPcs, prodMtr, rejMtr });
+    stageProdMap.set(s.stage_code, { prodPcs, rejPcs, prodMtr, rejMtr, motherPcs: s.mother_pcs });
   }
 
   // 4. Calculate stage WIP in PCS along the physical route
@@ -229,10 +230,10 @@ export function reconcileWorkOrderWip(
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
     } else if (sc === 'DRAW') {
-      // CDS: Feeder is Hollow Heat Treatment (if alloy) or directly Rolling HTC OK (if carbon CDS)
+      // CDS: Feeder is Hollow Heat Treatment OK (if alloy) or directly Rolling HTC OK (if carbon CDS)
       const hhtProd = stageProdMap.get('HOLLOW_HEAT_TREATMENT');
-      const hhtProdPcs = hhtProd?.prodPcs || 0;
-      incomingPcs = isAlloy ? hhtProdPcs : rollHtcPcs;
+      const hhtOkPcs = Math.max(0, (hhtProd?.prodPcs || 0) - (hhtProd?.rejPcs || 0));
+      incomingPcs = isAlloy ? hhtOkPcs : rollHtcPcs;
       stageLen = actualMhLen; // Mother hollow pieces waiting to be drawn
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
@@ -243,11 +244,12 @@ export function reconcileWorkOrderWip(
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
     } else if (sc === 'HEAT_TREATMENT') {
-      // For Cold Drawn (CDS / ALLOY_CDS): Feeder is Draw Bench
-      // For SS_STEEL: Feeder is Cold Pilger Mill (PILGER)
+      // For Cold Drawn (CDS / ALLOY_CDS): Feeder is Draw Bench OK
+      // For SS_STEEL: Feeder is Cold Pilger Mill (PILGER) OK
       if (isSsSteel) {
         const pilgerProd = stageProdMap.get('PILGER');
-        incomingPcs = pilgerProd?.prodPcs || 0;
+        const pilgerOkPcs = Math.max(0, (pilgerProd?.prodPcs || 0) - (pilgerProd?.rejPcs || 0));
+        incomingPcs = pilgerOkPcs;
         const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
         const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
         if (finUnitWeight > 0 && mhUnitWeight > 0) {
@@ -257,7 +259,8 @@ export function reconcileWorkOrderWip(
         }
       } else if (isCds) {
         const drawProd = stageProdMap.get('DRAW');
-        incomingPcs = drawProd?.prodPcs || 0;
+        const drawOkPcs = Math.max(0, (drawProd?.prodPcs || 0) - (drawProd?.rejPcs || 0));
+        incomingPcs = drawOkPcs;
         // Actual physical elongated drawn length conserving full mass:
         const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
         const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
@@ -276,7 +279,8 @@ export function reconcileWorkOrderWip(
       if (routeCode.includes('HFS')) {
         if (isAlloy) {
           const hhtProd = stageProdMap.get('HOLLOW_HEAT_TREATMENT');
-          incomingPcs = hhtProd?.prodPcs || 0;
+          const hhtOkPcs = Math.max(0, (hhtProd?.prodPcs || 0) - (hhtProd?.rejPcs || 0));
+          incomingPcs = hhtOkPcs;
         } else {
           incomingPcs = rollHtcPcs;
         }
@@ -285,7 +289,8 @@ export function reconcileWorkOrderWip(
         stageWt = mhWt > 0 ? mhWt : stageWt;
       } else {
         const htProd = stageProdMap.get('HEAT_TREATMENT');
-        incomingPcs = htProd?.prodPcs || 0;
+        const htOkPcs = Math.max(0, (htProd?.prodPcs || 0) - (htProd?.rejPcs || 0));
+        incomingPcs = htOkPcs;
         const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
         const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
         if (finUnitWeight > 0 && mhUnitWeight > 0) {
@@ -325,7 +330,9 @@ export function reconcileWorkOrderWip(
 
       if (isCurrentUpstreamOfCut && isDownCut) {
         const mult = (isCds ? drawnMultiple : pieceMultiple) || 1;
-        if (downData.prodPcs > 0) {
+        if (down.stage_code === 'BAND_SAW' && downData.motherPcs && downData.motherPcs > 0) {
+          effectiveDownPcs = downData.motherPcs;
+        } else if (downData.prodPcs > 0) {
           effectiveDownPcs = mult > 1 ? Math.round(downData.prodPcs / mult) : downData.prodPcs;
         } else if (stageLen > 0 && downData.prodMtr > 0) {
           effectiveDownPcs = Math.round(downData.prodMtr / stageLen);
@@ -340,11 +347,15 @@ export function reconcileWorkOrderWip(
     const curProd = stageProdMap.get(sc) || { prodPcs: 0, rejPcs: 0, prodMtr: 0, rejMtr: 0 };
     let curPassedPcs = curProd.prodPcs;
     if (sc === 'BAND_SAW') {
-      const mult = (isCds ? drawnMultiple : pieceMultiple) || 1;
-      if (curProd.prodPcs > 0) {
-        curPassedPcs = mult > 1 ? Math.round(curProd.prodPcs / mult) : curProd.prodPcs;
-      } else if (stageLen > 0 && curProd.prodMtr > 0) {
-        curPassedPcs = Math.round(curProd.prodMtr / stageLen);
+      if (curProd.motherPcs && curProd.motherPcs > 0) {
+        curPassedPcs = curProd.motherPcs;
+      } else {
+        const mult = (isCds ? drawnMultiple : pieceMultiple) || 1;
+        if (curProd.prodPcs > 0) {
+          curPassedPcs = mult > 1 ? Math.round(curProd.prodPcs / mult) : curProd.prodPcs;
+        } else if (stageLen > 0 && curProd.prodMtr > 0) {
+          curPassedPcs = Math.round(curProd.prodMtr / stageLen);
+        }
       }
     }
 
@@ -370,13 +381,20 @@ export function reconcileWorkOrderWip(
     // Core Formula (Rule 1 & Rule 2 Option B):
     // Queue WIP (PCS) = Incoming Feeder + Diversion In - Effective Passed OK - Diversion Out
     const totalIncomingPcs = incomingPcs + divInPcs;
-    const wipPcs = Math.max(0, totalIncomingPcs - effectivePassedPcs - divOutPcs);
+    let wipPcs = Math.max(0, totalIncomingPcs - effectivePassedPcs - divOutPcs);
 
     // Meters WIP balance
     const incMtr = cur.incoming_mtr !== undefined ? Number(cur.incoming_mtr) : (stageLen > 0 ? Number((incomingPcs * stageLen).toFixed(2)) : 0);
     const totalIncomingMtr = incMtr + divInMtr;
     const effPassedMtr = Math.max(curProd.prodMtr, stageLen > 0 ? Number((maxDownstreamPcs * stageLen).toFixed(2)) : 0);
     const rawWipMtr = Math.max(0, Number((totalIncomingMtr - effPassedMtr - divOutMtr).toFixed(2)));
+
+    // Physical conservation check:
+    // If incoming meters are fully cut/processed (rawWipMtr <= 0),
+    // no active WIP mother pipes can physically remain at this work center.
+    if (rawWipMtr <= 0) {
+      wipPcs = 0;
+    }
 
     const wipMtr = wipPcs > 0
       ? (stageLen > 0 ? Number((wipPcs * stageLen).toFixed(2)) : rawWipMtr)

@@ -1,6 +1,6 @@
 // lib/campaignWipUtils.ts
 import { reconcileWorkOrderWip, StageWipInput, WorkOrderWipSummary } from './wipReconciliation';
-import { extractPcsFromRemarks } from './productionUtils';
+import { extractPcsFromRemarks, extractBandSawCutsFromRemarks } from './productionUtils';
 
 export interface MotherHollowInfo {
   mh_od?: number | null;
@@ -115,7 +115,7 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
   const routeCode = (params.routeCode || rows[0]?.route_code || (hasPilger ? 'SS_STEEL' : 'CDS')).toUpperCase();
 
   // Direct production logs per stage for this work order
-  const directStageLogsMap = new Map<string, { mtr: number; pcs: number; rejMtr: number; rejPcs: number }>();
+  const directStageLogsMap = new Map<string, { mtr: number; pcs: number; rejMtr: number; rejPcs: number; motherPcs: number }>();
   productionLogs.forEach((l: any) => {
     if (l.work_order_id === woId) {
       const sc = (
@@ -125,12 +125,16 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
         ''
       ).toUpperCase();
       if (!sc) return;
-      const cur = directStageLogsMap.get(sc) || { mtr: 0, pcs: 0, rejMtr: 0, rejPcs: 0 };
+      const cur = directStageLogsMap.get(sc) || { mtr: 0, pcs: 0, rejMtr: 0, rejPcs: 0, motherPcs: 0 };
       cur.mtr += Number(l.output_qty || 0);
       cur.rejMtr += Number(l.rejection_qty || 0);
       const { pcs: pPcs, rejPcs: rPcs } = extractPcsFromRemarks(l.remarks);
       if (pPcs != null) cur.pcs += pPcs;
       if (rPcs != null) cur.rejPcs += rPcs;
+      if (sc === 'BAND_SAW') {
+        const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(l.remarks);
+        if (mPcs != null && mPcs > 0) cur.motherPcs += mPcs;
+      }
       directStageLogsMap.set(sc, cur);
     }
   });
@@ -196,12 +200,16 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
         campaignFinPcs += pPcs || (actualMhLen > 0 ? Math.round(Number(l.output_qty || 0) / actualMhLen) : 0);
       } else if (campaignMembers.has(l.work_order_id) && l.work_order_id !== woId && sc) {
         // Pool pre-finishing production across campaign members under Master
-        const cur = directStageLogsMap.get(sc) || { mtr: 0, pcs: 0, rejMtr: 0, rejPcs: 0 };
+        const cur = directStageLogsMap.get(sc) || { mtr: 0, pcs: 0, rejMtr: 0, rejPcs: 0, motherPcs: 0 };
         cur.mtr += Number(l.output_qty || 0);
         cur.rejMtr += Number(l.rejection_qty || 0);
         const { pcs: pPcs, rejPcs: rPcs } = extractPcsFromRemarks(l.remarks);
         if (pPcs != null) cur.pcs += pPcs;
         if (rPcs != null) cur.rejPcs += rPcs;
+        if (sc === 'BAND_SAW') {
+          const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(l.remarks);
+          if (mPcs != null && mPcs > 0) cur.motherPcs += mPcs;
+        }
         directStageLogsMap.set(sc, cur);
       }
     });
@@ -364,6 +372,7 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
         mh_od: mhOd > 0 ? mhOd : undefined,
         mh_wt: mhWt > 0 ? mhWt : undefined,
         mh_avg_length: actualMhLen > 0 ? actualMhLen : undefined,
+        mother_pcs: directStageLogsMap.get(sc)?.motherPcs || undefined,
       };
     }),
     {

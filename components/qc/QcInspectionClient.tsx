@@ -363,7 +363,7 @@ export default function QcInspectionClient() {
         const sharedAvailMtr = Math.max(0, totalCampaignIncomingMtr - campaignAlreadyInspectedMtr - campaignDivOut);
         const sharedAvailMt = mtFromMtr(sharedAvailMtr, od, wt);
 
-        if (sharedAvailPcs >= 1 || sharedAvailMtr >= 1.0) {
+        if (sharedAvailPcs >= 1) {
           items.push({
             work_order_id: wo.id,
             work_order_no: wo.work_order_no,
@@ -439,7 +439,7 @@ export default function QcInspectionClient() {
         const availableMtr = Math.max(0, totalIncomingMtr - alreadyInspectedMtr - vdiDivOut);
         const availableMt = mtFromMtr(availableMtr, od, wt);
 
-        if (availablePcs >= 1 || availableMtr >= 1.0) {
+        if (availablePcs >= 1) {
           const woLots = Array.from(woLotMap.values());
           const woHeatLotNo = woLots[0]?.lot_no || (vdiDivIn > 0 ? `DIV-${wo.work_order_no}` : null);
           const finalLots = woLots.length > 0
@@ -601,6 +601,7 @@ export default function QcInspectionClient() {
       const totalSalvagePcs = woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0);
       const totalSalvageMtr = Number(woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0).toFixed(2));
       const totalSalvageMt = Number(woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_mt || 0), 0).toFixed(3));
+      if (totalSalvagePcs <= 0) return;
 
       // Collect all salvage reasons across inspections
       const allReasons: SalvageReasonItem[] = [];
@@ -1158,19 +1159,19 @@ export default function QcInspectionClient() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/60 p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 p-4 sm:p-6 lg:p-8 space-y-6 text-slate-900 dark:text-slate-100">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
         <div>
           <div className="flex items-center gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20">
               <ClipboardCheck size={22} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
                 QC & VDI Inspection Form
               </h1>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
                 Quality gate verifying Heat Treatment OK output before releasing WIP to Finishing Line
               </p>
             </div>
@@ -1179,23 +1180,23 @@ export default function QcInspectionClient() {
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
           {canModify ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-800">
-              <ShieldCheck size={14} className="text-emerald-600" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-3 py-1 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+              <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
               Full QC & PPC Authority
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-semibold text-amber-800" title="PPC and QC departments have create/edit permission">
-              <Lock size={13} className="text-amber-600" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-3 py-1 text-xs font-semibold text-amber-800 dark:text-amber-300" title="PPC and QC departments have create/edit permission">
+              <Lock size={13} className="text-amber-600 dark:text-amber-400" />
               Read-Only Access
             </span>
           )}
 
           <Link
             href="/excel-import"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all"
             title="Import QC Inspections from Excel"
           >
-            <FileSpreadsheet size={13} className="text-emerald-600" />
+            <FileSpreadsheet size={13} className="text-emerald-600 dark:text-emerald-400" />
             Excel Import
           </Link>
 
@@ -1203,10 +1204,10 @@ export default function QcInspectionClient() {
             type="button"
             onClick={loadData}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 transition-all"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all cursor-pointer"
             title="Refresh Inspection Queue and History"
           >
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={loading ? 'animate-spin text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'} />
             Refresh
           </button>
         </div>
@@ -1214,8 +1215,8 @@ export default function QcInspectionClient() {
 
       {/* Permission Callout if Read-Only */}
       {!canModify && !loadingUser && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 flex items-start gap-3 text-xs text-amber-900">
-          <Info size={18} className="text-amber-600 shrink-0 mt-0.5" />
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800/80 bg-amber-50/80 dark:bg-amber-950/40 p-3.5 flex items-start gap-3 text-xs text-amber-900 dark:text-amber-200">
+          <Info size={18} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <div>
             <span className="font-bold">Viewing in Read-Only Mode:</span> You can explore pending orders in the QC Inspection queue and review historical inspection logs. Recording new inspections and modifying entries is restricted to the <strong>PPC and QC</strong> departments (or System Administrators).
           </div>
@@ -1225,37 +1226,37 @@ export default function QcInspectionClient() {
       {/* Top Metric Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {/* Pending HT OK WIP */}
-        <div className="rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50/80 to-white p-4 shadow-sm">
-          <div className="text-xs font-bold text-orange-800 uppercase tracking-wider">Pending QC Inspection</div>
+        <div className="rounded-xl border border-orange-200 dark:border-orange-900/50 bg-gradient-to-br from-orange-50/80 to-white dark:from-orange-950/30 dark:to-slate-900 p-4 shadow-sm">
+          <div className="text-xs font-bold text-orange-800 dark:text-orange-300 uppercase tracking-wider">Pending QC Inspection</div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="font-mono text-2xl font-black text-orange-950">{fmt(kpis.pendingPcs)}</span>
-            <span className="text-xs font-semibold text-orange-700">Nos</span>
+            <span className="font-mono text-2xl font-black text-orange-950 dark:text-orange-100">{fmt(kpis.pendingPcs)}</span>
+            <span className="text-xs font-semibold text-orange-700 dark:text-orange-400">Nos</span>
           </div>
-          <div className="mt-1 text-xs text-orange-700/80 font-mono">
+          <div className="mt-1 text-xs text-orange-700/80 dark:text-orange-400/80 font-mono">
             {fmt(kpis.pendingMt, ' MT')} from Heat Treatment
           </div>
         </div>
 
         {/* Inspected Today */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-bold text-slate-600 uppercase tracking-wider">Inspected Today</div>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
+          <div className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Inspected Today</div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="font-mono text-2xl font-black text-slate-900">{fmt(kpis.inspectedTodayPcs)}</span>
-            <span className="text-xs font-semibold text-slate-600">Nos</span>
+            <span className="font-mono text-2xl font-black text-slate-900 dark:text-slate-100">{fmt(kpis.inspectedTodayPcs)}</span>
+            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Nos</span>
           </div>
-          <div className="mt-1 text-xs text-slate-500 font-mono">
+          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 font-mono">
             {fmt(kpis.inspectedTodayMt, ' MT')} total checked
           </div>
         </div>
 
         {/* VDI OK Today */}
-        <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-white p-4 shadow-sm">
-          <div className="text-xs font-bold text-emerald-800 uppercase tracking-wider">VDI OK Today</div>
+        <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-br from-emerald-50/70 to-white dark:from-emerald-950/30 dark:to-slate-900 p-4 shadow-sm">
+          <div className="text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">VDI OK Today</div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="font-mono text-2xl font-black text-emerald-950">{fmt(kpis.vdiOkTodayPcs)}</span>
-            <span className="text-xs font-semibold text-emerald-700">Nos</span>
+            <span className="font-mono text-2xl font-black text-emerald-950 dark:text-emerald-100">{fmt(kpis.vdiOkTodayPcs)}</span>
+            <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Nos</span>
           </div>
-          <div className="mt-1 text-xs text-emerald-700 font-mono">
+          <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-400 font-mono">
             {fmt(kpis.vdiOkTodayMt, ' MT')} passed to Finishing
           </div>
         </div>
@@ -1263,51 +1264,51 @@ export default function QcInspectionClient() {
         {/* VDI Salvage Pending Rework */}
         <div
           onClick={() => setActiveTab('salvage')}
-          className="rounded-xl border border-amber-300 bg-gradient-to-br from-amber-50/80 to-white p-4 shadow-sm cursor-pointer hover:border-amber-400 hover:shadow-md transition-all group"
+          className="rounded-xl border border-amber-300 dark:border-amber-800/60 bg-gradient-to-br from-amber-50/80 to-white dark:from-amber-950/30 dark:to-slate-900 p-4 shadow-sm cursor-pointer hover:border-amber-400 dark:hover:border-amber-700 hover:shadow-md transition-all group"
           title="Click to view VDI Salvage & Rework Queue"
         >
           <div className="flex items-center justify-between">
-            <div className="text-xs font-bold text-amber-800 uppercase tracking-wider">VDI Salvage Pending</div>
-            <span className="text-[10px] font-semibold bg-amber-200/80 text-amber-900 px-1.5 py-0.5 rounded group-hover:bg-amber-300 transition-colors">
+            <div className="text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider">VDI Salvage Pending</div>
+            <span className="text-[10px] font-semibold bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded group-hover:bg-amber-300 dark:group-hover:bg-amber-800 transition-colors">
               Queue →
             </span>
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="font-mono text-2xl font-black text-amber-950">{fmt(kpis.totalPendingSalvagePcs)}</span>
-            <span className="text-xs font-semibold text-amber-700">Nos</span>
+            <span className="font-mono text-2xl font-black text-amber-950 dark:text-amber-100">{fmt(kpis.totalPendingSalvagePcs)}</span>
+            <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">Nos</span>
           </div>
-          <div className="mt-1 text-xs text-amber-700 font-mono">
+          <div className="mt-1 text-xs text-amber-700 dark:text-amber-400 font-mono">
             {fmt(kpis.totalPendingSalvageMt, ' MT')} reworkable ({fmt(kpis.salvageTodayPcs)} logged today)
           </div>
         </div>
 
         {/* VDI Rejection Today */}
-        <div className="rounded-xl border border-rose-200 bg-gradient-to-br from-rose-50/70 to-white p-4 shadow-sm">
-          <div className="text-xs font-bold text-rose-800 uppercase tracking-wider">VDI Rejection Today</div>
+        <div className="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-gradient-to-br from-rose-50/70 to-white dark:from-rose-950/30 dark:to-slate-900 p-4 shadow-sm">
+          <div className="text-xs font-bold text-rose-800 dark:text-rose-300 uppercase tracking-wider">VDI Rejection Today</div>
           <div className="mt-2 flex items-baseline gap-1.5">
-            <span className="font-mono text-2xl font-black text-rose-950">{fmt(kpis.rejTodayPcs)}</span>
-            <span className="text-xs font-semibold text-rose-700">Nos</span>
+            <span className="font-mono text-2xl font-black text-rose-950 dark:text-rose-100">{fmt(kpis.rejTodayPcs)}</span>
+            <span className="text-xs font-semibold text-rose-700 dark:text-rose-400">Nos</span>
           </div>
-          <div className="mt-1 text-xs text-rose-700 font-mono">
+          <div className="mt-1 text-xs text-rose-700 dark:text-rose-400 font-mono">
             {fmt(kpis.rejTodayMt, ' MT')} scrapped
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 space-x-6 text-sm font-semibold">
+      <div className="flex border-b border-slate-200 dark:border-slate-800 space-x-6 text-sm font-semibold">
         <button
           type="button"
           onClick={() => setActiveTab('queue')}
           className={`pb-3.5 flex items-center gap-2 border-b-2 transition-all duration-150 active:scale-[0.97] cursor-pointer select-none ${
             activeTab === 'queue'
-              ? 'border-blue-600 text-blue-600 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
         >
           <Layers size={16} />
           Pending Inspection Queue
-          <span className="rounded-full bg-blue-100 text-blue-800 px-2 py-0.5 text-xs font-bold font-mono">
+          <span className="rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-xs font-bold font-mono">
             {queueItems.length}
           </span>
         </button>
@@ -1317,17 +1318,17 @@ export default function QcInspectionClient() {
           onClick={() => setActiveTab('salvage')}
           className={`pb-3.5 flex items-center gap-2 border-b-2 transition-all duration-150 active:scale-[0.97] cursor-pointer select-none ${
             activeTab === 'salvage'
-              ? 'border-amber-600 text-amber-700 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'border-amber-600 text-amber-700 dark:text-amber-400 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
         >
           <Wrench size={16} />
           VDI Salvage & Rework
           <span
-            className={`rounded-full px-2 py-0.5 text-xs font-bold font-mono ${
+            className={`rounded-full px-2 py-0.5 text-xs font-bold font-mono border ${
               salvageQueueItems.length > 0
-                ? 'bg-amber-100 text-amber-900 font-black'
-                : 'bg-slate-100 text-slate-700'
+                ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800 font-black'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
             }`}
           >
             {salvageQueueItems.length}
@@ -1339,13 +1340,13 @@ export default function QcInspectionClient() {
           onClick={() => setActiveTab('history')}
           className={`pb-3.5 flex items-center gap-2 border-b-2 transition-all duration-150 active:scale-[0.97] cursor-pointer select-none ${
             activeTab === 'history'
-              ? 'border-blue-600 text-blue-600 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+              ? 'border-blue-600 text-blue-600 dark:text-blue-400 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
         >
           <ClipboardCheck size={16} />
           Inspection History Logs
-          <span className="rounded-full bg-slate-100 text-slate-700 px-2 py-0.5 text-xs font-bold font-mono">
+          <span className="rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-2 py-0.5 text-xs font-bold font-mono">
             {qcInspections.length}
           </span>
         </button>
@@ -1354,28 +1355,28 @@ export default function QcInspectionClient() {
       {/* TAB 1: PENDING INSPECTION QUEUE */}
       {activeTab === 'queue' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="relative flex-1 max-w-md">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input
                 type="text"
                 aria-label="Search inspection queue by work order number, lot number, customer, or specification"
                 value={queueSearch}
                 onChange={(e) => setQueueSearch(e.target.value)}
                 placeholder="Search by WO#, Lot No, customer, specification..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
-            <div className="text-xs text-slate-500 font-medium">
-              Showing <span className="font-bold text-slate-800">{filteredQueue.length}</span> work orders awaiting QC inspection
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              Showing <span className="font-bold text-slate-800 dark:text-slate-200">{filteredQueue.length}</span> work orders awaiting QC inspection
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
             {loading ? (
               <div className="overflow-auto max-h-[70vh] relative" aria-busy="true" aria-label="Loading Heat Treatment inspection queue">
                 <table className="min-w-full text-left text-xs">
-                  <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold shadow-2xs">
+                  <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold shadow-2xs">
                     <tr>
                       <th className="py-3 px-3.5">Work Order #</th>
                       <th className="py-3 px-3">HT Lot No.</th>
@@ -1383,42 +1384,42 @@ export default function QcInspectionClient() {
                       <th className="py-3 px-3">Specification</th>
                       <th className="py-3 px-3 text-right">OD x WT</th>
                       <th className="py-3 px-3 text-right">Length</th>
-                      <th className="py-3 px-3 text-right bg-orange-50/50">Total Feeder OK</th>
+                      <th className="py-3 px-3 text-right bg-orange-50/50 dark:bg-orange-950/40">Total Feeder OK</th>
                       <th className="py-3 px-3 text-right">Already Inspected</th>
-                      <th className="py-3 px-3 text-right bg-blue-50/50">Available for Inspection</th>
+                      <th className="py-3 px-3 text-right bg-blue-50/50 dark:bg-blue-950/40">Available for Inspection</th>
                       <th className="py-3 px-3.5 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {Array.from({ length: 4 }).map((_, i) => (
-                      <tr key={i} className="animate-pulse border-b border-slate-100">
-                        <td className="py-3 px-3.5"><div className="h-4 w-28 bg-slate-200 rounded" /><div className="mt-1 h-3 w-16 bg-slate-100 rounded" /></td>
-                        <td className="py-3 px-3"><div className="h-5 w-20 bg-amber-100/70 rounded" /></td>
-                        <td className="py-3 px-3"><div className="h-4 w-24 bg-slate-200 rounded" /></td>
-                        <td className="py-3 px-3"><div className="h-4 w-20 bg-slate-200 rounded" /></td>
-                        <td className="py-3 px-3 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
-                        <td className="py-3 px-3 text-right"><div className="h-4 w-14 bg-slate-200 rounded ml-auto" /></td>
-                        <td className="py-3 px-3 text-right bg-orange-50/30"><div className="h-4 w-14 bg-orange-200/60 rounded ml-auto" /></td>
-                        <td className="py-3 px-3 text-right"><div className="h-4 w-12 bg-slate-200 rounded ml-auto" /></td>
-                        <td className="py-3 px-3 text-right bg-blue-50/30"><div className="h-4 w-16 bg-blue-200/60 rounded ml-auto" /></td>
-                        <td className="py-3 px-3.5 text-center"><div className="h-7 w-20 bg-blue-200/80 rounded mx-auto" /></td>
+                      <tr key={i} className="animate-pulse border-b border-slate-100 dark:border-slate-800">
+                        <td className="py-3 px-3.5"><div className="h-4 w-28 bg-slate-200 dark:bg-slate-700 rounded" /><div className="mt-1 h-3 w-16 bg-slate-100 dark:bg-slate-800 rounded" /></td>
+                        <td className="py-3 px-3"><div className="h-5 w-20 bg-amber-100/70 dark:bg-amber-900/50 rounded" /></td>
+                        <td className="py-3 px-3"><div className="h-4 w-24 bg-slate-200 dark:bg-slate-700 rounded" /></td>
+                        <td className="py-3 px-3"><div className="h-4 w-20 bg-slate-200 dark:bg-slate-700 rounded" /></td>
+                        <td className="py-3 px-3 text-right"><div className="h-4 w-16 bg-slate-200 dark:bg-slate-700 rounded ml-auto" /></td>
+                        <td className="py-3 px-3 text-right"><div className="h-4 w-14 bg-slate-200 dark:bg-slate-700 rounded ml-auto" /></td>
+                        <td className="py-3 px-3 text-right bg-orange-50/30 dark:bg-orange-950/20"><div className="h-4 w-14 bg-orange-200/60 dark:bg-orange-800/40 rounded ml-auto" /></td>
+                        <td className="py-3 px-3 text-right"><div className="h-4 w-12 bg-slate-200 dark:bg-slate-700 rounded ml-auto" /></td>
+                        <td className="py-3 px-3 text-right bg-blue-50/30 dark:bg-blue-950/20"><div className="h-4 w-16 bg-blue-200/60 dark:bg-blue-800/40 rounded ml-auto" /></td>
+                        <td className="py-3 px-3.5 text-center"><div className="h-7 w-20 bg-blue-200/80 dark:bg-blue-800/60 rounded mx-auto" /></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : filteredQueue.length === 0 ? (
-              <div className="p-12 text-center text-sm text-slate-500 space-y-1">
+              <div className="p-12 text-center text-sm text-slate-500 dark:text-slate-400 space-y-1">
                 <CheckCircle2 size={32} className="mx-auto text-emerald-500 mb-1" />
-                <div className="font-bold text-slate-800">Inspection Queue is Clear</div>
-                <div className="text-xs text-slate-400">
+                <div className="font-bold text-slate-800 dark:text-slate-200">Inspection Queue is Clear</div>
+                <div className="text-xs text-slate-400 dark:text-slate-500">
                   {queueSearch ? 'No orders match your search criteria.' : 'All Heat Treatment OK material has been inspected.'}
                 </div>
               </div>
             ) : (
               <div className="overflow-auto max-h-[70vh] relative">
                 <table className="min-w-full text-left text-xs">
-                  <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold shadow-2xs">
+                  <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold shadow-2xs">
                     <tr>
                       <th className="py-3 px-3.5">Work Order #</th>
                       <th className="py-3 px-3">HT Lot No.</th>
@@ -1426,38 +1427,38 @@ export default function QcInspectionClient() {
                       <th className="py-3 px-3">Specification</th>
                       <th className="py-3 px-3 text-right">OD x WT</th>
                       <th className="py-3 px-3 text-right">Length</th>
-                      <th className="py-3 px-3 text-right bg-orange-50/50">Total Feeder OK</th>
+                      <th className="py-3 px-3 text-right bg-orange-50/50 dark:bg-orange-950/40">Total Feeder OK</th>
                       <th className="py-3 px-3 text-right">Already Inspected</th>
-                      <th className="py-3 px-3 text-right bg-blue-50/50 font-bold text-blue-950">
+                      <th className="py-3 px-3 text-right bg-blue-50/50 dark:bg-blue-950/40 font-bold text-blue-950 dark:text-blue-300">
                         Available for Inspection
                       </th>
                       <th className="py-3 px-3.5 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {filteredQueue.map((item) => (
-                      <tr key={item.work_order_id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-3 px-3.5 font-bold font-mono text-slate-900 text-sm">
+                      <tr key={item.work_order_id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="py-3 px-3.5 font-bold font-mono text-slate-900 dark:text-slate-100 text-sm">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{item.work_order_no}</span>
                             {item.is_master && (
-                              <span className="rounded bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                              <span className="rounded bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
                                 Master Campaign
                               </span>
                             )}
                             {item.is_child && (
-                              <span className="rounded bg-teal-50 border border-teal-200 px-1.5 py-0.5 text-[10px] font-bold text-teal-700" title={item.master_wo_no ? `Child of Master WO ${item.master_wo_no}` : 'Child Work Order'}>
+                              <span className="rounded bg-teal-50 dark:bg-teal-950/70 border border-teal-200 dark:border-teal-800 px-1.5 py-0.5 text-[10px] font-bold text-teal-700 dark:text-teal-300" title={item.master_wo_no ? `Child of Master WO ${item.master_wo_no}` : 'Child Work Order'}>
                                 Child WO
                               </span>
                             )}
                           </div>
                           {item.feeder_source_label && (
                             <div className="mt-1 flex items-center gap-1 flex-wrap">
-                              <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 text-blue-700 px-1.5 py-0.5 text-[10px] font-bold">
+                              <span className="inline-flex items-center gap-1 rounded bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 text-[10px] font-bold">
                                 Feeder: {item.feeder_source_label}
                               </span>
                               {item.is_child && item.master_wo_no && (
-                                <span className="text-[10px] text-slate-500 font-normal">
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">
                                   (via {item.master_wo_no})
                                 </span>
                               )}
@@ -1465,7 +1466,7 @@ export default function QcInspectionClient() {
                           )}
                           {item.is_master && Array.isArray(item.child_work_orders) && item.child_work_orders.length > 0 && (
                             <div className="mt-1 flex items-center gap-1 flex-wrap">
-                              <span className="inline-flex items-center gap-1 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 text-[10px] font-semibold">
+                              <span className="inline-flex items-center gap-1 rounded bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 text-[10px] font-semibold">
                                 Child Orders ({item.child_work_orders.length}): {item.child_work_orders.map((c: any) => c.work_order_no).filter(Boolean).join(', ')}
                               </span>
                             </div>
@@ -1473,46 +1474,46 @@ export default function QcInspectionClient() {
                         </td>
                         <td className="py-3 px-3">
                           {item.heat_lots && item.heat_lots.length > 1 ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs" title={item.heat_lots.map((l) => l.lot_no).join(', ')}>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 shadow-2xs" title={item.heat_lots.map((l) => l.lot_no).join(', ')}>
                               {item.heat_lots.length} Lots
                             </span>
                           ) : item.heat_lot_no ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 shadow-2xs">
                               {item.heat_lot_no}
                             </span>
                           ) : (
-                            <span className="text-slate-400 font-mono text-xs">—</span>
+                            <span className="text-slate-400 dark:text-slate-500 font-mono text-xs">—</span>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-slate-700 max-w-[150px] truncate">
+                        <td className="py-3 px-3 text-slate-700 dark:text-slate-300 max-w-[150px] truncate">
                           {item.customer_name || '—'}
                         </td>
-                        <td className="py-3 px-3 text-slate-600 max-w-[140px] truncate" title={item.specification || '—'}>
+                        <td className="py-3 px-3 text-slate-600 dark:text-slate-400 max-w-[140px] truncate" title={item.specification || '—'}>
                           {item.specification || '—'}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-800">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-800 dark:text-slate-200">
                           {item.size_od} × {item.size_wt} mm
                         </td>
-                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-600">
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-600 dark:text-slate-400">
                           {item.l1 && item.l2 ? `${item.l1} - ${item.l2}m` : `${item.avg_length}m`}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight bg-orange-50/30 text-orange-950">
-                          <div className="font-bold">{fmt(item.ht_ok_pcs)} Nos</div>
-                          <div className="text-[10px] text-orange-700">{fmt(item.ht_ok_mt, ' MT')}</div>
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight bg-orange-50/30 dark:bg-orange-950/20 text-orange-950 dark:text-orange-200">
+                          <div className="font-bold">{item.ht_ok_pcs > 0 ? `${fmt(item.ht_ok_pcs)} Nos` : '—'}</div>
+                          <div className="text-[10px] text-orange-700 dark:text-orange-400">{fmt(item.ht_ok_mt, ' MT')}</div>
                         </td>
-                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-600">
-                          {fmt(item.already_inspected_pcs)} Nos
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight text-slate-600 dark:text-slate-400">
+                          {item.already_inspected_pcs > 0 ? `${fmt(item.already_inspected_pcs)} Nos` : '—'}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight bg-blue-50/40 text-blue-950">
-                          <div className="font-black text-sm text-blue-900">{fmt(item.available_ht_ok_pcs)} Nos</div>
-                          <div className="text-[10px] text-blue-700 font-semibold">{fmt(item.available_ht_ok_mt, ' MT')} · {item.available_ht_ok_mtr}m</div>
+                        <td className="py-3 px-3 text-right font-mono tabular-nums tracking-tight bg-blue-50/40 dark:bg-blue-950/30 text-blue-950 dark:text-blue-200">
+                          <div className="font-black text-sm text-blue-900 dark:text-blue-300">{fmt(item.available_ht_ok_pcs)} Nos</div>
+                          <div className="text-[10px] text-blue-700 dark:text-blue-400 font-semibold">{fmt(item.available_ht_ok_mt, ' MT')} · {item.available_ht_ok_mtr}m</div>
                         </td>
                         <td className="py-3 px-3.5 text-center">
                           <button
                             type="button"
                             onClick={() => openRecordModal(item)}
                             disabled={!canModify}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 min-h-[34px] sm:min-h-[32px] text-xs font-bold text-white shadow hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all touch-manipulation"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 min-h-[34px] sm:min-h-[32px] text-xs font-bold text-white shadow hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all touch-manipulation cursor-pointer"
                           >
                             <ClipboardCheck size={13} />
                             Inspect
@@ -1531,43 +1532,43 @@ export default function QcInspectionClient() {
       {/* TAB 2: VDI SALVAGE & REWORK QUEUE */}
       {activeTab === 'salvage' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="relative flex-1 max-w-md">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input
                 type="text"
                 aria-label="Search salvage queue by work order number, customer, or defect"
                 value={salvageSearch}
                 onChange={(e) => setSalvageSearch(e.target.value)}
                 placeholder="Search salvage by WO#, customer, defect..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
               />
             </div>
-            <div className="text-xs text-slate-500 font-medium">
-              Showing <span className="font-bold text-amber-900">{filteredSalvageQueue.length}</span> orders with active VDI Salvage
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              Showing <span className="font-bold text-amber-900 dark:text-amber-300">{filteredSalvageQueue.length}</span> orders with active VDI Salvage
             </div>
           </div>
 
-          <div className="rounded-xl border border-amber-200/90 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-amber-200/90 dark:border-amber-900/50 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
             {filteredSalvageQueue.length === 0 ? (
-              <div className="p-12 text-center text-sm text-slate-500 space-y-1">
+              <div className="p-12 text-center text-sm text-slate-500 dark:text-slate-400 space-y-1">
                 <CheckCircle2 size={32} className="mx-auto text-emerald-500 mb-1" />
-                <div className="font-bold text-slate-800">No VDI Salvage Material Pending Rework</div>
-                <div className="text-xs text-slate-400">
+                <div className="font-bold text-slate-800 dark:text-slate-200">No VDI Salvage Material Pending Rework</div>
+                <div className="text-xs text-slate-400 dark:text-slate-500">
                   {salvageSearch ? 'No orders match your search criteria.' : 'All inspected tubes have been released as VDI OK, diverted, or scrapped.'}
                 </div>
               </div>
             ) : (
               <div className="overflow-auto max-h-[70vh] relative">
                 <table className="min-w-full text-left text-xs">
-                  <thead className="sticky top-0 z-20 bg-amber-100 border-b border-amber-200 text-amber-950 font-semibold shadow-2xs">
+                  <thead className="sticky top-0 z-20 bg-amber-100 dark:bg-amber-950/70 border-b border-amber-200 dark:border-amber-800 text-amber-950 dark:text-amber-200 font-semibold shadow-2xs">
                     <tr>
                       <th className="py-3 px-3.5">Work Order #</th>
                       <th className="py-3 px-3">Customer</th>
                       <th className="py-3 px-3">Specification</th>
                       <th className="py-3 px-3 text-right">OD x WT</th>
                       <th className="py-3 px-3 text-right">Length</th>
-                      <th className="py-3 px-3 text-right bg-amber-100/60 font-black text-amber-950">
+                      <th className="py-3 px-3 text-right bg-amber-100/60 dark:bg-amber-900/40 font-black text-amber-950 dark:text-amber-200">
                         Pending Salvage
                       </th>
                       <th className="py-3 px-3">Defects Requiring Rework</th>
@@ -1575,27 +1576,27 @@ export default function QcInspectionClient() {
                       <th className="py-3 px-3.5 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {filteredSalvageQueue.map((item) => (
-                      <tr key={item.work_order_id} className="hover:bg-amber-50/40 transition-colors">
-                        <td className="py-3 px-3.5 font-bold font-mono text-slate-900 text-sm">
+                      <tr key={item.work_order_id} className="hover:bg-amber-50/40 dark:hover:bg-amber-950/20 transition-colors">
+                        <td className="py-3 px-3.5 font-bold font-mono text-slate-900 dark:text-slate-100 text-sm">
                           {item.work_order_no}
                         </td>
-                        <td className="py-3 px-3 text-slate-700 font-medium">
+                        <td className="py-3 px-3 text-slate-700 dark:text-slate-300 font-medium">
                           {item.customer_name || '—'}
                         </td>
-                        <td className="py-3 px-3 text-slate-600">
+                        <td className="py-3 px-3 text-slate-600 dark:text-slate-400">
                           {item.specification || '—'}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-700">
+                        <td className="py-3 px-3 text-right font-mono text-slate-700 dark:text-slate-300">
                           {item.size_od} × {item.size_wt} mm
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-600">
+                        <td className="py-3 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
                           {item.avg_length} m
                         </td>
-                        <td className="py-3 px-3 text-right font-mono bg-amber-50/50 text-amber-950">
-                          <div className="font-black text-sm text-amber-900">{fmt(item.total_salvage_pcs)} Nos</div>
-                          <div className="text-[10px] text-amber-700 font-semibold">{fmt(item.total_salvage_mt, ' MT')} · {item.total_salvage_mtr}m</div>
+                        <td className="py-3 px-3 text-right font-mono bg-amber-50/50 dark:bg-amber-950/30 text-amber-950 dark:text-amber-200">
+                          <div className="font-black text-sm text-amber-900 dark:text-amber-300">{fmt(item.total_salvage_pcs)} Nos</div>
+                          <div className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">{fmt(item.total_salvage_mt, ' MT')} · {item.total_salvage_mtr}m</div>
                         </td>
                         <td className="py-3 px-3 max-w-[220px]">
                           {item.salvage_reasons && item.salvage_reasons.length > 0 ? (
@@ -1603,7 +1604,7 @@ export default function QcInspectionClient() {
                               {item.salvage_reasons.map((r, i) => (
                                 <span
                                   key={i}
-                                  className="inline-flex items-center rounded bg-amber-100/90 border border-amber-300 px-1.5 py-0.5 text-[10px] text-amber-950 font-medium font-mono"
+                                  className="inline-flex items-center rounded bg-amber-100/90 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 px-1.5 py-0.5 text-[10px] text-amber-950 dark:text-amber-200 font-medium font-mono"
                                   title={`${r.reason}: ${r.pcs} Nos ${r.remarks ? `(${r.remarks})` : ''}`}
                                 >
                                   {r.reason}: {r.pcs} Nos
@@ -1611,10 +1612,10 @@ export default function QcInspectionClient() {
                               ))}
                             </div>
                           ) : (
-                            <span className="text-slate-400 italic">Salvage recorded without specific lines</span>
+                            <span className="text-slate-400 dark:text-slate-500 italic">Salvage recorded without specific lines</span>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-slate-600 text-[11px] font-mono">
+                        <td className="py-3 px-3 text-slate-600 dark:text-slate-400 text-[11px] font-mono">
                           {item.inspections.length} log(s) · latest {item.inspections[0]?.inspection_date}
                         </td>
                         <td className="py-3 px-3.5 text-center">
@@ -1622,7 +1623,7 @@ export default function QcInspectionClient() {
                             type="button"
                             onClick={() => openReworkModal(item)}
                             disabled={!canModify}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-amber-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:bg-amber-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
                             title="Process Rework for this order"
                           >
                             <Wrench size={13} />
@@ -1642,15 +1643,15 @@ export default function QcInspectionClient() {
       {/* TAB 3: INSPECTION HISTORY LOGS */}
       {activeTab === 'history' && (
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 bg-white p-3 rounded-xl border border-slate-200 shadow-sm text-xs">
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-xs">
             <div className="relative md:col-span-2">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input
                 type="text"
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
                 placeholder="Search history by WO#, customer, remarks..."
-                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
             <div>
@@ -1658,7 +1659,7 @@ export default function QcInspectionClient() {
                 type="date"
                 value={historyFromDate}
                 onChange={(e) => setHistoryFromDate(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700"
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                 title="From Date"
               />
             </div>
@@ -1667,75 +1668,75 @@ export default function QcInspectionClient() {
                 type="date"
                 value={historyToDate}
                 onChange={(e) => setHistoryToDate(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700"
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
                 title="To Date"
               />
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
             {filteredHistory.length === 0 ? (
-              <div className="p-12 text-center text-sm text-slate-500">
+              <div className="p-12 text-center text-sm text-slate-500 dark:text-slate-400">
                 No QC inspections logged matching your search filters.
               </div>
             ) : (
               <div className="overflow-auto max-h-[70vh] relative">
                 <table className="min-w-full text-left text-xs">
-                  <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold shadow-2xs">
+                  <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold shadow-2xs">
                     <tr>
                       <th className="py-3 px-3.5">Date</th>
                       <th className="py-3 px-3">Work Order #</th>
                       <th className="py-3 px-3">HT / Lot No</th>
                       <th className="py-3 px-3">Customer / Specs</th>
                       <th className="py-3 px-3 text-right">Inspected</th>
-                      <th className="py-3 px-3 text-right text-emerald-700 bg-emerald-50/40">VDI OK</th>
-                      <th className="py-3 px-3 text-right text-amber-700 bg-amber-50/40">VDI Salvage</th>
-                      <th className="py-3 px-3 text-right text-rose-700 bg-rose-50/40">VDI Rejection</th>
+                      <th className="py-3 px-3 text-right text-emerald-700 dark:text-emerald-400 bg-emerald-50/40 dark:bg-emerald-950/40">VDI OK</th>
+                      <th className="py-3 px-3 text-right text-amber-700 dark:text-amber-400 bg-amber-50/40 dark:bg-amber-950/40">VDI Salvage</th>
+                      <th className="py-3 px-3 text-right text-rose-700 dark:text-rose-400 bg-rose-50/40 dark:bg-rose-950/40">VDI Rejection</th>
                       <th className="py-3 px-3">Salvage Reasons</th>
                       <th className="py-3 px-3">Inspector</th>
                       <th className="py-3 px-3.5 text-center">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {filteredHistory.map((item) => {
                       const reasons = Array.isArray(item.salvage_reasons) ? item.salvage_reasons : [];
 
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="py-3 px-3.5 font-mono text-slate-700 whitespace-nowrap">
+                        <tr key={item.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="py-3 px-3.5 font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
                             {item.inspection_date}
                           </td>
-                          <td className="py-3 px-3 font-bold font-mono text-slate-900 text-sm">
+                          <td className="py-3 px-3 font-bold font-mono text-slate-900 dark:text-slate-100 text-sm">
                             {item.work_order_no}
                           </td>
                           <td className="py-3 px-3 font-mono">
                             {item.heat_lot_no ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 shadow-2xs">
                                 {item.heat_lot_no}
                               </span>
                             ) : (
-                              <span className="text-slate-400 text-xs">—</span>
+                              <span className="text-slate-400 dark:text-slate-500 text-xs">—</span>
                             )}
                           </td>
-                          <td className="py-3 px-3 text-slate-700 max-w-[160px] truncate">
-                            <div className="font-medium text-slate-900 truncate">{item.customer_name || '—'}</div>
-                            <div className="text-[10px] text-slate-500 truncate">{item.specification || '—'}</div>
+                          <td className="py-3 px-3 text-slate-700 dark:text-slate-300 max-w-[160px] truncate">
+                            <div className="font-medium text-slate-900 dark:text-slate-100 truncate">{item.customer_name || '—'}</div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{item.specification || '—'}</div>
                           </td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
+                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                             <div>{fmt(item.inspected_pcs)} Nos</div>
-                            <div className="text-[10px] text-slate-500 font-normal">{fmt(item.inspected_mt, ' MT')}</div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">{fmt(item.inspected_mt, ' MT')}</div>
                           </td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800 bg-emerald-50/30">
+                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50/30 dark:bg-emerald-950/20">
                             <div>{fmt(item.vdi_ok_pcs)} Nos</div>
-                            <div className="text-[10px] text-emerald-600 font-normal">{fmt(item.vdi_ok_mt, ' MT')}</div>
+                            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal">{fmt(item.vdi_ok_mt, ' MT')}</div>
                           </td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-amber-800 bg-amber-50/30">
+                          <td className="py-3 px-3 text-right font-mono font-bold text-amber-800 dark:text-amber-300 bg-amber-50/30 dark:bg-amber-950/20">
                             <div>{fmt(item.vdi_salvage_pcs)} Nos</div>
-                            <div className="text-[10px] text-amber-600 font-normal">{fmt(item.vdi_salvage_mt, ' MT')}</div>
+                            <div className="text-[10px] text-amber-600 dark:text-amber-400 font-normal">{fmt(item.vdi_salvage_mt, ' MT')}</div>
                           </td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-rose-800 bg-rose-50/30">
+                          <td className="py-3 px-3 text-right font-mono font-bold text-rose-800 dark:text-rose-300 bg-rose-50/30 dark:bg-rose-950/20">
                             <div>{fmt(item.vdi_rejection_pcs)} Nos</div>
-                            <div className="text-[10px] text-rose-600 font-normal">{fmt(item.vdi_rejection_mt, ' MT')}</div>
+                            <div className="text-[10px] text-rose-600 dark:text-rose-400 font-normal">{fmt(item.vdi_rejection_mt, ' MT')}</div>
                           </td>
                           <td className="py-3 px-3 max-w-[200px]">
                             {reasons.length > 0 ? (
@@ -1743,7 +1744,7 @@ export default function QcInspectionClient() {
                                 {reasons.map((r, i) => (
                                   <span
                                     key={i}
-                                    className="inline-flex items-center rounded bg-amber-100/80 border border-amber-200 px-1.5 py-0.5 text-[10px] text-amber-900 font-medium font-mono"
+                                    className="inline-flex items-center rounded bg-amber-100/80 dark:bg-amber-950/80 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 text-[10px] text-amber-900 dark:text-amber-200 font-medium font-mono"
                                     title={`${r.reason}: ${r.pcs} Nos ${r.remarks ? `(${r.remarks})` : ''}`}
                                   >
                                     {r.reason}: {r.pcs} Nos
@@ -1751,10 +1752,10 @@ export default function QcInspectionClient() {
                                 ))}
                               </div>
                             ) : (
-                              <span className="text-slate-400">—</span>
+                              <span className="text-slate-400 dark:text-slate-500">—</span>
                             )}
                           </td>
-                          <td className="py-3 px-3 text-slate-600 truncate max-w-[120px]">
+                          <td className="py-3 px-3 text-slate-600 dark:text-slate-400 truncate max-w-[120px]">
                             {item.created_by || '—'}
                           </td>
                           <td className="py-3 px-3.5 text-center">
@@ -1783,7 +1784,7 @@ export default function QcInspectionClient() {
                                     };
                                     openReworkModal(sqItem, item);
                                   }}
-                                  className="inline-flex items-center rounded border border-amber-300 bg-amber-50 p-1.5 text-amber-800 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  className="inline-flex items-center rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 p-1.5 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/60 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                                   title="Process Rework for this inspection"
                                 >
                                   <Wrench size={12} />
@@ -1793,7 +1794,7 @@ export default function QcInspectionClient() {
                                 type="button"
                                 disabled={!canModify}
                                 onClick={() => openEditModal(item)}
-                                className="inline-flex items-center rounded border border-slate-200 bg-slate-50 p-1.5 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="inline-flex items-center rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                                 title="Edit Inspection"
                               >
                                 <Edit2 size={12} />
@@ -1802,7 +1803,7 @@ export default function QcInspectionClient() {
                                 type="button"
                                 disabled={!canModify}
                                 onClick={() => setDeleteTarget(item)}
-                                className="inline-flex items-center rounded border border-red-200 bg-red-50 p-1.5 text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="inline-flex items-center rounded border border-red-200 dark:border-red-800/80 bg-red-50 dark:bg-red-950/50 p-1.5 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                                 title="Delete Inspection Record"
                               >
                                 <Trash2 size={12} />
@@ -1823,30 +1824,30 @@ export default function QcInspectionClient() {
       {/* RECORD / EDIT QC INSPECTION MODAL */}
       {modalOpen && selectedQueueItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
+          <div className="relative w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150 text-slate-900 dark:text-slate-100">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/80 px-6 py-4">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow">
                   <ClipboardCheck size={20} />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-slate-900 text-base">
+                    <h3 className="font-bold text-slate-900 dark:text-white text-base">
                       {editingInspection ? 'Edit QC / VDI Inspection' : 'Record QC / VDI Inspection'}
                     </h3>
                     {selectedQueueItem.is_master && (
-                      <span className="rounded bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                      <span className="rounded bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
                         Master Campaign
                       </span>
                     )}
                     {selectedQueueItem.is_child && (
-                      <span className="rounded bg-teal-50 border border-teal-200 px-2 py-0.5 text-[10px] font-bold text-teal-700">
+                      <span className="rounded bg-teal-50 dark:bg-teal-950/70 border border-teal-200 dark:border-teal-800 px-2 py-0.5 text-[10px] font-bold text-teal-700 dark:text-teal-300">
                         Child WO {selectedQueueItem.master_wo_no ? `(Master: ${selectedQueueItem.master_wo_no})` : ''}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Work Order #{selectedQueueItem.work_order_no} · {selectedQueueItem.customer_name || 'Commercial Tube'}
                   </p>
                 </div>
@@ -1854,7 +1855,7 @@ export default function QcInspectionClient() {
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                className="rounded-lg p-1.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -1864,14 +1865,14 @@ export default function QcInspectionClient() {
             <form onSubmit={handleSave} className="p-6 space-y-5">
               {/* Campaign Work Order Selection */}
               {selectedQueueItem.is_master && Array.isArray(selectedQueueItem.child_work_orders) && selectedQueueItem.child_work_orders.length > 0 && !editingInspection && (
-                <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 space-y-1.5">
-                  <label className="block text-xs font-bold text-indigo-950">
+                <div className="rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/60 dark:bg-indigo-950/40 p-3.5 space-y-1.5">
+                  <label className="block text-xs font-bold text-indigo-950 dark:text-indigo-200">
                     Assign Inspection to Work Order *
                   </label>
                   <select
                     value={targetWorkOrderId}
                     onChange={(e) => setTargetWorkOrderId(e.target.value)}
-                    className="w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-xs font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                    className="w-full rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-indigo-900 dark:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm cursor-pointer"
                   >
                     <option value={selectedQueueItem.work_order_id}>
                       Master WO #{selectedQueueItem.work_order_no} — {selectedQueueItem.customer_name || 'Commercial Tube'}
@@ -1886,7 +1887,7 @@ export default function QcInspectionClient() {
                       );
                     })}
                   </select>
-                  <p className="text-[11px] text-indigo-700 font-medium">
+                  <p className="text-[11px] text-indigo-700 dark:text-indigo-300 font-medium">
                     This rolling campaign includes {selectedQueueItem.child_work_orders.length} child orders. Select which order these inspected cut pieces belong to.
                   </p>
                 </div>
@@ -1903,30 +1904,30 @@ export default function QcInspectionClient() {
                 const dispAvg = targetChild?.l1 && targetChild?.l2 ? (Number(targetChild.l1) + Number(targetChild.l2)) / 2 : Number(targetChild?.l1 || targetWo?.l1 || selectedQueueItem.avg_length || 6.0);
 
                 return (
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 rounded-xl bg-blue-50/50 border border-blue-100 p-3 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/60 p-3 text-xs">
                     <div>
-                      <span className="text-slate-500 block">Specification:</span>
-                      <span className="font-bold text-slate-800">{dispSpec}</span>
+                      <span className="text-slate-500 dark:text-slate-400 block">Specification:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{dispSpec}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block">HT / Lot No:</span>
-                      <span className="font-bold font-mono text-amber-900 bg-amber-100/70 border border-amber-300 px-1.5 py-0.5 rounded text-[11px] truncate max-w-[140px] inline-block" title={selectedQueueItem.heat_lot_no || '—'}>
+                      <span className="text-slate-500 dark:text-slate-400 block">HT / Lot No:</span>
+                      <span className="font-bold font-mono text-amber-900 dark:text-amber-200 bg-amber-100/70 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 px-1.5 py-0.5 rounded text-[11px] truncate max-w-[140px] inline-block" title={selectedQueueItem.heat_lot_no || '—'}>
                         {selectedQueueItem.heat_lot_no || '—'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block">Dimensions:</span>
-                      <span className="font-bold font-mono text-slate-800">
+                      <span className="text-slate-500 dark:text-slate-400 block">Dimensions:</span>
+                      <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
                         {dispOd} × {dispWt} mm
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block">Length:</span>
-                      <span className="font-bold font-mono text-slate-800">{dispAvg} m</span>
+                      <span className="text-slate-500 dark:text-slate-400 block">Length:</span>
+                      <span className="font-bold font-mono text-slate-800 dark:text-slate-200">{dispAvg} m</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block">Available {selectedQueueItem.feeder_source_label || 'Feeder OK'}:</span>
-                      <span className="font-black font-mono text-blue-900 text-sm">
+                      <span className="text-slate-500 dark:text-slate-400 block">Available {selectedQueueItem.feeder_source_label || 'Feeder OK'}:</span>
+                      <span className="font-black font-mono text-blue-900 dark:text-blue-300 text-sm">
                         {selectedQueueItem.available_ht_ok_pcs} Nos
                       </span>
                     </div>
@@ -1937,20 +1938,20 @@ export default function QcInspectionClient() {
               {/* Date & Heat Lot Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Inspection Date *</label>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Inspection Date *</label>
                   <input
                     type="date"
                     required
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-semibold text-slate-700">Heat / Lot No.</label>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Heat / Lot No.</label>
                     {selectedQueueItem.heat_lots && selectedQueueItem.heat_lots.length > 1 && (
-                      <span className="text-[10px] text-amber-700 font-bold">
+                      <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold">
                         {selectedQueueItem.heat_lots.length} Lots Available
                       </span>
                     )}
@@ -1966,7 +1967,7 @@ export default function QcInspectionClient() {
                             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10.5px] font-mono font-bold transition-all border cursor-pointer ${
                               formHeatLotNo === hl.lot_no
                                 ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
-                                : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                                : 'bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/50'
                             }`}
                             title={`Select lot ${hl.lot_no} (${hl.pcs || 0} pcs)`}
                           >
@@ -1980,7 +1981,7 @@ export default function QcInspectionClient() {
                         value={formHeatLotNo}
                         onChange={(e) => setFormHeatLotNo(e.target.value)}
                         placeholder="e.g. HT-9821 or click pill above"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-mono font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
                   ) : (
@@ -1989,7 +1990,7 @@ export default function QcInspectionClient() {
                       value={formHeatLotNo}
                       onChange={(e) => setFormHeatLotNo(e.target.value)}
                       placeholder="e.g. HT-9821"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   )}
                 </div>
@@ -1998,63 +1999,63 @@ export default function QcInspectionClient() {
               {/* Inspection Breakdown Inputs */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {/* 1. Inspected Nos */}
-                <div className="rounded-xl border border-slate-300 bg-slate-50/50 p-3 space-y-1">
-                  <label className="block text-xs font-bold text-slate-800">1. Inspected Nos *</label>
+                <div className="rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-3 space-y-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">1. Inspected Nos *</label>
                   <input
                     type="number"
                     min="1"
                     required
                     value={inspectedPcs}
                     onChange={(e) => handleInspectedPcsChange(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-1.5 font-mono text-sm font-black text-slate-900 focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
                   />
-                  <div className="text-[11px] font-mono text-slate-500">
+                  <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
                     {formMetrics.inspMt} MT · {formMetrics.inspMtr}m
                   </div>
                 </div>
 
                 {/* 2. VDI OK Nos */}
-                <div className="rounded-xl border border-emerald-300 bg-emerald-50/40 p-3 space-y-1">
-                  <label className="block text-xs font-bold text-emerald-900">2. VDI OK Nos *</label>
+                <div className="rounded-xl border border-emerald-300 dark:border-emerald-800/70 bg-emerald-50/40 dark:bg-emerald-950/30 p-3 space-y-1">
+                  <label className="block text-xs font-bold text-emerald-900 dark:text-emerald-300">2. VDI OK Nos *</label>
                   <input
                     type="number"
                     min="0"
                     required
                     value={vdiOkPcs}
                     onChange={(e) => setVdiOkPcs(e.target.value)}
-                    className="w-full rounded-lg border border-emerald-300 px-3 py-1.5 font-mono text-sm font-black text-emerald-900 focus:ring-2 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-emerald-900 dark:text-emerald-300 focus:ring-2 focus:ring-emerald-500"
                   />
-                  <div className="text-[11px] font-mono text-emerald-700">
+                  <div className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400">
                     {formMetrics.okMt} MT · {formMetrics.okMtr}m
                   </div>
                 </div>
 
                 {/* 3. VDI Salvage Nos */}
-                <div className="rounded-xl border border-amber-300 bg-amber-50/40 p-3 space-y-1">
-                  <label className="block text-xs font-bold text-amber-900">3. VDI Salvage Nos</label>
+                <div className="rounded-xl border border-amber-300 dark:border-amber-800/70 bg-amber-50/40 dark:bg-amber-950/30 p-3 space-y-1">
+                  <label className="block text-xs font-bold text-amber-900 dark:text-amber-300">3. VDI Salvage Nos</label>
                   <input
                     type="number"
                     min="0"
                     value={vdiSalvagePcs}
                     onChange={(e) => handleSalvagePcsChange(e.target.value)}
-                    className="w-full rounded-lg border border-amber-300 px-3 py-1.5 font-mono text-sm font-black text-amber-900 focus:ring-2 focus:ring-amber-500"
+                    className="w-full rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-amber-900 dark:text-amber-300 focus:ring-2 focus:ring-amber-500"
                   />
-                  <div className="text-[11px] font-mono text-amber-700">
+                  <div className="text-[11px] font-mono text-amber-700 dark:text-amber-400">
                     {formMetrics.salMt} MT · {formMetrics.salMtr}m
                   </div>
                 </div>
 
                 {/* 4. VDI Rejection Nos */}
-                <div className="rounded-xl border border-rose-300 bg-rose-50/40 p-3 space-y-1">
-                  <label className="block text-xs font-bold text-rose-900">4. VDI Rejection Nos</label>
+                <div className="rounded-xl border border-rose-300 dark:border-rose-800/70 bg-rose-50/40 dark:bg-rose-950/30 p-3 space-y-1">
+                  <label className="block text-xs font-bold text-rose-900 dark:text-rose-300">4. VDI Rejection Nos</label>
                   <input
                     type="number"
                     min="0"
                     value={vdiRejectionPcs}
                     onChange={(e) => handleRejectionPcsChange(e.target.value)}
-                    className="w-full rounded-lg border border-rose-300 px-3 py-1.5 font-mono text-sm font-black text-rose-900 focus:ring-2 focus:ring-rose-500"
+                    className="w-full rounded-lg border border-rose-300 dark:border-rose-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-rose-900 dark:text-rose-300 focus:ring-2 focus:ring-rose-500"
                   />
-                  <div className="text-[11px] font-mono text-rose-700">
+                  <div className="text-[11px] font-mono text-rose-700 dark:text-rose-400">
                     {formMetrics.rejMt} MT · {formMetrics.rejMtr}m
                   </div>
                 </div>
@@ -2063,28 +2064,28 @@ export default function QcInspectionClient() {
               {/* Live Piece Balance Verification Indicator */}
               <div className={`p-2.5 rounded-lg text-xs flex items-center justify-between font-mono font-medium ${
                 formMetrics.isPcsBalanced
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-rose-50 text-rose-800 border border-rose-200 font-bold'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                  : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold'
               }`}>
                 <span>OK ({n(vdiOkPcs)}) + Salvage ({n(vdiSalvagePcs)}) + Rejection ({n(vdiRejectionPcs)}) = {n(vdiOkPcs) + n(vdiSalvagePcs) + n(vdiRejectionPcs)} Nos</span>
                 <span>{formMetrics.isPcsBalanced ? '✓ Balanced with Inspected' : `⚠️ Must equal ${n(inspectedPcs)} Nos`}</span>
               </div>
 
               {/* Multi-Line Salvage Reasons Section (Optional) */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/30 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                      Salvage Defect Breakdown Lines <span className="text-slate-500 font-normal normal-case">(Optional)</span>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+                      Salvage Defect Breakdown Lines <span className="text-slate-500 dark:text-slate-400 font-normal normal-case">(Optional)</span>
                     </h4>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       Specify defect categories and pieces for salvage material (optional)
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={addSalvageReason}
-                    className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900 hover:bg-amber-200 border border-amber-300 transition-colors"
+                    className="inline-flex items-center gap-1 rounded-md bg-amber-100 dark:bg-amber-950/70 px-2.5 py-1 text-xs font-bold text-amber-900 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/80 border border-amber-300 dark:border-amber-800 transition-colors cursor-pointer"
                   >
                     <Plus size={13} />
                     Add Salvage Reason
@@ -2092,17 +2093,17 @@ export default function QcInspectionClient() {
                 </div>
 
                 {salvageReasons.length === 0 ? (
-                  <div className="text-center py-3 text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                  <div className="text-center py-3 text-xs text-slate-400 dark:text-slate-500 border border-dashed border-slate-200 dark:border-slate-700 rounded-lg">
                     No itemized salvage defect lines added (optional).
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {salvageReasons.map((item) => (
-                      <div key={item.id} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 text-xs">
+                      <div key={item.id} className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
                         <select
                           value={item.reason}
                           onChange={(e) => updateSalvageReason(item.id, 'reason', e.target.value)}
-                          className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs text-slate-800 font-medium"
+                          className="flex-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-xs text-slate-900 dark:text-slate-100 font-medium cursor-pointer"
                         >
                           {DEFAULT_SALVAGE_REASONS.map((r) => (
                             <option key={r} value={r}>
@@ -2118,9 +2119,9 @@ export default function QcInspectionClient() {
                             value={item.pcs || ''}
                             placeholder="Pieces"
                             onChange={(e) => updateSalvageReason(item.id, 'pcs', n(e.target.value))}
-                            className="w-full rounded border border-slate-300 px-2 py-1 text-xs font-mono font-bold text-amber-900"
+                            className="w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-xs font-mono font-bold text-amber-900 dark:text-amber-300"
                           />
-                          <span className="text-slate-400 text-[10px]">Nos</span>
+                          <span className="text-slate-400 dark:text-slate-500 text-[10px]">Nos</span>
                         </div>
 
                         <input
@@ -2128,13 +2129,13 @@ export default function QcInspectionClient() {
                           value={item.remarks || ''}
                           placeholder="Notes (optional)"
                           onChange={(e) => updateSalvageReason(item.id, 'remarks', e.target.value)}
-                          className="w-36 rounded border border-slate-300 px-2 py-1 text-xs text-slate-700"
+                          className="w-36 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                         />
 
                         <button
                           type="button"
                           onClick={() => removeSalvageReason(item.id)}
-                          className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded"
+                          className="p-1 text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded cursor-pointer"
                           title="Remove reason line"
                         >
                           <Trash2 size={13} />
@@ -2142,9 +2143,9 @@ export default function QcInspectionClient() {
                       </div>
                     ))}
 
-                    <div className="flex items-center justify-between text-xs font-mono pt-1 text-slate-600">
+                    <div className="flex items-center justify-between text-xs font-mono pt-1 text-slate-600 dark:text-slate-400">
                       <span>Reason lines allocated: <strong>{formMetrics.totalSalvageReasonPcs} Nos</strong></span>
-                      <span className="text-slate-500 font-medium">
+                      <span className="text-slate-500 dark:text-slate-400 font-medium">
                         (Optional breakdown for {n(vdiSalvagePcs)} Salvage Nos)
                       </span>
                     </div>
@@ -2154,29 +2155,29 @@ export default function QcInspectionClient() {
 
               {/* Remarks */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Remarks / QA Clearance Notes</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Remarks / QA Clearance Notes</label>
                 <input
                   type="text"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   placeholder="e.g. Cleared for Finishing line, surface visual pass"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/60 px-6 py-4 -mx-6 -mb-6 rounded-b-2xl">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving || !formMetrics.isPcsBalanced || !formMetrics.isSalvageBalanced}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
                 >
                   {saving ? (
                     <>
@@ -2197,18 +2198,18 @@ export default function QcInspectionClient() {
       {/* DELETE CONFIRMATION MODAL */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 dark:bg-rose-950/50">
                 <Trash2 size={20} />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-base">Delete QC Inspection</h3>
-                <p className="text-xs text-slate-500">WO #{deleteTarget.work_order_no}</p>
+                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">Delete QC Inspection</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">WO #{deleteTarget.work_order_no}</p>
               </div>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Are you sure you want to delete this inspection record? The inspected pieces will return to the available Heat Treatment WIP pool, and downstream Finishing Line WIP will be recalculated.
             </p>
 
@@ -2217,7 +2218,7 @@ export default function QcInspectionClient() {
                 type="button"
                 disabled={deleting}
                 onClick={() => setDeleteTarget(null)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 Cancel
               </button>
@@ -2236,18 +2237,18 @@ export default function QcInspectionClient() {
       {/* POST-REWORK DISPOSITION MODAL */}
       {reworkModalOpen && reworkTargetWo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
+          <div className="relative w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-amber-100 bg-amber-50/70 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-amber-100 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/30 px-6 py-4">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-600 text-white shadow">
                   <Wrench size={20} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">
                     Process VDI Salvage Rework
                   </h3>
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
                     Work Order #{reworkTargetWo.work_order_no} · {reworkTargetWo.customer_name || 'Commercial Tube'}
                     {reworkTargetInspection ? ` (Inspection from ${reworkTargetInspection.inspection_date})` : ''}
                   </p>
@@ -2256,7 +2257,7 @@ export default function QcInspectionClient() {
               <button
                 type="button"
                 onClick={() => setReworkModalOpen(false)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                className="rounded-lg p-1.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
               >
                 <X size={18} />
               </button>
@@ -2265,27 +2266,27 @@ export default function QcInspectionClient() {
             {/* Form */}
             <form onSubmit={handleReworkSubmit} className="p-6 space-y-5">
               {/* Order & Salvage Info Badge */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 rounded-xl bg-amber-50/50 border border-amber-200 p-3 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/60 p-3 text-xs">
                 <div>
-                  <span className="text-slate-500 block">Specification:</span>
-                  <span className="font-bold text-slate-800">{reworkTargetWo.specification || '—'}</span>
+                  <span className="text-slate-500 dark:text-slate-400 block">Specification:</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{reworkTargetWo.specification || '—'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Dimensions:</span>
-                  <span className="font-bold font-mono text-slate-800">
+                  <span className="text-slate-500 dark:text-slate-400 block">Dimensions:</span>
+                  <span className="font-bold font-mono text-slate-800 dark:text-slate-200">
                     {reworkTargetWo.size_od} × {reworkTargetWo.size_wt} mm
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Avg Length:</span>
-                  <span className="font-bold font-mono text-slate-800">{reworkTargetWo.avg_length} m</span>
+                  <span className="text-slate-500 dark:text-slate-400 block">Avg Length:</span>
+                  <span className="font-bold font-mono text-slate-800 dark:text-slate-200">{reworkTargetWo.avg_length} m</span>
                 </div>
                 <div>
-                  <span className="text-amber-800 font-semibold block">Available Salvage:</span>
-                  <span className="font-black font-mono text-amber-950 text-sm">
+                  <span className="text-amber-800 dark:text-amber-300 font-semibold block">Available Salvage:</span>
+                  <span className="font-black font-mono text-amber-950 dark:text-amber-100 text-sm">
                     {reworkFormMetrics.availPcs} Nos
                   </span>
-                  <span className="text-[10px] text-amber-700 block font-mono">
+                  <span className="text-[10px] text-amber-700 dark:text-amber-400 block font-mono">
                     {reworkFormMetrics.availMt} MT · {reworkFormMetrics.availMtr}m
                   </span>
                 </div>
@@ -2293,18 +2294,18 @@ export default function QcInspectionClient() {
 
               {/* Active Defects List */}
               {reworkTargetWo.salvage_reasons && reworkTargetWo.salvage_reasons.length > 0 && (
-                <div className="rounded-lg bg-slate-50 border border-slate-200 p-2.5 text-xs">
-                  <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 p-2.5 text-xs">
+                  <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                     Original Defects Identified at QC
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {reworkTargetWo.salvage_reasons.map((r, idx) => (
                       <span
                         key={idx}
-                        className="inline-flex items-center rounded-md bg-white border border-amber-200 px-2 py-0.5 text-xs font-mono font-medium text-amber-900 shadow-sm"
+                        className="inline-flex items-center rounded-md bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800/70 px-2 py-0.5 text-xs font-mono font-medium text-amber-900 dark:text-amber-200 shadow-sm"
                       >
-                        {r.reason}: <strong className="ml-1 text-amber-950">{r.pcs} Nos</strong>
-                        {r.remarks && <span className="ml-1 text-slate-400 font-normal italic">({r.remarks})</span>}
+                        {r.reason}: <strong className="ml-1 text-amber-950 dark:text-amber-100">{r.pcs} Nos</strong>
+                        {r.remarks && <span className="ml-1 text-slate-400 dark:text-slate-500 font-normal italic">({r.remarks})</span>}
                       </span>
                     ))}
                   </div>
@@ -2313,7 +2314,7 @@ export default function QcInspectionClient() {
 
               {/* Rework Processing Date */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Rework Disposition Date *
                 </label>
                 <input
@@ -2321,23 +2322,23 @@ export default function QcInspectionClient() {
                   required
                   value={reworkDate}
                   onChange={(e) => setReworkDate(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                 />
               </div>
 
               {/* Disposition Breakdown Cards */}
               <div className="space-y-3">
-                <div className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
                   Post-Rework Disposition Breakdown
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* Option 1: VDI OK */}
-                  <div className="rounded-xl border border-emerald-300 bg-emerald-50/40 p-3.5 space-y-1.5">
+                  <div className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20 p-3.5 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="block text-xs font-bold text-emerald-950">
+                      <label className="block text-xs font-bold text-emerald-950 dark:text-emerald-200">
                         1. Passed: VDI OK
                       </label>
-                      <span className="text-[10px] font-semibold bg-emerald-200/80 text-emerald-900 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] font-semibold bg-emerald-200/80 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 px-1.5 py-0.5 rounded">
                         Finishing WIP
                       </span>
                     </div>
@@ -2348,23 +2349,23 @@ export default function QcInspectionClient() {
                       value={reworkVdiOkPcs}
                       onChange={(e) => setReworkVdiOkPcs(e.target.value)}
                       placeholder="0"
-                      className="w-full rounded-lg border border-emerald-300 px-3 py-1.5 font-mono text-sm font-black text-emerald-900 focus:ring-2 focus:ring-emerald-500"
+                      className="w-full rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-emerald-900 dark:text-emerald-300 focus:ring-2 focus:ring-emerald-500"
                     />
-                    <div className="text-[11px] font-mono text-emerald-700">
+                    <div className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400">
                       {reworkFormMetrics.okMt} MT · {reworkFormMetrics.okMtr}m
                     </div>
-                    <p className="text-[10px] text-emerald-800 leading-tight">
+                    <p className="text-[10px] text-emerald-800 dark:text-emerald-300/80 leading-tight">
                       Releases directly to Finishing Queue for Work Order #{reworkTargetWo.work_order_no}.
                     </p>
                   </div>
 
                   {/* Option 2: Diverted */}
-                  <div className="rounded-xl border border-blue-300 bg-blue-50/40 p-3.5 space-y-1.5">
+                  <div className="rounded-xl border border-blue-300 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-950/20 p-3.5 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="block text-xs font-bold text-blue-950">
+                      <label className="block text-xs font-bold text-blue-950 dark:text-blue-200">
                         2. Diverted
                       </label>
-                      <span className="text-[10px] font-semibold bg-blue-200/80 text-blue-900 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] font-semibold bg-blue-200/80 dark:bg-blue-900/60 text-blue-900 dark:text-blue-200 px-1.5 py-0.5 rounded">
                         Other WO
                       </span>
                     </div>
@@ -2375,23 +2376,23 @@ export default function QcInspectionClient() {
                       value={reworkDivertedPcs}
                       onChange={(e) => handleReworkDivertedChange(e.target.value)}
                       placeholder="0"
-                      className="w-full rounded-lg border border-blue-300 px-3 py-1.5 font-mono text-sm font-black text-blue-900 focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-blue-900 dark:text-blue-300 focus:ring-2 focus:ring-blue-500"
                     />
-                    <div className="text-[11px] font-mono text-blue-700">
+                    <div className="text-[11px] font-mono text-blue-700 dark:text-blue-400">
                       {reworkFormMetrics.divMt} MT · {reworkFormMetrics.divMtr}m
                     </div>
-                    <p className="text-[10px] text-blue-800 leading-tight">
+                    <p className="text-[10px] text-blue-800 dark:text-blue-300/80 leading-tight">
                       Diverts reworked tubes to another Work Order.
                     </p>
                   </div>
 
                   {/* Option 3: Scrapped */}
-                  <div className="rounded-xl border border-rose-300 bg-rose-50/40 p-3.5 space-y-1.5">
+                  <div className="rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50/40 dark:bg-rose-950/20 p-3.5 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="block text-xs font-bold text-rose-950">
+                      <label className="block text-xs font-bold text-rose-950 dark:text-rose-200">
                         3. Rejection / Scrap
                       </label>
-                      <span className="text-[10px] font-semibold bg-rose-200/80 text-rose-900 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] font-semibold bg-rose-200/80 dark:bg-rose-900/60 text-rose-900 dark:text-rose-200 px-1.5 py-0.5 rounded">
                         Scrapped
                       </span>
                     </div>
@@ -2402,12 +2403,12 @@ export default function QcInspectionClient() {
                       value={reworkRejectionPcs}
                       onChange={(e) => handleReworkRejectionChange(e.target.value)}
                       placeholder="0"
-                      className="w-full rounded-lg border border-rose-300 px-3 py-1.5 font-mono text-sm font-black text-rose-900 focus:ring-2 focus:ring-rose-500"
+                      className="w-full rounded-lg border border-rose-300 dark:border-rose-700 bg-white dark:bg-slate-900 px-3 py-1.5 font-mono text-sm font-black text-rose-900 dark:text-rose-300 focus:ring-2 focus:ring-rose-500"
                     />
-                    <div className="text-[11px] font-mono text-rose-700">
+                    <div className="text-[11px] font-mono text-rose-700 dark:text-rose-400">
                       {reworkFormMetrics.rejMt} MT · {reworkFormMetrics.rejMtr}m
                     </div>
-                    <p className="text-[10px] text-rose-800 leading-tight">
+                    <p className="text-[10px] text-rose-800 dark:text-rose-300/80 leading-tight">
                       Material unrecoverable after rework attempt.
                     </p>
                   </div>
@@ -2416,21 +2417,21 @@ export default function QcInspectionClient() {
 
               {/* Conditional Target Work Order Selection if Diverted > 0 */}
               {reworkFormMetrics.divPcs > 0 && (
-                <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-3 animate-in fade-in duration-150">
-                  <div className="flex items-center gap-2 text-blue-900 font-bold text-xs">
+                <div className="rounded-xl border border-blue-200 dark:border-blue-800/70 bg-blue-50/50 dark:bg-blue-950/20 p-4 space-y-3 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-2 text-blue-900 dark:text-blue-200 font-bold text-xs">
                     <GitFork size={15} />
                     Target Work Order for Diversion ({reworkFormMetrics.divPcs} Nos / {reworkFormMetrics.divMtr}m)
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Select Target Work Order *
                       </label>
                       <select
                         required
                         value={reworkTargetWoId}
                         onChange={(e) => setReworkTargetWoId(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">-- Choose Target WO --</option>
                         {availableTargetWos.map((w) => (
@@ -2441,7 +2442,7 @@ export default function QcInspectionClient() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Diversion Reason / Justification
                       </label>
                       <input
@@ -2449,7 +2450,7 @@ export default function QcInspectionClient() {
                         value={reworkDiversionReason}
                         onChange={(e) => setReworkDiversionReason(e.target.value)}
                         placeholder="e.g. Diverted after straightening/cutting to size"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                   </div>
@@ -2460,8 +2461,8 @@ export default function QcInspectionClient() {
               <div
                 className={`p-3 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1 font-mono font-medium ${
                   reworkFormMetrics.isValid
-                    ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
-                    : 'bg-rose-50 text-rose-900 border border-rose-300 font-bold'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800'
+                    : 'bg-rose-50 dark:bg-rose-950/30 text-rose-900 dark:text-rose-200 border border-rose-300 dark:border-rose-800 font-bold'
                 }`}
               >
                 <span>
@@ -2483,7 +2484,7 @@ export default function QcInspectionClient() {
 
               {/* Remarks */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Rework Clearance Remarks / Notes
                 </label>
                 <input
@@ -2491,16 +2492,16 @@ export default function QcInspectionClient() {
                   value={reworkRemarks}
                   onChange={(e) => setReworkRemarks(e.target.value)}
                   placeholder="e.g. Straightened on Bigwood machine, surface re-inspected 100% OK"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-amber-500"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
               {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setReworkModalOpen(false)}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="rounded-lg border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                 >
                   Cancel
                 </button>
