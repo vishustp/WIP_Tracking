@@ -218,7 +218,49 @@ FROM stage_calculated sc;
 
 GRANT SELECT ON public.vw_route_stage_wip TO anon, authenticated, service_role;
 
+-- Ensure acknowledgements table exists
+CREATE TABLE IF NOT EXISTS public.aging_alert_acknowledgements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  work_order_id uuid NOT NULL REFERENCES public.work_orders(id) ON DELETE CASCADE,
+  stage_code text NOT NULL,
+  acknowledged_by text NOT NULL,
+  notes text,
+  snooze_until date DEFAULT (CURRENT_DATE + INTERVAL '2 days'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT uq_aging_ack UNIQUE (work_order_id, stage_code)
+);
+
+ALTER TABLE public.aging_alert_acknowledgements ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE tablename = 'aging_alert_acknowledgements' 
+      AND policyname = 'Allow all to view acknowledgements'
+  ) THEN
+    CREATE POLICY "Allow all to view acknowledgements"
+      ON public.aging_alert_acknowledgements
+      FOR SELECT TO anon, authenticated, service_role USING (true);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE tablename = 'aging_alert_acknowledgements' 
+      AND policyname = 'Allow all to upsert acknowledgements'
+  ) THEN
+    CREATE POLICY "Allow all to upsert acknowledgements"
+      ON public.aging_alert_acknowledgements
+      FOR ALL TO anon, authenticated, service_role USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
+GRANT ALL ON public.aging_alert_acknowledgements TO anon, authenticated, service_role;
+
 -- Recreate dependent view: vw_wip_aging (Migration 070 definition)
+DROP VIEW IF EXISTS public.vw_wip_aging CASCADE;
+
 CREATE VIEW public.vw_wip_aging AS
 WITH active_wip AS (
   SELECT 
@@ -290,78 +332,69 @@ WITH active_wip AS (
     AND w.stage_code <> 'ROLLING'
 )
 SELECT 
-  work_order_id,
-  work_order_no,
-  customer_name,
-  grade,
-  od,
-  wt,
-  l1,
-  l2,
-  route_id,
-  route_code,
-  route_name,
-  sequence_no,
-  stage_id,
-  stage_code,
-  stage_name,
-  current_wip,
-  current_wip_pcs,
-  available_mt,
-  stage_last_log_date,
-  upstream_last_log_date,
-  rolling_plan_date,
-  wo_created_date,
+  aw.work_order_id,
+  aw.work_order_no,
+  aw.customer_name,
+  aw.grade,
+  aw.od,
+  aw.wt,
+  aw.l1,
+  aw.l2,
+  aw.route_id,
+  aw.route_code,
+  aw.route_name,
+  aw.sequence_no,
+  aw.stage_id,
+  aw.stage_code,
+  aw.stage_name,
+  aw.current_wip,
+  aw.current_wip_pcs,
+  aw.available_mt,
+  aw.stage_last_log_date,
+  aw.upstream_last_log_date,
+  aw.rolling_plan_date,
+  aw.wo_created_date,
   COALESCE(
-    stage_last_log_date,
-    upstream_last_log_date,
-    rolling_plan_date,
-    wo_created_date
+    aw.stage_last_log_date,
+    aw.upstream_last_log_date,
+    aw.rolling_plan_date,
+    aw.wo_created_date
   ) AS effective_reference_date,
+  COALESCE(
+    aw.stage_last_log_date,
+    aw.upstream_last_log_date,
+    aw.rolling_plan_date,
+    aw.wo_created_date
+  ) AS last_activity_date,
   GREATEST(0, (CURRENT_DATE - COALESCE(
-    stage_last_log_date,
-    upstream_last_log_date,
-    rolling_plan_date,
-    wo_created_date
+    aw.stage_last_log_date,
+    aw.upstream_last_log_date,
+    aw.rolling_plan_date,
+    aw.wo_created_date
   ))::integer) AS days_stuck,
   COALESCE(
-    stage_last_timestamp,
-    upstream_last_timestamp,
-    rolling_plan_timestamp,
-    wo_created_timestamp
+    aw.stage_last_timestamp,
+    aw.upstream_last_timestamp,
+    aw.rolling_plan_timestamp,
+    aw.wo_created_timestamp
   ) AS last_activity_timestamp,
   CASE
-    WHEN (CURRENT_DATE - COALESCE(stage_last_log_date, upstream_last_log_date, rolling_plan_date, wo_created_date))::integer >= 7 THEN 'CRITICAL'
-    WHEN (CURRENT_DATE - COALESCE(stage_last_log_date, upstream_last_log_date, rolling_plan_date, wo_created_date))::integer >= 3 THEN 'WARNING'
+    WHEN (CURRENT_DATE - COALESCE(aw.stage_last_log_date, aw.upstream_last_log_date, aw.rolling_plan_date, aw.wo_created_date))::integer > 5 THEN 'CRITICAL'
+    WHEN (CURRENT_DATE - COALESCE(aw.stage_last_log_date, aw.upstream_last_log_date, aw.rolling_plan_date, aw.wo_created_date))::integer >= 3 THEN 'WARNING'
     ELSE 'NORMAL'
   END AS severity,
   CASE
-    WHEN (CURRENT_DATE - COALESCE(stage_last_log_date, upstream_last_log_date, rolling_plan_date, wo_created_date))::integer >= 7 THEN 'CRITICAL'
-    WHEN (CURRENT_DATE - COALESCE(stage_last_log_date, upstream_last_log_date, rolling_plan_date, wo_created_date))::integer >= 3 THEN 'WARNING'
+    WHEN (CURRENT_DATE - COALESCE(aw.stage_last_log_date, aw.upstream_last_log_date, aw.rolling_plan_date, aw.wo_created_date))::integer > 5 THEN 'CRITICAL'
+    WHEN (CURRENT_DATE - COALESCE(aw.stage_last_log_date, aw.upstream_last_log_date, aw.rolling_plan_date, aw.wo_created_date))::integer >= 3 THEN 'WARNING'
     ELSE 'NORMAL'
   END AS aging_status,
-  COALESCE(
-    stage_last_log_date,
-    upstream_last_log_date,
-    rolling_plan_date,
-    wo_created_date
-  ) AS last_activity_date,
-  COALESCE(
-    (SELECT ack.acknowledged_at
-     FROM public.wip_aging_acknowledgements ack
-     WHERE ack.work_order_id = active_wip.work_order_id
-       AND ack.stage_code = active_wip.stage_code
-     ORDER BY ack.acknowledged_at DESC LIMIT 1),
-    NULL
-  ) AS acknowledged_at,
-  COALESCE(
-    (SELECT ack.acknowledged_by
-     FROM public.wip_aging_acknowledgements ack
-     WHERE ack.work_order_id = active_wip.work_order_id
-       AND ack.stage_code = active_wip.stage_code
-     ORDER BY ack.acknowledged_at DESC LIMIT 1),
-    NULL
-  ) AS acknowledged_by
-FROM active_wip;
+  COALESCE(ack.id IS NOT NULL AND (ack.snooze_until IS NULL OR ack.snooze_until >= CURRENT_DATE), false) AS is_acknowledged,
+  ack.acknowledged_by,
+  ack.notes AS ack_notes,
+  ack.snooze_until AS ack_snooze_until
+FROM active_wip aw
+LEFT JOIN public.aging_alert_acknowledgements ack
+  ON ack.work_order_id = aw.work_order_id
+ AND ack.stage_code = aw.stage_code;
 
 GRANT SELECT ON public.vw_wip_aging TO anon, authenticated, service_role;
