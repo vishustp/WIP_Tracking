@@ -73,6 +73,7 @@ interface RollingPlan {
   mh_l2: number | null;
   created_at: string;
   rolling_date?: string | null;
+  multiple?: number | null;
 }
 
 interface StageWipRow {
@@ -105,6 +106,7 @@ interface ProductionLog {
   output_pcs: number;
   rejection_qty: number;
   rejection_pcs: number;
+  htc_ok?: number;
   htc_ok_qty?: number;
   htc_ok_pcs?: number;
   operator_name: string | null;
@@ -228,6 +230,7 @@ export default function WorkOrderTrackingClient() {
           output_pcs: Number(l.output_pcs || 0),
           rejection_qty: Number(l.rejection_qty || 0),
           rejection_pcs: Number(l.rejection_pcs || 0),
+          htc_ok: Number(l.htc_ok ?? l.htc_ok_qty ?? 0),
           htc_ok_qty: Number(l.htc_ok ?? l.htc_ok_qty ?? 0),
           htc_ok_pcs: Number(l.htc_ok_pcs || 0),
           operator_name: l.operator_name || null,
@@ -458,9 +461,15 @@ export default function WorkOrderTrackingClient() {
       };
       const getLogHtcOkPcs = (l: any) => {
         if (Number(l.htc_ok_pcs || 0) > 0) return Number(l.htc_ok_pcs);
-        if (Number(l.htc_ok || 0) > 0) {
-          const { pcs } = extractPcsFromRemarks(l.remarks);
-          return pcs || (mhAvgLen > 0 ? Math.round(Number(l.htc_ok) / mhAvgLen) : 0);
+        const htcVal = Number(l.htc_ok ?? l.htc_ok_qty ?? 0);
+        if (htcVal > 0) {
+          const { pcs, rejPcs } = extractPcsFromRemarks(l.remarks);
+          const totalPcs = pcs || (Number(l.output_pcs || 0) > 0 ? Number(l.output_pcs) : 0);
+          const rejectedPcs = rejPcs || (Number(l.rejection_pcs || 0) > 0 ? Number(l.rejection_pcs) : 0);
+          if (totalPcs > 0) {
+            return Math.max(0, totalPcs - rejectedPcs);
+          }
+          return mhAvgLen > 0 ? Math.round(htcVal / mhAvgLen) : 0;
         }
         return 0;
       };
@@ -477,9 +486,13 @@ export default function WorkOrderTrackingClient() {
       const rollingRejPcs = rollingRejPcsLogged > 0 ? rollingRejPcsLogged : (mhAvgLen > 0 ? Math.round(rollingRejMtr / mhAvgLen) : 0);
 
       // Strictly HTC OK quantity from rolling!
-      const rollingHtcOkMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty || 0), 0);
+      const rollingHtcOkMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty ?? l.htc_ok ?? 0), 0);
       const rollingHtcOkPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogHtcOkPcs(l), 0);
-      const rollingHtcOkPcs = rollingHtcOkPcsLogged > 0 ? rollingHtcOkPcsLogged : (mhAvgLen > 0 ? Math.round(rollingHtcOkMtr / mhAvgLen) : 0);
+      const rollingHtcOkPcs = rollingHtcOkPcsLogged > 0
+        ? rollingHtcOkPcsLogged
+        : (rollingRejPcs === 0 && rollingOutPcs > 0
+            ? rollingOutPcs
+            : (mhAvgLen > 0 ? Math.round(rollingHtcOkMtr / mhAvgLen) : 0));
 
       // Hollow Heat Treatment (HTC) stats
       const masterHtcLogs = masterLogs.filter((l) => l.stage_code === 'HOLLOW_HEAT_TREATMENT');
@@ -491,9 +504,13 @@ export default function WorkOrderTrackingClient() {
       const htcRejPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const htcRejPcs = htcRejPcsLogged > 0 ? htcRejPcsLogged : (mhAvgLen > 0 ? Math.round(htcRejMtr / mhAvgLen) : 0);
 
-      const htcOkMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty || 0), 0);
+      const htcOkMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty ?? l.htc_ok ?? 0), 0);
       const htcOkPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogHtcOkPcs(l), 0);
-      const htcOkPcs = htcOkPcsLogged > 0 ? htcOkPcsLogged : (mhAvgLen > 0 ? Math.round(htcOkMtr / mhAvgLen) : 0);
+      const htcOkPcs = htcOkPcsLogged > 0
+        ? htcOkPcsLogged
+        : (htcRejPcs === 0 && htcOutPcs > 0
+            ? htcOutPcs
+            : (mhAvgLen > 0 ? Math.round(htcOkMtr / mhAvgLen) : 0));
 
       // Draw Bench stats
       const masterDrawLogs = masterLogs.filter((l) => l.stage_code === 'DRAW');
@@ -593,6 +610,18 @@ export default function WorkOrderTrackingClient() {
         return { dwellDays: days, agingSeverity: sev };
       };
 
+      let planMultiple = 1;
+      try {
+        const parsed = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status;
+        planMultiple = Number(plan?.multiple || parsed?.multiple || 1);
+      } catch {}
+
+      const downstreamMotherPcsFromBandSaw = mhAvgLen > 0 && (bandSawOutMtr + bandSawRejMtr) > 0
+        ? Math.round((bandSawOutMtr + bandSawRejMtr) / mhAvgLen)
+        : (planMultiple > 1
+            ? Math.round((bandSawOutPcs + bandSawRejPcs) / planMultiple)
+            : (bandSawOutPcs + bandSawRejPcs));
+
       const stagesData: StageTrackingMetric[] = STAGES_ORDER.map((stageDef): StageTrackingMetric => {
         const stageCode = stageDef.code;
 
@@ -676,7 +705,13 @@ export default function WorkOrderTrackingClient() {
           const divOut = getStageDivOut(effectiveMasterWoId, 'ROLLING');
           const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
           const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
-          const downstreamConsumedPcs = hasHtcInRoute ? (htcOutPcs + htcRejPcs) : (drawOutPcs + drawRejPcs);
+          const downstreamConsumedPcs = Math.max(
+            hasHtcInRoute ? (htcOutPcs + htcRejPcs) : 0,
+            hasPilgerInRoute ? (pilgerOutPcs + pilgerRejPcs) : 0,
+            hasDrawInRoute ? (drawOutPcs + drawRejPcs) : 0,
+            hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
+            downstreamMotherPcsFromBandSaw
+          );
 
           let wipPcs = 0;
           if (rollingOutPcs > 0 || divInPcs > 0) {
@@ -746,7 +781,13 @@ export default function WorkOrderTrackingClient() {
           // Downstream WIP only exists after rolling production is done, and strictly from HTC OK!
           const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
           const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
-          const consumedPcs = htcOutPcs + htcRejPcs;
+          const consumedPcs = Math.max(
+            htcOutPcs + htcRejPcs,
+            hasPilgerInRoute ? (pilgerOutPcs + pilgerRejPcs) : 0,
+            hasDrawInRoute ? (drawOutPcs + drawRejPcs) : 0,
+            hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
+            downstreamMotherPcsFromBandSaw
+          );
 
           let wipPcs = 0;
           if (rollingHtcOkPcs > 0 || divInPcs > 0) {
@@ -820,7 +861,11 @@ export default function WorkOrderTrackingClient() {
           const effDrawLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = effDrawLen > 0 ? Math.round(divIn / effDrawLen) : 0;
           const divOutPcs = effDrawLen > 0 ? Math.round(divOut / effDrawLen) : 0;
-          const consumedPcs = drawOutPcs + drawRejPcs;
+          const consumedPcs = Math.max(
+            drawOutPcs + drawRejPcs,
+            hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
+            downstreamMotherPcsFromBandSaw
+          );
 
           let wipPcs = 0;
           if (incomingPcs > 0 || divInPcs > 0) {
@@ -897,7 +942,11 @@ export default function WorkOrderTrackingClient() {
           const effPilgerLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = effPilgerLen > 0 ? Math.round(divIn / effPilgerLen) : 0;
           const divOutPcs = effPilgerLen > 0 ? Math.round(divOut / effPilgerLen) : 0;
-          const consumedPcs = pilgerOutPcs + pilgerRejPcs;
+          const consumedPcs = Math.max(
+            pilgerOutPcs + pilgerRejPcs,
+            hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
+            downstreamMotherPcsFromBandSaw
+          );
 
           let wipPcs = 0;
           if (incomingPcs > 0 || divInPcs > 0) {
@@ -971,7 +1020,10 @@ export default function WorkOrderTrackingClient() {
             : Math.max(0, drawOutPcs - drawRejPcs);
           const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
           const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
-          const consumedPcs = htOutPcs + htRejPcs;
+          const consumedPcs = Math.max(
+            htOutPcs + htRejPcs,
+            downstreamMotherPcsFromBandSaw
+          );
 
           let wipPcs = 0;
           if (incomingNetPcs > 0 || divInPcs > 0) {
@@ -2631,9 +2683,14 @@ export default function WorkOrderTrackingClient() {
                                       const isMh = log.stage_code === 'ROLLING' || log.stage_code === 'HOLLOW_HEAT_TREATMENT';
                                       const mhLen = (data.plan?.mh_l1 && data.plan?.mh_l2 ? (data.plan.mh_l1 + data.plan.mh_l2) / 2 : data.plan?.mh_l1 || data.plan?.mh_l2) || data.avgLen;
                                       const effLen = isMh && mhLen > 0 ? mhLen : (data.avgLen > 0 ? data.avgLen : 6.0);
-                                      const outPcs = log.output_pcs > 0 ? log.output_pcs : (effLen > 0 && log.output_qty > 0 ? Math.round(log.output_qty / effLen) : 0);
-                                      const rejPcs = log.rejection_pcs > 0 ? log.rejection_pcs : (effLen > 0 && log.rejection_qty > 0 ? Math.round(log.rejection_qty / effLen) : 0);
-                                      const htcPcs = Number(log.htc_ok_pcs || 0) > 0 ? Number(log.htc_ok_pcs) : (effLen > 0 && Number(log.htc_ok_qty || 0) > 0 ? Math.round(Number(log.htc_ok_qty) / effLen) : 0);
+                                      const { pcs: logRemarksPcs, rejPcs: logRemarksRejPcs } = extractPcsFromRemarks(log.remarks);
+                                      const outPcs = log.output_pcs > 0 ? log.output_pcs : (logRemarksPcs || (effLen > 0 && log.output_qty > 0 ? Math.round(log.output_qty / effLen) : 0));
+                                      const rejPcs = log.rejection_pcs > 0 ? log.rejection_pcs : (logRemarksRejPcs || (effLen > 0 && log.rejection_qty > 0 ? Math.round(log.rejection_qty / effLen) : 0));
+                                      const htcPcs = Number(log.htc_ok_pcs || 0) > 0
+                                        ? Number(log.htc_ok_pcs)
+                                        : (Number(log.htc_ok_qty || log.htc_ok || 0) > 0
+                                            ? (logRemarksPcs ? Math.max(0, logRemarksPcs - (rejPcs || 0)) : (effLen > 0 ? Math.round(Number(log.htc_ok_qty || log.htc_ok || 0) / effLen) : 0))
+                                            : 0);
 
                                       return (
                                         <tr key={log.id} className="hover:bg-slate-50/60">

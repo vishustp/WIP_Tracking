@@ -265,16 +265,22 @@ export async function GET(req: NextRequest) {
     };
 
     const getLogHtcOkPcs = (log: any, fallbackAvg: number = 0) => {
-      if (Number(log.htc_ok || 0) > 0) {
-        if (log.output_pcs !== undefined && log.output_pcs !== null && Number(log.output_pcs) > 0) {
-          return Number(log.output_pcs);
+      const htcOkVal = Number(log.htc_ok ?? log.htc_ok_qty ?? 0);
+      if (htcOkVal > 0) {
+        if (log.htc_ok_pcs !== undefined && log.htc_ok_pcs !== null && Number(log.htc_ok_pcs) > 0) {
+          return Number(log.htc_ok_pcs);
         }
         const parsed = extractPcsFromRemarks(log.remarks);
-        if (parsed.pcs !== null && parsed.pcs > 0) {
-          return parsed.pcs;
+        if (parsed.pcs !== null && parsed.pcs !== undefined && parsed.pcs > 0) {
+          const rejPcs = parsed.rejPcs || (Number(log.rejection_pcs || 0) > 0 ? Number(log.rejection_pcs) : 0);
+          return Math.max(0, parsed.pcs - rejPcs);
+        }
+        if (log.output_pcs !== undefined && log.output_pcs !== null && Number(log.output_pcs) > 0) {
+          const rejPcs = Number(log.rejection_pcs || 0);
+          return Math.max(0, Number(log.output_pcs) - rejPcs);
         }
         if (fallbackAvg > 0) {
-          return Math.round(Number(log.htc_ok) / fallbackAvg);
+          return Math.round(htcOkVal / fallbackAvg);
         }
       }
       return 0;
