@@ -171,7 +171,8 @@ export async function fetchEligibleSourceWorkOrders(): Promise<Array<{
   const { data, error } = await supabase
     .from('work_orders')
     .select('id, work_order_no, customer_name, size_od, size_wt, grade, specification, l1, l2')
-    .not('status', 'in', '("Completed","Cancelled")')
+    .neq('status', 'Completed')
+    .neq('id', '00000000-0000-0000-0000-00000000000b')
     .order('work_order_no');
 
   if (error) {
