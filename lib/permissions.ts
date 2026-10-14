@@ -1085,9 +1085,41 @@ export function usePermissions() {
       user?.permissions?.rolling_plan === 'edit' ||
       user?.permissions?.diversion === 'edit' ||
       user?.permissions?.work_order === 'edit',
+    canManageWorkOrders:
+      group === 'admin' ||
+      group === 'super_user' ||
+      user?.permissions?.work_order === 'edit' ||
+      isPpcOrAdminUser(user, group),
     canSwitchProfile: canSwitchProfile(user),
     canEditProfile: canEditProfile(user),
     isRouteVisible: (href: string) => isRouteVisible(user, href),
     refreshUser,
   };
 }
+
+/**
+ * Checks if the user belongs to PPC (Production Planning & Control) or Admin group,
+ * giving them authority to manage work order lifecycle statuses, mark completion, and manage schedules.
+ */
+export function isPpcOrAdminUser(
+  profile?: AppUserProfile | null,
+  group?: UserGroup
+): boolean {
+  if (!profile && !group) return false;
+  const grp = group || profile?.group;
+  if (grp === 'admin' || grp === 'super_user') return true;
+  if (profile?.permissions?.work_order === 'edit') return true;
+  const roleStr = (profile?.role || '').toLowerCase();
+  const titleStr = (profile?.role_title || '').toLowerCase();
+  const deptStr = (profile?.department || '').toLowerCase();
+  return (
+    roleStr.includes('admin') ||
+    roleStr.includes('manager') ||
+    roleStr.includes('ppc') ||
+    titleStr.includes('ppc') ||
+    titleStr.includes('planning') ||
+    deptStr.includes('ppc') ||
+    deptStr.includes('planning')
+  );
+}
+

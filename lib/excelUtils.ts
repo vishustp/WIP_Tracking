@@ -64,10 +64,27 @@ export function parseExcelDate(val: unknown): string {
 export async function exportJsonToExcel(
   data: Record<string, any>[],
   sheetName: string,
-  fileName: string
+  fileName: string,
+  colWidths?: { wch: number }[]
 ): Promise<void> {
   const XLSX = await getXlsx();
   const ws = XLSX.utils.json_to_sheet(data);
+  if (colWidths) {
+    ws['!cols'] = colWidths;
+  } else if (data.length > 0) {
+    const keys = Object.keys(data[0]);
+    ws['!cols'] = keys.map((key) => {
+      let maxLen = key.length;
+      for (const row of data) {
+        const val = row[key];
+        if (val !== null && val !== undefined) {
+          const str = String(val);
+          if (str.length > maxLen) maxLen = Math.min(str.length, 50);
+        }
+      }
+      return { wch: Math.max(maxLen + 3, 10) };
+    });
+  }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, fileName);

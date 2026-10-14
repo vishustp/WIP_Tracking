@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { pendingOrderColumns } from '@/lib/reports/pendingOrdersConfig';
+import { isPpcOrAdminUser } from '@/lib/permissions';
 
 describe('Pending Orders Status Filter and DataReport logic', () => {
   const sampleRows = [
@@ -327,6 +328,41 @@ describe('Pending Orders Status Filter and DataReport logic', () => {
     // Empty set
     expect(computePrimaryUom([])).toBeUndefined();
   });
+
+  it('verifies all quantity column headers indicate meters (m)', () => {
+    const orderedCol = pendingOrderColumns.find((c) => c.key === 'ordered_qty');
+    expect(orderedCol?.label).toBe('Ordered Qty (m)');
+
+    const plannedCol = pendingOrderColumns.find((c) => c.key === 'planned_qty');
+    expect(plannedCol?.label).toBe('Planned Qty (m)');
+
+    const producedCol = pendingOrderColumns.find((c) => c.key === 'produced_qty');
+    expect(producedCol?.label).toBe('Produced Qty (m)');
+
+    const pendingCol = pendingOrderColumns.find((c) => c.key === 'total_pending');
+    expect(pendingCol?.label).toBe('Balance Pending (m)');
+  });
+
+  it('correctly checks PPC and Admin authorization for completing orders', () => {
+    // Admin group
+    expect(isPpcOrAdminUser({ group: 'admin', role: 'admin' } as any, 'admin')).toBe(true);
+
+    // Super user group
+    expect(isPpcOrAdminUser({ group: 'super_user', role: 'manager' } as any, 'super_user')).toBe(true);
+
+    // PPC department user
+    expect(isPpcOrAdminUser({ group: 'user', role: 'manager', department: 'PPC Planning' } as any, 'user')).toBe(true);
+
+    // PPC title user
+    expect(isPpcOrAdminUser({ group: 'user', role: 'manager', role_title: 'PPC Incharge' } as any, 'user')).toBe(true);
+
+    // User with work_order edit permission
+    expect(isPpcOrAdminUser({ group: 'user', permissions: { work_order: 'edit' } } as any, 'user')).toBe(true);
+
+    // Regular operator without PPC permissions
+    expect(isPpcOrAdminUser({ group: 'user', role: 'draw_operator', department: 'Cold Draw', permissions: { work_order: 'view' } } as any, 'user')).toBe(false);
+  });
 });
+
 
 

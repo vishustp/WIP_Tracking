@@ -153,38 +153,47 @@ export interface RejectionSummaryKpis {
 }
 
 /**
+ * Formats rejection declarations into clean, typed key-value pairs for Excel and CSV export.
+ */
+export function formatRejectionsForExport(records: RejectionDeclaration[]): Record<string, any>[] {
+  return records.map((r) => ({
+    'Declaration No': r.declaration_no || '',
+    'Date': r.declared_at ? r.declared_at.slice(0, 10) : '',
+    'Work Order #': r.work_orders?.work_order_no || '',
+    'Customer': r.work_orders?.customer_name || '',
+    'Grade': r.work_orders?.grade || '',
+    'Size (ODxWT mm)': r.work_orders?.size_od && r.work_orders?.size_wt ? `${r.work_orders.size_od} x ${r.work_orders.size_wt}` : '',
+    'Work Center': r.work_center || '',
+    'Declared PCS': r.rejected_pcs ?? 0,
+    'Declared MTR': r.rejected_mtr ?? 0,
+    'Declared MT': r.rejected_mt ?? 0,
+    'Heat / Lot #': r.heat_lot_no || '',
+    'Reason Category': REJECTION_REASON_LABELS[r.reason_category] || r.reason_category || '',
+    'Production Remarks': r.production_remarks || '',
+    'Declared By': r.declared_by || '',
+    'Status': REJECTION_STATUS_LABELS[r.status] || r.status || '',
+    'QC Verified PCS': r.qc_verified_pcs ?? '',
+    'QC Verified MTR': r.qc_verified_mtr ?? '',
+    'QC Verified MT': r.qc_verified_mt ?? '',
+    'QC Remarks': r.qc_remarks || '',
+    'QC Verified By': r.qc_verified_by || '',
+    'QC Date': r.qc_verified_at ? r.qc_verified_at.slice(0, 10) : '',
+    'PPC Approved PCS': r.ppc_approved_pcs ?? '',
+    'PPC Approved MTR': r.ppc_approved_mtr ?? '',
+    'PPC Approved MT': r.ppc_approved_mt ?? '',
+    'PPC Remarks': r.ppc_remarks || '',
+    'PPC Approved By': r.ppc_approved_by || '',
+    'PPC Date': r.ppc_approved_at ? r.ppc_approved_at.slice(0, 10) : '',
+  }));
+}
+
+/**
  * Clean CSV Exporter for Salvage & Rejection Material Report
  */
 export function generateRejectionReportCsv(records: RejectionDeclaration[]): string {
-  const headers = [
-    'Declaration No',
-    'Date',
-    'Work Order #',
-    'Customer',
-    'Grade',
-    'Size (ODxWT mm)',
-    'Work Center',
-    'Declared PCS',
-    'Declared MTR',
-    'Declared MT',
-    'Heat / Lot #',
-    'Reason Category',
-    'Production Remarks',
-    'Declared By',
-    'Status',
-    'QC Verified PCS',
-    'QC Verified MTR',
-    'QC Verified MT',
-    'QC Remarks',
-    'QC Verified By',
-    'QC Date',
-    'PPC Approved PCS',
-    'PPC Approved MTR',
-    'PPC Approved MT',
-    'PPC Remarks',
-    'PPC Approved By',
-    'PPC Date',
-  ];
+  if (records.length === 0) return '';
+  const rows = formatRejectionsForExport(records);
+  const headers = Object.keys(rows[0]);
 
   const escapeCsv = (val: any) => {
     if (val === null || val === undefined) return '""';
@@ -192,35 +201,6 @@ export function generateRejectionReportCsv(records: RejectionDeclaration[]): str
     return `"${str}"`;
   };
 
-  const rows = records.map((r) => [
-    escapeCsv(r.declaration_no),
-    escapeCsv(r.declared_at ? r.declared_at.slice(0, 10) : ''),
-    escapeCsv(r.work_orders?.work_order_no || ''),
-    escapeCsv(r.work_orders?.customer_name || ''),
-    escapeCsv(r.work_orders?.grade || ''),
-    escapeCsv(r.work_orders?.size_od && r.work_orders?.size_wt ? `${r.work_orders.size_od} x ${r.work_orders.size_wt}` : ''),
-    escapeCsv(r.work_center),
-    escapeCsv(r.rejected_pcs),
-    escapeCsv(r.rejected_mtr),
-    escapeCsv(r.rejected_mt),
-    escapeCsv(r.heat_lot_no || ''),
-    escapeCsv(REJECTION_REASON_LABELS[r.reason_category] || r.reason_category),
-    escapeCsv(r.production_remarks),
-    escapeCsv(r.declared_by),
-    escapeCsv(REJECTION_STATUS_LABELS[r.status] || r.status),
-    escapeCsv(r.qc_verified_pcs ?? ''),
-    escapeCsv(r.qc_verified_mtr ?? ''),
-    escapeCsv(r.qc_verified_mt ?? ''),
-    escapeCsv(r.qc_remarks || ''),
-    escapeCsv(r.qc_verified_by || ''),
-    escapeCsv(r.qc_verified_at ? r.qc_verified_at.slice(0, 10) : ''),
-    escapeCsv(r.ppc_approved_pcs ?? ''),
-    escapeCsv(r.ppc_approved_mtr ?? ''),
-    escapeCsv(r.ppc_approved_mt ?? ''),
-    escapeCsv(r.ppc_remarks || ''),
-    escapeCsv(r.ppc_approved_by || ''),
-    escapeCsv(r.ppc_approved_at ? r.ppc_approved_at.slice(0, 10) : ''),
-  ]);
-
-  return [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+  const csvRows = rows.map((r) => headers.map((h) => escapeCsv(r[h])).join(','));
+  return [headers.join(','), ...csvRows].join('\r\n');
 }

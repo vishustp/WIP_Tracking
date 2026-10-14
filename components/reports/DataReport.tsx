@@ -22,7 +22,11 @@ import {
   AlertTriangle,
   Copy,
   Check,
+  CheckCircle2,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { useOptionalUserSession } from '@/contexts/UserSessionContext';
+import { isPpcOrAdminUser } from '@/lib/permissions';
 
 type Props = {
   title: string;
@@ -31,11 +35,18 @@ type Props = {
   searchKeys: string[];
   dateKey?: string;
   statusKey?: string;
+  canMarkCompleted?: boolean;
 };
 
 const STANDARD_STATUSES = ['Pending Plan', 'Scheduled', 'In Progress', 'Completed'];
 
-export default function DataReport({ title, view, columns, searchKeys, dateKey, statusKey }: Props) {
+export default function DataReport({ title, view, columns, searchKeys, dateKey, statusKey, canMarkCompleted: canMarkCompletedProp }: Props) {
+  const session = useOptionalUserSession();
+  const canCompleteOrders = useMemo(() => {
+    if (typeof canMarkCompletedProp === 'boolean') return canMarkCompletedProp;
+    return isPpcOrAdminUser(session?.profile, session?.group);
+  }, [canMarkCompletedProp, session]);
+
   const [rows, setRows] = useState<any[]>([]);
   const [q, setQ] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
@@ -48,6 +59,8 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [targetCompleteRow, setTargetCompleteRow] = useState<any | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const effectiveStatusKey = useMemo(() => {
@@ -124,6 +137,33 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
       setRefreshing(false);
     }
   }, [view]);
+
+  const handleConfirmMarkCompleted = async () => {
+    if (!targetCompleteRow) return;
+    const woId = targetCompleteRow.work_order_id || targetCompleteRow.id;
+    const woNo = targetCompleteRow.work_order_no;
+    setUpdatingStatus(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('work_orders')
+        .update({
+          status: 'Completed',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', woId);
+
+      if (error) throw error;
+
+      toast.success(`Work Order ${woNo} marked as Completed.`);
+      setTargetCompleteRow(null);
+      await loadData(true);
+    } catch (err: any) {
+      toast.error(`Failed to complete work order: ${err?.message || err}`);
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
 
   useEffect(() => {
     void loadData();
@@ -470,14 +510,14 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
           {kpiMetrics.hasOrdered && (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-3 shadow-2xs">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Total Ordered
+                Total Ordered (m)
               </div>
               <div className="mt-1 flex items-baseline justify-between">
                 <span className="text-xl font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100">
                   {kpiMetrics.totalOrdered.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                 </span>
                 <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
-                  {kpiMetrics.primaryUom || 'Qty'}
+                  m Total
                 </span>
               </div>
             </div>
@@ -487,7 +527,7 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
           {kpiMetrics.hasPending && (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-3 shadow-2xs">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Balance Pending
+                Balance Pending (m)
               </div>
               <div className="mt-1 flex items-baseline justify-between">
                 <span
@@ -500,7 +540,7 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                   {kpiMetrics.totalPending.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                 </span>
                 <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
-                  {kpiMetrics.primaryUom ? `${kpiMetrics.primaryUom} Rem.` : 'Rem.'}
+                  m Remaining
                 </span>
               </div>
             </div>
@@ -873,6 +913,25 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                       );
                     })}
                   </div>
+
+                  {canCompleteOrders && (
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold text-slate-400">PPC Action</span>
+                      {String(statusVal || '').toLowerCase() === 'completed' ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
+                          <CheckCircle2 size={13} /> Completed
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setTargetCompleteRow(r)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-300 shadow-2xs cursor-pointer"
+                        >
+                          <CheckCircle2 size={13} /> Mark Completed
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -938,6 +997,11 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                         </th>
                       );
                     })}
+                    {canCompleteOrders && (
+                      <th className="whitespace-nowrap px-3 py-2.5 font-bold uppercase tracking-wider text-[11px] text-center text-slate-600 dark:text-slate-400">
+                        PPC Action
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 transition-opacity duration-150 ease-out motion-reduce:transition-none">
@@ -1010,6 +1074,25 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                           </td>
                         );
                       })}
+                      {canCompleteOrders && (
+                        <td className="whitespace-nowrap px-3 py-2 text-center">
+                          {String(r[effectiveStatusKey ?? 'status']).toLowerCase() === 'completed' ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
+                              <CheckCircle2 size={13} className="text-emerald-500" /> Done
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setTargetCompleteRow(r)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 active:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-900 border border-emerald-300 dark:border-emerald-700 transition-colors shadow-2xs cursor-pointer"
+                              title="Mark this work order as Completed (PPC Authorization)"
+                            >
+                              <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400" />
+                              <span>Mark Completed</span>
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -1070,6 +1153,61 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PPC Mark Completed Confirmation Modal */}
+      {targetCompleteRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
+                <CheckCircle2 size={24} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                  Mark Work Order as Completed
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Are you sure you want to mark work order <strong className="font-mono text-slate-800 dark:text-slate-200">{targetCompleteRow.work_order_no}</strong> as <strong className="text-emerald-600 dark:text-emerald-400">Completed</strong>?
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-700 dark:text-slate-300 space-y-1">
+              <div>Customer: <strong>{targetCompleteRow.customer || '—'}</strong></div>
+              <div>Size / Grade: <strong>{targetCompleteRow.od}×{targetCompleteRow.wt} mm ({targetCompleteRow.grade || '—'})</strong></div>
+              <div>Balance Pending: <strong>{Number(targetCompleteRow.total_pending || 0).toLocaleString()} m</strong></div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setTargetCompleteRow(null)}
+                disabled={updatingStatus}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={updatingStatus}
+                onClick={handleConfirmMarkCompleted}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+              >
+                {updatingStatus ? (
+                  <>
+                    <RefreshCw size={13} className="mr-1 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  'Confirm Completed'
+                )}
+              </Button>
             </div>
           </div>
         </div>

@@ -31,7 +31,9 @@ import {
   REJECTION_STATUS_LABELS,
   WORK_CENTER_OPTIONS,
   generateRejectionReportCsv,
+  formatRejectionsForExport,
 } from '@/lib/rejections/types';
+import { exportJsonToExcel } from '@/lib/excelUtils';
 import { fetchRejections } from '@/lib/rejections/client';
 import DeclareRejectionModal from '@/components/rejections/DeclareRejectionModal';
 
@@ -52,6 +54,7 @@ const fmt = (n: number | null | undefined, digits = 2) =>
 export default function SalvageRejectionReportClient() {
   const [records, setRecords] = useState<RejectionDeclaration[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   // Filters
   const [declareModalOpen, setDeclareModalOpen] = useState(false);
@@ -167,6 +170,29 @@ export default function SalvageRejectionReportClient() {
     toast.success('Salvage & Rejection report exported to CSV.');
   };
 
+  // Excel Export handler
+  const handleExportExcel = async () => {
+    if (records.length === 0) {
+      toast.error('No records available to export.');
+      return;
+    }
+    setExportingExcel(true);
+    try {
+      const exportData = formatRejectionsForExport(records);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      await exportJsonToExcel(
+        exportData,
+        'Second Declarations',
+        `Second_Declaration_Report_${dateStr}.xlsx`
+      );
+      toast.success(`Exported ${records.length} records to Excel.`);
+    } catch (err: any) {
+      toast.error(`Export failed: ${err?.message || err}`);
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -263,9 +289,20 @@ export default function SalvageRejectionReportClient() {
           </button>
 
           <button
+            onClick={handleExportExcel}
+            disabled={exportingExcel || records.length === 0}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 shadow-sm cursor-pointer disabled:opacity-50"
+            title="Export declarations to Excel (.xlsx)"
+          >
+            <FileSpreadsheet className={`w-4 h-4 ${exportingExcel ? 'animate-pulse' : ''}`} />
+            <span>{exportingExcel ? 'Exporting...' : 'Export Excel'}</span>
+          </button>
+
+          <button
             onClick={handleExportCsv}
             disabled={records.length === 0}
-            className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 shadow-sm cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 shadow-sm cursor-pointer"
+            title="Export declarations to CSV"
           >
             <Download className="w-4 h-4" />
             <span>Export CSV</span>

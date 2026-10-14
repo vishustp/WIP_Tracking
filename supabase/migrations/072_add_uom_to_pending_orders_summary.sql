@@ -1,8 +1,9 @@
 -- 072_add_uom_to_pending_orders_summary.sql
 -- Expose order UOM in vw_work_order_summary for Pending Orders report and operational dashboards
 
--- 1. Drop dependent view vw_dashboard_kpis first to permit cleanly updating vw_work_order_summary column schema
-drop view if exists public.vw_dashboard_kpis;
+-- 1. Drop dependent views first to permit cleanly updating vw_work_order_summary column schema
+drop view if exists public.vw_dashboard_kpis cascade;
+drop view if exists public.vw_work_order_summary cascade;
 
 -- 2. Recreate vw_work_order_summary with uom
 create or replace view public.vw_work_order_summary as

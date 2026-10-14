@@ -31,7 +31,9 @@ import {
   canApproveRejection,
   RejectionFilterOptions,
   RejectionSummaryKpis,
+  formatRejectionsForExport,
 } from '@/lib/rejections/types';
+import { exportJsonToExcel } from '@/lib/excelUtils';
 import { fetchRejections, fetchRejectionSummaryKpis } from '@/lib/rejections/client';
 import DeclareRejectionModal from './DeclareRejectionModal';
 import VerifyRejectionModal from './VerifyRejectionModal';
@@ -78,6 +80,7 @@ export default function RejectionsBoardClient() {
   const [verifyModalOpen, setVerifyModalOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [selectedDeclaration, setSelectedDeclaration] = useState<RejectionDeclaration | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Permissions based on user profile
   const userRole = currentUser?.role || currentUser?.role_title || '';
@@ -127,6 +130,29 @@ export default function RejectionsBoardClient() {
     setApproveModalOpen(true);
   };
 
+  const handleExportExcel = async () => {
+    if (declarations.length === 0) {
+      toast.error('No declarations available to export with current filters.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const exportData = formatRejectionsForExport(declarations);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filterLabel = activeTab !== 'ALL' ? `_${activeTab}` : '';
+      await exportJsonToExcel(
+        exportData,
+        'Second Declarations',
+        `Second_Declarations${filterLabel}_${dateStr}.xlsx`
+      );
+      toast.success(`Exported ${declarations.length} declarations to Excel.`);
+    } catch (err: any) {
+      toast.error(`Export failed: ${err?.message || err}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
       {/* Page Title & Main Action Bar */}
@@ -156,6 +182,16 @@ export default function RejectionsBoardClient() {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
+          </button>
+
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting || declarations.length === 0}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm cursor-pointer"
+            title="Export declarations to Excel (.xlsx)"
+          >
+            <FileSpreadsheet className={`w-4 h-4 ${exporting ? 'animate-pulse' : ''}`} />
+            <span>{exporting ? 'Exporting...' : 'Export to Excel'}</span>
           </button>
 
           {isDeclarant && (

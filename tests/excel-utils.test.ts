@@ -29,4 +29,29 @@ describe("Excel Utilities (Dynamic XLSX)", () => {
     expect((result.records[0] as any)["Work Order"]).toBe("WO-101");
     expect(Number((result.records[0] as any)["Pieces"])).toBe(83);
   });
+
+  it("calculates column widths when generating worksheets", async () => {
+    const XLSX = await getXlsx();
+    const testData = [
+      { "Declaration No": "REJ-2026-0001", "Customer": "BHEL Haridwar High Pressure Boiler Plant" },
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(testData);
+    const keys = Object.keys(testData[0]);
+    ws['!cols'] = keys.map((key) => {
+      let maxLen = key.length;
+      for (const row of testData) {
+        const val = (row as any)[key];
+        if (val !== null && val !== undefined) {
+          const str = String(val);
+          if (str.length > maxLen) maxLen = Math.min(str.length, 50);
+        }
+      }
+      return { wch: Math.max(maxLen + 3, 10) };
+    });
+
+    expect(ws['!cols']).toBeDefined();
+    expect(ws['!cols']![0].wch).toBeGreaterThanOrEqual(16);
+    expect(ws['!cols']![1].wch).toBeGreaterThanOrEqual(40);
+  });
 });
