@@ -281,26 +281,26 @@ describe('Pending Orders Status Filter and DataReport logic', () => {
     expect(Math.ceil(totalItems / 500)).toBe(1);
   });
 
-  it('ensures Pending Orders report defines UOM column next to Ordered Qty', () => {
+  it('ensures Pending Orders report omits UOM column since all quantities are shown in meters (m)', () => {
     expect(pendingOrderColumns).toBeDefined();
     const uomCol = pendingOrderColumns.find((c) => c.key === 'uom');
-    expect(uomCol).toBeDefined();
-    expect(uomCol?.label).toBe('UOM');
+    expect(uomCol).toBeUndefined();
 
-    const orderedIdx = pendingOrderColumns.findIndex((c) => c.key === 'ordered_qty');
-    const uomIdx = pendingOrderColumns.findIndex((c) => c.key === 'uom');
-    expect(uomIdx).toBe(orderedIdx + 1);
+    const orderedCol = pendingOrderColumns.find((c) => c.key === 'ordered_qty');
+    const plannedCol = pendingOrderColumns.find((c) => c.key === 'planned_qty');
+    expect(orderedCol?.label).toBe('Ordered Qty (m)');
+    expect(plannedCol?.label).toBe('Planned Qty (m)');
   });
 
-  it('supports searching work orders by UOM', () => {
+  it('supports searching work orders across standard fields', () => {
     const searchKeys = pendingOrderColumns.map((c) => c.key);
-    const pcsOrders = filterRows(sampleRows, 'status', 'ALL', 'Pcs', searchKeys);
-    expect(pcsOrders).toHaveLength(1);
-    expect(pcsOrders[0].work_order_no).toBe('WO-103');
-    expect(pcsOrders[0].uom).toBe('Pcs');
+    const thermRows = filterRows(sampleRows, 'status', 'ALL', 'Thermax', searchKeys);
+    expect(thermRows).toHaveLength(1);
+    expect(thermRows[0].work_order_no).toBe('WO-103');
 
-    const mtrsOrders = filterRows(sampleRows, 'status', 'ALL', 'Mtrs', searchKeys);
-    expect(mtrsOrders).toHaveLength(3);
+    const lntRows = filterRows(sampleRows, 'status', 'ALL', 'L&T', searchKeys);
+    expect(lntRows).toHaveLength(1);
+    expect(lntRows[0].work_order_no).toBe('WO-102');
   });
 
   it('determines primaryUom correctly for homogeneous vs mixed datasets', () => {
@@ -341,6 +341,9 @@ describe('Pending Orders Status Filter and DataReport logic', () => {
 
     const pendingCol = pendingOrderColumns.find((c) => c.key === 'total_pending');
     expect(pendingCol?.label).toBe('Balance Pending (m)');
+
+    const uomCol = pendingOrderColumns.find((c) => c.key === 'uom');
+    expect(uomCol).toBeUndefined();
   });
 
   it('correctly checks PPC and Admin authorization for completing orders', () => {

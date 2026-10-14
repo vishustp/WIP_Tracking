@@ -10,7 +10,6 @@ export const pendingOrderColumns: ColumnDef[] = [
   ['wt', 'WT'],
   ['grade', 'Grade'],
   ['ordered_qty', 'Ordered Qty (m)'],
-  ['uom', 'UOM'],
   ['planned_qty', 'Planned Qty (m)'],
   ['produced_qty', 'Produced Qty (m)'],
   ['route', 'Route'],

@@ -9,6 +9,7 @@ export default function Page() {
       columns={pendingOrderColumns}
       searchKeys={pendingOrderColumns.map((x) => x.key)}
       statusKey="status"
+      canMarkCompleted={true}
     />
   );
 }
