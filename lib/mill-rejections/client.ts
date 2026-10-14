@@ -54,8 +54,8 @@ export async function fetchMillRejectionsAndSalvage(
 
     // 1. Call get_production_entries RPC (security definer with full route, stage, and WO joins)
     // 2. Query qc_inspections for VDI Salvage & VDI Rejection
-    // 3. Query vw_route_stage_wip to attach work order metadata to QC inspections
-    const [prodRes, qcRes, wipRes] = await Promise.all([
+    // 3. Query work_orders to attach steel grade, specification, and customer metadata
+    const [prodRes, qcRes, woRes] = await Promise.all([
       supabase.rpc('get_production_entries', {
         p_search: null,
         p_stage_code: null,
@@ -71,8 +71,9 @@ export async function fetchMillRejectionsAndSalvage(
         .or('vdi_salvage_pcs.gt.0,vdi_rejection_pcs.gt.0')
         .order('inspection_date', { ascending: false }),
       supabase
-        .from('vw_route_stage_wip')
-        .select('work_order_id, work_order_no, customer_name, size_od, size_wt'),
+        .from('work_orders')
+        .select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2')
+        .limit(10000),
     ]);
 
     if (prodRes.error && qcRes.error) {
@@ -83,16 +84,13 @@ export async function fetchMillRejectionsAndSalvage(
       };
     }
 
-    // Work order lookup map for QC inspections
-    const woMap = new Map<string, { work_order_no: string; customer_name: string; size_od: number; size_wt: number }>();
-    (wipRes.data || []).forEach((w: any) => {
-      if (w.work_order_id && !woMap.has(w.work_order_id)) {
-        woMap.set(w.work_order_id, {
-          work_order_no: w.work_order_no || '—',
-          customer_name: w.customer_name || '—',
-          size_od: Number(w.size_od || 0),
-          size_wt: Number(w.size_wt || 0),
-        });
+    // Work order lookup maps by ID and by Work Order Number
+    const woById = new Map<string, any>();
+    const woByNo = new Map<string, any>();
+    (woRes.data || []).forEach((w: any) => {
+      if (w.id) woById.set(w.id, w);
+      if (w.work_order_no) {
+        woByNo.set(w.work_order_no.trim().toUpperCase(), w);
       }
     });
 
@@ -123,6 +121,10 @@ export async function fetchMillRejectionsAndSalvage(
 
       const cleanRemarks = cleanRemarksFromSystemTags(pl.remarks);
 
+      const matchedWo = woByNo.get((pl.work_order_no || '').trim().toUpperCase());
+      const grade = matchedWo?.grade || matchedWo?.specification || '—';
+      const actualWoId = matchedWo?.id || pl.id;
+
       entries.push({
         id: `pl-${pl.id}`,
         source: 'PRODUCTION_LOG',
@@ -131,10 +133,10 @@ export async function fetchMillRejectionsAndSalvage(
         workCenterName: name,
         stageCode,
         dispositionType: 'REJECTION',
-        workOrderId: pl.id, // entry reference
+        workOrderId: actualWoId, // actual work order reference for hollow bank diversion
         workOrderNo: pl.work_order_no || '—',
-        customerName: pl.customer_name || '—',
-        grade: '—',
+        customerName: pl.customer_name || matchedWo?.customer_name || '—',
+        grade,
         sizeOd: od,
         sizeWt: wt,
         avgLength: avgLen,
@@ -155,16 +157,15 @@ export async function fetchMillRejectionsAndSalvage(
       if (filters.fromDate && qc.inspection_date < filters.fromDate) return;
       if (filters.toDate && qc.inspection_date > filters.toDate) return;
 
-      const woMeta = woMap.get(qc.work_order_id) || {
-        work_order_no: '—',
-        customer_name: '—',
-        size_od: 0,
-        size_wt: 0,
-      };
+      const woMeta = woById.get(qc.work_order_id) || woByNo.get((qc.work_order_no || '').trim().toUpperCase());
 
-      const od = woMeta.size_od;
-      const wt = woMeta.size_wt;
-      const avgLen = 6.0; // default estimated pipe length for QC if unjoined
+      const workOrderId = woMeta?.id || qc.work_order_id;
+      const workOrderNo = woMeta?.work_order_no || qc.work_order_no || '—';
+      const customerName = woMeta?.customer_name || '—';
+      const grade = woMeta?.grade || woMeta?.specification || '—';
+      const od = Number(woMeta?.size_od || 0);
+      const wt = Number(woMeta?.size_wt || 0);
+      const avgLen = Number(woMeta?.l1 && woMeta?.l2 ? (woMeta.l1 + woMeta.l2) / 2 : woMeta?.l1 || 6.0);
 
       // VDI Salvage Line
       const salPcs = Math.round(Number(qc.vdi_salvage_pcs || 0));
@@ -189,10 +190,10 @@ export async function fetchMillRejectionsAndSalvage(
           workCenterName: 'VDI Inspection',
           stageCode: 'VDI',
           dispositionType: 'SALVAGE',
-          workOrderId: qc.work_order_id,
-          workOrderNo: woMeta.work_order_no,
-          customerName: woMeta.customer_name,
-          grade: '—',
+          workOrderId,
+          workOrderNo,
+          customerName,
+          grade,
           sizeOd: od,
           sizeWt: wt,
           avgLength: avgLen,
@@ -220,10 +221,10 @@ export async function fetchMillRejectionsAndSalvage(
           workCenterName: 'VDI Inspection',
           stageCode: 'VDI',
           dispositionType: 'REJECTION',
-          workOrderId: qc.work_order_id,
-          workOrderNo: woMeta.work_order_no,
-          customerName: woMeta.customer_name,
-          grade: '—',
+          workOrderId,
+          workOrderNo,
+          customerName,
+          grade,
           sizeOd: od,
           sizeWt: wt,
           avgLength: avgLen,

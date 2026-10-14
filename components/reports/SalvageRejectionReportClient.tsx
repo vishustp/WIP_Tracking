@@ -20,6 +20,7 @@ import {
   Info,
   PlusCircle,
   ExternalLink,
+  Layers,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -36,6 +37,7 @@ import {
 import { exportJsonToExcel } from '@/lib/excelUtils';
 import { fetchRejections } from '@/lib/rejections/client';
 import DeclareRejectionModal from '@/components/rejections/DeclareRejectionModal';
+import DivertToBankModal, { DivertInitialValues } from '@/components/hollow-bank/DivertToBankModal';
 
 const WORK_CENTER_COLOR_MAP: Record<string, string> = {
   ROLLING: 'bg-orange-100 text-orange-800 border-orange-200',
@@ -64,6 +66,26 @@ export default function SalvageRejectionReportClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+
+  // Hollow Bank Modal
+  const [bankModalOpen, setBankModalOpen] = useState(false);
+  const [bankInitialValues, setBankInitialValues] = useState<DivertInitialValues | undefined>(undefined);
+
+  const handleSendToBank = (r: RejectionDeclaration) => {
+    setBankInitialValues({
+      sourceWoId: r.work_order_id,
+      sourceStageCode: r.work_center || 'DRAW',
+      heatNo: r.heat_lot_no || '',
+      od: r.work_orders?.size_od || '',
+      wt: r.work_orders?.size_wt || '',
+      grade: r.work_orders?.grade || '',
+      pcs: r.ppc_approved_pcs ?? r.rejected_pcs ?? '',
+      avgLength: r.work_orders?.l1 || '6.0',
+      totalMeters: r.ppc_approved_mtr ?? r.rejected_mtr ?? '',
+      remarks: `From Salvage Declaration ${r.declaration_no} (${r.work_center}): ${r.production_remarks || ''}`.trim(),
+    });
+    setBankModalOpen(true);
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -505,26 +527,28 @@ export default function SalvageRejectionReportClient() {
                 <th className="py-2.5 px-2.5">Date</th>
                 <th className="py-2.5 px-2.5">Stage</th>
                 <th className="py-2.5 px-2.5">Work Order #</th>
-                <th className="py-2.5 px-2.5">Customer & Grade</th>
+                <th className="py-2.5 px-2.5">Customer</th>
+                <th className="py-2.5 px-2.5">Grade</th>
                 <th className="py-2.5 px-2.5">Size (OD×WT)</th>
                 <th className="py-2.5 px-2 text-right">Declared (PCS/m/MT)</th>
                 <th className="py-2.5 px-2 text-right">Approved (PCS/m/MT)</th>
                 <th className="py-2.5 px-3">Defect Category</th>
                 <th className="py-2.5 px-3">Remarks & Audit Narrative</th>
                 <th className="py-2.5 px-2.5 text-center">Status</th>
+                <th className="py-2.5 px-2.5 text-center print:hidden">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-500">
+                  <td colSpan={13} className="py-12 text-center text-slate-500">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-slate-400" />
                     <span>Loading salvage records...</span>
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-500">
+                  <td colSpan={13} className="py-12 text-center text-slate-500">
                     <AlertTriangle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                     <p className="font-semibold text-slate-700">No rejection / salvage records found</p>
                     <p className="text-xs text-slate-400 mt-1">No items match the current filter selection</p>
@@ -562,10 +586,16 @@ export default function SalvageRejectionReportClient() {
                         {r.work_orders?.work_order_no || '—'}
                       </td>
 
-                      {/* Customer & Grade */}
+                      {/* Customer */}
                       <td className="py-2.5 px-2.5 whitespace-nowrap">
                         <div className="font-medium text-slate-900">{r.work_orders?.customer_name || '—'}</div>
-                        <div className="text-[10px] text-slate-500">{r.work_orders?.grade || '—'}</div>
+                      </td>
+
+                      {/* Grade */}
+                      <td className="py-2.5 px-2.5 whitespace-nowrap">
+                        <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-slate-100 text-slate-900 border border-slate-200">
+                          {r.work_orders?.grade || '—'}
+                        </span>
                       </td>
 
                       {/* Size */}
@@ -633,6 +663,19 @@ export default function SalvageRejectionReportClient() {
                           {badge.label}
                         </span>
                       </td>
+
+                      {/* Action: Send to Hollow Bank */}
+                      <td className="py-2.5 px-2.5 text-center whitespace-nowrap print:hidden">
+                        <button
+                          type="button"
+                          onClick={() => handleSendToBank(r)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
+                          title="Divert this salvage tube into Hollow Bank"
+                        >
+                          <Layers className="w-3.5 h-3.5" />
+                          <span>Send to Bank</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -666,6 +709,22 @@ export default function SalvageRejectionReportClient() {
           setDeclareModalOpen(false);
           loadData();
         }}
+      />
+
+      {/* Divert to Hollow Bank Modal */}
+      <DivertToBankModal
+        isOpen={bankModalOpen}
+        onClose={() => {
+          setBankModalOpen(false);
+          setBankInitialValues(undefined);
+        }}
+        onSuccess={() => {
+          setBankModalOpen(false);
+          setBankInitialValues(undefined);
+          toast.success('Material parked into Hollow Bank successfully!');
+          loadData();
+        }}
+        initialValues={bankInitialValues}
       />
     </div>
   );

@@ -3,13 +3,28 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Layers, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
 import { fetchEligibleSourceWorkOrders, createHollowBankEntry } from '@/lib/hollow-bank/client';
 import { calculatePipeWeightMt } from '@/lib/hollow-bank/types';
+
+export interface DivertInitialValues {
+  sourceWoId?: string;
+  sourceStageCode?: string;
+  heatNo?: string;
+  od?: number | string;
+  wt?: number | string;
+  grade?: string;
+  pcs?: number | string;
+  avgLength?: number | string;
+  totalMeters?: number | string;
+  remarks?: string;
+}
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialValues?: DivertInitialValues;
 }
 
 const STAGES = [
@@ -22,7 +37,7 @@ const STAGES = [
   { code: 'VDI', name: 'VDI Inspection' },
 ];
 
-export default function DivertToBankModal({ isOpen, onClose, onSuccess }: Props) {
+export default function DivertToBankModal({ isOpen, onClose, onSuccess, initialValues }: Props) {
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [loadingWo, setLoadingWo] = useState(false);
 
@@ -38,12 +53,61 @@ export default function DivertToBankModal({ isOpen, onClose, onSuccess }: Props)
   const [remarks, setRemarks] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Sync initialValues when modal opens or initialValues change
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialValues) {
+      if (initialValues.sourceWoId) setSelectedWoId(initialValues.sourceWoId);
+      if (initialValues.sourceStageCode) setSourceStageCode(initialValues.sourceStageCode);
+      if (initialValues.heatNo !== undefined) setHeatNo(initialValues.heatNo);
+      if (initialValues.od !== undefined && initialValues.od !== '') setOd(String(initialValues.od));
+      if (initialValues.wt !== undefined && initialValues.wt !== '') setWt(String(initialValues.wt));
+      if (initialValues.grade !== undefined) setGrade(initialValues.grade);
+      if (initialValues.pcs !== undefined && initialValues.pcs !== '') setPcs(String(initialValues.pcs));
+      if (initialValues.avgLength !== undefined && initialValues.avgLength !== '') setAvgLength(String(initialValues.avgLength));
+      if (initialValues.totalMeters !== undefined && initialValues.totalMeters !== '') setTotalMeters(String(initialValues.totalMeters));
+      if (initialValues.remarks !== undefined) setRemarks(initialValues.remarks);
+    } else {
+      setSelectedWoId('');
+      setSourceStageCode('ROLLING');
+      setHeatNo('');
+      setOd('');
+      setWt('');
+      setGrade('');
+      setPcs('');
+      setAvgLength('6.0');
+      setTotalMeters('');
+      setRemarks('');
+    }
+  }, [isOpen, initialValues]);
+
   useEffect(() => {
     if (!isOpen) return;
     async function loadWo() {
       setLoadingWo(true);
       try {
         const data = await fetchEligibleSourceWorkOrders();
+        // If initialValues provides a sourceWoId that is not in data, fetch it or add fallback
+        if (initialValues?.sourceWoId && !data.some((d) => d.id === initialValues.sourceWoId)) {
+          const supabase = createClient();
+          const { data: specificWo } = await supabase
+            .from('work_orders')
+            .select('id, work_order_no, customer_name, size_od, size_wt, grade, specification, l1, l2')
+            .eq('id', initialValues.sourceWoId)
+            .maybeSingle();
+          if (specificWo) {
+            data.unshift({
+              id: specificWo.id,
+              work_order_no: specificWo.work_order_no,
+              customer_name: specificWo.customer_name,
+              od: Number(specificWo.size_od || 0),
+              wt: Number(specificWo.size_wt || 0),
+              grade: specificWo.grade || specificWo.specification || '',
+              l1: Number(specificWo.l1 || 6),
+              l2: Number(specificWo.l2 || 6.5),
+            });
+          }
+        }
         setWorkOrders(data);
       } catch (err: any) {
         toast.error('Failed to load work orders: ' + err.message);
@@ -52,21 +116,24 @@ export default function DivertToBankModal({ isOpen, onClose, onSuccess }: Props)
       }
     }
     loadWo();
-  }, [isOpen]);
+  }, [isOpen, initialValues]);
 
   const selectedWo = useMemo(() => {
     return workOrders.find((w) => w.id === selectedWoId);
   }, [workOrders, selectedWoId]);
 
-  // Auto-prefill dimensions from selected Work Order
+  // Auto-prefill dimensions from selected Work Order if user switches WO and values not locked
   useEffect(() => {
     if (!selectedWo) return;
-    if (selectedWo.od) setOd(String(selectedWo.od));
-    if (selectedWo.wt) setWt(String(selectedWo.wt));
-    if (selectedWo.grade) setGrade(selectedWo.grade);
-    const defLen = selectedWo.l1 && selectedWo.l2 ? (selectedWo.l1 + selectedWo.l2) / 2 : selectedWo.l1 || 6.0;
-    setAvgLength(String(Number(defLen.toFixed(2))));
-  }, [selectedWo]);
+    // Only prefill from WO if not already provided by initialValues or user
+    if (!initialValues || !initialValues.od) {
+      if (selectedWo.od) setOd(String(selectedWo.od));
+      if (selectedWo.wt) setWt(String(selectedWo.wt));
+      if (selectedWo.grade) setGrade(selectedWo.grade);
+      const defLen = selectedWo.l1 && selectedWo.l2 ? (selectedWo.l1 + selectedWo.l2) / 2 : selectedWo.l1 || 6.0;
+      setAvgLength(String(Number(defLen.toFixed(2))));
+    }
+  }, [selectedWo, initialValues]);
 
   // Live calculation of Total Meters & Weight MT
   useEffect(() => {

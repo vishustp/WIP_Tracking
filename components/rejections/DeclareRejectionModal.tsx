@@ -2,9 +2,10 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, AlertTriangle, Calculator, Check, Loader2 } from 'lucide-react';
+import { X, AlertTriangle, Calculator, Check, Loader2, Layers } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import DivertToBankModal from '@/components/hollow-bank/DivertToBankModal';
 import {
   REJECTION_REASON_CATEGORIES,
   REJECTION_REASON_LABELS,
@@ -80,6 +81,7 @@ export default function DeclareRejectionModal({
     initialReasonCategory || 'SMALL_QTY_NO_REPROCESS'
   );
   const [productionRemarks, setProductionRemarks] = useState(initialRemarks || '');
+  const [bankModalOpen, setBankModalOpen] = useState(false);
 
   // Reset/sync form state when modal opens with new preselected inputs
   useEffect(() => {
@@ -483,6 +485,22 @@ export default function DeclareRejectionModal({
               Cancel
             </button>
             <button
+              type="button"
+              onClick={() => {
+                if (!selectedWoId) {
+                  toast.error('Please select a source Work Order first.');
+                  return;
+                }
+                setBankModalOpen(true);
+              }}
+              disabled={submitting}
+              className="inline-flex items-center space-x-1.5 px-4 py-2.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors cursor-pointer"
+              title="Divert and park this pipe into Hollow Bank yard buffer"
+            >
+              <Layers className="w-4 h-4" />
+              <span>Send to Hollow Bank</span>
+            </button>
+            <button
               type="submit"
               disabled={submitting}
               className="inline-flex items-center space-x-2 px-5 py-2.5 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-lg shadow-sm transition-colors disabled:opacity-50"
@@ -502,6 +520,30 @@ export default function DeclareRejectionModal({
           </div>
         </form>
       </div>
+
+      {/* Hollow Bank Divert Modal */}
+      <DivertToBankModal
+        isOpen={bankModalOpen}
+        onClose={() => setBankModalOpen(false)}
+        onSuccess={() => {
+          setBankModalOpen(false);
+          toast.success('Material parked into Hollow Bank successfully!');
+          onSuccess();
+          onClose();
+        }}
+        initialValues={{
+          sourceWoId: selectedWoId,
+          sourceStageCode: workCenter,
+          heatNo: heatLotNo,
+          od: selectedWo?.size_od || undefined,
+          wt: selectedWo?.size_wt || undefined,
+          grade: selectedWo?.grade || undefined,
+          pcs: rejectedPcs !== '' ? rejectedPcs : undefined,
+          avgLength: selectedWo?.avg_length || undefined,
+          totalMeters: rejectedMtr !== '' ? Number(Number(rejectedMtr).toFixed(2)) : undefined,
+          remarks: `From Rejection Declaration: ${productionRemarks}`.trim(),
+        }}
+      />
     </div>
   );
 }

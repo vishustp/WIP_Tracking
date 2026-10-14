@@ -30,6 +30,7 @@ import {
   generateMillRejectionCsv,
 } from '@/lib/mill-rejections/types';
 import { fetchMillRejectionsAndSalvage } from '@/lib/mill-rejections/client';
+import DivertToBankModal, { DivertInitialValues } from '@/components/hollow-bank/DivertToBankModal';
 
 const fmt = (n: number | null | undefined, digits = 2) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -45,6 +46,36 @@ export default function MillRejectionReportClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+
+  // Hollow Bank Modal
+  const [bankModalOpen, setBankModalOpen] = useState(false);
+  const [bankInitialValues, setBankInitialValues] = useState<DivertInitialValues | undefined>(undefined);
+
+  const handleSendToHollowBank = (item: MillRejectionEntry) => {
+    let stage = item.stageCode || 'ROLLING';
+    if (!stage || stage === 'OTHER') {
+      if (item.category === 'ROLLING') stage = 'ROLLING';
+      else if (item.category === 'DRAW') stage = 'DRAW';
+      else if (item.category === 'HEAT_TREATMENT') stage = 'HEAT_TREATMENT';
+      else if (item.category === 'BAND_SAW') stage = 'BAND_SAW';
+      else if (item.category === 'VDI_SALVAGE' || item.category === 'VDI_REJECTION') stage = 'VDI';
+      else stage = 'ROLLING';
+    }
+
+    setBankInitialValues({
+      sourceWoId: item.workOrderId,
+      sourceStageCode: stage,
+      heatNo: item.heatLotNo || '',
+      od: item.sizeOd || '',
+      wt: item.sizeWt || '',
+      grade: item.grade && item.grade !== '—' ? item.grade : '',
+      pcs: item.pcs || '',
+      avgLength: item.avgLength || '6.0',
+      totalMeters: item.mtr ? Number(item.mtr.toFixed(2)) : '',
+      remarks: `From Mill Rejection (${item.workCenterName}): ${item.remarks || ''}`.trim(),
+    });
+    setBankModalOpen(true);
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -393,28 +424,30 @@ export default function MillRejectionReportClient() {
               <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold uppercase tracking-wider text-[11px]">
                 <th className="py-3 px-3">Date</th>
                 <th className="py-3 px-3">Work Order</th>
-                <th className="py-3 px-3">Customer / Grade</th>
+                <th className="py-3 px-3">Customer</th>
+                <th className="py-3 px-3">Grade</th>
                 <th className="py-3 px-3">Size (OD × WT)</th>
                 <th className="py-3 px-3">Station</th>
                 <th className="py-3 px-3">Type</th>
                 <th className="py-3 px-3 text-right">PCS</th>
                 <th className="py-3 px-3 text-right">Meters</th>
                 <th className="py-3 px-3 text-right">MT</th>
-                <th className="py-3 px-4 min-w-[280px]">Logged Remarks & Defect Reason</th>
+                <th className="py-3 px-4 min-w-[240px]">Logged Remarks & Defect Reason</th>
                 <th className="py-3 px-3">Logged By</th>
+                <th className="py-3 px-3 text-center print:hidden">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={13} className="py-12 text-center text-slate-400">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-slate-400" />
                     <span>Loading shop-floor rejection records...</span>
                   </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-500">
+                  <td colSpan={13} className="py-12 text-center text-slate-500">
                     <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
                     <p className="font-semibold text-slate-800">No Rejection or Salvage Records Found</p>
                     <p className="text-xs text-slate-400 mt-0.5">
@@ -442,14 +475,18 @@ export default function MillRejectionReportClient() {
                         {item.workOrderNo}
                       </td>
 
-                      {/* Customer / Grade */}
+                      {/* Customer */}
                       <td className="py-2.5 px-3">
                         <div className="font-semibold text-slate-800 max-w-[150px] truncate" title={item.customerName}>
                           {item.customerName}
                         </div>
-                        <div className="text-[11px] text-slate-500 truncate" title={item.grade}>
-                          {item.grade}
-                        </div>
+                      </td>
+
+                      {/* Grade */}
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <span className="inline-block px-2 py-0.5 rounded font-mono font-bold text-xs bg-slate-100 text-slate-900 border border-slate-200">
+                          {item.grade || '—'}
+                        </span>
                       </td>
 
                       {/* Size */}
@@ -508,6 +545,19 @@ export default function MillRejectionReportClient() {
                       <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap text-[11px]">
                         {item.loggedBy}
                       </td>
+
+                      {/* Action: Send to Hollow Bank */}
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap print:hidden">
+                        <button
+                          type="button"
+                          onClick={() => handleSendToHollowBank(item)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 transition-colors cursor-pointer shadow-xs"
+                          title="Divert and park this rejected/salvage tube into Hollow Bank"
+                        >
+                          <Layers className="w-3.5 h-3.5" />
+                          <span>Send to Hollow Bank</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -532,6 +582,22 @@ export default function MillRejectionReportClient() {
           <div className="text-[10px] text-slate-500">Mass Balance & Rejection Ledger Audit</div>
         </div>
       </div>
+
+      {/* Divert to Hollow Bank Modal */}
+      <DivertToBankModal
+        isOpen={bankModalOpen}
+        onClose={() => {
+          setBankModalOpen(false);
+          setBankInitialValues(undefined);
+        }}
+        onSuccess={() => {
+          setBankModalOpen(false);
+          setBankInitialValues(undefined);
+          toast.success('Material parked into Hollow Bank successfully!');
+          loadData();
+        }}
+        initialValues={bankInitialValues}
+      />
     </div>
   );
 }
