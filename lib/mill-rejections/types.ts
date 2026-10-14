@@ -63,6 +63,7 @@ export interface MillRejectionFilterOptions {
   category?: MillRejectionCategory;
   dispositionType?: DefectDispositionType | 'ALL';
   search?: string;
+  grade?: string;
   fromDate?: string;
   toDate?: string;
 }

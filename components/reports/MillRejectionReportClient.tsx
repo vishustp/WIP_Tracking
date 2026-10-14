@@ -21,6 +21,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
 import {
   MillRejectionEntry,
   MillRejectionCategory,
@@ -43,9 +44,43 @@ export default function MillRejectionReportClient() {
   // Filters
   const [activeCategory, setActiveCategory] = useState<MillRejectionCategory>('ALL');
   const [dispositionFilter, setDispositionFilter] = useState<'ALL' | 'REJECTION' | 'SALVAGE'>('ALL');
+  const [gradeFilter, setGradeFilter] = useState('ALL');
+  const [gradeOptions, setGradeOptions] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+
+  // Load available distinct grades from work_orders
+  useEffect(() => {
+    async function loadGrades() {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from('work_orders')
+          .select('grade')
+          .not('grade', 'is', null)
+          .order('grade');
+        if (data) {
+          const unique = Array.from(new Set(data.map((d: any) => d.grade?.trim()).filter(Boolean))) as string[];
+          setGradeOptions(unique);
+        }
+      } catch (e) {
+        console.error('Failed to load grade options:', e);
+      }
+    }
+    loadGrades();
+  }, []);
+
+  // Merge loaded grades with any grades present in current entries
+  const allGrades = useMemo(() => {
+    const set = new Set<string>(gradeOptions);
+    entries.forEach((e) => {
+      if (e.grade && e.grade !== '—' && e.grade.trim()) {
+        set.add(e.grade.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [gradeOptions, entries]);
 
   // Hollow Bank Modal
   const [bankModalOpen, setBankModalOpen] = useState(false);
@@ -82,6 +117,7 @@ export default function MillRejectionReportClient() {
     const { data, kpis: summaryKpis, error } = await fetchMillRejectionsAndSalvage({
       category: activeCategory,
       dispositionType: dispositionFilter,
+      grade: gradeFilter !== 'ALL' ? gradeFilter : undefined,
       search: searchQuery.trim() || undefined,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
@@ -94,7 +130,7 @@ export default function MillRejectionReportClient() {
       setKpis(summaryKpis);
     }
     setLoading(false);
-  }, [activeCategory, dispositionFilter, searchQuery, fromDate, toDate]);
+  }, [activeCategory, dispositionFilter, gradeFilter, searchQuery, fromDate, toDate]);
 
   useEffect(() => {
     loadData();
@@ -338,7 +374,7 @@ export default function MillRejectionReportClient() {
         </div>
 
         {/* Filter Inputs Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* Search Box */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
@@ -349,6 +385,22 @@ export default function MillRejectionReportClient() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white"
             />
+          </div>
+
+          {/* Steel Grade Filter */}
+          <div>
+            <select
+              value={gradeFilter}
+              onChange={(e) => setGradeFilter(e.target.value)}
+              className="w-full py-2 px-3 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white cursor-pointer font-medium text-slate-800"
+            >
+              <option value="ALL">All Steel Grades</option>
+              {allGrades.map((g) => (
+                <option key={g} value={g}>
+                  Grade: {g}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Disposition Type */}
@@ -402,11 +454,16 @@ export default function MillRejectionReportClient() {
               >
                 30D
               </button>
-              {(fromDate || toDate) && (
+              {(fromDate || toDate || gradeFilter !== 'ALL' || dispositionFilter !== 'ALL' || searchQuery) && (
                 <button
-                  onClick={() => applyPreset('ALL')}
+                  onClick={() => {
+                    applyPreset('ALL');
+                    setGradeFilter('ALL');
+                    setDispositionFilter('ALL');
+                    setSearchQuery('');
+                  }}
                   className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
-                  title="Clear dates"
+                  title="Clear all filters"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>

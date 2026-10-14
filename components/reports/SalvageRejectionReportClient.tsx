@@ -63,9 +63,20 @@ export default function SalvageRejectionReportClient() {
   const [workCenter, setWorkCenter] = useState('ALL');
   const [status, setStatus] = useState('ALL');
   const [reasonCategory, setReasonCategory] = useState('ALL');
+  const [gradeFilter, setGradeFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+
+  // Extract all unique grades from records
+  const allGrades = useMemo(() => {
+    const set = new Set<string>();
+    records.forEach((r) => {
+      const g = r.work_orders?.grade?.trim();
+      if (g) set.add(g);
+    });
+    return Array.from(set).sort();
+  }, [records]);
 
   // Hollow Bank Modal
   const [bankModalOpen, setBankModalOpen] = useState(false);
@@ -93,6 +104,7 @@ export default function SalvageRejectionReportClient() {
       workCenter: workCenter === 'ALL' ? undefined : workCenter,
       status: status === 'ALL' ? undefined : status,
       reasonCategory: reasonCategory === 'ALL' ? undefined : reasonCategory,
+      grade: gradeFilter === 'ALL' ? undefined : gradeFilter,
       search: searchQuery.trim() || undefined,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
@@ -104,7 +116,7 @@ export default function SalvageRejectionReportClient() {
       setRecords(data);
     }
     setLoading(false);
-  }, [workCenter, status, reasonCategory, searchQuery, fromDate, toDate]);
+  }, [workCenter, status, reasonCategory, gradeFilter, searchQuery, fromDate, toDate]);
 
   useEffect(() => {
     loadData();
@@ -417,12 +429,13 @@ export default function SalvageRejectionReportClient() {
             </button>
           </div>
 
-          {(workCenter !== 'ALL' || status !== 'ALL' || reasonCategory !== 'ALL' || searchQuery || fromDate || toDate) && (
+          {(workCenter !== 'ALL' || status !== 'ALL' || reasonCategory !== 'ALL' || gradeFilter !== 'ALL' || searchQuery || fromDate || toDate) && (
             <button
               onClick={() => {
                 setWorkCenter('ALL');
                 setStatus('ALL');
                 setReasonCategory('ALL');
+                setGradeFilter('ALL');
                 setSearchQuery('');
                 setFromDate('');
                 setToDate('');
@@ -436,7 +449,7 @@ export default function SalvageRejectionReportClient() {
         </div>
 
         {/* Filter controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           {/* Search */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -447,6 +460,22 @@ export default function SalvageRejectionReportClient() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          {/* Steel Grade */}
+          <div>
+            <select
+              value={gradeFilter}
+              onChange={(e) => setGradeFilter(e.target.value)}
+              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="ALL">All Steel Grades</option>
+              {allGrades.map((g) => (
+                <option key={g} value={g}>
+                  Grade: {g}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Work Center */}

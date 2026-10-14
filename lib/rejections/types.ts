@@ -139,6 +139,7 @@ export interface RejectionFilterOptions {
   status?: string;
   workCenter?: string;
   reasonCategory?: string;
+  grade?: string;
   fromDate?: string;
   toDate?: string;
 }

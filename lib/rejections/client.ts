@@ -101,6 +101,12 @@ export async function fetchRejections(
       return r as RejectionDeclaration;
     });
 
+    // In-memory filter for grade
+    if (filters.grade && filters.grade !== 'ALL') {
+      const g = filters.grade.trim().toLowerCase();
+      results = results.filter((r) => r.work_orders?.grade && r.work_orders.grade.toLowerCase().includes(g));
+    }
+
     // In-memory search filter for WO#, Customer, Grade, or Declaration#
     if (filters.search && filters.search.trim()) {
       const q = filters.search.trim().toLowerCase();

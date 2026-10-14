@@ -254,12 +254,17 @@ export async function fetchMillRejectionsAndSalvage(
     if (filters.dispositionType && filters.dispositionType !== 'ALL') {
       filtered = filtered.filter((e) => e.dispositionType === filters.dispositionType);
     }
+    if (filters.grade && filters.grade !== 'ALL') {
+      const g = filters.grade.trim().toLowerCase();
+      filtered = filtered.filter((e) => e.grade && e.grade.toLowerCase().includes(g));
+    }
     if (filters.search && filters.search.trim()) {
       const q = filters.search.trim().toLowerCase();
       filtered = filtered.filter(
         (e) =>
           e.workOrderNo.toLowerCase().includes(q) ||
           e.customerName.toLowerCase().includes(q) ||
+          (e.grade && e.grade.toLowerCase().includes(q)) ||
           e.remarks.toLowerCase().includes(q) ||
           (e.heatLotNo && e.heatLotNo.toLowerCase().includes(q))
       );
