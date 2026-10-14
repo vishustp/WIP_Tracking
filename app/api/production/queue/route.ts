@@ -321,6 +321,7 @@ export async function GET(req: NextRequest) {
         const parsed = typeof p.status === "string" ? JSON.parse(p.status) : p.status;
         const lifecycle = parsed?.lifecycle_status || (parsed?.issued_at ? "ISSUED" : "DRAFT");
         const isIssued = (lifecycle === "ISSUED" || lifecycle === "REVISED") && lifecycle !== "CLOSED" && lifecycle !== "SHORT_CLOSED";
+        if (!isIssued) continue;
 
         const mhOdVal = p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || null;
         const mhWtVal = p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || null;
@@ -1566,7 +1567,12 @@ export async function GET(req: NextRequest) {
           let tMtr = Number(pl.planned_qty || 0);
           try {
             const st = typeof pl.status === "string" ? JSON.parse(pl.status) : pl.status || {};
-            tMtr = Number(st.master_planned_mtr || st.planned_mtr || pl.planned_qty || 0);
+            const lc = st?.lifecycle_status || (st?.issued_at ? "ISSUED" : "DRAFT");
+            if (lc === "CLOSED" || lc === "SHORT_CLOSED") {
+              tMtr = Number(st.closed_mtr || st.planned_mtr || pl.planned_qty || 0);
+            } else {
+              tMtr = Number(st.master_planned_mtr || st.planned_mtr || pl.planned_qty || 0);
+            }
           } catch {}
           planTargetMtr.set(pl.id, tMtr);
           planAccumulatedMtr.set(pl.id, 0);
@@ -1599,13 +1605,27 @@ export async function GET(req: NextRequest) {
             let currentPlanIdx = 0;
             for (const log of unassignedLogs) {
               const logMtr = Number(log.output_qty || 0) + Number(log.rejection_qty || 0);
+              const logDate = new Date(log.process_date || log.created_at || 0).getTime();
 
-              // Advance to next plan if current plan is already filled to its target planned quantity
+              // Advance to next plan if current plan is already closed or filled to its target planned quantity
               while (currentPlanIdx < sortedPlans.length - 1) {
-                const currPlanId = sortedPlans[currentPlanIdx].id;
+                const currPlan = sortedPlans[currentPlanIdx];
+                const currPlanId = currPlan.id;
                 const target = planTargetMtr.get(currPlanId) || 0;
                 const accumulated = planAccumulatedMtr.get(currPlanId) || 0;
-                if (target > 0 && accumulated >= target) {
+
+                let isClosed = false;
+                let closedDate = Infinity;
+                try {
+                  const st = typeof currPlan.status === "string" ? JSON.parse(currPlan.status) : currPlan.status || {};
+                  const lc = st?.lifecycle_status || (st?.issued_at ? "ISSUED" : "DRAFT");
+                  if (lc === "CLOSED" || lc === "SHORT_CLOSED") {
+                    isClosed = true;
+                    if (st.closed_at) closedDate = new Date(st.closed_at).getTime();
+                  }
+                } catch {}
+
+                if ((target > 0 && accumulated >= target) || (isClosed && (accumulated >= target || logDate >= closedDate))) {
                   currentPlanIdx++;
                 } else {
                   break;
