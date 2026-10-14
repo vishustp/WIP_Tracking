@@ -248,6 +248,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/rejections',
     '/reports/rejections',
     '/reports/mill-rejections',
+    '/hollow-bank',
   ];
 
   return allowedUserRoutes.some((allowed) => href === allowed || href.startsWith(allowed + '/'));
@@ -283,8 +284,8 @@ export function isRouteVisible(user: AppUserProfile | null | undefined, href: st
   if (href === '/rolling-plans' || href.startsWith('/rolling-plans/')) {
     return perms.rolling_plan === 'edit' || perms.rolling_plan === 'view';
   }
-  if (href === '/diversions' || href.startsWith('/diversions/')) {
-    return perms.diversion === 'edit' || perms.diversion === 'view';
+  if (href === '/diversions' || href.startsWith('/diversions/') || href === '/hollow-bank' || href.startsWith('/hollow-bank/')) {
+    return perms.diversion === 'edit' || perms.diversion === 'view' || isPpcOrAdminUser(user, group);
   }
   if (href === '/excel-import' || href.startsWith('/excel-import/')) {
     return perms.excel_import === 'edit' || perms.excel_import === 'view';

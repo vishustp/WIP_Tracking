@@ -115,6 +115,7 @@ const navSections = [
       { href: '/daily-plans', label: 'Unified Daily Planning', icon: CalendarDays },
       { href: '/rolling-plans', label: 'Rolling Plan', icon: CalendarClock },
       { href: '/diversions', label: 'Diversion', icon: Shuffle },
+      { href: '/hollow-bank', label: 'Hollow Bank', icon: Layers },
       { href: '/excel-import', label: 'Excel Import', icon: FileSpreadsheet },
     ],
   },
