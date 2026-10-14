@@ -21,6 +21,20 @@ interface DeclareRejectionModalProps {
   currentUser?: any;
   defaultWorkCenter?: string;
   preselectedWorkOrderId?: string;
+  initialRejectedPcs?: number | '';
+  initialRejectedMtr?: number | '';
+  initialReasonCategory?: RejectionReasonCategory;
+  initialRemarks?: string;
+  lockWorkOrder?: boolean;
+  lockWorkCenter?: boolean;
+  workOrderDetails?: {
+    work_order_no: string;
+    customer_name?: string | null;
+    grade?: string | null;
+    size_od?: number | null;
+    size_wt?: number | null;
+    avg_length?: number | null;
+  };
 }
 
 interface WorkOrderOption {
@@ -42,6 +56,13 @@ export default function DeclareRejectionModal({
   currentUser,
   defaultWorkCenter,
   preselectedWorkOrderId,
+  initialRejectedPcs,
+  initialRejectedMtr,
+  initialReasonCategory,
+  initialRemarks,
+  lockWorkOrder = false,
+  lockWorkCenter = false,
+  workOrderDetails,
 }: DeclareRejectionModalProps) {
   const [workOrders, setWorkOrders] = useState<WorkOrderOption[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -50,13 +71,42 @@ export default function DeclareRejectionModal({
   // Form State
   const [selectedWoId, setSelectedWoId] = useState(preselectedWorkOrderId || '');
   const [workCenter, setWorkCenter] = useState<string>(defaultWorkCenter || 'DRAW');
-  const [rejectedPcs, setRejectedPcs] = useState<number | ''>('');
-  const [rejectedMtr, setRejectedMtr] = useState<number | ''>('');
+  const [rejectedPcs, setRejectedPcs] = useState<number | ''>(initialRejectedPcs ?? '');
+  const [rejectedMtr, setRejectedMtr] = useState<number | ''>(initialRejectedMtr ?? '');
   const [rejectedMt, setRejectedMt] = useState<number | ''>('');
-  const [manualMtrOverride, setManualMtrOverride] = useState(false);
+  const [manualMtrOverride, setManualMtrOverride] = useState(Boolean(initialRejectedMtr));
   const [heatLotNo, setHeatLotNo] = useState('');
-  const [reasonCategory, setReasonCategory] = useState<RejectionReasonCategory>('SMALL_QTY_NO_REPROCESS');
-  const [productionRemarks, setProductionRemarks] = useState('');
+  const [reasonCategory, setReasonCategory] = useState<RejectionReasonCategory>(
+    initialReasonCategory || 'SMALL_QTY_NO_REPROCESS'
+  );
+  const [productionRemarks, setProductionRemarks] = useState(initialRemarks || '');
+
+  // Reset/sync form state when modal opens with new preselected inputs
+  useEffect(() => {
+    if (isOpen) {
+      if (preselectedWorkOrderId) setSelectedWoId(preselectedWorkOrderId);
+      if (defaultWorkCenter && defaultWorkCenter !== 'ALL') setWorkCenter(defaultWorkCenter);
+      if (initialRejectedPcs !== undefined && initialRejectedPcs !== '') {
+        setRejectedPcs(initialRejectedPcs);
+      }
+      if (initialRejectedMtr !== undefined && initialRejectedMtr !== '') {
+        setRejectedMtr(initialRejectedMtr);
+        setManualMtrOverride(true);
+      } else {
+        setManualMtrOverride(false);
+      }
+      if (initialReasonCategory) setReasonCategory(initialReasonCategory);
+      if (initialRemarks !== undefined) setProductionRemarks(initialRemarks);
+    }
+  }, [
+    isOpen,
+    preselectedWorkOrderId,
+    defaultWorkCenter,
+    initialRejectedPcs,
+    initialRejectedMtr,
+    initialReasonCategory,
+    initialRemarks,
+  ]);
 
   // Fetch active work orders for picker
   useEffect(() => {
@@ -81,22 +131,25 @@ export default function DeclareRejectionModal({
     loadOrders();
   }, [isOpen]);
 
-  useEffect(() => {
-    if (preselectedWorkOrderId) {
-      setSelectedWoId(preselectedWorkOrderId);
-    }
-  }, [preselectedWorkOrderId]);
-
-  useEffect(() => {
-    if (defaultWorkCenter && defaultWorkCenter !== 'ALL') {
-      setWorkCenter(defaultWorkCenter);
-    }
-  }, [defaultWorkCenter]);
-
   // Selected work order details
   const selectedWo = useMemo(() => {
-    return workOrders.find((w) => w.id === selectedWoId) || null;
-  }, [workOrders, selectedWoId]);
+    const found = workOrders.find((w) => w.id === selectedWoId);
+    if (found) return found;
+    if (workOrderDetails && selectedWoId === preselectedWorkOrderId) {
+      return {
+        id: selectedWoId,
+        work_order_no: workOrderDetails.work_order_no,
+        customer_name: workOrderDetails.customer_name ?? null,
+        grade: workOrderDetails.grade ?? null,
+        size_od: workOrderDetails.size_od ?? null,
+        size_wt: workOrderDetails.size_wt ?? null,
+        avg_length: workOrderDetails.avg_length ?? null,
+        l1: null,
+        l2: null,
+      };
+    }
+    return null;
+  }, [workOrders, selectedWoId, workOrderDetails, preselectedWorkOrderId]);
 
   const effectiveAvgLen = useMemo(() => {
     if (!selectedWo) return 6.0;
@@ -223,26 +276,45 @@ export default function DeclareRejectionModal({
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
               Work Order <span className="text-red-500">*</span>
             </label>
-            <select
-              value={selectedWoId}
-              onChange={(e) => setSelectedWoId(e.target.value)}
-              disabled={loadingOrders || !!preselectedWorkOrderId}
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-            >
-              <option value="">-- Select Work Order --</option>
-              {workOrders.map((wo) => (
-                <option key={wo.id} value={wo.id}>
-                  {wo.work_order_no} — {wo.customer_name || 'N/A'} ({wo.grade || '—'}) | {wo.size_od} x {wo.size_wt} mm
-                </option>
-              ))}
-            </select>
-            {selectedWo && (
-              <div className="mt-2 p-2.5 bg-blue-50/70 border border-blue-200 rounded-lg flex items-center justify-between text-xs text-blue-900 font-mono">
-                <span>Customer: <strong>{selectedWo.customer_name || 'N/A'}</strong></span>
-                <span>Grade: <strong>{selectedWo.grade || '—'}</strong></span>
-                <span>Size: <strong>{selectedWo.size_od} × {selectedWo.size_wt} mm</strong></span>
-                <span>Avg Len: <strong>{effectiveAvgLen}m</strong></span>
+            {lockWorkOrder && selectedWo ? (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-base text-slate-900">{selectedWo.work_order_no}</span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200 font-mono">
+                    Balance Rejection
+                  </span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono text-slate-600 border-t border-slate-200/60 pt-2">
+                  <div>Customer: <strong className="text-slate-900">{selectedWo.customer_name || 'N/A'}</strong></div>
+                  <div>Grade: <strong className="text-slate-900">{selectedWo.grade || '—'}</strong></div>
+                  <div>Size: <strong className="text-slate-900">{selectedWo.size_od} × {selectedWo.size_wt} mm</strong></div>
+                  <div>Avg Len: <strong className="text-slate-900">{effectiveAvgLen}m</strong></div>
+                </div>
               </div>
+            ) : (
+              <>
+                <select
+                  value={selectedWoId}
+                  onChange={(e) => setSelectedWoId(e.target.value)}
+                  disabled={loadingOrders || !!preselectedWorkOrderId}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                >
+                  <option value="">-- Select Work Order --</option>
+                  {workOrders.map((wo) => (
+                    <option key={wo.id} value={wo.id}>
+                      {wo.work_order_no} — {wo.customer_name || 'N/A'} ({wo.grade || '—'}) | {wo.size_od} x {wo.size_wt} mm
+                    </option>
+                  ))}
+                </select>
+                {selectedWo && (
+                  <div className="mt-2 p-2.5 bg-blue-50/70 border border-blue-200 rounded-lg flex items-center justify-between text-xs text-blue-900 font-mono">
+                    <span>Customer: <strong>{selectedWo.customer_name || 'N/A'}</strong></span>
+                    <span>Grade: <strong>{selectedWo.grade || '—'}</strong></span>
+                    <span>Size: <strong>{selectedWo.size_od} × {selectedWo.size_wt} mm</strong></span>
+                    <span>Avg Len: <strong>{effectiveAvgLen}m</strong></span>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -252,24 +324,34 @@ export default function DeclareRejectionModal({
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
                 Work Center (Stage) <span className="text-red-500">*</span>
               </label>
-              <select
-                value={workCenter}
-                onChange={(e) => setWorkCenter(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {WORK_CENTER_OPTIONS.filter((o) => o.code !== 'ALL').map((wc) => (
-                  <option key={wc.code} value={wc.code}>
-                    {wc.label} ({wc.code})
-                  </option>
-                ))}
-              </select>
+              {lockWorkCenter ? (
+                <div className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold font-mono text-slate-800 flex items-center justify-between">
+                  <span>{workCenter}</span>
+                  <span className="text-[10px] font-bold uppercase text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
+                    Active Station
+                  </span>
+                </div>
+              ) : (
+                <select
+                  value={workCenter}
+                  onChange={(e) => setWorkCenter(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {WORK_CENTER_OPTIONS.filter((o) => o.code !== 'ALL').map((wc) => (
+                    <option key={wc.code} value={wc.code}>
+                      {wc.label} ({wc.code})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+              <label htmlFor="defect-category-select" className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
                 Defect Category <span className="text-red-500">*</span>
               </label>
               <select
+                id="defect-category-select"
                 value={reasonCategory}
                 onChange={(e) => setReasonCategory(e.target.value as RejectionReasonCategory)}
                 className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -303,10 +385,11 @@ export default function DeclareRejectionModal({
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
+                <label htmlFor="rejected-pcs-input" className="block text-xs font-medium text-slate-600 mb-1">
                   Rejected Pieces (PCS) <span className="text-red-500">*</span>
                 </label>
                 <input
+                  id="rejected-pcs-input"
                   type="number"
                   min="1"
                   step="1"
@@ -319,10 +402,11 @@ export default function DeclareRejectionModal({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
-                  Length (Meters)
+                <label htmlFor="rejected-mtr-input" className="block text-xs font-medium text-slate-600 mb-1">
+                  Total Length (Meters)
                 </label>
                 <input
+                  id="rejected-mtr-input"
                   type="number"
                   step="0.1"
                   min="0"
@@ -334,10 +418,11 @@ export default function DeclareRejectionModal({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
+                <label htmlFor="rejected-mt-input" className="block text-xs font-medium text-slate-600 mb-1">
                   Weight (MT)
                 </label>
                 <input
+                  id="rejected-mt-input"
                   type="number"
                   step="0.001"
                   min="0"
@@ -350,10 +435,11 @@ export default function DeclareRejectionModal({
             </div>
 
             <div className="pt-2">
-              <label className="block text-xs font-medium text-slate-600 mb-1">
+              <label htmlFor="heat-lot-no-input" className="block text-xs font-medium text-slate-600 mb-1">
                 Heat / Lot # (Optional)
               </label>
               <input
+                id="heat-lot-no-input"
                 type="text"
                 placeholder="e.g. HT-8421 / LOT-B3"
                 value={heatLotNo}
@@ -365,10 +451,11 @@ export default function DeclareRejectionModal({
 
           {/* Mandatory Production Remarks */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+            <label htmlFor="rejection-remarks-input" className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
               Production Remarks / Explanation <span className="text-red-500">*</span>
             </label>
             <textarea
+              id="rejection-remarks-input"
               rows={3}
               placeholder="Explain why this material was rejected and why it cannot be re-processed (e.g. 3 Nos rejected during cold drawing due to heavy tool marks; batch completed, unviable to setup bench for 3 pipes)..."
               value={productionRemarks}

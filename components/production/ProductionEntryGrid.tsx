@@ -36,6 +36,7 @@ const EditEntryModal = dynamic(() => import('@/components/production/modals/Edit
 const DeleteEntryModal = dynamic(() => import('@/components/production/modals/DeleteEntryModal'), { ssr: false });
 const BundlingCampaignModal = dynamic(() => import('@/components/production/modals/BundlingCampaignModal'), { ssr: false });
 const BandSawCuttingModal = dynamic(() => import('@/components/production/modals/BandSawCuttingModal'), { ssr: false });
+const DeclareRejectionModal = dynamic(() => import('@/components/rejections/DeclareRejectionModal'), { ssr: false });
 
 function getCurrentDateStr(): string {
   const d = new Date();
@@ -108,6 +109,9 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
   // Band Saw cutting modal state
   const [bandSawRow, setBandSawRow] = useState<Row | null>(null);
+
+  // Line rejection modal state
+  const [rejectRow, setRejectRow] = useState<Row | null>(null);
 
   // --- Data fetching ---
   const { rows, setRows, loading: queueLoading, reload: reloadQueue } = useQueue(stage);
@@ -1092,6 +1096,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         onUpdateRow={updateRow}
         onOpenBundling={openCampaignBundling}
         onOpenBandSawCutting={(r) => setBandSawRow(r)}
+        onOpenReject={(r) => setRejectRow(r)}
         isAllowed={isAllowed}
         roleTitle={roleTitle || 'Operator'}
         isAuditor={user?.role === 'auditor'}
@@ -1176,6 +1181,51 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
             loadFactoryWip();
           }}
           processDate={date}
+        />
+      )}
+
+      {/* Declare Rejection Modal for Line Scrap/Balance Rejection */}
+      {rejectRow && (
+        <DeclareRejectionModal
+          isOpen={Boolean(rejectRow)}
+          onClose={() => setRejectRow(null)}
+          onSuccess={async () => {
+            const woNo = rejectRow.work_order_no;
+            setRejectRow(null);
+            setMessage(`Rejection declaration submitted successfully for ${woNo}. WIP balance updated.`);
+            await Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()]);
+          }}
+          currentUser={user}
+          defaultWorkCenter={stage}
+          preselectedWorkOrderId={rejectRow.work_order_id}
+          initialRejectedPcs={
+            n(rejectRow.balance_to_make_pcs) > 0
+              ? Math.round(n(rejectRow.balance_to_make_pcs))
+              : calc(rejectRow).avg > 0 && n(rejectRow.balance_to_make_mtr) > 0
+              ? Math.round(n(rejectRow.balance_to_make_mtr) / calc(rejectRow).avg)
+              : ''
+          }
+          initialRejectedMtr={
+            n(rejectRow.balance_to_make_mtr) > 0
+              ? Number(n(rejectRow.balance_to_make_mtr).toFixed(2))
+              : ''
+          }
+          initialReasonCategory="SMALL_QTY_NO_REPROCESS"
+          initialRemarks={`Remaining balance rejected (${
+            n(rejectRow.balance_to_make_pcs) > 0
+              ? `${Math.round(n(rejectRow.balance_to_make_pcs))} PCS`
+              : `${fmt(rejectRow.balance_to_make_mtr, 'm')}`
+          }) - Small quantity no reprocess`}
+          lockWorkOrder={true}
+          lockWorkCenter={true}
+          workOrderDetails={{
+            work_order_no: rejectRow.work_order_no,
+            customer_name: rejectRow.customer_name,
+            grade: rejectRow.specification,
+            size_od: Number(rejectRow.od || 0),
+            size_wt: Number(rejectRow.wl || 0),
+            avg_length: calc(rejectRow).avg,
+          }}
         />
       )}
     </div>

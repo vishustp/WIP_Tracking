@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { pendingOrderColumns } from '@/lib/reports/pendingOrdersConfig';
 
 describe('Pending Orders Status Filter and DataReport logic', () => {
   const sampleRows = [
@@ -9,6 +10,7 @@ describe('Pending Orders Status Filter and DataReport logic', () => {
       wt: 4.5,
       grade: 'SA 213 T11',
       ordered_qty: 1200,
+      uom: 'Mtrs',
       planned_qty: 1200,
       produced_qty: 600,
       route: 'ALLOY_CDS',
@@ -23,6 +25,7 @@ describe('Pending Orders Status Filter and DataReport logic', () => {
       wt: 5.5,
       grade: 'SA 106 Gr B',
       ordered_qty: 2500,
+      uom: 'Mtrs',
       planned_qty: 0,
       produced_qty: 0,
       route: 'CDS',
@@ -37,6 +40,7 @@ describe('Pending Orders Status Filter and DataReport logic', () => {
       wt: 3.6,
       grade: 'ASTM A312 TP304',
       ordered_qty: 800,
+      uom: 'Pcs',
       planned_qty: 800,
       produced_qty: 0,
       route: 'SS_STEEL',
@@ -51,6 +55,7 @@ describe('Pending Orders Status Filter and DataReport logic', () => {
       wt: 4.0,
       grade: 'SA 210 Gr A1',
       ordered_qty: 1500,
+      uom: 'Mtrs',
       planned_qty: 1500,
       produced_qty: 1500,
       route: 'CDS',
@@ -274,4 +279,54 @@ describe('Pending Orders Status Filter and DataReport logic', () => {
     expect(Math.ceil(totalItems / 100)).toBe(2);
     expect(Math.ceil(totalItems / 500)).toBe(1);
   });
+
+  it('ensures Pending Orders report defines UOM column next to Ordered Qty', () => {
+    expect(pendingOrderColumns).toBeDefined();
+    const uomCol = pendingOrderColumns.find((c) => c.key === 'uom');
+    expect(uomCol).toBeDefined();
+    expect(uomCol?.label).toBe('UOM');
+
+    const orderedIdx = pendingOrderColumns.findIndex((c) => c.key === 'ordered_qty');
+    const uomIdx = pendingOrderColumns.findIndex((c) => c.key === 'uom');
+    expect(uomIdx).toBe(orderedIdx + 1);
+  });
+
+  it('supports searching work orders by UOM', () => {
+    const searchKeys = pendingOrderColumns.map((c) => c.key);
+    const pcsOrders = filterRows(sampleRows, 'status', 'ALL', 'Pcs', searchKeys);
+    expect(pcsOrders).toHaveLength(1);
+    expect(pcsOrders[0].work_order_no).toBe('WO-103');
+    expect(pcsOrders[0].uom).toBe('Pcs');
+
+    const mtrsOrders = filterRows(sampleRows, 'status', 'ALL', 'Mtrs', searchKeys);
+    expect(mtrsOrders).toHaveLength(3);
+  });
+
+  it('determines primaryUom correctly for homogeneous vs mixed datasets', () => {
+    function computePrimaryUom(rows: Array<{ uom?: string }>) {
+      const uomCounts: Record<string, number> = {};
+      for (const r of rows) {
+        if (r.uom) {
+          const u = String(r.uom).trim();
+          uomCounts[u] = (uomCounts[u] || 0) + 1;
+        }
+      }
+      const uomKeys = Object.keys(uomCounts);
+      if (uomKeys.length === 1) return uomKeys[0];
+      if (uomKeys.length > 1) return 'Mixed';
+      return undefined;
+    }
+
+    // Mixed set (Mtrs + Pcs)
+    expect(computePrimaryUom(sampleRows)).toBe('Mixed');
+
+    // Single UOM set (Mtrs only)
+    const mtrsOnly = sampleRows.filter((r) => r.uom === 'Mtrs');
+    expect(computePrimaryUom(mtrsOnly)).toBe('Mtrs');
+
+    // Empty set
+    expect(computePrimaryUom([])).toBeUndefined();
+  });
 });
+
+

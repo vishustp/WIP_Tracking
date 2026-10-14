@@ -20,6 +20,7 @@ export interface ProductionQueueRowProps {
   onToggleExpand: (key: string) => void;
   onOpenBundling?: (row: Row) => void;
   onOpenBandSawCutting?: (row: Row) => void;
+  onOpenReject?: (row: Row) => void;
 }
 
 export function ProductionQueueRow({
@@ -31,6 +32,7 @@ export function ProductionQueueRow({
   onToggleExpand,
   onOpenBundling,
   onOpenBandSawCutting,
+  onOpenReject,
 }: ProductionQueueRowProps) {
   const key = row.plan_id ? `${row.work_order_id}|${row.route_id}|${row.plan_id}` : `${row.work_order_id}|${row.route_id}`;
   const d = calc({ ...row, stage_code: stage });
@@ -381,6 +383,18 @@ export function ProductionQueueRow({
               title="Open Bundling & Commercial Disposition Dialog"
             >
               <Package size={12} /> Bundles
+            </button>
+          )}
+          {onOpenReject && (
+            <button
+              type="button"
+              disabled={!isAllowed || (availPcs <= 0 && availMtr <= 0)}
+              onClick={() => onOpenReject(row)}
+              className="inline-flex items-center gap-1 rounded border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1 text-xs font-bold text-rose-800 dark:text-rose-200 shadow-2xs hover:bg-rose-100 dark:hover:bg-rose-900/40 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              title={`Declare Rejection / Reject Remnant for ${row.work_order_no} (${availPcs > 0 ? `${availPcs} PCS` : `${availMtr} m`} balance)`}
+            >
+              <AlertTriangle size={11} className="text-rose-600 dark:text-rose-400" />
+              <span>Reject</span>
             </button>
           )}
         </div>

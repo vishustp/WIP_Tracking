@@ -233,6 +233,21 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
       }
     }
 
+    let primaryUom: string | undefined = undefined;
+    const uomCounts: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.uom) {
+        const u = String(r.uom).trim();
+        uomCounts[u] = (uomCounts[u] || 0) + 1;
+      }
+    }
+    const uomKeys = Object.keys(uomCounts);
+    if (uomKeys.length === 1) {
+      primaryUom = uomKeys[0];
+    } else if (uomKeys.length > 1) {
+      primaryUom = 'Mixed';
+    }
+
     return {
       totalCount: rows.length,
       filteredCount: filtered.length,
@@ -243,6 +258,7 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
       totalProduced,
       totalPending,
       overdueCount,
+      primaryUom,
     };
   }, [rows, filtered.length, effectiveDateKey, effectiveStatusKey, todayStr]);
 
@@ -461,7 +477,7 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                   {kpiMetrics.totalOrdered.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                 </span>
                 <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
-                  Qty
+                  {kpiMetrics.primaryUom || 'Qty'}
                 </span>
               </div>
             </div>
@@ -484,7 +500,7 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                   {kpiMetrics.totalPending.toLocaleString(undefined, { maximumFractionDigits: 1 })}
                 </span>
                 <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
-                  Rem.
+                  {kpiMetrics.primaryUom ? `${kpiMetrics.primaryUom} Rem.` : 'Rem.'}
                 </span>
               </div>
             </div>
@@ -834,18 +850,25 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                     {columns.slice(secondaryKey ? 2 : 1).map((c) => {
                       if (c.key === effectiveStatusKey) return null;
                       const isNum = isNumericKey(c.key);
+                      const isUom = c.key.toLowerCase() === 'uom';
                       return (
                         <div key={c.key} className="space-y-0.5">
                           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block truncate">
                             {c.label}
                           </span>
-                          <span
-                            className={`text-xs block truncate ${
-                              isNum ? 'font-mono tabular-nums text-slate-900 dark:text-slate-100 font-medium' : 'text-slate-800 dark:text-slate-200'
-                            }`}
-                          >
-                            {formatValue(r[c.key])}
-                          </span>
+                          {isUom ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wide bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                              {formatValue(r[c.key])}
+                            </span>
+                          ) : (
+                            <span
+                              className={`text-xs block truncate ${
+                                isNum ? 'font-mono tabular-nums text-slate-900 dark:text-slate-100 font-medium' : 'text-slate-800 dark:text-slate-200'
+                              }`}
+                            >
+                              {formatValue(r[c.key])}
+                            </span>
+                          )}
                         </div>
                       );
                     })}
@@ -864,8 +887,9 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                     {columns.map((c) => {
                       const isNum = isNumericKey(c.key);
                       const isStatus = c.key === effectiveStatusKey;
+                      const isUom = c.key.toLowerCase() === 'uom';
                       const isSorted = sortKey === c.key;
-                      const alignClass = isNum ? 'text-right' : isStatus ? 'text-center' : 'text-left';
+                      const alignClass = isNum ? 'text-right' : (isStatus || isUom) ? 'text-center' : 'text-left';
                       return (
                         <th
                           key={c.key}
@@ -892,7 +916,7 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                         >
                           <div
                             className={`inline-flex items-center gap-1.5 ${
-                              isNum ? 'justify-end' : isStatus ? 'justify-center' : 'justify-start'
+                              isNum ? 'justify-end' : (isStatus || isUom) ? 'justify-center' : 'justify-start'
                             }`}
                           >
                             <span>{c.label}</span>
@@ -923,11 +947,22 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                         const val = r[c.key];
                         const isNum = isNumericKey(c.key);
                         const isStatus = c.key === effectiveStatusKey;
+                        const isUom = c.key.toLowerCase() === 'uom';
 
                         if (isStatus) {
                           return (
                             <td key={c.key} className="whitespace-nowrap px-3 py-2 text-center">
                               {renderStatusBadge(val)}
+                            </td>
+                          );
+                        }
+
+                        if (isUom) {
+                          return (
+                            <td key={c.key} className="whitespace-nowrap px-3 py-2 text-center">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold uppercase tracking-wide bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                {formatValue(val)}
+                              </span>
                             </td>
                           );
                         }

@@ -102,6 +102,7 @@ type PendingRow = {
   grade?: string | null;
   route?: string | null;
   total_pending: number;
+  uom?: string | null;
   ordered_qty?: string | number;
   planned_qty?: number;
   produced_qty?: number;
@@ -453,6 +454,7 @@ export default function DashboardClient({
       const od = Number(row.od || 0);
       const wt = Number(row.wt || 0);
       const mtr = Number(row.total_pending || 0);
+      const uom = row.uom ? String(row.uom).trim() : '';
       const wipMt = od > 0 && wt > 0 ? mtFromMtr(mtr, od, wt) : 0;
 
       let dueFormatted = '—';
@@ -470,6 +472,8 @@ export default function DashboardClient({
         size: od > 0 && wt > 0 ? `${od} × ${wt}` : '—',
         stage: stageName,
         wipMt: wipMt > 0 ? wipMt.toFixed(1) : String(mtr),
+        pendingQty: mtr,
+        pendingUom: uom,
         status: statusLabel,
         statusColor,
         dueDate: dueFormatted,
@@ -876,7 +880,14 @@ export default function DashboardClient({
                       <td className="py-2 px-2 font-mono text-slate-600 dark:text-slate-400">{row.grade}</td>
                       <td className="py-2 px-2 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">{row.size}</td>
                       <td className="py-2 px-2 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{row.stage}</td>
-                      <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100">{row.wipMt}</td>
+                      <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                        {row.wipMt} <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">MT</span>
+                        {row.pendingUom && (
+                          <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal leading-none mt-0.5">
+                            {row.pendingQty.toLocaleString()} {row.pendingUom}
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2 px-2 text-center whitespace-nowrap">
                         <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold border ${row.statusColor}`}>
                           {row.status}
