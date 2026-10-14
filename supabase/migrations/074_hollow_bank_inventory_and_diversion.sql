@@ -2,18 +2,21 @@
 -- Dedicated Hollow Bank yard inventory and stage diversion workflow
 
 -- 1. Virtual buffer work order for Hollow Bank
-insert into public.work_orders(id, work_order_no, customer_name, status, size_od, size_wt, ordered_qty)
+insert into public.work_orders(id, work_order_no, customer_name, status, size_od, size_wt, ordered_qty, uom, grade)
 values (
   '00000000-0000-0000-0000-00000000000b',
   'HB-BUFFER',
   'HOLLOW BANK BUFFER YARD',
   'In Progress',
-  0,
-  0,
-  999999
+  1,
+  1,
+  999999,
+  'Mtrs'::public.uom_type,
+  'BUFFER'
 ) on conflict (id) do update set
   work_order_no = excluded.work_order_no,
-  customer_name = excluded.customer_name;
+  customer_name = excluded.customer_name,
+  uom = excluded.uom;
 
 -- 2. Hollow Bank Inventory table
 create table if not exists public.hollow_bank_inventory (
