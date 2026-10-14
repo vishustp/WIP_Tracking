@@ -306,7 +306,7 @@ export default function AllocateHollowModal({ isOpen, lot, onClose, onSuccess }:
             <CheckCircle2 size={15} className="shrink-0 mt-0.5" />
             <div>
               <strong>Queue Injection:</strong> This will inject{' '}
-              <span className="font-mono font-bold">{allocMtr || 0} m</span> directly into target work order's queue at{' '}
+              <span className="font-mono font-bold">{allocMtr || 0} m</span> directly into target work order&apos;s queue at{' '}
               <span className="font-semibold">{targetStageCode}</span> stage.
             </div>
           </div>
