@@ -165,6 +165,7 @@ export default function SizeGradeWipReportClient() {
 
   // Filters
   const [search, setSearch] = useState<string>('');
+  const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [selectedRoute, setSelectedRoute] = useState<string>('ALL');
   const [selectedGrade, setSelectedGrade] = useState<string>('ALL');
   const [fromOd, setFromOd] = useState<string>('');
@@ -620,6 +621,13 @@ export default function SizeGradeWipReportClient() {
     return rawWipRows.filter((r) => {
       // Must have positive physical inventory
       if (Number(r.current_wip_pcs || 0) <= 0 && Number(r.current_wip || 0) <= 0) return false;
+      // Order Status filter
+      if (selectedStatus === 'COMPLETED') {
+        if ((r.order_status || '').toLowerCase() !== 'completed') return false;
+      } else if (selectedStatus === 'IN_PROCESS') {
+        if ((r.order_status || '').toLowerCase() === 'completed') return false;
+      }
+
       // Route filter
       if (selectedRoute !== 'ALL' && (r.route_code || '').toUpperCase() !== selectedRoute.toUpperCase()) return false;
 
@@ -653,7 +661,7 @@ export default function SizeGradeWipReportClient() {
 
       return true;
     });
-  }, [rawWipRows, selectedRoute, selectedGrade, debouncedFromOd, debouncedToOd, debouncedSearch, fromRollingDate, toRollingDate]);
+  }, [rawWipRows, selectedStatus, selectedRoute, selectedGrade, debouncedFromOd, debouncedToOd, debouncedSearch, fromRollingDate, toRollingDate]);
 
   // Aggregate into Size & Grade Matrix
   const matrixGroups = useMemo(() => {
@@ -858,6 +866,7 @@ export default function SizeGradeWipReportClient() {
 
   const clearAllFilters = useCallback(() => {
     setSearch('');
+    setSelectedStatus('ALL');
     setSelectedRoute('ALL');
     setSelectedGrade('ALL');
     setFromOd('');
@@ -868,6 +877,7 @@ export default function SizeGradeWipReportClient() {
 
   const hasActiveFilters = Boolean(
     search ||
+    selectedStatus !== 'ALL' ||
     selectedRoute !== 'ALL' ||
     selectedGrade !== 'ALL' ||
     fromOd ||
@@ -1204,9 +1214,9 @@ export default function SizeGradeWipReportClient() {
 
       {/* Filter Toolbar */}
       <div className="bg-[var(--bg-surface,#ffffff)] p-3 rounded-lg border border-[var(--border-subtle,#e2e8f0)] shadow-2xs space-y-2.5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 items-end">
           {/* Search Size or Grade */}
-          <div className="relative lg:col-span-3">
+          <div className="relative">
             <label htmlFor="wip-matrix-search" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
               Search Keywords
             </label>
@@ -1224,8 +1234,26 @@ export default function SizeGradeWipReportClient() {
             </div>
           </div>
 
+          {/* Order Status Filter */}
+          <div>
+            <label htmlFor="wip-matrix-status" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
+              Order Status
+            </label>
+            <Select
+              id="wip-matrix-status"
+              aria-label="Filter by order status"
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="text-xs h-8 font-medium"
+            >
+              <option value="ALL">All Orders (Live & Completed)</option>
+              <option value="IN_PROCESS">In-Process / Live Orders</option>
+              <option value="COMPLETED">Completed Orders Only</option>
+            </Select>
+          </div>
+
           {/* Route Dropdown Filter */}
-          <div className="lg:col-span-2">
+          <div>
             <label htmlFor="wip-matrix-route" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
               Process Route
             </label>
@@ -1246,7 +1274,7 @@ export default function SizeGradeWipReportClient() {
           </div>
 
           {/* Grade Dropdown */}
-          <div className="lg:col-span-2">
+          <div>
             <label htmlFor="wip-matrix-grade" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
               Material Grade
             </label>
@@ -1267,7 +1295,7 @@ export default function SizeGradeWipReportClient() {
           </div>
 
           {/* OD Range Filter */}
-          <div className="lg:col-span-2">
+          <div>
             <label className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">OD Range (mm)</label>
             <div className="flex items-center gap-1">
               <Input
@@ -1291,7 +1319,7 @@ export default function SizeGradeWipReportClient() {
           </div>
 
           {/* Rolling Production Date Range Filter */}
-          <div className="lg:col-span-3">
+          <div>
             <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
               <span className="flex items-center gap-1 text-[var(--text-main,#1e293b)] font-semibold">
                 <Calendar className="h-3 w-3 text-[var(--text-muted,#94a3b8)]" aria-hidden="true" />
