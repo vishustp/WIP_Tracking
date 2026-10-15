@@ -47,6 +47,14 @@ export interface DailyPlanItemWithWorkOrder extends DailyPlanRecord {
   route_code?: string | null;
   available_wip_pcs?: number;
   available_wip_mtr?: number;
+
+  // Mill Format Technical Specifications
+  l1?: number | null;
+  l2?: number | null;
+  avg_length?: number | null;
+  proc_wall?: number | null;
+  factor?: number | null;
+  kg_per_mtr?: number | null;
   
   // Live Actuals from Production Logs
   actual_pcs: number;

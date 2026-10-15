@@ -25,7 +25,9 @@ import {
   X,
   ArrowRight,
   Save,
+  FileSpreadsheet,
 } from 'lucide-react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import {
@@ -548,25 +550,35 @@ export default function DailyPlanningConsoleClient() {
             </div>
           </div>
 
-          {/* Shift Switcher */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Shift:</span>
-            <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5">
-              {(['ALL_DAY', 'SHIFT_A', 'SHIFT_B', 'SHIFT_C'] as DailyPlanShift[]).map((sh) => (
-                <button
-                  key={sh}
-                  type="button"
-                  onClick={() => setSelectedShift(sh)}
-                  className={`px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${
-                    selectedShift === sh
-                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
-                  }`}
-                >
-                  {sh === 'ALL_DAY' ? 'All Day' : sh.replace('SHIFT_', 'Shift ')}
-                </button>
-              ))}
+          {/* Shift Switcher & Report Link */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Shift:</span>
+              <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5">
+                {(['ALL_DAY', 'SHIFT_A', 'SHIFT_B', 'SHIFT_C'] as DailyPlanShift[]).map((sh) => (
+                  <button
+                    key={sh}
+                    type="button"
+                    onClick={() => setSelectedShift(sh)}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${
+                      selectedShift === sh
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    {sh === 'ALL_DAY' ? 'All Day' : sh.replace('SHIFT_', 'Shift ')}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            <Link
+              href={`/reports/daily-plan?date=${selectedDate}&shift=${selectedShift}&format=${selectedGroupId === 'DRAW_PILGER' ? 'F_PROD_003' : 'F_PROD_005'}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 text-xs font-bold transition shadow-2xs"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              Mill Report (F PROD-003/005)
+            </Link>
           </div>
         </div>
       </div>

@@ -122,6 +122,7 @@ const navSections = [
   {
     label: 'REPORTS',
     items: [
+      { href: '/reports/daily-plan', label: 'Daily Planning Report', icon: CalendarDays },
       { href: '/reports/process-sheet', label: 'Process Sheets', icon: ScrollText },
       { href: '/reports/pending-orders', label: 'Pending Orders', icon: ClipboardList },
       { href: '/reports/rolling-plans', label: 'Rolling Plan Schedule', icon: CalendarClock },

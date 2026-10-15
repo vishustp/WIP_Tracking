@@ -235,6 +235,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/spec-master',
     '/order-priority',
     '/daily-plans',
+    '/reports/daily-plan',
     '/reports/pending-orders',
     '/reports/process-sheet',
     '/reports/wip',
@@ -260,7 +261,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
  */
 export function isRouteVisible(user: AppUserProfile | null | undefined, href: string): boolean {
   if (!user) {
-    if (['/dashboard', '/production', '/daily-plans', '/reports/wip', '/reports/tracking'].includes(href)) return true;
+    if (['/dashboard', '/production', '/daily-plans', '/reports/daily-plan', '/reports/wip', '/reports/tracking'].includes(href)) return true;
     return false;
   }
   const group: UserGroup = user.group || (user.role === 'admin' ? 'admin' : user.role === 'manager' ? 'super_user' : 'user');

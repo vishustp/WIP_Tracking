@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
           specification,
           size_od,
           size_wt,
+          l1,
+          l2,
           ordered_qty,
           ordered_qty_mtr
         )
@@ -70,6 +72,26 @@ export async function GET(request: NextRequest) {
 
     const plans = plansData || [];
     const workOrderIds = plans.map((p: any) => p.work_order_id).filter(Boolean);
+
+    // Fetch mother hollow specs from rolling plans if available
+    let rollingPlanMap = new Map<string, { mh_wt?: number | null; mh_od?: number | null; mh_l1?: number | null; mh_l2?: number | null }>();
+    if (workOrderIds.length > 0) {
+      const { data: rPlans } = await supabase
+        .from('rolling_plans')
+        .select('work_order_id, mh_wt, mh_od, mh_l1, mh_l2')
+        .in('work_order_id', workOrderIds);
+
+      (rPlans || []).forEach((rp: any) => {
+        if (rp.work_order_id && !rollingPlanMap.has(rp.work_order_id)) {
+          rollingPlanMap.set(rp.work_order_id, {
+            mh_wt: rp.mh_wt ? Number(rp.mh_wt) : null,
+            mh_od: rp.mh_od ? Number(rp.mh_od) : null,
+            mh_l1: rp.mh_l1 ? Number(rp.mh_l1) : null,
+            mh_l2: rp.mh_l2 ? Number(rp.mh_l2) : null,
+          });
+        }
+      });
+    }
 
     // Fetch live actual production entries logged on this date
     let actualsMap = new Map<string, { actual_pcs: number; actual_mtr: number; actual_mt: number }>();
@@ -95,13 +117,30 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Combine plans with live actual progress
+    // Combine plans with live actual progress and technical mill specs
     const enrichedPlans: DailyPlanItemWithWorkOrder[] = plans.map((p: any) => {
       const wo = p.work_orders || {};
+      const rp = rollingPlanMap.get(p.work_order_id);
       const key = `${p.work_order_id}_${p.work_center}`;
       const actuals = actualsMap.get(key) || { actual_pcs: 0, actual_mtr: 0, actual_mt: 0 };
       const targetPcs = Number(p.target_pcs || 0);
       const actualPcs = actuals.actual_pcs;
+
+      const od = Number(wo.size_od || 0);
+      const wt = Number(wo.size_wt || 0);
+      const factor = (od > 0 && wt > 0) ? Number(((od - wt) * wt).toFixed(4)) : null;
+      const kgPerMtr = factor ? Number((factor * 0.0246615).toFixed(3)) : null;
+      const procWall = rp?.mh_wt ?? (wt > 0 ? wt : null);
+      const l1 = Number(wo.l1 || rp?.mh_l1 || 0) || null;
+      const l2 = Number(wo.l2 || rp?.mh_l2 || 0) || null;
+      const avgLength = (l1 && l2) 
+        ? Number(((l1 + l2) / 2).toFixed(2)) 
+        : (l1 || l2 || (targetPcs > 0 && Number(p.target_mtr || 0) > 0 ? Number((Number(p.target_mtr) / targetPcs).toFixed(2)) : null));
+
+      let targetMt = Number(p.target_mt || 0);
+      if (targetMt <= 0 && targetPcs > 0 && avgLength && kgPerMtr) {
+        targetMt = Number(((targetPcs * avgLength * kgPerMtr) / 1000).toFixed(3));
+      }
 
       return {
         id: p.id,
@@ -111,7 +150,7 @@ export async function GET(request: NextRequest) {
         work_order_id: p.work_order_id,
         target_pcs: targetPcs,
         target_mtr: Number(p.target_mtr || 0),
-        target_mt: Number(p.target_mt || 0),
+        target_mt: targetMt,
         machine_id: p.machine_id,
         charge_no: p.charge_no,
         pass_no: p.pass_no,
@@ -129,6 +168,12 @@ export async function GET(request: NextRequest) {
         size_wt: wo.size_wt,
         ordered_qty_pcs: wo.ordered_qty,
         ordered_qty_mtr: wo.ordered_qty_mtr,
+        l1,
+        l2,
+        avg_length: avgLength,
+        proc_wall: procWall,
+        factor,
+        kg_per_mtr: kgPerMtr,
         actual_pcs: actualPcs,
         actual_mtr: Number(actuals.actual_mtr.toFixed(2)),
         actual_mt: Number(actuals.actual_mt.toFixed(3)),
