@@ -770,6 +770,8 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
             </span>
             <button
               type="button"
+              aria-label="Clear search"
+              title="Clear search"
               onClick={() => {
                 setSortKey(null);
                 setSortDirection('asc');
@@ -1130,6 +1132,8 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
+                    aria-label="Previous page"
+                    title="Previous page"
                     disabled={page === 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     className="min-h-[36px] min-w-[36px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-30 transition-all duration-150 hover:scale-110 active:scale-90 disabled:hover:scale-100 cursor-pointer motion-reduce:transition-none motion-reduce:transform-none"
@@ -1143,6 +1147,8 @@ export default function DataReport({ title, view, columns, searchKeys, dateKey, 
                   </span>
                   <button
                     type="button"
+                    aria-label="Next page"
+                    title="Next page"
                     disabled={page === totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     className="min-h-[36px] min-w-[36px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 disabled:opacity-30 transition-all duration-150 hover:scale-110 active:scale-90 disabled:hover:scale-100 cursor-pointer motion-reduce:transition-none motion-reduce:transform-none"
