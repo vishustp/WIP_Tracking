@@ -202,7 +202,72 @@ export default function SizeGradeWipReportClient() {
       setLoading(true);
       const supabase = createClient();
 
-      // Query view for live stage physical WIP + rolling logs + plans + qc inspections + diversion plans
+      // 1. Fetch live production queue containing exact active stage WIP across all work centers
+      let queueLoaded = false;
+      try {
+        const [queueRes, routesOnlyRes] = await Promise.all([
+          fetch(`/api/production/queue?all_stages=true&_t=${Date.now()}`),
+          supabase.from('process_routes').select('id, route_code, route_name').eq('active', true),
+        ]);
+
+        if (routesOnlyRes.data) {
+          setAllRoutes(routesOnlyRes.data);
+        }
+
+        if (queueRes.ok) {
+          const queueJson = await queueRes.json();
+          if (queueJson?.success && Array.isArray(queueJson.data) && queueJson.data.length > 0) {
+            const mapped = queueJson.data.map((r: any) => {
+              const pcs = Math.round(Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0));
+              const mtr = Number(Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0).toFixed(2));
+              const mt = Number(Number(r.ready_mt ?? r.balance_to_make_mt ?? 0).toFixed(2));
+              const stCode = (r.stage_code || '').toUpperCase() as StageCode;
+
+              return {
+                ...r,
+                work_order_id: r.work_order_id || r.id,
+                work_order_no: r.work_order_no,
+                customer_name: r.customer_name || null,
+                stage_code: stCode,
+                stage_name: stCode === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
+                            stCode === 'PILGER' ? 'Cold Pilger Mill' :
+                            stCode === 'DRAW' ? 'Cold Draw Bench' :
+                            stCode === 'HEAT_TREATMENT' ? 'Final Heat Treatment' :
+                            stCode === 'BAND_SAW' ? 'Band Saw Cutting' :
+                            stCode === 'VDI' ? 'VDI / QC Inspection' :
+                            stCode === 'FINISHING' ? 'Finishing & Dispatch' : (r.stage_name || stCode),
+                grade: normalizeGrade(r.specification || r.grade || 'Standard'),
+                od: Number(r.od || 0),
+                wt: Number(r.wl || r.size_wt || r.wt || 0),
+                mh_od: r.mh_od ? Number(r.mh_od) : null,
+                mh_wt: r.mh_wt ? Number(r.mh_wt) : null,
+                route_code: r.route_code || 'CDS',
+                route_name: r.route_name || 'Standard CDS',
+                rolling_date: r.rolling_date || null,
+                order_status: r.order_status || (Number(r.balance_to_make_order_pcs ?? r.balance_qty_pcs ?? 1) === 0 ? 'Completed' : 'In Progress'),
+                balance_qty_pcs: r.balance_qty_pcs != null ? Number(r.balance_qty_pcs) : (r.balance_to_make_order_pcs != null ? Number(r.balance_to_make_order_pcs) : null),
+                balance_qty_mtr: r.balance_qty_mtr != null ? Number(r.balance_qty_mtr) : (r.balance_to_make_order_mtr != null ? Number(r.balance_to_make_order_mtr) : null),
+                is_feeder_stage: false,
+                current_wip: mtr,
+                current_wip_pcs: pcs,
+                available_mt: mt,
+                current_wip_mt: mt,
+              };
+            });
+
+            setRawWipRows(mapped);
+            queueLoaded = true;
+          }
+        }
+      } catch (queueErr) {
+        console.warn('Queue API fetch failed, falling back to database view:', queueErr);
+      }
+
+      if (queueLoaded) {
+        return;
+      }
+
+      // 2. Fallback: Query view for live stage physical WIP + rolling logs + plans + qc inspections + diversion plans
       const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes, qcRes, divRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').limit(5000),
         supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mt, status, balance_qty_pcs, balance_qty_mtr').limit(5000),
@@ -213,6 +278,10 @@ export default function SizeGradeWipReportClient() {
         supabase.from('qc_inspections').select('work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr').limit(5000),
         supabase.from('diversion_plans').select('target_wo_id, source_wo_id, diversion_date, created_at').limit(5000),
       ]);
+
+      if (routesRes.data) {
+        setAllRoutes(routesRes.data);
+      }
 
       const queryErrors = [wipRes.error, woRes.error, plansRes.error, routesRes.error, prodRes.error, stagesRes.error, qcRes.error, divRes.error].filter(Boolean);
       if (queryErrors.length > 0) {
@@ -536,9 +605,9 @@ export default function SizeGradeWipReportClient() {
             if (recStage.is_feeder_stage || recStage.stage_code === 'ROLLING') continue;
             // Child work orders in a master campaign are bundled under master for pre-finishing stages
             if (childToMasterMap.has(woId) && recStage.stage_code !== 'FINISHING') continue;
-            // Master work orders in a campaign do NOT have finishing; finishing is on child orders
+            // Master work orders in a campaign do NOT have finishing unless positive WIP exists
             const campMembers = campaignMembersMap.get(woId);
-            if (campMembers && campMembers.size > 1 && recStage.stage_code === 'FINISHING') continue;
+            if (campMembers && campMembers.size > 1 && recStage.stage_code === 'FINISHING' && recStage.capped_wip_pcs <= 0) continue;
             // Only include stages that have active physical WIP inventory
             if (recStage.capped_wip_pcs <= 0 && recStage.capped_wip_mtr <= 0) continue;
 

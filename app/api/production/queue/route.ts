@@ -69,6 +69,7 @@ async function enrichWithDailyPlans(admin: any, rows: Row[], stage: StageCode) {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    const isAllStages = searchParams.get("all_stages") === "true" || searchParams.get("matrix") === "true";
     const targetStage = (searchParams.get("stage")?.toUpperCase() || "ROLLING") as StageCode;
     const includeFeeder = searchParams.get("include_feeder") === "true" || searchParams.get("for_planning") === "true";
     const forceFresh = searchParams.has("nocache") || searchParams.has("refresh");
@@ -76,7 +77,38 @@ export async function GET(req: NextRequest) {
     // Fast-path: Return from memory cache if within TTL (reduces DB hits by 90% during navigation)
     if (!forceFresh && memoryCache && (Date.now() - memoryCache.timestamp) < CACHE_TTL_MS) {
       const selectedRows: Row[] = [];
-      if (targetStage === "ROLLING") {
+      if (isAllStages) {
+        const activeStages: StageCode[] = [
+          "HOLLOW_HEAT_TREATMENT",
+          "DRAW",
+          "PILGER",
+          "HEAT_TREATMENT",
+          "BAND_SAW",
+          "VDI",
+          "FINISHING",
+        ];
+        for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
+          for (const st of activeStages) {
+            const row = queueRows[st];
+            if (row && !row.is_feeder_source) {
+              const readyPcs = Number(row.ready_pcs ?? row.balance_to_make_pcs ?? 0);
+              const readyMtr = Number(row.ready_mtr ?? row.balance_to_make_mtr ?? 0);
+              if (readyPcs >= 1 || readyMtr >= 1.0) {
+                selectedRows.push(row);
+              }
+            }
+          }
+        }
+        for (const r of memoryCache.childFinishingRows) {
+          if (!r.is_feeder_source) {
+            const readyPcs = Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0);
+            const readyMtr = Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0);
+            if (readyPcs >= 1 || readyMtr >= 1.0) {
+              selectedRows.push(r);
+            }
+          }
+        }
+      } else if (targetStage === "ROLLING") {
         selectedRows.push(
           ...memoryCache.rollingPlanRows.filter(
             (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
@@ -98,7 +130,7 @@ export async function GET(req: NextRequest) {
           }
         }
       }
-      if (targetStage === "FINISHING") {
+      if (!isAllStages && targetStage === "FINISHING") {
         if (includeFeeder) {
           selectedRows.push(
             ...memoryCache.childFinishingRows.filter(
@@ -122,7 +154,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          stage: targetStage,
+          stage: isAllStages ? "ALL" : targetStage,
           count: selectedRows.length,
           data: selectedRows,
           summary: summaryArray,
@@ -176,7 +208,7 @@ export async function GET(req: NextRequest) {
       fetchAllLogs(admin),
       admin
         .from("work_orders")
-        .select("id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, ordered_qty, ordered_qty_mtr, ordered_qty_pcs, ordered_qty_mt, balance_qty_mtr, balance_qty_pcs, balance_qty_mt"),
+        .select("id, work_order_no, customer_name, grade, status, size_od, size_wt, l1, l2, ordered_qty, ordered_qty_mtr, ordered_qty_pcs, ordered_qty_mt, balance_qty_mtr, balance_qty_pcs, balance_qty_mt"),
       admin.from("process_routes").select("id, route_code, route_name"),
       admin
         .from("qc_inspections")
@@ -1182,6 +1214,10 @@ export async function GET(req: NextRequest) {
       const orderCappingPcs = avgLength > 0 ? Math.round(orderCappingMtr / avgLength) : 0;
 
       // Pre-build Row objects for this work order for all 6 stages
+      const rollingDate = rollLogs.length > 0
+        ? (rollLogs[0].process_date ? String(rollLogs[0].process_date).slice(0, 10) : (rollLogs[0].created_at ? String(rollLogs[0].created_at).slice(0, 10) : null))
+        : null;
+
       const baseRowData = {
         work_order_id: wo.id,
         work_order_no: wo.work_order_no,
@@ -1192,6 +1228,10 @@ export async function GET(req: NextRequest) {
         l1,
         l2,
         avg_length: avgLength,
+        order_status: wo.status || (balanceToMakeOrderPcs === 0 ? "Completed" : "In Progress"),
+        balance_qty_pcs: wo.balance_qty_pcs != null ? Number(wo.balance_qty_pcs) : balanceToMakeOrderPcs,
+        balance_qty_mtr: wo.balance_qty_mtr != null ? Number(wo.balance_qty_mtr) : balanceToMakeOrderMtr,
+        rolling_date: rollingDate,
         total_order_pcs: totalOrderPcs,
         total_order_mtr: totalOrderMtr,
         total_order_mt: totalOrderMt,
@@ -2002,6 +2042,10 @@ export async function GET(req: NextRequest) {
           l1,
           l2,
           avg_length: avgLength,
+          order_status: childWo?.status || (childBalOrderPcs === 0 ? "Completed" : "In Progress"),
+          balance_qty_pcs: childWo?.balance_qty_pcs != null ? Number(childWo.balance_qty_pcs) : childBalOrderPcs,
+          balance_qty_mtr: childWo?.balance_qty_mtr != null ? Number(childWo.balance_qty_mtr) : childBalOrderMtr,
+          rolling_date: masterCalc?.queueRows.FINISHING?.rolling_date || null,
           total_order_pcs: childTotalOrderPcs,
           total_order_mtr: childTotalOrderMtr,
           total_order_mt: childTotalOrderMt,
@@ -2073,7 +2117,38 @@ export async function GET(req: NextRequest) {
     // Select the appropriate rows for the requested stage
     // (Universal Rule: Filter out any work order/plan whose available balance is less than 1 (Qty < 1 Pc or < 1.0 Mtr))
     const selectedRows: Row[] = [];
-    if (targetStage === "ROLLING") {
+    if (isAllStages) {
+      const activeStages: StageCode[] = [
+        "HOLLOW_HEAT_TREATMENT",
+        "DRAW",
+        "PILGER",
+        "HEAT_TREATMENT",
+        "BAND_SAW",
+        "VDI",
+        "FINISHING",
+      ];
+      for (const { queueRows } of allCalculatedRows.values()) {
+        for (const st of activeStages) {
+          const row = queueRows[st];
+          if (row && !row.is_feeder_source) {
+            const readyPcs = Number(row.ready_pcs ?? row.balance_to_make_pcs ?? 0);
+            const readyMtr = Number(row.ready_mtr ?? row.balance_to_make_mtr ?? 0);
+            if (readyPcs >= 1 || readyMtr >= 1.0) {
+              selectedRows.push(row);
+            }
+          }
+        }
+      }
+      for (const r of childFinishingRows) {
+        if (!r.is_feeder_source) {
+          const readyPcs = Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0);
+          const readyMtr = Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0);
+          if (readyPcs >= 1 || readyMtr >= 1.0) {
+            selectedRows.push(r);
+          }
+        }
+      }
+    } else if (targetStage === "ROLLING") {
       selectedRows.push(
         ...rollingPlanRows.filter(
           (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
@@ -2097,7 +2172,7 @@ export async function GET(req: NextRequest) {
     }
 
     // For finishing stage, also append child orders with balance >= 1
-    if (targetStage === "FINISHING") {
+    if (!isAllStages && targetStage === "FINISHING") {
       if (includeFeeder) {
         selectedRows.push(
           ...childFinishingRows.filter(
@@ -2121,12 +2196,14 @@ export async function GET(req: NextRequest) {
     }));
 
     // Enrich queue rows with today's daily production plan targets
-    await enrichWithDailyPlans(admin, selectedRows, targetStage);
+    if (!isAllStages) {
+      await enrichWithDailyPlans(admin, selectedRows, targetStage);
+    }
 
     return NextResponse.json(
       {
         success: true,
-        stage: targetStage,
+        stage: isAllStages ? "ALL" : targetStage,
         count: selectedRows.length,
         data: selectedRows,
         summary: summaryArray,

@@ -107,6 +107,10 @@ export interface Row {
   work_centers_wip?: WorkCenterWipInfo[];
 
   // Total Order & Balance to Make Metrics (for Finishing & Planning)
+  order_status?: string | null;
+  balance_qty_pcs?: number | null;
+  balance_qty_mtr?: number | null;
+  rolling_date?: string | null;
   total_order_pcs?: number | null;
   total_order_mtr?: number | null;
   total_order_mt?: number | null;
