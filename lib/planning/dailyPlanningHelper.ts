@@ -152,6 +152,27 @@ export function filterEligibleWipQueue(queue: any[]): any[] {
 }
 
 /**
+ * Checks whether a queue item or work order is already planned for the active station/date.
+ */
+export function isWorkOrderPlanned(
+  item: { work_order_id?: string; id?: string },
+  plannedWoIds: Set<string> | Map<string, any>
+): boolean {
+  const id = item.work_order_id || item.id;
+  return Boolean(id && plannedWoIds.has(id));
+}
+
+/**
+ * Filters eligible WIP queue to only items that have not yet been planned for the active work center and date.
+ */
+export function filterUnplannedWipQueue(
+  queue: any[],
+  plannedWoIds: Set<string> | Map<string, any>
+): any[] {
+  return filterEligibleWipQueue(queue).filter((item) => !isWorkOrderPlanned(item, plannedWoIds));
+}
+
+/**
  * Formats daily plans into CSV export format.
  */
 export function buildDailyPlanCsv(

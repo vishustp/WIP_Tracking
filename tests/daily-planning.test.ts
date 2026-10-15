@@ -6,6 +6,8 @@ import {
   groupFurnaceChargesByGrade,
   buildDailyPlanCsv,
   filterEligibleWipQueue,
+  filterUnplannedWipQueue,
+  isWorkOrderPlanned,
   STATION_MACHINE_PRESETS,
 } from '@/lib/planning/dailyPlanningHelper';
 import { DailyPlanItemWithWorkOrder } from '@/types/dailyPlanning';
@@ -214,6 +216,49 @@ describe('Daily Planning Helper Utilities', () => {
       expect(STATION_MACHINE_PRESETS.PILGER.length).toBeGreaterThan(0);
       expect(STATION_MACHINE_PRESETS.HEAT_TREATMENT.length).toBeGreaterThan(0);
       expect(STATION_MACHINE_PRESETS.BAND_SAW.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('isWorkOrderPlanned & filterUnplannedWipQueue', () => {
+    it('identifies whether an item is already planned using work_order_id or id', () => {
+      const plannedMap = new Map([
+        ['wo-101', { id: 'plan-1', target_pcs: 50 }],
+        ['wo-102', { id: 'plan-2', target_pcs: 30 }],
+      ]);
+
+      expect(isWorkOrderPlanned({ work_order_id: 'wo-101' }, plannedMap)).toBe(true);
+      expect(isWorkOrderPlanned({ id: 'wo-102' }, plannedMap)).toBe(true);
+      expect(isWorkOrderPlanned({ work_order_id: 'wo-103' }, plannedMap)).toBe(false);
+      expect(isWorkOrderPlanned({}, plannedMap)).toBe(false);
+    });
+
+    it('filters out already-planned work orders from the WIP queue to prevent multiple planning', () => {
+      const rawQueue = [
+        { work_order_id: 'wo-101', balance_to_make_pcs: 50, balance_to_make_mtr: 300 },
+        { work_order_id: 'wo-102', balance_to_make_pcs: 25, balance_to_make_mtr: 150 },
+        { work_order_id: 'wo-103', balance_to_make_pcs: 40, balance_to_make_mtr: 240 },
+      ];
+
+      const plannedMap = new Map([
+        ['wo-101', { id: 'plan-1', target_pcs: 50 }],
+      ]);
+
+      const unplanned = filterUnplannedWipQueue(rawQueue, plannedMap);
+      expect(unplanned).toHaveLength(2);
+      expect(unplanned.map((i) => i.work_order_id)).toEqual(['wo-102', 'wo-103']);
+      expect(unplanned.some((i) => i.work_order_id === 'wo-101')).toBe(false);
+    });
+
+    it('works with Set as well as Map of planned work order IDs', () => {
+      const queue = [
+        { work_order_id: 'wo-1', ready_pcs: 10, ready_mtr: 60 },
+        { work_order_id: 'wo-2', ready_pcs: 20, ready_mtr: 120 },
+      ];
+      const plannedSet = new Set(['wo-1']);
+
+      const unplanned = filterUnplannedWipQueue(queue, plannedSet);
+      expect(unplanned).toHaveLength(1);
+      expect(unplanned[0].work_order_id).toBe('wo-2');
     });
   });
 });

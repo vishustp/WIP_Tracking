@@ -192,6 +192,44 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
+    // Enforce: A work order cannot be planned multiple times for the same work center on the same date
+    if (!id) {
+      const { data: existingPlan } = await supabase
+        .from('daily_production_plans')
+        .select('id, target_pcs, shift, machine_id')
+        .eq('work_order_id', work_order_id)
+        .eq('work_center', work_center)
+        .eq('plan_date', plan_date)
+        .maybeSingle();
+
+      if (existingPlan) {
+        return NextResponse.json(
+          {
+            error: `This work order is already planned for ${work_center} on ${plan_date} (Target: ${existingPlan.target_pcs} PCS). Cannot plan the same work order multiple times. Please edit the existing target instead.`,
+          },
+          { status: 409 }
+        );
+      }
+    } else {
+      const { data: collision } = await supabase
+        .from('daily_production_plans')
+        .select('id, target_pcs')
+        .eq('work_order_id', work_order_id)
+        .eq('work_center', work_center)
+        .eq('plan_date', plan_date)
+        .neq('id', id)
+        .maybeSingle();
+
+      if (collision) {
+        return NextResponse.json(
+          {
+            error: `Another daily plan target already exists for this work order at ${work_center} on ${plan_date}.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     let result;
     if (id) {
       result = await supabase

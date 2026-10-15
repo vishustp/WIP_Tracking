@@ -41,6 +41,8 @@ import {
   calculateStationPlannedTotals,
   buildDailyPlanCsv,
   filterEligibleWipQueue,
+  filterUnplannedWipQueue,
+  isWorkOrderPlanned,
 } from '@/lib/planning/dailyPlanningHelper';
 import { mtFromMtr, mtrFromPcs } from '@/lib/productionUtils';
 
@@ -104,8 +106,7 @@ export default function DailyPlanningConsoleClient() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalItem, setModalItem] = useState<any | null>(null);
   const [modalPlanDate, setModalPlanDate] = useState<string>(selectedDate);
-  const [modalShift, setModalShift] = useState<DailyPlanShift>(selectedShift);
-  const [queueTab, setQueueTab] = useState<'ALL' | 'READY' | 'FEEDER'>('ALL');
+  const [queueTab, setQueueTab] = useState<'UNPLANNED' | 'READY' | 'FEEDER' | 'ALL'>('UNPLANNED');
   const [targetPcs, setTargetPcs] = useState<number>(0);
   const [targetMtr, setTargetMtr] = useState<number>(0);
   const [targetMt, setTargetMt] = useState<number>(0);
@@ -203,10 +204,23 @@ export default function DailyPlanningConsoleClient() {
     return plans.filter((p) => p.work_center === activeWc);
   }, [plans, activeWc]);
 
-  // Filter WIP queue with tab selector (All vs Ready vs Feeder)
+  // Lookup map of existing plans by work order id for active work center & date
+  const plansByWoId = useMemo(() => {
+    const map = new Map<string, DailyPlanItemWithWorkOrder>();
+    for (const p of filteredPlans) {
+      if (p.work_order_id) {
+        map.set(p.work_order_id, p);
+      }
+    }
+    return map;
+  }, [filteredPlans]);
+
+  // Filter WIP queue with tab selector (Unplanned vs Ready vs Feeder vs All)
   const eligibleQueue = useMemo(() => {
     let list = filterEligibleWipQueue(wipQueue);
-    if (queueTab === 'READY') {
+    if (queueTab === 'UNPLANNED') {
+      list = list.filter((r) => !isWorkOrderPlanned(r, plansByWoId));
+    } else if (queueTab === 'READY') {
       list = list.filter((r) => Number(r.ready_pcs ?? r.available_pcs ?? 0) >= 1 && !r.is_feeder_source);
     } else if (queueTab === 'FEEDER') {
       list = list.filter((r) => r.is_feeder_source || (Number(r.feeder_pcs ?? 0) >= 1 && Number(r.ready_pcs ?? 0) === 0));
@@ -220,7 +234,11 @@ export default function DailyPlanningConsoleClient() {
         (r.grade || r.specification || '').toLowerCase().includes(q) ||
         (r.feeder_source_label || '').toLowerCase().includes(q)
     );
-  }, [wipQueue, queueTab, search]);
+  }, [wipQueue, queueTab, search, plansByWoId]);
+
+  const unplannedQueueCount = useMemo(() => {
+    return filterUnplannedWipQueue(wipQueue, plansByWoId).length;
+  }, [wipQueue, plansByWoId]);
 
   const readyQueueCount = useMemo(() => {
     return filterEligibleWipQueue(wipQueue).filter(
@@ -242,18 +260,19 @@ export default function DailyPlanningConsoleClient() {
   // Open planning modal for queue item
   const openScheduleModal = (item: any, existingPlan?: DailyPlanItemWithWorkOrder) => {
     setModalItem(item);
-    if (existingPlan) {
-      setEditingPlanId(existingPlan.id);
-      setModalPlanDate(existingPlan.plan_date || selectedDate);
-      setModalShift(existingPlan.shift || selectedShift);
-      setTargetPcs(existingPlan.target_pcs);
-      setTargetMtr(existingPlan.target_mtr);
-      setTargetMt(existingPlan.target_mt);
-      setMachineId(existingPlan.machine_id || '');
-      setChargeNo(existingPlan.charge_no || '');
-      setPassNo(existingPlan.pass_no || '');
-      setPriorityRank(existingPlan.priority_rank);
-      setNotes(existingPlan.notes || '');
+    const planToEdit = existingPlan || plansByWoId.get(item.work_order_id || item.id);
+    if (planToEdit) {
+      setEditingPlanId(planToEdit.id);
+      setModalPlanDate(planToEdit.plan_date || selectedDate);
+      setModalShift(planToEdit.shift || selectedShift);
+      setTargetPcs(planToEdit.target_pcs);
+      setTargetMtr(planToEdit.target_mtr);
+      setTargetMt(planToEdit.target_mt);
+      setMachineId(planToEdit.machine_id || '');
+      setChargeNo(planToEdit.charge_no || '');
+      setPassNo(planToEdit.pass_no || '');
+      setPriorityRank(planToEdit.priority_rank);
+      setNotes(planToEdit.notes || '');
     } else {
       setEditingPlanId(null);
       setModalPlanDate(selectedDate);
@@ -292,17 +311,29 @@ export default function DailyPlanningConsoleClient() {
       return;
     }
 
+    const woId = modalItem.work_order_id || modalItem.id;
+    // Auto-link to existing plan on modalPlanDate to avoid duplicate creation
+    let planIdToSubmit = editingPlanId;
+    if (!planIdToSubmit) {
+      const match = plans.find(
+        (p) => p.work_order_id === woId && p.work_center === activeWc && p.plan_date === modalPlanDate
+      );
+      if (match) {
+        planIdToSubmit = match.id;
+      }
+    }
+
     setSaving(true);
     try {
       const res = await fetch('/api/daily-plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: editingPlanId,
+          id: planIdToSubmit,
           plan_date: modalPlanDate,
           shift: modalShift,
           work_center: activeWc,
-          work_order_id: modalItem.work_order_id || modalItem.id,
+          work_order_id: woId,
           target_pcs: targetPcs,
           target_mtr: targetMtr,
           target_mt: targetMt,
@@ -319,7 +350,7 @@ export default function DailyPlanningConsoleClient() {
       if (!res.ok) throw new Error(data.error || 'Failed to save daily plan');
 
       toast.success(
-        editingPlanId
+        planIdToSubmit
           ? `Updated plan target for ${modalItem.work_order_no} (${modalPlanDate})`
           : `Scheduled ${modalItem.work_order_no} for ${STATION_LABELS[activeWc]} on ${modalPlanDate}`
       );
@@ -639,21 +670,21 @@ export default function DailyPlanningConsoleClient() {
             <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-bold">
               <button
                 type="button"
-                onClick={() => setQueueTab('ALL')}
+                onClick={() => setQueueTab('UNPLANNED')}
                 className={`flex-1 py-1 px-2 rounded-md transition text-center cursor-pointer ${
-                  queueTab === 'ALL'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                  queueTab === 'UNPLANNED'
+                    ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-2xs font-black'
                     : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'
                 }`}
               >
-                All Queue ({wipQueue.length})
+                Unplanned ({unplannedQueueCount})
               </button>
               <button
                 type="button"
                 onClick={() => setQueueTab('READY')}
                 className={`flex-1 py-1 px-2 rounded-md transition text-center cursor-pointer ${
                   queueTab === 'READY'
-                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-2xs'
+                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'
                 }`}
               >
@@ -669,6 +700,17 @@ export default function DailyPlanningConsoleClient() {
                 }`}
               >
                 Upstream Feeder ({feederQueueCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQueueTab('ALL')}
+                className={`flex-1 py-1 px-2 rounded-md transition text-center cursor-pointer ${
+                  queueTab === 'ALL'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'
+                }`}
+              >
+                All Queue ({wipQueue.length})
               </button>
             </div>
           </div>
@@ -714,11 +756,17 @@ export default function DailyPlanningConsoleClient() {
                 const itemOd = item.od ?? item.size_od ?? 0;
                 const itemWt = item.wl ?? item.wt ?? item.size_wt ?? 0;
                 const isFeeder = Boolean(item.is_feeder_source || (readyPcs === 0 && feederPcs > 0));
+                const existingPlan = plansByWoId.get(item.work_order_id || item.id);
+                const isAlreadyPlanned = Boolean(existingPlan);
 
                 return (
                   <div
                     key={item.work_order_id || item.id}
-                    className="p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition flex items-center justify-between gap-3"
+                    className={`p-3 rounded-lg transition flex items-center justify-between gap-3 ${
+                      isAlreadyPlanned
+                        ? 'bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-900/40'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                    }`}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -735,7 +783,12 @@ export default function DailyPlanningConsoleClient() {
                             {item.route_code}
                           </span>
                         )}
-                        {isFeeder ? (
+                        {isAlreadyPlanned ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700 inline-flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+                            Planned: {existingPlan?.target_pcs} PCS
+                          </span>
+                        ) : isFeeder ? (
                           <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
                             ⚡ {item.feeder_source_label || 'Feeder WIP'}
                           </span>
@@ -768,18 +821,30 @@ export default function DailyPlanningConsoleClient() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => openScheduleModal(item)}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-white text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95 shrink-0 ${
-                        isFeeder
-                          ? 'bg-amber-600 hover:bg-amber-500'
-                          : 'bg-blue-600 hover:bg-blue-500'
-                      }`}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      <span>Plan</span>
-                    </button>
+                    {isAlreadyPlanned ? (
+                      <button
+                        type="button"
+                        onClick={() => openScheduleModal(item, existingPlan)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95 shrink-0"
+                        title="Work order is already planned for this date. Click to edit plan target."
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                        <span>Edit Plan</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openScheduleModal(item)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-white text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95 shrink-0 ${
+                          isFeeder
+                            ? 'bg-amber-600 hover:bg-amber-500'
+                            : 'bg-blue-600 hover:bg-blue-500'
+                        }`}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Plan</span>
+                      </button>
+                    )}
                   </div>
                 );
               })
@@ -976,6 +1041,15 @@ export default function DailyPlanningConsoleClient() {
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {editingPlanId && (
+              <div className="mt-3 flex items-center gap-2 p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200 text-xs">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
+                <span>
+                  <strong>Work order is already planned for this station.</strong> Saving updates the existing scheduled target rather than creating a duplicate.
+                </span>
+              </div>
+            )}
 
             <form onSubmit={handleSavePlan} className="space-y-4 mt-4 text-xs">
               {/* Plan Date & Shift Selection (Requirement 2) */}
