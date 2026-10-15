@@ -133,6 +133,41 @@ describe('Daily Planning Helper Utilities', () => {
       expect(eligible).toHaveLength(2);
       expect(eligible.map((i) => i.work_order_id)).toEqual(['w1', 'w3']);
     });
+
+    it('includes upstream feeder WIP rows (e.g. Draw from Rolling Plan, HT from DB, Finishing from HT)', () => {
+      const queue = [
+        {
+          work_order_id: 'wo-draw-feeder',
+          ready_pcs: 0,
+          ready_mtr: 0,
+          feeder_pcs: 50,
+          feeder_mtr: 300,
+          is_feeder_source: true,
+          feeder_source_label: 'Rolling Plan Issued',
+        },
+        {
+          work_order_id: 'wo-ht-feeder',
+          ready_pcs: 0,
+          ready_mtr: 0,
+          feeder_pcs: 35,
+          feeder_mtr: 210,
+          is_feeder_source: true,
+          feeder_source_label: 'Draw Bench (DB) Qty',
+        },
+        {
+          work_order_id: 'wo-empty',
+          ready_pcs: 0,
+          ready_mtr: 0,
+          feeder_pcs: 0,
+          feeder_mtr: 0,
+          is_feeder_source: false,
+        },
+      ];
+
+      const eligible = filterEligibleWipQueue(queue as any[]);
+      expect(eligible).toHaveLength(2);
+      expect(eligible.map((i) => i.work_order_id)).toEqual(['wo-draw-feeder', 'wo-ht-feeder']);
+    });
   });
 
   describe('buildDailyPlanCsv', () => {

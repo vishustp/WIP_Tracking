@@ -103,6 +103,9 @@ export default function DailyPlanningConsoleClient() {
   // Target entry modal / state
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalItem, setModalItem] = useState<any | null>(null);
+  const [modalPlanDate, setModalPlanDate] = useState<string>(selectedDate);
+  const [modalShift, setModalShift] = useState<DailyPlanShift>(selectedShift);
+  const [queueTab, setQueueTab] = useState<'ALL' | 'READY' | 'FEEDER'>('ALL');
   const [targetPcs, setTargetPcs] = useState<number>(0);
   const [targetMtr, setTargetMtr] = useState<number>(0);
   const [targetMt, setTargetMt] = useState<number>(0);
@@ -145,11 +148,11 @@ export default function DailyPlanningConsoleClient() {
     }
   }, [selectedDate, selectedShift]);
 
-  // Load active stage WIP queue for the selected work center
+  // Load active stage WIP queue for the selected work center (including upstream feeder WIP)
   const loadStageQueue = useCallback(async () => {
     setQueueLoading(true);
     try {
-      const res = await fetch(`/api/production/queue?stage=${activeWc}&_t=${Date.now()}`, {
+      const res = await fetch(`/api/production/queue?stage=${activeWc}&include_feeder=true&_t=${Date.now()}`, {
         cache: 'no-store',
       });
       if (res.ok) {
@@ -200,18 +203,36 @@ export default function DailyPlanningConsoleClient() {
     return plans.filter((p) => p.work_center === activeWc);
   }, [plans, activeWc]);
 
-  // Filter WIP queue
+  // Filter WIP queue with tab selector (All vs Ready vs Feeder)
   const eligibleQueue = useMemo(() => {
-    const eligible = filterEligibleWipQueue(wipQueue);
-    if (!search.trim()) return eligible;
+    let list = filterEligibleWipQueue(wipQueue);
+    if (queueTab === 'READY') {
+      list = list.filter((r) => Number(r.ready_pcs ?? r.available_pcs ?? 0) >= 1 && !r.is_feeder_source);
+    } else if (queueTab === 'FEEDER') {
+      list = list.filter((r) => r.is_feeder_source || (Number(r.feeder_pcs ?? 0) >= 1 && Number(r.ready_pcs ?? 0) === 0));
+    }
+    if (!search.trim()) return list;
     const q = search.toLowerCase();
-    return eligible.filter(
+    return list.filter(
       (r) =>
         (r.work_order_no || '').toLowerCase().includes(q) ||
         (r.customer_name || '').toLowerCase().includes(q) ||
-        (r.grade || r.specification || '').toLowerCase().includes(q)
+        (r.grade || r.specification || '').toLowerCase().includes(q) ||
+        (r.feeder_source_label || '').toLowerCase().includes(q)
     );
-  }, [wipQueue, search]);
+  }, [wipQueue, queueTab, search]);
+
+  const readyQueueCount = useMemo(() => {
+    return filterEligibleWipQueue(wipQueue).filter(
+      (r) => Number(r.ready_pcs ?? r.available_pcs ?? 0) >= 1 && !r.is_feeder_source
+    ).length;
+  }, [wipQueue]);
+
+  const feederQueueCount = useMemo(() => {
+    return filterEligibleWipQueue(wipQueue).filter(
+      (r) => r.is_feeder_source || (Number(r.feeder_pcs ?? 0) >= 1 && Number(r.ready_pcs ?? 0) === 0)
+    ).length;
+  }, [wipQueue]);
 
   // Compute station totals
   const stationSummary = useMemo(() => {
@@ -223,6 +244,8 @@ export default function DailyPlanningConsoleClient() {
     setModalItem(item);
     if (existingPlan) {
       setEditingPlanId(existingPlan.id);
+      setModalPlanDate(existingPlan.plan_date || selectedDate);
+      setModalShift(existingPlan.shift || selectedShift);
       setTargetPcs(existingPlan.target_pcs);
       setTargetMtr(existingPlan.target_mtr);
       setTargetMt(existingPlan.target_mt);
@@ -233,8 +256,15 @@ export default function DailyPlanningConsoleClient() {
       setNotes(existingPlan.notes || '');
     } else {
       setEditingPlanId(null);
-      const availPcs = Number(item.balance_to_make_pcs ?? item.available_pcs ?? 0);
-      const availMtr = Number(item.balance_to_make_mtr ?? item.available_mtr ?? 0);
+      setModalPlanDate(selectedDate);
+      setModalShift(selectedShift);
+      const hasReady = Number(item.ready_pcs ?? 0) >= 1 && !item.is_feeder_source;
+      const availPcs = hasReady
+        ? Number(item.ready_pcs)
+        : Number(item.balance_to_make_pcs ?? item.feeder_pcs ?? item.available_pcs ?? 0);
+      const availMtr = hasReady
+        ? Number(item.ready_mtr || 0)
+        : Number(item.balance_to_make_mtr ?? item.feeder_mtr ?? item.available_mtr ?? 0);
       const od = Number(item.od ?? item.size_od ?? 60.3);
       const wt = Number(item.wl ?? item.wt ?? item.size_wt ?? 3.91);
       const avgLen = Number(item.avg_length || 6);
@@ -269,8 +299,8 @@ export default function DailyPlanningConsoleClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: editingPlanId,
-          plan_date: selectedDate,
-          shift: selectedShift,
+          plan_date: modalPlanDate,
+          shift: modalShift,
           work_center: activeWc,
           work_order_id: modalItem.work_order_id || modalItem.id,
           target_pcs: targetPcs,
@@ -290,10 +320,16 @@ export default function DailyPlanningConsoleClient() {
 
       toast.success(
         editingPlanId
-          ? `Updated plan target for ${modalItem.work_order_no}`
-          : `Scheduled ${modalItem.work_order_no} for ${STATION_LABELS[activeWc]}`
+          ? `Updated plan target for ${modalItem.work_order_no} (${modalPlanDate})`
+          : `Scheduled ${modalItem.work_order_no} for ${STATION_LABELS[activeWc]} on ${modalPlanDate}`
       );
       setShowAddModal(false);
+      if (modalPlanDate !== selectedDate) {
+        setSelectedDate(modalPlanDate);
+      }
+      if (modalShift !== selectedShift) {
+        setSelectedShift(modalShift);
+      }
       loadPlans();
     } catch (err: any) {
       console.error('Failed to save daily plan:', err);
@@ -585,17 +621,56 @@ export default function DailyPlanningConsoleClient() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Panel: Available Stage WIP Queue (Feed to Plan) */}
         <div className="lg:col-span-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs overflow-hidden flex flex-col h-[650px] print:hidden">
-          <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/70 flex items-center justify-between">
-            <div>
-              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                Active WIP Queue ({STATION_LABELS[activeWc]})
-              </h2>
-              <p className="text-[10px] text-slate-500">Pipes waiting for processing</p>
+          <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/70 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                  Planning Queue ({STATION_LABELS[activeWc]})
+                </h2>
+                <p className="text-[10px] text-slate-500">Ready WIP & Upstream Feeder material</p>
+              </div>
+              <span className="font-mono text-xs font-bold bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-800 dark:text-slate-200">
+                {eligibleQueue.length} {eligibleQueue.length === 1 ? 'Order' : 'Orders'} (
+                {eligibleQueue.reduce((acc, r) => acc + Number(r.balance_to_make_pcs ?? r.available_pcs ?? 0), 0)} PCS)
+              </span>
             </div>
-            <span className="font-mono text-xs font-bold bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-800 dark:text-slate-200">
-              {eligibleQueue.length} {eligibleQueue.length === 1 ? 'Order' : 'Orders'} (
-              {eligibleQueue.reduce((acc, r) => acc + Number(r.balance_to_make_pcs ?? r.available_pcs ?? 0), 0)} PCS)
-            </span>
+
+            {/* Segmented Queue Filter Tabs */}
+            <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setQueueTab('ALL')}
+                className={`flex-1 py-1 px-2 rounded-md transition text-center cursor-pointer ${
+                  queueTab === 'ALL'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'
+                }`}
+              >
+                All Queue ({wipQueue.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQueueTab('READY')}
+                className={`flex-1 py-1 px-2 rounded-md transition text-center cursor-pointer ${
+                  queueTab === 'READY'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'
+                }`}
+              >
+                Ready WIP ({readyQueueCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setQueueTab('FEEDER')}
+                className={`flex-1 py-1 px-2 rounded-md transition text-center cursor-pointer ${
+                  queueTab === 'FEEDER'
+                    ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'
+                }`}
+              >
+                Upstream Feeder ({feederQueueCount})
+              </button>
+            </div>
           </div>
 
           {/* Queue Search */}
@@ -604,7 +679,7 @@ export default function DailyPlanningConsoleClient() {
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search WO #, customer, grade..."
+                placeholder="Search WO #, customer, grade, or feeder..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-hidden"
@@ -621,17 +696,24 @@ export default function DailyPlanningConsoleClient() {
               </div>
             ) : eligibleQueue.length === 0 ? (
               <div className="p-8 text-center text-slate-400">
-                <p className="text-xs font-semibold">No active WIP waiting at {STATION_LABELS[activeWc]}.</p>
-                <p className="text-[11px] mt-1">Requires upstream production output first.</p>
+                <p className="text-xs font-semibold">No material available in this view for {STATION_LABELS[activeWc]}.</p>
+                <p className="text-[11px] mt-1">
+                  {queueTab === 'READY'
+                    ? 'Check "Upstream Feeder" tab to schedule work from previous station output.'
+                    : 'Issue Rolling Plans or log upstream work centers to create pipeline.'}
+                </p>
               </div>
             ) : (
               eligibleQueue.map((item) => {
                 const availPcs = Number(item.balance_to_make_pcs ?? item.available_pcs ?? 0);
                 const availMtr = Number(item.balance_to_make_mtr ?? item.available_mtr ?? 0);
                 const availMt = Number(item.balance_to_make_mt ?? item.available_mt ?? 0);
+                const readyPcs = Number(item.ready_pcs ?? (item.is_feeder_source ? 0 : availPcs));
+                const feederPcs = Number(item.feeder_pcs ?? availPcs);
                 const itemGrade = item.grade || item.specification || '—';
                 const itemOd = item.od ?? item.size_od ?? 0;
                 const itemWt = item.wl ?? item.wt ?? item.size_wt ?? 0;
+                const isFeeder = Boolean(item.is_feeder_source || (readyPcs === 0 && feederPcs > 0));
 
                 return (
                   <div
@@ -639,7 +721,7 @@ export default function DailyPlanningConsoleClient() {
                     className="p-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition flex items-center justify-between gap-3"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
                           {item.work_order_no}
                         </span>
@@ -653,21 +735,47 @@ export default function DailyPlanningConsoleClient() {
                             {item.route_code}
                           </span>
                         )}
+                        {isFeeder ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                            ⚡ {item.feeder_source_label || 'Feeder WIP'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                            ✓ Ready at Station
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-slate-500 truncate mt-0.5">
                         {item.customer_name || 'Standard Stock'} · {itemOd} × {itemWt} mm
                       </div>
-                      <div className="mt-1 flex items-center gap-3 text-[11px] font-mono font-semibold">
-                        <span className="text-blue-700 dark:text-blue-300">
-                          Available: <strong className="font-bold">{availPcs} PCS</strong> ({fmt(availMtr)} m{availMt > 0 ? ` · ${fmt(availMt)} MT` : ''})
-                        </span>
+                      <div className="mt-1 flex items-center gap-3 text-[11px] font-mono font-semibold flex-wrap">
+                        {isFeeder ? (
+                          <span className="text-amber-700 dark:text-amber-300">
+                            Feeder WIP: <strong className="font-bold">{feederPcs} PCS</strong> ({fmt(availMtr)} m{availMt > 0 ? ` · ${fmt(availMt)} MT` : ''})
+                          </span>
+                        ) : (
+                          <>
+                            <span className="text-emerald-700 dark:text-emerald-300">
+                              Ready: <strong className="font-bold">{readyPcs} PCS</strong> ({fmt(availMtr)} m{availMt > 0 ? ` · ${fmt(availMt)} MT` : ''})
+                            </span>
+                            {feederPcs > readyPcs && (
+                              <span className="text-slate-500 text-[10px]">
+                                (Feeder Total: {feederPcs} PCS)
+                              </span>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
 
                     <button
                       type="button"
                       onClick={() => openScheduleModal(item)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95 shrink-0"
+                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-white text-xs font-bold shadow-2xs transition cursor-pointer active:scale-95 shrink-0 ${
+                        isFeeder
+                          ? 'bg-amber-600 hover:bg-amber-500'
+                          : 'bg-blue-600 hover:bg-blue-500'
+                      }`}
                     >
                       <Plus className="h-3.5 w-3.5" />
                       <span>Plan</span>
@@ -843,9 +951,22 @@ export default function DailyPlanningConsoleClient() {
                 <p className="text-xs text-slate-500 mt-0.5">
                   Work Order: <strong className="font-mono text-slate-800 dark:text-slate-200">{modalItem.work_order_no}</strong> ({STATION_LABELS[activeWc]})
                 </p>
-                <p className="text-[11px] text-blue-600 dark:text-blue-400 font-mono mt-0.5 font-semibold">
-                  Queue Available: <strong className="font-bold">{Number(modalItem.balance_to_make_pcs ?? modalItem.available_pcs ?? 0)} PCS</strong> ({fmt(Number(modalItem.balance_to_make_mtr ?? modalItem.available_mtr ?? 0))} m)
-                </p>
+                <div className="flex items-center gap-2 mt-1 text-[11px] font-mono flex-wrap">
+                  {Number(modalItem.ready_pcs ?? 0) > 0 ? (
+                    <span className="text-emerald-700 dark:text-emerald-300 font-bold">
+                      Ready WIP: {modalItem.ready_pcs} PCS ({fmt(Number(modalItem.ready_mtr || 0))} m)
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">
+                      Ready WIP: 0 PCS
+                    </span>
+                  )}
+                  {Number(modalItem.feeder_pcs ?? 0) > 0 && (
+                    <span className="text-amber-700 dark:text-amber-300 font-semibold">
+                      · Feeder ({modalItem.feeder_source_label || 'Upstream'}): {modalItem.feeder_pcs} PCS
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 type="button"
@@ -857,6 +978,102 @@ export default function DailyPlanningConsoleClient() {
             </div>
 
             <form onSubmit={handleSavePlan} className="space-y-4 mt-4 text-xs">
+              {/* Plan Date & Shift Selection (Requirement 2) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 dark:bg-slate-850 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <CalendarDays className="h-3.5 w-3.5 text-blue-600" />
+                      Plan Date ★
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setModalPlanDate(new Date().toISOString().slice(0, 10))}
+                        className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 cursor-pointer"
+                      >
+                        Today
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 1);
+                          setModalPlanDate(d.toISOString().slice(0, 10));
+                        }}
+                        className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 cursor-pointer"
+                      >
+                        Tomorrow
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="date"
+                    required
+                    value={modalPlanDate}
+                    onChange={(e) => setModalPlanDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
+                    Planned Shift
+                  </label>
+                  <select
+                    value={modalShift}
+                    onChange={(e) => setModalShift(e.target.value as DailyPlanShift)}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden"
+                  >
+                    <option value="ALL_DAY">All Day (General)</option>
+                    <option value="SHIFT_A">Shift A (07:00 - 15:00)</option>
+                    <option value="SHIFT_B">Shift B (15:00 - 23:00)</option>
+                    <option value="SHIFT_C">Shift C (23:00 - 07:00)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Quick Fill Target Quantity Buttons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-bold uppercase text-slate-500">Quick Fill:</span>
+                {Number(modalItem.ready_pcs ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = Number(modalItem.ready_pcs);
+                      setTargetPcs(p);
+                      const len = Number(modalItem.avg_length || 6);
+                      const m = modalItem.ready_mtr ? Number(modalItem.ready_mtr) : mtrFromPcs(p, len);
+                      setTargetMtr(Number(m.toFixed(2)));
+                      const od = Number(modalItem.od ?? modalItem.size_od ?? 60.3);
+                      const wt = Number(modalItem.wl ?? modalItem.wt ?? modalItem.size_wt ?? 3.91);
+                      setTargetMt(Number(mtFromMtr(m, od, wt).toFixed(3)));
+                    }}
+                    className="px-2 py-1 rounded-md text-[11px] font-bold bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 cursor-pointer"
+                  >
+                    Ready WIP ({modalItem.ready_pcs} PCS)
+                  </button>
+                )}
+                {Number(modalItem.feeder_pcs ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const p = Number(modalItem.feeder_pcs);
+                      setTargetPcs(p);
+                      const len = Number(modalItem.avg_length || 6);
+                      const m = modalItem.feeder_mtr ? Number(modalItem.feeder_mtr) : mtrFromPcs(p, len);
+                      setTargetMtr(Number(m.toFixed(2)));
+                      const od = Number(modalItem.od ?? modalItem.size_od ?? 60.3);
+                      const wt = Number(modalItem.wl ?? modalItem.wt ?? modalItem.size_wt ?? 3.91);
+                      setTargetMt(Number(mtFromMtr(m, od, wt).toFixed(3)));
+                    }}
+                    className="px-2 py-1 rounded-md text-[11px] font-bold bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 cursor-pointer"
+                  >
+                    Feeder: {modalItem.feeder_source_label || 'Upstream'} ({modalItem.feeder_pcs} PCS)
+                  </button>
+                )}
+              </div>
+
               {/* Machine / Equipment */}
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">

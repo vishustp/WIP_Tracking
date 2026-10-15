@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const targetStage = (searchParams.get("stage")?.toUpperCase() || "ROLLING") as StageCode;
+    const includeFeeder = searchParams.get("include_feeder") === "true" || searchParams.get("for_planning") === "true";
     const forceFresh = searchParams.has("nocache") || searchParams.has("refresh");
 
     // Fast-path: Return from memory cache if within TTL (reduces DB hits by 90% during navigation)
@@ -84,17 +85,33 @@ export async function GET(req: NextRequest) {
       } else {
         for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
           const row = queueRows[targetStage];
-          if (row && (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0)) {
-            selectedRows.push(row);
+          if (row) {
+            if (includeFeeder) {
+              if (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0 || Number(row.feeder_pcs ?? 0) >= 1) {
+                selectedRows.push(row);
+              }
+            } else {
+              if (!row.is_feeder_source && (Number(row.ready_pcs ?? row.balance_to_make_pcs ?? 0) >= 1 || Number(row.ready_mtr ?? row.balance_to_make_mtr ?? 0) >= 1.0)) {
+                selectedRows.push(row);
+              }
+            }
           }
         }
       }
       if (targetStage === "FINISHING") {
-        selectedRows.push(
-          ...memoryCache.childFinishingRows.filter(
-            (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
-          )
-        );
+        if (includeFeeder) {
+          selectedRows.push(
+            ...memoryCache.childFinishingRows.filter(
+              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.feeder_pcs ?? 0) >= 1
+            )
+          );
+        } else {
+          selectedRows.push(
+            ...memoryCache.childFinishingRows.filter(
+              (r) => !r.is_feeder_source && (Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0) >= 1 || Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0) >= 1.0)
+            )
+          );
+        }
       }
       const summaryArray = Object.values(memoryCache.workCenterSummary).map((s) => ({
         ...s,
@@ -1259,6 +1276,74 @@ export async function GET(req: NextRequest) {
       const vdiLots = bandSawLots.length > 0 ? bandSawLots : htLots;
       const latestBandSawLotNo = bandSawLots.length > 0 ? bandSawLots[0].lot_no : latestHtLotNo;
 
+      // Feeder WIP metrics for upstream planning (Draw from Rolling Plan, HT from DB Qty, Finishing from HT Qty)
+      const mult = multiple > 0 ? multiple : 1;
+
+      // 1. Hollow HT Feeder: Rolling Plan issued quantity
+      const hhtFeederPcs = isAlloy ? Math.max(0, totalCampaignPcs - hollowHtOutPcs - hollowHtRejPcs) : 0;
+      const hhtFeederMtr = effHhtAvg > 0 ? Number((hhtFeederPcs * effHhtAvg).toFixed(3)) : Math.max(0, totalCampaignMtr - hollowHtOutMtr - hollowHtRejMtr);
+      const hhtFeederMt = mtFromMtr(hhtFeederMtr, hollowHtEffOd, hollowHtEffWt);
+
+      // 2. Draw Bench Feeder: Rolling Plan issued quantity (or Hollow HT output for Alloy)
+      const drawFeederPcs = isCds
+        ? Math.max(0, isAlloy ? (hollowHtNetPcs + hollowHtAvailPcs - drawOutPcs - drawRejPcs) : (totalCampaignPcs - drawOutPcs - drawRejPcs))
+        : 0;
+      const drawFeederMtr = effDrawLen > 0 ? Number((drawFeederPcs * effDrawLen).toFixed(3)) : Math.max(0, totalCampaignMtr - drawOutMtr - drawRejMtr);
+      const drawFeederMt = mtFromMtr(drawFeederMtr, mhOd > 0 ? mhOd : woOd, mhWt > 0 ? mhWt : woWt);
+
+      // 3. Pilger Mill Feeder: Rolling Plan issued quantity
+      const pilgerFeederPcs = isSsSteel ? Math.max(0, totalCampaignPcs - pilgerOutPcs - pilgerRejPcs) : 0;
+      const pilgerFeederMtr = effPilgerLen > 0 ? Number((pilgerFeederPcs * effPilgerLen).toFixed(3)) : Math.max(0, totalCampaignMtr - pilgerOutMtr - pilgerRejMtr);
+      const pilgerFeederMt = mtFromMtr(pilgerFeederMtr, mhOd > 0 ? mhOd : woOd, mhWt > 0 ? mhWt : woWt);
+
+      // 4. Heat Treatment Feeder: Draw Bench (DB) QTY (drawn pieces + un-drawn DB WIP)
+      const dbWaitingToDraw = drawAvailPcs > 0 ? drawAvailPcs : (totalCampaignPcs > 0 ? Math.max(0, totalCampaignPcs - drawOutPcs - drawRejPcs) : 0);
+      const dbTotalPipeline = isSsSteel ? (pilgerAvailPcs + pilgerNetPcs) : (dbWaitingToDraw + drawNetPcs);
+      const htFeederPcs = (isCds || isSsSteel) ? Math.max(0, dbTotalPipeline - htOutPcs - htRejPcs) : 0;
+      const htFeederMtr = avgLength > 0 ? Number((htFeederPcs * avgLength).toFixed(3)) : 0;
+      const htFeederMt = mtFromMtr(htFeederMtr, woOd, woWt);
+
+      // 5. Band Saw Feeder: Heat Treatment (HT) QTY (heat treated pieces + HT WIP)
+      const bsRemainingHt = (isCds || isSsSteel)
+        ? Math.max(0, (htAvailPcs + htNetPcs) - bandSawOutPcs - bandSawRejPcs)
+        : (isAlloy ? Math.max(0, (hollowHtAvailPcs + hollowHtNetPcs) - bandSawOutPcs - bandSawRejPcs) : Math.max(0, rollHtcOkPcs - bandSawOutPcs - bandSawRejPcs));
+      const bsFeederPcs = Math.max(0, bsRemainingHt);
+      const bsFeederMtr = avgLength > 0 ? Number((bsFeederPcs * avgLength).toFixed(3)) : 0;
+      const bsFeederMt = mtFromMtr(bsFeederMtr, woOd, woWt);
+
+      // 6. VDI Feeder: Band Saw Cut Qty
+      const vdiWaitingCut = Math.round(bandSawAvailPcs * mult);
+      const vdiFeederPcs = Math.max(0, (vdiWaitingCut + bandSawNetPcs) - qcInspectedPcs);
+      const vdiFeederMtr = avgLength > 0 ? Number((vdiFeederPcs * avgLength).toFixed(3)) : 0;
+      const vdiFeederMt = mtFromMtr(vdiFeederMtr, woOd, woWt);
+
+      // 7. Finishing Feeder: Heat Treatment (HT) QTY (cut piece equivalent) / VDI QC
+      const htCutPieces = Math.round((htAvailPcs + htNetPcs) * mult);
+      const finFeederPcs = Math.max(0, htCutPieces - finOutPcs - finRejPcs);
+      const finFeederMtr = avgLength > 0 ? Number((finFeederPcs * avgLength).toFixed(3)) : Math.max(0, (htAvailMtr + htNetMtr) - (finOutMtr + finRejMtr));
+      const finFeederMt = mtFromMtr(finFeederMtr, woOd, woWt);
+
+      const isHhtReady = hollowHtAvailMtr >= 1.0 || hollowHtAvailPcs >= 1;
+      const isHhtFeeder = !isHhtReady && (hhtFeederMtr >= 1.0 || hhtFeederPcs >= 1);
+
+      const isDrawReady = drawAvailMtr >= 1.0 || drawAvailPcs >= 1;
+      const isDrawFeeder = !isDrawReady && (drawFeederMtr >= 1.0 || drawFeederPcs >= 1);
+
+      const isPilgerReady = pilgerAvailMtr >= 1.0 || pilgerAvailPcs >= 1;
+      const isPilgerFeeder = !isPilgerReady && (pilgerFeederMtr >= 1.0 || pilgerFeederPcs >= 1);
+
+      const isHtReady = htAvailMtr >= 1.0 || htAvailPcs >= 1;
+      const isHtFeeder = !isHtReady && (htFeederMtr >= 1.0 || htFeederPcs >= 1);
+
+      const isBsReady = bandSawAvailMtr >= 1.0 || bandSawAvailPcs >= 1;
+      const isBsFeeder = !isBsReady && (bsFeederMtr >= 1.0 || bsFeederPcs >= 1);
+
+      const isVdiReady = vdiAvailMtr >= 1.0 || vdiAvailPcs >= 1;
+      const isVdiFeeder = !isVdiReady && (vdiFeederMtr >= 1.0 || vdiFeederPcs >= 1);
+
+      const isFinReady = finAvailMtr >= 1.0 || finAvailPcs >= 1;
+      const isFinFeeder = !isFinReady && (finFeederMtr >= 1.0 || finFeederPcs >= 1);
+
       const queueRows: Record<StageCode, Row | null> = {
         ROLLING:
           isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)
@@ -1273,6 +1358,13 @@ export async function GET(req: NextRequest) {
                 balance_to_make_mtr: rollAvailMtr,
                 balance_to_make_pcs: rollAvailPcs,
                 balance_to_make_mt: rollAvailMt,
+                ready_pcs: rollAvailPcs,
+                ready_mtr: rollAvailMtr,
+                ready_mt: rollAvailMt,
+                feeder_pcs: rollAvailPcs,
+                feeder_mtr: rollAvailMtr,
+                feeder_mt: rollAvailMt,
+                is_feeder_source: false,
                 planned_rolling_total: totalCampaignMtr,
                 max_allowed_mtr: null,
                 max_allowed_pcs: null,
@@ -1282,7 +1374,7 @@ export async function GET(req: NextRequest) {
               }
             : null,
         HOLLOW_HEAT_TREATMENT:
-          isAlloy && (hollowHtAvailMtr >= 1.0 || hollowHtAvailPcs >= 1)
+          isAlloy && (isHhtReady || isHhtFeeder)
             ? {
                 ...baseRowData,
                 od: mhOd > 0 ? mhOd : woOd,
@@ -1291,124 +1383,173 @@ export async function GET(req: NextRequest) {
                 l2: mhL2 > 0 ? mhL2 : l2,
                 avg_length: effHhtAvg > 0 ? effHhtAvg : avgLength,
                 stage_code: "HOLLOW_HEAT_TREATMENT",
-                balance_to_make_mtr: hollowHtAvailMtr,
-                balance_to_make_pcs: hollowHtAvailPcs,
-                balance_to_make_mt: hollowHtAvailMt,
-                max_allowed_mtr: hollowHtAvailMtr,
-                max_allowed_pcs: hollowHtAvailPcs,
+                balance_to_make_mtr: isHhtReady ? hollowHtAvailMtr : hhtFeederMtr,
+                balance_to_make_pcs: isHhtReady ? hollowHtAvailPcs : hhtFeederPcs,
+                balance_to_make_mt: isHhtReady ? hollowHtAvailMt : hhtFeederMt,
+                ready_pcs: isHhtReady ? hollowHtAvailPcs : 0,
+                ready_mtr: isHhtReady ? hollowHtAvailMtr : 0,
+                ready_mt: isHhtReady ? hollowHtAvailMt : 0,
+                feeder_pcs: hhtFeederPcs,
+                feeder_mtr: hhtFeederMtr,
+                feeder_mt: hhtFeederMt,
+                is_feeder_source: isHhtFeeder,
+                max_allowed_mtr: isHhtReady ? hollowHtAvailMtr : hhtFeederMtr,
+                max_allowed_pcs: isHhtReady ? hollowHtAvailPcs : hhtFeederPcs,
                 prev_stage_code: "ROLLING",
                 prev_htc_ok: rollHtcOkMtr,
-                feeder_source_label: "Rolling HTC OK",
+                feeder_source_label: isHhtReady ? "Rolling HTC OK" : "Rolling Plan Issued",
                 feeder_stage_code: "ROLLING",
               }
             : null,
         DRAW:
-          isCds && (drawAvailMtr >= 1.0 || drawAvailPcs >= 1)
+          isCds && (isDrawReady || isDrawFeeder)
             ? {
                 ...baseRowData,
                 od: mhOd > 0 ? mhOd : woOd,
                 wl: mhWt > 0 ? mhWt : woWt,
                 avg_length: effDrawLen > 0 ? effDrawLen : avgLength,
                 stage_code: "DRAW",
-                balance_to_make_mtr: drawAvailMtr,
-                balance_to_make_pcs: drawAvailPcs,
-                balance_to_make_mt: drawAvailMt,
-                max_allowed_mtr: drawAvailMtr,
-                max_allowed_pcs: drawAvailPcs,
+                balance_to_make_mtr: isDrawReady ? drawAvailMtr : drawFeederMtr,
+                balance_to_make_pcs: isDrawReady ? drawAvailPcs : drawFeederPcs,
+                balance_to_make_mt: isDrawReady ? drawAvailMt : drawFeederMt,
+                ready_pcs: isDrawReady ? drawAvailPcs : 0,
+                ready_mtr: isDrawReady ? drawAvailMtr : 0,
+                ready_mt: isDrawReady ? drawAvailMt : 0,
+                feeder_pcs: drawFeederPcs,
+                feeder_mtr: drawFeederMtr,
+                feeder_mt: drawFeederMt,
+                is_feeder_source: isDrawFeeder,
+                max_allowed_mtr: isDrawReady ? drawAvailMtr : drawFeederMtr,
+                max_allowed_pcs: isDrawReady ? drawAvailPcs : drawFeederPcs,
                 prev_stage_code: isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING",
                 prev_htc_ok: isAlloy ? undefined : rollHtcOkMtr,
                 prev_net_output: isAlloy ? hollowHtNetMtr : undefined,
-                feeder_source_label: isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK",
+                feeder_source_label: isDrawReady ? (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK") : (isAlloy ? "Hollow HT Net OK" : "Rolling Plan Issued"),
                 feeder_stage_code: isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING",
               }
             : null,
         PILGER:
-          isSsSteel && (pilgerAvailMtr >= 1.0 || pilgerAvailPcs >= 1)
+          isSsSteel && (isPilgerReady || isPilgerFeeder)
             ? {
                 ...baseRowData,
                 od: mhOd > 0 ? mhOd : woOd,
                 wl: mhWt > 0 ? mhWt : woWt,
                 avg_length: effPilgerLen > 0 ? effPilgerLen : avgLength,
                 stage_code: "PILGER",
-                balance_to_make_mtr: pilgerAvailMtr,
-                balance_to_make_pcs: pilgerAvailPcs,
-                balance_to_make_mt: pilgerAvailMt,
-                max_allowed_mtr: pilgerAvailMtr,
-                max_allowed_pcs: pilgerAvailPcs,
+                balance_to_make_mtr: isPilgerReady ? pilgerAvailMtr : pilgerFeederMtr,
+                balance_to_make_pcs: isPilgerReady ? pilgerAvailPcs : pilgerFeederPcs,
+                balance_to_make_mt: isPilgerReady ? pilgerAvailMt : pilgerFeederMt,
+                ready_pcs: isPilgerReady ? pilgerAvailPcs : 0,
+                ready_mtr: isPilgerReady ? pilgerAvailMtr : 0,
+                ready_mt: isPilgerReady ? pilgerAvailMt : 0,
+                feeder_pcs: pilgerFeederPcs,
+                feeder_mtr: pilgerFeederMtr,
+                feeder_mt: pilgerFeederMt,
+                is_feeder_source: isPilgerFeeder,
+                max_allowed_mtr: isPilgerReady ? pilgerAvailMtr : pilgerFeederMtr,
+                max_allowed_pcs: isPilgerReady ? pilgerAvailPcs : pilgerFeederPcs,
                 prev_stage_code: "ROLLING",
                 prev_htc_ok: rollHtcOkMtr,
-                feeder_source_label: "Rolling HTC OK",
+                feeder_source_label: isPilgerReady ? "Rolling HTC OK" : "Rolling Plan Issued",
                 feeder_stage_code: "ROLLING",
               }
             : null,
         HEAT_TREATMENT:
-          (isCds || isSsSteel) && (htAvailMtr >= 1.0 || htAvailPcs >= 1)
+          (isCds || isSsSteel) && (isHtReady || isHtFeeder)
             ? {
                 ...baseRowData,
                 stage_code: "HEAT_TREATMENT",
-                balance_to_make_mtr: htAvailMtr,
-                balance_to_make_pcs: htAvailPcs,
-                balance_to_make_mt: htAvailMt,
-                max_allowed_mtr: htAvailMtr,
-                max_allowed_pcs: htAvailPcs,
+                balance_to_make_mtr: isHtReady ? htAvailMtr : htFeederMtr,
+                balance_to_make_pcs: isHtReady ? htAvailPcs : htFeederPcs,
+                balance_to_make_mt: isHtReady ? htAvailMt : htFeederMt,
+                ready_pcs: isHtReady ? htAvailPcs : 0,
+                ready_mtr: isHtReady ? htAvailMtr : 0,
+                ready_mt: isHtReady ? htAvailMt : 0,
+                feeder_pcs: htFeederPcs,
+                feeder_mtr: htFeederMtr,
+                feeder_mt: htFeederMt,
+                is_feeder_source: isHtFeeder,
+                max_allowed_mtr: isHtReady ? htAvailMtr : htFeederMtr,
+                max_allowed_pcs: isHtReady ? htAvailPcs : htFeederPcs,
                 prev_stage_code: isSsSteel ? "PILGER" : "DRAW",
                 prev_net_output: isSsSteel ? pilgerNetMtr : drawNetMtr,
-                feeder_source_label: isSsSteel ? "Cold Pilger Mill Net OK" : "Draw Bench Net OK",
+                feeder_source_label: isSsSteel ? "Cold Pilger Mill Qty" : "Draw Bench (DB) Qty",
                 feeder_stage_code: isSsSteel ? "PILGER" : "DRAW",
               }
             : null,
         BAND_SAW:
-          (bandSawAvailMtr >= 1.0 || bandSawAvailPcs >= 1)
+          (isBsReady || isBsFeeder)
             ? {
                 ...baseRowData,
                 stage_code: "BAND_SAW",
                 heat_lot_no: latestHtLotNo,
                 heat_lots: htLots,
-                balance_to_make_mtr: bandSawAvailMtr,
-                balance_to_make_pcs: bandSawAvailPcs,
-                balance_to_make_mt: bandSawAvailMt,
-                max_allowed_mtr: bandSawAvailMtr,
-                max_allowed_pcs: bandSawAvailPcs,
+                balance_to_make_mtr: isBsReady ? bandSawAvailMtr : bsFeederMtr,
+                balance_to_make_pcs: isBsReady ? bandSawAvailPcs : bsFeederPcs,
+                balance_to_make_mt: isBsReady ? bandSawAvailMt : bsFeederMt,
+                ready_pcs: isBsReady ? bandSawAvailPcs : 0,
+                ready_mtr: isBsReady ? bandSawAvailMtr : 0,
+                ready_mt: isBsReady ? bandSawAvailMt : 0,
+                feeder_pcs: bsFeederPcs,
+                feeder_mtr: bsFeederMtr,
+                feeder_mt: bsFeederMt,
+                is_feeder_source: isBsFeeder,
+                max_allowed_mtr: isBsReady ? bandSawAvailMtr : bsFeederMtr,
+                max_allowed_pcs: isBsReady ? bandSawAvailPcs : bsFeederPcs,
                 prev_stage_code: (isCds || isSsSteel) ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
                 prev_htc_ok: !isCds && !isAlloy && !isSsSteel ? rollHtcOkMtr : undefined,
                 prev_net_output: (isCds || isSsSteel) ? htNetMtr : (isAlloy ? hollowHtNetMtr : undefined),
-                feeder_source_label: (isCds || isSsSteel) ? "Heat Treatment Net OK" : (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK"),
+                feeder_source_label: (isCds || isSsSteel) ? "Heat Treatment (HT) Qty" : (isAlloy ? "Hollow HT Qty" : "Rolling HTC OK"),
                 feeder_stage_code: (isCds || isSsSteel) ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
               }
             : null,
         VDI:
-          (vdiAvailMtr >= 1.0 || vdiAvailPcs >= 1)
+          (isVdiReady || isVdiFeeder)
             ? {
                 ...baseRowData,
                 stage_code: "VDI",
                 heat_lot_no: latestBandSawLotNo,
                 heat_lots: vdiLots,
-                balance_to_make_mtr: vdiAvailMtr,
-                balance_to_make_pcs: vdiAvailPcs,
-                balance_to_make_mt: vdiAvailMt,
-                max_allowed_mtr: vdiAvailMtr,
-                max_allowed_pcs: vdiAvailPcs,
+                balance_to_make_mtr: isVdiReady ? vdiAvailMtr : vdiFeederMtr,
+                balance_to_make_pcs: isVdiReady ? vdiAvailPcs : vdiFeederPcs,
+                balance_to_make_mt: isVdiReady ? vdiAvailMt : vdiFeederMt,
+                ready_pcs: isVdiReady ? vdiAvailPcs : 0,
+                ready_mtr: isVdiReady ? vdiAvailMtr : 0,
+                ready_mt: isVdiReady ? vdiAvailMt : 0,
+                feeder_pcs: vdiFeederPcs,
+                feeder_mtr: vdiFeederMtr,
+                feeder_mt: vdiFeederMt,
+                is_feeder_source: isVdiFeeder,
+                max_allowed_mtr: isVdiReady ? vdiAvailMtr : vdiFeederMtr,
+                max_allowed_pcs: isVdiReady ? vdiAvailPcs : vdiFeederPcs,
                 prev_stage_code: "BAND_SAW",
                 prev_htc_ok: undefined,
                 prev_net_output: bandSawNetMtr,
-                feeder_source_label: vdiDivIn > 0 && bandSawLogs.length === 0 ? "Diverted Material In" : "Band Saw Net OK",
+                feeder_source_label: vdiDivIn > 0 && bandSawLogs.length === 0 ? "Diverted Material In" : "Band Saw Cut Qty",
                 feeder_stage_code: "BAND_SAW",
               }
             : null,
         FINISHING:
-          (finAvailMtr >= 1.0 || finAvailPcs >= 1)
+          (isFinReady || isFinFeeder)
             ? {
                 ...baseRowData,
                 stage_code: "FINISHING",
-                balance_to_make_mtr: finAvailMtr,
-                balance_to_make_pcs: finAvailPcs,
-                balance_to_make_mt: finAvailMt,
-                max_allowed_mtr: Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)),
-                max_allowed_pcs: avgLength > 0 ? Math.round(Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)) / avgLength) : finAvailPcs,
+                balance_to_make_mtr: isFinReady ? finAvailMtr : finFeederMtr,
+                balance_to_make_pcs: isFinReady ? finAvailPcs : finFeederPcs,
+                balance_to_make_mt: isFinReady ? finAvailMt : finFeederMt,
+                ready_pcs: isFinReady ? finAvailPcs : 0,
+                ready_mtr: isFinReady ? finAvailMtr : 0,
+                ready_mt: isFinReady ? finAvailMt : 0,
+                feeder_pcs: finFeederPcs,
+                feeder_mtr: finFeederMtr,
+                feeder_mt: finFeederMt,
+                is_feeder_source: isFinFeeder,
+                max_allowed_mtr: isFinReady ? Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)) : finFeederMtr,
+                max_allowed_pcs: isFinReady ? (avgLength > 0 ? Math.round(Math.min(finAvailMtr, Math.max(0, orderCappingMtr - woFinishedMtr)) / avgLength) : finAvailPcs) : finFeederPcs,
                 prev_stage_code: "VDI",
                 prev_net_output: qcOkMtr,
-                feeder_source_label: finDivIn > 0 && finIncomingPcs === 0 ? "Diverted Material In" : "VDI QC Passed",
-                feeder_stage_code: "VDI",
+                feeder_source_label: isFinReady ? (finDivIn > 0 && finIncomingPcs === 0 ? "Diverted Material In" : "VDI QC Passed") : "Heat Treatment (HT) Qty",
+                feeder_stage_code: isFinReady ? "VDI" : "HEAT_TREATMENT",
               }
             : null,
       };
@@ -1754,6 +1895,13 @@ export async function GET(req: NextRequest) {
                 balance_to_make_mtr: plAvailMtr,
                 balance_to_make_pcs: plAvailPcs,
                 balance_to_make_mt: plAvailMt,
+                ready_pcs: plAvailPcs,
+                ready_mtr: plAvailMtr,
+                ready_mt: plAvailMt,
+                feeder_pcs: plAvailPcs,
+                feeder_mtr: plAvailMtr,
+                feeder_mt: plAvailMt,
+                is_feeder_source: false,
                 mh_od: plMhOd,
                 mh_wt: plMhWt,
                 mh_l1: plMhL1,
@@ -1806,9 +1954,27 @@ export async function GET(req: NextRequest) {
       const childAvailPcs = Math.max(0, childVdiOkPcs + childFinDivInPcs - childFinOutPcs - childFinRejPcs - childFinDivOutPcs);
       const childAvailMtr = avgLength > 0 ? Number((childAvailPcs * avgLength).toFixed(3)) : (childVdiOkPcs > 0 ? Number((childVdiOkPcs * avgLength).toFixed(3)) : 0);
 
-      if (childAvailPcs >= 1 || childAvailMtr >= 1.0) {
-        const od = Number(child.size_od || childWo?.size_od || 0);
-        const wt = Number(child.size_wt || childWo?.size_wt || 0);
+      const od = Number(child.size_od || childWo?.size_od || 0);
+      const wt = Number(child.size_wt || childWo?.size_wt || 0);
+
+      const childTotalOrderMtr = Number(child.total_order_mtr || child.planned_mtr || childWo?.ordered_qty_mtr || childWo?.ordered_qty || 0);
+      const childTotalOrderPcs = Number(child.total_order_pcs || child.planned_pcs || childWo?.ordered_qty_pcs || 0) || (avgLength > 0 ? Math.round(childTotalOrderMtr / avgLength) : 0);
+      const childTotalOrderMt = Number(child.total_order_mt || child.planned_mt || childWo?.ordered_qty_mt || 0) || mtFromMtr(childTotalOrderMtr, od, wt);
+
+      const childBalOrderMtr = Math.max(0, childTotalOrderMtr - childFinOutMtr);
+      const childBalOrderPcs = avgLength > 0 ? Math.round(childBalOrderMtr / avgLength) : 0;
+      const childBalOrderMt = mtFromMtr(childBalOrderMtr, od, wt);
+
+      // Child order feeder from Heat Treatment (HT)
+      const masterFinRow = masterCalc?.queueRows.FINISHING;
+      const childFeederPcs = masterFinRow?.feeder_pcs ? Math.max(0, Math.min(childBalOrderPcs, Number(masterFinRow.feeder_pcs))) : 0;
+      const childFeederMtr = avgLength > 0 ? Number((childFeederPcs * avgLength).toFixed(3)) : 0;
+      const childFeederMt = mtFromMtr(childFeederMtr, od, wt);
+
+      const isChildReady = childAvailPcs >= 1 || childAvailMtr >= 1.0;
+      const isChildFeeder = !isChildReady && (childFeederPcs >= 1 || childFeederMtr >= 1.0);
+
+      if (isChildReady || isChildFeeder) {
         const childAvailMt = mtFromMtr(childAvailMtr, od, wt);
 
         const childRouteId =
@@ -1818,19 +1984,13 @@ export async function GET(req: NextRequest) {
           routes[0]?.id ||
           "";
 
-        const childTotalOrderMtr = Number(child.total_order_mtr || child.planned_mtr || childWo?.ordered_qty_mtr || childWo?.ordered_qty || 0);
-        const childTotalOrderPcs = Number(child.total_order_pcs || child.planned_pcs || childWo?.ordered_qty_pcs || 0) || (avgLength > 0 ? Math.round(childTotalOrderMtr / avgLength) : 0);
-        const childTotalOrderMt = Number(child.total_order_mt || child.planned_mt || childWo?.ordered_qty_mt || 0) || mtFromMtr(childTotalOrderMtr, od, wt);
-
-        const childBalOrderMtr = Math.max(0, childTotalOrderMtr - childFinOutMtr);
-        const childBalOrderPcs = avgLength > 0 ? Math.round(childBalOrderMtr / avgLength) : 0;
-        const childBalOrderMt = mtFromMtr(childBalOrderMtr, od, wt);
-
         const childCappingMtr = Number((childTotalOrderMtr * 1.10).toFixed(2));
         const childCappingPcs = avgLength > 0 ? Math.round(childCappingMtr / avgLength) : 0;
 
-        const childMaxAllowedMtr = Math.min(childAvailMtr, Math.max(0, childCappingMtr - childFinOutMtr));
-        const childMaxAllowedPcs = avgLength > 0 ? Math.round(childMaxAllowedMtr / avgLength) : 0;
+        const childMaxAllowedMtr = isChildReady
+          ? Math.min(childAvailMtr, Math.max(0, childCappingMtr - childFinOutMtr))
+          : childFeederMtr;
+        const childMaxAllowedPcs = avgLength > 0 ? Math.round(childMaxAllowedMtr / avgLength) : (isChildReady ? childAvailPcs : childFeederPcs);
 
         childFinishingRows.push({
           work_order_id: childId,
@@ -1861,13 +2021,20 @@ export async function GET(req: NextRequest) {
           route_code: masterCalc?.queueRows.FINISHING?.route_code || "CDS",
           route_name: masterCalc?.queueRows.FINISHING?.route_name || "Standard CDS",
           stage_code: "FINISHING",
-          balance_to_make_mtr: childAvailMtr,
-          balance_to_make_pcs: childAvailPcs,
-          balance_to_make_mt: childAvailMt,
+          balance_to_make_mtr: isChildReady ? childAvailMtr : childFeederMtr,
+          balance_to_make_pcs: isChildReady ? childAvailPcs : childFeederPcs,
+          balance_to_make_mt: isChildReady ? childAvailMt : childFeederMt,
+          ready_pcs: isChildReady ? childAvailPcs : 0,
+          ready_mtr: isChildReady ? childAvailMtr : 0,
+          ready_mt: isChildReady ? childAvailMt : 0,
+          feeder_pcs: childFeederPcs,
+          feeder_mtr: childFeederMtr,
+          feeder_mt: childFeederMt,
+          is_feeder_source: isChildFeeder,
           max_allowed_mtr: childMaxAllowedMtr,
           max_allowed_pcs: childMaxAllowedPcs,
-          feeder_source_label: "VDI QC Passed",
-          feeder_stage_code: "VDI",
+          feeder_source_label: isChildReady ? "VDI QC Passed" : "Heat Treatment (HT) Qty",
+          feeder_stage_code: isChildReady ? "VDI" : "HEAT_TREATMENT",
           multiple: 1,
           ht_nos: null,
           is_child: true,
@@ -1886,10 +2053,12 @@ export async function GET(req: NextRequest) {
           ht_input_nos: "",
         });
 
-        workCenterSummary.FINISHING.availMtr += childAvailMtr;
-        workCenterSummary.FINISHING.availPcs += childAvailPcs;
-        workCenterSummary.FINISHING.availMt += childAvailMt;
-        workCenterSummary.FINISHING.count += 1;
+        if (isChildReady) {
+          workCenterSummary.FINISHING.availMtr += childAvailMtr;
+          workCenterSummary.FINISHING.availPcs += childAvailPcs;
+          workCenterSummary.FINISHING.availMt += childAvailMt;
+          workCenterSummary.FINISHING.count += 1;
+        }
       }
     }
 
@@ -1913,19 +2082,35 @@ export async function GET(req: NextRequest) {
     } else {
       for (const { queueRows } of allCalculatedRows.values()) {
         const row = queueRows[targetStage];
-        if (row && (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0)) {
-          selectedRows.push(row);
+        if (row) {
+          if (includeFeeder) {
+            if (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0 || Number(row.feeder_pcs ?? 0) >= 1) {
+              selectedRows.push(row);
+            }
+          } else {
+            if (!row.is_feeder_source && (Number(row.ready_pcs ?? row.balance_to_make_pcs ?? 0) >= 1 || Number(row.ready_mtr ?? row.balance_to_make_mtr ?? 0) >= 1.0)) {
+              selectedRows.push(row);
+            }
+          }
         }
       }
     }
 
     // For finishing stage, also append child orders with balance >= 1
     if (targetStage === "FINISHING") {
-      selectedRows.push(
-        ...childFinishingRows.filter(
-          (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
-        )
-      );
+      if (includeFeeder) {
+        selectedRows.push(
+          ...childFinishingRows.filter(
+            (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.feeder_pcs ?? 0) >= 1
+          )
+        );
+      } else {
+        selectedRows.push(
+          ...childFinishingRows.filter(
+            (r) => !r.is_feeder_source && (Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0) >= 1 || Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0) >= 1.0)
+          )
+        );
+      }
     }
 
     // Format workCenterSummary values nicely

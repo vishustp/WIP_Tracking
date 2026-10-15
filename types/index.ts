@@ -64,6 +64,13 @@ export interface Row {
   prev_htc_ok?: number;
   feeder_source_label?: string;
   feeder_stage_code?: string;
+  ready_pcs?: number | null;
+  ready_mtr?: number | null;
+  ready_mt?: number | null;
+  feeder_pcs?: number | null;
+  feeder_mtr?: number | null;
+  feeder_mt?: number | null;
+  is_feeder_source?: boolean;
   planned_rolling_total?: number;
   max_allowed_mtr?: number | null;
   max_allowed_pcs?: number | null;
