@@ -71,22 +71,75 @@ const STATION_GROUPS: StationGroup[] = [
     description: 'Cold drawing and pilger reduction sizing, bench assignment, and pass targets.',
   },
   {
-    id: 'HEAT_TREATMENT',
-    label: 'Furnace Heat Treatment',
-    shortLabel: 'Heat Treatment',
+    id: 'HT_FINISHING',
+    label: 'Heat Treatment, Cutting & Finishing',
+    shortLabel: 'HT & Finishing',
     icon: Flame,
-    workCenters: ['HEAT_TREATMENT', 'HOLLOW_HEAT_TREATMENT'],
-    description: 'Normalizing, annealing, and quench & temper furnace charges and soaking recipes.',
-  },
-  {
-    id: 'FINISHING',
-    label: 'Finishing, Cutting & Dispatch',
-    shortLabel: 'Finishing Line',
-    icon: Factory,
-    workCenters: ['HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'],
-    description: 'Furnace heat treatment, band saw cutting, inspection, and dispatch bundling.',
+    workCenters: ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'],
+    description: 'Furnace heat treatment, straightener, band saw cutting, inspection, and dispatch bundling.',
   },
 ];
+
+const getStageBadgeInfo = (stage: string) => {
+  switch (stage) {
+    case 'HOLLOW_HEAT_TREATMENT':
+      return {
+        label: 'Hollow HT',
+        fullName: 'Hollow Heat Treatment',
+        badgeClass: 'bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700',
+        dotClass: 'bg-amber-500',
+      };
+    case 'HEAT_TREATMENT':
+      return {
+        label: 'Final HT',
+        fullName: 'Final Heat Treatment',
+        badgeClass: 'bg-orange-100 dark:bg-orange-950/80 text-orange-900 dark:text-orange-200 border-orange-300 dark:border-orange-700',
+        dotClass: 'bg-orange-500',
+      };
+    case 'BAND_SAW':
+      return {
+        label: 'Band Saw',
+        fullName: 'Band Saw Cutting',
+        badgeClass: 'bg-rose-100 dark:bg-rose-950/80 text-rose-900 dark:text-rose-200 border-rose-300 dark:border-rose-700',
+        dotClass: 'bg-rose-500',
+      };
+    case 'VDI':
+      return {
+        label: 'VDI QC',
+        fullName: 'VDI Inspection',
+        badgeClass: 'bg-cyan-100 dark:bg-cyan-950/80 text-cyan-900 dark:text-cyan-200 border-cyan-300 dark:border-cyan-700',
+        dotClass: 'bg-cyan-500',
+      };
+    case 'FINISHING':
+      return {
+        label: 'Finishing Line',
+        fullName: 'Bundling & Dispatch',
+        badgeClass: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700',
+        dotClass: 'bg-emerald-500',
+      };
+    case 'DRAW':
+      return {
+        label: 'Draw Bench',
+        fullName: 'Cold Draw Bench',
+        badgeClass: 'bg-blue-100 dark:bg-blue-950/80 text-blue-900 dark:text-blue-200 border-blue-300 dark:border-blue-700',
+        dotClass: 'bg-blue-500',
+      };
+    case 'PILGER':
+      return {
+        label: 'Pilger Mill',
+        fullName: 'Cold Pilger Mill',
+        badgeClass: 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-900 dark:text-indigo-200 border-indigo-300 dark:border-indigo-700',
+        dotClass: 'bg-indigo-500',
+      };
+    default:
+      return {
+        label: stage || '—',
+        fullName: stage || '—',
+        badgeClass: 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700',
+        dotClass: 'bg-slate-500',
+      };
+  }
+};
 
 const fmt = (n: number | null | undefined, digits = 2) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -190,11 +243,15 @@ export default function DailyPlanningConsoleClient() {
     }
   }, [selectedDate, selectedShift]);
 
-  // Load active stage WIP queue for the selected work center (including upstream feeder WIP)
+  // Load active stage WIP queue for the selected work center / track (including upstream feeder WIP)
   const loadStageQueue = useCallback(async () => {
     setQueueLoading(true);
     try {
-      const res = await fetch(`/api/production/queue?stage=${activeWc}&include_feeder=true&_t=${Date.now()}`, {
+      const url =
+        activeGroup.id === 'HT_FINISHING'
+          ? `/api/production/queue?stages=${activeGroup.workCenters.join(',')}&include_feeder=true&_t=${Date.now()}`
+          : `/api/production/queue?stage=${activeWc}&include_feeder=true&_t=${Date.now()}`;
+      const res = await fetch(url, {
         cache: 'no-store',
       });
       if (res.ok) {
@@ -221,7 +278,7 @@ export default function DailyPlanningConsoleClient() {
     } finally {
       setQueueLoading(false);
     }
-  }, [activeWc]);
+  }, [activeGroup.id, activeGroup.workCenters, activeWc]);
 
   useEffect(() => {
     loadPlans();
@@ -240,10 +297,13 @@ export default function DailyPlanningConsoleClient() {
     }
   };
 
-  // Filter plans for active work center
+  // Filter plans for active work center or merged HT/Finishing track
   const filteredPlans = useMemo(() => {
+    if (activeGroup.id === 'HT_FINISHING') {
+      return plans.filter((p) => activeGroup.workCenters.includes(p.work_center));
+    }
     return plans.filter((p) => p.work_center === activeWc);
-  }, [plans, activeWc]);
+  }, [plans, activeGroup.id, activeGroup.workCenters, activeWc]);
 
   // Lookup map of existing plans by work order id for active work center & date
   const plansByWoId = useMemo(() => {
@@ -251,6 +311,7 @@ export default function DailyPlanningConsoleClient() {
     for (const p of filteredPlans) {
       if (p.work_order_id) {
         map.set(p.work_order_id, p);
+        map.set(`${p.work_order_id}_${p.work_center}`, p);
       }
     }
     return map;
@@ -293,15 +354,51 @@ export default function DailyPlanningConsoleClient() {
     ).length;
   }, [wipQueue]);
 
-  // Compute station totals
+  // Compute station or group totals
   const stationSummary = useMemo(() => {
+    if (activeGroup.id === 'HT_FINISHING') {
+      let total_target_pcs = 0;
+      let total_target_mtr = 0;
+      let total_target_mt = 0;
+      let total_actual_pcs = 0;
+      let total_actual_mtr = 0;
+      let total_actual_mt = 0;
+
+      filteredPlans.forEach((p) => {
+        total_target_pcs += Number(p.target_pcs || 0);
+        total_target_mtr += Number(p.target_mtr || 0);
+        total_target_mt += Number(p.target_mt || 0);
+        total_actual_pcs += Number(p.actual_pcs || 0);
+        total_actual_mtr += Number(p.actual_mtr || 0);
+        total_actual_mt += Number(p.actual_mt || 0);
+      });
+
+      const overall_compliance_pct =
+        total_target_pcs > 0 ? calculatePlanCompliance(total_target_pcs, total_actual_pcs) : 100;
+
+      return {
+        work_center: 'FINISHING' as DailyPlanWorkCenter,
+        label: 'Heat Treatment, Cutting & Finishing',
+        total_plans: filteredPlans.length,
+        total_target_pcs,
+        total_target_mtr: Number(total_target_mtr.toFixed(2)),
+        total_target_mt: Number(total_target_mt.toFixed(3)),
+        total_actual_pcs,
+        total_actual_mtr: Number(total_actual_mtr.toFixed(2)),
+        total_actual_mt: Number(total_actual_mt.toFixed(3)),
+        overall_compliance_pct,
+      };
+    }
     return calculateStationPlannedTotals(activeWc, plans);
-  }, [activeWc, plans]);
+  }, [activeGroup.id, activeWc, filteredPlans, plans]);
 
   // Open planning modal for queue item
   const openScheduleModal = (item: any, existingPlan?: DailyPlanItemWithWorkOrder) => {
     setModalItem(item);
-    const planToEdit = existingPlan || plansByWoId.get(item.work_order_id || item.id);
+    const planToEdit =
+      existingPlan ||
+      plansByWoId.get(`${item.work_order_id || item.id}_${item.stage_code || activeWc}`) ||
+      plansByWoId.get(item.work_order_id || item.id);
     if (planToEdit) {
       setEditingPlanId(planToEdit.id);
       setModalPlanDate(planToEdit.plan_date || selectedDate);
@@ -319,7 +416,10 @@ export default function DailyPlanningConsoleClient() {
       setEditingPlanId(null);
       setModalPlanDate(selectedDate);
       setModalShift(selectedShift);
-      setModalWc(activeWc);
+      // Auto-default target station to material's current stage if in this track
+      const itemStage = (item.stage_code || activeWc) as DailyPlanWorkCenter;
+      const targetWc = activeGroup.workCenters.includes(itemStage) ? itemStage : (activeGroup.workCenters[0] || activeWc);
+      setModalWc(targetWc);
       const hasReady = Number(item.ready_pcs ?? 0) >= 1 && !item.is_feeder_source;
       const availPcs = hasReady
         ? Number(item.ready_pcs)
@@ -622,7 +722,7 @@ export default function DailyPlanningConsoleClient() {
 
       {/* Station Groups Selector (Process Track) */}
       <div className="print:hidden">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {STATION_GROUPS.map((grp) => {
             const isSelected = selectedGroupId === grp.id;
             const Icon = grp.icon;
@@ -667,8 +767,8 @@ export default function DailyPlanningConsoleClient() {
           })}
         </div>
 
-        {/* Sub-Station Tabs */}
-        {activeGroup.workCenters.length > 1 && (
+        {/* Sub-Station Tabs (Only for Draw & Pilger, hidden for Heat Treatment & Finishing per Rule) */}
+        {activeGroup.id !== 'HT_FINISHING' && activeGroup.workCenters.length > 1 && (
           <div className="mt-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 flex-wrap">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Sub-Stage:</span>
             {activeGroup.workCenters.map((wc) => {
@@ -712,7 +812,7 @@ export default function DailyPlanningConsoleClient() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                  Planning Queue ({STATION_LABELS[activeWc]})
+                  Planning Queue ({activeGroup.id === 'HT_FINISHING' ? 'Heat Treatment, Cutting & Finishing' : STATION_LABELS[activeWc]})
                 </h2>
                 <p className="text-[10px] text-slate-500">Ready WIP & Upstream Feeder material</p>
               </div>
@@ -794,7 +894,9 @@ export default function DailyPlanningConsoleClient() {
               </div>
             ) : eligibleQueue.length === 0 ? (
               <div className="p-8 text-center text-slate-400">
-                <p className="text-xs font-semibold">No material available in this view for {STATION_LABELS[activeWc]}.</p>
+                <p className="text-xs font-semibold">
+                  No material available in this view for {activeGroup.id === 'HT_FINISHING' ? 'Heat Treatment & Finishing' : STATION_LABELS[activeWc]}.
+                </p>
                 <p className="text-[11px] mt-1">
                   {queueTab === 'READY'
                     ? 'Check "Upstream Feeder" tab to schedule work from previous station output.'
@@ -802,7 +904,7 @@ export default function DailyPlanningConsoleClient() {
                 </p>
               </div>
             ) : (
-              eligibleQueue.map((item) => {
+              eligibleQueue.map((item, idx) => {
                 const availPcs = Number(item.balance_to_make_pcs ?? item.available_pcs ?? 0);
                 const availMtr = Number(item.balance_to_make_mtr ?? item.available_mtr ?? 0);
                 const availMt = Number(item.balance_to_make_mt ?? item.available_mt ?? 0);
@@ -812,12 +914,16 @@ export default function DailyPlanningConsoleClient() {
                 const itemOd = item.od ?? item.size_od ?? 0;
                 const itemWt = item.wl ?? item.wt ?? item.size_wt ?? 0;
                 const isFeeder = Boolean(item.is_feeder_source || (readyPcs === 0 && feederPcs > 0));
-                const existingPlan = plansByWoId.get(item.work_order_id || item.id);
+                const itemStageCode = item.stage_code || (activeGroup.id === 'HT_FINISHING' ? 'HEAT_TREATMENT' : activeWc);
+                const stageBadge = getStageBadgeInfo(itemStageCode);
+                const existingPlan =
+                  plansByWoId.get(`${item.work_order_id || item.id}_${itemStageCode}`) ||
+                  plansByWoId.get(item.work_order_id || item.id);
                 const isAlreadyPlanned = Boolean(existingPlan);
 
                 return (
                   <div
-                    key={item.work_order_id || item.id}
+                    key={`${item.work_order_id || item.id}_${itemStageCode}_${idx}`}
                     className={`p-3 rounded-lg transition flex items-center justify-between gap-3 ${
                       isAlreadyPlanned
                         ? 'bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-900/40'
@@ -829,6 +935,16 @@ export default function DailyPlanningConsoleClient() {
                         <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
                           {item.work_order_no}
                         </span>
+
+                        {/* Prominent Stage Indicator Badge */}
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border shadow-2xs font-mono uppercase ${stageBadge.badgeClass}`}
+                          title={`Material current stage: ${stageBadge.fullName}`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${stageBadge.dotClass}`} />
+                          <span>{stageBadge.label}</span>
+                        </span>
+
                         {itemGrade !== '—' && (
                           <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                             {itemGrade}
@@ -842,15 +958,15 @@ export default function DailyPlanningConsoleClient() {
                         {isAlreadyPlanned ? (
                           <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700 inline-flex items-center gap-1">
                             <CheckCircle2 className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
-                            Planned: {existingPlan?.target_pcs} PCS
+                            Planned: {existingPlan?.target_pcs} PCS ({getStageBadgeInfo(existingPlan?.work_center || '').label})
                           </span>
                         ) : isFeeder ? (
                           <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
-                            ⚡ {item.feeder_source_label || 'Feeder WIP'}
+                            ⚡ {item.feeder_source_label || `Feeder for ${stageBadge.label}`}
                           </span>
                         ) : (
                           <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
-                            ✓ Ready at Station
+                            ✓ Ready at {stageBadge.label}
                           </span>
                         )}
                       </div>
@@ -922,7 +1038,7 @@ export default function DailyPlanningConsoleClient() {
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-500">
-                  {STATION_LABELS[activeWc]} · Date: {selectedDate} ({formattedRevDate}) · {SHIFT_LABELS[selectedShift]}
+                  {activeGroup.id === 'HT_FINISHING' ? 'Heat Treatment, Cutting & Finishing' : STATION_LABELS[activeWc]} · Date: {selectedDate} ({formattedRevDate}) · {SHIFT_LABELS[selectedShift]}
                 </p>
               </div>
             </div>
@@ -989,7 +1105,9 @@ export default function DailyPlanningConsoleClient() {
             ) : filteredPlans.length === 0 ? (
               <div className="p-12 text-center text-slate-400">
                 <CalendarDays className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No targets scheduled for {STATION_LABELS[activeWc]}</p>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  No targets scheduled for {activeGroup.id === 'HT_FINISHING' ? 'Heat Treatment & Finishing' : STATION_LABELS[activeWc]}
+                </p>
                 <p className="text-[11px] mt-1">Select orders from the left queue to set today&apos;s plan.</p>
               </div>
             ) : planViewMode === 'MILL_TABLE' ? (
@@ -1027,7 +1145,7 @@ export default function DailyPlanningConsoleClient() {
                       const l1 = p.l1 ? Number(p.l1).toFixed(2) : '—';
                       const l2 = p.l2 ? Number(p.l2).toFixed(2) : '—';
                       const avgLgth = p.avg_length ? Number(p.avg_length).toFixed(2) : '—';
-                      const stageName = p.work_center === 'DRAW' ? 'DRAW' : p.work_center === 'BAND_SAW' ? 'CUTTING' : p.work_center;
+                      const planStage = getStageBadgeInfo(p.work_center);
                       const comp = p.compliance_pct;
 
                       return (
@@ -1050,7 +1168,11 @@ export default function DailyPlanningConsoleClient() {
                           <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono">{l1}</td>
                           <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono">{l2}</td>
                           <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono">{avgLgth}</td>
-                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-center font-bold text-[10px] uppercase">{stageName}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-center">
+                            <span className={`inline-block px-1.5 py-0.5 rounded border text-[9px] font-mono font-bold uppercase ${planStage.badgeClass}`}>
+                              {planStage.label}
+                            </span>
+                          </td>
                           <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono font-bold text-slate-900 dark:text-white">
                             {p.target_pcs || 0}
                           </td>
@@ -1123,6 +1245,10 @@ export default function DailyPlanningConsoleClient() {
                             </span>
                             <span className="font-mono font-bold text-sm text-slate-900 dark:text-white">
                               {plan.work_order_no}
+                            </span>
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border font-mono uppercase ${getStageBadgeInfo(plan.work_center).badgeClass}`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${getStageBadgeInfo(plan.work_center).dotClass}`} />
+                              {getStageBadgeInfo(plan.work_center).label}
                             </span>
                             {plan.machine_id && (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
@@ -1208,7 +1334,7 @@ export default function DailyPlanningConsoleClient() {
           {/* Station Summary Footer Bar */}
           <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs flex flex-wrap items-center justify-between gap-2 font-mono">
             <span className="text-slate-600 dark:text-slate-400 font-sans font-bold">
-              {STATION_LABELS[activeWc]} Target Total:
+              {activeGroup.id === 'HT_FINISHING' ? 'Heat Treatment & Finishing' : STATION_LABELS[activeWc]} Target Total:
             </span>
             <div className="flex items-center gap-3 font-black">
               <span className="text-slate-900 dark:text-white">

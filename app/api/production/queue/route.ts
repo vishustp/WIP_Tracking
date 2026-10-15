@@ -70,7 +70,11 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const isAllStages = searchParams.get("all_stages") === "true" || searchParams.get("matrix") === "true";
-    const targetStage = (searchParams.get("stage")?.toUpperCase() || "ROLLING") as StageCode;
+    const stagesParam = searchParams.get("stages");
+    const targetStages: StageCode[] = stagesParam
+      ? (stagesParam.split(",").map((s) => s.trim().toUpperCase()) as StageCode[])
+      : [(searchParams.get("stage")?.toUpperCase() || "ROLLING") as StageCode];
+    const targetStage = targetStages[0];
     const includeFeeder = searchParams.get("include_feeder") === "true" || searchParams.get("for_planning") === "true";
     const forceFresh = searchParams.has("nocache") || searchParams.has("refresh");
 
@@ -115,34 +119,44 @@ export async function GET(req: NextRequest) {
           )
         );
       } else {
-        for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
-          const row = queueRows[targetStage];
-          if (row) {
-            if (includeFeeder) {
-              if (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0 || Number(row.feeder_pcs ?? 0) >= 1) {
-                selectedRows.push(row);
-              }
-            } else {
-              if (!row.is_feeder_source && (Number(row.ready_pcs ?? row.balance_to_make_pcs ?? 0) >= 1 || Number(row.ready_mtr ?? row.balance_to_make_mtr ?? 0) >= 1.0)) {
-                selectedRows.push(row);
+        for (const st of targetStages) {
+          if (st === "ROLLING") {
+            selectedRows.push(
+              ...memoryCache.rollingPlanRows.filter(
+                (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+              )
+            );
+          } else {
+            for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
+              const row = queueRows[st];
+              if (row) {
+                if (includeFeeder) {
+                  if (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0 || Number(row.feeder_pcs ?? 0) >= 1) {
+                    selectedRows.push(row);
+                  }
+                } else {
+                  if (!row.is_feeder_source && (Number(row.ready_pcs ?? row.balance_to_make_pcs ?? 0) >= 1 || Number(row.ready_mtr ?? row.balance_to_make_mtr ?? 0) >= 1.0)) {
+                    selectedRows.push(row);
+                  }
+                }
               }
             }
           }
-        }
-      }
-      if (!isAllStages && targetStage === "FINISHING") {
-        if (includeFeeder) {
-          selectedRows.push(
-            ...memoryCache.childFinishingRows.filter(
-              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.feeder_pcs ?? 0) >= 1
-            )
-          );
-        } else {
-          selectedRows.push(
-            ...memoryCache.childFinishingRows.filter(
-              (r) => !r.is_feeder_source && (Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0) >= 1 || Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0) >= 1.0)
-            )
-          );
+          if (st === "FINISHING") {
+            if (includeFeeder) {
+              selectedRows.push(
+                ...memoryCache.childFinishingRows.filter(
+                  (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.feeder_pcs ?? 0) >= 1
+                )
+              );
+            } else {
+              selectedRows.push(
+                ...memoryCache.childFinishingRows.filter(
+                  (r) => !r.is_feeder_source && (Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0) >= 1 || Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0) >= 1.0)
+                )
+              );
+            }
+          }
         }
       }
       const summaryArray = Object.values(memoryCache.workCenterSummary).map((s) => ({
@@ -2155,36 +2169,44 @@ export async function GET(req: NextRequest) {
         )
       );
     } else {
-      for (const { queueRows } of allCalculatedRows.values()) {
-        const row = queueRows[targetStage];
-        if (row) {
-          if (includeFeeder) {
-            if (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0 || Number(row.feeder_pcs ?? 0) >= 1) {
-              selectedRows.push(row);
-            }
-          } else {
-            if (!row.is_feeder_source && (Number(row.ready_pcs ?? row.balance_to_make_pcs ?? 0) >= 1 || Number(row.ready_mtr ?? row.balance_to_make_mtr ?? 0) >= 1.0)) {
-              selectedRows.push(row);
+      for (const st of targetStages) {
+        if (st === "ROLLING") {
+          selectedRows.push(
+            ...rollingPlanRows.filter(
+              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+            )
+          );
+        } else {
+          for (const { queueRows } of allCalculatedRows.values()) {
+            const row = queueRows[st];
+            if (row) {
+              if (includeFeeder) {
+                if (Number(row.balance_to_make_pcs ?? 0) >= 1 || Number(row.balance_to_make_mtr ?? 0) >= 1.0 || Number(row.feeder_pcs ?? 0) >= 1) {
+                  selectedRows.push(row);
+                }
+              } else {
+                if (!row.is_feeder_source && (Number(row.ready_pcs ?? row.balance_to_make_pcs ?? 0) >= 1 || Number(row.ready_mtr ?? row.balance_to_make_mtr ?? 0) >= 1.0)) {
+                  selectedRows.push(row);
+                }
+              }
             }
           }
         }
-      }
-    }
-
-    // For finishing stage, also append child orders with balance >= 1
-    if (!isAllStages && targetStage === "FINISHING") {
-      if (includeFeeder) {
-        selectedRows.push(
-          ...childFinishingRows.filter(
-            (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.feeder_pcs ?? 0) >= 1
-          )
-        );
-      } else {
-        selectedRows.push(
-          ...childFinishingRows.filter(
-            (r) => !r.is_feeder_source && (Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0) >= 1 || Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0) >= 1.0)
-          )
-        );
+        if (st === "FINISHING") {
+          if (includeFeeder) {
+            selectedRows.push(
+              ...childFinishingRows.filter(
+                (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.feeder_pcs ?? 0) >= 1
+              )
+            );
+          } else {
+            selectedRows.push(
+              ...childFinishingRows.filter(
+                (r) => !r.is_feeder_source && (Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0) >= 1 || Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0) >= 1.0)
+              )
+            );
+          }
+        }
       }
     }
 
@@ -2197,13 +2219,15 @@ export async function GET(req: NextRequest) {
 
     // Enrich queue rows with today's daily production plan targets
     if (!isAllStages) {
-      await enrichWithDailyPlans(admin, selectedRows, targetStage);
+      for (const st of targetStages) {
+        await enrichWithDailyPlans(admin, selectedRows, st);
+      }
     }
 
     return NextResponse.json(
       {
         success: true,
-        stage: isAllStages ? "ALL" : targetStage,
+        stage: isAllStages ? "ALL" : stagesParam ? "MULTI" : targetStage,
         count: selectedRows.length,
         data: selectedRows,
         summary: summaryArray,
