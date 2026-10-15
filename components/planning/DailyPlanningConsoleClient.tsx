@@ -26,6 +26,10 @@ import {
   ArrowRight,
   Save,
   FileSpreadsheet,
+  Table,
+  LayoutGrid,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -120,6 +124,39 @@ export default function DailyPlanningConsoleClient() {
   const [priorityRank, setPriorityRank] = useState<number>(1);
   const [notes, setNotes] = useState<string>('');
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+
+  // View mode: Factory Mill Form Table vs Card Progress View
+  const [planViewMode, setPlanViewMode] = useState<'MILL_TABLE' | 'CARDS'>('MILL_TABLE');
+  const [isExpandedTable, setIsExpandedTable] = useState<boolean>(false);
+
+  // Format header date string matching factory format: "DD -MM-MMM -YYYY"
+  const formattedHeaderDate = useMemo(() => {
+    try {
+      const d = new Date(selectedDate);
+      if (isNaN(d.getTime())) return selectedDate;
+      const day = String(d.getDate()).padStart(2, '0');
+      const monthNum = String(d.getMonth() + 1).padStart(2, '0');
+      const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const monthStr = monthNames[d.getMonth()];
+      const year = d.getFullYear();
+      return `${day} -${monthNum}-${monthStr} -${year}`;
+    } catch {
+      return selectedDate;
+    }
+  }, [selectedDate]);
+
+  // Format revision date (prior day): "DD-Mmm"
+  const formattedRevDate = useMemo(() => {
+    try {
+      const d = new Date(selectedDate);
+      d.setDate(d.getDate() - 1);
+      const day = String(d.getDate()).padStart(2, '0');
+      const monthShort = d.toLocaleString('en-US', { month: 'short' });
+      return `${day}-${monthShort}`;
+    } catch {
+      return '06-Oct';
+    }
+  }, [selectedDate]);
 
   const activeGroup = useMemo(
     () => STATION_GROUPS.find((g) => g.id === selectedGroupId) || STATION_GROUPS[0],
@@ -670,7 +707,7 @@ export default function DailyPlanningConsoleClient() {
       {/* Main Dual Console Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Panel: Available Stage WIP Queue (Feed to Plan) */}
-        <div className="lg:col-span-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs overflow-hidden flex flex-col h-[650px] print:hidden">
+        <div className={`rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs overflow-hidden flex flex-col h-[650px] print:hidden ${isExpandedTable ? 'hidden' : 'lg:col-span-5'}`}>
           <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/70 flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
               <div>
@@ -872,23 +909,78 @@ export default function DailyPlanningConsoleClient() {
         </div>
 
         {/* Right Panel: Today's Scheduled Targets */}
-        <div className="lg:col-span-7 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs flex flex-col h-[650px]">
-          <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/70 flex items-center justify-between">
-            <div>
-              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                Today&apos;s Daily Plan ({STATION_LABELS[activeWc]})
-              </h2>
-              <p className="text-[10px] text-slate-500">
-                Date: {selectedDate} · Shift: {SHIFT_LABELS[selectedShift]}
-              </p>
+        <div className={`rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs flex flex-col h-[650px] overflow-hidden ${isExpandedTable ? 'lg:col-span-12' : 'lg:col-span-7'}`}>
+          <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-850/80 flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                    {activeGroup.id === 'DRAW_PILGER' ? 'Format F PROD - 003' : 'Format F PROD - 005'} Daily Plan
+                  </h2>
+                  <span className="font-mono text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-blue-900 dark:text-blue-200 px-2 py-0.2 rounded border border-blue-300 dark:border-blue-700">
+                    {filteredPlans.length} Scheduled
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  {STATION_LABELS[activeWc]} · Date: {selectedDate} ({formattedRevDate}) · {SHIFT_LABELS[selectedShift]}
+                </p>
+              </div>
             </div>
-            <span className="font-mono text-xs font-black bg-blue-100 dark:bg-blue-950/80 text-blue-900 dark:text-blue-200 px-2.5 py-0.5 rounded border border-blue-300 dark:border-blue-700">
-              {filteredPlans.length} Scheduled
-            </span>
+
+            <div className="flex items-center gap-2">
+              {/* View Switcher: Table vs Cards */}
+              <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setPlanViewMode('MILL_TABLE')}
+                  className={`px-2.5 py-1 rounded-md transition flex items-center gap-1 cursor-pointer ${
+                    planViewMode === 'MILL_TABLE'
+                      ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-2xs font-extrabold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
+                  title="Factory Form 15-Column Table View"
+                >
+                  <Table className="h-3.5 w-3.5" />
+                  <span>Mill Form</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlanViewMode('CARDS')}
+                  className={`px-2.5 py-1 rounded-md transition flex items-center gap-1 cursor-pointer ${
+                    planViewMode === 'CARDS'
+                      ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-2xs font-extrabold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
+                  title="Cards & Fulfillment View"
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  <span>Cards</span>
+                </button>
+              </div>
+
+              {/* Expand to Full Width Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsExpandedTable(!isExpandedTable)}
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition cursor-pointer shadow-2xs"
+                title={isExpandedTable ? "Show Queue (Split View)" : "Expand Table (Full Width)"}
+              >
+                {isExpandedTable ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              </button>
+
+              <Link
+                href={`/reports/daily-plan?date=${selectedDate}&shift=${selectedShift}&format=${activeGroup.id === 'DRAW_PILGER' ? 'F_PROD_003' : 'F_PROD_005'}`}
+                className="p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition cursor-pointer shadow-2xs text-xs font-bold inline-flex items-center gap-1"
+                title="Open Official Mill Print Report"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Print Slip</span>
+              </Link>
+            </div>
           </div>
 
-          {/* Scheduled Plan Grid */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/80 p-2">
+          {/* Scheduled Content: Table or Cards */}
+          <div className="flex-1 overflow-auto">
             {loading ? (
               <div className="p-8 text-center text-slate-400">
                 <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
@@ -900,105 +992,221 @@ export default function DailyPlanningConsoleClient() {
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No targets scheduled for {STATION_LABELS[activeWc]}</p>
                 <p className="text-[11px] mt-1">Select orders from the left queue to set today&apos;s plan.</p>
               </div>
+            ) : planViewMode === 'MILL_TABLE' ? (
+              /* Factory Mill Format 15-Column Table */
+              <div className="min-w-[1020px]">
+                <table className="w-full border-collapse text-[10.5px] sm:text-[11px] leading-tight font-sans">
+                  <thead>
+                    <tr className="border-b border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold text-center sticky top-0 z-10 shadow-2xs">
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[36px]">Sr. No</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[80px]">WO NO</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[140px] text-left">Customer</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[110px] text-left">Grade/SPEC</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[50px] text-right">OD</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[50px] text-right">WT</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[65px] text-right">FACTOR</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[65px] text-right">Proc. Wall</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[60px] text-right">Kg/Mtr.</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[65px] text-right">Final Lgth Min.</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[65px] text-right">Final Lgth Max.</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[60px] text-right">Avg. Lgth</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[65px]">Stage</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[55px] text-right">Nos</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[65px] text-right">MT.</th>
+                      <th className="border-r border-slate-300 dark:border-slate-700 p-1.5 w-[75px] text-center">Actual (PCS)</th>
+                      <th className="p-1.5 w-[60px] text-center print:hidden">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                    {filteredPlans.map((p, idx) => {
+                      const od = p.size_od ? Number(p.size_od).toFixed(2) : '—';
+                      const wt = p.size_wt ? Number(p.size_wt).toFixed(2) : '—';
+                      const factor = p.factor ? Number(p.factor).toFixed(4) : (p.size_od && p.size_wt ? ((p.size_od - p.size_wt) * p.size_wt).toFixed(4) : '—');
+                      const kgMtr = p.kg_per_mtr ? Number(p.kg_per_mtr).toFixed(3) : (p.factor ? (Number(p.factor) * 0.0246615).toFixed(3) : '—');
+                      const procWall = p.proc_wall ? Number(p.proc_wall).toFixed(2) : (p.size_wt ? Number(p.size_wt).toFixed(2) : '—');
+                      const l1 = p.l1 ? Number(p.l1).toFixed(2) : '—';
+                      const l2 = p.l2 ? Number(p.l2).toFixed(2) : '—';
+                      const avgLgth = p.avg_length ? Number(p.avg_length).toFixed(2) : '—';
+                      const stageName = p.work_center === 'DRAW' ? 'DRAW' : p.work_center === 'BAND_SAW' ? 'CUTTING' : p.work_center;
+                      const comp = p.compliance_pct;
+
+                      return (
+                        <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-center font-mono">{idx + 1}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-center font-mono font-bold text-slate-900 dark:text-white">
+                            {p.work_order_no}
+                          </td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 truncate max-w-[140px] text-slate-700 dark:text-slate-300">
+                            {p.customer_name || 'Standard Stock'}
+                          </td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 truncate max-w-[110px] text-slate-700 dark:text-slate-300 font-mono text-[10px]">
+                            {`${p.grade || ''} ${p.specification || ''}`.trim() || '—'}
+                          </td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono">{od}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono">{wt}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono">{factor}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono">{procWall}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono text-blue-600 dark:text-blue-400 font-semibold">{kgMtr}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono">{l1}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono">{l2}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono">{avgLgth}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-center font-bold text-[10px] uppercase">{stageName}</td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                            {p.target_pcs || 0}
+                          </td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                            {Number(p.target_mt || 0).toFixed(3)}
+                          </td>
+                          <td className="border-r border-slate-200 dark:border-slate-800 p-1.5 text-center font-mono">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${comp >= 100 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : comp > 0 ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
+                              {p.actual_pcs} ({comp}%)
+                            </span>
+                          </td>
+                          <td className="p-1.5 text-center print:hidden">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openScheduleModal(p, p)}
+                                className="p-1 text-slate-400 hover:text-blue-600 cursor-pointer rounded"
+                                title="Edit target"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePlan(p.id, p.work_order_no)}
+                                className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer rounded"
+                                title="Delete plan"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-400 dark:border-slate-600 font-extrabold text-black">
+                      <td colSpan={13} className="border-r border-slate-300 dark:border-slate-700 p-1.5 text-right uppercase tracking-wider bg-[#FFFF00] text-black">
+                        {activeGroup.id === 'DRAW_PILGER' ? 'TOTAL' : 'TOTAL=>'}
+                      </td>
+                      <td className="border-r border-slate-300 dark:border-slate-700 p-1.5 text-right font-mono bg-[#FFFF00] text-black">
+                        {stationSummary.total_target_pcs}
+                      </td>
+                      <td className="border-r border-slate-300 dark:border-slate-700 p-1.5 text-right font-mono bg-[#FFFF00] text-black">
+                        {Number(stationSummary.total_target_mt).toFixed(3)}
+                      </td>
+                      <td className="border-r border-slate-300 dark:border-slate-700 p-1.5 text-center font-mono bg-[#FFFF00] text-black text-[10px]">
+                        {stationSummary.total_actual_pcs} PCS ({stationSummary.overall_compliance_pct.toFixed(1)}%)
+                      </td>
+                      <td className="p-1.5 bg-[#FFFF00] text-black"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             ) : (
-              filteredPlans.map((plan) => {
-                const comp = plan.compliance_pct;
-                return (
-                  <div
-                    key={plan.id}
-                    className="p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-xl transition border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="inline-flex items-center justify-center h-5 w-5 rounded bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-mono text-[11px] font-black">
-                            #{plan.priority_rank}
-                          </span>
-                          <span className="font-mono font-bold text-sm text-slate-900 dark:text-white">
-                            {plan.work_order_no}
-                          </span>
-                          {plan.machine_id && (
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                              {plan.machine_id}
+              /* Fulfillment Progress Cards View */
+              <div className="divide-y divide-slate-100 dark:divide-slate-800/80 p-2">
+                {filteredPlans.map((plan) => {
+                  const comp = plan.compliance_pct;
+                  return (
+                    <div
+                      key={plan.id}
+                      className="p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-xl transition border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center justify-center h-5 w-5 rounded bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 font-mono text-[11px] font-black">
+                              #{plan.priority_rank}
                             </span>
-                          )}
-                          {plan.charge_no && (
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                              Charge: {plan.charge_no}
+                            <span className="font-mono font-bold text-sm text-slate-900 dark:text-white">
+                              {plan.work_order_no}
                             </span>
-                          )}
-                          {plan.pass_no && (
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                              Pass: {plan.pass_no}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                          {plan.customer_name || 'Standard Stock'} · {plan.grade || '—'} · {plan.size_od} × {plan.size_wt} mm
-                        </div>
-
-                        {plan.notes && (
-                          <div className="text-[11px] text-slate-500 italic mt-0.5">
-                            Note: {plan.notes}
+                            {plan.machine_id && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                {plan.machine_id}
+                              </span>
+                            )}
+                            {plan.charge_no && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                Charge: {plan.charge_no}
+                              </span>
+                            )}
+                            {plan.pass_no && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                Pass: {plan.pass_no}
+                              </span>
+                            )}
                           </div>
-                        )}
+
+                          <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                            {plan.customer_name || 'Standard Stock'} · {plan.grade || '—'} · {plan.size_od} × {plan.size_wt} mm
+                          </div>
+
+                          {plan.notes && (
+                            <div className="text-[11px] text-slate-500 italic mt-0.5">
+                              Note: {plan.notes}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1.5 shrink-0 print:hidden">
+                          <button
+                            type="button"
+                            onClick={() => openScheduleModal(plan, plan)}
+                            className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                            title="Edit target"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePlan(plan.id, plan.work_order_no)}
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                            title="Delete plan"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Action buttons */}
-                      <div className="flex items-center gap-1.5 shrink-0 print:hidden">
-                        <button
-                          type="button"
-                          onClick={() => openScheduleModal(plan, plan)}
-                          className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                          title="Edit target"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePlan(plan.id, plan.work_order_no)}
-                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                          title="Delete plan"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                      {/* Progress Bar & Fulfillment Status */}
+                      <div className="mt-3 bg-slate-50 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <div className="flex items-center justify-between text-xs font-mono mb-1.5">
+                          <span className="font-bold text-slate-700 dark:text-slate-300">
+                            Target: <strong className="text-slate-900 dark:text-white">{plan.target_pcs} PCS</strong> ({fmt(plan.target_mt)} MT)
+                          </span>
+                          <span className="font-bold text-blue-700 dark:text-blue-300">
+                            Actual: {plan.actual_pcs} PCS ({fmt(plan.actual_mt)} MT) · {comp}%
+                          </span>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              comp >= 100
+                                ? 'bg-emerald-500'
+                                : comp >= 50
+                                ? 'bg-blue-600'
+                                : 'bg-amber-500'
+                            }`}
+                            style={{ width: `${Math.min(100, comp)}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
-
-                    {/* Progress Bar & Fulfillment Status */}
-                    <div className="mt-3 bg-slate-50 dark:bg-slate-800/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                      <div className="flex items-center justify-between text-xs font-mono mb-1.5">
-                        <span className="font-bold text-slate-700 dark:text-slate-300">
-                          Target: <strong className="text-slate-900 dark:text-white">{plan.target_pcs} PCS</strong> ({fmt(plan.target_mt)} MT)
-                        </span>
-                        <span className="font-bold text-blue-700 dark:text-blue-300">
-                          Actual: {plan.actual_pcs} PCS ({fmt(plan.actual_mt)} MT) · {comp}%
-                        </span>
-                      </div>
-
-                      {/* Progress bar */}
-                      <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full transition-all duration-300 ${
-                            comp >= 100
-                              ? 'bg-emerald-500'
-                              : comp >= 50
-                              ? 'bg-blue-600'
-                              : 'bg-amber-500'
-                          }`}
-                          style={{ width: `${Math.min(100, comp)}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
 
-          {/* Station Summary Footer */}
-          <div className="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs flex flex-wrap items-center justify-between gap-2 font-mono">
+          {/* Station Summary Footer Bar */}
+          <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs flex flex-wrap items-center justify-between gap-2 font-mono">
             <span className="text-slate-600 dark:text-slate-400 font-sans font-bold">
               {STATION_LABELS[activeWc]} Target Total:
             </span>
@@ -1024,337 +1232,361 @@ export default function DailyPlanningConsoleClient() {
       </div>
 
       {/* Target Planning Modal */}
-      {showAddModal && modalItem && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 max-w-lg w-full p-5 shadow-2xl">
-            <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  {editingPlanId ? 'Edit Daily Plan Target' : 'Schedule Daily Production Target'}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Work Order: <strong className="font-mono text-slate-800 dark:text-slate-200">{modalItem.work_order_no}</strong> ({STATION_LABELS[activeWc]})
-                </p>
-                <div className="flex items-center gap-2 mt-1 text-[11px] font-mono flex-wrap">
-                  {Number(modalItem.ready_pcs ?? 0) > 0 ? (
-                    <span className="text-emerald-700 dark:text-emerald-300 font-bold">
-                      Ready WIP: {modalItem.ready_pcs} PCS ({fmt(Number(modalItem.ready_mtr || 0))} m)
+      {showAddModal && modalItem && (() => {
+        const modalOd = Number(modalItem.od ?? modalItem.size_od ?? 0);
+        const modalWt = Number(modalItem.wl ?? modalItem.wt ?? modalItem.size_wt ?? 0);
+        const modalFactor = (modalOd > 0 && modalWt > 0) ? Number(((modalOd - modalWt) * modalWt).toFixed(4)) : null;
+        const modalKgPerMtr = modalFactor ? Number((modalFactor * 0.0246615).toFixed(3)) : null;
+        const modalProcWall = modalItem.proc_wall ?? modalItem.mh_wt ?? (modalWt > 0 ? modalWt : null);
+        const modalL1 = modalItem.l1 ?? modalItem.final_length_min ?? null;
+        const modalL2 = modalItem.l2 ?? modalItem.final_length_max ?? null;
+        const modalAvgLen = (modalL1 && modalL2) ? Number(((modalL1 + modalL2) / 2).toFixed(2)) : Number(modalItem.avg_length || 6);
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 max-w-xl w-full p-5 shadow-2xl my-8">
+              {/* Official Mill Header */}
+              <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black tracking-wider uppercase px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-300">
+                      RASHMI SEAMLESS
                     </span>
-                  ) : (
-                    <span className="text-slate-400">
-                      Ready WIP: 0 PCS
+                    <span className="text-[10px] font-mono font-bold text-slate-500">
+                      {modalWc === 'DRAW' || modalWc === 'PILGER' ? 'Format F PROD - 003' : 'Format F PROD - 005'}
                     </span>
-                  )}
-                  {Number(modalItem.feeder_pcs ?? 0) > 0 && (
-                    <span className="text-amber-700 dark:text-amber-300 font-semibold">
-                      · Feeder ({modalItem.feeder_source_label || 'Upstream'}): {modalItem.feeder_pcs} PCS
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {editingPlanId && (
-              <div className="mt-3 flex items-center gap-2 p-2.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200 text-xs">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
-                <span>
-                  <strong>Work order is already planned for this station.</strong> Saving updates the existing scheduled target rather than creating a duplicate.
-                </span>
-              </div>
-            )}
-
-            <form onSubmit={handleSavePlan} className="space-y-4 mt-4 text-xs">
-              {/* Plan Date, Shift & Target Station Selection */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-850 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                      <CalendarDays className="h-3.5 w-3.5 text-blue-600" />
-                      Plan Date ★
-                    </label>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setModalPlanDate(new Date().toISOString().slice(0, 10))}
-                        className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 cursor-pointer"
-                      >
-                        Today
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const d = new Date();
-                          d.setDate(d.getDate() + 1);
-                          setModalPlanDate(d.toISOString().slice(0, 10));
-                        }}
-                        className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 cursor-pointer"
-                      >
-                        Tomorrow
-                      </button>
-                    </div>
                   </div>
-                  <input
-                    type="date"
-                    required
-                    value={modalPlanDate}
-                    onChange={(e) => setModalPlanDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"
-                  />
+                  <h3 className="text-base font-black text-slate-900 dark:text-white mt-1">
+                    {editingPlanId ? 'Edit Daily Plan Target' : 'Schedule Daily Production Target'}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    WO: <strong className="font-mono text-slate-800 dark:text-slate-200">{modalItem.work_order_no}</strong> · {modalItem.customer_name || 'Standard Stock'} ({STATION_LABELS[modalWc]})
+                  </p>
                 </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
-                    Planned Shift
-                  </label>
-                  <select
-                    value={modalShift}
-                    onChange={(e) => setModalShift(e.target.value as DailyPlanShift)}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden"
-                  >
-                    <option value="ALL_DAY">All Day (General)</option>
-                    <option value="SHIFT_A">Shift A (07:00 - 15:00)</option>
-                    <option value="SHIFT_B">Shift B (15:00 - 23:00)</option>
-                    <option value="SHIFT_C">Shift C (23:00 - 07:00)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
-                    Target Station / Sub-Stage
-                  </label>
-                  <select
-                    value={modalWc}
-                    onChange={(e) => {
-                      const nextWc = e.target.value as DailyPlanWorkCenter;
-                      setModalWc(nextWc);
-                      setMachineId('');
-                    }}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden"
-                  >
-                    {activeGroup.workCenters.map((wc) => (
-                      <option key={wc} value={wc}>
-                        {STATION_LABELS[wc]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Quick Fill Target Quantity Buttons */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] font-bold uppercase text-slate-500">Quick Fill:</span>
-                {Number(modalItem.ready_pcs ?? 0) > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const p = Number(modalItem.ready_pcs);
-                      setTargetPcs(p);
-                      const len = Number(modalItem.avg_length || 6);
-                      const m = modalItem.ready_mtr ? Number(modalItem.ready_mtr) : mtrFromPcs(p, len);
-                      setTargetMtr(Number(m.toFixed(2)));
-                      const od = Number(modalItem.od ?? modalItem.size_od ?? 60.3);
-                      const wt = Number(modalItem.wl ?? modalItem.wt ?? modalItem.size_wt ?? 3.91);
-                      setTargetMt(Number(mtFromMtr(m, od, wt).toFixed(3)));
-                    }}
-                    className="px-2 py-1 rounded-md text-[11px] font-bold bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 cursor-pointer"
-                  >
-                    Ready WIP ({modalItem.ready_pcs} PCS)
-                  </button>
-                )}
-                {Number(modalItem.feeder_pcs ?? 0) > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const p = Number(modalItem.feeder_pcs);
-                      setTargetPcs(p);
-                      const len = Number(modalItem.avg_length || 6);
-                      const m = modalItem.feeder_mtr ? Number(modalItem.feeder_mtr) : mtrFromPcs(p, len);
-                      setTargetMtr(Number(m.toFixed(2)));
-                      const od = Number(modalItem.od ?? modalItem.size_od ?? 60.3);
-                      const wt = Number(modalItem.wl ?? modalItem.wt ?? modalItem.size_wt ?? 3.91);
-                      setTargetMt(Number(mtFromMtr(m, od, wt).toFixed(3)));
-                    }}
-                    className="px-2 py-1 rounded-md text-[11px] font-bold bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 dark:hover:bg-amber-900 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 cursor-pointer"
-                  >
-                    Feeder: {modalItem.feeder_source_label || 'Upstream'} ({modalItem.feeder_pcs} PCS)
-                  </button>
-                )}
-              </div>
-
-              {/* Machine / Equipment */}
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                  Machine / Sub-Station Assignment
-                </label>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={machineId}
-                    onChange={(e) => setMachineId(e.target.value)}
-                    className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden"
-                  >
-                    <option value="">Select Equipment / Sub-Station...</option>
-                    {machinePresets.map((m) => (
-                      <option key={m.id} value={m.label}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Or type custom machine / sub-station ID"
-                    value={machineId}
-                    onChange={(e) => setMachineId(e.target.value)}
-                    className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
-              {/* Station Specifics: Charge No for HT, Pass No for DB, Sub-station note for Finishing */}
-              <div className="grid grid-cols-2 gap-3">
-                {modalWc === 'HEAT_TREATMENT' || modalWc === 'HOLLOW_HEAT_TREATMENT' ? (
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                      Furnace Charge No
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. CH-26A"
-                      value={chargeNo}
-                      onChange={(e) => setChargeNo(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                      {modalWc === 'DRAW' || modalWc === 'PILGER' ? 'Draw Pass / Sizing' : 'Sub-Station / Operation'}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder={modalWc === 'DRAW' || modalWc === 'PILGER' ? 'e.g. Pass 1 (73 to 65)' : 'e.g. Hydro 250 bar / Facing / Straightening'}
-                      value={passNo}
-                      onChange={(e) => setPassNo(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                    Priority Rank
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={priorityRank}
-                    onChange={(e) => setPriorityRank(Number(e.target.value))}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
-              {/* Quantities: PCS, MTR, MT */}
-              <div className="grid grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-850 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                    Target PCS ★
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={targetPcs}
-                    onChange={(e) => {
-                      const p = Number(e.target.value);
-                      setTargetPcs(p);
-                      const len = Number(modalItem.avg_length || 6);
-                      const m = mtrFromPcs(p, len);
-                      setTargetMtr(Number(m.toFixed(2)));
-                      const od = Number(modalItem.od ?? modalItem.size_od ?? 60.3);
-                      const wt = Number(modalItem.wl ?? modalItem.wt ?? modalItem.size_wt ?? 3.91);
-                      setTargetMt(Number(mtFromMtr(m, od, wt).toFixed(3)));
-                    }}
-                    className="w-full rounded-lg border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-black text-slate-900 dark:text-white focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                    Target MTR
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={targetMtr}
-                    onChange={(e) => {
-                      const m = Number(e.target.value);
-                      setTargetMtr(m);
-                      const od = Number(modalItem.od ?? modalItem.size_od ?? 60.3);
-                      const wt = Number(modalItem.wl ?? modalItem.wt ?? modalItem.size_wt ?? 3.91);
-                      setTargetMt(Number(mtFromMtr(m, od, wt).toFixed(3)));
-                    }}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
-                    Target MT
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    min="0"
-                    value={targetMt}
-                    onChange={(e) => setTargetMt(Number(e.target.value))}
-                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                  PPC Expediting Notes
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Critical export order, run before afternoon shift change"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5 text-xs text-slate-900 dark:text-white focus:outline-hidden"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 cursor-pointer"
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 disabled:opacity-50"
-                >
-                  <Save className="h-4 w-4" />
-                  <span>{saving ? 'Saving...' : 'Authorize Target'}</span>
+                  <X className="h-5 w-5" />
                 </button>
               </div>
-            </form>
+
+              {/* Technical Specifications Strip (Matching 15 Factory Report Columns) */}
+              <div className="mt-3.5 grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 dark:bg-slate-850 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-mono text-[11px]">
+                <div className="p-1">
+                  <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold font-sans">OD × WT</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{modalOd || '—'} × {modalWt || '—'} mm</span>
+                </div>
+                <div className="p-1">
+                  <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold font-sans">FACTOR</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{modalFactor ?? '—'}</span>
+                </div>
+                <div className="p-1">
+                  <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold font-sans">Proc. Wall</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{modalProcWall ? `${modalProcWall} mm` : '—'}</span>
+                </div>
+                <div className="p-1">
+                  <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold font-sans">Kg/Mtr</span>
+                  <span className="font-bold text-blue-600 dark:text-blue-400">{modalKgPerMtr ? `${modalKgPerMtr} kg` : '—'}</span>
+                </div>
+                <div className="p-1">
+                  <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold font-sans">Min Lgth (L1)</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{modalL1 ? `${modalL1} m` : '—'}</span>
+                </div>
+                <div className="p-1">
+                  <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold font-sans">Max Lgth (L2)</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{modalL2 ? `${modalL2} m` : '—'}</span>
+                </div>
+                <div className="p-1">
+                  <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold font-sans">Avg Lgth</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{modalAvgLen} m</span>
+                </div>
+                <div className="p-1">
+                  <span className="block text-[9px] uppercase tracking-wider text-slate-500 font-bold font-sans">Grade / SPEC</span>
+                  <span className="font-bold text-slate-900 dark:text-white truncate block">{modalItem.grade || modalItem.specification || '—'}</span>
+                </div>
+              </div>
+
+              {editingPlanId && (
+                <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200 text-xs">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
+                  <span>
+                    <strong>Work order is already planned for this station.</strong> Saving updates the existing scheduled target.
+                  </span>
+                </div>
+              )}
+
+              <form onSubmit={handleSavePlan} className="space-y-3.5 mt-3 text-xs">
+                {/* Plan Date, Shift & Target Station */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 dark:bg-slate-850 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                        <CalendarDays className="h-3 w-3 text-blue-600" />
+                        Plan Date ★
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setModalPlanDate(new Date().toISOString().slice(0, 10))}
+                        className="text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 cursor-pointer"
+                      >
+                        Today
+                      </button>
+                    </div>
+                    <input
+                      type="date"
+                      required
+                      value={modalPlanDate}
+                      onChange={(e) => setModalPlanDate(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
+                      Planned Shift
+                    </label>
+                    <select
+                      value={modalShift}
+                      onChange={(e) => setModalShift(e.target.value as DailyPlanShift)}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden"
+                    >
+                      <option value="ALL_DAY">All Day (General)</option>
+                      <option value="SHIFT_A">Shift A (07:00 - 15:00)</option>
+                      <option value="SHIFT_B">Shift B (15:00 - 23:00)</option>
+                      <option value="SHIFT_C">Shift C (23:00 - 07:00)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
+                      Stage / Station
+                    </label>
+                    <select
+                      value={modalWc}
+                      onChange={(e) => {
+                        const nextWc = e.target.value as DailyPlanWorkCenter;
+                        setModalWc(nextWc);
+                        setMachineId('');
+                      }}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden"
+                    >
+                      {activeGroup.workCenters.map((wc) => (
+                        <option key={wc} value={wc}>
+                          {STATION_LABELS[wc]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Machine / Equipment */}
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Machine / Equipment Assignment
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={machineId}
+                      onChange={(e) => setMachineId(e.target.value)}
+                      className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden"
+                    >
+                      <option value="">Select Equipment...</option>
+                      {machinePresets.map((m) => (
+                        <option key={m.id} value={m.label}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Or custom equipment ID"
+                      value={machineId}
+                      onChange={(e) => setMachineId(e.target.value)}
+                      className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Station Specifics: Charge No for HT, Pass No for DB, Sub-station for Finishing */}
+                <div className="grid grid-cols-2 gap-3">
+                  {modalWc === 'HEAT_TREATMENT' || modalWc === 'HOLLOW_HEAT_TREATMENT' ? (
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                        Furnace Charge No
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. CH-26A"
+                        value={chargeNo}
+                        onChange={(e) => setChargeNo(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                        {modalWc === 'DRAW' || modalWc === 'PILGER' ? 'Draw Pass / Sizing' : 'Sub-Station / Operation'}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder={modalWc === 'DRAW' || modalWc === 'PILGER' ? 'e.g. Pass 1 (73 to 65)' : 'e.g. Hydro 250 bar / Facing / Straightening'}
+                        value={passNo}
+                        onChange={(e) => setPassNo(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                      Priority Rank
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={priorityRank}
+                      onChange={(e) => setPriorityRank(Number(e.target.value))}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Quantities: PCS (Nos), MTR, MT */}
+                <div className="grid grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-850 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-700 dark:text-slate-300 mb-1">
+                      Nos (Target PCS) ★
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={targetPcs}
+                      onChange={(e) => {
+                        const p = Number(e.target.value);
+                        setTargetPcs(p);
+                        const m = Number((p * modalAvgLen).toFixed(2));
+                        setTargetMtr(m);
+                        if (modalKgPerMtr) {
+                          setTargetMt(Number(((m * modalKgPerMtr) / 1000).toFixed(3)));
+                        }
+                      }}
+                      className="w-full rounded-lg border border-blue-400 dark:border-blue-600 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-black text-slate-900 dark:text-white focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                      Target MTR
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={targetMtr}
+                      onChange={(e) => {
+                        const m = Number(e.target.value);
+                        setTargetMtr(m);
+                        if (modalKgPerMtr) {
+                          setTargetMt(Number(((m * modalKgPerMtr) / 1000).toFixed(3)));
+                        }
+                      }}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">
+                      Target MT (Metric Tons)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      value={targetMt}
+                      onChange={(e) => setTargetMt(Number(e.target.value))}
+                      className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Fill Buttons */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase text-slate-500">Quick Fill:</span>
+                  {Number(modalItem.ready_pcs ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const p = Number(modalItem.ready_pcs);
+                        setTargetPcs(p);
+                        const m = Number((p * modalAvgLen).toFixed(2));
+                        setTargetMtr(m);
+                        if (modalKgPerMtr) {
+                          setTargetMt(Number(((m * modalKgPerMtr) / 1000).toFixed(3)));
+                        }
+                      }}
+                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 cursor-pointer"
+                    >
+                      Ready WIP ({modalItem.ready_pcs} PCS)
+                    </button>
+                  )}
+                  {Number(modalItem.feeder_pcs ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const p = Number(modalItem.feeder_pcs);
+                        setTargetPcs(p);
+                        const m = Number((p * modalAvgLen).toFixed(2));
+                        setTargetMtr(m);
+                        if (modalKgPerMtr) {
+                          setTargetMt(Number(((m * modalKgPerMtr) / 1000).toFixed(3)));
+                        }
+                      }}
+                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 cursor-pointer"
+                    >
+                      Feeder ({modalItem.feeder_pcs} PCS)
+                    </button>
+                  )}
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    PPC Expediting Notes
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g. Critical export order, run before afternoon shift change"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 text-xs text-slate-900 dark:text-white focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-xs transition cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    <span>{saving ? 'Saving...' : 'Authorize Target'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
