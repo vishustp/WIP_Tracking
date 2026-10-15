@@ -18,6 +18,8 @@ export interface AgingRow {
   current_wip: number;
   current_wip_pcs: number;
   available_mt: number;
+  vdi_salvage_pcs?: number;
+  vdi_salvage_mtr?: number;
   last_activity_date: string;
   days_stuck: number;
   severity: AgingSeverity;
@@ -80,6 +82,8 @@ export interface RawQcInspection {
   work_order_id: string;
   inspection_date: string;
   vdi_ok_mtr?: number;
+  vdi_salvage_pcs?: number;
+  vdi_salvage_mtr?: number;
   created_at?: string;
 }
 
@@ -377,6 +381,10 @@ export function computeAgingReportRows(options: {
         ack && (!ack.snooze_until || ack.snooze_until >= todayStr)
       );
 
+      const woQc = qcInspections.filter((q) => q.work_order_id === r.work_order_id);
+      const vdiSalvagePcs = woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+      const vdiSalvageMtr = woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+
       return {
         work_order_id: r.work_order_id,
         work_order_no: r.work_order_no,
@@ -393,6 +401,8 @@ export function computeAgingReportRows(options: {
         current_wip: currentWipMtr,
         current_wip_pcs: currentWipPcs,
         available_mt: availMt,
+        vdi_salvage_pcs: vdiSalvagePcs,
+        vdi_salvage_mtr: vdiSalvageMtr,
         last_activity_date: effDate,
         days_stuck: daysStuck,
         severity,
@@ -621,5 +631,7 @@ export function normalizeAgingRow(
     acknowledged_by: matchLocal?.acknowledged_by || raw.acknowledged_by || null,
     ack_notes: matchLocal?.notes || raw.ack_notes || null,
     ack_snooze_until: matchLocal?.snooze_until || raw.ack_snooze_until || null,
+    vdi_salvage_pcs: Number(raw.vdi_salvage_pcs) || 0,
+    vdi_salvage_mtr: Number(raw.vdi_salvage_mtr) || 0,
   };
 }

@@ -686,5 +686,75 @@ describe('WIP Aging & Bottlenecks Calculation Engine', () => {
       expect(normalized.acknowledged_by).toBe('Shift Incharge');
       expect(normalized.ack_notes).toBe('Waiting for strapping seals');
     });
+
+    it('extracts and preserves vdi_salvage_pcs and vdi_salvage_mtr', () => {
+      const rawRow = {
+        work_order_id: 'wo-106',
+        work_order_no: '6355',
+        stage_code: 'VDI',
+        days_stuck: 2,
+        vdi_salvage_pcs: 14,
+        vdi_salvage_mtr: 84.5,
+      };
+
+      const normalized = normalizeAgingRow(rawRow);
+      expect(normalized.vdi_salvage_pcs).toBe(14);
+      expect(normalized.vdi_salvage_mtr).toBe(84.5);
+    });
+  });
+
+  describe('VDI Salvage aggregation in computeAgingReportRows', () => {
+    it('aggregates vdi_salvage_pcs and vdi_salvage_mtr from qc_inspections', () => {
+      const wipRows: RawWipRow[] = [
+        {
+          work_order_id: 'wo-vdi-1',
+          work_order_no: '6355',
+          customer_name: 'Test Customer',
+          grade: 'EN 10216-2',
+          size_od: 21.3,
+          size_wt: 2.77,
+          stage_id: 'S_VDI',
+          stage_code: 'VDI',
+          stage_name: 'VDI Inspection',
+          sequence_no: 5,
+          current_wip: 100,
+          current_wip_pcs: 16,
+          available_mt: 0.12,
+        },
+      ];
+
+      const qcInspections: RawQcInspection[] = [
+        {
+          work_order_id: 'wo-vdi-1',
+          inspection_date: '2026-10-10',
+          vdi_ok_mtr: 80,
+          vdi_salvage_pcs: 5,
+          vdi_salvage_mtr: 30,
+        },
+        {
+          work_order_id: 'wo-vdi-1',
+          inspection_date: '2026-10-11',
+          vdi_ok_mtr: 20,
+          vdi_salvage_pcs: 3,
+          vdi_salvage_mtr: 18,
+        },
+      ];
+
+      const rows = computeAgingReportRows({
+        wipRows,
+        workOrders: [{ id: 'wo-vdi-1', work_order_no: '6355', grade: 'EN 10216-2', size_od: 21.3, size_wt: 2.77 }],
+        productionLogs: [],
+        qcInspections,
+        rollingPlans: [],
+        routeStages: [{ route_id: 'R1', stage_id: 'S_VDI', sequence_no: 5, stage_code: 'VDI' }],
+        acknowledgements: [],
+        asOfDate: new Date('2026-10-12'),
+      });
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].vdi_salvage_pcs).toBe(8);
+      expect(rows[0].vdi_salvage_mtr).toBe(48);
+    });
   });
 });
+

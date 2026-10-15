@@ -46,6 +46,8 @@ interface ContributingOrder {
   work_order_id: string;
   work_order_no: string;
   customer_name: string | null;
+  order_status?: string | null;
+  balance_qty_pcs?: number | null;
   stage_code: StageCode;
   stage_name: string;
   route_code?: string;
@@ -114,6 +116,45 @@ export function getRouteBadgeClass(code?: string) {
   return 'bg-[var(--bg-surface-subtle,#f1f5f9)] text-[var(--text-main,#334155)] border-[var(--border-subtle,#e2e8f0)]';
 }
 
+export function getOrderStatusBadge(status?: string | null, balancePcs?: number | null) {
+  const s = (status || 'Pending Plan').trim();
+  const bal = balancePcs != null ? Number(balancePcs) : null;
+
+  let badgeColor = 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
+  if (s === 'In Progress') {
+    badgeColor = 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800';
+  } else if (s === 'Scheduled') {
+    badgeColor = 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800';
+  } else if (s === 'Pending Plan') {
+    badgeColor = 'bg-purple-50 text-purple-700 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800';
+  } else if (s === 'Completed') {
+    badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800';
+  } else if (s === 'Diverted') {
+    badgeColor = 'bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800';
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border font-mono ${badgeColor}`}>
+        {s}
+      </span>
+      {s === 'Completed' || bal === 0 ? (
+        <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">
+          Bal: 0 pcs
+        </span>
+      ) : bal != null && bal > 0 ? (
+        <span className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-400">
+          Bal: {Number(bal).toLocaleString()} pcs
+        </span>
+      ) : (
+        <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+          Bal: —
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function SizeGradeWipReportClient() {
   const router = useRouter();
   const [rawWipRows, setRawWipRows] = useState<any[]>([]);
@@ -163,7 +204,7 @@ export default function SizeGradeWipReportClient() {
       // Query view for live stage physical WIP + rolling logs + plans + qc inspections + diversion plans
       const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes, qcRes, divRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').limit(5000),
-        supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mt').limit(5000),
+        supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mt, status, balance_qty_pcs, balance_qty_mtr').limit(5000),
         supabase.from('rolling_plans').select('id, work_order_id, plan_no, multiple, planned_qty, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id, created_at').not('status', 'is', null).limit(5000),
         supabase.from('process_routes').select('id, route_code, route_name').eq('active', true),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at, remarks, output_qty, rejection_qty, htc_ok, process_stages(stage_name, stage_code)').order('process_date', { ascending: false }).limit(5000),
@@ -526,6 +567,9 @@ export default function SizeGradeWipReportClient() {
               route_code: routeCode,
               route_name: routeName,
               rolling_date: rollingDate,
+              order_status: wo?.status || originalRow.status || null,
+              balance_qty_pcs: wo?.balance_qty_pcs != null ? Number(wo.balance_qty_pcs) : null,
+              balance_qty_mtr: wo?.balance_qty_mtr != null ? Number(wo.balance_qty_mtr) : null,
               is_feeder_stage: false,
               current_wip: Number(recStage.capped_wip_mtr.toFixed(2)),
               current_wip_pcs: Math.round(recStage.capped_wip_pcs),
@@ -704,6 +748,8 @@ export default function SizeGradeWipReportClient() {
         work_order_id: r.work_order_id,
         work_order_no: r.work_order_no,
         customer_name: r.customer_name,
+        order_status: r.order_status,
+        balance_qty_pcs: r.balance_qty_pcs,
         stage_code: stage,
         stage_name: r.stage_name || stage,
         route_code: r.route_code || 'HFS',
@@ -882,6 +928,8 @@ export default function SizeGradeWipReportClient() {
       const exportData = filteredRawRows.map((r, i) => ({
         '#': i + 1,
         'Work Order': r.work_order_no,
+        'Order Status': r.order_status || '—',
+        'Balance to Make (Pcs)': r.balance_qty_pcs != null ? r.balance_qty_pcs : '—',
         'Rolling Date': r.rolling_date || '—',
         'Customer': r.customer_name || '—',
         'Route': r.route_code || 'HFS',
@@ -1514,6 +1562,7 @@ export default function SizeGradeWipReportClient() {
                                       <tr>
                                         <th className="py-1 px-2">Work Order No</th>
                                         <th className="py-1 px-2">Customer</th>
+                                        <th className="py-1 px-2">Order Status</th>
                                         <th className="py-1 px-2">Route</th>
                                         <th className="py-1 px-2">Current Work Center</th>
                                         <th className="py-1 px-2 text-right">Physical WIP ({unit})</th>
@@ -1528,6 +1577,9 @@ export default function SizeGradeWipReportClient() {
                                           </td>
                                           <td className="py-1.5 px-2 text-[var(--text-muted,#475569)] truncate max-w-[200px]">
                                             {c.customer_name || 'Generic Customer'}
+                                          </td>
+                                          <td className="py-1.5 px-2">
+                                            {getOrderStatusBadge(c.order_status, c.balance_qty_pcs)}
                                           </td>
                                           <td className="py-1.5 px-2">
                                             <span className={`inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium border font-mono ${getRouteBadgeClass(c.route_code)}`}>
@@ -1615,6 +1667,7 @@ export default function SizeGradeWipReportClient() {
                 <tr>
                   <th className="py-2.5 px-3 bg-clip-padding">Work Order #</th>
                   <th className="py-2.5 px-3 bg-clip-padding">Customer</th>
+                  <th className="py-2.5 px-3 bg-clip-padding">Order Status</th>
                   <th className="py-2.5 px-3 bg-clip-padding">Route</th>
                   <th className="py-2.5 px-3 bg-clip-padding">Size (OD × WT)</th>
                   <th className="py-2.5 px-3 bg-clip-padding">Material Grade</th>
@@ -1628,7 +1681,7 @@ export default function SizeGradeWipReportClient() {
               <tbody className="divide-y divide-[var(--border-subtle,#f1f5f9)]">
                 {filteredRawRows.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-[var(--text-muted,#94a3b8)]">
+                    <td colSpan={11} className="py-12 text-center text-[var(--text-muted,#94a3b8)]">
                       No active work orders matching filters.
                     </td>
                   </tr>
@@ -1640,6 +1693,9 @@ export default function SizeGradeWipReportClient() {
                       </td>
                       <td className="py-2.5 px-3 text-[var(--text-muted,#475569)] truncate max-w-[160px]">
                         {r.customer_name || 'Generic Customer'}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        {getOrderStatusBadge(r.order_status, r.balance_qty_pcs)}
                       </td>
                       <td className="py-2.5 px-3">
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border font-mono ${getRouteBadgeClass(r.route_code)}`}>

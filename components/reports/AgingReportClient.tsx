@@ -95,7 +95,7 @@ export default function AgingReportClient() {
       const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).order('sequence_no', { ascending: true }),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok').order('process_date', { ascending: false }),
-        supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr').order('inspection_date', { ascending: false }),
+        supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr').order('inspection_date', { ascending: false }),
         supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, planned_rolling_date, created_at').not('status', 'is', null),
         supabase.from('work_orders').select('id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, created_at'),
         supabase.from('route_stages').select('route_id, stage_id, sequence_no, process_stages(stage_code)').order('sequence_no', { ascending: true }),
@@ -217,6 +217,8 @@ export default function AgingReportClient() {
       'Grade': r.grade || '—',
       'Size (ODxWT mm)': `${r.od} × ${r.wt}`,
       'Work Center': r.stage_name,
+      'VDI Salvage (Pcs)': r.vdi_salvage_pcs || 0,
+      'VDI Salvage (Mtrs)': r.vdi_salvage_mtr || 0,
       'Physical WIP (Mtrs)': r.current_wip,
       'Physical WIP (Pcs)': r.current_wip_pcs,
       'Physical WIP (MT)': r.available_mt,
@@ -397,6 +399,7 @@ export default function AgingReportClient() {
                 <th className="py-2.5 px-3">Customer</th>
                 <th className="py-2.5 px-3">Grade & Size</th>
                 <th className="py-2.5 px-3">Work Center</th>
+                <th className="py-2.5 px-3 text-right">VDI Salvage QTY</th>
                 <th className="py-2.5 px-3 text-right">Physical WIP (PCS / MTR)</th>
                 <th className="py-2.5 px-3">Last Activity</th>
                 <th className="py-2.5 px-3 text-center">Days Stuck</th>
@@ -408,14 +411,14 @@ export default function AgingReportClient() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                  <td colSpan={11} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                     Calculating station dwell times and physical WIP aging...
                   </td>
                 </tr>
               ) : paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                  <td colSpan={11} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
                     <div className="font-semibold text-slate-700 dark:text-slate-300">No stagnant material found</div>
                     <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -469,6 +472,25 @@ export default function AgingReportClient() {
                           <Factory className="h-3 w-3 text-slate-400 dark:text-slate-500" />
                           {r.stage_name}
                         </span>
+                      </td>
+
+                      {/* VDI Salvage QTY */}
+                      <td className="py-2.5 px-3 text-right font-mono tabular-nums">
+                        {(r.vdi_salvage_pcs && r.vdi_salvage_pcs > 0) || (r.vdi_salvage_mtr && r.vdi_salvage_mtr > 0) ? (
+                          <div>
+                            <div className="flex items-center justify-end gap-1 mb-1">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-700 shadow-2xs">
+                                <span className="font-mono text-[13px]">{fmt(r.vdi_salvage_pcs || 0, 0)}</span>
+                                <span className="text-[10px] uppercase font-sans font-bold tracking-wider">PCS</span>
+                              </span>
+                            </div>
+                            <div className="text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                              {fmt(r.vdi_salvage_mtr || 0)} <span className="text-[10px] text-amber-600 dark:text-amber-400">m</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500 font-mono text-[12px]">—</span>
+                        )}
                       </td>
 
                       {/* Physical WIP with Highlighted PCS */}
