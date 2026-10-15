@@ -77,8 +77,8 @@ const STATION_GROUPS: StationGroup[] = [
     label: 'Finishing, Cutting & Dispatch',
     shortLabel: 'Finishing Line',
     icon: Factory,
-    workCenters: ['BAND_SAW', 'VDI', 'FINISHING'],
-    description: 'Band saw cutting, dimensional/NDT inspection targets, and dispatch bundling.',
+    workCenters: ['HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'],
+    description: 'Furnace heat treatment, band saw cutting, inspection, and dispatch bundling.',
   },
 ];
 
@@ -106,6 +106,8 @@ export default function DailyPlanningConsoleClient() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalItem, setModalItem] = useState<any | null>(null);
   const [modalPlanDate, setModalPlanDate] = useState<string>(selectedDate);
+  const [modalShift, setModalShift] = useState<DailyPlanShift>(selectedShift);
+  const [modalWc, setModalWc] = useState<DailyPlanWorkCenter>(activeWc);
   const [queueTab, setQueueTab] = useState<'UNPLANNED' | 'READY' | 'FEEDER' | 'ALL'>('UNPLANNED');
   const [targetPcs, setTargetPcs] = useState<number>(0);
   const [targetMtr, setTargetMtr] = useState<number>(0);
@@ -265,6 +267,7 @@ export default function DailyPlanningConsoleClient() {
       setEditingPlanId(planToEdit.id);
       setModalPlanDate(planToEdit.plan_date || selectedDate);
       setModalShift(planToEdit.shift || selectedShift);
+      setModalWc(planToEdit.work_center || activeWc);
       setTargetPcs(planToEdit.target_pcs);
       setTargetMtr(planToEdit.target_mtr);
       setTargetMt(planToEdit.target_mt);
@@ -277,6 +280,7 @@ export default function DailyPlanningConsoleClient() {
       setEditingPlanId(null);
       setModalPlanDate(selectedDate);
       setModalShift(selectedShift);
+      setModalWc(activeWc);
       const hasReady = Number(item.ready_pcs ?? 0) >= 1 && !item.is_feeder_source;
       const availPcs = hasReady
         ? Number(item.ready_pcs)
@@ -316,7 +320,7 @@ export default function DailyPlanningConsoleClient() {
     let planIdToSubmit = editingPlanId;
     if (!planIdToSubmit) {
       const match = plans.find(
-        (p) => p.work_order_id === woId && p.work_center === activeWc && p.plan_date === modalPlanDate
+        (p) => p.work_order_id === woId && p.work_center === modalWc && p.plan_date === modalPlanDate
       );
       if (match) {
         planIdToSubmit = match.id;
@@ -332,7 +336,7 @@ export default function DailyPlanningConsoleClient() {
           id: planIdToSubmit,
           plan_date: modalPlanDate,
           shift: modalShift,
-          work_center: activeWc,
+          work_center: modalWc,
           work_order_id: woId,
           target_pcs: targetPcs,
           target_mtr: targetMtr,
@@ -352,7 +356,7 @@ export default function DailyPlanningConsoleClient() {
       toast.success(
         planIdToSubmit
           ? `Updated plan target for ${modalItem.work_order_no} (${modalPlanDate})`
-          : `Scheduled ${modalItem.work_order_no} for ${STATION_LABELS[activeWc]} on ${modalPlanDate}`
+          : `Scheduled ${modalItem.work_order_no} for ${STATION_LABELS[modalWc]} on ${modalPlanDate}`
       );
       setShowAddModal(false);
       if (modalPlanDate !== selectedDate) {
@@ -360,6 +364,9 @@ export default function DailyPlanningConsoleClient() {
       }
       if (modalShift !== selectedShift) {
         setSelectedShift(modalShift);
+      }
+      if (modalWc !== activeWc) {
+        setActiveWc(modalWc);
       }
       loadPlans();
     } catch (err: any) {
@@ -403,7 +410,7 @@ export default function DailyPlanningConsoleClient() {
     toast.success('Daily plan exported to CSV.');
   };
 
-  const machinePresets = STATION_MACHINE_PRESETS[activeWc] || [];
+  const machinePresets = STATION_MACHINE_PRESETS[modalWc || activeWc] || [];
 
   return (
     <div className="space-y-6 print:space-y-4 print:p-0">
@@ -1052,8 +1059,8 @@ export default function DailyPlanningConsoleClient() {
             )}
 
             <form onSubmit={handleSavePlan} className="space-y-4 mt-4 text-xs">
-              {/* Plan Date & Shift Selection (Requirement 2) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 dark:bg-slate-850 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+              {/* Plan Date, Shift & Target Station Selection */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-850 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1">
@@ -1105,6 +1112,27 @@ export default function DailyPlanningConsoleClient() {
                     <option value="SHIFT_C">Shift C (23:00 - 07:00)</option>
                   </select>
                 </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">
+                    Target Station / Sub-Stage
+                  </label>
+                  <select
+                    value={modalWc}
+                    onChange={(e) => {
+                      const nextWc = e.target.value as DailyPlanWorkCenter;
+                      setModalWc(nextWc);
+                      setMachineId('');
+                    }}
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden"
+                  >
+                    {activeGroup.workCenters.map((wc) => (
+                      <option key={wc} value={wc}>
+                        {STATION_LABELS[wc]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* Quick Fill Target Quantity Buttons */}
@@ -1151,7 +1179,7 @@ export default function DailyPlanningConsoleClient() {
               {/* Machine / Equipment */}
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                  Machine / Furnace Assignment
+                  Machine / Sub-Station Assignment
                 </label>
                 <div className="flex items-center gap-2">
                   <select
@@ -1159,7 +1187,7 @@ export default function DailyPlanningConsoleClient() {
                     onChange={(e) => setMachineId(e.target.value)}
                     className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden"
                   >
-                    <option value="">Select Equipment...</option>
+                    <option value="">Select Equipment / Sub-Station...</option>
                     {machinePresets.map((m) => (
                       <option key={m.id} value={m.label}>
                         {m.label}
@@ -1168,7 +1196,7 @@ export default function DailyPlanningConsoleClient() {
                   </select>
                   <input
                     type="text"
-                    placeholder="Or type custom machine ID"
+                    placeholder="Or type custom machine / sub-station ID"
                     value={machineId}
                     onChange={(e) => setMachineId(e.target.value)}
                     className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-hidden"
@@ -1176,9 +1204,9 @@ export default function DailyPlanningConsoleClient() {
                 </div>
               </div>
 
-              {/* Station Specifics: Charge No for HT, Pass No for DB */}
+              {/* Station Specifics: Charge No for HT, Pass No for DB, Sub-station note for Finishing */}
               <div className="grid grid-cols-2 gap-3">
-                {activeWc === 'HEAT_TREATMENT' || activeWc === 'HOLLOW_HEAT_TREATMENT' ? (
+                {modalWc === 'HEAT_TREATMENT' || modalWc === 'HOLLOW_HEAT_TREATMENT' ? (
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
                       Furnace Charge No
@@ -1194,11 +1222,11 @@ export default function DailyPlanningConsoleClient() {
                 ) : (
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                      Draw Pass / Sizing
+                      {modalWc === 'DRAW' || modalWc === 'PILGER' ? 'Draw Pass / Sizing' : 'Sub-Station / Operation'}
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Pass 1 (73 to 65)"
+                      placeholder={modalWc === 'DRAW' || modalWc === 'PILGER' ? 'e.g. Pass 1 (73 to 65)' : 'e.g. Hydro 250 bar / Facing / Straightening'}
                       value={passNo}
                       onChange={(e) => setPassNo(e.target.value)}
                       className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden"

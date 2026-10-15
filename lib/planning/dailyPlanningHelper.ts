@@ -53,7 +53,13 @@ export const STATION_MACHINE_PRESETS: Record<DailyPlanWorkCenter, MachinePresetO
     { id: 'NDT Ultrasonic Station', label: 'NDT Ultrasonic Station', work_center: 'VDI' },
   ],
   FINISHING: [
+    { id: 'Straightening Machine', label: 'Straightening Machine (Rotary)', work_center: 'FINISHING' },
+    { id: 'End Facing & Chamfering', label: 'End Facing & Chamfering Station', work_center: 'FINISHING' },
+    { id: 'Hydrostatic Test Station', label: 'Hydro Testing Station', work_center: 'FINISHING' },
+    { id: 'NDT Testing Station', label: 'NDT Ultrasonic / Eddy Current Station', work_center: 'FINISHING' },
+    { id: 'VDI Inspection Table', label: 'Visual & Dimension Inspection (VDI Table)', work_center: 'FINISHING' },
     { id: 'Bundling Bed #1', label: 'Bundling Bed #1 (Stenciling & Strapping)', work_center: 'FINISHING' },
+    { id: 'Bundling Bed #2', label: 'Bundling Bed #2 (Export Packaging)', work_center: 'FINISHING' },
     { id: 'Dispatch Staging Bay', label: 'Dispatch Staging Bay (Lorry Loading)', work_center: 'FINISHING' },
   ],
 };
