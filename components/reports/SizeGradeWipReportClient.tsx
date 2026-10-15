@@ -690,6 +690,8 @@ export default function SizeGradeWipReportClient() {
     return rawWipRows.filter((r) => {
       // Must have positive physical inventory
       if (Number(r.current_wip_pcs || 0) <= 0 && Number(r.current_wip || 0) <= 0) return false;
+      // Completed orders with 0 balance cannot have active upstream physical WIP
+      if ((r.order_status || '').toLowerCase() === 'completed' && Number(r.balance_qty_pcs ?? 0) === 0 && r.stage_code !== 'FINISHING') return false;
       // Order Status filter
       if (selectedStatus === 'COMPLETED') {
         if ((r.order_status || '').toLowerCase() !== 'completed') return false;

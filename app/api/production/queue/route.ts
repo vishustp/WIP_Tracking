@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { StageCode, Row, WorkCenterWipInfo } from "@/types";
-import { mtFromMtr, extractPcsFromRemarks } from "@/lib/productionUtils";
+import { mtFromMtr, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from "@/lib/productionUtils";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -384,7 +384,6 @@ export async function GET(req: NextRequest) {
         const parsed = typeof p.status === "string" ? JSON.parse(p.status) : p.status;
         const lifecycle = parsed?.lifecycle_status || (parsed?.issued_at ? "ISSUED" : "DRAFT");
         const isIssued = (lifecycle === "ISSUED" || lifecycle === "REVISED") && lifecycle !== "CLOSED" && lifecycle !== "SHORT_CLOSED";
-        if (!isIssued) continue;
 
         const mhOdVal = p.mh_od || parsed?.mh_od || parsed?.cust_od || parsed?.sm?.cust_od || parsed?.sizing_mill?.cust_od || null;
         const mhWtVal = p.mh_wt || parsed?.mh_wt || parsed?.cust_wt || parsed?.sm?.rolling_wt || parsed?.sm?.cust_wt || parsed?.sizing_mill?.rolling_wt || null;
@@ -811,11 +810,18 @@ export async function GET(req: NextRequest) {
 
       // 4. Heat Treatment Stage Metrics (adjusted for HT Diversions & Downstream Consumption)
       const htLogs = getStageLogs(woId, htStageId);
-      const htOutPcs = sumPcs(htLogs, avgLength);
-      const htRejPcs = sumRejPcs(htLogs, avgLength);
+      const allHtLogsList = [...htLogs];
+      if (campaign && Array.isArray(campaign.child_work_orders)) {
+        for (const child of campaign.child_work_orders) {
+          const cId = child.work_order_id || child.id;
+          allHtLogsList.push(...getStageLogs(cId, htStageId));
+        }
+      }
+      const htOutPcs = sumPcs(allHtLogsList, avgLength);
+      const htRejPcs = sumRejPcs(allHtLogsList, avgLength);
       const htNetPcs = Math.max(0, htOutPcs - htRejPcs);
-      const rawHtOut = sumQty(htLogs, "output_qty");
-      const rawHtRej = sumQty(htLogs, "rejection_qty");
+      const rawHtOut = sumQty(allHtLogsList, "output_qty");
+      const rawHtRej = sumQty(allHtLogsList, "rejection_qty");
       const htOutMtr = rawHtOut > 0 ? rawHtOut : (avgLength > 0 ? Number((htOutPcs * avgLength).toFixed(3)) : 0);
       const htRejMtr = rawHtRej > 0 ? rawHtRej : (avgLength > 0 ? Number((htRejPcs * avgLength).toFixed(3)) : 0);
       const htNetMtr = Math.max(0, htOutMtr - htRejMtr);
@@ -826,11 +832,6 @@ export async function GET(req: NextRequest) {
       const htDivOutPcs = avgLength > 0 ? Math.round(htDivOut / avgLength) : 0;
 
       const htIncomingPcs = isSsSteel ? pilgerNetPcs : drawNetPcs;
-      let htAvailPcs = (isCds || isSsSteel)
-        ? Math.max(0, htIncomingPcs + htDivInPcs - htOutPcs - htRejPcs - htDivOutPcs)
-        : 0;
-      let htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
-      let htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Check QC Inspections for this WO (or related campaign)
       const directWoQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
@@ -861,14 +862,32 @@ export async function GET(req: NextRequest) {
 
       // 4.5 Band Saw Stage Metrics (between HT / Hollow HT / Rolling and VDI)
       const bandSawLogs = getStageLogs(woId, bandSawStageId);
-      const bandSawOutPcs = sumPcs(bandSawLogs, avgLength);
-      const bandSawRejPcs = sumRejPcs(bandSawLogs, avgLength);
+      const allBandSawLogs = [...bandSawLogs];
+      if (campaign && Array.isArray(campaign.child_work_orders)) {
+        for (const child of campaign.child_work_orders) {
+          const cId = child.work_order_id || child.id;
+          allBandSawLogs.push(...getStageLogs(cId, bandSawStageId));
+        }
+      }
+      const bandSawOutPcs = sumPcs(allBandSawLogs, avgLength);
+      const bandSawRejPcs = sumRejPcs(allBandSawLogs, avgLength);
       const bandSawNetPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
-      const rawBandSawOutMtr = sumQty(bandSawLogs, "output_qty");
-      const rawBandSawRejMtr = sumQty(bandSawLogs, "rejection_qty");
+      const rawBandSawOutMtr = sumQty(allBandSawLogs, "output_qty");
+      const rawBandSawRejMtr = sumQty(allBandSawLogs, "rejection_qty");
       const bandSawOutMtr = rawBandSawOutMtr > 0 ? rawBandSawOutMtr : (avgLength > 0 ? Number((bandSawOutPcs * avgLength).toFixed(3)) : 0);
       const bandSawRejMtr = rawBandSawRejMtr > 0 ? rawBandSawRejMtr : (avgLength > 0 ? Number((bandSawRejPcs * avgLength).toFixed(3)) : 0);
       const bandSawNetMtr = Math.max(0, bandSawOutMtr - bandSawRejMtr);
+
+      let bsMotherPcsCut = 0;
+      for (const log of allBandSawLogs) {
+        const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(log.remarks);
+        if (mPcs != null && mPcs > 0) {
+          bsMotherPcsCut += mPcs;
+        } else {
+          const p = getLogPcs(log, avgLength);
+          bsMotherPcsCut += multiple > 1 ? Math.ceil(p / multiple) : p;
+        }
+      }
 
       const bandSawDivIn = getStageDivIn(woId, "BAND_SAW");
       const bandSawDivOut = getStageDivOut(woId, "BAND_SAW");
@@ -902,7 +921,14 @@ export async function GET(req: NextRequest) {
       const finNetMtr = avgLength > 0 ? Number((finNetPcs * avgLength).toFixed(3)) : 0;
 
       // Heat treatment incoming: strictly from Draw (or Pilger) net output pieces minus downstream processed
-      const htPassedPcs = Math.max(htOutPcs + htRejPcs, bandSawOutPcs + bandSawRejPcs, qcInspectedPcs, finOutPcs + finRejPcs);
+      const mult = multiple > 0 ? multiple : 1;
+      const htPassedPcs = Math.max(
+        htOutPcs + htRejPcs,
+        bsMotherPcsCut,
+        mult > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / mult) : (bandSawOutPcs + bandSawRejPcs),
+        mult > 1 ? Math.ceil(qcInspectedPcs / mult) : qcInspectedPcs,
+        mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
+      );
       htAvailPcs = (isCds || isSsSteel)
         ? Math.max(0, htIncomingPcs + htDivInPcs - htPassedPcs - htDivOutPcs)
         : 0;
@@ -930,11 +956,15 @@ export async function GET(req: NextRequest) {
         : (isAlloy ? hollowHtNetPcs : rollHtcOkPcs);
 
       // Deduct whichever is greater: explicit Band Saw cuts, downstream VDI inspected pieces, or downstream Finishing
-      const bandSawPassedPcs = Math.max(bandSawOutPcs + bandSawRejPcs, qcInspectedPcs, finOutPcs + finRejPcs);
-      const bandSawAvailPcs = Math.max(0, bandSawIncomingPcs + bandSawDivInPcs - bandSawPassedPcs - bandSawDivOutPcs);
-      const bandSawAvailMtr = avgLength > 0 ? Number((bandSawAvailPcs * avgLength).toFixed(3)) : 0;
-      const bandSawAvailMt = mtFromMtr(bandSawAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
-
+      const bandSawPassedPcs = Math.max(
+        bsMotherPcsCut,
+        mult > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / mult) : (bandSawOutPcs + bandSawRejPcs),
+        mult > 1 ? Math.ceil(qcInspectedPcs / mult) : qcInspectedPcs,
+        mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
+      );
+      let bandSawAvailPcs = Math.max(0, bandSawIncomingPcs + bandSawDivInPcs - bandSawPassedPcs - bandSawDivOutPcs);
+      let bandSawAvailMtr = avgLength > 0 ? Number((bandSawAvailPcs * avgLength).toFixed(3)) : 0;
+      let bandSawAvailMt = mtFromMtr(bandSawAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // VDI Stage WIP (Waiting for QC Inspection)
       const vdiDivIn = getStageDivIn(woId, "VDI");
@@ -944,21 +974,21 @@ export async function GET(req: NextRequest) {
       const vdiDivOutPcs = avgLength > 0 ? Math.round(vdiDivOut / avgLength) : 0;
 
       // VDI incoming: strictly from Band Saw Net Output Pieces
-      const vdiIncomingPcs = bandSawLogs.length > 0 ? bandSawNetPcs : 0;
-      const vdiIncomingMtr = bandSawLogs.length > 0 ? bandSawNetMtr : 0;
+      const vdiIncomingPcs = allBandSawLogs.length > 0 ? bandSawNetPcs : 0;
+      const vdiIncomingMtr = allBandSawLogs.length > 0 ? bandSawNetMtr : 0;
 
       // When material was diverted into VDI without Band Saw cuts, and inspection was completed or downstream bundling started:
-      if (bandSawLogs.length === 0 && vdiDivIn > 0 && qcInspectedPcs > 0 && (finOutPcs > 0 || qcInspectedPcs >= vdiDivInPcs * 0.9)) {
+      if (allBandSawLogs.length === 0 && vdiDivIn > 0 && qcInspectedPcs > 0 && (finOutPcs > 0 || qcInspectedPcs >= vdiDivInPcs * 0.9)) {
         vdiDivInPcs = Math.min(vdiDivInPcs, qcInspectedPcs);
         effVdiDivInMtr = Math.min(effVdiDivInMtr, qcInspectedMtr);
       }
 
-      const vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
+      let vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
       let vdiAvailMtr = Math.max(0, Number((vdiIncomingMtr + effVdiDivInMtr - qcInspectedMtr - vdiDivOut).toFixed(3)));
       if (vdiAvailMtr === 0 && vdiAvailPcs > 0 && avgLength > 0) {
         vdiAvailMtr = Number((vdiAvailPcs * avgLength).toFixed(3));
       }
-      const vdiAvailMt = mtFromMtr(vdiAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+      let vdiAvailMt = mtFromMtr(vdiAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       const finDivIn = getStageDivIn(woId, "FINISHING");
       const finDivOut = getStageDivOut(woId, "FINISHING");
@@ -972,13 +1002,29 @@ export async function GET(req: NextRequest) {
       const finIncomingPcs = isCampaignMaster ? directQcOkPcs : Math.round(qcOkPcs);
       const finConsumedPcs = isCampaignMaster ? (directFinOutPcs + directFinRejPcs) : (finOutPcs + finRejPcs);
 
-      const finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finConsumedPcs - finDivOutPcs);
+      let finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finConsumedPcs - finDivOutPcs);
       const finIncomingMtr = avgLength > 0 ? Number((finIncomingPcs * avgLength).toFixed(3)) : 0;
       let finAvailMtr = Math.max(0, Number((finIncomingMtr + finDivIn - (finOutMtr + finRejMtr) - totalFinDivOut).toFixed(3)));
       if (finAvailMtr === 0 && finAvailPcs > 0 && avgLength > 0) {
         finAvailMtr = Number((finAvailPcs * avgLength).toFixed(3));
       }
-      const finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+      let finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
+      // Universal Rule: Work orders marked Completed / Closed must not show phantom WIP in upstream stations
+      const isOrderCompleted = (wo.status || "").toLowerCase() === "completed" || (wo.status || "").toLowerCase() === "closed";
+      if (isOrderCompleted) {
+        rollAvailPcs = 0; rollAvailMtr = 0; rollAvailMt = 0;
+        hollowHtAvailPcs = 0; hollowHtAvailMtr = 0; hollowHtAvailMt = 0;
+        drawAvailPcs = 0; drawAvailMtr = 0; drawAvailMt = 0;
+        pilgerAvailPcs = 0; pilgerAvailMtr = 0; pilgerAvailMt = 0;
+        htAvailPcs = 0; htAvailMtr = 0; htAvailMt = 0;
+        bandSawAvailPcs = 0; bandSawAvailMtr = 0; bandSawAvailMt = 0;
+        vdiAvailPcs = 0; vdiAvailMtr = 0; vdiAvailMt = 0;
+        if (Number(wo.balance_qty_mtr ?? 0) === 0 && Number(wo.balance_qty_pcs ?? 0) === 0) {
+          finAvailPcs = 0; finAvailMtr = 0; finAvailMt = 0;
+        }
+      }
+
 
       // Build WorkCenterWipInfo pipeline for this order
       const pipeline: WorkCenterWipInfo[] = [
@@ -1613,7 +1659,7 @@ export async function GET(req: NextRequest) {
       if (queueRows.BAND_SAW) {
         // Group bandSawLogs cut pieces by lot
         const bandSawCutByLot = new Map<string, { pcs: number; mtr: number }>();
-        for (const log of bandSawLogs) {
+        for (const log of allBandSawLogs) {
           const lot = (log.heat_lot_no || "").trim();
           if (!lot) continue;
           const pcs = getLogPcs(log, avgLength);
