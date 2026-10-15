@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
+import { buildCampaignHierarchyMaps, reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
 
 type WO = {
   id: string;
@@ -209,22 +210,22 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const hasHtInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS' || routeCode === 'SS_STEEL';
 
   // Check campaign / child mapping
-  let masterWoId = id;
-  for (const p of plans) {
-    try {
-      const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
-      if (parsed?.is_master && Array.isArray(parsed.child_work_orders)) {
-        if (parsed.child_work_orders.some((c: any) => (c.work_order_id || c.id) === id)) {
-          masterWoId = p.work_order_id;
-          break;
-        }
-      }
-    } catch {}
-  }
+  const hierarchyMaps = buildCampaignHierarchyMaps(plans);
+  const masterWoId = hierarchyMaps.childToMasterMap.get(id) || id;
+  const campaignMembers = hierarchyMaps.campaignMembersMap.get(masterWoId);
+  const memberIds = campaignMembers && campaignMembers.size > 0 ? Array.from(campaignMembers) : [id];
 
-  // If this order is part of a master campaign, also include master's rolling logs for pre-finishing
+  // Fetch campaign-wide QC inspections and production logs if this order is part of a multi-WO campaign
   let effectiveLogs = logs;
-  if (masterWoId !== id) {
+  let allQcList = qcList;
+  if (memberIds.length > 1) {
+    const [campaignQcRes, campaignLogsRes] = await Promise.all([
+      supabase.from('qc_inspections').select('*').in('work_order_id', memberIds),
+      supabase.from('production_logs').select('*, process_stages(stage_code, stage_name)').in('work_order_id', memberIds),
+    ]);
+    if (campaignQcRes.data) allQcList = campaignQcRes.data;
+    if (campaignLogsRes.data) effectiveLogs = campaignLogsRes.data;
+  } else if (masterWoId !== id) {
     const { data: masterLogs } = await supabase
       .from('production_logs')
       .select('*, process_stages(stage_code, stage_name)')
@@ -252,7 +253,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const drawLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'DRAW');
   const pilgerLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'PILGER');
   const htLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'HEAT_TREATMENT');
-  const finLogs = logs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'FINISHING');
+  const finLogs = effectiveLogs.filter((l: any) => (l.process_stages?.stage_code || l.stage_code) === 'FINISHING' && l.work_order_id === id);
 
   const rollingGrossMtr = rollLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
   const rollingRejMtr = rollLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
@@ -280,10 +281,21 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const finOutMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.output_qty || 0), 0);
   const finRejMtr = finLogs.reduce((sum: number, l: any) => sum + Number(l.rejection_qty || 0), 0);
 
-  const qcInspectedMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.inspected_mtr || 0), 0);
-  const qcOkMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
-  const qcSalvageMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
-  const qcVdiRejMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
+  const qcInspectedMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.inspected_mtr || 0), 0);
+  const qcOkMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+  const qcSalvageMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+  const qcVdiRejMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
+
+  // Reconcile WIP using piece-governed mass-conserving campaign logic
+  const reconciled = reconcileCampaignWorkOrderWip({
+    woId: id,
+    wo,
+    rows: stageRows,
+    qcInspections: allQcList,
+    productionLogs: effectiveLogs,
+    hierarchyMaps,
+    routeCode,
+  });
 
   // Elongation multiple for this work order
   const planMultiple = Number(plan?.multiple || 1) > 0 ? Number(plan?.multiple || 1) : 1;
@@ -316,13 +328,28 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   if (stageRows.length > 0) {
     stageBreakdown = stageRows.map((stg: any) => {
       const sc = stg.stage_code;
+      const recStage = reconciled.summary.stages.find((s: any) => s.stage_code === sc);
       let curWipMtr = Number(stg.current_wip || 0);
       let curWipPcs = Number(stg.current_wip_pcs ?? (avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0));
       let curWipMt = Number(stg.current_wip_mt ?? (curWipMtr * mtPerMtr));
 
+      if (recStage) {
+        curWipPcs = Number(recStage.capped_wip_pcs ?? recStage.reconciled_wip_pcs ?? 0);
+        curWipMtr = Number(recStage.capped_wip_mtr ?? recStage.reconciled_wip_mtr ?? 0);
+        curWipMt = Number(recStage.capped_wip_mt ?? recStage.reconciled_wip_mt ?? (curWipMtr * mtPerMtr));
+      }
+
+      // Rule 1 & Rule 4: Discrete piece governance.
+      // If 0 pieces remain physically, phantom scrap meters cannot be diverted as prime stock.
+      if (curWipPcs <= 0) {
+        curWipPcs = 0;
+        curWipMtr = 0;
+        curWipMt = 0;
+      }
+
       // Reconcile Finishing WIP if VDI QC inspection exists (guarding against database view double-deduction of salvage)
-      if (sc === 'FINISHING' && qcList.length > 0) {
-        const totalVdiOkMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+      if (sc === 'FINISHING' && allQcList.length > 0 && curWipPcs > 0) {
+        const totalVdiOkMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
         if (totalVdiOkMtr > 0) {
           const divIn = Number(stg.diversion_in || 0);
           const divOut = Number(stg.diversion_out || 0);

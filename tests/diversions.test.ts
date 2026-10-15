@@ -433,6 +433,86 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
       expect(finStage!.reconciled_wip_mtr).toBe(0);
       expect(finStage!.reconciled_wip_mt).toBe(0);
     });
+
+    it('correctly calculates 0 available prime WIP for completed campaign order (e.g. WO 6538) without phantom cutting scrap', async () => {
+      const { buildCampaignHierarchyMaps, reconcileCampaignWorkOrderWip } = await import('@/lib/campaignWipUtils');
+
+      // WO 6538 scenario:
+      // Master WO 6538 with child orders 6514, 6525.
+      // Rolling: 835 mother pipes (5602.85 m, avg length 6.71 m).
+      // Band Saw: 835 prime cut pieces (5010 m of 6.0 m) + 592.85 m cutting scrap.
+      // QC: 255 pcs (under master 6538) + 335 pcs (under 6514) + 245 pcs (under 6525) = 835 pcs inspected (812 OK, 23 Salvage).
+      // Finishing: 255 pcs (6538) + 323 pcs (6514) + 234 pcs (6525) = 812 pcs bundled.
+      const masterWoId = 'wo-6538';
+      const child1Id = 'wo-6514';
+      const child2Id = 'wo-6525';
+
+      const rollingPlans = [
+        {
+          id: 'plan-10',
+          work_order_id: masterWoId,
+          planned_qty: 5040,
+          status: {
+            is_master: true,
+            master_wo_id: masterWoId,
+            master_wo_no: '6538',
+            child_work_orders: [
+              { work_order_id: child1Id, work_order_no: '6514' },
+              { work_order_id: child2Id, work_order_no: '6525' },
+            ],
+            billet: { sm: { sm_len: 6.71 } },
+          },
+        },
+      ];
+
+      const stageRows = [
+        { stage_code: 'ROLLING', sequence_no: 1, production_qty: 5602.85, gross_output_pcs: 835, current_wip: 0, current_wip_pcs: 0 },
+        { stage_code: 'BAND_SAW', sequence_no: 2, production_qty: 5010, gross_output_pcs: 835, current_wip: 592.85, current_wip_pcs: 99 },
+        { stage_code: 'VDI', sequence_no: 3, production_qty: 4617, rejection_qty: 138, gross_output_pcs: 769, current_wip: 138, current_wip_pcs: 23 },
+        { stage_code: 'FINISHING', sequence_no: 4, production_qty: 1530, gross_output_pcs: 255, current_wip: 0, current_wip_pcs: 0 },
+      ];
+
+      const qcInspections = [
+        { work_order_id: masterWoId, inspected_pcs: 255, vdi_ok_pcs: 255, vdi_ok_mtr: 1275, vdi_salvage_pcs: 0, vdi_salvage_mtr: 0 },
+        { work_order_id: child1Id, inspected_pcs: 335, vdi_ok_pcs: 323, vdi_ok_mtr: 1938, vdi_salvage_pcs: 12, vdi_salvage_mtr: 72 },
+        { work_order_id: child2Id, inspected_pcs: 245, vdi_ok_pcs: 234, vdi_ok_mtr: 1404, vdi_salvage_pcs: 11, vdi_salvage_mtr: 66 },
+      ];
+
+      const productionLogs = [
+        { work_order_id: masterWoId, stage_code: 'ROLLING', output_qty: 5602.85, remarks: '[PCS:835]' },
+        { work_order_id: masterWoId, stage_code: 'BAND_SAW', output_qty: 5010, remarks: '[CUTS:{"m_pcs":835,"items":[{"len":6,"pcs":835}]}] [PCS:835]' },
+        { work_order_id: masterWoId, stage_code: 'FINISHING', output_qty: 1530, remarks: '[PCS:255]' },
+        { work_order_id: child1Id, stage_code: 'FINISHING', output_qty: 1938, remarks: '[PCS:323]' },
+        { work_order_id: child2Id, stage_code: 'FINISHING', output_qty: 1404, remarks: '[PCS:234]' },
+      ];
+
+      const hierarchyMaps = buildCampaignHierarchyMaps(rollingPlans);
+      const reconciled = reconcileCampaignWorkOrderWip({
+        woId: masterWoId,
+        wo: { id: masterWoId, work_order_no: '6538', size_od: 88.9, size_wt: 5.49, l1: 5.0, l2: 7.0 },
+        rows: stageRows,
+        qcInspections,
+        productionLogs,
+        hierarchyMaps,
+        routeCode: 'HFS',
+      });
+
+      // Verify that every stage is 0 WIP PCS and 0 WIP MTR
+      const bsStage = reconciled.summary.stages.find((s) => s.stage_code === 'BAND_SAW');
+      const vdiStage = reconciled.summary.stages.find((s) => s.stage_code === 'VDI');
+      const finStageRec = reconciled.summary.stages.find((s) => s.stage_code === 'FINISHING');
+
+      expect(bsStage!.reconciled_wip_pcs).toBe(0);
+      expect(bsStage!.reconciled_wip_mtr).toBe(0);
+      expect(vdiStage!.reconciled_wip_pcs).toBe(0);
+      expect(vdiStage!.reconciled_wip_mtr).toBe(0);
+      expect(finStageRec!.reconciled_wip_pcs).toBe(0);
+      expect(finStageRec!.reconciled_wip_mtr).toBe(0);
+
+      // Total physical active WIP across all stages is 0
+      expect(reconciled.summary.plant_total_wip_pcs).toBe(0);
+      expect(reconciled.summary.plant_total_wip_mtr).toBe(0);
+    });
   });
 });
 

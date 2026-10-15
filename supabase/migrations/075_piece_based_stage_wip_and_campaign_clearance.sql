@@ -190,8 +190,21 @@ WITH RECURSIVE route_base AS (
       WHEN dm.stage_code <> 'FINISHING' AND EXISTS (SELECT 1 FROM campaign_children cc WHERE cc.work_order_id = dm.work_order_id) THEN 0
       WHEN dm.stage_code = 'ROLLING' THEN 0
       WHEN dm.stage_code = 'VDI' AND dm.incoming_qty = 0 AND dm.diversion_in > 0 AND (dm.production_qty + dm.rejection_qty) > 0 AND (dm.downstream_passed_qty > 0 OR (dm.production_qty + dm.rejection_qty) >= dm.diversion_in * 0.8) THEN 0
+      WHEN dm.stage_code = 'BAND_SAW' AND (
+        -- If Band Saw cuts or downstream passes account for incoming mother pipes:
+        GREATEST(dm.production_qty, dm.downstream_passed_qty) > 0
+        AND (
+          COALESCE((SELECT SUM((substring(pl.remarks from '"m_pcs":([0-9]+)'))::numeric) FROM public.production_logs pl WHERE pl.work_order_id = dm.work_order_id AND pl.stage_id = dm.stage_id), 0) >= public.mtr_to_pcs(dm.work_order_id, dm.incoming_qty)
+          OR public.mtr_to_pcs(dm.work_order_id, GREATEST(dm.production_qty, dm.downstream_passed_qty)) >= public.mtr_to_pcs(dm.work_order_id, dm.incoming_qty)
+        )
+      ) THEN 0
+      WHEN dm.stage_code = 'VDI' AND (
+        -- If all cut pieces are accounted for by inspected ok + salvage/rejection or downstream finishing:
+        (GREATEST(dm.production_qty + dm.rejection_qty, dm.downstream_passed_qty + dm.rejection_qty) >= dm.incoming_qty)
+        OR (public.mtr_to_pcs(dm.work_order_id, GREATEST(dm.production_qty + dm.rejection_qty, dm.downstream_passed_qty + dm.rejection_qty)) >= public.mtr_to_pcs(dm.work_order_id, dm.incoming_qty))
+      ) THEN 0
       ELSE
-        GREATEST(dm.incoming_qty + dm.diversion_in - GREATEST(dm.production_qty + dm.rejection_qty, dm.downstream_passed_qty) - dm.declared_rej_mtr - dm.diversion_out, 0)
+        GREATEST(dm.incoming_qty + dm.diversion_in - GREATEST(dm.production_qty + dm.rejection_qty, dm.downstream_passed_qty + CASE WHEN dm.stage_code = 'VDI' THEN dm.rejection_qty ELSE 0 END) - dm.declared_rej_mtr - dm.diversion_out, 0)
     END AS current_wip,
     GREATEST(dm.production_qty - dm.rejection_qty, 0) AS net_output_mtr
   FROM downstream_max dm
