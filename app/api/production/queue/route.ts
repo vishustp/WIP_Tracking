@@ -299,6 +299,8 @@ export async function GET(req: NextRequest) {
     const woMap = new Map<string, any>();
     workOrders.forEach((w) => woMap.set(w.id, w));
 
+    const hotRollingStageId = stageCodeToId.get("HOT_ROLLING") || stageCodeToId.get("ROLLING");
+    const htcStageId = stageCodeToId.get("HTC") || stageCodeToId.get("ROLLING");
     const rollingStageId = stageCodeToId.get("ROLLING");
     const hollowHtStageId = stageCodeToId.get("HOLLOW_HEAT_TREATMENT");
     const drawStageId = stageCodeToId.get("DRAW");
@@ -376,12 +378,14 @@ export async function GET(req: NextRequest) {
     const sumHtcOkPcs = (logList: any[], fallbackAvg: number = 0) =>
       logList.reduce((sum, l) => sum + getLogHtcOkPcs(l, fallbackAvg), 0);
 
-    // Summary accumulator across all 7 work centers
+    // Summary accumulator across all work centers
     const workCenterSummary: Record<
       StageCode,
       { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }
     > = {
-      ROLLING: { label: "Rolling Mill", stage_code: "ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HOT_ROLLING: { label: "Hot Rolling Mill", stage_code: "HOT_ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HTC: { label: "Hot Test Check (HTC)", stage_code: "HTC", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      ROLLING: { label: "Rolling Mill (Legacy)", stage_code: "ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       PILGER: { label: "Cold Pilger Mill", stage_code: "PILGER", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
@@ -724,23 +728,21 @@ export async function GET(req: NextRequest) {
       const effMhAvg = effPlanMhAvg > 0 ? effPlanMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength);
 
       // 1. Rolling Stage Metrics
-      const rollLogs = getStageLogs(woId, rollingStageId);
+      const hotRollLogs = getStageLogs(woId, hotRollingStageId);
+      const rollLogs = hotRollLogs.length > 0 ? hotRollLogs : getStageLogs(woId, rollingStageId);
       const rollGrossPcs = sumPcs(rollLogs, effMhAvg);
       const rollRejPcs = sumRejPcs(rollLogs, effMhAvg);
       const rollNetPcs = Math.max(0, rollGrossPcs - rollRejPcs);
-      const rollHtcOkPcs = sumHtcOkPcs(rollLogs, effMhAvg);
 
       const rawRollOut = sumQty(rollLogs, "output_qty");
       const rawRollRej = sumQty(rollLogs, "rejection_qty");
-      const rawRollHtc = sumQty(rollLogs, "htc_ok");
       const rollOutMtr = rawRollOut > 0 ? rawRollOut : (effMhAvg > 0 ? Number((rollGrossPcs * effMhAvg).toFixed(3)) : 0);
       const rollRejMtr = rawRollRej > 0 ? rawRollRej : (effMhAvg > 0 ? Number((rollRejPcs * effMhAvg).toFixed(3)) : 0);
       const rollNetMtr = Math.max(0, rollOutMtr - rollRejMtr);
-      const rollHtcOkMtr = rawRollHtc > 0 ? rawRollHtc : (effMhAvg > 0 ? Number((rollHtcOkPcs * effMhAvg).toFixed(3)) : rollNetMtr);
 
       // 1. Rolling Available WIP & Target Tracking
-      const rollDivIn = getStageDivIn(woId, "ROLLING");
-      const rollDivOut = getStageDivOut(woId, "ROLLING");
+      const rollDivIn = getStageDivIn(woId, "HOT_ROLLING") || getStageDivIn(woId, "ROLLING");
+      const rollDivOut = getStageDivOut(woId, "HOT_ROLLING") || getStageDivOut(woId, "ROLLING");
       const rollDivInPcs = effMhAvg > 0 ? Math.round(rollDivIn / effMhAvg) : 0;
       const rollDivOutPcs = effMhAvg > 0 ? Math.round(rollDivOut / effMhAvg) : 0;
       const rollTotalLoggedPcs = rollGrossPcs + rollRejPcs;
@@ -748,6 +750,27 @@ export async function GET(req: NextRequest) {
       let rollAvailPcs = Math.max(0, totalCampaignPcs + rollDivInPcs - rollTotalLoggedPcs - rollDivOutPcs);
       let rollAvailMtr = effMhAvg > 0 ? Number((rollAvailPcs * effMhAvg).toFixed(3)) : Math.max(0, totalCampaignMtr + rollDivIn - (rollOutMtr + rollRejMtr) - rollDivOut);
       let rollAvailMt = mtFromMtr(rollAvailMtr, mhOd, mhWt);
+
+      // 1.5 HTC (Hot Test Check) Stage Metrics
+      const htcLogs = getStageLogs(woId, htcStageId);
+      const htcTestedPcs = sumPcs(htcLogs, effMhAvg);
+      const htcRejPcs = sumRejPcs(htcLogs, effMhAvg);
+      const rawHtcOk = sumQty(htcLogs, "htc_ok") || sumQty(rollLogs, "htc_ok");
+      const loggedHtcOkPcs = sumHtcOkPcs(htcLogs, effMhAvg) || sumHtcOkPcs(rollLogs, effMhAvg);
+      const htcOkPcs = loggedHtcOkPcs > 0 ? loggedHtcOkPcs : (htcTestedPcs > 0 ? Math.max(0, htcTestedPcs - htcRejPcs) : rollNetPcs);
+      const htcOkMtr = rawHtcOk > 0 ? rawHtcOk : (effMhAvg > 0 ? Number((htcOkPcs * effMhAvg).toFixed(3)) : rollNetMtr);
+
+      const htcDivIn = getStageDivIn(woId, "HTC");
+      const htcDivOut = getStageDivOut(woId, "HTC");
+      const htcDivInPcs = effMhAvg > 0 ? Math.round(htcDivIn / effMhAvg) : 0;
+      const htcDivOutPcs = effMhAvg > 0 ? Math.round(htcDivOut / effMhAvg) : 0;
+
+      let htcAvailPcs = Math.max(0, rollNetPcs + htcDivInPcs - htcTestedPcs - htcDivOutPcs);
+      let htcAvailMtr = effMhAvg > 0 ? Number((htcAvailPcs * effMhAvg).toFixed(3)) : Math.max(0, rollNetMtr + htcDivIn - (sumQty(htcLogs, "output_qty") + sumQty(htcLogs, "rejection_qty")) - htcDivOut);
+      let htcAvailMt = mtFromMtr(htcAvailMtr, mhOd, mhWt);
+
+      const rollHtcOkPcs = htcOkPcs;
+      const rollHtcOkMtr = htcOkMtr;
 
       // 2. Hollow Heat Treatment Stage Metrics (adjusted for HHT Diversions)
       const effHhtAvg = mhAvgLength > 0 ? mhAvgLength : effMhAvg;
@@ -1050,8 +1073,48 @@ export async function GET(req: NextRequest) {
       // Build WorkCenterWipInfo pipeline for this order
       const pipeline: WorkCenterWipInfo[] = [
         {
+          stage_code: "HOT_ROLLING",
+          stage_name: "Hot Rolling Mill",
+          sequence_no: 1,
+          available_mtr: isRollingPlanIssued ? rollAvailMtr : 0,
+          available_pcs: isRollingPlanIssued ? rollAvailPcs : 0,
+          available_mt: isRollingPlanIssued ? rollAvailMt : 0,
+          gross_output_mtr: rollOutMtr,
+          gross_output_pcs: rollGrossPcs,
+          gross_output_mt: mtFromMtr(rollOutMtr, mhOd, mhWt),
+          rejection_mtr: rollRejMtr,
+          rejection_pcs: rollRejPcs,
+          rejection_mt: mtFromMtr(rollRejMtr, mhOd, mhWt),
+          net_output_mtr: rollNetMtr,
+          net_output_pcs: rollNetPcs,
+          net_output_mt: mtFromMtr(rollNetMtr, mhOd, mhWt),
+          htc_ok_mtr: rollNetMtr,
+          htc_ok_pcs: rollNetPcs,
+          htc_ok_mt: mtFromMtr(rollNetMtr, mhOd, mhWt),
+        },
+        {
+          stage_code: "HTC",
+          stage_name: "Hot Test Check (HTC)",
+          sequence_no: 2,
+          available_mtr: htcAvailMtr,
+          available_pcs: htcAvailPcs,
+          available_mt: htcAvailMt,
+          gross_output_mtr: sumQty(htcLogs, "output_qty") || rollNetMtr,
+          gross_output_pcs: htcTestedPcs > 0 ? htcTestedPcs : rollNetPcs,
+          gross_output_mt: mtFromMtr(sumQty(htcLogs, "output_qty") || rollNetMtr, mhOd, mhWt),
+          rejection_mtr: htcRejPcs > 0 ? sumQty(htcLogs, "rejection_qty") : 0,
+          rejection_pcs: htcRejPcs,
+          rejection_mt: mtFromMtr(sumQty(htcLogs, "rejection_qty"), mhOd, mhWt),
+          net_output_mtr: htcOkMtr,
+          net_output_pcs: htcOkPcs,
+          net_output_mt: mtFromMtr(htcOkMtr, mhOd, mhWt),
+          htc_ok_mtr: htcOkMtr,
+          htc_ok_pcs: htcOkPcs,
+          htc_ok_mt: mtFromMtr(htcOkMtr, mhOd, mhWt),
+        },
+        {
           stage_code: "ROLLING",
-          stage_name: "Rolling",
+          stage_name: "Rolling (Legacy)",
           sequence_no: 1,
           available_mtr: isRollingPlanIssued ? rollAvailMtr : 0,
           available_pcs: isRollingPlanIssued ? rollAvailPcs : 0,
@@ -1224,10 +1287,21 @@ export async function GET(req: NextRequest) {
       // Update workCenterSummary for all stages
       // (Universal Rule: Work orders with zero or sub-single balance < 1 Pc and < 1.0 Mtr must not appear in queues)
       if (isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)) {
+        workCenterSummary.HOT_ROLLING.availMtr += rollAvailMtr;
+        workCenterSummary.HOT_ROLLING.availPcs += rollAvailPcs;
+        workCenterSummary.HOT_ROLLING.availMt += rollAvailMt;
+        workCenterSummary.HOT_ROLLING.count += 1;
+
         workCenterSummary.ROLLING.availMtr += rollAvailMtr;
         workCenterSummary.ROLLING.availPcs += rollAvailPcs;
         workCenterSummary.ROLLING.availMt += rollAvailMt;
         workCenterSummary.ROLLING.count += 1;
+      }
+      if (htcAvailMtr >= 1.0 || htcAvailPcs >= 1) {
+        workCenterSummary.HTC.availMtr += htcAvailMtr;
+        workCenterSummary.HTC.availPcs += htcAvailPcs;
+        workCenterSummary.HTC.availMt += htcAvailMt;
+        workCenterSummary.HTC.count += 1;
       }
       if (isAlloy && (hollowHtAvailMtr >= 1.0 || hollowHtAvailPcs >= 1)) {
         workCenterSummary.HOLLOW_HEAT_TREATMENT.availMtr += hollowHtAvailMtr;
@@ -1469,6 +1543,64 @@ export async function GET(req: NextRequest) {
       const isFinFeeder = !isFinReady && (finFeederMtr >= 1.0 || finFeederPcs >= 1);
 
       const queueRows: Record<StageCode, Row | null> = {
+        HOT_ROLLING:
+          isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)
+            ? {
+                ...baseRowData,
+                od: woOd,
+                wl: woWt,
+                l1: mhL1 > 0 ? mhL1 : l1,
+                l2: mhL2 > 0 ? mhL2 : l2,
+                avg_length: effMhAvg > 0 ? effMhAvg : avgLength,
+                stage_code: "HOT_ROLLING",
+                stage_name: "Hot Rolling Mill",
+                balance_to_make_mtr: rollAvailMtr,
+                balance_to_make_pcs: rollAvailPcs,
+                balance_to_make_mt: rollAvailMt,
+                ready_pcs: rollAvailPcs,
+                ready_mtr: rollAvailMtr,
+                ready_mt: rollAvailMt,
+                feeder_pcs: rollAvailPcs,
+                feeder_mtr: rollAvailMtr,
+                feeder_mt: rollAvailMt,
+                is_feeder_source: false,
+                planned_rolling_total: totalCampaignMtr,
+                max_allowed_mtr: null,
+                max_allowed_pcs: null,
+                prev_gross_output: rollOutMtr + rollRejMtr,
+                feeder_source_label: "Active Rolling Plan",
+                feeder_stage_code: "ROLLING_PLAN",
+              }
+            : null,
+        HTC:
+          (htcAvailMtr >= 1.0 || htcAvailPcs >= 1)
+            ? {
+                ...baseRowData,
+                od: woOd,
+                wl: woWt,
+                l1: mhL1 > 0 ? mhL1 : l1,
+                l2: mhL2 > 0 ? mhL2 : l2,
+                avg_length: effMhAvg > 0 ? effMhAvg : avgLength,
+                stage_code: "HTC",
+                stage_name: "Hot Test Check (HTC)",
+                balance_to_make_mtr: htcAvailMtr,
+                balance_to_make_pcs: htcAvailPcs,
+                balance_to_make_mt: htcAvailMt,
+                ready_pcs: htcAvailPcs,
+                ready_mtr: htcAvailMtr,
+                ready_mt: htcAvailMt,
+                feeder_pcs: htcAvailPcs,
+                feeder_mtr: htcAvailMtr,
+                feeder_mt: htcAvailMt,
+                is_feeder_source: false,
+                max_allowed_mtr: htcAvailMtr,
+                max_allowed_pcs: htcAvailPcs,
+                prev_stage_code: "HOT_ROLLING",
+                prev_net_output: rollNetMtr,
+                feeder_source_label: "Hot Mill Rolling Net OK",
+                feeder_stage_code: "HOT_ROLLING",
+              }
+            : null,
         ROLLING:
           isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)
             ? {
@@ -2218,9 +2350,16 @@ export async function GET(req: NextRequest) {
 
     // Sync Rolling Mill summary with individual plan balances
     if (rollingPlanRows.length > 0) {
-      workCenterSummary.ROLLING.availMtr = rollingPlanRows.reduce((sum, r) => sum + Number(r.balance_to_make_mtr || 0), 0);
-      workCenterSummary.ROLLING.availPcs = rollingPlanRows.reduce((sum, r) => sum + Number(r.balance_to_make_pcs || 0), 0);
-      workCenterSummary.ROLLING.availMt = rollingPlanRows.reduce((sum, r) => sum + Number(r.balance_to_make_mt || 0), 0);
+      const rollMtr = rollingPlanRows.reduce((sum, r) => sum + Number(r.balance_to_make_mtr || 0), 0);
+      const rollPcs = rollingPlanRows.reduce((sum, r) => sum + Number(r.balance_to_make_pcs || 0), 0);
+      const rollMt = rollingPlanRows.reduce((sum, r) => sum + Number(r.balance_to_make_mt || 0), 0);
+      workCenterSummary.HOT_ROLLING.availMtr = rollMtr;
+      workCenterSummary.HOT_ROLLING.availPcs = rollPcs;
+      workCenterSummary.HOT_ROLLING.availMt = rollMt;
+      workCenterSummary.HOT_ROLLING.count = rollingPlanRows.length;
+      workCenterSummary.ROLLING.availMtr = rollMtr;
+      workCenterSummary.ROLLING.availPcs = rollPcs;
+      workCenterSummary.ROLLING.availMt = rollMt;
       workCenterSummary.ROLLING.count = rollingPlanRows.length;
     }
 
@@ -2229,6 +2368,8 @@ export async function GET(req: NextRequest) {
     const selectedRows: Row[] = [];
     if (isAllStages) {
       const activeStages: StageCode[] = [
+        "HOT_ROLLING",
+        "HTC",
         "HOLLOW_HEAT_TREATMENT",
         "DRAW",
         "PILGER",
@@ -2265,17 +2406,17 @@ export async function GET(req: NextRequest) {
           }
         }
       }
-    } else if (targetStage === "ROLLING") {
+    } else if (targetStage === "HOT_ROLLING" || targetStage === "ROLLING") {
       selectedRows.push(
-        ...rollingPlanRows.filter(
+        ...rollingPlanRows.map(r => ({ ...r, stage_code: targetStage === "HOT_ROLLING" ? "HOT_ROLLING" as StageCode : "ROLLING" as StageCode })).filter(
           (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
         )
       );
     } else {
       for (const st of targetStages) {
-        if (st === "ROLLING") {
+        if (st === "HOT_ROLLING" || st === "ROLLING") {
           selectedRows.push(
-            ...rollingPlanRows.filter(
+            ...rollingPlanRows.map(r => ({ ...r, stage_code: st })).filter(
               (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
             )
           );
