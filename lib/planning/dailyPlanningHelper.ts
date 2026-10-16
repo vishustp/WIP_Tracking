@@ -9,6 +9,9 @@ import {
 } from '@/types/dailyPlanning';
 
 export const STATION_LABELS: Record<DailyPlanWorkCenter, string> = {
+  HOT_ROLLING: 'Hot Rolling Mill',
+  HTC: 'Hot Test Check (HTC)',
+  ROLLING: 'Hot Rolling Mill (Legacy)',
   DRAW: 'Cold Draw Bench',
   PILGER: 'Cold Pilger Mill',
   HOLLOW_HEAT_TREATMENT: 'Hollow Heat Treatment',
@@ -26,6 +29,20 @@ export const SHIFT_LABELS: Record<DailyPlanShift, string> = {
 };
 
 export const STATION_MACHINE_PRESETS: Record<DailyPlanWorkCenter, MachinePresetOption[]> = {
+  HOT_ROLLING: [
+    { id: 'Piercing Mill #1', label: 'Piercing Mill #1', work_center: 'HOT_ROLLING' },
+    { id: 'Elongator Mill #1', label: 'Elongator Mill #1', work_center: 'HOT_ROLLING' },
+    { id: 'Hot Sizing Mill #1', label: 'Hot Sizing Mill #1', work_center: 'HOT_ROLLING' },
+  ],
+  HTC: [
+    { id: 'HTC Test Bed #1', label: 'HTC Test Bed #1 (QC Visual & Spark)', work_center: 'HTC' },
+    { id: 'HTC Test Bed #2', label: 'HTC Test Bed #2', work_center: 'HTC' },
+  ],
+  ROLLING: [
+    { id: 'Piercing Mill #1', label: 'Piercing Mill #1', work_center: 'ROLLING' },
+    { id: 'Elongator Mill #1', label: 'Elongator Mill #1', work_center: 'ROLLING' },
+    { id: 'Hot Sizing Mill #1', label: 'Hot Sizing Mill #1', work_center: 'ROLLING' },
+  ],
   DRAW: [
     { id: 'Bench #1 (Heavy)', label: 'Bench #1 (Heavy 60-120mm)', work_center: 'DRAW' },
     { id: 'Bench #2 (Medium)', label: 'Bench #2 (Medium 35-70mm)', work_center: 'DRAW' },

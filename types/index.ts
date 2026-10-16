@@ -82,6 +82,9 @@ export interface Row {
   feeder_mt?: number | null;
   is_feeder_source?: boolean;
   planned_rolling_total?: number;
+  available_pcs?: number | null;
+  available_mtr?: number | null;
+  available_mt?: number | null;
   max_allowed_mtr?: number | null;
   max_allowed_pcs?: number | null;
   balance_to_make_mtr: number | null;
