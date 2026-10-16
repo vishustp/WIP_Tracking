@@ -101,7 +101,14 @@ export default function UserPermissionsModal({
         p[m.key] = 'none';
       });
       // Allow edit on assigned work center and view on reports
-      if (user.work_center === 'ROLLING') p.production_rolling = 'edit';
+      if (user.work_center === 'HOT_ROLLING' || user.work_center === 'ROLLING') {
+        p.production_hot_rolling = 'edit';
+        p.production_rolling = 'edit';
+      }
+      else if (user.work_center === 'HTC') {
+        p.production_htc = 'edit';
+        p.production_vdi = 'edit';
+      }
       else if (user.work_center === 'HOLLOW_HEAT_TREATMENT' || user.work_center === 'HEAT_TREATMENT') {
         p.production_hollow_ht = 'edit';
         p.production_ht = 'edit';

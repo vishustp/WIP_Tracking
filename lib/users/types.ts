@@ -2,6 +2,8 @@ export type UserGroup = 'admin' | 'super_user' | 'user';
 
 export type WorkCenterCode =
   | 'ALL'
+  | 'HOT_ROLLING'
+  | 'HTC'
   | 'ROLLING'
   | 'HOLLOW_HEAT_TREATMENT'
   | 'DRAW'
@@ -16,6 +18,8 @@ export type WorkCenterCode =
 export type UserRole =
   | 'admin'
   | 'manager'
+  | 'hot_rolling_operator'
+  | 'htc_inspector'
   | 'rolling_incharge'
   | 'draw_operator'
   | 'pilger_operator'
@@ -28,6 +32,8 @@ export type AccessLevel = 'none' | 'view' | 'edit';
 
 export interface FormPermissions {
   // Work Center Production Entry Stages
+  production_hot_rolling?: AccessLevel;
+  production_htc?: AccessLevel;
   production_rolling?: AccessLevel;
   production_hollow_ht?: AccessLevel;
   production_draw?: AccessLevel;

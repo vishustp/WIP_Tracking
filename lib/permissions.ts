@@ -8,6 +8,8 @@ import { StageCode } from '@/types';
 import { useOptionalUserSession } from '@/contexts/UserSessionContext';
 
 export const STAGE_TO_PERMISSION_KEY: Record<string, keyof FormPermissions> = {
+  HOT_ROLLING: 'production_hot_rolling',
+  HTC: 'production_htc',
   ROLLING: 'production_rolling',
   HOLLOW_HEAT_TREATMENT: 'production_hollow_ht',
   DRAW: 'production_draw',
@@ -25,7 +27,9 @@ export const MODULE_DEFINITIONS: {
   description: string;
 }[] = [
   // Production Entry Stations
-  { key: 'production_rolling', label: 'Hot Rolling Mill', category: 'production', description: 'Mother hollow piercing, rolling, and initial hot sizing' },
+  { key: 'production_hot_rolling', label: 'Hot Rolling Mill', category: 'production', description: 'Mother hollow piercing, rolling, and initial hot sizing' },
+  { key: 'production_htc', label: 'Hot Test Check (HTC)', category: 'production', description: 'Hot test dimensional check and surface QC inspection' },
+  { key: 'production_rolling', label: 'Rolling Mill (Legacy)', category: 'production', description: 'Legacy rolling entry station' },
   { key: 'production_hollow_ht', label: 'Hollow Heat Treatment', category: 'production', description: 'Mother hollow annealing and stress relief prior to draw' },
   { key: 'production_draw', label: 'Cold Draw Bench & Pilger', category: 'production', description: 'Cold drawing and dimensional reduction' },
   { key: 'production_pilger', label: 'Cold Pilger Mill', category: 'production', description: 'Cold periodic roll reduction for stainless & precision seamless tubes' },
@@ -48,6 +52,8 @@ export const MODULE_DEFINITIONS: {
 export function getDefaultPermissions(group: UserGroup, workCenter: string): FormPermissions {
   if (group === 'admin') {
     return {
+      production_hot_rolling: 'edit',
+      production_htc: 'edit',
       production_rolling: 'edit',
       production_hollow_ht: 'edit',
       production_draw: 'edit',
@@ -67,6 +73,8 @@ export function getDefaultPermissions(group: UserGroup, workCenter: string): For
 
   if (group === 'super_user') {
     return {
+      production_hot_rolling: 'edit',
+      production_htc: 'edit',
       production_rolling: 'edit',
       production_hollow_ht: 'edit',
       production_draw: 'edit',
@@ -86,13 +94,15 @@ export function getDefaultPermissions(group: UserGroup, workCenter: string): For
 
   // Regular User: Edit assigned work center, View others
   return {
-    production_rolling: workCenter === 'ALL' || workCenter === 'ROLLING' ? 'edit' : 'view',
+    production_hot_rolling: workCenter === 'ALL' || workCenter === 'HOT_ROLLING' || workCenter === 'ROLLING' ? 'edit' : 'view',
+    production_htc: workCenter === 'ALL' || workCenter === 'HTC' || workCenter === 'QA' || workCenter === 'VDI' ? 'edit' : 'view',
+    production_rolling: workCenter === 'ALL' || workCenter === 'HOT_ROLLING' || workCenter === 'ROLLING' ? 'edit' : 'view',
     production_hollow_ht: workCenter === 'ALL' || workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT' ? 'edit' : 'view',
     production_draw: workCenter === 'ALL' || workCenter === 'DRAW' ? 'edit' : 'view',
     production_pilger: workCenter === 'ALL' || workCenter === 'PILGER' ? 'edit' : 'view',
     production_ht: workCenter === 'ALL' || workCenter === 'HEAT_TREATMENT' || workCenter === 'HOLLOW_HEAT_TREATMENT' ? 'edit' : 'view',
     production_band_saw: workCenter === 'ALL' || workCenter === 'BAND_SAW' || workCenter === 'FINISHING' ? 'edit' : 'view',
-    production_vdi: workCenter === 'ALL' || workCenter === 'VDI' || workCenter === 'QA' ? 'edit' : 'view',
+    production_vdi: workCenter === 'ALL' || workCenter === 'VDI' || workCenter === 'QA' || workCenter === 'HTC' ? 'edit' : 'view',
     production_finishing: workCenter === 'ALL' || workCenter === 'FINISHING' || workCenter === 'BAND_SAW' ? 'edit' : 'view',
     work_order: 'view',
     rolling_plan: 'view',
@@ -175,7 +185,9 @@ export const GROUP_CONFIGS: Record<UserGroup, GroupConfig> = {
 
 export const WORK_CENTER_LABELS: Record<string, string> = {
   ALL: 'All Work Centers (Global)',
-  ROLLING: 'Hot Rolling & Piercing Mill',
+  HOT_ROLLING: 'Hot Rolling & Piercing Mill',
+  HTC: 'Hot Test Check (HTC QC)',
+  ROLLING: 'Hot Rolling & Piercing Mill (Legacy)',
   HOLLOW_HEAT_TREATMENT: 'Hollow Heat Treatment & Annealing',
   DRAW: 'Cold Draw Bench & Pilgering',
   PILGER: 'Cold Pilger Mill',
@@ -302,6 +314,8 @@ export function isRouteVisible(user: AppUserProfile | null | undefined, href: st
   }
   if (href === '/production' || href.startsWith('/production/')) {
     return (
+      perms.production_hot_rolling !== 'none' ||
+      perms.production_htc !== 'none' ||
       perms.production_rolling !== 'none' ||
       perms.production_hollow_ht !== 'none' ||
       perms.production_draw !== 'none' ||
