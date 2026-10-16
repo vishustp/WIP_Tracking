@@ -308,7 +308,7 @@ export default function WorkOrderTrackingClient() {
 
     // 1. Production logs: any ROLLING log with output/HTC OK/rejection/pcs, or any downstream stage output
     for (const log of productionLogs) {
-      const isRolling = log.stage_code === 'ROLLING';
+      const isRolling = log.stage_code === 'ROLLING' || log.stage_code === 'HOT_ROLLING' || log.stage_code === 'HTC';
       const hasRollingOutput =
         Number(log.output_qty || 0) > 0 ||
         Number(log.htc_ok_qty || 0) > 0 ||
@@ -476,7 +476,7 @@ export default function WorkOrderTrackingClient() {
 
       // Rolling production stats (tracked under master campaign or single order)
       const mhAvgLen = (plan?.mh_l1 && plan?.mh_l2 ? (plan.mh_l1 + plan.mh_l2) / 2 : plan?.mh_l1 || plan?.mh_l2) || avgLen;
-      const masterRollLogs = masterLogs.filter((l) => l.stage_code === 'ROLLING');
+      const masterRollLogs = masterLogs.filter((l) => l.stage_code === 'ROLLING' || l.stage_code === 'HOT_ROLLING');
       const rollingOutMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
       const rollingOutPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const rollingOutPcs = rollingOutPcsLogged > 0 ? rollingOutPcsLogged : (mhAvgLen > 0 ? Math.round(rollingOutMtr / mhAvgLen) : 0);
@@ -1369,7 +1369,7 @@ export default function WorkOrderTrackingClient() {
       totalOrderedMtr += ordMtr;
       totalTargetPcs += ordPcs;
       const row = getWoTrackingData(wo);
-      const rollStage = row.stagesData.find((s) => s.code === 'ROLLING');
+      const rollStage = row.stagesData.find((s) => s.code === 'ROLLING' || s.code === 'HOT_ROLLING');
       const finStage = row.stagesData.find((s) => s.code === 'FINISHING');
 
       // Do NOT double-count child plans in rolling totals
@@ -1416,7 +1416,7 @@ export default function WorkOrderTrackingClient() {
   const exportToExcel = async () => {
     const rows = filteredWorkOrders.map((wo) => {
       const row = getWoTrackingData(wo);
-      const rRoll = row.stagesData.find((s) => s.code === 'ROLLING');
+      const rRoll = row.stagesData.find((s) => s.code === 'ROLLING' || s.code === 'HOT_ROLLING');
       const rHtc = row.stagesData.find((s) => s.code === 'HOLLOW_HEAT_TREATMENT');
       const rDraw = row.stagesData.find((s) => s.code === 'DRAW');
       const rHt = row.stagesData.find((s) => s.code === 'HEAT_TREATMENT');
@@ -1777,7 +1777,7 @@ export default function WorkOrderTrackingClient() {
                 {filteredWorkOrders.map((wo) => {
                   const data = getWoTrackingData(wo);
                   const isExpanded = !!expandedWos[wo.id];
-                  const rRoll = data.stagesData.find((s) => s.code === 'ROLLING');
+                  const rRoll = data.stagesData.find((s) => s.code === 'ROLLING' || s.code === 'HOT_ROLLING');
                   const rHtc = data.stagesData.find((s) => s.code === 'HOLLOW_HEAT_TREATMENT');
                   const rDraw = data.stagesData.find((s) => s.code === 'DRAW');
                   const rHt = data.stagesData.find((s) => s.code === 'HEAT_TREATMENT');
@@ -2680,7 +2680,7 @@ export default function WorkOrderTrackingClient() {
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 font-mono">
                                     {data.logs.map((log) => {
-                                      const isMh = log.stage_code === 'ROLLING' || log.stage_code === 'HOLLOW_HEAT_TREATMENT';
+                                      const isMh = log.stage_code === 'ROLLING' || log.stage_code === 'HOT_ROLLING' || log.stage_code === 'HTC' || log.stage_code === 'HOLLOW_HEAT_TREATMENT';
                                       const mhLen = (data.plan?.mh_l1 && data.plan?.mh_l2 ? (data.plan.mh_l1 + data.plan.mh_l2) / 2 : data.plan?.mh_l1 || data.plan?.mh_l2) || data.avgLen;
                                       const effLen = isMh && mhLen > 0 ? mhLen : (data.avgLen > 0 ? data.avgLen : 6.0);
                                       const { pcs: logRemarksPcs, rejPcs: logRemarksRejPcs } = extractPcsFromRemarks(log.remarks);

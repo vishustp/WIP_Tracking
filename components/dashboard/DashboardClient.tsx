@@ -221,6 +221,8 @@ export default function DashboardClient({
   // 2. Real WIP by Stage strictly across the 6 Post-Rolling Work Centers
   const stageWipMap = useMemo(() => {
     const map: Record<string, { mt: number; pcs: number; mtr: number }> = {
+      HOT_ROLLING: { mt: 0, pcs: 0, mtr: 0 },
+      HTC: { mt: 0, pcs: 0, mtr: 0 },
       HOLLOW_HEAT_TREATMENT: { mt: 0, pcs: 0, mtr: 0 },
       DRAW: { mt: 0, pcs: 0, mtr: 0 },
       HEAT_TREATMENT: { mt: 0, pcs: 0, mtr: 0 },
@@ -232,7 +234,9 @@ export default function DashboardClient({
     for (const r of wip) {
       const rawCode = (r.stage_code || '').toUpperCase();
       let key = '';
-      if (rawCode.includes('HOLLOW') || rawCode === 'HTC') key = 'HOLLOW_HEAT_TREATMENT';
+      if (rawCode === 'HOT_ROLLING' || rawCode === 'ROLLING') key = 'HOT_ROLLING';
+      else if (rawCode === 'HTC' || rawCode.includes('HOT TEST')) key = 'HTC';
+      else if (rawCode.includes('HOLLOW')) key = 'HOLLOW_HEAT_TREATMENT';
       else if (rawCode.includes('DRAW') || rawCode.includes('PILGER')) key = 'DRAW';
       else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') key = 'HEAT_TREATMENT';
       else if (rawCode.includes('SAW') || rawCode.includes('CUT')) key = 'BAND_SAW';
@@ -721,6 +725,8 @@ export default function DashboardClient({
             <div className="mt-2 space-y-1">
               {(yesterdayProduction?.stations || []).map((station) => {
                 const colorMap: Record<string, string> = {
+                  HOT_ROLLING: '#6366f1',
+                  HTC: '#14b8a6',
                   ROLLING: '#6366f1',
                   HOLLOW_HEAT_TREATMENT: '#f97316',
                   DRAW: '#3b82f6',

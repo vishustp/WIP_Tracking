@@ -41,7 +41,7 @@ interface WorkCenterTabConfig {
 
 const WORK_CENTERS: WorkCenterTabConfig[] = [
   {
-    code: 'ROLLING',
+    code: 'HOT_ROLLING',
     stepNumber: '01',
     label: 'Hot Rolling Mill',
     shortLabel: 'Rolling Mill',
@@ -50,8 +50,17 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
     color: 'border-amber-500 text-amber-700 bg-amber-50',
   },
   {
-    code: 'HOLLOW_HEAT_TREATMENT',
+    code: 'HTC',
     stepNumber: '02',
+    label: 'Hot Test Check (HTC)',
+    shortLabel: 'HTC (QC)',
+    description: 'Hot test QC verification and visual inspection before downstream processing.',
+    icon: ClipboardCheck,
+    color: 'border-emerald-500 text-emerald-700 bg-emerald-50',
+  },
+  {
+    code: 'HOLLOW_HEAT_TREATMENT',
+    stepNumber: '03',
     label: 'Hollow Heat Treatment',
     shortLabel: 'Hollow HT',
     description: 'Mother hollow annealing and stress relieving prior to pilgering/draw.',
@@ -60,7 +69,7 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'DRAW',
-    stepNumber: '03',
+    stepNumber: '04',
     label: 'Cold Draw Bench',
     shortLabel: 'Cold Draw',
     description: 'Cold drawing, plug drawing, and cold reduction to final dimensions.',
@@ -69,7 +78,7 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'PILGER',
-    stepNumber: '04',
+    stepNumber: '05',
     label: 'Cold Pilger Mill',
     shortLabel: 'Pilger Mill',
     description: 'Cold pilgering and roll-die reduction of stainless steel hollows.',
@@ -78,7 +87,7 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'HEAT_TREATMENT',
-    stepNumber: '05',
+    stepNumber: '06',
     label: 'Final Heat Treatment',
     shortLabel: 'Final HT',
     description: 'Quench, temper, normalizing, and final metallurgical property conditioning.',
@@ -87,7 +96,7 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'BAND_SAW',
-    stepNumber: '06',
+    stepNumber: '07',
     label: 'Band Saw Cutting',
     shortLabel: 'Band Saw',
     description: 'Precision pipe cutting into customer finished lengths prior to inspection.',
@@ -96,7 +105,7 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'VDI',
-    stepNumber: '07',
+    stepNumber: '08',
     label: 'Visual & Dimension Inspection',
     shortLabel: 'VDI Inspection',
     description: 'Visual Dimension Inspection: OD, WT, length verification, surface inspection, and QA disposition.',
@@ -105,7 +114,7 @@ const WORK_CENTERS: WorkCenterTabConfig[] = [
   },
   {
     code: 'FINISHING',
-    stepNumber: '08',
+    stepNumber: '09',
     label: 'Bundling & Dispatch Line',
     shortLabel: 'Bundling',
     description: 'Final bundle assembly, weighing, stenciling, color coding, and warehouse staging.',
@@ -127,19 +136,21 @@ const fmt = (n: number | null | undefined, digits = 2) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 const LAST_WC_MAP: Record<string, string> = {
+  HOT_ROLLING: 'PPC Rolling Plan',
+  HTC: 'Hot Rolling Mill',
   ROLLING: 'PPC Rolling Plan',
-  HOLLOW_HEAT_TREATMENT: 'Hot Rolling Mill',
-  DRAW: 'Hollow HT / Rolling',
-  PILGER: 'Hot Rolling Mill',
+  HOLLOW_HEAT_TREATMENT: 'Hot Test Check (HTC)',
+  DRAW: 'Hollow HT / HTC',
+  PILGER: 'Hot Test Check (HTC)',
   HEAT_TREATMENT: 'Cold Draw / Pilger',
-  BAND_SAW: 'Final Heat Treatment',
+  BAND_SAW: 'Final Heat Treatment / HTC',
   VDI: 'Band Saw Cutting',
   FINISHING: 'VDI',
   ALL: 'Upstream Feed',
 };
 
 export default function WorkCenterProductionReportClient() {
-  const [selectedWc, setSelectedWc] = useState<string>('ROLLING');
+  const [selectedWc, setSelectedWc] = useState<string>('HOT_ROLLING');
   const [entries, setEntries] = useState<ProductionEntry[]>([]);
   const [wipData, setWipData] = useState<any[]>([]);
   const [rollingPlansData, setRollingPlansData] = useState<any[]>([]);
@@ -342,7 +353,7 @@ export default function WorkCenterProductionReportClient() {
           }
         }
 
-        const isMhStage = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOLLOW_HEAT_TREATMENT';
+        const isMhStage = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOT_ROLLING' || (e.stage_code || '').toUpperCase() === 'HTC' || (e.stage_code || '').toUpperCase() === 'HOLLOW_HEAT_TREATMENT';
         const mhInfo = plan?.mh_od ? plan : (effectiveWoId ? planMhMap.get(effectiveWoId) : null) || (e.work_order_no ? planMhMap.get(String(e.work_order_no).trim()) : null);
         const effAvgLen = isMhStage
           ? (plan?.mh_l1 && plan?.mh_l2 ? (Number(plan.mh_l1) + Number(plan.mh_l2)) / 2 : Number(plan?.mh_l1 || plan?.mh_l2 || mhInfo?.mh_l1 || mhInfo?.mh_l2 || 6.0))
@@ -380,7 +391,7 @@ export default function WorkCenterProductionReportClient() {
           }
         }
 
-        const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING';
+        const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOT_ROLLING' || (e.stage_code || '').toUpperCase() === 'HTC';
         const rawHtcMtr = Number(logRow?.htc_ok ?? e.htc_ok_mtr ?? (e as any).htc_ok ?? 0);
         const htcOkMtr = isRolling
           ? (rawHtcMtr > 0 ? rawHtcMtr : Math.max(0, outMtr - rejMtr))
@@ -536,7 +547,7 @@ export default function WorkCenterProductionReportClient() {
     let rejMt = 0;
 
     filteredEntries.forEach((e) => {
-      const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING';
+      const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOT_ROLLING' || (e.stage_code || '').toUpperCase() === 'HTC';
       const okPcs = isRolling && Number(e.htc_ok_pcs || 0) > 0 ? Number(e.htc_ok_pcs) : Number(e.output_pcs || 0);
       const okMtr = isRolling && Number(e.htc_ok_mtr || 0) > 0 ? Number(e.htc_ok_mtr) : Number(e.output_mtr || 0);
       const okMt = Number(e.output_mt || 0);
@@ -579,7 +590,7 @@ export default function WorkCenterProductionReportClient() {
         .filter((no) => no && no !== '—')
     );
 
-    if (selectedWc === 'ROLLING') {
+    if (selectedWc === 'HOT_ROLLING' || selectedWc === 'ROLLING') {
       let totalPlanMtr = 0;
       let totalPlanPcs = 0;
       let totalPlanMt = 0;
@@ -663,17 +674,19 @@ export default function WorkCenterProductionReportClient() {
     }
 
     // Determine preceding stage for stage-to-stage direct balance (AGENTS.md Rule 1)
-    let precedingStageCode = 'ROLLING';
-    if (selectedWc === 'HOLLOW_HEAT_TREATMENT') {
-      precedingStageCode = 'ROLLING';
+    let precedingStageCode = 'HTC';
+    if (selectedWc === 'HTC') {
+      precedingStageCode = 'HOT_ROLLING';
+    } else if (selectedWc === 'HOLLOW_HEAT_TREATMENT') {
+      precedingStageCode = 'HTC';
     } else if (selectedWc === 'DRAW') {
-      precedingStageCode = selectedRoute.includes('ALLOY') ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING';
+      precedingStageCode = selectedRoute.includes('ALLOY') ? 'HOLLOW_HEAT_TREATMENT' : 'HTC';
     } else if (selectedWc === 'PILGER') {
-      precedingStageCode = 'ROLLING';
+      precedingStageCode = 'HTC';
     } else if (selectedWc === 'HEAT_TREATMENT') {
       precedingStageCode = selectedRoute === 'SS_STEEL' ? 'PILGER' : 'DRAW';
     } else if (selectedWc === 'BAND_SAW') {
-      precedingStageCode = selectedRoute.includes('HFS') ? 'ROLLING' : 'HEAT_TREATMENT';
+      precedingStageCode = selectedRoute.includes('HFS') ? 'HTC' : 'HEAT_TREATMENT';
     } else if (selectedWc === 'VDI') {
       precedingStageCode = 'BAND_SAW';
     } else if (selectedWc === 'FINISHING') {
@@ -682,13 +695,15 @@ export default function WorkCenterProductionReportClient() {
 
     const precedingEntries = entries.filter((e) => {
       const eStage = (e.stage_code || '').toUpperCase();
-      if (selectedWc === 'DRAW' && selectedRoute === 'ALL') {
-        if (eStage !== 'ROLLING' && eStage !== 'HOLLOW_HEAT_TREATMENT') return false;
+      if (selectedWc === 'HTC') {
+        if (eStage !== 'HOT_ROLLING' && eStage !== 'ROLLING') return false;
+      } else if (selectedWc === 'DRAW' && selectedRoute === 'ALL') {
+        if (eStage !== 'HTC' && eStage !== 'ROLLING' && eStage !== 'HOLLOW_HEAT_TREATMENT') return false;
       } else if (selectedWc === 'HEAT_TREATMENT' && selectedRoute === 'ALL') {
         if (eStage !== 'DRAW' && eStage !== 'PILGER') return false;
       } else if (selectedWc === 'BAND_SAW' && selectedRoute === 'ALL') {
-        if (eStage !== 'HEAT_TREATMENT' && eStage !== 'ROLLING' && eStage !== 'HOLLOW_HEAT_TREATMENT') return false;
-      } else if (eStage !== precedingStageCode) {
+        if (eStage !== 'HEAT_TREATMENT' && eStage !== 'HTC' && eStage !== 'ROLLING' && eStage !== 'HOLLOW_HEAT_TREATMENT') return false;
+      } else if (eStage !== precedingStageCode && !(precedingStageCode === 'HTC' && eStage === 'ROLLING')) {
         return false;
       }
       if (selectedRoute !== 'ALL' && e.route_code !== selectedRoute) return false;
@@ -705,7 +720,7 @@ export default function WorkCenterProductionReportClient() {
     let feederOkMt = 0;
 
     precedingEntries.forEach((e) => {
-      const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING';
+      const isRolling = (e.stage_code || '').toUpperCase() === 'ROLLING' || (e.stage_code || '').toUpperCase() === 'HOT_ROLLING' || (e.stage_code || '').toUpperCase() === 'HTC';
       const okPcs = isRolling && Number(e.htc_ok_pcs || 0) > 0 ? Number(e.htc_ok_pcs) : Number(e.output_pcs || 0);
       const okMtr = isRolling && Number(e.htc_ok_mtr || 0) > 0 ? Number(e.htc_ok_mtr) : Number(e.output_mtr || 0);
       const okMt = Number(e.output_mt || 0);
@@ -761,12 +776,13 @@ export default function WorkCenterProductionReportClient() {
 
   const cardConfig = useMemo(() => {
     switch (selectedWc) {
+      case 'HOT_ROLLING':
       case 'ROLLING':
         return {
           c1Category: 'Authorized Plan',
           c1Title: 'PPC Rolling Plan',
           c2Category: 'Production Done',
-          c2Title: 'Rolling OK (HTC)',
+          c2Title: 'Hot Rolling OK',
           c3Category: 'Work Center Balance',
           c3Title: 'Balance to Roll',
           c4Category: 'Rejections Logged',
@@ -774,10 +790,23 @@ export default function WorkCenterProductionReportClient() {
           c5Category: 'Performance',
           c5Title: 'Rolling Efficiency',
         };
+      case 'HTC':
+        return {
+          c1Category: 'Received from',
+          c1Title: 'Hot Rolling Mill',
+          c2Category: 'Inspection Done',
+          c2Title: 'HTC Passed OK',
+          c3Category: 'Work Center Balance',
+          c3Title: 'Pending HTC Inspection',
+          c4Category: 'Rejections Logged',
+          c4Title: 'QC Rejections',
+          c5Category: 'Performance',
+          c5Title: 'HTC Pass Rate',
+        };
       case 'HOLLOW_HEAT_TREATMENT':
         return {
           c1Category: 'Received from',
-          c1Title: 'Rolling OK (HTC)',
+          c1Title: 'HTC Check',
           c2Category: 'Production Done',
           c2Title: 'Hollow HT OK',
           c3Category: 'Work Center Balance',
@@ -790,7 +819,7 @@ export default function WorkCenterProductionReportClient() {
       case 'DRAW':
         return {
           c1Category: 'Received from',
-          c1Title: selectedRoute === 'CDS' ? 'Rolling OK (HTC)' : 'Rolling / Hollow HT (HTC)',
+          c1Title: selectedRoute === 'CDS' ? 'HTC Check' : 'HTC / Hollow HT',
           c2Category: 'Production Done',
           c2Title: 'Draw Bench OK',
           c3Category: 'Work Center Balance',
@@ -803,7 +832,7 @@ export default function WorkCenterProductionReportClient() {
       case 'PILGER':
         return {
           c1Category: 'Received from',
-          c1Title: 'Rolling OK (HTC)',
+          c1Title: 'HTC Check',
           c2Category: 'Production Done',
           c2Title: 'Pilger OK',
           c3Category: 'Work Center Balance',
@@ -1361,7 +1390,7 @@ export default function WorkCenterProductionReportClient() {
                 </tr>
               ) : (
                 filteredEntries.map((e) => {
-                  const isRolling = e.stage_code === 'ROLLING' || selectedWc === 'ROLLING';
+                  const isRolling = e.stage_code === 'ROLLING' || e.stage_code === 'HOT_ROLLING' || e.stage_code === 'HTC' || selectedWc === 'ROLLING' || selectedWc === 'HOT_ROLLING' || selectedWc === 'HTC';
                   const okPcs = isRolling && Number(e.htc_ok_pcs || 0) > 0 ? Number(e.htc_ok_pcs) : Number(e.output_pcs || 0);
                   const okMtr = isRolling && Number(e.htc_ok_mtr || 0) > 0 ? Number(e.htc_ok_mtr) : Number(e.output_mtr || 0);
                   const okMt = Number(e.output_mt || 0);
