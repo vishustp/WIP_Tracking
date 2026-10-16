@@ -149,7 +149,7 @@ export function ProductionHistoryTable({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {entries.map((entry) => {
-                const isMhStage = entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
+                const isMhStage = entry.stage_code === 'HOT_ROLLING' || entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
                 const rowMatch = rows.find(
                   (r) =>
                     r.work_order_no === entry.work_order_no &&
@@ -207,8 +207,9 @@ export function ProductionHistoryTable({
                     : 0
                 );
 
+                const isHtcStage = entry.stage_code === 'HTC' || entry.stage_code === 'ROLLING';
                 const dispHtcOkPcs =
-                  entry.stage_code === 'ROLLING'
+                  isHtcStage
                     ? Math.max(
                         0,
                         Number(entry.htc_ok_pcs || 0) > 0
@@ -218,7 +219,7 @@ export function ProductionHistoryTable({
                     : 0;
 
                 const dispHtcOkMtr =
-                  entry.stage_code === 'ROLLING'
+                  isHtcStage
                     ? Math.min(
                         Number(entry.output_mtr || 0),
                         Number(entry.htc_ok_mtr || 0) > 0
@@ -266,7 +267,7 @@ export function ProductionHistoryTable({
                       <div className="text-[11px] text-slate-500">{fmt(entry.rejection_mtr, ' MTR')}</div>
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-emerald-700">
-                      {entry.stage_code === 'ROLLING' && (dispHtcOkMtr > 0 || dispHtcOkPcs > 0) ? (
+                      {(entry.stage_code === 'HTC' || entry.stage_code === 'ROLLING') && (dispHtcOkMtr > 0 || dispHtcOkPcs > 0) ? (
                         <>
                           <div className="font-bold">{fmt(dispHtcOkPcs)} PCS</div>
                           <div className="text-[11px] text-slate-500">{fmt(dispHtcOkMtr, ' MTR')}</div>

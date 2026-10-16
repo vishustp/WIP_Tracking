@@ -32,7 +32,7 @@ export function EditEntryModal({
   onSave,
   avgLength,
 }: EditEntryModalProps) {
-  const isMhStage = editing.stage_code === 'ROLLING' || editing.stage_code === 'HOLLOW_HEAT_TREATMENT';
+  const isMhStage = editing.stage_code === 'HOT_ROLLING' || editing.stage_code === 'ROLLING' || editing.stage_code === 'HOLLOW_HEAT_TREATMENT';
   const isDrawOrHt = editing.stage_code === 'DRAW' || editing.stage_code === 'PILGER' || editing.stage_code === 'HEAT_TREATMENT';
   const hasL1L2 = editing.stage_code === 'DRAW' || editing.stage_code === 'PILGER' || editing.stage_code === 'HEAT_TREATMENT' || editing.stage_code === 'BAND_SAW' || editing.stage_code === 'VDI' || editing.stage_code === 'FINISHING';
   const { pcs: parsedPcs, rejPcs: parsedRejPcs, cleanRemarks } = extractPcsFromRemarks(editing.remarks);
@@ -103,8 +103,10 @@ export function EditEntryModal({
     return '';
   })();
 
+  const isHtcEligible = editing.stage_code === 'HTC' || editing.stage_code === 'ROLLING';
+
   const effHtcPcs = (() => {
-    if (editing.stage_code !== 'ROLLING') return '';
+    if (!isHtcEligible) return '';
     const htcMtr = Number(editing.htc_ok_mtr || 0);
     const outMtr = Number(editing.output_mtr || 0);
     const rejMtr = Number(editing.rejection_mtr || 0);
@@ -144,7 +146,7 @@ export function EditEntryModal({
     const rPcs = n(editRejectionPcs);
     const okPcs = Math.max(0, pPcs - rPcs);
     setEditHtcPcs(value === '' ? '' : String(okPcs));
-    if (!isFinishing && editing.stage_code === 'ROLLING') {
+    if (!isFinishing && isHtcEligible) {
       setEditHtcMtr(okPcs > 0 ? String(mtrFromPcs(okPcs, effAvgLength).toFixed(2).replace(/\.?0+$/, '')) : '0');
     }
   };
@@ -159,12 +161,12 @@ export function EditEntryModal({
       const okPcs = Math.max(0, pPcs - rPcs);
       setEditHtcPcs(String(okPcs));
       const okMtr = Math.max(0, n(value) - n(editRejectionMtr));
-      if (editing.stage_code === 'ROLLING') {
+      if (isHtcEligible) {
         setEditHtcMtr(String(Number(okMtr.toFixed(2))));
       }
     } else if (value === '') {
       setEditPcs('');
-      if (editing.stage_code === 'ROLLING') {
+      if (isHtcEligible) {
         setEditHtcPcs('');
         setEditHtcMtr('');
       }
@@ -237,7 +239,7 @@ export function EditEntryModal({
       const rejMtrVal = String(mtrFromPcs(n(editRejectionPcs), newEffAvg).toFixed(2).replace(/\.?0+$/, ''));
       if (!isFinishing) setEditRejectionMtr(rejMtrVal);
     }
-    if (editHtcPcs !== '' && editing.stage_code === 'ROLLING') {
+    if (editHtcPcs !== '' && isHtcEligible) {
       const pPcs = n(editPcs);
       const rPcs = n(editRejectionPcs);
       const okPcs = Math.max(0, pPcs - rPcs);
@@ -252,7 +254,7 @@ export function EditEntryModal({
 
     const mtr = n(editMtr) > 0 ? n(editMtr) : editPcs.trim() !== '' ? mtrFromPcs(n(editPcs), effAvgLength) : 0;
     const rejection = n(editRejectionMtr) > 0 ? n(editRejectionMtr) : editRejectionPcs.trim() !== '' ? mtrFromPcs(n(editRejectionPcs), effAvgLength) : 0;
-    const htc = editing.stage_code === 'ROLLING'
+    const htc = isHtcEligible
       ? (n(editHtcMtr) > 0 ? n(editHtcMtr) : editHtcPcs.trim() !== '' ? mtrFromPcs(n(editHtcPcs), effAvgLength) : Math.max(0, mtr - rejection))
       : 0;
 
@@ -268,7 +270,7 @@ export function EditEntryModal({
       setLocalError('Rejection cannot exceed production quantity.');
       return;
     }
-    if (editing.stage_code === 'ROLLING' && htc > mtr - rejection + 0.001) {
+    if (isHtcEligible && htc > mtr - rejection + 0.001) {
       setLocalError('HTC OK cannot exceed Net Rolling output (Production - Rejection).');
       return;
     }
@@ -286,7 +288,7 @@ export function EditEntryModal({
         editPcs,
         editRejectionMtr: rejection,
         editRejectionPcs,
-        editHtcMtr: editing.stage_code === 'ROLLING' ? htc : 0,
+        editHtcMtr: isHtcEligible ? htc : 0,
         editHtcPcs,
         editHeatLot,
         editRemarks: finalRemarks,
@@ -417,7 +419,7 @@ export function EditEntryModal({
             </div>
           </div>
 
-          {editing.stage_code === 'ROLLING' && (
+          {isHtcEligible && (
             <div>
               <label className="block font-semibold text-slate-700 mb-1">HTC OK (PCS & MTR)</label>
               <div className="flex items-center gap-2">

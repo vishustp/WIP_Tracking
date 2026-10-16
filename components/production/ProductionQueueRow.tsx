@@ -36,8 +36,8 @@ export function ProductionQueueRow({
 }: ProductionQueueRowProps) {
   const key = row.plan_id ? `${row.work_order_id}|${row.route_id}|${row.plan_id}` : `${row.work_order_id}|${row.route_id}`;
   const d = calc({ ...row, stage_code: stage });
-  const isRollingStage = stage === 'ROLLING';
-  const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
+  const isRollingStage = stage === 'HOT_ROLLING' || stage === 'ROLLING';
+  const isMhStage = stage === 'HOT_ROLLING' || stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
   const hasL1L2 = stage === 'DRAW' || stage === 'PILGER' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
   const stageOd = isMhStage && row.mh_od ? Number(row.mh_od) : Number(row.od || 0);
   const stageWt = isMhStage && row.mh_wt ? Number(row.mh_wt) : Number(row.wl || 0);
@@ -289,8 +289,8 @@ export function ProductionQueueRow({
         </div>
       </td>
 
-      {/* OK Nos Column (HTC OK for Rolling, Auto-calculated Net OK for other stages) */}
-      {stage === 'ROLLING' ? (
+      {/* OK Nos Column (HTC OK for HTC/Rolling, Auto-calculated Net OK for other stages) */}
+      {stage === 'HTC' || stage === 'ROLLING' ? (
         <td className="py-2.5 px-3 sm:px-4 align-middle bg-[#ecfdf5]/60 dark:bg-emerald-950/20 border-r border-emerald-100 dark:border-emerald-900/40">
           <div className="flex items-center justify-center gap-1.5">
             <input

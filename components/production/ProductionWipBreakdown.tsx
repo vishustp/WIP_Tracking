@@ -63,7 +63,7 @@ export function ProductionWipBreakdown({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
               {r.work_centers_wip?.map((w, idx) => {
                 const isCurrent = w.stage_code === stage;
-                const isMh = w.stage_code === 'ROLLING' || w.stage_code === 'HOLLOW_HEAT_TREATMENT';
+                const isMh = w.stage_code === 'HOT_ROLLING' || w.stage_code === 'ROLLING' || w.stage_code === 'HOLLOW_HEAT_TREATMENT';
                 const stageOd = isMh && r.mh_od ? Number(r.mh_od) : Number(r.od || 0);
                 const stageWt = isMh && r.mh_wt ? Number(r.mh_wt) : Number(r.wl || 0);
 
@@ -122,7 +122,7 @@ export function ProductionWipBreakdown({
                           <span className="text-emerald-700">{fmt(netMt, ' MT')}</span>)
                         </span>
                       </div>
-                      {w.stage_code === 'ROLLING' && (
+                      {(w.stage_code === 'HTC' || w.stage_code === 'ROLLING') && (
                         <div className="flex justify-between items-baseline border-t border-slate-100 pt-1">
                           <span className="text-indigo-700 font-semibold">HTC OK:</span>
                           <span className="font-bold font-mono text-indigo-700">

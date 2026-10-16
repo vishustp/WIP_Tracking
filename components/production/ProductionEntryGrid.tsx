@@ -69,8 +69,11 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
     if (initialStage && STAGES.some((s) => s.code === initialStage)) {
       return initialStage as StageCode;
     }
-    return 'ROLLING';
-  }, [initialStage]);
+    if (workCenter && STAGES.some((s) => s.code === workCenter)) {
+      return workCenter as StageCode;
+    }
+    return 'HOT_ROLLING';
+  }, [initialStage, workCenter]);
 
   // --- State ---
   const [stage, setStage] = useState<StageCode>(validInitial);
@@ -321,7 +324,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         const dynL2 = Number(field === 'input_l2' ? value : (r.input_l2 || r.mh_l2 || r.l2 || 0));
         const customAvg = dynL1 > 0 && dynL2 > 0 ? (dynL1 + dynL2) / 2 : dynL1 || dynL2 || 0;
 
-        const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
+        const isMhStage = stage === 'HOT_ROLLING' || stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
         const isDrawStage = stage === 'DRAW' || stage === 'PILGER';
         const planMh = planMhMap.get(r.work_order_id) || (r.work_order_no ? planMhMap.get(String(r.work_order_no).trim()) : undefined);
         const mhOd = Number(r.mh_od || planMh?.mh_od || 0);
@@ -347,7 +350,8 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
                 ? n(r.avg_length)
                 : 6.0);
 
-        const isRollingStage = stage === 'ROLLING';
+        const isRollingStage = stage === 'HOT_ROLLING' || stage === 'ROLLING';
+        const isHtcStage = stage === 'HTC' || stage === 'ROLLING';
 
         if (field === 'input_l1' || field === 'input_l2') {
           const currentPcs = n(r.pcs);
@@ -370,8 +374,8 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
             ...r,
             pcs: value,
             mtr: mtrVal,
-            htc_ok_pcs: isRollingStage ? (value === '' ? '' : String(autoHtcPcs)) : r.htc_ok_pcs,
-            htc_ok_mtr: isRollingStage ? (value === '' ? '' : autoHtcMtr) : r.htc_ok_mtr,
+            htc_ok_pcs: isHtcStage ? (value === '' ? '' : String(autoHtcPcs)) : r.htc_ok_pcs,
+            htc_ok_mtr: isHtcStage ? (value === '' ? '' : autoHtcMtr) : r.htc_ok_mtr,
           };
         }
 
@@ -394,8 +398,8 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
             ...r,
             rejection_pcs: value,
             rejection_mtr: rejMtrVal,
-            htc_ok_pcs: isRollingStage ? (r.pcs === '' ? '' : String(autoHtcPcs)) : r.htc_ok_pcs,
-            htc_ok_mtr: isRollingStage ? (r.pcs === '' ? '' : autoHtcMtr) : r.htc_ok_mtr,
+            htc_ok_pcs: isHtcStage ? (r.pcs === '' ? '' : String(autoHtcPcs)) : r.htc_ok_pcs,
+            htc_ok_mtr: isHtcStage ? (r.pcs === '' ? '' : autoHtcMtr) : r.htc_ok_mtr,
           };
         }
 
@@ -458,6 +462,8 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       StageCode,
       { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }
     > = {
+      HOT_ROLLING: { label: 'Hot Rolling Mill', stage_code: 'HOT_ROLLING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HTC: { label: 'Hot Test Check (HTC)', stage_code: 'HTC', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       ROLLING: { label: 'Rolling Mill', stage_code: 'ROLLING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HOLLOW_HEAT_TREATMENT: {
         label: 'Hollow Heat Treatment',
@@ -478,8 +484,10 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
     const resolveStageCode = (w: any): StageCode | null => {
       if (!w) return null;
       const raw = String(w.stage_code || w.stage_name || w.stage_id || '').toUpperCase().trim();
+      if (raw === 'HOT_ROLLING' || raw === 'HOT ROLLING' || raw === 'HOT_ROLL') return 'HOT_ROLLING';
+      if (raw === 'HTC' || raw.includes('HTC') || raw.includes('HOT TEST')) return 'HTC';
       if (raw === 'HOLLOW_HEAT_TREATMENT' || raw.includes('HOLLOW')) return 'HOLLOW_HEAT_TREATMENT';
-      if (raw === 'ROLLING' || raw.includes('ROLL')) return 'ROLLING';
+      if (raw === 'ROLLING' || raw.includes('ROLL')) return 'HOT_ROLLING';
       if (raw === 'DRAW' || raw.includes('DRAW')) return 'DRAW';
       if (raw === 'PILGER' || raw.includes('PILGER')) return 'PILGER';
       if (raw === 'HEAT_TREATMENT' || raw.includes('HEAT')) return 'HEAT_TREATMENT';
@@ -500,7 +508,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
           const mtr = Number(w.current_wip ?? w.available_mtr ?? 0);
           let pcs = Number(w.current_wip_pcs ?? w.available_pcs ?? 0);
-          const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW' || sc === 'PILGER';
+          const isMhStage = sc === 'HOT_ROLLING' || sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW' || sc === 'PILGER';
           const planMh = planMhMap.get(w.work_order_id) || (w.work_order_no ? planMhMap.get(String(w.work_order_no).trim()) : undefined);
           const mhAvgLen = Number(w.mh_avg_length || w.mh_l1 || planMh?.mh_avg_length || planMh?.mh_l1 || 0);
           const avgLen = isMhStage && mhAvgLen > 0 ? mhAvgLen : Number(w.avg_length || 6.0);
@@ -535,7 +543,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
               }
               const mtr = Number(w.available_mtr || 0);
               const pcs = Number(w.available_pcs || 0);
-              const isMhStage = sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW';
+              const isMhStage = sc === 'HOT_ROLLING' || sc === 'ROLLING' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'DRAW';
               const planMh = planMhMap.get(r.work_order_id) || (r.work_order_no ? planMhMap.get(String(r.work_order_no).trim()) : undefined);
               const od = isMhStage ? Number(r.mh_od || planMh?.mh_od || r.od || 0) : Number(r.od || 0);
               const wt = isMhStage ? Number(r.mh_wt || planMh?.mh_wt || r.wl || 0) : Number(r.wl || 0);
@@ -565,7 +573,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         }, 0);
         const queueTotalMt = rows.reduce((sum, r) => {
           if (r.is_child && r.master_wo_id) return sum;
-          const isMhStage = activeSc === 'ROLLING' || activeSc === 'HOLLOW_HEAT_TREATMENT' || activeSc === 'DRAW';
+          const isMhStage = activeSc === 'HOT_ROLLING' || activeSc === 'ROLLING' || activeSc === 'HOLLOW_HEAT_TREATMENT' || activeSc === 'DRAW';
           const planMh = planMhMap.get(r.work_order_id) || (r.work_order_no ? planMhMap.get(String(r.work_order_no).trim()) : undefined);
           const od = isMhStage ? Number(r.mh_od || planMh?.mh_od || r.od || 0) : Number(r.od || 0);
           const wt = isMhStage ? Number(r.mh_wt || planMh?.mh_wt || r.wl || 0) : Number(r.wl || 0);
@@ -611,6 +619,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
     try {
       const payload = selected.map((r) => {
         const d = calc(r);
+        const isHtcStage = stage === 'HTC' || stage === 'ROLLING';
         return {
           work_order_id: r.work_order_id,
           route_id: r.route_id,
@@ -619,10 +628,10 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
           input_qty: d.mtr,
           output_qty: d.mtr,
           rejection_qty: d.rejectionMtr,
-          htc_ok: stage === 'ROLLING' ? d.htcMtr : 0,
+          htc_ok: isHtcStage ? (d.htcMtr || d.net_output_mtr || d.mtr) : 0,
           output_pcs: d.pcs || null,
           rejection_pcs: d.rejectionPcs || null,
-          htc_ok_pcs: stage === 'ROLLING' ? d.htcPcs || null : null,
+          htc_ok_pcs: isHtcStage ? (d.htcPcs || d.net_output_pcs || d.pcs || null) : null,
           heat_lot_no: r.heat_lot_no || null,
           remarks: attachPcsToRemarks(r.remarks, d.pcs, d.rejectionPcs, r.input_l1, r.input_l2) || null,
         };
@@ -904,7 +913,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
   const getEntryAvgLength = (entry: ProductionEntry | null) => {
     if (!entry) return 6.0;
-    const isMhStage = entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
+    const isMhStage = entry.stage_code === 'HOT_ROLLING' || entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
     const isDraw = entry.stage_code === 'DRAW';
     const isPilger = entry.stage_code === 'PILGER';
     const isHeatTreatment = entry.stage_code === 'HEAT_TREATMENT';
@@ -989,7 +998,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         output_pcs: n(payload.editPcs) || null,
         rejection_qty: payload.editRejectionMtr,
         rejection_pcs: n(payload.editRejectionPcs) || null,
-        htc_ok: editing.stage_code === 'ROLLING' ? payload.editHtcMtr : 0,
+        htc_ok: (editing.stage_code === 'HTC' || editing.stage_code === 'ROLLING') ? payload.editHtcMtr : 0,
         heat_lot_no: payload.editHeatLot.trim() || null,
         remarks: finalRemarks.trim() || null,
       }),

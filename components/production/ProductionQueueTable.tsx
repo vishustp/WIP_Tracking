@@ -119,7 +119,7 @@ export function ProductionQueueTable({
           <EmptyState
             title={`No Orders Available in ${stageLabel} Queue`}
             description={
-              stage === 'ROLLING'
+              stage === 'HOT_ROLLING' || stage === 'ROLLING'
                 ? 'No officially issued rolling plans are currently awaiting production.'
                 : `No work order WIP balance is currently ready for ${stageLabel}. Record production in preceding process stages first.`
             }
@@ -156,7 +156,7 @@ export function ProductionQueueTable({
                   Rejection
                 </th>
                 <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-emerald-900 dark:text-emerald-300 bg-emerald-50/80 dark:bg-emerald-950/50 border-r border-emerald-100 dark:border-emerald-800 whitespace-nowrap">
-                  {stage === 'ROLLING' ? 'HTC OK (Nos)' : 'OK Nos (Net)'}
+                  {stage === 'HTC' || stage === 'ROLLING' ? 'HTC OK (Nos)' : 'OK Nos (Net)'}
                 </th>
                 {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'BAND_SAW') && (
                   <th className="py-2.5 px-3 text-left font-bold text-slate-600 dark:text-slate-400 whitespace-nowrap">Heat Lot No.</th>

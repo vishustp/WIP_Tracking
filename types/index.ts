@@ -217,6 +217,8 @@ export interface ProductionEntry {
 }
 
 export const STAGES: { code: StageCode; label: string }[] = [
+  { code: "HOT_ROLLING", label: "Hot Rolling Mill" },
+  { code: "HTC", label: "Hot Test Check (HTC)" },
   { code: "ROLLING", label: "Rolling" },
   { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
   { code: "DRAW", label: "Draw" },
@@ -241,7 +243,7 @@ export const emptyRow = (r: Omit<
   | "input_l1"
   | "input_l2"
 >): Row => {
-  const isMh = r.stage_code === "ROLLING" || r.stage_code === "HOLLOW_HEAT_TREATMENT";
+  const isMh = r.stage_code === "HOT_ROLLING" || r.stage_code === "ROLLING" || r.stage_code === "HOLLOW_HEAT_TREATMENT";
   const defL1 = isMh && r.mh_l1 ? String(r.mh_l1) : r.l1 ? String(r.l1) : "";
   const defL2 = isMh && r.mh_l2 ? String(r.mh_l2) : r.l2 ? String(r.l2) : "";
   return {
