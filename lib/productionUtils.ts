@@ -87,7 +87,7 @@ export const calc = (row: {
   stage_code?: string;
 }) => {
   const sc = (row.stage_code || "").toUpperCase();
-  const isMhStage = sc === "ROLLING" || sc === "HOLLOW_HEAT_TREATMENT";
+  const isMhStage = sc === "HOT_ROLLING" || sc === "ROLLING" || sc === "HOLLOW_HEAT_TREATMENT";
   
   // Rule 5: Rolling and Hollow Heat Treatment Mtr and MT will be calculated based on MH OD, MH WT and MH Length
   const mhL1 = Number(row.mh_l1 || 0);
@@ -171,6 +171,8 @@ export const calc = (row: {
   const netMtr = Number(Math.max(0, mtr - rejectionMtr).toFixed(2));
   const netPcs = Math.max(0, pcs - rejectionPcs);
 
+  const netMt = Number(mtFromMtr(netMtr, effectiveOd, effectiveWt).toFixed(2));
+
   return {
     avg,
     pcs,
@@ -186,6 +188,9 @@ export const calc = (row: {
     htcMt,
     netMtr,
     netPcs,
+    net_output_mtr: netMtr,
+    net_output_pcs: netPcs,
+    net_output_mt: netMt,
     effectiveOd,
     effectiveWt,
   };
