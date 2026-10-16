@@ -726,9 +726,9 @@ export async function GET(req: NextRequest) {
       const rollDivOutPcs = effMhAvg > 0 ? Math.round(rollDivOut / effMhAvg) : 0;
       const rollTotalLoggedPcs = rollGrossPcs + rollRejPcs;
 
-      const rollAvailPcs = Math.max(0, totalCampaignPcs + rollDivInPcs - rollTotalLoggedPcs - rollDivOutPcs);
-      const rollAvailMtr = effMhAvg > 0 ? Number((rollAvailPcs * effMhAvg).toFixed(3)) : Math.max(0, totalCampaignMtr + rollDivIn - (rollOutMtr + rollRejMtr) - rollDivOut);
-      const rollAvailMt = mtFromMtr(rollAvailMtr, mhOd, mhWt);
+      let rollAvailPcs = Math.max(0, totalCampaignPcs + rollDivInPcs - rollTotalLoggedPcs - rollDivOutPcs);
+      let rollAvailMtr = effMhAvg > 0 ? Number((rollAvailPcs * effMhAvg).toFixed(3)) : Math.max(0, totalCampaignMtr + rollDivIn - (rollOutMtr + rollRejMtr) - rollDivOut);
+      let rollAvailMt = mtFromMtr(rollAvailMtr, mhOd, mhWt);
 
       // 2. Hollow Heat Treatment Stage Metrics (adjusted for HHT Diversions)
       const effHhtAvg = mhAvgLength > 0 ? mhAvgLength : effMhAvg;
@@ -751,11 +751,11 @@ export async function GET(req: NextRequest) {
       const isHhtRoute = isAlloy || routeCode.includes("ALLOY");
       const hollowHtRemMtr = Math.max(0, rollHtcOkMtr + hhtDivIn - hollowHtOutMtr - hollowHtRejMtr - hhtDivOut);
       const hollowHtRemPcs = effHhtAvg > 0 ? Math.round(hollowHtRemMtr / effHhtAvg) : Math.max(0, rollHtcOkPcs + hhtDivInPcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs);
-      const hollowHtAvailPcs = isHhtRoute ? (hollowHtRemMtr >= 1.0 ? Math.max(1, hollowHtRemPcs) : 0) : 0;
-      const hollowHtAvailMtr = isHhtRoute ? (hollowHtAvailPcs > 0 ? Number(hollowHtRemMtr.toFixed(3)) : 0) : 0;
+      let hollowHtAvailPcs = isHhtRoute ? (hollowHtRemMtr >= 1.0 ? Math.max(1, hollowHtRemPcs) : 0) : 0;
+      let hollowHtAvailMtr = isHhtRoute ? (hollowHtAvailPcs > 0 ? Number(hollowHtRemMtr.toFixed(3)) : 0) : 0;
       const hollowHtEffOd = mhOd > 0 ? mhOd : Number(wo.size_od || 0);
       const hollowHtEffWt = mhWt > 0 ? mhWt : Number(wo.size_wt || 0);
-      const hollowHtAvailMt = mtFromMtr(hollowHtAvailMtr, hollowHtEffOd, hollowHtEffWt);
+      let hollowHtAvailMt = mtFromMtr(hollowHtAvailMtr, hollowHtEffOd, hollowHtEffWt);
 
       // 3. Draw Stage Metrics (adjusted for Draw Diversions)
       const drawLogs = getStageLogs(woId, drawStageId);
@@ -929,11 +929,11 @@ export async function GET(req: NextRequest) {
         mult > 1 ? Math.ceil(qcInspectedPcs / mult) : qcInspectedPcs,
         mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
       );
-      htAvailPcs = (isCds || isSsSteel)
+      let htAvailPcs = (isCds || isSsSteel)
         ? Math.max(0, htIncomingPcs + htDivInPcs - htPassedPcs - htDivOutPcs)
         : 0;
-      htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
-      htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+      let htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
+      let htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Apply downstream consumption to Draw availability
       const downstreamDrawPassed = Math.max(drawOutPcs + drawRejPcs, htPassedPcs);
@@ -1377,7 +1377,6 @@ export async function GET(req: NextRequest) {
       const latestBandSawLotNo = bandSawLots.length > 0 ? bandSawLots[0].lot_no : latestHtLotNo;
 
       // Feeder WIP metrics for upstream planning (Draw from Rolling Plan, HT from DB Qty, Finishing from HT Qty)
-      const mult = multiple > 0 ? multiple : 1;
 
       // 1. Hollow HT Feeder: Rolling Plan issued quantity
       const hhtFeederPcs = isAlloy ? Math.max(0, totalCampaignPcs - hollowHtOutPcs - hollowHtRejPcs) : 0;
