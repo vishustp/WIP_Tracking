@@ -755,18 +755,48 @@ export async function GET(req: NextRequest) {
       const htcLogs = getStageLogs(woId, htcStageId);
       const htcTestedPcs = sumPcs(htcLogs, effMhAvg);
       const htcRejPcs = sumRejPcs(htcLogs, effMhAvg);
-      const rawHtcOk = sumQty(htcLogs, "htc_ok") || sumQty(rollLogs, "htc_ok");
-      const loggedHtcOkPcs = sumHtcOkPcs(htcLogs, effMhAvg) || sumHtcOkPcs(rollLogs, effMhAvg);
-      const htcOkPcs = loggedHtcOkPcs > 0 ? loggedHtcOkPcs : (htcTestedPcs > 0 ? Math.max(0, htcTestedPcs - htcRejPcs) : rollNetPcs);
-      const htcOkMtr = rawHtcOk > 0 ? rawHtcOk : (effMhAvg > 0 ? Number((htcOkPcs * effMhAvg).toFixed(3)) : rollNetMtr);
+
+      // Hot Rolling Mill Output: strictly new pipes from HOT_ROLLING
+      const hotRollGrossPcs = sumPcs(hotRollLogs, effMhAvg);
+      const hotRollRejPcs = sumRejPcs(hotRollLogs, effMhAvg);
+      const hotRollNetPcs = Math.max(0, hotRollGrossPcs - hotRollRejPcs);
+      const hotRollOutMtr = sumQty(hotRollLogs, "output_qty");
+      const hotRollRejMtr = sumQty(hotRollLogs, "rejection_qty");
+      const hotRollNetMtr = Math.max(0, hotRollOutMtr - hotRollRejMtr);
+
+      // Legacy rolling logs: under the legacy system, ROLLING already included HTC check
+      const legacyRollLogs = hotRollLogs.length === 0 ? rollLogs : [];
+      const legacyHtcOkPcs = sumHtcOkPcs(legacyRollLogs, effMhAvg);
+      const rawLegacyHtcOk = sumQty(legacyRollLogs, "htc_ok");
+      const legacyRollGrossPcs = sumPcs(legacyRollLogs, effMhAvg);
+      const legacyRollRejPcs = sumRejPcs(legacyRollLogs, effMhAvg);
+      const legacyRollNetPcs = Math.max(0, legacyRollGrossPcs - legacyRollRejPcs);
+      const legacyRollNetMtr = Math.max(0, sumQty(legacyRollLogs, "output_qty") - sumQty(legacyRollLogs, "rejection_qty"));
+
+      // Incoming HTC pieces = new hot rolled pipes (legacy rolling pipes already had HTC performed)
+      const incomingHtcPcs = hotRollNetPcs;
+      const incomingHtcMtr = hotRollNetMtr;
+
+      const rawHtcOk = sumQty(htcLogs, "htc_ok") || rawLegacyHtcOk;
+      const loggedHtcOkPcs = sumHtcOkPcs(htcLogs, effMhAvg) || legacyHtcOkPcs;
+      const htcOkPcs = loggedHtcOkPcs > 0
+        ? loggedHtcOkPcs
+        : (htcTestedPcs > 0
+            ? Math.max(0, htcTestedPcs - htcRejPcs)
+            : (hotRollLogs.length === 0 ? legacyRollNetPcs : 0));
+      const htcOkMtr = rawHtcOk > 0
+        ? rawHtcOk
+        : (effMhAvg > 0
+            ? Number((htcOkPcs * effMhAvg).toFixed(3))
+            : (hotRollLogs.length === 0 ? legacyRollNetMtr : 0));
 
       const htcDivIn = getStageDivIn(woId, "HTC");
       const htcDivOut = getStageDivOut(woId, "HTC");
       const htcDivInPcs = effMhAvg > 0 ? Math.round(htcDivIn / effMhAvg) : 0;
       const htcDivOutPcs = effMhAvg > 0 ? Math.round(htcDivOut / effMhAvg) : 0;
 
-      let htcAvailPcs = Math.max(0, rollNetPcs + htcDivInPcs - htcTestedPcs - htcDivOutPcs);
-      let htcAvailMtr = effMhAvg > 0 ? Number((htcAvailPcs * effMhAvg).toFixed(3)) : Math.max(0, rollNetMtr + htcDivIn - (sumQty(htcLogs, "output_qty") + sumQty(htcLogs, "rejection_qty")) - htcDivOut);
+      let htcAvailPcs = Math.max(0, incomingHtcPcs + htcDivInPcs - htcTestedPcs - htcDivOutPcs);
+      let htcAvailMtr = effMhAvg > 0 ? Number((htcAvailPcs * effMhAvg).toFixed(3)) : Math.max(0, incomingHtcMtr + htcDivIn - (sumQty(htcLogs, "output_qty") + sumQty(htcLogs, "rejection_qty")) - htcDivOut);
       let htcAvailMt = mtFromMtr(htcAvailMtr, mhOd, mhWt);
 
       const rollHtcOkPcs = htcOkPcs;
