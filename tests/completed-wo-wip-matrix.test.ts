@@ -162,4 +162,84 @@ describe('Completed Work Orders & Closed Rolling Campaign WIP Reconciliations', 
     expect(filtered[0].work_order_no).toBe('6352');
     expect(filtered[0].stage_code).toBe('FINISHING');
   });
+
+  it('aggregates VDI Salvage quantity distinctly after VDI QC inspection in WIP matrix', () => {
+    const rawRows = [
+      {
+        od: 19.05,
+        wt: 1.65,
+        grade: 'SA213-T11',
+        stage_code: 'VDI',
+        current_wip_pcs: 50,
+        current_wip: 650,
+        available_mt: 0.46,
+      },
+      {
+        od: 19.05,
+        wt: 1.65,
+        grade: 'SA213-T11',
+        stage_code: 'VDI_SALVAGE',
+        current_wip_pcs: 12,
+        current_wip: 156,
+        available_mt: 0.11,
+      },
+      {
+        od: 19.05,
+        wt: 1.65,
+        grade: 'SA213-T11',
+        stage_code: 'FINISHING',
+        current_wip_pcs: 30,
+        current_wip: 390,
+        available_mt: 0.28,
+      },
+    ];
+
+    const group = {
+      od: 19.05,
+      wt: 1.65,
+      grade: 'SA213-T11',
+      vdi_pcs: 0,
+      vdi_mtr: 0,
+      vdi_mt: 0,
+      vdi_salvage_pcs: 0,
+      vdi_salvage_mtr: 0,
+      vdi_salvage_mt: 0,
+      finishing_pcs: 0,
+      finishing_mtr: 0,
+      finishing_mt: 0,
+      total_pcs: 0,
+      total_mtr: 0,
+      total_mt: 0,
+    };
+
+    rawRows.forEach((r) => {
+      const pcs = r.current_wip_pcs;
+      const mtr = r.current_wip;
+      const mt = r.available_mt;
+
+      if (r.stage_code === 'VDI') {
+        group.vdi_pcs += pcs;
+        group.vdi_mtr += mtr;
+        group.vdi_mt += mt;
+      } else if (r.stage_code === 'VDI_SALVAGE') {
+        group.vdi_salvage_pcs += pcs;
+        group.vdi_salvage_mtr += mtr;
+        group.vdi_salvage_mt += mt;
+      } else if (r.stage_code === 'FINISHING') {
+        group.finishing_pcs += pcs;
+        group.finishing_mtr += mtr;
+        group.finishing_mt += mt;
+      }
+
+      group.total_pcs += pcs;
+      group.total_mtr += mtr;
+      group.total_mt += mt;
+    });
+
+    expect(group.vdi_pcs).toBe(50);
+    expect(group.vdi_salvage_pcs).toBe(12);
+    expect(group.finishing_pcs).toBe(30);
+    expect(group.total_pcs).toBe(92);
+    expect(group.total_mtr).toBe(1196);
+  });
 });

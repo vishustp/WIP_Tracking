@@ -26,6 +26,7 @@ import {
   Calendar,
   Flame,
   Scissors,
+  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { mtFromMtr, extractPcsFromRemarks, normalizeGrade } from '@/lib/productionUtils';
@@ -40,7 +41,7 @@ export const STANDARD_ROUTES: { code: string; name: string }[] = [
   { code: 'SS_STEEL', name: 'Stainless Steel' },
 ];
 
-type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'PILGER' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING';
+type StageCode = 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'PILGER' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING' | 'VDI_SALVAGE';
 
 interface ContributingOrder {
   work_order_id: string;
@@ -86,6 +87,10 @@ interface SizeGradeGroup {
   vdi_mtr: number;
   vdi_pcs: number;
   vdi_mt: number;
+  // VDI Salvage
+  vdi_salvage_mtr: number;
+  vdi_salvage_pcs: number;
+  vdi_salvage_mt: number;
   // Finishing
   finishing_mtr: number;
   finishing_pcs: number;
@@ -235,6 +240,7 @@ export default function SizeGradeWipReportClient() {
                             stCode === 'HEAT_TREATMENT' ? 'Final Heat Treatment' :
                             stCode === 'BAND_SAW' ? 'Band Saw Cutting' :
                             stCode === 'VDI' ? 'VDI / QC Inspection' :
+                            stCode === 'VDI_SALVAGE' ? 'VDI Salvage' :
                             stCode === 'FINISHING' ? 'Finishing & Dispatch' : (r.stage_name || stCode),
                 grade: normalizeGrade(r.specification || r.grade || 'Standard'),
                 od: Number(r.od || 0),
@@ -647,6 +653,43 @@ export default function SizeGradeWipReportClient() {
               current_wip_mt: Number(recStage.capped_wip_mt.toFixed(2)),
             });
           }
+
+          // Also incorporate active VDI Salvage in fallback if positive
+          const woQcItems = (qcRes.data || []).filter((q: any) => q.work_order_id === woId);
+          const woSalvagePcs = woQcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+          const woSalvageMtrDirect = woQcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+          const avgLen = Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : wo?.l1 || wo?.l2 || 6.0);
+          const woSalvageMtr = woSalvageMtrDirect > 0 ? woSalvageMtrDirect : Number((woSalvagePcs * avgLen).toFixed(2));
+          const targetOd = Number(wo?.size_od || rows[0]?.size_od || 0);
+          const targetWt = Number(wo?.size_wt || rows[0]?.size_wt || 0);
+          const woSalvageMt = mtFromMtr(woSalvageMtr, targetOd, targetWt);
+
+          if ((wo?.status || '').toLowerCase() !== 'completed' && (woSalvagePcs >= 1 || woSalvageMtr >= 1.0)) {
+            mapped.push({
+              ...(rows[0] || {}),
+              work_order_id: woId,
+              work_order_no: wo?.work_order_no || rows[0]?.work_order_no,
+              customer_name: wo?.customer_name || rows[0]?.customer_name,
+              stage_code: 'VDI_SALVAGE',
+              stage_name: 'VDI Salvage',
+              grade: normalizeGrade(resolvedGrade),
+              od: targetOd,
+              wt: targetWt,
+              mh_od: mhOd,
+              mh_wt: mhWt,
+              route_code: routeCode,
+              route_name: routeName,
+              rolling_date: rollingDate,
+              order_status: wo?.status || rows[0]?.status || null,
+              balance_qty_pcs: wo?.balance_qty_pcs != null ? Number(wo.balance_qty_pcs) : null,
+              balance_qty_mtr: wo?.balance_qty_mtr != null ? Number(wo.balance_qty_mtr) : null,
+              is_feeder_stage: false,
+              current_wip: woSalvageMtr,
+              current_wip_pcs: woSalvagePcs,
+              available_mt: woSalvageMt,
+              current_wip_mt: woSalvageMt,
+            });
+          }
         }
         setRawWipRows(mapped);
       }
@@ -768,6 +811,9 @@ export default function SizeGradeWipReportClient() {
           vdi_mtr: 0,
           vdi_pcs: 0,
           vdi_mt: 0,
+          vdi_salvage_mtr: 0,
+          vdi_salvage_pcs: 0,
+          vdi_salvage_mt: 0,
           finishing_mtr: 0,
           finishing_pcs: 0,
           finishing_mt: 0,
@@ -813,6 +859,10 @@ export default function SizeGradeWipReportClient() {
         group.vdi_mtr += mtr;
         group.vdi_pcs += pcs;
         group.vdi_mt += mt;
+      } else if (stage === 'VDI_SALVAGE') {
+        group.vdi_salvage_mtr += mtr;
+        group.vdi_salvage_pcs += pcs;
+        group.vdi_salvage_mt += mt;
       } else if (stage === 'FINISHING') {
         group.finishing_mtr += mtr;
         group.finishing_pcs += pcs;
@@ -868,6 +918,9 @@ export default function SizeGradeWipReportClient() {
     let vdiMtr = 0;
     let vdiPcs = 0;
     let vdiMt = 0;
+    let vdiSalvageMtr = 0;
+    let vdiSalvagePcs = 0;
+    let vdiSalvageMt = 0;
     let finishingMtr = 0;
     let finishingPcs = 0;
     let finishingMt = 0;
@@ -891,6 +944,9 @@ export default function SizeGradeWipReportClient() {
       vdiMtr += g.vdi_mtr;
       vdiPcs += g.vdi_pcs;
       vdiMt += g.vdi_mt;
+      vdiSalvageMtr += g.vdi_salvage_mtr;
+      vdiSalvagePcs += g.vdi_salvage_pcs;
+      vdiSalvageMt += g.vdi_salvage_mt;
       finishingMtr += g.finishing_mtr;
       finishingPcs += g.finishing_pcs;
       finishingMt += g.finishing_mt;
@@ -915,6 +971,9 @@ export default function SizeGradeWipReportClient() {
       vdiMtr,
       vdiPcs,
       vdiMt,
+      vdiSalvageMtr,
+      vdiSalvagePcs,
+      vdiSalvageMt,
       finishingMtr,
       finishingPcs,
       finishingMt,
@@ -992,6 +1051,9 @@ export default function SizeGradeWipReportClient() {
         'VDI / QC (m)': g.vdi_mtr,
         'VDI / QC (pcs)': g.vdi_pcs,
         'VDI / QC (MT)': g.vdi_mt,
+        'VDI Salvage (m)': g.vdi_salvage_mtr,
+        'VDI Salvage (pcs)': g.vdi_salvage_pcs,
+        'VDI Salvage (MT)': g.vdi_salvage_mt,
         'Finishing Goods (m)': g.finishing_mtr,
         'Finishing Goods (pcs)': g.finishing_pcs,
         'Finishing Goods (MT)': g.finishing_mt,
@@ -1125,7 +1187,7 @@ export default function SizeGradeWipReportClient() {
       </div>
 
       {/* WIP Summary Cards: Total Plant WIP + Work Centers (PCS, MTR, MT) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2.5">
         {/* 1. Total Plant WIP */}
         <div className="rounded-lg border border-slate-800 bg-slate-900 text-white p-3 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-800">
@@ -1256,6 +1318,28 @@ export default function SizeGradeWipReportClient() {
             <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
               <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
               <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.vdiMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
+            </div>
+          </div>
+        </div>
+
+        {/* 7b. VDI Salvage */}
+        <div className="rounded-lg border border-amber-200/80 dark:border-amber-900/50 bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-amber-300 dark:hover:border-amber-800 transition-colors">
+          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
+            <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-400 uppercase tracking-wider truncate">VDI Salvage</span>
+            <RotateCcw className="h-3.5 w-3.5 text-amber-600 dark:text-amber-500 shrink-0" aria-hidden="true" />
+          </div>
+          <div className="mt-2 space-y-1 font-mono text-[11px]">
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-300">{fmt(kpis.vdiSalvagePcs, 0)}</span>
+            </div>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-300">{fmt(kpis.vdiSalvageMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
+            </div>
+            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
+              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-300">{fmt(kpis.vdiSalvageMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
             </div>
           </div>
         </div>
@@ -1518,6 +1602,9 @@ export default function SizeGradeWipReportClient() {
                     VDI / QC Inspection
                   </th>
                   <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
+                    VDI Salvage
+                  </th>
+                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
                     Finishing (FG)
                   </th>
                   <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface-subtle,#f1f5f9)] font-bold text-[var(--text-main,#0f172a)] bg-clip-padding">
@@ -1627,6 +1714,11 @@ export default function SizeGradeWipReportClient() {
                           {/* VDI */}
                           <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
                             {formatCell(g.vdi_mtr, g.vdi_pcs, g.vdi_mt)}
+                          </td>
+
+                          {/* VDI Salvage */}
+                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
+                            {formatCell(g.vdi_salvage_mtr, g.vdi_salvage_pcs, g.vdi_salvage_mt)}
                           </td>
 
                           {/* Finishing */}
@@ -1742,6 +1834,9 @@ export default function SizeGradeWipReportClient() {
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
                       {formatCell(kpis.vdiMtr, kpis.vdiPcs, kpis.vdiMt)}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
+                      {formatCell(kpis.vdiSalvageMtr, kpis.vdiSalvagePcs, kpis.vdiSalvageMt)}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
                       {formatCell(kpis.finishingMtr, kpis.finishingPcs, kpis.finishingMt)}

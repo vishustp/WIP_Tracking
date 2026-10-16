@@ -54,6 +54,7 @@ export interface Row {
   route_code: string;
   route_name: string;
   stage_code: StageCode;
+  stage_name?: string;
   is_hfs?: boolean;
   is_cds?: boolean;
   prev_stage_code?: string;

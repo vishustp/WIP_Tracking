@@ -15,6 +15,7 @@ interface CachePayload {
       pipeline: WorkCenterWipInfo[];
       bandSawLotRows?: Row[];
       vdiLotRows?: Row[];
+      vdiSalvageRow?: Row | null;
     }
   >;
   rollingPlanRows: Row[];
@@ -91,7 +92,7 @@ export async function GET(req: NextRequest) {
           "VDI",
           "FINISHING",
         ];
-        for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
+        for (const { queueRows, vdiSalvageRow } of memoryCache.allCalculatedRows.values()) {
           for (const st of activeStages) {
             const row = queueRows[st];
             if (row && !row.is_feeder_source) {
@@ -100,6 +101,13 @@ export async function GET(req: NextRequest) {
               if (readyPcs >= 1 || readyMtr >= 1.0) {
                 selectedRows.push(row);
               }
+            }
+          }
+          if (vdiSalvageRow) {
+            const readyPcs = Number(vdiSalvageRow.ready_pcs ?? vdiSalvageRow.balance_to_make_pcs ?? 0);
+            const readyMtr = Number(vdiSalvageRow.ready_mtr ?? vdiSalvageRow.balance_to_make_mtr ?? 0);
+            if (readyPcs >= 1 || readyMtr >= 1.0) {
+              selectedRows.push(vdiSalvageRow);
             }
           }
         }
@@ -126,6 +134,16 @@ export async function GET(req: NextRequest) {
                 (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
               )
             );
+          } else if ((st as string) === "VDI_SALVAGE") {
+            for (const { vdiSalvageRow } of memoryCache.allCalculatedRows.values()) {
+              if (vdiSalvageRow) {
+                const readyPcs = Number(vdiSalvageRow.ready_pcs ?? vdiSalvageRow.balance_to_make_pcs ?? 0);
+                const readyMtr = Number(vdiSalvageRow.ready_mtr ?? vdiSalvageRow.balance_to_make_mtr ?? 0);
+                if (readyPcs >= 1 || readyMtr >= 1.0) {
+                  selectedRows.push(vdiSalvageRow);
+                }
+              }
+            }
           } else {
             for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
               const row = queueRows[st];
@@ -596,6 +614,7 @@ export async function GET(req: NextRequest) {
         pipeline: WorkCenterWipInfo[];
         bandSawLotRows?: Row[];
         vdiLotRows?: Row[];
+        vdiSalvageRow?: Row | null;
       }
     > = new Map();
 
@@ -854,7 +873,9 @@ export async function GET(req: NextRequest) {
 
       const qcInspectedMtr = avgLength > 0 ? Number((qcInspectedPcs * avgLength).toFixed(3)) : 0;
       const qcOkMtr = avgLength > 0 ? Number((qcOkPcs * avgLength).toFixed(3)) : 0;
-      const qcSalvageMtr = avgLength > 0 ? Number((qcSalvagePcs * avgLength).toFixed(3)) : 0;
+      const qcDirectSalvageMtr = woQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+      const qcSalvageMtr = qcDirectSalvageMtr > 0 ? qcDirectSalvageMtr : (avgLength > 0 ? Number((qcSalvagePcs * avgLength).toFixed(3)) : 0);
+      const qcSalvageMt = mtFromMtr(qcSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
       const qcRejMtr = avgLength > 0 ? Number((qcRejPcs * avgLength).toFixed(3)) : 0;
 
       // Direct QC for this specific work order
@@ -1784,7 +1805,33 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      allCalculatedRows.set(woId, { queueRows, pipeline, bandSawLotRows, vdiLotRows });
+      const vdiSalvageRow: Row | null =
+        !isOrderCompleted && (qcSalvagePcs >= 1 || qcSalvageMtr >= 1.0)
+          ? {
+              ...baseRowData,
+              stage_code: "VDI_SALVAGE" as any,
+              stage_name: "VDI Salvage",
+              heat_lot_no: latestBandSawLotNo,
+              balance_to_make_mtr: qcSalvageMtr,
+              balance_to_make_pcs: qcSalvagePcs,
+              balance_to_make_mt: qcSalvageMt,
+              ready_pcs: qcSalvagePcs,
+              ready_mtr: qcSalvageMtr,
+              ready_mt: qcSalvageMt,
+              feeder_pcs: 0,
+              feeder_mtr: 0,
+              feeder_mt: 0,
+              is_feeder_source: false,
+              max_allowed_mtr: qcSalvageMtr,
+              max_allowed_pcs: qcSalvagePcs,
+              prev_stage_code: "VDI",
+              prev_net_output: qcOkMtr,
+              feeder_source_label: "VDI Inspection Salvage",
+              feeder_stage_code: "VDI",
+            }
+          : null;
+
+      allCalculatedRows.set(woId, { queueRows, pipeline, bandSawLotRows, vdiLotRows, vdiSalvageRow });
 
       // Generate individual plan rows for ROLLING stage queue
       const woPlans = plans
@@ -2186,7 +2233,7 @@ export async function GET(req: NextRequest) {
         "VDI",
         "FINISHING",
       ];
-      for (const { queueRows } of allCalculatedRows.values()) {
+      for (const { queueRows, vdiSalvageRow } of allCalculatedRows.values()) {
         for (const st of activeStages) {
           const row = queueRows[st];
           if (row && !row.is_feeder_source) {
@@ -2195,6 +2242,13 @@ export async function GET(req: NextRequest) {
             if (readyPcs >= 1 || readyMtr >= 1.0) {
               selectedRows.push(row);
             }
+          }
+        }
+        if (vdiSalvageRow) {
+          const readyPcs = Number(vdiSalvageRow.ready_pcs ?? vdiSalvageRow.balance_to_make_pcs ?? 0);
+          const readyMtr = Number(vdiSalvageRow.ready_mtr ?? vdiSalvageRow.balance_to_make_mtr ?? 0);
+          if (readyPcs >= 1 || readyMtr >= 1.0) {
+            selectedRows.push(vdiSalvageRow);
           }
         }
       }
@@ -2221,6 +2275,16 @@ export async function GET(req: NextRequest) {
               (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
             )
           );
+        } else if ((st as string) === "VDI_SALVAGE") {
+          for (const { vdiSalvageRow } of allCalculatedRows.values()) {
+            if (vdiSalvageRow) {
+              const readyPcs = Number(vdiSalvageRow.ready_pcs ?? vdiSalvageRow.balance_to_make_pcs ?? 0);
+              const readyMtr = Number(vdiSalvageRow.ready_mtr ?? vdiSalvageRow.balance_to_make_mtr ?? 0);
+              if (readyPcs >= 1 || readyMtr >= 1.0) {
+                selectedRows.push(vdiSalvageRow);
+              }
+            }
+          }
         } else {
           for (const { queueRows } of allCalculatedRows.values()) {
             const row = queueRows[st];
