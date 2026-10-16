@@ -37,6 +37,10 @@ export interface Row {
   specification: string | null;
   od: number | null;
   wl: number | null;
+  final_od?: number | null;
+  final_wt?: number | null;
+  size_od?: number | null;
+  size_wt?: number | null;
   l1: number | null;
   l2: number | null;
   avg_length: number | null;

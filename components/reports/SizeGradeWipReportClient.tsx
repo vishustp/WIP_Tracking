@@ -243,8 +243,9 @@ export default function SizeGradeWipReportClient() {
                             stCode === 'VDI_SALVAGE' ? 'VDI Salvage' :
                             stCode === 'FINISHING' ? 'Finishing & Dispatch' : (r.stage_name || stCode),
                 grade: normalizeGrade(r.specification || r.grade || 'Standard'),
-                od: Number(r.od || 0),
-                wt: Number(r.wl || r.size_wt || r.wt || 0),
+                // Strict Final Finished Size (never Mother Hollow size)
+                od: Number(r.final_od || r.size_od || r.wo_od || r.target_od || r.od || 0),
+                wt: Number(r.final_wt || r.size_wt || r.wo_wt || r.target_wt || r.wl || r.wt || 0),
                 mh_od: r.mh_od ? Number(r.mh_od) : null,
                 mh_wt: r.mh_wt ? Number(r.mh_wt) : null,
                 route_code: r.route_code || 'CDS',

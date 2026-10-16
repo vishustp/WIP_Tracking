@@ -1306,6 +1306,10 @@ export async function GET(req: NextRequest) {
         specification: wo.grade || null,
         od: woOd,
         wl: woWt,
+        final_od: woOd,
+        final_wt: woWt,
+        size_od: woOd,
+        size_wt: woWt,
         l1,
         l2,
         avg_length: avgLength,
@@ -1469,8 +1473,8 @@ export async function GET(req: NextRequest) {
           isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)
             ? {
                 ...baseRowData,
-                od: mhOd > 0 ? mhOd : woOd,
-                wl: mhWt > 0 ? mhWt : woWt,
+                od: woOd,
+                wl: woWt,
                 l1: mhL1 > 0 ? mhL1 : l1,
                 l2: mhL2 > 0 ? mhL2 : l2,
                 avg_length: effMhAvg > 0 ? effMhAvg : avgLength,
@@ -1497,8 +1501,8 @@ export async function GET(req: NextRequest) {
           isAlloy && (isHhtReady || isHhtFeeder)
             ? {
                 ...baseRowData,
-                od: mhOd > 0 ? mhOd : woOd,
-                wl: mhWt > 0 ? mhWt : woWt,
+                od: woOd,
+                wl: woWt,
                 l1: mhL1 > 0 ? mhL1 : l1,
                 l2: mhL2 > 0 ? mhL2 : l2,
                 avg_length: effHhtAvg > 0 ? effHhtAvg : avgLength,
@@ -1525,8 +1529,8 @@ export async function GET(req: NextRequest) {
           isCds && (isDrawReady || isDrawFeeder)
             ? {
                 ...baseRowData,
-                od: mhOd > 0 ? mhOd : woOd,
-                wl: mhWt > 0 ? mhWt : woWt,
+                od: woOd,
+                wl: woWt,
                 avg_length: effDrawLen > 0 ? effDrawLen : avgLength,
                 stage_code: "DRAW",
                 balance_to_make_mtr: isDrawReady ? drawAvailMtr : drawFeederMtr,
@@ -1552,8 +1556,8 @@ export async function GET(req: NextRequest) {
           isSsSteel && (isPilgerReady || isPilgerFeeder)
             ? {
                 ...baseRowData,
-                od: mhOd > 0 ? mhOd : woOd,
-                wl: mhWt > 0 ? mhWt : woWt,
+                od: woOd,
+                wl: woWt,
                 avg_length: effPilgerLen > 0 ? effPilgerLen : avgLength,
                 stage_code: "PILGER",
                 balance_to_make_mtr: isPilgerReady ? pilgerAvailMtr : pilgerFeederMtr,

@@ -242,4 +242,72 @@ describe('Completed Work Orders & Closed Rolling Campaign WIP Reconciliations', 
     expect(group.total_pcs).toBe(92);
     expect(group.total_mtr).toBe(1196);
   });
+
+  it('strictly groups WIP matrix rows by final finished customer size, never mother hollow size', () => {
+    // Work order for final pipe 19.05 x 1.65 mm using Mother Hollow 88.9 x 6.35 mm
+    const queueRowsFromApi = [
+      {
+        work_order_no: 'WO-CDS-100',
+        grade: 'SA213-T11',
+        od: 19.05, // Final customer OD
+        wl: 1.65,  // Final customer WT
+        size_od: 19.05,
+        size_wt: 1.65,
+        final_od: 19.05,
+        final_wt: 1.65,
+        mh_od: 88.9, // Mother hollow OD
+        mh_wt: 6.35, // Mother hollow WT
+        stage_code: 'DRAW',
+        current_wip_pcs: 20,
+        current_wip: 260,
+      },
+      {
+        work_order_no: 'WO-CDS-100',
+        grade: 'SA213-T11',
+        od: 19.05,
+        wl: 1.65,
+        size_od: 19.05,
+        size_wt: 1.65,
+        final_od: 19.05,
+        final_wt: 1.65,
+        mh_od: 88.9,
+        mh_wt: 6.35,
+        stage_code: 'BAND_SAW',
+        current_wip_pcs: 15,
+        current_wip: 195,
+      },
+    ];
+
+    const mapped = queueRowsFromApi.map((r) => {
+      const finalOd = Number(r.final_od || r.size_od || r.od || 0);
+      const finalWt = Number(r.final_wt || r.size_wt || r.wl || 0);
+      return {
+        ...r,
+        od: finalOd,
+        wt: finalWt,
+      };
+    });
+
+    const groups = new Map<string, any>();
+    mapped.forEach((r) => {
+      const key = `${r.od}-${r.wt}-${r.grade}`;
+      if (!groups.has(key)) {
+        groups.set(key, { od: r.od, wt: r.wt, grade: r.grade, draw_pcs: 0, band_saw_pcs: 0 });
+      }
+      const g = groups.get(key);
+      if (r.stage_code === 'DRAW') g.draw_pcs += r.current_wip_pcs;
+      if (r.stage_code === 'BAND_SAW') g.band_saw_pcs += r.current_wip_pcs;
+    });
+
+    // Both DRAW and BAND_SAW must aggregate under a SINGLE group with final size 19.05 x 1.65 mm
+    expect(groups.size).toBe(1);
+    expect(groups.has('19.05-1.65-SA213-T11')).toBe(true);
+    expect(groups.has('88.9-6.35-SA213-T11')).toBe(false);
+
+    const singleGroup = groups.get('19.05-1.65-SA213-T11');
+    expect(singleGroup.od).toBe(19.05);
+    expect(singleGroup.wt).toBe(1.65);
+    expect(singleGroup.draw_pcs).toBe(20);
+    expect(singleGroup.band_saw_pcs).toBe(15);
+  });
 });
