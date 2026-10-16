@@ -1,12 +1,17 @@
-export type StageCode =
-  | "ROLLING"
-  | "HOLLOW_HEAT_TREATMENT"
-  | "DRAW"
-  | "PILGER"
-  | "HEAT_TREATMENT"
-  | "BAND_SAW"
-  | "VDI"
-  | "FINISHING";
+export const STAGE_CODES = [
+  "HOT_ROLLING",
+  "HTC",
+  "ROLLING",
+  "HOLLOW_HEAT_TREATMENT",
+  "DRAW",
+  "PILGER",
+  "HEAT_TREATMENT",
+  "BAND_SAW",
+  "VDI",
+  "FINISHING",
+] as const;
+
+export type StageCode = (typeof STAGE_CODES)[number];
 
 export interface WorkCenterWipInfo {
   stage_code: StageCode;

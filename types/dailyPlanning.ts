@@ -5,6 +5,9 @@ import { StageCode } from '@/types';
 export type DailyPlanShift = 'ALL_DAY' | 'SHIFT_A' | 'SHIFT_B' | 'SHIFT_C';
 
 export type DailyPlanWorkCenter =
+  | 'HOT_ROLLING'
+  | 'HTC'
+  | 'ROLLING'
   | 'DRAW'
   | 'PILGER'
   | 'HOLLOW_HEAT_TREATMENT'
