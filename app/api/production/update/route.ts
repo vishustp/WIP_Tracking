@@ -77,7 +77,8 @@ export async function POST(req: NextRequest) {
       );
 
       const isCustomStageAllowed =
-        (stageCode === 'ROLLING' && appUser?.permissions?.production_rolling === 'edit') ||
+        ((stageCode === 'HOT_ROLLING' || stageCode === 'ROLLING') && (appUser?.permissions?.production_hot_rolling === 'edit' || appUser?.permissions?.production_rolling === 'edit')) ||
+        (stageCode === 'HTC' && appUser?.permissions?.production_htc === 'edit') ||
         (stageCode === 'DRAW' && appUser?.permissions?.production_draw === 'edit') ||
         (stageCode === 'VDI' && appUser?.permissions?.production_vdi === 'edit');
 

@@ -99,15 +99,16 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Rule: Rolling HTC OK strictly required
-      if (item.stage_code === 'ROLLING' && (outMtr > 0 || outPcs > 0)) {
+      // Rule: Rolling piece count requirement and plan balance capping
+      if ((item.stage_code === 'HOT_ROLLING' || item.stage_code === 'ROLLING') && (outMtr > 0 || outPcs > 0)) {
         if (!outPcs || outPcs <= 0 || !Number.isFinite(outPcs)) {
           return NextResponse.json(
             { error: 'Rolling output recording strictly requires entering a valid piece count (Pieces ≥ 1).' },
             { status: 400 }
           );
         }
-        if (htcMtr <= 0 && htcPcs <= 0) {
+        // Legacy ROLLING strictly required HTC OK on the same row; HOT_ROLLING records hot rolled output directly
+        if (item.stage_code === 'ROLLING' && htcMtr <= 0 && htcPcs <= 0) {
           return NextResponse.json(
             { error: 'Rolling output recording strictly requires entering HTC OK Quantity (Pieces or Meters ≥ 1).' },
             { status: 400 }
@@ -216,7 +217,13 @@ export async function POST(req: NextRequest) {
 
     await Promise.all(
       sanitizedEntries.map(async (item: any) => {
-        const stageId = stageMap.get(item.stage_code);
+        let stageId = stageMap.get(item.stage_code);
+        if (!stageId && item.stage_code === 'HOT_ROLLING') {
+          stageId = stageMap.get('HOT_ROLLING') || stageMap.get('ROLLING');
+        }
+        if (!stageId && item.stage_code === 'HTC') {
+          stageId = stageMap.get('HTC') || stageMap.get('ROLLING');
+        }
         if (!stageId) {
           errors.push(`Unknown stage code: ${item.stage_code}`);
           return;
