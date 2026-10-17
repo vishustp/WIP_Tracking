@@ -256,7 +256,7 @@ export function useHistory(
         }
 
         const effectiveWoId = targetWoId || wo?.id;
-        const isMhStage = entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT" || entry.stage_code === "DRAW";
+        const isMhStage = entry.stage_code === "HOT_ROLLING" || entry.stage_code === "ROLLING" || entry.stage_code === "HOLLOW_HEAT_TREATMENT";
         const mhInfo = plan?.mh_od ? plan : (effectiveWoId ? planMhMap.get(effectiveWoId) : null) || (entry.work_order_no ? planMhMap.get(String(entry.work_order_no).trim()) : null);
 
         const mhLen = Number(plan?.mh_avg_length || plan?.mh_l1 || mhInfo?.mh_l1 || 0);
@@ -345,7 +345,8 @@ export function useHistory(
           rolling_plan_id: plan?.id || logRow?.rolling_plan_id,
           plan_no: plan?.plan_no,
           revision_no: plan?.revision_no,
-          remarks: cleanRemarks,
+          remarks: entry.remarks,
+          clean_remarks: cleanRemarks,
           mh_avg_length: mhLen > 0 ? mhLen : undefined,
           mh_od: effOd,
           mh_wt: effWt,
