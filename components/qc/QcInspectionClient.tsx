@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, extractPcsFromRemarks, parseDiversionStages } from '@/lib/productionUtils';
+import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, extractPcsFromRemarks, parseDiversionStages, isHollowBankOrder, HOLLOW_BANK_WO_ID } from '@/lib/productionUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
 import { isUserAuthorizedForQc } from '@/lib/permissions';
 import type { AppUserProfile } from '@/lib/users/types';
@@ -126,7 +126,10 @@ export default function QcInspectionClient() {
         supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, reason'),
       ]);
 
-      if (woRes.data) setWorkOrders(woRes.data as WorkOrder[]);
+      if (woRes.data) {
+        const nonHollowWos = (woRes.data as WorkOrder[]).filter((w) => !isHollowBankOrder(w));
+        setWorkOrders(nonHollowWos);
+      }
       if (logsRes.data) setProductionLogs(logsRes.data as ProductionLog[]);
       if (stagesRes.data) setStages(stagesRes.data);
       if (routesRes.data) setRoutes(routesRes.data);
@@ -247,6 +250,7 @@ export default function QcInspectionClient() {
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
     workOrders.forEach((wo) => {
+      if (isHollowBankOrder(wo) || wo.id === HOLLOW_BANK_WO_ID) return;
       if (processedWoIds.has(wo.id)) return;
 
       const campaign = masterCampaignMap.get(wo.id);
@@ -558,16 +562,17 @@ export default function QcInspectionClient() {
   // Build Salvage Queue Items: Work orders with active VDI Salvage pieces pending rework
   const salvageQueueItems = useMemo(() => {
     const items: QcSalvageQueueItem[] = [];
-    const allWorkOrders = [...workOrders];
+    const allWorkOrders = [...workOrders].filter((w) => !isHollowBankOrder(w));
 
     // Include any child work orders from rolling plans
     (rollingPlans || []).forEach((p: any) => {
       try {
+        if (p.work_order_id === HOLLOW_BANK_WO_ID) return;
         const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status || {};
         if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
           parsed.child_work_orders.forEach((c: any) => {
             const cId = c.work_order_id || c.id;
-            if (cId && !allWorkOrders.some((w) => w.id === cId)) {
+            if (cId && !isHollowBankOrder(c) && cId !== HOLLOW_BANK_WO_ID && !allWorkOrders.some((w) => w.id === cId)) {
               allWorkOrders.push({
                 id: cId,
                 work_order_no: c.work_order_no,
@@ -587,6 +592,7 @@ export default function QcInspectionClient() {
     });
 
     allWorkOrders.forEach((wo) => {
+      if (isHollowBankOrder(wo) || wo.id === HOLLOW_BANK_WO_ID) return;
       const woInspections = qcInspections.filter(
         (q) => q.work_order_id === wo.id && Number(q.vdi_salvage_pcs || 0) > 0
       );
@@ -877,6 +883,14 @@ export default function QcInspectionClient() {
     }
 
     const effectiveWoId = targetWorkOrderId || selectedQueueItem.work_order_id;
+    if (
+      isHollowBankOrder(selectedQueueItem) ||
+      effectiveWoId === HOLLOW_BANK_WO_ID ||
+      isHollowBankOrder({ work_order_id: effectiveWoId })
+    ) {
+      toast.error('QC Inspection entry is not permitted for Hollow Bank buffer inventory.');
+      return;
+    }
     const targetChild = selectedQueueItem.child_work_orders?.find((c: any) => (c.work_order_id || c.id) === effectiveWoId);
     const targetWo = workOrders.find((w) => w.id === effectiveWoId);
     const displayWoNo = targetChild?.work_order_no || targetWo?.work_order_no || selectedQueueItem.work_order_no;
@@ -975,8 +989,8 @@ export default function QcInspectionClient() {
 
   // --- Post-Rework Handlers & Form Calculations ---
   const availableTargetWos = useMemo(() => {
-    if (!reworkTargetWo) return workOrders;
-    return workOrders.filter((w) => w.id !== reworkTargetWo.work_order_id);
+    if (!reworkTargetWo) return workOrders.filter((w) => !isHollowBankOrder(w));
+    return workOrders.filter((w) => w.id !== reworkTargetWo.work_order_id && !isHollowBankOrder(w));
   }, [workOrders, reworkTargetWo]);
 
   const openReworkModal = (item: QcSalvageQueueItem, inspection?: QcInspection) => {
@@ -1108,6 +1122,13 @@ export default function QcInspectionClient() {
       }
       if (reworkFormMetrics.divPcs > 0 && !reworkTargetWoId) {
         toast.error('Please select a Target Work Order for the diverted quantity.');
+        return;
+      }
+      if (
+        reworkFormMetrics.divPcs > 0 &&
+        (reworkTargetWoId === HOLLOW_BANK_WO_ID || isHollowBankOrder({ work_order_id: reworkTargetWoId }))
+      ) {
+        toast.error('Diverting rework directly to Hollow Bank is not permitted via this form.');
         return;
       }
     }

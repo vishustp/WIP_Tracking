@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { mtFromMtr } from '@/lib/productionUtils';
+import { mtFromMtr, isHollowBankOrder, HOLLOW_BANK_WO_ID } from '@/lib/productionUtils';
 import { requireAuth } from '@/lib/supabase/authGuard';
 
 export async function POST(req: NextRequest) {
@@ -53,6 +53,13 @@ export async function POST(req: NextRequest) {
       if (target_work_order_id === work_order_id) {
         return NextResponse.json({ error: 'Target Work Order must be different from Source Work Order.' }, { status: 400 });
       }
+      if (target_work_order_id === HOLLOW_BANK_WO_ID) {
+        return NextResponse.json({ error: 'Target Work Order cannot be Hollow Bank buffer inventory.' }, { status: 400 });
+      }
+    }
+
+    if (work_order_id === HOLLOW_BANK_WO_ID) {
+      return NextResponse.json({ error: 'Rework processing is not permitted for Hollow Bank buffer inventory.' }, { status: 400 });
     }
 
     const processDate = rework_date || new Date().toISOString().slice(0, 10);
@@ -66,6 +73,10 @@ export async function POST(req: NextRequest) {
 
     if (woErr || !wo) {
       return NextResponse.json({ error: 'Work Order not found.' }, { status: 404 });
+    }
+
+    if (isHollowBankOrder(wo)) {
+      return NextResponse.json({ error: 'Rework processing is not permitted for Hollow Bank buffer inventory.' }, { status: 400 });
     }
 
     const { data: sourcePlan } = await admin
@@ -125,6 +136,9 @@ export async function POST(req: NextRequest) {
 
       if (targetErr || !targetWo) {
         return NextResponse.json({ error: 'Target Work Order not found.' }, { status: 404 });
+      }
+      if (isHollowBankOrder(targetWo)) {
+        return NextResponse.json({ error: 'Target Work Order cannot be Hollow Bank buffer inventory.' }, { status: 400 });
       }
       targetWoNo = targetWo.work_order_no;
       if (!targetRoute) {

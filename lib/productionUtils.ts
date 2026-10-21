@@ -28,7 +28,20 @@ export const fmtPcs = (v: unknown, suffix = " PCS") => {
   return `${Math.round(x).toLocaleString()}${suffix}`;
 };
 
+export const HOLLOW_BANK_WO_ID = '00000000-0000-0000-0000-00000000000b';
 
+export function isHollowBankOrder(
+  w: { id?: string; work_order_id?: string; work_order_no?: string | null; customer_name?: string | null } | null | undefined
+): boolean {
+  if (!w) return false;
+  const woId = (w as any).id || w.work_order_id;
+  if (woId === HOLLOW_BANK_WO_ID) return true;
+  const woNo = String(w.work_order_no || '').trim().toUpperCase();
+  if (woNo === 'HB-BUFFER' || woNo === 'HOLLOW BANK' || woNo === 'HB BUFFER') return true;
+  const cust = String(w.customer_name || '').trim().toUpperCase();
+  if (cust.includes('HOLLOW BANK') || cust.includes('HB-BUFFER') || cust.includes('HB BUFFER')) return true;
+  return false;
+}
 
 export const pcsFromMtr = (mtr: number, avg: number) =>
   avg > 0 ? Math.round(mtr / avg) : 0;

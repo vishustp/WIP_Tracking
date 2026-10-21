@@ -1,6 +1,5 @@
-// lib/productionValidation.ts
 import { Row, StageCode } from "@/types";
-import { n, calc, fmt } from "./productionUtils";
+import { n, calc, fmt, isHollowBankOrder } from "./productionUtils";
 
 export type ValidationError = { workOrder: string; message: string };
 
@@ -8,6 +7,13 @@ export function validateProductionEntry(
   row: Row,
   stage?: StageCode
 ): ValidationError[] {
+  if (isHollowBankOrder(row)) {
+    return [{
+      workOrder: row.work_order_no || "Hollow Bank",
+      message: "Hollow Bank is dedicated yard buffer inventory and not available for production entry.",
+    }];
+  }
+
   const currentStage = stage || row.stage_code || "ROLLING";
   const errors: ValidationError[] = [];
   const d = calc({ ...row, stage_code: currentStage });

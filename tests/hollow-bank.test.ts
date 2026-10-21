@@ -142,7 +142,8 @@ describe('Hollow Bank Inventory & Allocation Unit Tests', () => {
   });
 
   describe('Production Entry Exclusion & Identification', () => {
-    it('accurately identifies Hollow bank orders by virtual ID, name, or customer', () => {
+    it('accurately identifies Hollow bank orders by virtual ID (id or work_order_id), name, or customer', () => {
+      expect(isHollowBankOrder({ id: '00000000-0000-0000-0000-00000000000b' })).toBe(true);
       expect(isHollowBankOrder({ work_order_id: '00000000-0000-0000-0000-00000000000b' })).toBe(true);
       expect(isHollowBankOrder({ work_order_no: 'Hollow bank' })).toBe(true);
       expect(isHollowBankOrder({ work_order_no: 'HB-BUFFER' })).toBe(true);
@@ -150,6 +151,7 @@ describe('Hollow Bank Inventory & Allocation Unit Tests', () => {
       expect(isHollowBankOrder({ customer_name: 'HOLLOW BANK BUFFER YARD' })).toBe(true);
 
       // Normal orders are not identified as Hollow bank
+      expect(isHollowBankOrder({ id: '11111111-1111-1111-1111-111111111111', work_order_no: '1446', customer_name: 'JSW Steel' })).toBe(false);
       expect(isHollowBankOrder({ work_order_id: '11111111-1111-1111-1111-111111111111', work_order_no: '1446', customer_name: 'JSW Steel' })).toBe(false);
       expect(isHollowBankOrder(null)).toBe(false);
       expect(isHollowBankOrder(undefined)).toBe(false);
@@ -165,6 +167,41 @@ describe('Hollow Bank Inventory & Allocation Unit Tests', () => {
       const filtered = queueRows.filter((r) => !isHollowBankOrder(r));
       expect(filtered).toHaveLength(2);
       expect(filtered.map((r) => r.work_order_no)).toEqual(['1446', '1447']);
+    });
+
+    it('filters out Hollow bank from VDI inspection work order datasets', () => {
+      const vdiWorkOrders = [
+        { id: 'wo-1', work_order_no: '1446', customer_name: 'Customer A' },
+        { id: '00000000-0000-0000-0000-00000000000b', work_order_no: 'Hollow bank', customer_name: 'Hollow bank' },
+        { id: 'wo-2', work_order_no: '1451', customer_name: 'Customer B' },
+      ];
+
+      const activeVdiOrders = vdiWorkOrders.filter((w) => !isHollowBankOrder(w));
+      expect(activeVdiOrders).toHaveLength(2);
+      expect(activeVdiOrders.find((w) => w.id === '00000000-0000-0000-0000-00000000000b')).toBeUndefined();
+    });
+
+    it('blocks production entry validation for Hollow bank orders', async () => {
+      const { validateProductionEntry } = await import('@/lib/productionValidation');
+      const hollowBankRow: any = {
+        work_order_id: '00000000-0000-0000-0000-00000000000b',
+        work_order_no: 'Hollow bank',
+        customer_name: 'Hollow bank',
+        stage_code: 'VDI',
+        avg_length: 6,
+        pcs: '10',
+        mtr: '60',
+        rejection_pcs: '0',
+        rejection_mtr: '0',
+        htc_ok_pcs: '10',
+        htc_ok_mtr: '60',
+        od: 60,
+        wl: 4,
+      };
+
+      const errors = validateProductionEntry(hollowBankRow, 'VDI');
+      expect(errors).toHaveLength(1);
+      expect(errors[0].message).toContain('Hollow Bank is dedicated yard buffer inventory');
     });
   });
 });

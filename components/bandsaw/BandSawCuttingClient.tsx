@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, normalizeGrade } from '@/lib/productionUtils';
+import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, normalizeGrade, isHollowBankOrder } from '@/lib/productionUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
 import type { AppUserProfile } from '@/lib/users/types';
 import type { Row, ProductionEntry } from '@/types';
@@ -110,9 +110,10 @@ export default function BandSawCuttingClient() {
 
   // Filtered Queue Rows
   const filteredQueue = useMemo(() => {
-    if (!searchTerm.trim()) return queueRows;
+    const nonHollowQueue = queueRows.filter((r) => !isHollowBankOrder(r));
+    if (!searchTerm.trim()) return nonHollowQueue;
     const term = searchTerm.toLowerCase();
-    return queueRows.filter(
+    return nonHollowQueue.filter(
       (r) =>
         r.work_order_no.toLowerCase().includes(term) ||
         (r.customer_name || '').toLowerCase().includes(term) ||

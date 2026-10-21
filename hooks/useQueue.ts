@@ -1,21 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { StageCode, Row, emptyRow } from "@/types";
-import { extractPcsFromRemarks, mtFromMtr } from "@/lib/productionUtils";
+import { extractPcsFromRemarks, mtFromMtr, HOLLOW_BANK_WO_ID, isHollowBankOrder } from "@/lib/productionUtils";
 
-const clientQueueCache = new Map<string, { timestamp: number; rows: Row[] }>();
-const inflightPromises = new Map<string, Promise<any>>();
-const CLIENT_CACHE_TTL_MS = 2000;
-
-export function isHollowBankOrder(w: { work_order_id?: string; work_order_no?: string | null; customer_name?: string | null } | null | undefined): boolean {
-  if (!w) return false;
-  if (w.work_order_id === '00000000-0000-0000-0000-00000000000b') return true;
-  const woNo = String(w.work_order_no || '').trim().toUpperCase();
-  if (woNo === 'HB-BUFFER' || woNo === 'HOLLOW BANK' || woNo === 'HB BUFFER') return true;
-  const cust = String(w.customer_name || '').trim().toUpperCase();
-  if (cust.includes('HOLLOW BANK') || cust.includes('HB-BUFFER') || cust.includes('HB BUFFER')) return true;
-  return false;
-}
+export { HOLLOW_BANK_WO_ID, isHollowBankOrder };
 
 export function useQueue(stage: StageCode) {
   const [rows, setRows] = useState<Row[]>(() => {

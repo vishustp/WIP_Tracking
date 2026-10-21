@@ -13,6 +13,7 @@ import {
   attachBandSawCutsToRemarks,
   extractBandSawCutsFromRemarks,
   classifyPipeCutLength,
+  isHollowBankOrder,
 } from '@/lib/productionUtils';
 import {
   Scissors,
@@ -571,6 +572,10 @@ export function BandSawCuttingModal({
   // Submit Cutting Log
   const handleSubmit = async () => {
     setError(null);
+    if (isHollowBankOrder(row)) {
+      setError('Hollow Bank is dedicated yard buffer inventory and not available for production entry.');
+      return;
+    }
     if (motherPcsNum <= 0) {
       setError('Please enter valid Mother Pipes Processed (≥ 1).');
       return;

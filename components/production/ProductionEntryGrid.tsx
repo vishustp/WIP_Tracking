@@ -19,6 +19,7 @@ import {
   extractCustomLengthFromRemarks,
   attachBundleTypeToRemarks,
   extractBundleTypeFromRemarks,
+  isHollowBankOrder,
 } from '@/lib/productionUtils';
 import { StageCode, STAGES, PRODUCTION_ENTRY_STAGES, Row, ProductionEntry } from '@/types';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
@@ -251,7 +252,8 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
   // Filter queue rows by Work Order No, Customer, Grade, Master Plan No, or Child Work Orders
   const filteredRows = useMemo(() => {
-    if (!woFilter.trim()) return rows;
+    const nonHollowRows = rows.filter((r) => !isHollowBankOrder(r));
+    if (!woFilter.trim()) return nonHollowRows;
     const q = woFilter.toLowerCase().trim();
     const cleanQ = q.replace(/[^a-z0-9]/g, '');
 
@@ -263,16 +265,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       return false;
     };
 
-    return rows.filter((r) => {
-      // Hollow bank is dedicated yard buffer inventory (accessible via /hollow-bank) and must not be available for production entry
-      if (
-        r.work_order_id === '00000000-0000-0000-0000-00000000000b' ||
-        String(r.work_order_no || '').trim().toUpperCase() === 'HB-BUFFER' ||
-        String(r.work_order_no || '').trim().toUpperCase() === 'HOLLOW BANK' ||
-        String(r.customer_name || '').trim().toUpperCase().includes('HOLLOW BANK')
-      ) {
-        return false;
-      }
+    return nonHollowRows.filter((r) => {
 
       // 1. Check direct row fields
       if (
