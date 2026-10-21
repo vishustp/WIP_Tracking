@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/client";
 import { StageCode, Row, emptyRow } from "@/types";
 import { extractPcsFromRemarks, mtFromMtr, HOLLOW_BANK_WO_ID, isHollowBankOrder } from "@/lib/productionUtils";
 
+const clientQueueCache = new Map<string, { timestamp: number; rows: Row[] }>();
+const inflightPromises = new Map<string, Promise<any>>();
+const CLIENT_CACHE_TTL_MS = 2000;
+
 export { HOLLOW_BANK_WO_ID, isHollowBankOrder };
 
 export function useQueue(stage: StageCode) {

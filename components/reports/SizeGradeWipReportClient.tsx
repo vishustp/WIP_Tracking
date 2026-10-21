@@ -28,6 +28,7 @@ import {
   Scissors,
   RotateCcw,
   Presentation,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { mtFromMtr, extractPcsFromRemarks, normalizeGrade, isHollowBankOrder, HOLLOW_BANK_WO_ID } from '@/lib/productionUtils';
 import { reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
