@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { RefreshCw, FileSpreadsheet, AlertTriangle, CalendarDays } from 'lucide-react';
+import { RefreshCw, FileSpreadsheet, AlertTriangle, CalendarDays, Factory } from 'lucide-react';
 import { StageCode, PRODUCTION_ENTRY_STAGES } from '@/types';
 import { Button } from '@/components/ui/button';
 
@@ -76,6 +76,15 @@ export function ProductionToolbar({
             >
               <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               <span>Daily Plan Report</span>
+            </Link>
+
+            <Link
+              href="/reports/production"
+              className="inline-flex items-center gap-1.5 h-9 rounded-lg border border-purple-300 dark:border-purple-800 bg-purple-50/80 dark:bg-purple-950/40 px-3 text-xs font-semibold text-purple-800 dark:text-purple-200 shadow-2xs hover:bg-purple-100 dark:hover:bg-purple-900/40 transition active:scale-[0.97]"
+              title="Work Center Shift Production Report"
+            >
+              <Factory className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+              <span>Production Report</span>
             </Link>
 
             <Link
