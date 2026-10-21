@@ -391,7 +391,7 @@ export async function GET(req: NextRequest) {
       { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }
     > = {
       HOT_ROLLING: { label: "Hot Rolling Mill", stage_code: "HOT_ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      HTC: { label: "Hot Test Check (HTC)", stage_code: "HTC", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HTC: { label: "HTC", stage_code: "HTC", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       ROLLING: { label: "Rolling Mill (Legacy)", stage_code: "ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
@@ -1131,7 +1131,7 @@ export async function GET(req: NextRequest) {
         },
         {
           stage_code: "HTC",
-          stage_name: "Hot Test Check (HTC)",
+          stage_name: "HTC",
           sequence_no: 2,
           available_mtr: htcAvailMtr,
           available_pcs: htcAvailPcs,
@@ -1625,7 +1625,7 @@ export async function GET(req: NextRequest) {
                 l2: mhL2 > 0 ? mhL2 : l2,
                 avg_length: effMhAvg > 0 ? effMhAvg : avgLength,
                 stage_code: "HTC",
-                stage_name: "Hot Test Check (HTC)",
+                stage_name: "HTC",
                 balance_to_make_mtr: htcAvailMtr,
                 balance_to_make_pcs: htcAvailPcs,
                 balance_to_make_mt: htcAvailMt,

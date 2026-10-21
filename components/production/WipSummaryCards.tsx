@@ -22,7 +22,7 @@ interface WipSummaryCardsProps {
 
 const STAGE_DISPLAY_NAMES: Record<StageCode, string> = {
   HOT_ROLLING: "HOT ROLLING",
-  HTC: "HOT TEST CHECK",
+  HTC: "HTC",
   ROLLING: "ROLLING MILL",
   HOLLOW_HEAT_TREATMENT: "HOLLOW HT",
   DRAW: "DRAW BENCH",

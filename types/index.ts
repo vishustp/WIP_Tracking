@@ -224,7 +224,7 @@ export interface ProductionEntry {
 
 export const STAGES: { code: StageCode; label: string }[] = [
   { code: "HOT_ROLLING", label: "Hot Rolling Mill" },
-  { code: "HTC", label: "Hot Test Check (HTC)" },
+  { code: "HTC", label: "HTC" },
   { code: "ROLLING", label: "Rolling" },
   { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
   { code: "DRAW", label: "Draw" },
@@ -241,7 +241,7 @@ export const STAGES: { code: StageCode; label: string }[] = [
  */
 export const PRODUCTION_ENTRY_STAGES: { code: StageCode; label: string }[] = [
   { code: "HOT_ROLLING", label: "Hot Rolling Mill" },
-  { code: "HTC", label: "Hot Test Check (HTC)" },
+  { code: "HTC", label: "HTC" },
   { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
   { code: "DRAW", label: "Draw Bench" },
   { code: "PILGER", label: "Cold Pilger Mill" },

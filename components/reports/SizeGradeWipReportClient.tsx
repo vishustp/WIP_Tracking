@@ -294,7 +294,7 @@ export default function SizeGradeWipReportClient() {
                 customer_name: r.customer_name || null,
                 stage_code: stCode,
                 stage_name: isRolling ? 'Rolling Production (Display Only)' :
-                            stCode === 'HTC' ? 'Hot Test Check (HTC)' :
+                            stCode === 'HTC' ? 'HTC' :
                             stCode === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
                             stCode === 'PILGER' ? 'Cold Pilger Mill' :
                             stCode === 'DRAW' ? 'Cold Draw Bench' :

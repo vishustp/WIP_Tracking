@@ -701,7 +701,7 @@ export default function DiversionIssueReportClient() {
             >
               <option value="ALL">All Work Centers</option>
               <option value="HOT_ROLLING">Hot Rolling Mill</option>
-              <option value="HTC">Hot Test Check (HTC QC)</option>
+              <option value="HTC">HTC</option>
               <option value="ROLLING">Rolling Mill (Legacy)</option>
               <option value="HOLLOW_HEAT_TREATMENT">Hollow Heat Treatment</option>
               <option value="DRAW">Cold Draw Bench</option>

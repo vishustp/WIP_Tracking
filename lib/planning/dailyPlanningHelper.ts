@@ -10,7 +10,7 @@ import {
 
 export const STATION_LABELS: Record<DailyPlanWorkCenter, string> = {
   HOT_ROLLING: 'Hot Rolling Mill',
-  HTC: 'Hot Test Check (HTC)',
+  HTC: 'HTC',
   ROLLING: 'Hot Rolling Mill (Legacy)',
   DRAW: 'Cold Draw Bench',
   PILGER: 'Cold Pilger Mill',

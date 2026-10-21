@@ -4,7 +4,7 @@
 insert into public.process_stages (stage_code, stage_name, active)
 values 
   ('HOT_ROLLING', 'Hot Rolling Mill', true),
-  ('HTC', 'Hot Test Check', true)
+  ('HTC', 'HTC', true)
 on conflict (stage_code) do update set
   stage_name = excluded.stage_name,
   active = true;

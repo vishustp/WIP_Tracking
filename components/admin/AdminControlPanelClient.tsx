@@ -46,7 +46,7 @@ const GROUP_OPTIONS: { value: UserGroup; label: string; description: string; bad
 const WORK_CENTER_OPTIONS: { value: WorkCenterCode; label: string; stages: string[] }[] = [
   { value: 'ALL', label: 'All Work Centers (Global Access)', stages: ['HOT_ROLLING', 'HTC', 'ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'PILGER', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'] },
   { value: 'HOT_ROLLING', label: 'Hot Rolling & Piercing Mill', stages: ['HOT_ROLLING'] },
-  { value: 'HTC', label: 'Hot Test Check (HTC QC)', stages: ['HTC', 'VDI'] },
+  { value: 'HTC', label: 'HTC', stages: ['HTC', 'VDI'] },
   { value: 'ROLLING', label: 'Rolling Mill (Legacy)', stages: ['HOT_ROLLING', 'ROLLING'] },
   { value: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment (Furnace)', stages: ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT'] },
   { value: 'DRAW', label: 'Cold Draw Bench', stages: ['DRAW'] },
@@ -63,7 +63,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color:
   { value: 'admin', label: 'PPC Administrator', department: 'Production Planning & Control (PPC)', color: 'bg-blue-600 text-white', defaultGroup: 'admin', defaultWorkCenter: 'ALL' },
   { value: 'manager', label: 'Plant Operations Head', department: 'Plant Operations & Engineering', color: 'bg-purple-600 text-white', defaultGroup: 'super_user', defaultWorkCenter: 'ALL' },
   { value: 'hot_rolling_operator', label: 'Hot Mill Rolling Operator', department: 'Hot Rolling & Piercing Mill', color: 'bg-orange-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'HOT_ROLLING' },
-  { value: 'htc_inspector', label: 'Hot Test Check (HTC) Inspector', department: 'Quality Assurance & Metallurgical Lab', color: 'bg-emerald-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'HTC' },
+  { value: 'htc_inspector', label: 'HTC Inspector', department: 'Quality Assurance & Metallurgical Lab', color: 'bg-emerald-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'HTC' },
   { value: 'rolling_incharge', label: 'Rolling Mill In-charge', department: 'Hot Rolling & Piercing Mill', color: 'bg-amber-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'ROLLING' },
   { value: 'draw_operator', label: 'Cold Draw Operator', department: 'Cold Draw Bench', color: 'bg-indigo-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'DRAW' },
   { value: 'pilger_operator', label: 'Cold Pilger Operator', department: 'Cold Pilger Mill', color: 'bg-cyan-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'PILGER' },
@@ -75,7 +75,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color:
 
 const DEFAULT_STAGE_OPTIONS: { value: string; label: string }[] = [
   { value: 'HOT_ROLLING', label: 'Hot Rolling Mill' },
-  { value: 'HTC', label: 'Hot Test Check (HTC QC)' },
+  { value: 'HTC', label: 'HTC' },
   { value: 'ROLLING', label: 'Rolling Mill (Legacy)' },
   { value: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment (Furnace)' },
   { value: 'DRAW', label: 'Cold Draw Bench' },

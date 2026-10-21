@@ -28,7 +28,7 @@ export const MODULE_DEFINITIONS: {
 }[] = [
   // Production Entry Stations
   { key: 'production_hot_rolling', label: 'Hot Rolling Mill', category: 'production', description: 'Mother hollow piercing, rolling, and initial hot sizing' },
-  { key: 'production_htc', label: 'Hot Test Check (HTC)', category: 'production', description: 'Hot test dimensional check and surface QC inspection' },
+  { key: 'production_htc', label: 'HTC', category: 'production', description: 'Hot test dimensional check and surface QC inspection' },
   { key: 'production_rolling', label: 'Rolling Mill (Legacy)', category: 'production', description: 'Legacy rolling entry station' },
   { key: 'production_hollow_ht', label: 'Hollow Heat Treatment', category: 'production', description: 'Mother hollow annealing and stress relief prior to draw' },
   { key: 'production_draw', label: 'Cold Draw Bench & Pilger', category: 'production', description: 'Cold drawing and dimensional reduction' },
@@ -186,7 +186,7 @@ export const GROUP_CONFIGS: Record<UserGroup, GroupConfig> = {
 export const WORK_CENTER_LABELS: Record<string, string> = {
   ALL: 'All Work Centers (Global)',
   HOT_ROLLING: 'Hot Rolling & Piercing Mill',
-  HTC: 'Hot Test Check (HTC QC)',
+  HTC: 'HTC',
   ROLLING: 'Hot Rolling & Piercing Mill (Legacy)',
   HOLLOW_HEAT_TREATMENT: 'Hollow Heat Treatment & Annealing',
   DRAW: 'Cold Draw Bench & Pilgering',

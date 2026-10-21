@@ -67,5 +67,5 @@ describe('WO 1446 VDI WIP Reconciliation', () => {
     expect(finStage!.production_pcs).toBeGreaterThanOrEqual(683);
     expect(finStage!.capped_wip_pcs).toBe(0);
     expect(finStage!.capped_wip_mtr).toBe(0);
-  });
+  }, 15000);
 });

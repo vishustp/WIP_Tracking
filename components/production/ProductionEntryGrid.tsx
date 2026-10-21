@@ -488,7 +488,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }
     > = {
       HOT_ROLLING: { label: 'Hot Rolling Mill', stage_code: 'HOT_ROLLING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
-      HTC: { label: 'Hot Test Check (HTC)', stage_code: 'HTC', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      HTC: { label: 'HTC', stage_code: 'HTC', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       ROLLING: { label: 'Rolling Mill', stage_code: 'ROLLING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HOLLOW_HEAT_TREATMENT: {
         label: 'Hollow Heat Treatment',
