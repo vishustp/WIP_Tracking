@@ -8,6 +8,11 @@ export async function getXlsx() {
   return await import('xlsx');
 }
 
+export async function getExcelJS() {
+  const mod = await import('exceljs');
+  return (mod as any).default || mod;
+}
+
 /**
  * Safely parses any Excel date representation (serial number, Date object, or text)
  * into a standard 'YYYY-MM-DD' ISO date string.
@@ -59,7 +64,145 @@ export function parseExcelDate(val: unknown): string {
 }
 
 /**
- * Exports an array of JSON objects to an Excel (.xlsx) workbook and triggers browser download.
+ * Helper to trigger browser file download from an ExcelJS workbook.
+ */
+async function triggerWorkbookDownload(wb: any, fileName: string): Promise<void> {
+  const buffer = await wb.xlsx.writeBuffer();
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * Applies full styling (borders, headers, zebra backgrounds, alignment) to a worksheet table.
+ */
+function formatWorksheetTable(
+  ws: any,
+  data: Record<string, any>[],
+  colWidths?: { wch: number }[]
+) {
+  ws.views = [{ showGridLines: true }];
+  if (!data || data.length === 0) return;
+
+  const headers = Object.keys(data[0]);
+
+  // Set columns & widths
+  ws.columns = headers.map((header, idx) => {
+    let width = 14;
+    if (colWidths && colWidths[idx]?.wch) {
+      width = Math.max(colWidths[idx].wch, 12);
+    } else {
+      let maxLen = header.length;
+      for (const row of data) {
+        const val = row[header];
+        if (val !== null && val !== undefined) {
+          const s = String(val);
+          if (s.length > maxLen) maxLen = Math.min(s.length, 45);
+        }
+      }
+      width = Math.max(maxLen + 4, 12);
+    }
+    return {
+      header,
+      key: header,
+      width,
+    };
+  });
+
+  // Style Header Row (Row 1)
+  const headerRow = ws.getRow(1);
+  headerRow.height = 26;
+  headerRow.eachCell({ includeEmpty: true }, (cell: any) => {
+    cell.font = {
+      name: 'Segoe UI',
+      size: 10,
+      bold: true,
+      color: { argb: 'FFFFFFFF' },
+    };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1E293B' }, // Dark Steel Navy (#1E293B)
+    };
+    cell.alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+      wrapText: true,
+    };
+    cell.border = {
+      top: { style: 'medium', color: { argb: 'FF0F172A' } },
+      bottom: { style: 'medium', color: { argb: 'FF0F172A' } },
+      left: { style: 'thin', color: { argb: 'FF475569' } },
+      right: { style: 'thin', color: { argb: 'FF475569' } },
+    };
+  });
+
+  // Enable Excel AutoFilter across headers
+  if (headers.length > 0) {
+    ws.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: headers.length },
+    };
+  }
+
+  // Style Data Rows
+  const thinBorder = {
+    top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+  };
+
+  data.forEach((rowObj, rIdx) => {
+    const row = ws.addRow(rowObj);
+    row.height = 20;
+    const isOdd = rIdx % 2 === 1;
+
+    row.eachCell({ includeEmpty: true }, (cell: any, colNumber: number) => {
+      const headerKey = headers[colNumber - 1] || '';
+      const isCodeOrDate =
+        /^(#|sr|wo|date|route|status|stage|id|w\.no)/i.test(headerKey);
+      const isNumeric = typeof cell.value === 'number';
+
+      cell.font = {
+        name: 'Segoe UI',
+        size: 9.5,
+        color: { argb: 'FF0F172A' },
+      };
+      cell.border = thinBorder;
+
+      if (isOdd) {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF8FAFC' },
+        };
+      }
+
+      if (isNumeric) {
+        cell.alignment = { vertical: 'middle', horizontal: 'right' };
+      } else if (isCodeOrDate) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      } else {
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      }
+    });
+  });
+}
+
+/**
+ * Exports an array of JSON objects to an Excel (.xlsx) workbook with full borders,
+ * styled headers, and auto-filters, then triggers browser download.
  */
 export async function exportJsonToExcel(
   data: Record<string, any>[],
@@ -67,43 +210,37 @@ export async function exportJsonToExcel(
   fileName: string,
   colWidths?: { wch: number }[]
 ): Promise<void> {
-  const XLSX = await getXlsx();
-  const ws = XLSX.utils.json_to_sheet(data);
-  if (colWidths) {
-    ws['!cols'] = colWidths;
-  } else if (data.length > 0) {
-    const keys = Object.keys(data[0]);
-    ws['!cols'] = keys.map((key) => {
-      let maxLen = key.length;
-      for (const row of data) {
-        const val = row[key];
-        if (val !== null && val !== undefined) {
-          const str = String(val);
-          if (str.length > maxLen) maxLen = Math.min(str.length, 50);
-        }
-      }
-      return { wch: Math.max(maxLen + 3, 10) };
-    });
-  }
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  XLSX.writeFile(wb, fileName);
+  const ExcelJS = await getExcelJS();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Rashmi Green Hydrogen Steel Pvt. Ltd.';
+  wb.created = new Date();
+
+  const safeSheetName = (sheetName || 'Sheet1').replace(/[*?:/\\\[\]]/g, '_').slice(0, 31);
+  const ws = wb.addWorksheet(safeSheetName, { views: [{ showGridLines: true }] });
+
+  formatWorksheetTable(ws, data, colWidths);
+  await triggerWorkbookDownload(wb, fileName);
 }
 
 /**
- * Exports multiple named sheets to a single Excel workbook.
+ * Exports multiple named sheets to a single Excel workbook with borders and header styles.
  */
 export async function exportSheetsToExcel(
   sheets: { name: string; data: Record<string, any>[] }[],
   fileName: string
 ): Promise<void> {
-  const XLSX = await getXlsx();
-  const wb = XLSX.utils.book_new();
+  const ExcelJS = await getExcelJS();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Rashmi Green Hydrogen Steel Pvt. Ltd.';
+  wb.created = new Date();
+
   for (const s of sheets) {
-    const ws = XLSX.utils.json_to_sheet(s.data);
-    XLSX.utils.book_append_sheet(wb, ws, s.name);
+    const safeSheetName = (s.name || 'Sheet').replace(/[*?:/\\\[\]]/g, '_').slice(0, 31);
+    const ws = wb.addWorksheet(safeSheetName, { views: [{ showGridLines: true }] });
+    formatWorksheetTable(ws, s.data);
   }
-  XLSX.writeFile(wb, fileName);
+
+  await triggerWorkbookDownload(wb, fileName);
 }
 
 /**

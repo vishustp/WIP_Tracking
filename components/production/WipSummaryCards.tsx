@@ -38,7 +38,7 @@ export function WipSummaryCards({
   stage,
   setStage,
 }: WipSummaryCardsProps) {
-  // Production Entry stages in sequential order
+  // Production Entry stages in sequential order (Band Saw and VDI have dedicated forms)
   const orderedStages: StageCode[] = [
     "HOT_ROLLING",
     "HTC",
@@ -46,8 +46,6 @@ export function WipSummaryCards({
     "DRAW",
     "PILGER",
     "HEAT_TREATMENT",
-    "BAND_SAW",
-    "VDI",
     "FINISHING",
   ];
 

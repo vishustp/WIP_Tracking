@@ -359,9 +359,12 @@ export default function HollowBankConsole() {
               className="h-9 px-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 cursor-pointer"
             >
               <option value="ALL">All Origin Stages</option>
-              <option value="ROLLING">Rolling Mill (HTC OK)</option>
+              <option value="HOT_ROLLING">Hot Rolling Mill</option>
+              <option value="HTC">Hot Test Check (HTC QC)</option>
+              <option value="ROLLING">Rolling Mill (Legacy)</option>
               <option value="HOLLOW_HEAT_TREATMENT">Hollow Heat Treatment</option>
               <option value="DRAW">Cold Draw Bench</option>
+              <option value="PILGER">Cold Pilger Mill</option>
               <option value="HEAT_TREATMENT">Final Heat Treatment</option>
               <option value="BAND_SAW">Band Saw</option>
             </select>

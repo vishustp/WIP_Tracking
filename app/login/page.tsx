@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { mapAppUser } from '@/lib/users/client';
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import {
-  Factory, User, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, AlertCircle,
+  Factory, User, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, AlertCircle, RefreshCw,
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -19,8 +19,33 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const [loadingText, setLoadingText] = useState('Signing in...');
+
+  // 1. If user already has an active session, automatically transition to dashboard
+  useEffect(() => {
+    let isMounted = true;
+    async function checkExistingSession() {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.user && isMounted) {
+          setLoading(true);
+          setLoadingText('Loading Dashboard...');
+          window.location.assign('/dashboard');
+        }
+      } catch {
+        // Stay on login page
+      }
+    }
+    void checkExistingSession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return; // Prevent double submission
     setErrorMessage(null);
 
     const inputEmail = email.trim().toLowerCase();
@@ -34,6 +59,7 @@ export default function LoginPage() {
     }
 
     setLoading(true);
+    setLoadingText('Authenticating credentials...');
     try {
       const supabase = createClient();
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -45,6 +71,7 @@ export default function LoginPage() {
         throw new Error(authError?.message || 'Invalid email or password.');
       }
 
+      setLoadingText('Loading user profile...');
       let { data: appUser, error: profileError } = await supabase
         .from('app_users')
         .select('*')
@@ -76,26 +103,33 @@ export default function LoginPage() {
 
       const profile = mapAppUser(appUser);
 
-      await supabase.from('audit_log').insert({
-        user_id: authData.user.id,
-        action: 'AUTH_LOGIN',
-        entity: 'User Session',
-        record_id: authData.user.id,
-        new_value: {
-          email: profile.email,
-          name: profile.name,
-          role: profile.role,
-          group: profile.group,
-        },
-      });
+      // Best effort audit logging (non-blocking)
+      try {
+        void supabase.from('audit_log').insert({
+          user_id: authData.user.id,
+          action: 'AUTH_LOGIN',
+          entity: 'User Session',
+          record_id: authData.user.id,
+          new_value: {
+            email: profile.email,
+            name: profile.name,
+            role: profile.role,
+            group: profile.group,
+          },
+        });
+      } catch {
+        // Ignore audit log error
+      }
 
       toast.success(`Welcome back, ${profile.name}!`);
-      router.replace('/dashboard');
-      router.refresh();
+      setLoadingText('Opening Dashboard...');
+
+      // Keep loading = true to prevent repeated clicks while the dashboard server component renders.
+      // Use window.location.assign('/dashboard') to guarantee complete cookie serialization to Next.js middleware.
+      window.location.assign('/dashboard');
     } catch (err: any) {
       setErrorMessage(err?.message || 'Login failed. Please check your credentials.');
       toast.error(err?.message || 'Authentication error');
-    } finally {
       setLoading(false);
     }
   };
@@ -138,12 +172,13 @@ export default function LoginPage() {
                   type="email"
                   placeholder="name@company.com"
                   value={email}
+                  disabled={loading}
                   onChange={(e) => { setEmail(e.target.value); if (errorMessage) setErrorMessage(null); }}
                   autoCapitalize="none"
                   autoCorrect="off"
                   autoComplete="username"
                   required
-                  className="w-full pl-10 pr-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium placeholder:text-slate-500 text-sm h-11 focus:border-blue-500 focus:bg-slate-900 focus:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors"
+                  className="w-full pl-10 pr-3 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium placeholder:text-slate-500 text-sm h-11 focus:border-blue-500 focus:bg-slate-900 focus:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -157,15 +192,17 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Enter your password"
                   value={password}
+                  disabled={loading}
                   onChange={(e) => { setPassword(e.target.value); if (errorMessage) setErrorMessage(null); }}
                   autoComplete="current-password"
                   required
-                  className="w-full pl-10 pr-10 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium placeholder:text-slate-500 text-sm h-11 focus:border-blue-500 focus:bg-slate-900 focus:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors"
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium placeholder:text-slate-500 text-sm h-11 focus:border-blue-500 focus:bg-slate-900 focus:text-white focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 />
                 <button
                   type="button"
+                  disabled={loading}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1 transition-colors z-10"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1 transition-colors z-10 disabled:opacity-50"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -176,9 +213,19 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold h-11 rounded-lg transition-all shadow-md mt-2 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-75 disabled:cursor-not-allowed text-white text-sm font-semibold h-11 rounded-lg transition-all shadow-md mt-2 flex items-center justify-center gap-2 cursor-pointer"
             >
-              {loading ? <span>Signing in...</span> : <><span>Sign In</span><ArrowRight className="w-4 h-4" /></>}
+              {loading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  <span>{loadingText}</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </Button>
           </form>
         </div>

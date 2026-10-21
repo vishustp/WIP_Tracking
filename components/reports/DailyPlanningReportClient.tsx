@@ -13,7 +13,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { DailyPlanItemWithWorkOrder, DailyPlanShift } from '@/types/dailyPlanning';
-import * as XLSX from 'xlsx';
+import { getExcelJS } from '@/lib/excelUtils';
 
 type ReportFormat = 'F_PROD_003' | 'F_PROD_005';
 
@@ -145,94 +145,103 @@ export default function DailyPlanningReportClient() {
   const minRows = activeFormat === 'F_PROD_003' ? 20 : 24;
   const emptyRowsNeeded = Math.max(0, minRows - filteredPlans.length);
 
-  // Export to Excel adhering strictly to factory format layout
-  const handleExportExcel = () => {
+  // Export to Excel adhering strictly to factory format layout with full borders
+  const handleExportExcel = async () => {
+    const ExcelJS = await getExcelJS();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Rashmi Green Hydrogen Steel Pvt. Ltd.';
+    wb.created = new Date();
+
     const isF003 = activeFormat === 'F_PROD_003';
     const reportTitle = isF003
       ? 'DAILY , DRAW BENCH PLAN'
       : 'DAILY ,HT, STR , CUTTING , VDI & FINISHING PLAN';
     const formatNo = isF003 ? 'Format No. F PROD - 003' : 'Format No. F PROD - 005';
+    const sheetName = isF003 ? 'Draw_Bench_Plan' : 'Finishing_Plan';
 
-    const aoa: any[][] = [];
+    const ws = wb.addWorksheet(sheetName, {
+      views: [{ showGridLines: true }],
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+    });
+
+    ws.columns = [
+      { width: 7 },  // 1: Sr. No
+      { width: 14 }, // 2: WO NO
+      { width: 24 }, // 3: Customer
+      { width: 20 }, // 4: Grade/SPEC
+      { width: 10 }, // 5: OD
+      { width: 10 }, // 6: WT
+      { width: 12 }, // 7: FACTOR
+      { width: 11 }, // 8: Proc. Wall
+      { width: 11 }, // 9: Kg/Mtr.
+      { width: 14 }, // 10: Final Lgth Min.
+      { width: 14 }, // 11: Final Lgth Max.
+      { width: 12 }, // 12: Avg. Lgth
+      { width: 12 }, // 13: Stage
+      { width: 10 }, // 14: Nos
+      { width: 12 }, // 15: MT.
+    ];
+
+    const thinBorder = {
+      top: { style: 'thin' as const, color: { argb: 'FFCBD5E1' } },
+      bottom: { style: 'thin' as const, color: { argb: 'FFCBD5E1' } },
+      left: { style: 'thin' as const, color: { argb: 'FFCBD5E1' } },
+      right: { style: 'thin' as const, color: { argb: 'FFCBD5E1' } },
+    };
 
     // Row 1: Company header & Date
-    aoa.push([
-      'RASHMI SEAMLESS',
-      '',
-      '',
-      'RASHMI GREEN HYDROGEN STEEL PVT. LTD.',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      formattedHeaderDate,
-      '',
-    ]);
+    ws.mergeCells('A1:C1');
+    const a1 = ws.getCell('A1');
+    a1.value = 'RASHMI SEAMLESS';
+    a1.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+    a1.alignment = { vertical: 'middle', horizontal: 'left' };
 
-    // Row 2: Subheader & Title
-    aoa.push([
-      '',
-      '',
-      '',
-      '(SEAMLESS DIVISION)',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ]);
+    ws.mergeCells('D1:M1');
+    const d1 = ws.getCell('D1');
+    d1.value = 'RASHMI GREEN HYDROGEN STEEL PVT. LTD.';
+    d1.font = { name: 'Segoe UI', size: 13, bold: true, color: { argb: 'FF0F172A' } };
+    d1.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    ws.mergeCells('N1:O1');
+    const n1 = ws.getCell('N1');
+    n1.value = formattedHeaderDate;
+    n1.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: 'FF334155' } };
+    n1.alignment = { vertical: 'middle', horizontal: 'right' };
+    ws.getRow(1).height = 22;
+
+    // Row 2: Subheader
+    ws.mergeCells('D2:M2');
+    const d2 = ws.getCell('D2');
+    d2.value = '(SEAMLESS DIVISION)';
+    d2.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: 'FF475569' } };
+    d2.alignment = { vertical: 'middle', horizontal: 'center' };
+    ws.getRow(2).height = 18;
 
     // Row 3: Plan Title
-    aoa.push([
-      '',
-      '',
-      '',
-      reportTitle,
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ]);
+    ws.mergeCells('D3:M3');
+    const d3 = ws.getCell('D3');
+    d3.value = reportTitle;
+    d3.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FF0F172A' } };
+    d3.alignment = { vertical: 'middle', horizontal: 'center' };
+    ws.getRow(3).height = 20;
 
     // Row 4: ONLINE PLAN & REV
-    aoa.push([
-      'ONLINE PLAN',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      'REV -00',
-      formattedRevDate,
-    ]);
+    ws.mergeCells('A4:C4');
+    const a4 = ws.getCell('A4');
+    a4.value = 'ONLINE PLAN';
+    a4.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: 'FF1E293B' } };
+    a4.alignment = { vertical: 'middle', horizontal: 'left' };
+
+    ws.mergeCells('N4:O4');
+    const n4 = ws.getCell('N4');
+    n4.value = `REV -00 ${formattedRevDate}`;
+    n4.font = { name: 'Segoe UI', size: 9, color: { argb: 'FF475569' } };
+    n4.alignment = { vertical: 'middle', horizontal: 'right' };
+    ws.getRow(4).height = 18;
 
     // Row 5: Column Headers (15 Columns)
-    const headers = [
+    const headerRow = ws.getRow(5);
+    headerRow.values = [
       'Sr. No',
       'WO NO',
       'Customer',
@@ -249,13 +258,44 @@ export default function DailyPlanningReportClient() {
       'Nos',
       'MT.',
     ];
-    aoa.push(headers);
+    headerRow.height = 25;
+    headerRow.eachCell({ includeEmpty: true }, (cell: any) => {
+      cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = {
+        top: { style: 'medium' as const, color: { argb: 'FF0F172A' } },
+        bottom: { style: 'medium' as const, color: { argb: 'FF0F172A' } },
+        left: { style: 'thin' as const, color: { argb: 'FF475569' } },
+        right: { style: 'thin' as const, color: { argb: 'FF475569' } },
+      };
+    });
 
+    let currentRowIdx = 6;
     let srNo = 1;
 
+    const addDataRow = (vals: any[], isZebra = false) => {
+      const row = ws.getRow(currentRowIdx++);
+      row.values = vals;
+      row.height = 20;
+      row.eachCell({ includeEmpty: true }, (cell: any, colNumber: number) => {
+        cell.font = { name: 'Segoe UI', size: 9, color: { argb: 'FF0F172A' } };
+        cell.border = thinBorder;
+        if (isZebra) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        }
+        if (typeof cell.value === 'number') {
+          cell.alignment = { vertical: 'middle', horizontal: 'right' };
+        } else if (colNumber === 1 || colNumber === 2 || colNumber === 13) {
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        } else {
+          cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        }
+      });
+    };
+
     if (isF003) {
-      // Draw Bench Plan Rows
-      filteredPlans.forEach((p) => {
+      filteredPlans.forEach((p, idx) => {
         const od = p.size_od ?? '';
         const wt = p.size_wt ?? '';
         const factor = p.factor ?? (od && wt ? Number(((od - wt) * wt).toFixed(4)) : '');
@@ -268,7 +308,7 @@ export default function DailyPlanningReportClient() {
         const nos = p.target_pcs || 0;
         const mt = Number((p.target_mt || 0).toFixed(3));
 
-        aoa.push([
+        addDataRow([
           srNo++,
           p.work_order_no,
           p.customer_name || '—',
@@ -284,34 +324,15 @@ export default function DailyPlanningReportClient() {
           stage,
           nos,
           mt,
-        ]);
+        ], idx % 2 === 1);
       });
 
-      // Blank rows if needed to fill sheet
       for (let i = 0; i < emptyRowsNeeded; i++) {
-        aoa.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+        addDataRow(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
       }
-
-      // Grand Total Row
-      aoa.push([
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        'TOTAL',
-        grandTotalNos,
-        Number(grandTotalMt.toFixed(3)),
-      ]);
     } else {
       // F_PROD_005 Sectioned Rows
+      let totalRowCounter = 0;
       sections.forEach((sec) => {
         let secNos = 0;
         let secMt = 0;
@@ -337,7 +358,7 @@ export default function DailyPlanningReportClient() {
           secNos += nos;
           secMt += mt;
 
-          aoa.push([
+          addDataRow([
             srNo++,
             p.work_order_no,
             p.customer_name || '—',
@@ -353,105 +374,68 @@ export default function DailyPlanningReportClient() {
             stage,
             nos,
             mt,
-          ]);
+          ], totalRowCounter++ % 2 === 1);
         });
 
-        // Add 2 padding blank rows per section if fewer items
         if (sec.items.length === 0) {
-          aoa.push(['', '', '', `[ ${sec.title} - No Orders Planned ]`, '', '', '', '', '', '', '', '', '', '', '']);
+          addDataRow(['', '', '', `[ ${sec.title} - No Orders Planned ]`, '', '', '', '', '', '', '', '', '', '', '']);
         }
 
         // Section Subtotal Row
-        aoa.push([
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          'TOTAL=>',
-          secNos,
-          Number(secMt.toFixed(3)),
-        ]);
+        const subRow = ws.getRow(currentRowIdx++);
+        subRow.values = ['', '', '', '', '', '', '', '', '', '', '', '', 'TOTAL=>', secNos, Number(secMt.toFixed(3))];
+        subRow.height = 20;
+        subRow.eachCell({ includeEmpty: true }, (cell: any, colNumber: number) => {
+          cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: 'FF1E293B' } };
+          cell.border = thinBorder;
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+          if (colNumber >= 13) {
+            cell.alignment = { vertical: 'middle', horizontal: 'right' };
+          }
+        });
       });
-
-      // Blank rows if needed
-      for (let i = 0; i < Math.max(0, 4 - filteredPlans.length); i++) {
-        aoa.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
-      }
-
-      // Grand Total Row
-      aoa.push([
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        'TOTAL=>',
-        grandTotalNos,
-        Number(grandTotalMt.toFixed(3)),
-      ]);
     }
 
+    // Grand Total Row
+    const totalRow = ws.getRow(currentRowIdx++);
+    totalRow.values = ['', '', '', '', '', '', '', '', '', '', '', '', 'TOTAL=>', grandTotalNos, Number(grandTotalMt.toFixed(3))];
+    totalRow.height = 22;
+    totalRow.eachCell({ includeEmpty: true }, (cell: any, colNumber: number) => {
+      cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+      cell.border = {
+        top: { style: 'thin' as const, color: { argb: 'FF0F172A' } },
+        bottom: { style: 'double' as const, color: { argb: 'FF0F172A' } },
+        left: { style: 'thin' as const, color: { argb: 'FFCBD5E1' } },
+        right: { style: 'thin' as const, color: { argb: 'FFCBD5E1' } },
+      };
+      if (colNumber >= 13) {
+        cell.alignment = { vertical: 'middle', horizontal: 'right' };
+      }
+    });
+
     // Footer Row
-    aoa.push([
-      `${formatNo}, Eff . Date : 01.04.2023, Rev. 02. Rev. Date : 01.04.2026, / PPC`,
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ]);
+    currentRowIdx++;
+    ws.mergeCells(`A${currentRowIdx}:O${currentRowIdx}`);
+    const fCell = ws.getCell(`A${currentRowIdx}`);
+    fCell.value = `${formatNo}, Eff . Date : 01.04.2023, Rev. 02. Rev. Date : 01.04.2026, / PPC`;
+    fCell.font = { name: 'Segoe UI', size: 8, italic: true, color: { argb: 'FF64748B' } };
+    fCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    // Set column widths
-    ws['!cols'] = [
-      { wch: 7 },  // Sr. No
-      { wch: 12 }, // WO NO
-      { wch: 22 }, // Customer
-      { wch: 18 }, // Grade/SPEC
-      { wch: 10 }, // OD
-      { wch: 10 }, // WT
-      { wch: 12 }, // FACTOR
-      { wch: 11 }, // Proc. Wall
-      { wch: 11 }, // Kg/Mtr.
-      { wch: 13 }, // Final Lgth Min.
-      { wch: 13 }, // Final Lgth Max.
-      { wch: 12 }, // Avg. Lgth
-      { wch: 12 }, // Stage
-      { wch: 9 },  // Nos
-      { wch: 11 }, // MT.
-    ];
-
-    const wb = XLSX.utils.book_new();
-    const sheetName = isF003 ? 'Draw_Bench_Plan' : 'Finishing_Plan';
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-
+    // Trigger download
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
     const fileName = `${isF003 ? 'Draw_Bench_Plan_F_PROD_003' : 'Daily_Finishing_Plan_F_PROD_005'}_${selectedDate}_${selectedShift}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   };
 
   const handlePrint = () => {

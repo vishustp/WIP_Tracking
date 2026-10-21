@@ -27,13 +27,14 @@ import {
   Flame,
   Scissors,
   RotateCcw,
+  Presentation,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { mtFromMtr, extractPcsFromRemarks, normalizeGrade } from '@/lib/productionUtils';
 import { reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
 import { inferRouteFromMaterialOrSpec } from '@/lib/metallurgy/processSheetSpecHelper';
 
-export const STANDARD_ROUTES: { code: string; name: string }[] = [
+const STANDARD_ROUTES: { code: string; name: string }[] = [
   { code: 'HFS', name: 'Hot Finished Seamless' },
   { code: 'ALLOY_HFS', name: 'Alloy Hot Finished' },
   { code: 'CDS', name: 'Cold Drawn Seamless' },
@@ -115,7 +116,7 @@ type Unit = 'MTRS' | 'PCS' | 'MT';
 const fmt = (n: number | null | undefined, digits = 2) =>
   n == null || isNaN(n) ? (digits > 0 ? (0).toFixed(digits) : '0') : Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-export function getRouteBadgeClass(code?: string) {
+function getRouteBadgeClass(code?: string) {
   const c = (code || 'HFS').toUpperCase();
   if (c === 'SS_STEEL') {
     return 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800';
@@ -129,7 +130,7 @@ export function getRouteBadgeClass(code?: string) {
   return 'bg-[var(--bg-surface-subtle,#f1f5f9)] text-[var(--text-main,#334155)] border-[var(--border-subtle,#e2e8f0)]';
 }
 
-export function getOrderStatusBadge(status?: string | null, balancePcs?: number | null) {
+function getOrderStatusBadge(status?: string | null, balancePcs?: number | null) {
   const s = (status || 'Pending Plan').trim();
   const bal = balancePcs != null ? Number(balancePcs) : null;
 
@@ -175,6 +176,49 @@ export default function SizeGradeWipReportClient() {
   const [loading, setLoading] = useState<boolean>(true);
   const [unit, setUnit] = useState<Unit>('PCS');
   const [viewMode, setViewMode] = useState<'matrix' | 'ledger'>('matrix');
+  const [showKpiDetails, setShowKpiDetails] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('sg_wip_show_kpi');
+        if (stored !== null) return stored === 'true';
+        return true;
+      } catch {
+        return true;
+      }
+    }
+    return true;
+  });
+
+  const [projectorMode, setProjectorMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('sg_wip_projector_mode') === 'true';
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
+
+  const toggleProjectorMode = () => {
+    setProjectorMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('sg_wip_projector_mode', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const toggleKpiDetails = () => {
+    setShowKpiDetails((prev) => {
+      const next = !prev;
+      try {
+        sessionStorage.setItem('sg_wip_show_kpi', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Filters
   const [search, setSearch] = useState<string>('');
@@ -231,10 +275,17 @@ export default function SizeGradeWipReportClient() {
           const queueJson = await queueRes.json();
           if (queueJson?.success && Array.isArray(queueJson.data) && queueJson.data.length > 0) {
             const mapped = queueJson.data.map((r: any) => {
-              const pcs = Math.round(Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0));
-              const mtr = Number(Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0).toFixed(2));
-              const mt = Number(Number(r.ready_mt ?? r.balance_to_make_mt ?? 0).toFixed(2));
               const stCode = (r.stage_code || '').toUpperCase() as StageCode;
+              const isRolling = stCode === 'HOT_ROLLING' || stCode === 'ROLLING';
+              const pcs = isRolling
+                ? Math.round(Number(r.rolled_pcs ?? 0))
+                : Math.round(Number(r.ready_pcs ?? r.current_wip_pcs ?? 0));
+              const mtr = isRolling
+                ? Number(Number(r.rolled_mtr ?? 0).toFixed(2))
+                : Number(Number(r.ready_mtr ?? r.current_wip ?? 0).toFixed(2));
+              const mt = isRolling
+                ? Number(Number(r.rolled_mt ?? 0).toFixed(2))
+                : Number(Number(r.ready_mt ?? r.available_mt ?? 0).toFixed(2));
 
               return {
                 ...r,
@@ -242,9 +293,8 @@ export default function SizeGradeWipReportClient() {
                 work_order_no: r.work_order_no,
                 customer_name: r.customer_name || null,
                 stage_code: stCode,
-                stage_name: stCode === 'HOT_ROLLING' ? 'Hot Rolling Mill' :
+                stage_name: isRolling ? 'Rolling Production (Display Only)' :
                             stCode === 'HTC' ? 'Hot Test Check (HTC)' :
-                            stCode === 'ROLLING' ? 'Hot Rolling Mill' :
                             stCode === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
                             stCode === 'PILGER' ? 'Cold Pilger Mill' :
                             stCode === 'DRAW' ? 'Cold Draw Bench' :
@@ -265,7 +315,7 @@ export default function SizeGradeWipReportClient() {
                 order_status: r.order_status || (Number(r.balance_to_make_order_pcs ?? r.balance_qty_pcs ?? 1) === 0 ? 'Completed' : 'In Progress'),
                 balance_qty_pcs: r.balance_qty_pcs != null ? Number(r.balance_qty_pcs) : (r.balance_to_make_order_pcs != null ? Number(r.balance_to_make_order_pcs) : null),
                 balance_qty_mtr: r.balance_qty_mtr != null ? Number(r.balance_qty_mtr) : (r.balance_to_make_order_mtr != null ? Number(r.balance_to_make_order_mtr) : null),
-                is_feeder_stage: false,
+                is_feeder_stage: isRolling,
                 current_wip: mtr,
                 current_wip_pcs: pcs,
                 available_mt: mt,
@@ -745,8 +795,8 @@ export default function SizeGradeWipReportClient() {
     return rawWipRows.filter((r) => {
       // Must have positive physical inventory
       if (Number(r.current_wip_pcs || 0) <= 0 && Number(r.current_wip || 0) <= 0) return false;
-      // Completed orders with 0 balance cannot have active upstream physical WIP
-      if ((r.order_status || '').toLowerCase() === 'completed' && Number(r.balance_qty_pcs ?? 0) === 0 && r.stage_code !== 'FINISHING') return false;
+      // Completed orders with 0 balance cannot have active upstream physical WIP (exempt Rolling Production so historical rolled output is still viewable)
+      if ((r.order_status || '').toLowerCase() === 'completed' && Number(r.balance_qty_pcs ?? 0) === 0 && r.stage_code !== 'FINISHING' && r.stage_code !== 'HOT_ROLLING' && r.stage_code !== 'ROLLING') return false;
       // Order Status filter
       if (selectedStatus === 'COMPLETED') {
         if ((r.order_status || '').toLowerCase() !== 'completed') return false;
@@ -895,9 +945,12 @@ export default function SizeGradeWipReportClient() {
         group.finishing_mt += mt;
       }
 
-      group.total_mtr += mtr;
-      group.total_pcs += pcs;
-      group.total_mt += mt;
+      // Rolling production is strictly for display only; do not include in active WIP calculation
+      if (stage !== 'HOT_ROLLING' && stage !== 'ROLLING') {
+        group.total_mtr += mtr;
+        group.total_pcs += pcs;
+        group.total_mt += mt;
+      }
 
       group.contributing.push({
         work_order_id: r.work_order_id,
@@ -1024,18 +1077,56 @@ export default function SizeGradeWipReportClient() {
     };
   }, [matrixGroups]);
 
-  // Helper to format values according to currently selected unit with quiet typography
-  const formatCell = (mtr: number, pcs: number, mt: number) => {
+  // Helper to format values according to currently selected unit with high projector contrast
+  const formatCell = (mtr: number, pcs: number, mt: number, textClass?: string, unitClass?: string) => {
+    const isProj = projectorMode;
+    const defaultText = textClass || 'text-slate-950 dark:text-white';
+    const defaultUnit = unitClass || (textClass ? 'opacity-80' : 'text-slate-500 dark:text-slate-400');
+    const zeroColor = textClass ? 'opacity-50' : 'text-slate-300 dark:text-slate-600';
+
     if (unit === 'MTRS') {
-      if (mtr > 0) return <span className="text-slate-800 dark:text-slate-200 font-medium">{fmt(mtr, 0)} <span className="text-slate-500 dark:text-slate-400 text-[10px]">m</span></span>;
-      return <span className="text-slate-400 dark:text-slate-500 font-normal">0</span>;
+      if (mtr > 0) {
+        return (
+          <span className={`font-bold tabular-nums ${defaultText} ${isProj ? 'text-[13px] font-black' : 'text-xs'}`}>
+            {fmt(mtr, 0)} <span className={`${defaultUnit} text-[10px] font-normal`}>m</span>
+          </span>
+        );
+      }
+      return (
+        <span className={`${zeroColor} font-light select-none`}>
+          <span className="sr-only">0</span>
+          <span aria-hidden="true">—</span>
+        </span>
+      );
     }
     if (unit === 'PCS') {
-      if (pcs > 0) return <span className="text-slate-800 dark:text-slate-200 font-medium">{fmt(pcs, 0)} <span className="text-slate-500 dark:text-slate-400 text-[10px]">pcs</span></span>;
-      return <span className="text-slate-400 dark:text-slate-500 font-normal">0</span>;
+      if (pcs > 0) {
+        return (
+          <span className={`font-bold tabular-nums ${defaultText} ${isProj ? 'text-[13px] font-black' : 'text-xs'}`}>
+            {fmt(pcs, 0)} <span className={`${defaultUnit} text-[10px] font-normal`}>pcs</span>
+          </span>
+        );
+      }
+      return (
+        <span className={`${zeroColor} font-light select-none`}>
+          <span className="sr-only">0</span>
+          <span aria-hidden="true">—</span>
+        </span>
+      );
     }
-    if (mt > 0) return <span className="text-slate-800 dark:text-slate-200 font-medium">{fmt(mt, 3)} <span className="text-slate-500 dark:text-slate-400 text-[10px]">MT</span></span>;
-    return <span className="text-slate-400 dark:text-slate-500 font-normal">0</span>;
+    if (mt > 0) {
+      return (
+        <span className={`font-bold tabular-nums ${defaultText} ${isProj ? 'text-[13px] font-black' : 'text-xs'}`}>
+          {fmt(mt, 3)} <span className={`${defaultUnit} text-[10px] font-normal`}>MT</span>
+        </span>
+      );
+    }
+    return (
+      <span className={`${zeroColor} font-light select-none`}>
+        <span className="sr-only">0</span>
+        <span aria-hidden="true">—</span>
+      </span>
+    );
   };
 
   const clearAllFilters = useCallback(() => {
@@ -1080,9 +1171,9 @@ export default function SizeGradeWipReportClient() {
         '#': i + 1,
         'Size (OD × WT mm)': `${g.od} × ${g.wt}`,
         'Material Grade': g.grade,
-        'Hot Rolling (m)': g.hot_rolling_mtr,
-        'Hot Rolling (pcs)': g.hot_rolling_pcs,
-        'Hot Rolling (MT)': g.hot_rolling_mt,
+        'Rolling Production (m) [Display Only]': g.hot_rolling_mtr,
+        'Rolling Production (pcs) [Display Only]': g.hot_rolling_pcs,
+        'Rolling Production (MT) [Display Only]': g.hot_rolling_mt,
         'HTC QC (m)': g.htc_mtr,
         'HTC QC (pcs)': g.htc_pcs,
         'HTC QC (MT)': g.htc_mt,
@@ -1228,6 +1319,22 @@ export default function SizeGradeWipReportClient() {
             <Download className="h-3.5 w-3.5 text-slate-300" />
             Export Matrix
           </Button>
+
+          <Button
+            type="button"
+            variant={projectorMode ? 'default' : 'outline'}
+            onClick={toggleProjectorMode}
+            aria-label={projectorMode ? 'Switch to Standard Display Mode' : 'Switch to Projector High-Contrast Mode'}
+            title="Toggle High-Contrast Projector View"
+            className={`text-xs h-8 font-semibold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all ${
+              projectorMode
+                ? 'bg-amber-500 hover:bg-amber-600 text-amber-950 font-bold ring-2 ring-amber-400'
+                : 'text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Presentation className={`h-3.5 w-3.5 ${projectorMode ? 'text-amber-950' : 'text-slate-600 dark:text-slate-400'}`} />
+            <span>{projectorMode ? 'Projector Mode ON' : 'Projector Mode'}</span>
+          </Button>
         </div>
       </div>
 
@@ -1236,241 +1343,327 @@ export default function SizeGradeWipReportClient() {
         {`Displaying ${matrixGroups.length} size-grade combinations. Total plant WIP is ${fmt(kpis.totalWipMtr, 0)} meters, ${fmt(kpis.totalWipPcs, 0)} pieces, and ${fmt(kpis.totalWipMt, 2)} metric tons.`}
       </div>
 
-      {/* WIP Summary Cards: Total Plant WIP + Work Centers (PCS, MTR, MT) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-10 gap-2.5">
-        {/* 1. Total Plant WIP */}
-        <div className="rounded-lg border border-slate-800 bg-slate-900 text-white p-3 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-800">
-            <span className="text-[11px] font-bold text-slate-200 uppercase tracking-wider truncate">Total Plant WIP</span>
-            <Gauge className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+      {/* WIP Summary Ribbon: Compact Single-Line Bar with Collapsible Station Details */}
+      <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 sm:p-2.5 shadow-2xs">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5">
+          {/* Left: Total Plant WIP Hero Pill + Quick Stage Totals */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-2xs">
+              <Gauge className="h-4 w-4 text-emerald-400 dark:text-emerald-600 shrink-0" aria-hidden="true" />
+              <span className="text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">Total Plant WIP:</span>
+              <span className="font-mono text-xs font-bold tabular-nums text-white dark:text-slate-900">
+                {unit === 'PCS'
+                  ? `${fmt(kpis.totalWipPcs, 0)} pcs`
+                  : unit === 'MTRS'
+                  ? `${fmt(kpis.totalWipMtr, 0)} m`
+                  : `${fmt(kpis.totalWipMt, 2)} MT`}
+              </span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-600 font-mono hidden sm:inline pl-1 border-l border-slate-700 dark:border-slate-300">
+                {unit === 'PCS'
+                  ? `${fmt(kpis.totalWipMtr, 0)} m · ${fmt(kpis.totalWipMt, 2)} MT`
+                  : unit === 'MTRS'
+                  ? `${fmt(kpis.totalWipPcs, 0)} pcs · ${fmt(kpis.totalWipMt, 2)} MT`
+                  : `${fmt(kpis.totalWipPcs, 0)} pcs · ${fmt(kpis.totalWipMtr, 0)} m`}
+              </span>
+            </div>
+
+            {/* Quick Stage Pills Ribbon */}
+            <div className="hidden sm:flex items-center gap-1.5 flex-wrap text-[11px] font-mono">
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                HTC: <strong className="text-slate-900 dark:text-slate-100 font-bold">{fmt(unit === 'PCS' ? kpis.htcPcs : unit === 'MTRS' ? kpis.htcMtr : kpis.htcMt, unit === 'MT' ? 1 : 0)}</strong>
+              </span>
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                H-HT: <strong className="text-slate-900 dark:text-slate-100 font-bold">{fmt(unit === 'PCS' ? kpis.hollowHtPcs : unit === 'MTRS' ? kpis.hollowHtMtr : kpis.hollowHtMt, unit === 'MT' ? 1 : 0)}</strong>
+              </span>
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                Draw: <strong className="text-slate-900 dark:text-slate-100 font-bold">{fmt(unit === 'PCS' ? kpis.drawPcs : unit === 'MTRS' ? kpis.drawMtr : kpis.drawMt, unit === 'MT' ? 1 : 0)}</strong>
+              </span>
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                Final HT: <strong className="text-slate-900 dark:text-slate-100 font-bold">{fmt(unit === 'PCS' ? kpis.htPcs : unit === 'MTRS' ? kpis.htMtr : kpis.htMt, unit === 'MT' ? 1 : 0)}</strong>
+              </span>
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                Band Saw: <strong className="text-slate-900 dark:text-slate-100 font-bold">{fmt(unit === 'PCS' ? kpis.bandSawPcs : unit === 'MTRS' ? kpis.bandSawMtr : kpis.bandSawMt, unit === 'MT' ? 1 : 0)}</strong>
+              </span>
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                VDI: <strong className="text-slate-900 dark:text-slate-100 font-bold">{fmt(unit === 'PCS' ? kpis.vdiPcs : unit === 'MTRS' ? kpis.vdiMtr : kpis.vdiMt, unit === 'MT' ? 1 : 0)}</strong>
+              </span>
+              <span className="px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 font-medium">
+                Salvage: <strong className="font-bold">{fmt(unit === 'PCS' ? kpis.vdiSalvagePcs : unit === 'MTRS' ? kpis.vdiSalvageMtr : kpis.vdiSalvageMt, unit === 'MT' ? 1 : 0)}</strong>
+              </span>
+              <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                Finishing: <strong className="text-slate-900 dark:text-slate-100 font-bold">{fmt(unit === 'PCS' ? kpis.finishingPcs : unit === 'MTRS' ? kpis.finishingMtr : kpis.finishingMt, unit === 'MT' ? 1 : 0)}</strong>
+              </span>
+            </div>
           </div>
-          <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-slate-300">
-              <span className="text-[10px] uppercase text-slate-400 font-sans font-semibold">PCS</span>
-              <span className="text-xs font-bold text-white">{fmt(kpis.totalWipPcs, 0)}</span>
-            </div>
-            <div className="flex items-baseline justify-between text-slate-300">
-              <span className="text-[10px] uppercase text-slate-400 font-sans font-semibold">MTR</span>
-              <span className="text-xs font-bold text-white">{fmt(kpis.totalWipMtr, 0)} <span className="text-[9px] text-slate-400 font-normal">m</span></span>
-            </div>
-            <div className="flex items-baseline justify-between text-slate-300">
-              <span className="text-[10px] uppercase text-slate-400 font-sans font-semibold">MT</span>
-              <span className="text-xs font-bold text-white">{fmt(kpis.totalWipMt, 2)} <span className="text-[9px] text-slate-400 font-normal">MT</span></span>
-            </div>
+
+          {/* Right: Expand / Collapse Toggle Button */}
+          <div className="flex items-center gap-2 self-end lg:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={toggleKpiDetails}
+              aria-expanded={showKpiDetails}
+              aria-label={showKpiDetails ? 'Collapse detailed station KPI cards' : 'Expand detailed station KPI cards'}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer min-h-[32px] shadow-2xs"
+            >
+              <span>{showKpiDetails ? 'Hide Station Cards' : 'Station Cards Breakdown'}</span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${showKpiDetails ? 'rotate-180' : 'rotate-0'}`} />
+            </button>
           </div>
         </div>
 
-        {/* 2. Hot Rolling Mill */}
-        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
-            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Hot Rolling</span>
-            <Factory className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
-          </div>
-          <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.hotRollingPcs, 0)}</span>
+        {/* Collapsible Station KPI Cards Grid */}
+        {showKpiDetails && (
+          <div className="mt-3 pt-3 border-t border-slate-200/80 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-9 gap-2.5 animate-in fade-in duration-200">
+            {/* 1. Total Plant WIP */}
+            <div className="rounded-xl border border-slate-900/20 dark:border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 text-white p-3 shadow-2xs flex flex-col justify-between relative overflow-hidden">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-slate-800">
+                <span className="text-[11px] font-bold text-slate-100 uppercase tracking-wider whitespace-nowrap">Total Plant WIP</span>
+                <Gauge className="h-3.5 w-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
+              </div>
+              <div className="mt-2 space-y-1 font-mono text-[11px]">
+                <div className="flex items-baseline justify-between gap-1 text-slate-300">
+                  <span className="text-[10px] uppercase text-slate-400 font-sans font-semibold shrink-0">PCS</span>
+                  <span className="text-xs font-bold text-white tabular-nums whitespace-nowrap">{fmt(kpis.totalWipPcs, 0)}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-slate-300">
+                  <span className="text-[10px] uppercase text-slate-400 font-sans font-semibold shrink-0">MTR</span>
+                  <span className="text-xs font-bold text-emerald-300 tabular-nums whitespace-nowrap">
+                    {fmt(kpis.totalWipMtr, 0)} <span className="text-[9px] text-slate-400 font-normal">m</span>
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-slate-300">
+                  <span className="text-[10px] uppercase text-slate-400 font-sans font-semibold shrink-0">MT</span>
+                  <span className="text-xs font-bold text-sky-300 tabular-nums whitespace-nowrap">
+                    {fmt(kpis.totalWipMt, 2)} <span className="text-[9px] text-slate-400 font-normal">MT</span>
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.hotRollingMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
-            </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.hotRollingMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
-            </div>
-          </div>
-        </div>
 
-        {/* 3. Hot Test Check (HTC) */}
-        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
-            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">HTC (QC)</span>
-            <CheckCircle2 className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
-          </div>
-          <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htcPcs, 0)}</span>
+            {/* 2. Hot Test Check (HTC) */}
+            <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#e2e8f0)]">
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider whitespace-nowrap">HTC (QC)</span>
+                <CheckCircle2 className="h-3.5 w-3.5 text-[var(--text-muted,#64748b)] shrink-0" aria-hidden="true" />
+              </div>
+              <div className="mt-2 space-y-1 font-mono text-[11px]">
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">PCS</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">{fmt(kpis.htcPcs, 0)}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MTR</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.htcMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span>
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MT</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.htcMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span>
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htcMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
-            </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htcMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
-            </div>
-          </div>
-        </div>
 
-        {/* 4. Hollow HT */}
-        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
-            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Hollow HT</span>
-            <Flame className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
-          </div>
-          <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.hollowHtPcs, 0)}</span>
+            {/* 3. Hollow HT */}
+            <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#e2e8f0)]">
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider whitespace-nowrap">Hollow HT</span>
+                <Flame className="h-3.5 w-3.5 text-[var(--text-muted,#64748b)] shrink-0" aria-hidden="true" />
+              </div>
+              <div className="mt-2 space-y-1 font-mono text-[11px]">
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">PCS</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">{fmt(kpis.hollowHtPcs, 0)}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MTR</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.hollowHtMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span>
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MT</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.hollowHtMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span>
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.hollowHtMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
-            </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.hollowHtMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
-            </div>
-          </div>
-        </div>
 
-        {/* 4. Cold Draw */}
-        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
-            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">
-              {selectedRoute === 'SS_STEEL' ? 'Cold Pilger Mill' : selectedRoute === 'CDS' || selectedRoute === 'ALLOY_CDS' ? 'Cold Draw Bench' : 'Cold Draw / Pilger'}
-            </span>
-            <TrendingUp className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
-          </div>
-          <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.drawPcs, 0)}</span>
+            {/* 4. Cold Draw */}
+            <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#e2e8f0)]">
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider whitespace-nowrap">
+                  {selectedRoute === 'SS_STEEL' ? 'Pilger Mill' : selectedRoute === 'CDS' || selectedRoute === 'ALLOY_CDS' ? 'Cold Draw' : 'Cold Draw'}
+                </span>
+                <TrendingUp className="h-3.5 w-3.5 text-[var(--text-muted,#64748b)] shrink-0" aria-hidden="true" />
+              </div>
+              <div className="mt-2 space-y-1 font-mono text-[11px]">
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">PCS</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">{fmt(kpis.drawPcs, 0)}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MTR</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.drawMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span>
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MT</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.drawMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span>
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.drawMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
-            </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.drawMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
-            </div>
-          </div>
-        </div>
 
-        {/* 5. Final HT */}
-        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
-            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Final HT</span>
-            <Layers className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
-          </div>
-          <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htPcs, 0)}</span>
+            {/* 5. Final HT */}
+            <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#e2e8f0)]">
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider whitespace-nowrap">Final HT</span>
+                <Layers className="h-3.5 w-3.5 text-[var(--text-muted,#64748b)] shrink-0" aria-hidden="true" />
+              </div>
+              <div className="mt-2 space-y-1 font-mono text-[11px]">
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">PCS</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">{fmt(kpis.htPcs, 0)}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MTR</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.htMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span>
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MT</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.htMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span>
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
-            </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.htMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
-            </div>
-          </div>
-        </div>
 
-        {/* 6. Band Saw Cutting */}
-        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
-            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Band Saw</span>
-            <Scissors className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
-          </div>
-          <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.bandSawPcs, 0)}</span>
+            {/* 6. Band Saw */}
+            <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#e2e8f0)]">
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider whitespace-nowrap">Band Saw</span>
+                <Scissors className="h-3.5 w-3.5 text-[var(--text-muted,#64748b)] shrink-0" aria-hidden="true" />
+              </div>
+              <div className="mt-2 space-y-1 font-mono text-[11px]">
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">PCS</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">{fmt(kpis.bandSawPcs, 0)}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MTR</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.bandSawMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span>
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MT</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.bandSawMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span>
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.bandSawMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
-            </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.bandSawMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
-            </div>
-          </div>
-        </div>
 
-        {/* 7. VDI Inspection */}
-        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
-            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">VDI / QC</span>
-            <Search className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
-          </div>
-          <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.vdiPcs, 0)}</span>
+            {/* 7. VDI / QC */}
+            <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#e2e8f0)]">
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider whitespace-nowrap">VDI / QC</span>
+                <Search className="h-3.5 w-3.5 text-[var(--text-muted,#64748b)] shrink-0" aria-hidden="true" />
+              </div>
+              <div className="mt-2 space-y-1 font-mono text-[11px]">
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">PCS</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">{fmt(kpis.vdiPcs, 0)}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MTR</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.vdiMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span>
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MT</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.vdiMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span>
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.vdiMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
-            </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.vdiMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
-            </div>
-          </div>
-        </div>
 
-        {/* 7b. VDI Salvage */}
-        <div className="rounded-lg border border-amber-200/80 dark:border-amber-900/50 bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-amber-300 dark:hover:border-amber-800 transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
-            <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-400 uppercase tracking-wider truncate">VDI Salvage</span>
-            <RotateCcw className="h-3.5 w-3.5 text-amber-600 dark:text-amber-500 shrink-0" aria-hidden="true" />
-          </div>
-          <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-amber-700 dark:text-amber-300">{fmt(kpis.vdiSalvagePcs, 0)}</span>
+            {/* 8. VDI Salvage */}
+            <div className="rounded-xl border border-amber-300 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20 p-3 shadow-2xs flex flex-col justify-between hover:border-amber-400 dark:hover:border-amber-800 transition-colors">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-amber-200/80 dark:border-amber-900/50">
+                <span className="text-[11px] font-bold text-amber-900 dark:text-amber-300 uppercase tracking-wider whitespace-nowrap">VDI Salvage</span>
+                <RotateCcw className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden="true" />
+              </div>
+              <div className="mt-2 space-y-1 font-mono text-[11px]">
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-amber-800 dark:text-amber-400 font-sans font-medium shrink-0">PCS</span>
+                  <span className="text-xs font-bold text-amber-800 dark:text-amber-200 tabular-nums whitespace-nowrap">{fmt(kpis.vdiSalvagePcs, 0)}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-amber-800 dark:text-amber-400 font-sans font-medium shrink-0">MTR</span>
+                  <span className="text-xs font-bold text-amber-800 dark:text-amber-200 tabular-nums whitespace-nowrap">
+                    {fmt(kpis.vdiSalvageMtr, 0)} <span className="text-[9px] text-amber-700/80 dark:text-amber-400 font-normal">m</span>
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-amber-800 dark:text-amber-400 font-sans font-medium shrink-0">MT</span>
+                  <span className="text-xs font-bold text-amber-800 dark:text-amber-200 tabular-nums whitespace-nowrap">
+                    {fmt(kpis.vdiSalvageMt, 2)} <span className="text-[9px] text-amber-700/80 dark:text-amber-400 font-normal">MT</span>
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-amber-700 dark:text-amber-300">{fmt(kpis.vdiSalvageMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
-            </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-amber-700 dark:text-amber-300">{fmt(kpis.vdiSalvageMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
-            </div>
-          </div>
-        </div>
 
-        {/* 8. Finishing (FG) */}
-        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
-          <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#f1f5f9)]">
-            <span className="text-[11px] font-semibold text-[var(--text-main,#334155)] uppercase tracking-wider truncate">Finishing</span>
-            <CheckCircle2 className="h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)] shrink-0" aria-hidden="true" />
+            {/* 9. Finishing (FG) */}
+            <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-3 shadow-2xs flex flex-col justify-between hover:border-[var(--border-strong,#cbd5e1)] transition-colors">
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-[var(--border-subtle,#e2e8f0)]">
+                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider whitespace-nowrap">Finishing</span>
+                <CheckCircle2 className="h-3.5 w-3.5 text-[var(--text-muted,#64748b)] shrink-0" aria-hidden="true" />
+              </div>
+              <div className="mt-2 space-y-1 font-mono text-[11px]">
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">PCS</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">{fmt(kpis.finishingPcs, 0)}</span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MTR</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.finishingMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span>
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-1 text-[var(--text-muted,#475569)]">
+                  <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium shrink-0">MT</span>
+                  <span className="text-xs font-bold text-[var(--text-main,#0f172a)] tabular-nums whitespace-nowrap">
+                    {fmt(kpis.finishingMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span>
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="mt-2 space-y-1 font-mono text-[11px]">
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">PCS</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.finishingPcs, 0)}</span>
-            </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MTR</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.finishingMtr, 0)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">m</span></span>
-            </div>
-            <div className="flex items-baseline justify-between text-[var(--text-muted,#475569)]">
-              <span className="text-[10px] uppercase text-[var(--text-muted,#64748b)] font-sans font-medium">MT</span>
-              <span className="text-xs font-bold text-[var(--text-main,#0f172a)]">{fmt(kpis.finishingMt, 2)} <span className="text-[9px] text-[var(--text-muted,#64748b)] font-normal">MT</span></span>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Filter Toolbar */}
-      <div className="bg-[var(--bg-surface,#ffffff)] p-3 rounded-lg border border-[var(--border-subtle,#e2e8f0)] shadow-2xs space-y-2.5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 items-end">
+      {/* Filter Toolbar: Structured 2-Tier Layout with Spacious Date Range */}
+      <div className="bg-[var(--bg-surface,#ffffff)] p-3.5 rounded-xl border border-[var(--border-subtle,#e2e8f0)] shadow-2xs space-y-3">
+        {/* Row 1: Search & Core Attribute Selectors */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Search Size or Grade */}
-          <div className="relative">
+          <div>
             <label htmlFor="wip-matrix-search" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
               Search Keywords
             </label>
             <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[var(--text-muted,#94a3b8)]" aria-hidden="true" />
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[var(--text-muted,#64748b)]" aria-hidden="true" />
               <Input
                 id="wip-matrix-search"
                 type="text"
@@ -1478,7 +1671,7 @@ export default function SizeGradeWipReportClient() {
                 aria-label="Search by size, grade, work order, or process route"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 text-xs h-8 border-[var(--border-subtle,#cbd5e1)] focus:border-[var(--border-strong,#64748b)]"
+                className="pl-8 text-xs h-8.5 border-[var(--border-subtle,#cbd5e1)] focus:border-[var(--border-strong,#64748b)] bg-[var(--bg-surface,#ffffff)] w-full"
               />
             </div>
           </div>
@@ -1493,7 +1686,7 @@ export default function SizeGradeWipReportClient() {
               aria-label="Filter by order status"
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="text-xs h-8 font-medium"
+              className="text-xs h-8.5 font-medium w-full"
             >
               <option value="ALL">All Orders (Live & Completed)</option>
               <option value="IN_PROCESS">In-Process / Live Orders</option>
@@ -1501,7 +1694,7 @@ export default function SizeGradeWipReportClient() {
             </Select>
           </div>
 
-          {/* Route Dropdown Filter */}
+          {/* Process Route Filter */}
           <div>
             <label htmlFor="wip-matrix-route" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
               Process Route
@@ -1511,7 +1704,7 @@ export default function SizeGradeWipReportClient() {
               aria-label="Filter by process route"
               value={selectedRoute}
               onChange={(e) => setSelectedRoute(e.target.value)}
-              className="text-xs h-8 font-medium"
+              className="text-xs h-8.5 font-medium w-full"
             >
               <option value="ALL">All Routes (HFS / CDS / SS...)</option>
               {uniqueRoutes.map((r) => (
@@ -1522,7 +1715,7 @@ export default function SizeGradeWipReportClient() {
             </Select>
           </div>
 
-          {/* Grade Dropdown */}
+          {/* Material Grade Dropdown */}
           <div>
             <label htmlFor="wip-matrix-grade" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
               Material Grade
@@ -1532,7 +1725,7 @@ export default function SizeGradeWipReportClient() {
               aria-label="Filter by material grade"
               value={selectedGrade}
               onChange={(e) => setSelectedGrade(e.target.value)}
-              className="text-xs h-8"
+              className="text-xs h-8.5 w-full"
             >
               <option value="ALL">All Material Grades</option>
               {uniqueGrades.map((g) => (
@@ -1542,38 +1735,41 @@ export default function SizeGradeWipReportClient() {
               ))}
             </Select>
           </div>
+        </div>
 
+        {/* Row 2: Range Filters with Abundant Space (OD Range + Rolling Date Range) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 pt-2.5 border-t border-[var(--border-subtle,#f1f5f9)] items-end">
           {/* OD Range Filter */}
-          <div>
-            <label className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">OD Range (mm)</label>
-            <div className="flex items-center gap-1">
+          <fieldset className="lg:col-span-5">
+            <legend className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">OD Range (mm)</legend>
+            <div className="flex items-center gap-2">
               <Input
                 type="number"
                 placeholder="Min OD"
                 aria-label="Minimum Outer Diameter in millimeters"
                 value={fromOd}
                 onChange={(e) => setFromOd(e.target.value)}
-                className="text-xs h-8 w-full font-mono"
+                className="text-xs h-8.5 w-full font-mono"
               />
-              <span className="text-[var(--text-muted,#94a3b8)] text-xs shrink-0" aria-hidden="true">-</span>
+              <span className="text-[var(--text-muted,#64748b)] text-xs font-bold px-1" aria-hidden="true">-</span>
               <Input
                 type="number"
                 placeholder="Max OD"
                 aria-label="Maximum Outer Diameter in millimeters"
                 value={toOd}
                 onChange={(e) => setToOd(e.target.value)}
-                className="text-xs h-8 w-full font-mono"
+                className="text-xs h-8.5 w-full font-mono"
               />
             </div>
-          </div>
+          </fieldset>
 
-          {/* Rolling Production Date Range Filter */}
-          <div>
+          {/* Rolling Production Date Range Filter (Spans 7 cols on lg screens to comfortably fit date pickers without overflow) */}
+          <fieldset className="lg:col-span-7">
             <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
-              <span className="flex items-center gap-1 text-[var(--text-main,#1e293b)] font-semibold">
-                <Calendar className="h-3 w-3 text-[var(--text-muted,#94a3b8)]" aria-hidden="true" />
+              <legend className="flex items-center gap-1.5 text-[var(--text-main,#1e293b)] font-semibold p-0">
+                <Calendar className="h-3.5 w-3.5 text-[var(--text-muted,#64748b)]" aria-hidden="true" />
                 Rolling Date Range:
-              </span>
+              </legend>
               {(fromRollingDate || toRollingDate) && (
                 <button
                   type="button"
@@ -1582,49 +1778,49 @@ export default function SizeGradeWipReportClient() {
                     setFromRollingDate('');
                     setToRollingDate('');
                   }}
-                  className="text-[10px] text-[var(--text-muted,#64748b)] hover:text-[var(--text-main,#0f172a)] underline font-medium cursor-pointer"
+                  className="text-[10px] text-rose-600 hover:text-rose-700 dark:text-rose-400 underline font-medium cursor-pointer"
                 >
                   Clear Date
                 </button>
               )}
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <Input
                 type="date"
                 title="From Rolling Date"
                 aria-label="From Rolling Production Date"
                 value={fromRollingDate}
                 onChange={(e) => setFromRollingDate(e.target.value)}
-                className="text-[11px] h-8 font-mono px-1.5 w-full bg-[var(--bg-surface,#ffffff)]"
+                className="text-xs h-8.5 font-mono px-2.5 w-full bg-[var(--bg-surface,#ffffff)]"
               />
-              <span className="text-[var(--text-muted,#94a3b8)] text-xs shrink-0" aria-hidden="true">to</span>
+              <span className="text-[var(--text-muted,#64748b)] text-xs font-medium px-1" aria-hidden="true">to</span>
               <Input
                 type="date"
                 title="To Rolling Date"
                 aria-label="To Rolling Production Date"
                 value={toRollingDate}
                 onChange={(e) => setToRollingDate(e.target.value)}
-                className="text-[11px] h-8 font-mono px-1.5 w-full bg-[var(--bg-surface,#ffffff)]"
+                className="text-xs h-8.5 font-mono px-2.5 w-full bg-[var(--bg-surface,#ffffff)]"
               />
             </div>
-          </div>
+          </fieldset>
         </div>
 
-        {/* View Mode Switcher & Controls */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-subtle,#f1f5f9)] pt-2">
+        {/* Row 3: View Mode Switcher and Quick Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-[var(--border-subtle,#f1f5f9)]">
           <div className="flex items-center gap-2">
             <span className="text-xs text-[var(--text-muted,#64748b)] font-medium">View Mode:</span>
             <div
               role="tablist"
               aria-label="Report View Mode"
-              className="inline-flex rounded-md border border-[var(--border-subtle,#e2e8f0)] p-0.5 bg-[var(--bg-surface-subtle,#f8fafc)] text-xs"
+              className="inline-flex rounded-lg border border-[var(--border-subtle,#e2e8f0)] p-0.5 bg-[var(--bg-surface-subtle,#f8fafc)] text-xs"
             >
               <button
                 type="button"
                 role="tab"
                 aria-selected={viewMode === 'matrix'}
                 onClick={() => setViewMode('matrix')}
-                className={`px-3 py-1 min-h-[30px] rounded font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 min-h-[30px] rounded-md font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                   viewMode === 'matrix' ? 'bg-[var(--bg-surface,#ffffff)] text-[var(--text-main,#0f172a)] shadow-2xs border border-[var(--border-subtle,#e2e8f0)]' : 'text-[var(--text-muted,#64748b)] hover:text-[var(--text-main,#0f172a)]'
                 }`}
               >
@@ -1636,7 +1832,7 @@ export default function SizeGradeWipReportClient() {
                 role="tab"
                 aria-selected={viewMode === 'ledger'}
                 onClick={() => setViewMode('ledger')}
-                className={`px-3 py-1 min-h-[30px] rounded font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 min-h-[30px] rounded-md font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                   viewMode === 'ledger' ? 'bg-[var(--bg-surface,#ffffff)] text-[var(--text-main,#0f172a)] shadow-2xs border border-[var(--border-subtle,#e2e8f0)]' : 'text-[var(--text-muted,#64748b)] hover:text-[var(--text-main,#0f172a)]'
                 }`}
               >
@@ -1646,12 +1842,15 @@ export default function SizeGradeWipReportClient() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs font-mono font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs">
+              {viewMode === 'matrix' ? `${matrixGroups.length} Combinations` : `${filteredRawRows.length} Work Orders`}
+            </span>
             {hasActiveFilters && (
               <button
                 type="button"
                 onClick={clearAllFilters}
-                className="text-xs font-semibold text-rose-700 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-300 hover:underline cursor-pointer min-h-[36px] flex items-center"
+                className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 hover:underline cursor-pointer min-h-[32px] px-2 flex items-center"
               >
                 Clear All Filters
               </button>
@@ -1661,7 +1860,7 @@ export default function SizeGradeWipReportClient() {
                 type="button"
                 onClick={toggleAll}
                 aria-label={matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse all work order details' : 'Expand all work order details'}
-                className="text-xs font-medium text-[var(--text-muted,#475569)] hover:text-[var(--text-main,#0f172a)] hover:underline cursor-pointer min-h-[36px] flex items-center"
+                className="text-xs font-medium text-[var(--text-muted,#475569)] hover:text-[var(--text-main,#0f172a)] hover:underline cursor-pointer min-h-[32px] px-2 flex items-center"
               >
                 {matrixGroups.some((g) => expandedKeys[g.key]) ? 'Collapse All Details' : 'Expand All WO Details'}
               </button>
@@ -1672,42 +1871,47 @@ export default function SizeGradeWipReportClient() {
 
       {/* MATRIX VIEW */}
       {viewMode === 'matrix' && (
-        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] shadow-2xs overflow-hidden">
-          <div className="overflow-auto max-h-[70vh] relative">
-            <table className="w-full text-left text-xs border-collapse min-w-[1200px]">
-              <thead className="sticky top-0 z-20 bg-[var(--bg-surface-subtle,#f8fafc)] backdrop-blur-xs border-b border-[var(--border-subtle,#e2e8f0)] text-[var(--text-muted,#475569)] font-semibold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
+        <div className={`rounded-xl border-2 ${projectorMode ? 'border-slate-400 shadow-xl' : 'border-slate-300 dark:border-slate-700 shadow-md'} bg-white dark:bg-slate-900 overflow-hidden`}>
+          <div className="overflow-auto max-h-[72vh] relative">
+            <table className={`w-full text-left border-collapse min-w-[1200px] ${projectorMode ? 'text-[13px]' : 'text-xs'}`}>
+              <thead className="sticky top-0 z-20 bg-slate-900 text-white border-b-2 border-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-sm bg-clip-padding">
                 <tr>
-                  <th className="sticky left-0 top-0 z-30 bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 w-10 text-center bg-clip-padding"></th>
-                  <th className="sticky left-10 top-0 z-30 bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 bg-clip-padding min-w-[120px]">Size (OD × WT)</th>
-                  <th className="sticky left-[160px] top-0 z-30 bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 bg-clip-padding border-r border-[var(--border-subtle,#e2e8f0)] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[100px]">Grade</th>
-                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
-                    Hot Rolling Mill
+                  <th scope="col" className="sticky left-0 top-0 z-30 bg-slate-900 text-slate-300 py-3 px-3 w-10 text-center border-b-2 border-slate-700 bg-clip-padding" aria-label="Row expand collapse toggle"></th>
+                  <th scope="col" className="sticky left-10 top-0 z-30 bg-slate-900 text-white py-3 px-3 min-w-[125px] border-b-2 border-slate-700 bg-clip-padding font-bold">Size (OD × WT)</th>
+                  <th scope="col" className="sticky left-[160px] top-0 z-30 bg-slate-900 text-white py-3 px-3 border-r-2 border-b-2 border-r-slate-500 border-b-slate-700 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.3)] min-w-[100px] bg-clip-padding font-bold">Grade</th>
+                  <th
+                    scope="col"
+                    className="py-3 px-3 text-right border-l border-slate-700 bg-clip-padding text-slate-300 font-semibold"
+                    title="Actual Rolling Production (Feeder stage material). Under plant mass-balance rules, it feeds stage queues and is not counted as active in-station WIP."
+                  >
+                    Rolling Production
+                    <span className="block text-[9px] font-normal text-slate-400 lowercase tracking-normal">(display only)</span>
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
+                  <th scope="col" className="py-3 px-3 text-right border-l border-slate-700 bg-clip-padding text-white font-bold">
                     HTC (QC)
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
+                  <th scope="col" className="py-3 px-3 text-right border-l border-slate-700 bg-clip-padding text-white font-bold">
                     Hollow HT
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
+                  <th scope="col" className="py-3 px-3 text-right border-l border-slate-700 bg-clip-padding text-white font-bold">
                     {selectedRoute === 'SS_STEEL' ? 'Cold Pilger Mill' : selectedRoute === 'CDS' || selectedRoute === 'ALLOY_CDS' ? 'Cold Draw Bench' : 'Cold Draw / Pilger'}
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
+                  <th scope="col" className="py-3 px-3 text-right border-l border-slate-700 bg-clip-padding text-white font-bold">
                     Final Heat Treatment
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
+                  <th scope="col" className="py-3 px-3 text-right border-l border-slate-700 bg-clip-padding text-white font-bold">
                     Band Saw Cutting
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
+                  <th scope="col" className="py-3 px-3 text-right border-l border-slate-700 bg-clip-padding text-white font-bold">
                     VDI / QC Inspection
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
+                  <th scope="col" className="py-3 px-3 text-right border-l border-slate-700 bg-clip-padding text-amber-200 font-bold">
                     VDI Salvage
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-clip-padding">
+                  <th scope="col" className="py-3 px-3 text-right border-l border-slate-700 bg-clip-padding text-white font-bold">
                     Finishing (FG)
                   </th>
-                  <th className="py-2.5 px-3 text-right border-l border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface-subtle,#f1f5f9)] font-bold text-[var(--text-main,#0f172a)] bg-clip-padding">
+                  <th scope="col" className="py-3 px-3 text-right border-l-2 border-blue-400 bg-blue-950 text-white font-extrabold bg-clip-padding">
                     Total Plant WIP
                   </th>
                 </tr>
@@ -1716,17 +1920,17 @@ export default function SizeGradeWipReportClient() {
               <tbody className="divide-y divide-[var(--border-subtle,#f1f5f9)]">
                 {loading && matrixGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="py-12 text-center text-[var(--text-muted,#94a3b8)]">
+                    <td colSpan={13} className="py-12 text-center text-[var(--text-muted,#64748b)]">
                       <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-[var(--text-muted,#64748b)]" />
                       Aggregating OD, WT and Grade station-wise WIP matrix...
                     </td>
                   </tr>
                 ) : matrixGroups.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="py-12 text-center text-[var(--text-muted,#94a3b8)]">
+                    <td colSpan={13} className="py-12 text-center text-[var(--text-muted,#64748b)]">
                       <CheckCircle2 className="h-8 w-8 text-[var(--text-muted,#cbd5e1)] mx-auto mb-2" />
                       <div className="font-semibold text-[var(--text-main,#1e293b)]">No matching WIP inventory found</div>
-                      <div className="text-[11px] text-[var(--text-muted,#94a3b8)] mt-0.5">
+                      <div className="text-[11px] text-[var(--text-muted,#64748b)] mt-0.5">
                         {hasActiveFilters
                           ? 'Try clearing active filters to see available physical inventory.'
                           : 'No active physical WIP currently recorded in the plant.'}
@@ -1747,8 +1951,19 @@ export default function SizeGradeWipReportClient() {
                     </td>
                   </tr>
                 ) : (
-                  matrixGroups.map((g) => {
+                  matrixGroups.map((g, idx) => {
                     const isExpanded = !!expandedKeys[g.key];
+                    const rowBgClass = isExpanded
+                      ? 'bg-blue-50/60 dark:bg-slate-800'
+                      : idx % 2 === 0
+                        ? 'bg-white dark:bg-slate-900'
+                        : projectorMode
+                          ? 'bg-slate-100/90 dark:bg-slate-800/60'
+                          : 'bg-slate-50/80 dark:bg-slate-800/40';
+
+                    const cellBorderClass = projectorMode
+                      ? 'border-slate-300 dark:border-slate-700'
+                      : 'border-slate-200 dark:border-slate-800';
 
                     return (
                       <React.Fragment key={g.key}>
@@ -1764,80 +1979,78 @@ export default function SizeGradeWipReportClient() {
                               toggleGroup(g.key);
                             }
                           }}
-                          className={`group transition cursor-pointer hover:bg-[var(--bg-surface-subtle,#f8fafc)] focus:outline-none focus-visible:bg-[var(--bg-surface-subtle,#f1f5f9)] ${
-                            isExpanded ? 'bg-[var(--bg-surface-subtle,#f8fafc)]' : ''
-                          }`}
+                          className={`group transition cursor-pointer hover:bg-blue-50/70 dark:hover:bg-slate-800/90 focus:outline-none ${rowBgClass}`}
                         >
                           {/* Chevron (Sticky Left) */}
-                          <td className="sticky left-0 z-10 bg-[var(--bg-surface,#ffffff)] group-hover:bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 text-center text-[var(--text-muted,#94a3b8)] w-10">
+                          <td className={`sticky left-0 z-10 ${rowBgClass} group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/90 py-2.5 px-3 text-center text-slate-500 w-10 border-b ${cellBorderClass}`}>
                             <ChevronRight
                               size={14}
                               aria-hidden="true"
                               className={`transition-transform duration-200 ${
-                                isExpanded ? 'rotate-90 text-[var(--text-main,#334155)]' : 'rotate-0 text-[var(--text-muted,#94a3b8)]'
+                                isExpanded ? 'rotate-90 text-slate-900 dark:text-slate-100 font-bold' : 'rotate-0 text-slate-400'
                               }`}
                             />
                           </td>
 
                           {/* Size (OD × WT) (Sticky Left) */}
-                          <td className="sticky left-10 z-10 bg-[var(--bg-surface,#ffffff)] group-hover:bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 font-mono font-bold text-[var(--text-main,#0f172a)] text-[12px] min-w-[120px]">
-                            {g.od} × {g.wt} <span className="text-[11px] text-[var(--text-muted,#94a3b8)] font-normal">mm</span>
+                          <td className={`sticky left-10 z-10 ${rowBgClass} group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/90 py-2.5 px-3 font-mono font-bold text-slate-950 dark:text-slate-50 text-xs min-w-[125px] border-b ${cellBorderClass}`}>
+                            {g.od} × {g.wt} <span className="text-[11px] text-slate-500 font-normal">mm</span>
                           </td>
 
                           {/* Grade (Sticky Left) */}
-                          <td className="sticky left-[160px] z-10 bg-[var(--bg-surface,#ffffff)] group-hover:bg-[var(--bg-surface-subtle,#f8fafc)] py-2.5 px-3 border-r border-[var(--border-subtle,#e2e8f0)] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[100px]">
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-[var(--bg-surface-subtle,#f1f5f9)] text-[var(--text-main,#334155)] border border-[var(--border-subtle,#e2e8f0)] font-mono">
+                          <td className={`sticky left-[160px] z-10 ${rowBgClass} group-hover:bg-blue-50/70 dark:group-hover:bg-slate-800/90 py-2.5 px-3 border-r-2 border-b border-r-slate-400 dark:border-r-slate-500 ${cellBorderClass} shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] min-w-[100px]`}>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 font-mono">
                               {g.grade}
                             </span>
                           </td>
 
                           {/* Hot Rolling */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
+                          <td className={`py-2.5 px-3 text-right font-mono border-l border-b ${cellBorderClass}`}>
                             {formatCell(g.hot_rolling_mtr, g.hot_rolling_pcs, g.hot_rolling_mt)}
                           </td>
 
                           {/* HTC */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
+                          <td className={`py-2.5 px-3 text-right font-mono border-l border-b ${cellBorderClass}`}>
                             {formatCell(g.htc_mtr, g.htc_pcs, g.htc_mt)}
                           </td>
 
                           {/* Hollow HT */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
+                          <td className={`py-2.5 px-3 text-right font-mono border-l border-b ${cellBorderClass}`}>
                             {formatCell(g.hollow_ht_mtr, g.hollow_ht_pcs, g.hollow_ht_mt)}
                           </td>
 
                           {/* Cold Draw */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
+                          <td className={`py-2.5 px-3 text-right font-mono border-l border-b ${cellBorderClass}`}>
                             {formatCell(g.draw_mtr, g.draw_pcs, g.draw_mt)}
                           </td>
 
                           {/* Final HT */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
+                          <td className={`py-2.5 px-3 text-right font-mono border-l border-b ${cellBorderClass}`}>
                             {formatCell(g.ht_mtr, g.ht_pcs, g.ht_mt)}
                           </td>
 
                           {/* Band Saw */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
+                          <td className={`py-2.5 px-3 text-right font-mono border-l border-b ${cellBorderClass}`}>
                             {formatCell(g.band_saw_mtr, g.band_saw_pcs, g.band_saw_mt)}
                           </td>
 
                           {/* VDI */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
+                          <td className={`py-2.5 px-3 text-right font-mono border-l border-b ${cellBorderClass}`}>
                             {formatCell(g.vdi_mtr, g.vdi_pcs, g.vdi_mt)}
                           </td>
 
                           {/* VDI Salvage */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
+                          <td className={`py-2.5 px-3 text-right font-mono border-l border-b ${cellBorderClass}`}>
                             {formatCell(g.vdi_salvage_mtr, g.vdi_salvage_pcs, g.vdi_salvage_mt)}
                           </td>
 
                           {/* Finishing */}
-                          <td className="py-2.5 px-3 text-right font-mono border-l border-[var(--border-subtle,#f1f5f9)]">
+                          <td className={`py-2.5 px-3 text-right font-mono border-l border-b ${cellBorderClass}`}>
                             {formatCell(g.finishing_mtr, g.finishing_pcs, g.finishing_mt)}
                           </td>
 
                           {/* Total Row WIP */}
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-[var(--text-main,#0f172a)] bg-[var(--bg-surface-subtle,#f8fafc)] border-l border-[var(--border-subtle,#e2e8f0)] text-[12px]">
+                          <td className={`py-2.5 px-3 text-right font-mono font-black border-l-2 border-b border-l-blue-400 dark:border-l-blue-600 ${cellBorderClass} bg-blue-50/90 dark:bg-blue-950/40 text-blue-950 dark:text-blue-100 ${projectorMode ? 'text-[13px] bg-blue-100/90' : 'text-xs'}`}>
                             {formatCell(g.total_mtr, g.total_pcs, g.total_mt)}
                           </td>
                         </tr>
@@ -1861,13 +2074,13 @@ export default function SizeGradeWipReportClient() {
                                   <table className="w-full text-xs text-left">
                                     <thead className="text-[10px] uppercase font-semibold text-[var(--text-muted,#64748b)] border-b border-[var(--border-subtle,#e2e8f0)]">
                                       <tr>
-                                        <th className="py-1 px-2">Work Order No</th>
-                                        <th className="py-1 px-2">Customer</th>
-                                        <th className="py-1 px-2">Order Status</th>
-                                        <th className="py-1 px-2">Route</th>
-                                        <th className="py-1 px-2">Current Work Center</th>
-                                        <th className="py-1 px-2 text-right">Physical WIP ({unit})</th>
-                                        <th className="py-1 px-2 text-right">Action</th>
+                                        <th scope="col" className="py-1 px-2">Work Order No</th>
+                                        <th scope="col" className="py-1 px-2">Customer</th>
+                                        <th scope="col" className="py-1 px-2">Order Status</th>
+                                        <th scope="col" className="py-1 px-2">Route</th>
+                                        <th scope="col" className="py-1 px-2">Current Work Center</th>
+                                        <th scope="col" className="py-1 px-2 text-right">Physical WIP ({unit})</th>
+                                        <th scope="col" className="py-1 px-2 text-right">Action</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-[var(--border-subtle,#f1f5f9)]">
@@ -1925,34 +2138,46 @@ export default function SizeGradeWipReportClient() {
 
               {/* Total Summary Footer */}
               {matrixGroups.length > 0 && (
-                <tfoot className="bg-[var(--bg-surface-subtle,#f8fafc)] border-t-2 border-[var(--border-subtle,#cbd5e1)] font-semibold text-[var(--text-main,#0f172a)] text-xs">
+                <tfoot className="border-t-2 border-slate-600">
                   <tr>
-                    <td colSpan={3} className="py-2.5 px-3 uppercase tracking-wider text-right font-bold text-[var(--text-main,#334155)]">
+                    <td
+                      colSpan={3}
+                      className="sticky left-0 bottom-0 z-30 bg-slate-900 py-3 px-3 uppercase tracking-wider text-right font-bold text-white border-r-2 border-slate-600 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.3)]"
+                    >
                       Total Plant Inventory:
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
-                      {formatCell(kpis.htcMtr, kpis.htcPcs, kpis.htcMt)}
+                    <td
+                      className="sticky bottom-0 z-20 bg-slate-900 py-3 px-3 text-right font-mono font-semibold border-l border-slate-700"
+                      title="Actual Rolling Production (Feeder stage material - excluded from active in-station Total Plant WIP)"
+                    >
+                      {formatCell(kpis.hotRollingMtr, kpis.hotRollingPcs, kpis.hotRollingMt, 'text-slate-300', 'text-slate-400')}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
-                      {formatCell(kpis.drawMtr, kpis.drawPcs, kpis.drawMt)}
+                    <td className="sticky bottom-0 z-20 bg-slate-900 py-3 px-3 text-right font-mono font-bold border-l border-slate-700">
+                      {formatCell(kpis.htcMtr, kpis.htcPcs, kpis.htcMt, 'text-white', 'text-slate-300')}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
-                      {formatCell(kpis.htMtr, kpis.htPcs, kpis.htMt)}
+                    <td className="sticky bottom-0 z-20 bg-slate-900 py-3 px-3 text-right font-mono font-bold border-l border-slate-700">
+                      {formatCell(kpis.hollowHtMtr, kpis.hollowHtPcs, kpis.hollowHtMt, 'text-white', 'text-slate-300')}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
-                      {formatCell(kpis.bandSawMtr, kpis.bandSawPcs, kpis.bandSawMt)}
+                    <td className="sticky bottom-0 z-20 bg-slate-900 py-3 px-3 text-right font-mono font-bold border-l border-slate-700">
+                      {formatCell(kpis.drawMtr, kpis.drawPcs, kpis.drawMt, 'text-white', 'text-slate-300')}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
-                      {formatCell(kpis.vdiMtr, kpis.vdiPcs, kpis.vdiMt)}
+                    <td className="sticky bottom-0 z-20 bg-slate-900 py-3 px-3 text-right font-mono font-bold border-l border-slate-700">
+                      {formatCell(kpis.htMtr, kpis.htPcs, kpis.htMt, 'text-white', 'text-slate-300')}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
-                      {formatCell(kpis.vdiSalvageMtr, kpis.vdiSalvagePcs, kpis.vdiSalvageMt)}
+                    <td className="sticky bottom-0 z-20 bg-slate-900 py-3 px-3 text-right font-mono font-bold border-l border-slate-700">
+                      {formatCell(kpis.bandSawMtr, kpis.bandSawPcs, kpis.bandSawMt, 'text-white', 'text-slate-300')}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)] border-l border-[var(--border-subtle,#e2e8f0)]">
-                      {formatCell(kpis.finishingMtr, kpis.finishingPcs, kpis.finishingMt)}
+                    <td className="sticky bottom-0 z-20 bg-slate-900 py-3 px-3 text-right font-mono font-bold border-l border-slate-700">
+                      {formatCell(kpis.vdiMtr, kpis.vdiPcs, kpis.vdiMt, 'text-white', 'text-slate-300')}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-[var(--text-main,#0f172a)] bg-[var(--bg-surface-subtle,#f1f5f9)] border-l border-[var(--border-subtle,#cbd5e1)] text-[12px]">
-                      {formatCell(kpis.totalWipMtr, kpis.totalWipPcs, kpis.totalWipMt)}
+                    <td className="sticky bottom-0 z-20 bg-slate-900 py-3 px-3 text-right font-mono font-bold border-l border-slate-700">
+                      {formatCell(kpis.vdiSalvageMtr, kpis.vdiSalvagePcs, kpis.vdiSalvageMt, 'text-amber-300', 'text-amber-400')}
+                    </td>
+                    <td className="sticky bottom-0 z-20 bg-slate-900 py-3 px-3 text-right font-mono font-bold border-l border-slate-700">
+                      {formatCell(kpis.finishingMtr, kpis.finishingPcs, kpis.finishingMt, 'text-white', 'text-slate-300')}
+                    </td>
+                    <td className="sticky bottom-0 z-20 bg-slate-950 py-3 px-3 text-right font-mono font-black border-l-2 border-amber-400">
+                      {formatCell(kpis.totalWipMtr, kpis.totalWipPcs, kpis.totalWipMt, 'text-amber-300 text-sm font-black', 'text-amber-400')}
                     </td>
                   </tr>
                 </tfoot>
@@ -1964,38 +2189,38 @@ export default function SizeGradeWipReportClient() {
 
       {/* LEDGER WORK ORDER DETAIL VIEW */}
       {viewMode === 'ledger' && (
-        <div className="rounded-lg border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] shadow-2xs overflow-hidden">
-          <div className="overflow-auto max-h-[70vh] relative">
+        <div className="rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-md overflow-hidden">
+          <div className="overflow-auto max-h-[72vh] relative">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 z-20 bg-[var(--bg-surface-subtle,#f8fafc)] backdrop-blur-xs border-b border-[var(--border-subtle,#e2e8f0)] text-[var(--text-muted,#475569)] font-semibold uppercase tracking-wider text-[11px] shadow-2xs bg-clip-padding">
+              <thead className="sticky top-0 z-20 bg-slate-900 text-white border-b-2 border-slate-700 font-bold uppercase tracking-wider text-[11px] shadow-sm bg-clip-padding">
                 <tr>
-                  <th className="py-2.5 px-3 bg-clip-padding">Work Order #</th>
-                  <th className="py-2.5 px-3 bg-clip-padding">Customer</th>
-                  <th className="py-2.5 px-3 bg-clip-padding">Order Status</th>
-                  <th className="py-2.5 px-3 bg-clip-padding">Route</th>
-                  <th className="py-2.5 px-3 bg-clip-padding">Size (OD × WT)</th>
-                  <th className="py-2.5 px-3 bg-clip-padding">Material Grade</th>
-                  <th className="py-2.5 px-3 bg-clip-padding">Current Station</th>
-                  <th className="py-2.5 px-3 text-right bg-clip-padding">Physical WIP (Mtrs)</th>
-                  <th className="py-2.5 px-3 text-right bg-clip-padding">WIP (Pcs)</th>
-                  <th className="py-2.5 px-3 text-right bg-clip-padding">WIP (MT)</th>
-                  <th className="py-2.5 px-3 text-right bg-clip-padding">Action</th>
+                  <th scope="col" className="py-3 px-3 bg-clip-padding">Work Order #</th>
+                  <th scope="col" className="py-3 px-3 bg-clip-padding">Customer</th>
+                  <th scope="col" className="py-3 px-3 bg-clip-padding">Order Status</th>
+                  <th scope="col" className="py-3 px-3 bg-clip-padding">Route</th>
+                  <th scope="col" className="py-3 px-3 bg-clip-padding">Size (OD × WT)</th>
+                  <th scope="col" className="py-3 px-3 bg-clip-padding">Material Grade</th>
+                  <th scope="col" className="py-3 px-3 bg-clip-padding">Current Station</th>
+                  <th scope="col" className="py-3 px-3 text-right bg-clip-padding">Physical WIP (Mtrs)</th>
+                  <th scope="col" className="py-3 px-3 text-right bg-clip-padding">WIP (Pcs)</th>
+                  <th scope="col" className="py-3 px-3 text-right bg-clip-padding">WIP (MT)</th>
+                  <th scope="col" className="py-3 px-3 text-right bg-clip-padding">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--border-subtle,#f1f5f9)]">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {filteredRawRows.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-[var(--text-muted,#94a3b8)]">
+                    <td colSpan={11} className="py-12 text-center text-slate-500">
                       No active work orders matching filters.
                     </td>
                   </tr>
                 ) : (
                   filteredRawRows.map((r, i) => (
-                    <tr key={i} className="hover:bg-[var(--bg-surface-subtle,#f8fafc)] transition">
-                      <td className="py-2.5 px-3 font-mono font-bold text-[var(--text-main,#0f172a)]">
+                    <tr key={i} className={`hover:bg-blue-50/60 dark:hover:bg-slate-800 transition ${i % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/80 dark:bg-slate-800/40'}`}>
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-950 dark:text-slate-100">
                         {r.work_order_no}
                       </td>
-                      <td className="py-2.5 px-3 text-[var(--text-muted,#475569)] truncate max-w-[160px]">
+                      <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300 truncate max-w-[160px]">
                         {r.customer_name || 'Generic Customer'}
                       </td>
                       <td className="py-2.5 px-3">
@@ -2006,31 +2231,31 @@ export default function SizeGradeWipReportClient() {
                           {r.route_code || 'HFS'}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-[var(--text-main,#0f172a)]">
+                      <td className="py-2.5 px-3 font-mono font-bold text-slate-950 dark:text-slate-100">
                         {r.od} × {r.wt} mm
                       </td>
                       <td className="py-2.5 px-3">
-                        <span className="font-mono text-[var(--text-main,#334155)] bg-[var(--bg-surface-subtle,#f1f5f9)] px-1.5 py-0.5 rounded text-[11px] border border-[var(--border-subtle,#e2e8f0)]">
+                        <span className="font-mono text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[11px] border border-slate-300 dark:border-slate-700 font-bold">
                           {r.grade}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 font-medium text-[var(--text-main,#334155)]">
+                      <td className="py-2.5 px-3 font-medium text-slate-800 dark:text-slate-200">
                         {r.stage_name || r.stage_code}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-semibold text-[var(--text-main,#0f172a)]">
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-950 dark:text-slate-100">
                         {fmt(r.current_wip)} m
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-[var(--text-muted,#64748b)]">
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
                         {fmt(r.current_wip_pcs, 0)}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-[var(--text-muted,#64748b)]">
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
                         {fmt(r.available_mt, 3)}
                       </td>
                       <td className="py-2.5 px-3 text-right">
                         <button
                           type="button"
                           onClick={() => router.push(`/reports/tracking?wo=${encodeURIComponent(r.work_order_no)}`)}
-                          className="inline-flex items-center gap-1 text-[11px] text-[var(--text-main,#334155)] hover:text-blue-600 dark:hover:text-blue-400 hover:underline font-semibold"
+                          className="inline-flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline font-semibold"
                         >
                           <span>Track</span>
                           <ArrowRight size={11} />

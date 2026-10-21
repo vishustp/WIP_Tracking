@@ -53,7 +53,7 @@ export type Plan = {
   can_modify: boolean;
 };
 
-export interface FactoryPlanRow {
+interface FactoryPlanRow {
   // 32-Column Factory Production Schedule Fields (Matching F-PROD-01A exact layout)
   srNo: number;            // 1. Sr No.
   catg: string;            // 2. Catg

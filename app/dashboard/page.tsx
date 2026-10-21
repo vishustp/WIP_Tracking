@@ -6,7 +6,27 @@ import { computeAgingReportRows, calculateAgingSeverity } from '@/lib/reports/ag
 
 export const dynamic = 'force-dynamic';
 
+interface DashboardCachePayload {
+  timestamp: number;
+  props: {
+    kpi: any;
+    wip: any[];
+    pending: any[];
+    recentProduction: any[];
+    agingData: any[];
+    trendData: any[];
+    yesterdayProduction: any;
+  };
+}
+
+let dashboardCache: DashboardCachePayload | null = null;
+const DASHBOARD_CACHE_TTL_MS = 25000; // 25s fast in-memory cache
+
 export default async function Dashboard() {
+  if (dashboardCache && (Date.now() - dashboardCache.timestamp) < DASHBOARD_CACHE_TTL_MS) {
+    return <DashboardClient {...dashboardCache.props} />;
+  }
+
   let kpi = null;
   let wip: any[] = [];
   let pending: any[] = [];
@@ -630,6 +650,18 @@ export default async function Dashboard() {
       stations: stationsList,
     };
 
+    dashboardCache = {
+      timestamp: Date.now(),
+      props: {
+        kpi,
+        wip: calculatedWip,
+        pending,
+        recentProduction,
+        agingData,
+        trendData,
+        yesterdayProduction,
+      },
+    };
   } catch (err) {
     console.warn('[Dashboard] Supabase query failed:', err);
   }

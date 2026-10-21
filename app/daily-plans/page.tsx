@@ -10,7 +10,7 @@ export const metadata = {
 
 export default function DailyPlanningPage() {
   return (
-    <RouteAccessGuard allowedGroups={['admin', 'super_user', 'user']} formTitle="Daily Planning Console">
+    <RouteAccessGuard allowedGroups={['admin', 'super_user']} formTitle="Daily Planning Console">
       <Suspense fallback={<div className="p-8 text-center text-xs text-slate-500">Loading Daily Planning Console...</div>}>
         <DailyPlanningConsoleClient />
       </Suspense>

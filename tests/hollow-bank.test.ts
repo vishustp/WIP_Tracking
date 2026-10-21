@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { calculatePipeWeightMt, HollowBankLot, HollowBankStatus } from '@/lib/hollow-bank/types';
 import { isRouteVisible, isRouteVisibleForGroup } from '@/lib/permissions';
+import { isHollowBankOrder } from '@/hooks/useQueue';
 
 describe('Hollow Bank Inventory & Allocation Unit Tests', () => {
   describe('calculatePipeWeightMt', () => {
@@ -139,4 +140,32 @@ describe('Hollow Bank Inventory & Allocation Unit Tests', () => {
       expect(isRouteVisible(diversionUser, '/hollow-bank')).toBe(true);
     });
   });
+
+  describe('Production Entry Exclusion & Identification', () => {
+    it('accurately identifies Hollow bank orders by virtual ID, name, or customer', () => {
+      expect(isHollowBankOrder({ work_order_id: '00000000-0000-0000-0000-00000000000b' })).toBe(true);
+      expect(isHollowBankOrder({ work_order_no: 'Hollow bank' })).toBe(true);
+      expect(isHollowBankOrder({ work_order_no: 'HB-BUFFER' })).toBe(true);
+      expect(isHollowBankOrder({ customer_name: 'Hollow bank' })).toBe(true);
+      expect(isHollowBankOrder({ customer_name: 'HOLLOW BANK BUFFER YARD' })).toBe(true);
+
+      // Normal orders are not identified as Hollow bank
+      expect(isHollowBankOrder({ work_order_id: '11111111-1111-1111-1111-111111111111', work_order_no: '1446', customer_name: 'JSW Steel' })).toBe(false);
+      expect(isHollowBankOrder(null)).toBe(false);
+      expect(isHollowBankOrder(undefined)).toBe(false);
+    });
+
+    it('filters out Hollow bank rows from production entry queue arrays', () => {
+      const queueRows = [
+        { work_order_id: 'wo-1', work_order_no: '1446', customer_name: 'Customer A' },
+        { work_order_id: '00000000-0000-0000-0000-00000000000b', work_order_no: 'Hollow bank', customer_name: 'Hollow bank' },
+        { work_order_id: 'wo-2', work_order_no: '1447', customer_name: 'Customer B' },
+      ];
+
+      const filtered = queueRows.filter((r) => !isHollowBankOrder(r));
+      expect(filtered).toHaveLength(2);
+      expect(filtered.map((r) => r.work_order_no)).toEqual(['1446', '1447']);
+    });
+  });
 });
+

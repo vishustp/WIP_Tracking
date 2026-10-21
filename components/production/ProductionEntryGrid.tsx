@@ -20,7 +20,7 @@ import {
   attachBundleTypeToRemarks,
   extractBundleTypeFromRemarks,
 } from '@/lib/productionUtils';
-import { StageCode, STAGES, Row, ProductionEntry } from '@/types';
+import { StageCode, STAGES, PRODUCTION_ENTRY_STAGES, Row, ProductionEntry } from '@/types';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import { WipSummaryCards } from '@/components/production/WipSummaryCards';
@@ -66,10 +66,10 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
   } = usePermissions();
 
   const validInitial = useMemo<StageCode>(() => {
-    if (initialStage && STAGES.some((s) => s.code === initialStage)) {
+    if (initialStage && PRODUCTION_ENTRY_STAGES.some((s) => s.code === initialStage)) {
       return initialStage as StageCode;
     }
-    if (workCenter && STAGES.some((s) => s.code === workCenter)) {
+    if (workCenter && PRODUCTION_ENTRY_STAGES.some((s) => s.code === workCenter)) {
       return workCenter as StageCode;
     }
     return 'HOT_ROLLING';
@@ -79,10 +79,16 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
   const [stage, setStage] = useState<StageCode>(validInitial);
 
   useEffect(() => {
-    if (initialStage && STAGES.some((s) => s.code === initialStage)) {
+    if (initialStage && PRODUCTION_ENTRY_STAGES.some((s) => s.code === initialStage)) {
       setStage(initialStage as StageCode);
     }
   }, [initialStage]);
+
+  useEffect(() => {
+    if ((stage as string) === 'BAND_SAW' || (stage as string) === 'VDI') {
+      setStage('HOT_ROLLING');
+    }
+  }, [stage]);
 
   const [date, setDate] = useState(() => getCurrentDateStr());
 
@@ -154,7 +160,16 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         supabase.from('vw_route_stage_wip').select('*'),
         supabase.from('rolling_plans').select('id, plan_no, status, work_order_id, mh_od, mh_wt, mh_l1, mh_l2, work_orders(work_order_no)').not('status', 'is', null),
       ]);
-      if (wipRes.data) setFactoryWip(wipRes.data);
+      if (wipRes.data) {
+        setFactoryWip(
+          wipRes.data.filter(
+            (w: any) =>
+              w.work_order_id !== '00000000-0000-0000-0000-00000000000b' &&
+              String(w.work_order_no || '').trim().toUpperCase() !== 'HB-BUFFER' &&
+              String(w.work_order_no || '').trim().toUpperCase() !== 'HOLLOW BANK'
+          )
+        );
+      }
       if (plansRes.data) {
         const cIds = new Set<string>();
         const mhMap = new Map<string, { mh_od?: number | null; mh_wt?: number | null; mh_l1?: number | null; mh_l2?: number | null; mh_avg_length?: number | null }>();
@@ -249,6 +264,16 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
     };
 
     return rows.filter((r) => {
+      // Hollow bank is dedicated yard buffer inventory (accessible via /hollow-bank) and must not be available for production entry
+      if (
+        r.work_order_id === '00000000-0000-0000-0000-00000000000b' ||
+        String(r.work_order_no || '').trim().toUpperCase() === 'HB-BUFFER' ||
+        String(r.work_order_no || '').trim().toUpperCase() === 'HOLLOW BANK' ||
+        String(r.customer_name || '').trim().toUpperCase().includes('HOLLOW BANK')
+      ) {
+        return false;
+      }
+
       // 1. Check direct row fields
       if (
         textMatches(r.work_order_no) ||

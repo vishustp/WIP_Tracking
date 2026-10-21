@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAuth } from '@/lib/supabase/authGuard';
 import { attachPcsToRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
+import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function POST(req: NextRequest) {
   try {
@@ -177,6 +178,9 @@ export async function POST(req: NextRequest) {
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
     }
+
+    // Invalidate queue cache so the next request immediately sees updated WIP balances
+    invalidateQueueCache();
 
     return NextResponse.json({
       success: true,

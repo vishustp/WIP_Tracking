@@ -5,8 +5,8 @@
 insert into public.work_orders(id, work_order_no, customer_name, status, size_od, size_wt, ordered_qty, uom, grade)
 values (
   '00000000-0000-0000-0000-00000000000b',
-  'HB-BUFFER',
-  'HOLLOW BANK BUFFER YARD',
+  'Hollow bank',
+  'Hollow bank',
   'In Progress',
   1,
   1,

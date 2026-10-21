@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAuth } from '@/lib/supabase/authGuard';
+import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function POST(req: NextRequest) {
   return handleDelete(req);
@@ -149,6 +150,9 @@ async function handleDelete(req: NextRequest) {
           .not('status', 'in', '("Completed","Diverted")');
       }
     }
+
+    // Invalidate queue cache so the next request immediately sees updated WIP balances
+    invalidateQueueCache();
 
     return NextResponse.json({
       success: true,

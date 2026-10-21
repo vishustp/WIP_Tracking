@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { RefreshCw, FileSpreadsheet, AlertTriangle, CalendarDays } from 'lucide-react';
-import { StageCode, STAGES } from '@/types';
+import { StageCode, PRODUCTION_ENTRY_STAGES } from '@/types';
 import { Button } from '@/components/ui/button';
 
 export interface ProductionToolbarProps {
@@ -50,9 +50,10 @@ export function ProductionToolbar({
               <select
                 value={stage}
                 onChange={(e) => setStage(e.target.value as StageCode)}
+                aria-label="Select Work Center Stage"
                 className="h-9 rounded-lg border-0 bg-transparent px-3 text-xs sm:text-sm font-semibold text-[var(--text-main,#1e293b)] focus:ring-0 cursor-pointer"
               >
-                {STAGES.map((s) => (
+                {PRODUCTION_ENTRY_STAGES.map((s) => (
                   <option key={s.code} value={s.code} className="bg-[var(--bg-surface,#ffffff)] text-[var(--text-main,#1e293b)]">
                     {s.label}
                   </option>
@@ -69,12 +70,12 @@ export function ProductionToolbar({
             </Link>
 
             <Link
-              href="/daily-plans"
+              href="/reports/daily-plan"
               className="inline-flex items-center gap-1.5 h-9 rounded-lg border border-blue-300 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/40 px-3 text-xs font-semibold text-blue-800 dark:text-blue-200 shadow-2xs hover:bg-blue-100 dark:hover:bg-blue-900/40 transition active:scale-[0.97]"
-              title="View & Set Unified Daily Shift Planning Targets"
+              title="View Daily Shift Planning Targets & Compliance"
             >
               <CalendarDays className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Unified Daily Plan</span>
+              <span>Daily Plan Report</span>
             </Link>
 
             <Link

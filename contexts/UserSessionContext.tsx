@@ -45,22 +45,45 @@ export function UserSessionProvider({ children }: { children: React.ReactNode })
   const lastActivityRef = useRef<number>(Date.now());
   const isAuthPage = pathname === '/login';
 
-  // 1. Initial and dynamic session loader
+  // 1. Initial and dynamic session loader (Fast-path local session hydration)
   const refreshUser = useCallback(async (force = false) => {
     try {
       if (force) invalidateCurrentUserCache();
       const supabase = createClient();
-      const { data: authData } = await supabase.auth.getUser();
 
-      if (!authData?.user) {
+      // Fast-path: check local session first (<1ms local storage read, no network delay)
+      let authUser: User | null = null;
+      if (!force && typeof supabase.auth?.getSession === 'function') {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session?.user) {
+            authUser = sessionData.session.user;
+            setUser(authUser);
+            const cachedProfile = await getCurrentAppUser(false, authUser);
+            if (cachedProfile) {
+              setProfile(cachedProfile);
+              setIsLoading(false);
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      // Fallback to network validation if no local session or force refresh requested
+      if (!authUser) {
+        const { data: authData } = await supabase.auth.getUser();
+        authUser = authData?.user || null;
+      }
+
+      if (!authUser) {
         setUser(null);
         setProfile(null);
         setIsLoading(false);
         return;
       }
 
-      setUser(authData.user);
-      const appProfile = await getCurrentAppUser(force);
+      setUser(authUser);
+      const appProfile = await getCurrentAppUser(force, authUser);
       setProfile(appProfile);
     } catch (err) {
       console.error('Failed to load user session:', err);
@@ -87,7 +110,7 @@ export function UserSessionProvider({ children }: { children: React.ReactNode })
       } else if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
         if (session?.user) {
           setUser(session.user);
-          const appProfile = await getCurrentAppUser(true);
+          const appProfile = await getCurrentAppUser(event === 'SIGNED_IN', session.user);
           setProfile(appProfile);
         }
         setIsLoading(false);

@@ -77,6 +77,9 @@ export interface Row {
   ready_pcs?: number | null;
   ready_mtr?: number | null;
   ready_mt?: number | null;
+  rolled_pcs?: number | null;
+  rolled_mtr?: number | null;
+  rolled_mt?: number | null;
   feeder_pcs?: number | null;
   feeder_mtr?: number | null;
   feeder_mt?: number | null;
@@ -230,6 +233,20 @@ export const STAGES: { code: StageCode; label: string }[] = [
   { code: "BAND_SAW", label: "Band Saw" },
   { code: "VDI", label: "VDI / QC" },
   { code: "FINISHING", label: "Finishing" },
+];
+
+/**
+ * Stations available specifically in the Production Entry Form.
+ * Band Saw (/band-saw) and VDI (/vdi) have their own dedicated forms and are excluded.
+ */
+export const PRODUCTION_ENTRY_STAGES: { code: StageCode; label: string }[] = [
+  { code: "HOT_ROLLING", label: "Hot Rolling Mill" },
+  { code: "HTC", label: "Hot Test Check (HTC)" },
+  { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
+  { code: "DRAW", label: "Draw Bench" },
+  { code: "PILGER", label: "Cold Pilger Mill" },
+  { code: "HEAT_TREATMENT", label: "Heat Treatment" },
+  { code: "FINISHING", label: "Finishing Line" },
 ];
 
 export const emptyRow = (r: Omit<

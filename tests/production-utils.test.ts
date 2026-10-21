@@ -413,6 +413,25 @@ describe("Production Utils Unit Tests", () => {
       expect(cleanRemarksFromSystemTags("Visual OK [L1:6] [L2:6] [PCS:25] [REJ_PCS:2]")).toBe("Visual OK");
     });
   });
+
+  describe("10. Production Entry Form Stations", () => {
+    it("PRODUCTION_ENTRY_STAGES excludes BAND_SAW and VDI because they have dedicated forms", async () => {
+      const { PRODUCTION_ENTRY_STAGES } = await import("../types");
+      const stageCodes = PRODUCTION_ENTRY_STAGES.map((s) => s.code);
+
+      expect(stageCodes).not.toContain("BAND_SAW");
+      expect(stageCodes).not.toContain("VDI");
+      expect(stageCodes).toEqual([
+        "HOT_ROLLING",
+        "HTC",
+        "HOLLOW_HEAT_TREATMENT",
+        "DRAW",
+        "PILGER",
+        "HEAT_TREATMENT",
+        "FINISHING",
+      ]);
+    });
+  });
 });
 
 

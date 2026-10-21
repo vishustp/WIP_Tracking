@@ -55,7 +55,7 @@ export function ProductionQueueTable({
   onSave,
 }: ProductionQueueTableProps) {
   const stageLabel = STAGES.find((x) => x.code === stage)?.label || stage;
-  const hasL1L2 = stage === 'DRAW' || stage === 'PILGER' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
+  const hasL1L2 = stage === 'DRAW' || stage === 'PILGER' || stage === 'HEAT_TREATMENT' || stage === 'FINISHING';
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs overflow-hidden">
@@ -75,6 +75,7 @@ export function ProductionQueueTable({
               value={woFilter}
               onChange={(e) => setWoFilter(e.target.value)}
               placeholder="Quick filter (WO, Child WO, Customer, Plan)..."
+              aria-label="Filter production queue by work order, child work order, customer, or plan"
               className="h-8 w-48 sm:w-60 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600"
             />
             {woFilter && (
@@ -90,7 +91,7 @@ export function ProductionQueueTable({
             )}
           </div>
 
-          {(stage === 'DRAW' || stage === 'PILGER' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW') && (
+          {(stage === 'DRAW' || stage === 'PILGER' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'HEAT_TREATMENT') && (
             <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200/80 dark:border-indigo-800 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
               <Crown size={12} /> Master Consolidated
             </span>
@@ -107,7 +108,7 @@ export function ProductionQueueTable({
       {queueLoading ? (
         <div className="p-8 space-y-3">
           <div className="flex items-center justify-center gap-2 text-xs font-medium text-[var(--text-muted,#64748b)] mb-4">
-            <RefreshCw size={14} className="animate-spin text-brand-600" />
+            <RefreshCw size={14} className="animate-spin text-brand-600 motion-reduce:animate-none" />
             <span>Loading work order production queue...</span>
           </div>
           {Array.from({ length: 4 }).map((_, i) => (
@@ -158,7 +159,7 @@ export function ProductionQueueTable({
                 <th className="py-2.5 px-3 sm:px-4 text-center font-bold text-emerald-900 dark:text-emerald-300 bg-emerald-50/80 dark:bg-emerald-950/50 border-r border-emerald-100 dark:border-emerald-800 whitespace-nowrap">
                   {stage === 'HTC' || stage === 'ROLLING' ? 'HTC OK (Nos)' : 'OK Nos (Net)'}
                 </th>
-                {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'BAND_SAW') && (
+                {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT') && (
                   <th className="py-2.5 px-3 text-left font-bold text-slate-600 dark:text-slate-400 whitespace-nowrap">Heat Lot No.</th>
                 )}
                 <th className="sticky right-0 top-0 z-30 py-2.5 px-3 text-center font-bold text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)] whitespace-nowrap">
@@ -215,7 +216,7 @@ export function ProductionQueueTable({
         >
           {saving ? (
             <>
-              <RefreshCw size={15} className="animate-spin" />
+              <RefreshCw size={15} className="animate-spin motion-reduce:animate-none" />
               <span>Saving Entries...</span>
             </>
           ) : (

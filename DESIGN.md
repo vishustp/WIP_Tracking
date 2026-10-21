@@ -15,6 +15,10 @@ colors:
   danger: "#ef4444"
   info: "#0284c7"
   border-strong: "#cbd5e1"
+  primary-selection: "#e0e7ff"
+  primary-selection-text: "#3730a3"
+  border-interactive-focus: "#94a3b8"
+  text-print-black: "#000000"
   stage-rolling: "#f97316"
   stage-hht: "#3b82f6"
   stage-draw: "#eab308"
@@ -39,6 +43,10 @@ typography:
     fontFamily: "Inter, system-ui, -apple-system, sans-serif"
     fontSize: "0.6875rem"
     fontWeight: 600
+  print-micro:
+    fontFamily: "Inter, system-ui, -apple-system, sans-serif"
+    fontSize: "0.4375rem"
+    fontWeight: 600
   badge:
     fontFamily: "Inter, system-ui, -apple-system, sans-serif"
     fontSize: "0.625rem"
@@ -48,10 +56,12 @@ typography:
     fontSize: "0.5625rem"
     fontWeight: 700
 rounded:
+  xs: "4px"
   sm: "6px"
   md: "8px"
   lg: "12px"
   xl: "16px"
+  full: "9999px"
 spacing:
   xs: "4px"
   sm: "8px"

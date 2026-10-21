@@ -29,7 +29,7 @@ describe('Process Sheet Query & Loading', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     console.log('work_orders count:', data.length);
-  });
+  }, 30000);
 
   it('queries rolling_plans with columns used by ProcessSheetReportClient', async () => {
     const validPlanCols = 'id,plan_no,work_order_id,planned_rolling_date,planned_qty,process_route_id,multiple,status,mh_od,mh_wt,mh_l1,mh_l2,pass_required';
@@ -41,8 +41,9 @@ describe('Process Sheet Query & Loading', () => {
     }
     expect(res.status).toBe(200);
     const data = await res.json();
+    console.log('rolling_plans count:', data.length);
     expect(data.length).toBeGreaterThan(0);
     expect(data[0]).toHaveProperty('plan_no');
     expect(data[0]).toHaveProperty('mh_od');
-  });
+  }, 30000);
 });

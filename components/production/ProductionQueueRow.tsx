@@ -1,6 +1,6 @@
 'use client';
 
-import { Package, Crown, Scissors, AlertTriangle } from 'lucide-react';
+import { Package, Crown, AlertTriangle } from 'lucide-react';
 import { Row, StageCode } from '@/types';
 import { calc, fmt, n, mtFromMtr } from '@/lib/productionUtils';
 
@@ -38,7 +38,7 @@ export function ProductionQueueRow({
   const d = calc({ ...row, stage_code: stage });
   const isRollingStage = stage === 'HOT_ROLLING' || stage === 'ROLLING';
   const isMhStage = stage === 'HOT_ROLLING' || stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT';
-  const hasL1L2 = stage === 'DRAW' || stage === 'PILGER' || stage === 'HEAT_TREATMENT' || stage === 'BAND_SAW' || stage === 'VDI' || stage === 'FINISHING';
+  const hasL1L2 = stage === 'DRAW' || stage === 'PILGER' || stage === 'HEAT_TREATMENT' || stage === 'FINISHING';
   const stageOd = isMhStage && row.mh_od ? Number(row.mh_od) : Number(row.od || 0);
   const stageWt = isMhStage && row.mh_wt ? Number(row.mh_wt) : Number(row.wl || 0);
 
@@ -198,6 +198,7 @@ export function ProductionQueueRow({
                   onUpdateRow(key, 'mtr', (Number(row.pcs) * avgVal).toFixed(2));
                 }
               }}
+              aria-label={`Minimum cut length L1 for order ${row.work_order_no}`}
               className="w-14 rounded border border-amber-300 dark:border-amber-700 bg-[var(--bg-surface,#ffffff)] px-1.5 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
               title="L1 (Length Min / Cut Length in meters)"
             />
@@ -218,6 +219,7 @@ export function ProductionQueueRow({
                   onUpdateRow(key, 'mtr', (Number(row.pcs) * avgVal).toFixed(2));
                 }
               }}
+              aria-label={`Maximum cut length L2 for order ${row.work_order_no}`}
               className="w-14 rounded border border-amber-300 dark:border-amber-700 bg-[var(--bg-surface,#ffffff)] px-1.5 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-amber-500 focus:ring-1 focus:ring-amber-500 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
               title="L2 (Length Max / Cut Length in meters)"
             />
@@ -248,6 +250,7 @@ export function ProductionQueueRow({
                 onUpdateRow(key, 'mtr', '');
               }
             }}
+            aria-label={`Produced pieces for order ${row.work_order_no}`}
             className="w-16 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
           />
           <input
@@ -258,6 +261,7 @@ export function ProductionQueueRow({
             disabled={!isAllowed}
             value={row.mtr}
             onChange={(e) => onUpdateRow(key, 'mtr', e.target.value)}
+            aria-label={`Produced meters for order ${row.work_order_no}`}
             className="w-20 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
           />
         </div>
@@ -274,6 +278,7 @@ export function ProductionQueueRow({
             disabled={!isAllowed}
             value={row.rejection_pcs}
             onChange={(e) => onUpdateRow(key, 'rejection_pcs', e.target.value)}
+            aria-label={`Rejection pieces for order ${row.work_order_no}`}
             className="w-16 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
           />
           <input
@@ -284,6 +289,7 @@ export function ProductionQueueRow({
             disabled={!isAllowed}
             value={row.rejection_mtr}
             onChange={(e) => onUpdateRow(key, 'rejection_mtr', e.target.value)}
+            aria-label={`Rejection meters for order ${row.work_order_no}`}
             className="w-20 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-rose-500 focus:ring-1 focus:ring-rose-500 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
           />
         </div>
@@ -301,6 +307,7 @@ export function ProductionQueueRow({
               disabled={!isAllowed}
               value={row.htc_ok_pcs}
               onChange={(e) => onUpdateRow(key, 'htc_ok_pcs', e.target.value)}
+              aria-label={`HTC OK inspected pieces for order ${row.work_order_no}`}
               className="w-16 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-center font-mono text-xs font-semibold text-[var(--text-main,#0f172a)] shadow-2xs focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
             />
           </div>
@@ -327,31 +334,18 @@ export function ProductionQueueRow({
         </td>
       )}
 
-      {/* Heat Lot No. (Heat Treatment & Band Saw) */}
-      {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'BAND_SAW') && (
+      {/* Heat Lot No. (Heat Treatment) */}
+      {(stage === 'HEAT_TREATMENT' || stage === 'HOLLOW_HEAT_TREATMENT') && (
         <td className="py-2.5 px-3 align-middle">
-          {stage === 'BAND_SAW' ? (
-            row.heat_lots && row.heat_lots.length > 1 ? (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 shadow-2xs" title={row.heat_lots.map((l) => l.lot_no).join(', ')}>
-                {row.heat_lots.length} Lots
-              </span>
-            ) : row.heat_lot_no ? (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 shadow-2xs">
-                {row.heat_lot_no}
-              </span>
-            ) : (
-              <span className="text-[var(--text-muted,#94a3b8)] font-mono text-xs">—</span>
-            )
-          ) : (
-            <input
-              type="text"
-              placeholder="e.g. HT-8842"
-              disabled={!isAllowed}
-              value={row.heat_lot_no}
-              onChange={(e) => onUpdateRow(key, 'heat_lot_no', e.target.value)}
-              className="w-24 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-xs font-medium text-[var(--text-main,#0f172a)] shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
-            />
-          )}
+          <input
+            type="text"
+            placeholder="e.g. HT-8842"
+            disabled={!isAllowed}
+            value={row.heat_lot_no}
+            onChange={(e) => onUpdateRow(key, 'heat_lot_no', e.target.value)}
+            aria-label={`Heat lot number for order ${row.work_order_no}`}
+            className="w-24 rounded border border-[var(--border-subtle,#cbd5e1)] bg-[var(--bg-surface,#ffffff)] px-2 py-1 text-xs font-medium text-[var(--text-main,#0f172a)] shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 disabled:bg-[var(--bg-surface-subtle,#f1f5f9)] disabled:text-[var(--text-muted,#94a3b8)]"
+          />
         </td>
       )}
 
@@ -361,26 +355,18 @@ export function ProductionQueueRow({
           <button
             type="button"
             onClick={() => onToggleExpand(key)}
-            className="inline-flex items-center gap-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-800 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
+            className="inline-flex items-center gap-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-800 dark:text-slate-200 shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer touch-manipulation min-h-[30px]"
+            aria-label={`View WIP flow for order ${row.work_order_no}`}
           >
             WIP Flow
           </button>
-          {stage === 'BAND_SAW' && onOpenBandSawCutting && (
-            <button
-              type="button"
-              onClick={() => onOpenBandSawCutting(row)}
-              className="inline-flex items-center gap-1 rounded border border-indigo-300 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 text-xs font-bold text-indigo-800 dark:text-indigo-200 shadow-2xs hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition cursor-pointer"
-              title="Open Multi-Length Band Saw Cutting Form"
-            >
-              <Scissors size={12} className="rotate-90" /> Cut Form
-            </button>
-          )}
           {stage === 'FINISHING' && onOpenBundling && (
             <button
               type="button"
               onClick={() => onOpenBundling(row)}
-              className="inline-flex items-center gap-1 rounded border border-teal-300 bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800 shadow-2xs hover:bg-teal-100 transition cursor-pointer"
+              className="inline-flex items-center gap-1 rounded border border-teal-300 bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800 shadow-2xs hover:bg-teal-100 transition cursor-pointer touch-manipulation min-h-[30px]"
               title="Open Bundling & Commercial Disposition Dialog"
+              aria-label={`Open Bundling & Commercial Disposition for order ${row.work_order_no}`}
             >
               <Package size={12} /> Bundles
             </button>
@@ -390,8 +376,9 @@ export function ProductionQueueRow({
               type="button"
               disabled={!isAllowed || (availPcs <= 0 && availMtr <= 0)}
               onClick={() => onOpenReject(row)}
-              className="inline-flex items-center gap-1 rounded border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1 text-xs font-bold text-rose-800 dark:text-rose-200 shadow-2xs hover:bg-rose-100 dark:hover:bg-rose-900/40 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 rounded border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 px-2.5 py-1 text-xs font-bold text-rose-800 dark:text-rose-200 shadow-2xs hover:bg-rose-100 dark:hover:bg-rose-900/40 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation min-h-[30px]"
               title={`Declare Rejection / Reject Remnant for ${row.work_order_no} (${availPcs > 0 ? `${availPcs} PCS` : `${availMtr} m`} balance)`}
+              aria-label={`Declare Rejection for order ${row.work_order_no}`}
             >
               <AlertTriangle size={11} className="text-rose-600 dark:text-rose-400" />
               <span>Reject</span>

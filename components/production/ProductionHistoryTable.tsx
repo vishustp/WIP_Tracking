@@ -1,7 +1,7 @@
 'use client';
 
 import { Search, Edit2, Trash2, Lock, RefreshCw } from 'lucide-react';
-import { ProductionEntry, Row, STAGES } from '@/types';
+import { ProductionEntry, Row, STAGES, PRODUCTION_ENTRY_STAGES } from '@/types';
 import { fmt, extractPcsFromRemarks, extractCustomLengthFromRemarks, extractBundleTypeFromRemarks } from '@/lib/productionUtils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -62,7 +62,7 @@ export function ProductionHistoryTable({
             <Search size={15} className="text-slate-500" />
             <h2 className="text-xs sm:text-sm font-bold text-slate-900">Production History</h2>
           </div>
-          <span className="text-xs font-semibold text-slate-500 font-mono">
+          <span className="text-xs font-semibold text-slate-600 font-mono">
             {entries.length} Logged Record{entries.length === 1 ? '' : 's'}
           </span>
         </div>
@@ -72,15 +72,17 @@ export function ProductionHistoryTable({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search WO, Lot No, customer, grade, plan no..."
+            aria-label="Search logged production records by WO, Lot No, customer, grade, or plan no"
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 text-xs"
           />
           <select
             value={entryStage}
             onChange={(e) => setEntryStage(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 text-xs"
+            aria-label="Filter logged records by stage"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 text-xs cursor-pointer"
           >
-            <option value="">All Stages</option>
-            {STAGES.map((s) => (
+            <option value="">All Production Stages</option>
+            {PRODUCTION_ENTRY_STAGES.map((s) => (
               <option key={s.code} value={s.code}>
                 {s.label}
               </option>
@@ -89,7 +91,8 @@ export function ProductionHistoryTable({
           <select
             value={entryRoute}
             onChange={(e) => setEntryRoute(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 text-xs"
+            aria-label="Filter logged records by route"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 text-xs cursor-pointer"
           >
             <option value="">All Routes</option>
             {routes.map((route) => (
@@ -102,12 +105,14 @@ export function ProductionHistoryTable({
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
+            aria-label="Filter logged records from date"
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 text-xs"
           />
           <input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
+            aria-label="Filter logged records to date"
             className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-2xs focus:border-brand-600 focus:ring-1 focus:ring-brand-600 text-xs"
           />
         </div>
@@ -116,8 +121,8 @@ export function ProductionHistoryTable({
       {/* Content Table / Skeletons / Empty */}
       {historyLoading ? (
         <div className="p-8 space-y-3">
-          <div className="flex items-center justify-center gap-2 text-xs font-medium text-slate-500 mb-4">
-            <RefreshCw size={14} className="animate-spin text-brand-600" />
+          <div className="flex items-center justify-center gap-2 text-xs font-medium text-slate-600 mb-4">
+            <RefreshCw size={14} className="animate-spin text-brand-600 motion-reduce:animate-none" />
             <span>Loading production history records...</span>
           </div>
           {Array.from({ length: 5 }).map((_, i) => (
@@ -295,7 +300,8 @@ export function ProductionHistoryTable({
                               ? `Edit Entry (${entry.stage_code})`
                               : 'Locked: subsequent production logs exist for this order'
                           }
-                          className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                          className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer touch-manipulation min-h-[30px]"
+                          aria-label={`Edit entry ${entry.heat_lot_no || entry.work_order_no || entry.id}`}
                         >
                           {!editCheck.allowed ? <Lock size={11} className="text-slate-400" /> : <Edit2 size={12} />}
                           Edit
@@ -319,7 +325,8 @@ export function ProductionHistoryTable({
                                   })`
                                 : 'Locked: subsequent production logs exist for this order'
                             }
-                            className="inline-flex items-center gap-1 rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                            className="inline-flex items-center gap-1.5 rounded border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer touch-manipulation min-h-[30px]"
+                            aria-label={`Delete entry ${entry.heat_lot_no || entry.work_order_no || entry.id}`}
                           >
                             <Trash2 size={12} /> Delete
                           </button>
@@ -328,7 +335,8 @@ export function ProductionHistoryTable({
                             type="button"
                             disabled={true}
                             title={delCheck.reason || 'Deletion restricted'}
-                            className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-100/70 px-2 py-1 text-xs font-medium text-slate-400 cursor-not-allowed opacity-60"
+                            className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-slate-100/70 px-2.5 py-1.5 text-xs font-medium text-slate-400 cursor-not-allowed opacity-60 min-h-[30px]"
+                            aria-label="Delete entry restricted"
                           >
                             <Lock size={11} /> Delete
                           </button>

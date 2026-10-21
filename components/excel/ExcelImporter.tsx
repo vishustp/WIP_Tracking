@@ -46,7 +46,7 @@ import {
 import { StageCode } from '@/types';
 import { fmt } from '@/lib/productionUtils';
 
-export type WorkCenterImportTab =
+type WorkCenterImportTab =
   | 'WORK_ORDERS'
   | 'ROLLING'
   | 'HOLLOW_HEAT_TREATMENT'

@@ -84,6 +84,59 @@ describe('Permissions & Form Visibility Suite', () => {
       expect(isRouteVisible(finishingUser, '/reports/scrap')).toBe(true);
       expect(isRouteVisible(finishingUser, '/order-priority')).toBe(true);
     });
+
+    it('restricts /daily-plans to PPC persons and admins only, while /reports/daily-plan is accessible to everyone', () => {
+      const ppcUser: AppUserProfile = {
+        id: 'user-ppc-1',
+        auth_user_id: 'auth-ppc-1',
+        email: 'ppc@rashmiseamless.com',
+        name: 'PPC Engineer',
+        employee_id: 'EMP-795',
+        group: 'user',
+        role: 'manager',
+        role_title: 'Planning Engineer',
+        department: 'Production Planning & Control (PPC)',
+        shift: 'General',
+        work_center: 'ALL',
+        allowed_stages: [],
+        default_stage: 'ROLLING',
+        active: true,
+        created_at: new Date().toISOString(),
+      };
+
+      const adminUser: AppUserProfile = {
+        id: 'admin-1',
+        auth_user_id: 'auth-admin-1',
+        email: 'admin@rashmiseamless.com',
+        name: 'System Admin',
+        employee_id: 'EMP-001',
+        group: 'admin',
+        role: 'admin',
+        role_title: 'System Administrator',
+        department: 'Management',
+        shift: 'General',
+        work_center: 'ALL',
+        allowed_stages: [],
+        default_stage: 'ROLLING',
+        active: true,
+        created_at: new Date().toISOString(),
+      };
+
+      // Regular operators cannot access /daily-plans
+      expect(isRouteVisible(bandSawUser, '/daily-plans')).toBe(false);
+      expect(isRouteVisible(finishingUser, '/daily-plans')).toBe(false);
+
+      // But anyone can access /reports/daily-plan
+      expect(isRouteVisible(bandSawUser, '/reports/daily-plan')).toBe(true);
+      expect(isRouteVisible(finishingUser, '/reports/daily-plan')).toBe(true);
+      expect(isRouteVisible(null, '/reports/daily-plan')).toBe(true);
+
+      // PPC and Admin can access both /daily-plans and /reports/daily-plan
+      expect(isRouteVisible(ppcUser, '/daily-plans')).toBe(true);
+      expect(isRouteVisible(ppcUser, '/reports/daily-plan')).toBe(true);
+      expect(isRouteVisible(adminUser, '/daily-plans')).toBe(true);
+      expect(isRouteVisible(adminUser, '/reports/daily-plan')).toBe(true);
+    });
   });
 
   describe('Requirement 2: Mutual Permissions for Band Saw and Finishing', () => {

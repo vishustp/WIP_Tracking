@@ -543,10 +543,10 @@ export default function DashboardClient({
                     {card.title}
                   </span>
                   <div className="flex items-baseline justify-end gap-1.5 mt-1 flex-wrap">
-                    <span className="text-xl sm:text-2xl font-black text-[var(--text-main,#0f172a)] tracking-tight font-mono">
+                    <span className="text-xl sm:text-2xl font-black text-[var(--text-main,#0f172a)] tracking-tight font-mono tabular-nums">
                       {card.mt} <span className="text-xs sm:text-sm font-black text-[var(--text-main,#0f172a)]">MT</span>
                     </span>
-                    <span className="text-xs font-medium text-[var(--text-muted,#64748b)] font-mono">
+                    <span className="text-xs font-medium text-[var(--text-muted,#64748b)] font-mono tabular-nums">
                       {card.nos} <span className="text-[10px] opacity-75 font-sans">Nos</span>
                     </span>
                   </div>
@@ -606,11 +606,11 @@ export default function DashboardClient({
                       <Icon className="h-4 w-4" style={{ color: stage.color }} />
                     </div>
 
-                    <span className="text-sm font-black font-mono tracking-tight text-slate-950 dark:text-white">
+                    <span className="text-sm font-black font-mono tabular-nums tracking-tight text-slate-950 dark:text-white">
                       {formatNum(stage.mt, 1)} MT
                     </span>
 
-                    <div className="flex items-center gap-1 mt-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    <div className="flex items-center gap-1 mt-1 text-[11px] font-semibold font-mono tabular-nums text-slate-600 dark:text-slate-300">
                       <span>{formatNum(stage.pcs)} PCS</span>
                     </div>
                   </div>
@@ -822,8 +822,8 @@ export default function DashboardClient({
                   <span className="text-xs font-bold truncate max-w-[110px]">{item.stage}</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-black font-mono text-slate-900 dark:text-slate-100">{formatNum(item.mt, 1)}</span>
-                  <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400 block leading-none">{formatNum(item.pcs)} pcs</span>
+                  <span className="text-xs font-black font-mono tabular-nums text-slate-900 dark:text-slate-100">{formatNum(item.mt, 1)}</span>
+                  <span className="text-[10px] font-normal font-mono tabular-nums text-slate-500 dark:text-slate-400 block leading-none">{formatNum(item.pcs)} pcs</span>
                 </div>
               </Link>
             ))}
@@ -886,7 +886,7 @@ export default function DashboardClient({
                       <td className="py-2 px-2 font-mono text-slate-600 dark:text-slate-400">{row.grade}</td>
                       <td className="py-2 px-2 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">{row.size}</td>
                       <td className="py-2 px-2 font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{row.stage}</td>
-                      <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                      <td className="py-2 px-2 text-right font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                         {row.wipMt} <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">MT</span>
                         {row.pendingUom && (
                           <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal leading-none mt-0.5">
@@ -958,13 +958,13 @@ export default function DashboardClient({
                           </Link>
                         </td>
                         <td className="py-2 px-2 font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">{row.stage}</td>
-                        <td className="py-2 px-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                        <td className="py-2 px-2 text-right font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                           {row.wipMt} <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">MT</span>
                           {row.wipPcs > 0 && (
                             <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal leading-none">{formatNum(row.wipPcs)} pcs</span>
                           )}
                         </td>
-                        <td className="py-2 px-2 text-center font-mono font-black text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                        <td className="py-2 px-2 text-center font-mono tabular-nums font-black text-slate-900 dark:text-slate-100 whitespace-nowrap">
                           {row.daysStuck}d
                         </td>
                         <td className="py-2 px-2 text-center whitespace-nowrap">

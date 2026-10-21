@@ -440,10 +440,15 @@ export default function UserProfileClient() {
                     !isAdmin ? 'bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed' : 'bg-white border-slate-300'
                   }`}
                 >
-                  <option value="ROLLING">Rolling Mill (Hot Piercing & As-Rolled)</option>
+                  <option value="HOT_ROLLING">Hot Rolling Mill</option>
+                  <option value="HTC">Hot Test Check (HTC QC)</option>
+                  <option value="ROLLING">Rolling Mill (Legacy)</option>
                   <option value="HOLLOW_HEAT_TREATMENT">Hollow Heat Treatment</option>
                   <option value="DRAW">Cold Draw Bench (Die & Plug)</option>
-                  <option value="HEAT_TREATMENT">Heat Treatment & Normalizing</option>
+                  <option value="PILGER">Cold Pilger Mill</option>
+                  <option value="HEAT_TREATMENT">Final Heat Treatment & Normalizing</option>
+                  <option value="BAND_SAW">Band Saw Cutting Station</option>
+                  <option value="VDI">Visual Dimension Inspection (VDI / QC)</option>
                   <option value="FINISHING">Finishing & Final NDT</option>
                 </select>
                 <p className="text-sm text-slate-400 mt-1">

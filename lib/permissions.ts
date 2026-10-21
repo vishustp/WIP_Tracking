@@ -246,7 +246,6 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/admin/spec-master',
     '/spec-master',
     '/order-priority',
-    '/daily-plans',
     '/reports/daily-plan',
     '/reports/pending-orders',
     '/reports/process-sheet',
@@ -273,7 +272,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
  */
 export function isRouteVisible(user: AppUserProfile | null | undefined, href: string): boolean {
   if (!user) {
-    if (['/dashboard', '/production', '/daily-plans', '/reports/daily-plan', '/reports/wip', '/reports/tracking'].includes(href)) return true;
+    if (['/dashboard', '/production', '/reports/daily-plan', '/reports/wip', '/reports/tracking'].includes(href)) return true;
     return false;
   }
   const group: UserGroup = user.group || (user.role === 'admin' ? 'admin' : user.role === 'manager' ? 'super_user' : 'user');
@@ -281,9 +280,13 @@ export function isRouteVisible(user: AppUserProfile | null | undefined, href: st
 
   if (['/dashboard', '/profile'].includes(href)) return true;
   if (href === '/admin/spec-master' || href === '/spec-master') return true;
-  if (href === '/daily-plans' || href.startsWith('/daily-plans/')) return true;
 
   const perms = user.permissions || getDefaultPermissions(group, user.work_center);
+
+  // Unified Daily Planning Console is strictly restricted to PPC planners, managers, and admins
+  if (href === '/daily-plans' || href.startsWith('/daily-plans/')) {
+    return isPpcOrAdminUser(user, group) || perms.rolling_plan === 'edit' || perms.work_order === 'edit';
+  }
 
   // Check specific route mappings against user's custom permissions or defaults
   if (
@@ -326,6 +329,10 @@ export function isRouteVisible(user: AppUserProfile | null | undefined, href: st
     );
   }
   if (href.startsWith('/reports/')) {
+    // Daily Planning report can be accessed by anyone across the plant
+    if (href === '/reports/daily-plan' || href.startsWith('/reports/daily-plan/')) {
+      return true;
+    }
     return perms.reports !== 'none';
   }
   if (href === '/admin' || href === '/settings') {

@@ -57,7 +57,7 @@ export function mapAppUser(row: any): AppUserProfile {
       }
       return stages;
     })(),
-    default_stage: row?.default_stage || (wc === 'ALL' ? 'ROLLING' : wc),
+    default_stage: row?.default_stage || (wc === 'ALL' ? 'HOT_ROLLING' : wc),
     permissions: row?.permissions || (typeof row?.user_metadata?.permissions === 'object' ? row.user_metadata.permissions : undefined),
     phone: String(row?.phone || ''),
     avatar_color: String(row?.avatar_color || ''),
@@ -74,16 +74,57 @@ const USER_CACHE_TTL_MS = 60000;
 export function invalidateCurrentUserCache() {
   cachedUser = null;
   cachedUserTimestamp = 0;
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.removeItem('cached_app_user');
+    } catch {}
+  }
 }
 
-export async function getCurrentAppUser(forceRefresh = false): Promise<AppUserProfile | null> {
+export async function getCurrentAppUser(forceRefresh = false, providedUser?: any): Promise<AppUserProfile | null> {
   if (!forceRefresh && cachedUser && Date.now() - cachedUserTimestamp < USER_CACHE_TTL_MS) {
     return cachedUser;
   }
 
+  // Fast restore from sessionStorage across page navigation
+  if (!forceRefresh && typeof window !== 'undefined') {
+    try {
+      const stored = sessionStorage.getItem('cached_app_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.profile && Date.now() - (parsed.timestamp || 0) < USER_CACHE_TTL_MS) {
+          cachedUser = parsed.profile;
+          cachedUserTimestamp = parsed.timestamp;
+          return cachedUser;
+        }
+      }
+    } catch {}
+  }
+
   const supabase = createClient();
-  const { data: auth, error: authError } = await supabase.auth.getUser();
-  if (authError || !auth.user) {
+  let authUser = providedUser;
+
+  if (!authUser) {
+    // 1. Try getSession first (<1ms local storage read, no network delay)
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session?.user) {
+        authUser = sessionData.session.user;
+      }
+    } catch {}
+
+    // 2. Fallback to network getUser if session not found locally
+    if (!authUser) {
+      const { data: auth, error: authError } = await supabase.auth.getUser();
+      if (authError || !auth.user) {
+        cachedUser = null;
+        return null;
+      }
+      authUser = auth.user;
+    }
+  }
+
+  if (!authUser) {
     cachedUser = null;
     return null;
   }
@@ -91,33 +132,31 @@ export async function getCurrentAppUser(forceRefresh = false): Promise<AppUserPr
   let { data, error } = await supabase
     .from('app_users')
     .select('*')
-    .eq('auth_user_id', auth.user.id)
+    .eq('auth_user_id', authUser.id)
     .maybeSingle();
 
   // If not found by auth_user_id, attempt to match by email
-  if (!data && auth.user.email) {
+  if (!data && authUser.email) {
     const { data: byEmail } = await supabase
       .from('app_users')
       .select('*')
-      .ilike('email', auth.user.email)
+      .ilike('email', authUser.email)
       .maybeSingle();
 
     if (byEmail) {
       data = byEmail;
-      // Auto-link auth_user_id
-      try {
-        await supabase
-          .from('app_users')
-          .update({ auth_user_id: auth.user.id })
-          .eq('id', byEmail.id);
-      } catch {}
+      // Auto-link auth_user_id asynchronously in background
+      void supabase
+        .from('app_users')
+        .update({ auth_user_id: authUser.id })
+        .eq('id', byEmail.id);
     }
   }
 
   // If still not present in app_users, construct an active session user from Supabase Auth metadata
   if (!data) {
-    const meta = auth.user.user_metadata || {};
-    const appMeta = auth.user.app_metadata || {};
+    const meta = authUser.user_metadata || {};
+    const appMeta = authUser.app_metadata || {};
     const isAdmin =
       meta.role === 'Admin' ||
       meta.user_group === 'admin' ||
@@ -125,10 +164,10 @@ export async function getCurrentAppUser(forceRefresh = false): Promise<AppUserPr
       appMeta.role === 'admin' ||
       meta.is_admin === true;
     const profile = mapAppUser({
-      id: auth.user.id,
-      auth_user_id: auth.user.id,
-      email: auth.user.email,
-      employee_name: meta.full_name || meta.name || auth.user.email?.split('@')[0] || 'User',
+      id: authUser.id,
+      auth_user_id: authUser.id,
+      email: authUser.email,
+      employee_name: meta.full_name || meta.name || authUser.email?.split('@')[0] || 'User',
       role: isAdmin ? 'Admin' : (meta.role || 'Viewer'),
       user_group: isAdmin ? 'admin' : (meta.user_group || 'user'),
       work_center: meta.work_center || 'ALL',
@@ -140,6 +179,11 @@ export async function getCurrentAppUser(forceRefresh = false): Promise<AppUserPr
     });
     cachedUser = profile;
     cachedUserTimestamp = Date.now();
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem('cached_app_user', JSON.stringify({ profile, timestamp: cachedUserTimestamp }));
+      } catch {}
+    }
     return profile;
   }
 
@@ -149,8 +193,8 @@ export async function getCurrentAppUser(forceRefresh = false): Promise<AppUserPr
   }
 
   // Merge app_users table row with auth user_metadata so permissions and custom assignments are fully retained
-  const meta = auth.user.user_metadata || {};
-  const appMeta = auth.user.app_metadata || {};
+  const meta = authUser.user_metadata || {};
+  const appMeta = authUser.app_metadata || {};
   const isAdmin =
     data.role === 'Admin' ||
     data.user_group === 'admin' ||
@@ -171,6 +215,11 @@ export async function getCurrentAppUser(forceRefresh = false): Promise<AppUserPr
   });
   cachedUser = profile;
   cachedUserTimestamp = Date.now();
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.setItem('cached_app_user', JSON.stringify({ profile, timestamp: cachedUserTimestamp }));
+    } catch {}
+  }
   return profile;
 }
 

@@ -63,3 +63,8 @@ All frontend features, dashboards, production entry consoles, and report tables 
 - **Rolling Production Limit**: Rolling production is strictly capped by PCS (`balance_to_make_pcs`). Meters can naturally vary due to hot rolling elongation and pipe length variance.
 - **Enforcement**: Both frontend queue validation (`/production`, `useQueue`, `validateProductionEntry`) and backend API (`/api/production/record`) strictly cap rolling production at the remaining plan piece balance (`balance_to_make_pcs`), blocking any attempt to record rolling output exceeding the PPC authorized Rolling Plan piece count.
 
+## 10. Knowledge Graph & Impact Analysis (Graphify)
+- **When to Consult**: Whenever planning new multi-file features, refactoring shared types/utilities (`types/index.ts`, `lib/units.ts`, `lib/supabase/client.ts`, permissions), modifying mill routing workflows, or investigating cross-module bugs:
+  - First consult [`graphify-out/GRAPH_REPORT.md`](file:///c:/Users/Kallol%20Bera/Downloads/Backups/Tracking/WIP_Tracking/graphify-out/GRAPH_REPORT.md) and [`graphify-out/graph.json`](file:///c:/Users/Kallol%20Bera/Downloads/Backups/Tracking/WIP_Tracking/graphify-out/graph.json) to trace connected components, upstream callers, and downstream dependencies.
+  - To update the graph after significant structural changes, run `/graphify`.
+- **Fast-Path (No Graph Needed)**: For localized UI styling, text changes, simple bugfixes, or single-file edits, proceed directly without loading the graph.

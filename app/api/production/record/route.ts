@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { attachPcsToRemarks, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 import { requireAuth } from '@/lib/supabase/authGuard';
+import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function POST(req: NextRequest) {
   try {
@@ -75,6 +76,19 @@ export async function POST(req: NextRequest) {
 
     // Validate server-side business rules
     for (const item of sanitizedEntries) {
+      // Rule: Hollow bank is dedicated yard buffer inventory and not available for production entry
+      if (
+        item.work_order_id === '00000000-0000-0000-0000-00000000000b' ||
+        String(item.work_order_no || '').trim().toUpperCase() === 'HB-BUFFER' ||
+        String(item.work_order_no || '').trim().toUpperCase() === 'HOLLOW BANK' ||
+        String(item.customer_name || '').trim().toUpperCase().includes('HOLLOW BANK')
+      ) {
+        return NextResponse.json(
+          { error: 'Production entry is not permitted for Hollow bank yard buffer inventory.' },
+          { status: 400 }
+        );
+      }
+
       const outMtr = Number(item.output_qty || 0);
       const outPcs = Number(item.output_pcs || 0);
       const htcMtr = Number(item.htc_ok || 0);
@@ -301,6 +315,9 @@ export async function POST(req: NextRequest) {
     if (savedCount === 0 && errors.length > 0) {
       return NextResponse.json({ error: errors.join('; ') }, { status: 400 });
     }
+
+    // Invalidate queue cache so the next request immediately sees updated WIP balances
+    invalidateQueueCache();
 
     return NextResponse.json({
       success: true,

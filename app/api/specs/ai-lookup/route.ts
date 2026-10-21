@@ -1,9 +1,14 @@
-// app/api/specs/ai-lookup/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { findMatchingStandard, METALLURGICAL_STANDARDS_DB, FetchedSpecData } from '@/lib/specAiService';
+import { requireAuth } from '@/lib/supabase/authGuard';
 
 export async function POST(req: NextRequest) {
   try {
+    const authCheck = await requireAuth(req);
+    if ('errorResponse' in authCheck && authCheck.errorResponse) {
+      return authCheck.errorResponse;
+    }
+
     const { query } = await req.json();
 
     if (!query || typeof query !== 'string' || !query.trim()) {

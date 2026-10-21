@@ -22,6 +22,7 @@ vi.mock('next/navigation', () => ({
 
 // Mock Supabase client
 const mockGetUser = vi.fn();
+const mockGetSession = vi.fn().mockResolvedValue({ data: { session: null }, error: null });
 const mockSignInWithPassword = vi.fn();
 const mockSignOut = vi.fn();
 const mockOnAuthStateChange = vi.fn().mockReturnValue({
@@ -32,6 +33,7 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
     auth: {
       getUser: mockGetUser,
+      getSession: mockGetSession,
       signInWithPassword: mockSignInWithPassword,
       signOut: mockSignOut,
       onAuthStateChange: mockOnAuthStateChange,

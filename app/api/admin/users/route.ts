@@ -246,9 +246,9 @@ export async function POST(request: NextRequest) {
     const rawAllowed = Array.isArray(body.allowed_stages)
       ? body.allowed_stages
       : workCenter === 'ALL'
-        ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
+        ? ['HOT_ROLLING', 'HTC', 'ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'PILGER', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING']
         : workCenter === 'QA'
-          ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
+          ? ['HOT_ROLLING', 'HTC', 'ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'PILGER', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING']
         : workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT'
             ? ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT']
             : workCenter === 'BAND_SAW' || workCenter === 'FINISHING'
@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
     } else if (allowedStages.includes('FINISHING') && !allowedStages.includes('BAND_SAW')) {
       allowedStages.push('BAND_SAW');
     }
-    const defaultStage = String(body.default_stage ?? (workCenter === 'ALL' ? 'ROLLING' : workCenter));
+    const defaultStage = String(body.default_stage ?? (workCenter === 'ALL' ? 'HOT_ROLLING' : workCenter));
     const shift = String(body.shift ?? '');
     const department = String(body.department ?? '').trim() || null;
     const phone = String(body.phone ?? '').trim() || null;
@@ -459,13 +459,13 @@ export async function PUT(request: NextRequest) {
     const department = String(body.department ?? existing.department ?? '').trim() || null;
     const phone = String(body.phone ?? existing.phone ?? '').trim() || null;
     const shift = String(body.shift ?? existing.shift ?? '');
-    const defaultStage = String(body.default_stage ?? existing.default_stage ?? (workCenter === 'ALL' ? 'ROLLING' : workCenter));
+    const defaultStage = String(body.default_stage ?? existing.default_stage ?? (workCenter === 'ALL' ? 'HOT_ROLLING' : workCenter));
     const rawAllowed = Array.isArray(body.allowed_stages) && body.allowed_stages.length > 0
       ? body.allowed_stages
       : workCenter === 'ALL'
-        ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
+        ? ['HOT_ROLLING', 'HTC', 'ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'PILGER', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING']
         : workCenter === 'QA'
-          ? ['ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'HEAT_TREATMENT', 'FINISHING']
+          ? ['HOT_ROLLING', 'HTC', 'ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'PILGER', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING']
         : workCenter === 'HOLLOW_HEAT_TREATMENT' || workCenter === 'HEAT_TREATMENT'
           ? ['HOLLOW_HEAT_TREATMENT', 'HEAT_TREATMENT']
           : workCenter === 'BAND_SAW' || workCenter === 'FINISHING'

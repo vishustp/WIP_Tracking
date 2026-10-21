@@ -73,6 +73,19 @@ const ROLE_OPTIONS: { value: UserRole; label: string; department: string; color:
   { value: 'auditor', label: 'Internal Auditor', department: 'Management & Audit Team', color: 'bg-slate-600 text-white', defaultGroup: 'user', defaultWorkCenter: 'AUDIT' },
 ];
 
+const DEFAULT_STAGE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'HOT_ROLLING', label: 'Hot Rolling Mill' },
+  { value: 'HTC', label: 'Hot Test Check (HTC QC)' },
+  { value: 'ROLLING', label: 'Rolling Mill (Legacy)' },
+  { value: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment (Furnace)' },
+  { value: 'DRAW', label: 'Cold Draw Bench' },
+  { value: 'PILGER', label: 'Cold Pilger Mill' },
+  { value: 'HEAT_TREATMENT', label: 'Final Heat Treatment (Furnace)' },
+  { value: 'BAND_SAW', label: 'Band Saw Cutting Station' },
+  { value: 'VDI', label: 'Visual Dimension Inspection (VDI / QC)' },
+  { value: 'FINISHING', label: 'Finishing & NDT Inspection' },
+];
+
 function mapAppUserToMockUser(row: any): AppUserProfile {
   if (!row) return {} as AppUserProfile;
   const roleMap: Record<string, { role: UserRole; group: UserGroup; title: string }> = {
@@ -100,8 +113,8 @@ function mapAppUserToMockUser(row: any): AppUserProfile {
     work_center: wc,
     allowed_stages: Array.isArray(row.allowed_stages)
       ? row.allowed_stages
-      : (wc === 'ALL' ? ['ROLLING','HOLLOW_HEAT_TREATMENT','DRAW','HEAT_TREATMENT','FINISHING'] : [wc]),
-    default_stage: String(row.default_stage || (wc === 'ALL' ? 'ROLLING' : wc)),
+      : (wc === 'ALL' ? ['HOT_ROLLING', 'HTC', 'ROLLING', 'HOLLOW_HEAT_TREATMENT', 'DRAW', 'PILGER', 'HEAT_TREATMENT', 'BAND_SAW', 'VDI', 'FINISHING'] : [wc]),
+    default_stage: String(row.default_stage || (wc === 'ALL' ? 'HOT_ROLLING' : wc)),
     phone: String(row.phone || ''),
     active: row.active !== false,
     created_at: String(row.created_at || new Date().toISOString()),
@@ -1620,7 +1633,16 @@ export default function AdminControlPanelClient() {
                 </label>
                 <select
                   value={formData.work_center}
-                  onChange={(e) => setFormData({ ...formData, work_center: e.target.value as WorkCenterCode })}
+                  onChange={(e) => {
+                    const wc = e.target.value as WorkCenterCode;
+                    setFormData(prev => ({
+                      ...prev,
+                      work_center: wc,
+                      default_stage: DEFAULT_STAGE_OPTIONS.some(s => s.value === wc)
+                        ? wc
+                        : (wc === 'ALL' ? 'HOT_ROLLING' : prev.default_stage),
+                    }));
+                  }}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-blue-500 focus:outline-hidden"
                 >
                   {WORK_CENTER_OPTIONS.map(wc => (
@@ -1692,11 +1714,15 @@ export default function AdminControlPanelClient() {
                     onChange={(e) => {
                       const r = e.target.value as UserRole;
                       const conf = ROLE_OPTIONS.find(opt => opt.value === r);
-                      setFormData({
-                        ...formData,
+                      const newWc = conf?.defaultWorkCenter || formData.work_center;
+                      const stageMatch = DEFAULT_STAGE_OPTIONS.some(s => s.value === newWc);
+                      setFormData(prev => ({
+                        ...prev,
                         role: r,
-                        department: conf?.department || formData.department,
-                      });
+                        department: conf?.department || prev.department,
+                        work_center: newWc,
+                        default_stage: stageMatch ? newWc : (newWc === 'ALL' ? 'HOT_ROLLING' : prev.default_stage),
+                      }));
                     }}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-blue-500 focus:outline-hidden"
                   >
@@ -1737,11 +1763,11 @@ export default function AdminControlPanelClient() {
                     onChange={(e) => setFormData({ ...formData, default_stage: e.target.value })}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:border-blue-500 focus:outline-hidden"
                   >
-                    <option value="ROLLING">Rolling Mill</option>
-                    <option value="HOLLOW_HEAT_TREATMENT">Hollow Heat Treatment</option>
-                    <option value="DRAW">Cold Draw Bench</option>
-                    <option value="HEAT_TREATMENT">Heat Treatment</option>
-                    <option value="FINISHING">Finishing & NDT</option>
+                    {DEFAULT_STAGE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

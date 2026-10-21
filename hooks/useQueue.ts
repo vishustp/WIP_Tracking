@@ -7,10 +7,20 @@ const clientQueueCache = new Map<string, { timestamp: number; rows: Row[] }>();
 const inflightPromises = new Map<string, Promise<any>>();
 const CLIENT_CACHE_TTL_MS = 2000;
 
+export function isHollowBankOrder(w: { work_order_id?: string; work_order_no?: string | null; customer_name?: string | null } | null | undefined): boolean {
+  if (!w) return false;
+  if (w.work_order_id === '00000000-0000-0000-0000-00000000000b') return true;
+  const woNo = String(w.work_order_no || '').trim().toUpperCase();
+  if (woNo === 'HB-BUFFER' || woNo === 'HOLLOW BANK' || woNo === 'HB BUFFER') return true;
+  const cust = String(w.customer_name || '').trim().toUpperCase();
+  if (cust.includes('HOLLOW BANK') || cust.includes('HB-BUFFER') || cust.includes('HB BUFFER')) return true;
+  return false;
+}
+
 export function useQueue(stage: StageCode) {
   const [rows, setRows] = useState<Row[]>(() => {
     const cached = clientQueueCache.get(stage);
-    return cached && Date.now() - cached.timestamp < CLIENT_CACHE_TTL_MS ? cached.rows : [];
+    return cached && Date.now() - cached.timestamp < CLIENT_CACHE_TTL_MS ? cached.rows.filter((r) => !isHollowBankOrder(r)) : [];
   });
   const [loading, setLoading] = useState<boolean>(() => {
     const cached = clientQueueCache.get(stage);
@@ -57,7 +67,7 @@ export function useQueue(stage: StageCode) {
 
       const json = await fetchPromise;
       if (Array.isArray(json?.data)) {
-        const mappedRows = json.data.map((r: any) => emptyRow(r));
+        const mappedRows = json.data.map((r: any) => emptyRow(r)).filter((r: any) => !isHollowBankOrder(r));
         clientQueueCache.set(s, { timestamp: Date.now(), rows: mappedRows });
         setRows(mappedRows);
         setLoading(false);
@@ -1079,6 +1089,7 @@ export function useQueue(stage: StageCode) {
     loadQueue(stage);
   }, [stage, loadQueue]);
 
-  return { rows, setRows, loading, error, reload: () => loadQueue(stage) };
+  const cleanRows = rows.filter((r) => !isHollowBankOrder(r));
+  return { rows: cleanRows, setRows, loading, error, reload: () => loadQueue(stage) };
 }
 

@@ -3,31 +3,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { StageCode, Row, WorkCenterWipInfo } from "@/types";
 import { mtFromMtr, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from "@/lib/productionUtils";
 
+import { getQueueCache, setQueueCache, invalidateQueueCache } from "@/lib/cache/queueCache";
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-interface CachePayload {
-  timestamp: number;
-  allCalculatedRows: Map<
-    string,
-    {
-      queueRows: Record<StageCode, Row | null>;
-      pipeline: WorkCenterWipInfo[];
-      bandSawLotRows?: Row[];
-      vdiLotRows?: Row[];
-      vdiSalvageRow?: Row | null;
-    }
-  >;
-  rollingPlanRows: Row[];
-  childFinishingRows: Row[];
-  workCenterSummary: Record<StageCode, { label: string; stage_code: StageCode; availMtr: number; availPcs: number; availMt: number; count: number }>;
-}
+const HOLLOW_BANK_WO_ID = '00000000-0000-0000-0000-00000000000b';
 
-let memoryCache: CachePayload | null = null;
-const CACHE_TTL_MS = 3500; // 3.5s in-memory TTL for high-concurrency request deduplication
-
-function invalidateQueueCache() {
-  memoryCache = null;
+function isHollowBankOrder(w: { id?: string; work_order_id?: string; work_order_no?: string | null; customer_name?: string | null } | null | undefined): boolean {
+  if (!w) return false;
+  if (w.id === HOLLOW_BANK_WO_ID || w.work_order_id === HOLLOW_BANK_WO_ID) return true;
+  const woNo = String(w.work_order_no || '').trim().toUpperCase();
+  if (woNo === 'HB-BUFFER' || woNo === 'HOLLOW BANK' || woNo === 'HB BUFFER') return true;
+  const cust = String(w.customer_name || '').trim().toUpperCase();
+  if (cust.includes('HOLLOW BANK') || cust.includes('HB-BUFFER') || cust.includes('HB BUFFER')) return true;
+  return false;
 }
 
 async function enrichWithDailyPlans(admin: any, rows: Row[], stage: StageCode) {
@@ -79,11 +69,18 @@ export async function GET(req: NextRequest) {
     const includeFeeder = searchParams.get("include_feeder") === "true" || searchParams.get("for_planning") === "true";
     const forceFresh = searchParams.has("nocache") || searchParams.has("refresh");
 
+    if (forceFresh) {
+      invalidateQueueCache();
+    }
+
     // Fast-path: Return from memory cache if within TTL (reduces DB hits by 90% during navigation)
-    if (!forceFresh && memoryCache && (Date.now() - memoryCache.timestamp) < CACHE_TTL_MS) {
+    const memoryCache = !forceFresh ? getQueueCache() : null;
+    if (memoryCache) {
       const selectedRows: Row[] = [];
       if (isAllStages) {
         const activeStages: StageCode[] = [
+          "HOT_ROLLING",
+          "HTC",
           "HOLLOW_HEAT_TREATMENT",
           "DRAW",
           "PILGER",
@@ -95,17 +92,23 @@ export async function GET(req: NextRequest) {
         for (const { queueRows, vdiSalvageRow } of memoryCache.allCalculatedRows.values()) {
           for (const st of activeStages) {
             const row = queueRows[st];
-            if (row && !row.is_feeder_source) {
-              const readyPcs = Number(row.ready_pcs ?? row.balance_to_make_pcs ?? 0);
-              const readyMtr = Number(row.ready_mtr ?? row.balance_to_make_mtr ?? 0);
-              if (readyPcs >= 1 || readyMtr >= 1.0) {
-                selectedRows.push(row);
+            if (row) {
+              if (st === "HOT_ROLLING" || st === "ROLLING") {
+                if (Number(row.rolled_pcs || 0) > 0 || Number(row.rolled_mtr || 0) > 0) {
+                  selectedRows.push(row);
+                }
+              } else if (!row.is_feeder_source) {
+                const readyPcs = Number(row.ready_pcs ?? 0);
+                const readyMtr = Number(row.ready_mtr ?? 0);
+                if (readyPcs >= 1 || readyMtr >= 1.0) {
+                  selectedRows.push(row);
+                }
               }
             }
           }
           if (vdiSalvageRow) {
-            const readyPcs = Number(vdiSalvageRow.ready_pcs ?? vdiSalvageRow.balance_to_make_pcs ?? 0);
-            const readyMtr = Number(vdiSalvageRow.ready_mtr ?? vdiSalvageRow.balance_to_make_mtr ?? 0);
+            const readyPcs = Number(vdiSalvageRow.ready_pcs ?? 0);
+            const readyMtr = Number(vdiSalvageRow.ready_mtr ?? 0);
             if (readyPcs >= 1 || readyMtr >= 1.0) {
               selectedRows.push(vdiSalvageRow);
             }
@@ -113,8 +116,8 @@ export async function GET(req: NextRequest) {
         }
         for (const r of memoryCache.childFinishingRows) {
           if (!r.is_feeder_source) {
-            const readyPcs = Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0);
-            const readyMtr = Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0);
+            const readyPcs = Number(r.ready_pcs ?? 0);
+            const readyMtr = Number(r.ready_mtr ?? 0);
             if (readyPcs >= 1 || readyMtr >= 1.0) {
               selectedRows.push(r);
             }
@@ -183,12 +186,14 @@ export async function GET(req: NextRequest) {
         availMt: Number(s.availMt.toFixed(2)),
       }));
 
+      const finalCachedRows = selectedRows.filter((r) => !isHollowBankOrder(r));
+
       return NextResponse.json(
         {
           success: true,
           stage: isAllStages ? "ALL" : targetStage,
-          count: selectedRows.length,
-          data: selectedRows,
+          count: finalCachedRows.length,
+          data: finalCachedRows,
           summary: summaryArray,
           cached: true,
         },
@@ -262,7 +267,9 @@ export async function GET(req: NextRequest) {
 
     const plans = plansRes.data || [];
     const stages = stagesRes.data || [];
-    const workOrders = woRes.data || [];
+    const rawWorkOrders = woRes.data || [];
+    // Hollow bank is dedicated yard buffer inventory (accessible via /hollow-bank) and must not be available for production entry
+    const workOrders = rawWorkOrders.filter((w: any) => !isHollowBankOrder(w));
     const routes = routesRes.data || [];
     const qcInspections = qcRes?.data || [];
     const hasQcTable = !qcRes?.error;
@@ -1431,6 +1438,9 @@ export async function GET(req: NextRequest) {
         finished_output_pcs: woFinishedPcs,
         order_capping_mtr: orderCappingMtr,
         order_capping_pcs: orderCappingPcs,
+        rolled_pcs: rollGrossPcs,
+        rolled_mtr: rollOutMtr,
+        rolled_mt: mtFromMtr(rollOutMtr, mhOd, mhWt),
         mh_od: mhOd,
         mh_wt: mhWt,
         mh_l1: mhL1,
@@ -1574,7 +1584,7 @@ export async function GET(req: NextRequest) {
 
       const queueRows: Record<StageCode, Row | null> = {
         HOT_ROLLING:
-          isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)
+          (isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)) || (rollGrossPcs > 0 || rollOutMtr > 0)
             ? {
                 ...baseRowData,
                 od: woOd,
@@ -1590,10 +1600,13 @@ export async function GET(req: NextRequest) {
                 ready_pcs: rollAvailPcs,
                 ready_mtr: rollAvailMtr,
                 ready_mt: rollAvailMt,
+                rolled_pcs: rollGrossPcs,
+                rolled_mtr: rollOutMtr,
+                rolled_mt: mtFromMtr(rollOutMtr, mhOd, mhWt),
                 feeder_pcs: rollAvailPcs,
                 feeder_mtr: rollAvailMtr,
                 feeder_mt: rollAvailMt,
-                is_feeder_source: false,
+                is_feeder_source: rollAvailPcs <= 0,
                 planned_rolling_total: totalCampaignMtr,
                 max_allowed_mtr: null,
                 max_allowed_pcs: null,
@@ -2210,6 +2223,9 @@ export async function GET(req: NextRequest) {
                 ready_pcs: plAvailPcs,
                 ready_mtr: plAvailMtr,
                 ready_mt: plAvailMt,
+                rolled_pcs: directLoggedPcs,
+                rolled_mtr: directLoggedMtr,
+                rolled_mt: mtFromMtr(directLoggedMtr, plMhOd, plMhWt),
                 feeder_pcs: plAvailPcs,
                 feeder_mtr: plAvailMtr,
                 feeder_mt: plAvailMt,
@@ -2393,6 +2409,15 @@ export async function GET(req: NextRequest) {
       workCenterSummary.ROLLING.count = rollingPlanRows.length;
     }
 
+    // Save newly calculated snapshot into memory cache for subsequent instant page navigation (<15ms)
+    setQueueCache({
+      timestamp: Date.now(),
+      allCalculatedRows,
+      rollingPlanRows,
+      childFinishingRows,
+      workCenterSummary,
+    });
+
     // Select the appropriate rows for the requested stage
     // (Universal Rule: Filter out any work order/plan whose available balance is less than 1 (Qty < 1 Pc or < 1.0 Mtr))
     const selectedRows: Row[] = [];
@@ -2411,17 +2436,23 @@ export async function GET(req: NextRequest) {
       for (const { queueRows, vdiSalvageRow } of allCalculatedRows.values()) {
         for (const st of activeStages) {
           const row = queueRows[st];
-          if (row && !row.is_feeder_source) {
-            const readyPcs = Number(row.ready_pcs ?? row.balance_to_make_pcs ?? 0);
-            const readyMtr = Number(row.ready_mtr ?? row.balance_to_make_mtr ?? 0);
-            if (readyPcs >= 1 || readyMtr >= 1.0) {
-              selectedRows.push(row);
+          if (row) {
+            if (st === "HOT_ROLLING" || st === "ROLLING") {
+              if (Number(row.rolled_pcs || 0) > 0 || Number(row.rolled_mtr || 0) > 0) {
+                selectedRows.push(row);
+              }
+            } else if (!row.is_feeder_source) {
+              const readyPcs = Number(row.ready_pcs ?? 0);
+              const readyMtr = Number(row.ready_mtr ?? 0);
+              if (readyPcs >= 1 || readyMtr >= 1.0) {
+                selectedRows.push(row);
+              }
             }
           }
         }
         if (vdiSalvageRow) {
-          const readyPcs = Number(vdiSalvageRow.ready_pcs ?? vdiSalvageRow.balance_to_make_pcs ?? 0);
-          const readyMtr = Number(vdiSalvageRow.ready_mtr ?? vdiSalvageRow.balance_to_make_mtr ?? 0);
+          const readyPcs = Number(vdiSalvageRow.ready_pcs ?? 0);
+          const readyMtr = Number(vdiSalvageRow.ready_mtr ?? 0);
           if (readyPcs >= 1 || readyMtr >= 1.0) {
             selectedRows.push(vdiSalvageRow);
           }
@@ -2429,8 +2460,8 @@ export async function GET(req: NextRequest) {
       }
       for (const r of childFinishingRows) {
         if (!r.is_feeder_source) {
-          const readyPcs = Number(r.ready_pcs ?? r.balance_to_make_pcs ?? 0);
-          const readyMtr = Number(r.ready_mtr ?? r.balance_to_make_mtr ?? 0);
+          const readyPcs = Number(r.ready_pcs ?? 0);
+          const readyMtr = Number(r.ready_mtr ?? 0);
           if (readyPcs >= 1 || readyMtr >= 1.0) {
             selectedRows.push(r);
           }
@@ -2508,12 +2539,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const finalSelectedRows = selectedRows.filter((r) => !isHollowBankOrder(r));
+
     return NextResponse.json(
       {
         success: true,
         stage: isAllStages ? "ALL" : stagesParam ? "MULTI" : targetStage,
-        count: selectedRows.length,
-        data: selectedRows,
+        count: finalSelectedRows.length,
+        data: finalSelectedRows,
         summary: summaryArray,
       },
       {

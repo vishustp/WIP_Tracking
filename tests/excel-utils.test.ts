@@ -54,4 +54,27 @@ describe("Excel Utilities (Dynamic XLSX)", () => {
     expect(ws['!cols']![0].wch).toBeGreaterThanOrEqual(16);
     expect(ws['!cols']![1].wch).toBeGreaterThanOrEqual(40);
   });
+
+  it("exportJsonToExcel() executes without errors and builds formatted workbook", async () => {
+    const testData = [
+      { "Work Order": "WO-2026-001", Customer: "L&T Hydrocarbon", OD: 114.3, WT: 8.56, Meters: 450, Pcs: 75 },
+      { "Work Order": "WO-2026-002", Customer: "BHEL Trichy", OD: 60.3, WT: 5.54, Meters: 250, Pcs: 42 }
+    ];
+
+    await expect(
+      exportJsonToExcel(testData, "Orders", "test-orders.xlsx")
+    ).resolves.toBeUndefined();
+  });
+
+  it("exportSheetsToExcel() executes without errors across multiple worksheets", async () => {
+    const sheets = [
+      { name: "Rolling", data: [{ "WO": "WO-01", "OD": 88.9, "WT": 7.62 }] },
+      { name: "Finishing", data: [{ "WO": "WO-01", "Pcs": 50, "Status": "Bundled" }] }
+    ];
+
+    await expect(
+      exportSheetsToExcel(sheets, "all-work-centers.xlsx")
+    ).resolves.toBeUndefined();
+  });
 });
+

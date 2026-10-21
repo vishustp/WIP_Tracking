@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -101,7 +102,6 @@ const navSections = [
     label: 'OPERATIONS',
     items: [
       { href: '/production', label: 'Production Entry', icon: ClipboardCheck },
-      { href: '/daily-plans', label: 'Unified Daily Planning', icon: CalendarDays },
       { href: '/band-saw', label: 'Band Saw Cutting', icon: Scissors },
       { href: '/qc/vdi', label: 'VDI Entries', icon: ClipboardList },
       { href: '/rejections', label: 'Second Declaration', icon: AlertOctagon },
@@ -1092,12 +1092,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
                     const Icon = item.icon;
                     return (
-                      <button
+                      <Link
                         key={item.href}
-                        onClick={() => {
-                          router.push(item.href);
-                          setOpen(false);
-                        }}
+                        href={item.href}
+                        prefetch={true}
+                        onClick={() => setOpen(false)}
                         aria-current={active ? 'page' : undefined}
                         className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 cursor-pointer ${getNavItemClasses(active)}`}
                       >
@@ -1113,7 +1112,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                           }`}
                         />
                         <span className="truncate font-medium">{item.label}</span>
-                      </button>
+                      </Link>
                     );
                   })}
                 </div>
@@ -1134,7 +1133,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* Content Area */}
-        <div className={`flex-1 lg:pl-64 min-w-0 flex flex-col ${getContentBgClass()}`}>
+        <div className={`flex-1 lg:pl-64 print:pl-0 print:m-0 min-w-0 flex flex-col ${getContentBgClass()}`}>
           <main id="main-content" className="flex-1 w-full p-4 sm:p-5 lg:p-6 print:p-0 print:m-0 print:bg-white">
             {children}
           </main>

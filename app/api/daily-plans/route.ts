@@ -1,6 +1,7 @@
-// app/api/daily-plans/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAuth } from '@/lib/supabase/authGuard';
+import { isPpcOrAdminUser } from '@/lib/permissions';
 import { DailyPlanItemWithWorkOrder } from '@/types/dailyPlanning';
 import { calculatePlanCompliance } from '@/lib/planning/dailyPlanningHelper';
 
@@ -190,6 +191,19 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const authCheck = await requireAuth(request);
+    if ('errorResponse' in authCheck && authCheck.errorResponse) {
+      return authCheck.errorResponse;
+    }
+    const { auth } = authCheck;
+    const canManagePlans = auth.isAdmin || isPpcOrAdminUser(auth.appUser, auth.appUser?.user_group || auth.appUser?.group);
+    if (!canManagePlans) {
+      return NextResponse.json(
+        { error: 'Forbidden: Production Planning (PPC) or Administrator privileges are required to modify daily plans.' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const {
       id,
@@ -285,6 +299,19 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const authCheck = await requireAuth(request);
+    if ('errorResponse' in authCheck && authCheck.errorResponse) {
+      return authCheck.errorResponse;
+    }
+    const { auth } = authCheck;
+    const canManagePlans = auth.isAdmin || isPpcOrAdminUser(auth.appUser, auth.appUser?.user_group || auth.appUser?.group);
+    if (!canManagePlans) {
+      return NextResponse.json(
+        { error: 'Forbidden: Production Planning (PPC) or Administrator privileges are required to delete daily plans.' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
