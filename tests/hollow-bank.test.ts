@@ -204,5 +204,175 @@ describe('Hollow Bank Inventory & Allocation Unit Tests', () => {
       expect(errors[0].message).toContain('Hollow Bank is dedicated yard buffer inventory');
     });
   });
+
+  describe('WIP Matrix & Aging Report Exclusion', () => {
+    it('excludes Hollow bank records from WIP Matrix raw rows and contributing work orders', () => {
+      const rawWipRows = [
+        {
+          work_order_id: 'wo-standard-1',
+          work_order_no: '1446',
+          customer_name: 'JSW Steel',
+          stage_code: 'DRAW',
+          od: 60.3,
+          wt: 3.91,
+          grade: 'ASTM A106 Gr B',
+          current_wip_pcs: 20,
+          current_wip: 120,
+        },
+        {
+          work_order_id: '00000000-0000-0000-0000-00000000000b',
+          work_order_no: 'Hollow bank',
+          customer_name: 'Hollow bank',
+          stage_code: 'DRAW',
+          od: 60.3,
+          wt: 3.91,
+          grade: 'BUFFER',
+          current_wip_pcs: 50,
+          current_wip: 300,
+        },
+        {
+          work_order_id: 'wo-standard-2',
+          work_order_no: '1447',
+          customer_name: 'Tata Steel',
+          stage_code: 'DRAW',
+          od: 60.3,
+          wt: 3.91,
+          grade: 'ASTM A106 Gr B',
+          current_wip_pcs: 15,
+          current_wip: 90,
+        },
+      ];
+
+      // Simulate WIP Matrix row filtering
+      const filteredRawRows = rawWipRows.filter((r) => {
+        if (isHollowBankOrder(r)) return false;
+        return Number(r.current_wip_pcs || 0) > 0 || Number(r.current_wip || 0) > 0;
+      });
+
+      expect(filteredRawRows).toHaveLength(2);
+      expect(filteredRawRows.find((r) => r.work_order_no === 'Hollow bank')).toBeUndefined();
+      expect(filteredRawRows.find((r) => r.work_order_id === '00000000-0000-0000-0000-00000000000b')).toBeUndefined();
+
+      // Ensure contributing work orders only contain normal manufacturing orders
+      const contributing = filteredRawRows.map((r) => ({
+        work_order_id: r.work_order_id,
+        work_order_no: r.work_order_no,
+      }));
+      expect(contributing).toEqual([
+        { work_order_id: 'wo-standard-1', work_order_no: '1446' },
+        { work_order_id: 'wo-standard-2', work_order_no: '1447' },
+      ]);
+    });
+
+    it('excludes Hollow bank records from Aging Report computation, KPIs, and search', async () => {
+      const { computeAgingReportRows, computeAgingKpis, filterAgingRows } = await import('@/lib/reports/agingReportHelper');
+
+      const testWip = [
+        {
+          work_order_id: 'wo-real-1',
+          work_order_no: '6355',
+          customer_name: 'BHEL',
+          route_id: 'R1',
+          stage_id: 'S1',
+          stage_code: 'HEAT_TREATMENT',
+          stage_name: 'Final Heat Treatment',
+          sequence_no: 3,
+          current_wip: 100,
+          current_wip_pcs: 20,
+          current_wip_mt: 0.8,
+          size_od: 73.0,
+          size_wt: 5.5,
+          created_at: '2026-10-01T00:00:00Z',
+        },
+        {
+          work_order_id: '00000000-0000-0000-0000-00000000000b',
+          work_order_no: 'Hollow bank',
+          customer_name: 'Hollow bank',
+          route_id: 'R1',
+          stage_id: 'S1',
+          stage_code: 'HEAT_TREATMENT',
+          stage_name: 'Final Heat Treatment',
+          sequence_no: 3,
+          current_wip: 500,
+          current_wip_pcs: 100,
+          current_wip_mt: 4.0,
+          size_od: 73.0,
+          size_wt: 5.5,
+          created_at: '2026-09-01T00:00:00Z',
+        },
+      ];
+
+      const testWorkOrders = [
+        {
+          id: 'wo-real-1',
+          work_order_no: '6355',
+          customer_name: 'BHEL',
+          grade: 'SA 213 T11',
+          size_od: 73.0,
+          size_wt: 5.5,
+          created_at: '2026-10-01',
+        },
+        {
+          id: '00000000-0000-0000-0000-00000000000b',
+          work_order_no: 'Hollow bank',
+          customer_name: 'Hollow bank',
+          grade: 'BUFFER',
+          size_od: 73.0,
+          size_wt: 5.5,
+          created_at: '2026-09-01',
+        },
+      ];
+
+      const agingRows = computeAgingReportRows({
+        wipRows: testWip,
+        workOrders: testWorkOrders,
+        productionLogs: [],
+        qcInspections: [],
+        rollingPlans: [],
+        routeStages: [],
+        asOfDate: new Date('2026-10-15'),
+      });
+
+      // Hollow bank must be completely omitted from computed aging rows
+      expect(agingRows).toHaveLength(1);
+      expect(agingRows[0].work_order_no).toBe('6355');
+      expect(agingRows.find((r) => r.work_order_no === 'Hollow bank')).toBeUndefined();
+      expect(agingRows.find((r) => r.work_order_id === '00000000-0000-0000-0000-00000000000b')).toBeUndefined();
+
+      // KPI computation must never count Hollow Bank
+      const kpis = computeAgingKpis(agingRows);
+      expect(kpis.totalLots).toBe(1);
+      expect(kpis.totalWipPcs).toBe(20);
+      expect(kpis.totalWipMtr).toBe(100);
+
+      // Search filter must also eliminate any Hollow bank row if provided
+      const filtered = filterAgingRows(
+        [
+          ...agingRows,
+          {
+            work_order_id: '00000000-0000-0000-0000-00000000000b',
+            work_order_no: 'Hollow bank',
+            customer_name: 'Hollow bank',
+            grade: 'BUFFER',
+            od: 73.0,
+            wt: 5.5,
+            l1: null,
+            l2: null,
+            stage_code: 'HEAT_TREATMENT',
+            stage_name: 'Final Heat Treatment',
+            current_wip: 500,
+            current_wip_pcs: 100,
+            available_mt: 4.0,
+            last_activity_date: '2026-09-01',
+            days_stuck: 44,
+            severity: 'CRITICAL',
+          },
+        ],
+        { selectedStage: 'ALL', selectedSeverity: 'ALL' }
+      );
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].work_order_no).toBe('6355');
+    });
+  });
 });
 

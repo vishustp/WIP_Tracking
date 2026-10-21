@@ -31,14 +31,14 @@ export const fmtPcs = (v: unknown, suffix = " PCS") => {
 export const HOLLOW_BANK_WO_ID = '00000000-0000-0000-0000-00000000000b';
 
 export function isHollowBankOrder(
-  w: { id?: string; work_order_id?: string; work_order_no?: string | null; customer_name?: string | null } | null | undefined
+  w: { id?: string; work_order_id?: string; workOrderId?: string; work_order_no?: string | null; workOrderNo?: string | null; customer_name?: string | null; customer?: string | null } | null | undefined
 ): boolean {
   if (!w) return false;
-  const woId = (w as any).id || w.work_order_id;
+  const woId = (w as any).id || (w as any).work_order_id || (w as any).workOrderId;
   if (woId === HOLLOW_BANK_WO_ID) return true;
-  const woNo = String(w.work_order_no || '').trim().toUpperCase();
-  if (woNo === 'HB-BUFFER' || woNo === 'HOLLOW BANK' || woNo === 'HB BUFFER') return true;
-  const cust = String(w.customer_name || '').trim().toUpperCase();
+  const woNo = String((w as any).work_order_no || (w as any).workOrderNo || '').trim().toUpperCase();
+  if (woNo === 'HB-BUFFER' || woNo === 'HOLLOW BANK' || woNo === 'HB BUFFER' || woNo.includes('HOLLOW BANK') || woNo.includes('HB-BUFFER') || woNo.includes('HB BUFFER')) return true;
+  const cust = String((w as any).customer_name || (w as any).customer || '').trim().toUpperCase();
   if (cust.includes('HOLLOW BANK') || cust.includes('HB-BUFFER') || cust.includes('HB BUFFER')) return true;
   return false;
 }

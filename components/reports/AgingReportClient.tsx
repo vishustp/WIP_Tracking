@@ -21,6 +21,7 @@ import {
   Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { isHollowBankOrder } from '@/lib/productionUtils';
 import {
   type AgingRow,
   type RawWipRow,
@@ -82,9 +83,10 @@ export default function AgingReportClient() {
 
       if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
         // Robust normalization merging database columns & local acknowledgements
-        const normalizedRows: AgingRow[] = viewData.map((r: any) =>
-          normalizeAgingRow(r, localAcks)
-        );
+        const normalizedRows: AgingRow[] = viewData
+          .filter((r: any) => !isHollowBankOrder(r))
+          .map((r: any) => normalizeAgingRow(r, localAcks))
+          .filter((r: AgingRow) => !isHollowBankOrder(r));
 
         setRows(normalizedRows);
         setLoading(false);
@@ -106,8 +108,8 @@ export default function AgingReportClient() {
       const combinedAcks = [...dbAcks, ...localAcks];
 
       const computed = computeAgingReportRows({
-        wipRows: (wipRes.data || []) as RawWipRow[],
-        workOrders: (woRes.data || []) as RawWorkOrder[],
+        wipRows: ((wipRes.data || []) as RawWipRow[]).filter((r) => !isHollowBankOrder(r)),
+        workOrders: ((woRes.data || []) as RawWorkOrder[]).filter((w) => !isHollowBankOrder(w)),
         productionLogs: (prodRes.data || []) as RawProductionLog[],
         qcInspections: (qcRes.data || []) as RawQcInspection[],
         rollingPlans: (plansRes.data || []) as RawRollingPlan[],
@@ -116,7 +118,7 @@ export default function AgingReportClient() {
         asOfDate: new Date(),
       });
 
-      setRows(computed);
+      setRows(computed.filter((r) => !isHollowBankOrder(r)));
     } catch (err) {
       toast.error('Failed to load WIP aging data');
     } finally {

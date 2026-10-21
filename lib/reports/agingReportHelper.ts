@@ -1,5 +1,7 @@
 // lib/reports/agingReportHelper.ts
 
+import { isHollowBankOrder } from '@/lib/productionUtils';
+
 export type AgingSeverity = 'NORMAL' | 'WARNING' | 'CRITICAL';
 
 export interface AgingRow {
@@ -318,7 +320,14 @@ export function computeAgingReportRows(options: {
   });
 
   const rows: AgingRow[] = wipRows
-    .filter((r) => (r.stage_code || '').toUpperCase() !== 'ROLLING' && Number(r.current_wip || 0) > 0)
+    .filter((r) => {
+      if ((r.stage_code || '').toUpperCase() === 'ROLLING') return false;
+      if (Number(r.current_wip || 0) <= 0) return false;
+      if (isHollowBankOrder(r)) return false;
+      const wo = woMap.get(r.work_order_id);
+      if (isHollowBankOrder(wo)) return false;
+      return true;
+    })
     .map((r) => {
       const wo = woMap.get(r.work_order_id);
       const plan = planMap.get(r.work_order_id);
@@ -421,30 +430,31 @@ export function computeAgingReportRows(options: {
  * Computes executive KPI summary metrics for the Aging Report.
  */
 export function computeAgingKpis(rows: AgingRow[]): AgingKpiSummary {
-  const totalLots = rows.length;
-  const criticalLots = rows.filter((r) => r.severity === 'CRITICAL').length;
-  const warningLots = rows.filter((r) => r.severity === 'WARNING').length;
-  const normalLots = rows.filter((r) => r.severity === 'NORMAL').length;
+  const activeRows = rows.filter((r) => !isHollowBankOrder(r));
+  const totalLots = activeRows.length;
+  const criticalLots = activeRows.filter((r) => r.severity === 'CRITICAL').length;
+  const warningLots = activeRows.filter((r) => r.severity === 'WARNING').length;
+  const normalLots = activeRows.filter((r) => r.severity === 'NORMAL').length;
 
-  const criticalPcs = rows
+  const criticalPcs = activeRows
     .filter((r) => r.severity === 'CRITICAL')
     .reduce((sum, r) => sum + (r.current_wip_pcs || 0), 0);
-  const criticalMtr = rows
+  const criticalMtr = activeRows
     .filter((r) => r.severity === 'CRITICAL')
     .reduce((sum, r) => sum + r.current_wip, 0);
-  const criticalMt = rows
+  const criticalMt = activeRows
     .filter((r) => r.severity === 'CRITICAL')
     .reduce((sum, r) => sum + r.available_mt, 0);
 
-  const totalWipPcs = rows.reduce((sum, r) => sum + (r.current_wip_pcs || 0), 0);
-  const totalWipMtr = rows.reduce((sum, r) => sum + r.current_wip, 0);
-  const totalWipMt = rows.reduce((sum, r) => sum + r.available_mt, 0);
+  const totalWipPcs = activeRows.reduce((sum, r) => sum + (r.current_wip_pcs || 0), 0);
+  const totalWipMtr = activeRows.reduce((sum, r) => sum + r.current_wip, 0);
+  const totalWipMt = activeRows.reduce((sum, r) => sum + r.available_mt, 0);
 
-  const avgDays = totalLots > 0 ? rows.reduce((sum, r) => sum + r.days_stuck, 0) / totalLots : 0;
+  const avgDays = totalLots > 0 ? activeRows.reduce((sum, r) => sum + r.days_stuck, 0) / totalLots : 0;
 
   // Work center with highest critical (or warning) count
   const stageCritCounts: Record<string, number> = {};
-  rows
+  activeRows
     .filter((r) => r.severity === 'CRITICAL')
     .forEach((r) => {
       stageCritCounts[r.stage_name] = (stageCritCounts[r.stage_name] || 0) + 1;
@@ -462,7 +472,7 @@ export function computeAgingKpis(rows: AgingRow[]): AgingKpiSummary {
   if (topCount === 0) {
     // Check warning counts
     const stageWarnCounts: Record<string, number> = {};
-    rows
+    activeRows
       .filter((r) => r.severity === 'WARNING')
       .forEach((r) => {
         stageWarnCounts[r.stage_name] = (stageWarnCounts[r.stage_name] || 0) + 1;
@@ -536,6 +546,9 @@ export function filterAgingRows(
   const q = search.trim().toLowerCase();
 
   return rows.filter((r) => {
+    if (isHollowBankOrder(r)) {
+      return false;
+    }
     if (selectedStage !== 'ALL' && r.stage_code !== selectedStage) {
       return false;
     }

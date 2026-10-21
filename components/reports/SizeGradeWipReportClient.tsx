@@ -28,9 +28,8 @@ import {
   Scissors,
   RotateCcw,
   Presentation,
-} from 'lucide-react';
 import { toast } from 'sonner';
-import { mtFromMtr, extractPcsFromRemarks, normalizeGrade } from '@/lib/productionUtils';
+import { mtFromMtr, extractPcsFromRemarks, normalizeGrade, isHollowBankOrder, HOLLOW_BANK_WO_ID } from '@/lib/productionUtils';
 import { reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
 import { inferRouteFromMaterialOrSpec } from '@/lib/metallurgy/processSheetSpecHelper';
 
@@ -274,7 +273,8 @@ export default function SizeGradeWipReportClient() {
         if (queueRes.ok) {
           const queueJson = await queueRes.json();
           if (queueJson?.success && Array.isArray(queueJson.data) && queueJson.data.length > 0) {
-            const mapped = queueJson.data.map((r: any) => {
+            const validQueueRows = queueJson.data.filter((r: any) => !isHollowBankOrder(r));
+            const mapped = validQueueRows.map((r: any) => {
               const stCode = (r.stage_code || '').toUpperCase() as StageCode;
               const isRolling = stCode === 'HOT_ROLLING' || stCode === 'ROLLING';
               const pcs = isRolling
@@ -608,6 +608,12 @@ export default function SizeGradeWipReportClient() {
 
         for (const [woId, rows] of wipByWo.entries()) {
           const wo = woDetailsMap.get(woId) || woDetailsMap.get(String(rows[0]?.work_order_no).trim());
+          if (
+            isHollowBankOrder(wo) ||
+            isHollowBankOrder({ id: woId, work_order_id: woId, work_order_no: rows[0]?.work_order_no, customer_name: wo?.customer_name || rows[0]?.customer_name })
+          ) {
+            continue;
+          }
           const planMh = mhMap.get(woId) || mhMap.get(String(rows[0]?.work_order_no).trim());
           const routeInfo = woRouteMap.get(woId);
 
@@ -753,7 +759,7 @@ export default function SizeGradeWipReportClient() {
             });
           }
         }
-        setRawWipRows(mapped);
+        setRawWipRows(mapped.filter((r: any) => !isHollowBankOrder(r)));
       }
     } catch (err) {
       toast.error('Failed to load WIP data');
@@ -774,6 +780,7 @@ export default function SizeGradeWipReportClient() {
       if (r.route_code) map.set(r.route_code, r.route_name || r.route_code);
     });
     rawWipRows.forEach((r) => {
+      if (isHollowBankOrder(r)) return;
       const code = r.route_code || 'HFS';
       const name = r.route_name || map.get(code) || code;
       map.set(code, name);
@@ -785,6 +792,7 @@ export default function SizeGradeWipReportClient() {
   const uniqueGrades = useMemo(() => {
     const set = new Set<string>();
     rawWipRows.forEach((r) => {
+      if (isHollowBankOrder(r)) return;
       if (r.grade) set.add(r.grade);
     });
     return Array.from(set).sort();
@@ -793,6 +801,7 @@ export default function SizeGradeWipReportClient() {
   // Filter raw rows
   const filteredRawRows = useMemo(() => {
     return rawWipRows.filter((r) => {
+      if (isHollowBankOrder(r)) return false;
       // Must have positive physical inventory
       if (Number(r.current_wip_pcs || 0) <= 0 && Number(r.current_wip || 0) <= 0) return false;
       // Completed orders with 0 balance cannot have active upstream physical WIP (exempt Rolling Production so historical rolled output is still viewable)
