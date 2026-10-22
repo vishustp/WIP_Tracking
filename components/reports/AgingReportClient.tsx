@@ -198,15 +198,21 @@ export default function AgingReportClient() {
         .order('days_stuck', { ascending: false });
 
       if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
-        // Query production logs to eliminate phantom WIP where pieces were fully drawn or passed downstream
-        const { data: prodLogs } = await supabase
-          .from('production_logs')
-          .select('work_order_id, stage_id, output_qty, htc_ok, remarks, process_stages(stage_code)');
+        // Query production logs and rejection declarations to eliminate phantom WIP and seconds
+        const [{ data: prodLogs }, { data: rejDecls }] = await Promise.all([
+          supabase
+            .from('production_logs')
+            .select('work_order_id, stage_id, output_qty, htc_ok, remarks, process_stages(stage_code)'),
+          supabase
+            .from('rejection_declarations')
+            .select('work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status')
+            .not('status', 'in', '("REJECTED_BY_QC","REJECTED_BY_PPC")'),
+        ]);
 
         // Robust normalization merging database columns & local acknowledgements
         const normalizedRows: AgingRow[] = viewData
           .filter((r: any) => !isHollowBankOrder(r))
-          .map((r: any) => normalizeAgingRow(r, localAcks))
+          .map((r: any) => normalizeAgingRow(r, localAcks, undefined, (rejDecls || []) as any))
           .filter((r: AgingRow) => !isHollowBankOrder(r) && r.current_wip_pcs > 0 && r.current_wip > 0)
           .filter((r: AgingRow) => {
             const sc = (r.stage_code || '').toUpperCase();
@@ -256,7 +262,7 @@ export default function AgingReportClient() {
       }
 
       // 2. Comprehensive fallback with accurate domain calculations
-      const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes] = await Promise.all([
+      const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes, rejDeclRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).order('sequence_no', { ascending: true }),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok, remarks, process_stages(stage_code)').order('process_date', { ascending: false }),
         supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr').order('inspection_date', { ascending: false }),
@@ -264,6 +270,7 @@ export default function AgingReportClient() {
         supabase.from('work_orders').select('id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, created_at'),
         supabase.from('route_stages').select('route_id, stage_id, sequence_no, process_stages(stage_code)').order('sequence_no', { ascending: true }),
         supabase.from('aging_alert_acknowledgements').select('work_order_id, stage_code, acknowledged_by, notes, snooze_until'),
+        supabase.from('rejection_declarations').select('work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status').not('status', 'in', '("REJECTED_BY_QC","REJECTED_BY_PPC")'),
       ]);
 
       const dbAcks: RawAcknowledgement[] = ackRes?.data || [];
@@ -277,6 +284,7 @@ export default function AgingReportClient() {
         rollingPlans: (plansRes.data || []) as RawRollingPlan[],
         routeStages: (routeStagesRes.data || []) as RawRouteStage[],
         acknowledgements: combinedAcks,
+        rejectionDeclarations: (rejDeclRes?.data || []) as any[],
         asOfDate: new Date(),
       });
 
@@ -380,6 +388,9 @@ export default function AgingReportClient() {
       'Customer': r.customer_name || '—',
       'Grade': r.grade || '—',
       'Size (ODxWT mm)': `${r.od} × ${r.wt}`,
+      'L1 (m)': r.l1 ?? '—',
+      'L2 (m)': r.l2 ?? '—',
+      'Length Range (m)': r.l1 && r.l2 && r.l1 !== r.l2 ? `${r.l1} – ${r.l2}` : (r.l1 || r.l2 || '—'),
       'Work Center': r.stage_name,
       'VDI Salvage (Pcs)': r.vdi_salvage_pcs || 0,
       'VDI Salvage (Mtrs)': r.vdi_salvage_mtr || 0,
@@ -562,6 +573,7 @@ export default function AgingReportClient() {
                 <th className="py-2.5 px-3">Work Order</th>
                 <th className="py-2.5 px-3">Customer</th>
                 <th className="py-2.5 px-3">Grade & Size</th>
+                <th className="py-2.5 px-3 text-center">Length (L1 / L2)</th>
                 <th className="py-2.5 px-3">Work Center</th>
                 <th className="py-2.5 px-3 text-right">VDI Salvage QTY</th>
                 <th className="py-2.5 px-3 text-right">Physical WIP (PCS / MTR)</th>
@@ -575,14 +587,14 @@ export default function AgingReportClient() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                  <td colSpan={12} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-blue-600" />
                     Calculating station dwell times and physical WIP aging...
                   </td>
                 </tr>
               ) : paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                  <td colSpan={12} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
                     <div className="font-semibold text-slate-700 dark:text-slate-300">No stagnant material found</div>
                     <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -628,6 +640,29 @@ export default function AgingReportClient() {
                         <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate font-mono">
                           {r.grade}
                         </div>
+                        {(r.l1 || r.l2) && (
+                          <div className="text-[10px] text-blue-600 dark:text-blue-400 font-mono mt-0.5">
+                            L: {r.l1 && r.l2 && r.l1 !== r.l2 ? `${r.l1} – ${r.l2} m` : `${r.l1 || r.l2} m`}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Length (L1 / L2) */}
+                      <td className="py-2.5 px-3 text-center font-mono">
+                        {r.l1 || r.l2 ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                              {r.l1 && r.l2 && r.l1 !== r.l2 ? `${r.l1} – ${r.l2} m` : `${r.l1 || r.l2} m`}
+                            </span>
+                            {r.l1 && r.l2 && r.l1 !== r.l2 && (
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                L1: {r.l1}m · L2: {r.l2}m
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500 text-[11px]">—</span>
+                        )}
                       </td>
 
                       {/* Work Center */}

@@ -114,6 +114,10 @@ export interface Row {
   pending_rejection_pcs?: number | null;
   pending_rejection_mtr?: number | null;
 
+  // VDI Salvage info
+  vdi_salvage_pcs?: number | null;
+  vdi_salvage_mtr?: number | null;
+
   // Daily Plan Target info (for today's scheduled shop-floor targets)
   daily_plan_target_pcs?: number | null;
   daily_plan_machine?: string | null;

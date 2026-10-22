@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { GET } from '@/app/api/production/queue/route';
+import { computeAgingReportRows, normalizeAgingRow } from '@/lib/reports/agingReportHelper';
 
 describe('Aging VDI and Zero Nos Integration', () => {
   it('ensures VDI rows in queue API always have positive piece count and no 0-piece phantom rows', async () => {
@@ -33,5 +34,108 @@ describe('Aging VDI and Zero Nos Integration', () => {
       expect(Number(sRow.vdi_salvage_pcs ?? 0)).toBeGreaterThan(0);
       expect(Number(sRow.vdi_salvage_mtr ?? 0)).toBeGreaterThan(0);
     }
+  });
+
+  it('verifies HT and DB seconds declaration deduction in queue API and aging report', async () => {
+    const req = new Request('http://localhost:3000/api/production/queue?all_stages=true&refresh=true');
+    const res = await GET(req as any);
+    const json = await res.json();
+
+    expect(json.success).toBe(true);
+    // WO 6278 had 1 PC / 11.8m declared as seconds at HEAT_TREATMENT; it must be deducted to 0 and not appear as available WIP
+    const ht6278 = json.data?.find((r: any) => r.work_order_no === '6278' && r.stage_code === 'HEAT_TREATMENT');
+    expect(ht6278).toBeUndefined();
+
+    // Verify L1 and L2 are present on rows for Aging Report display
+    const rowsWithL1 = json.data?.filter((r: any) => r.l1 != null);
+    expect(rowsWithL1.length).toBeGreaterThan(0);
+  });
+
+  it('verifies computeAgingReportRows deducts rejection_declarations for HT and DB', () => {
+    const wipRows = [
+      {
+        work_order_id: 'wo-1',
+        work_order_no: 'WO-6278',
+        stage_id: 'stg-ht',
+        stage_code: 'HEAT_TREATMENT',
+        stage_name: 'Heat Treatment',
+        sequence_no: 3,
+        current_wip: 11.8,
+        current_wip_pcs: 1,
+        od: 60.3,
+        wt: 3.91,
+        l1: 6.0,
+        l2: 6.5,
+      },
+      {
+        work_order_id: 'wo-2',
+        work_order_no: 'WO-6435',
+        stage_id: 'stg-db',
+        stage_code: 'DRAW',
+        stage_name: 'Draw Bench',
+        sequence_no: 2,
+        current_wip: 6.1,
+        current_wip_pcs: 1,
+        od: 50.8,
+        wt: 3.2,
+        l1: 6.0,
+        l2: 6.2,
+      },
+      {
+        work_order_id: 'wo-3',
+        work_order_no: 'WO-9999',
+        stage_id: 'stg-ht',
+        stage_code: 'HEAT_TREATMENT',
+        stage_name: 'Heat Treatment',
+        sequence_no: 3,
+        current_wip: 24.0,
+        current_wip_pcs: 4,
+        od: 60.3,
+        wt: 3.91,
+        l1: 6.0,
+        l2: 6.0,
+      },
+    ];
+
+    const rejectionDeclarations = [
+      {
+        work_order_id: 'wo-1',
+        work_center: 'HEAT_TREATMENT',
+        rejected_pcs: 1,
+        rejected_mtr: 11.8,
+        status: 'APPROVED',
+      },
+      {
+        work_order_id: 'wo-2',
+        work_center: 'DRAW',
+        rejected_pcs: 1,
+        rejected_mtr: 6.1,
+        status: 'PENDING_QC',
+      },
+    ];
+
+    const result = computeAgingReportRows({
+      wipRows,
+      rejectionDeclarations,
+      asOfDate: new Date(),
+    });
+
+    // wo-1 and wo-2 should be deducted to 0 and filtered out
+    expect(result.find((r: any) => r.work_order_id === 'wo-1')).toBeUndefined();
+    expect(result.find((r: any) => r.work_order_id === 'wo-2')).toBeUndefined();
+
+    // wo-3 should remain active with L1 and L2 preserved
+    const remaining = result.find((r: any) => r.work_order_id === 'wo-3');
+    expect(remaining).toBeDefined();
+    expect(remaining.current_wip_pcs).toBe(4);
+    expect(remaining.l1).toBe(6.0);
+    expect(remaining.l2).toBe(6.0);
+
+    // Test normalizeAgingRow
+    const normalizedWo1 = normalizeAgingRow(wipRows[0], [], undefined, rejectionDeclarations);
+    expect(normalizedWo1.current_wip_pcs).toBe(0);
+    expect(normalizedWo1.current_wip).toBe(0);
+    expect(normalizedWo1.l1).toBe(6.0);
+    expect(normalizedWo1.l2).toBe(6.5);
   });
 });

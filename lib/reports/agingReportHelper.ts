@@ -132,6 +132,18 @@ export interface RawAcknowledgement {
   snooze_until?: string | null;
 }
 
+export interface RawRejectionDeclaration {
+  work_order_id: string;
+  work_center: string;
+  rejected_pcs?: number | null;
+  rejected_mtr?: number | null;
+  qc_verified_pcs?: number | null;
+  qc_verified_mtr?: number | null;
+  ppc_approved_pcs?: number | null;
+  ppc_approved_mtr?: number | null;
+  status?: string | null;
+}
+
 export const AGING_STAGES = [
   { code: 'ALL', name: 'All Work Centers' },
   { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow Heat Treatment (HTC)' },
@@ -278,6 +290,7 @@ export function computeAgingReportRows(options: {
   rollingPlans?: RawRollingPlan[];
   routeStages?: RawRouteStage[];
   acknowledgements?: RawAcknowledgement[];
+  rejectionDeclarations?: RawRejectionDeclaration[];
   asOfDate?: Date | string;
 }): AgingRow[] {
   const {
@@ -288,6 +301,7 @@ export function computeAgingReportRows(options: {
     rollingPlans = [],
     routeStages = [],
     acknowledgements = [],
+    rejectionDeclarations = [],
     asOfDate = new Date(),
   } = options;
 
@@ -318,6 +332,16 @@ export function computeAgingReportRows(options: {
   acknowledgements.forEach((a) => {
     const key = `${a.work_order_id}_${a.stage_code}`;
     ackMap.set(key, a);
+  });
+
+  const rejMap = new Map<string, { pcs: number; mtr: number }>();
+  (rejectionDeclarations || []).forEach((rd) => {
+    if (rd.status === 'REJECTED_BY_QC' || rd.status === 'REJECTED_BY_PPC') return;
+    const key = `${rd.work_order_id}_${(rd.work_center || '').toUpperCase()}`;
+    const cur = rejMap.get(key) || { pcs: 0, mtr: 0 };
+    const pcs = Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0);
+    const mtr = Number(rd.ppc_approved_mtr ?? rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0);
+    rejMap.set(key, { pcs: cur.pcs + pcs, mtr: cur.mtr + mtr });
   });
 
   const rows: AgingRow[] = wipRows
@@ -401,8 +425,12 @@ export function computeAgingReportRows(options: {
       );
 
       const grade = wo?.grade || r.grade || 'ASTM A106 Gr B';
-      const currentWipMtr = Number(r.current_wip) || 0;
-      let currentWipPcs = Number(r.current_wip_pcs) || 0;
+      const sc = (r.stage_code || '').toUpperCase();
+      const rejKey = `${r.work_order_id}_${sc}`;
+      const rejDecl = rejMap.get(rejKey) || { pcs: 0, mtr: 0 };
+
+      const currentWipMtr = Math.max(0, (Number(r.current_wip) || 0) - rejDecl.mtr);
+      let currentWipPcs = Math.max(0, (Number(r.current_wip_pcs) || 0) - rejDecl.pcs);
       if (currentWipPcs <= 0 && currentWipMtr > 0) {
         const l1 = Number(r.l1 ?? wo?.l1) || 0;
         const l2 = Number(r.l2 ?? wo?.l2) || 0;
@@ -649,7 +677,8 @@ export function filterAgingRows(
 export function normalizeAgingRow(
   raw: any,
   localAcks: RawAcknowledgement[] = [],
-  todayStr: string = new Date().toISOString().slice(0, 10)
+  todayStr: string = new Date().toISOString().slice(0, 10),
+  rejectionDeclarations: RawRejectionDeclaration[] = []
 ): AgingRow {
   const daysStuck = Number(raw.days_stuck) || 0;
 
@@ -679,16 +708,36 @@ export function normalizeAgingRow(
 
   const isAcknowledged = isLocalAckActive || isDbAckActive;
 
-  const currentWip = Number(raw.current_wip) || 0;
-  let currentWipPcs = Number(raw.current_wip_pcs) || 0;
-  if (currentWipPcs <= 0 && currentWip > 0) {
+  const sc = String(raw.stage_code || '').toUpperCase();
+  const matchingRejs = (rejectionDeclarations || []).filter(
+    (rd) =>
+      rd.work_order_id === raw.work_order_id &&
+      (rd.work_center || '').toUpperCase() === sc &&
+      rd.status !== 'REJECTED_BY_QC' &&
+      rd.status !== 'REJECTED_BY_PPC'
+  );
+  const rejDeclPcs = matchingRejs.reduce(
+    (sum, rd) => sum + Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0),
+    0
+  );
+  const rejDeclMtr = matchingRejs.reduce(
+    (sum, rd) => sum + Number(rd.ppc_approved_mtr ?? rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0),
+    0
+  );
+
+  const rawWipMtr = Number(raw.current_wip) || 0;
+  let rawWipPcs = Number(raw.current_wip_pcs) || 0;
+  if (rawWipPcs <= 0 && rawWipMtr > 0) {
     const l1 = Number(raw.l1) || 0;
     const l2 = Number(raw.l2) || 0;
     const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
     if (avgLen > 0) {
-      currentWipPcs = Math.max(1, Math.round(currentWip / avgLen));
+      rawWipPcs = Math.max(1, Math.round(rawWipMtr / avgLen));
     }
   }
+
+  const currentWip = Math.max(0, rawWipMtr - rejDeclMtr);
+  const currentWipPcs = Math.max(0, rawWipPcs - rejDeclPcs);
 
     const isSalvage = String(raw.stage_code || '').toUpperCase() === 'VDI_SALVAGE' ||
       String(raw.stage_name || '').toUpperCase().includes('SALVAGE');
