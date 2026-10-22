@@ -756,5 +756,142 @@ describe('WIP Aging & Bottlenecks Calculation Engine', () => {
       expect(rows[0].vdi_salvage_mtr).toBe(48);
     });
   });
+
+  describe('VDI Nos Availability & Zero Nos Elimination', () => {
+    it('strictly filters out rows with current_wip_pcs <= 0 or current_wip <= 0 in filterAgingRows', () => {
+      const rows = [
+        {
+          work_order_id: 'wo-1',
+          work_order_no: '6576',
+          customer_name: 'Customer A',
+          grade: 'SA210 Gr.A1',
+          od: 44.5,
+          wt: 4,
+          l1: 10,
+          l2: 12,
+          stage_code: 'VDI',
+          stage_name: 'Visual Dimension Inspection',
+          current_wip: 16.45,
+          current_wip_pcs: 0, // 0 nos - must be eliminated
+          available_mt: 0.07,
+          last_activity_date: '2026-10-15',
+          days_stuck: 7,
+          severity: 'WARNING' as const,
+        },
+        {
+          work_order_id: 'wo-2',
+          work_order_no: '6524',
+          customer_name: 'Customer B',
+          grade: 'A106 Gr B',
+          od: 48.3,
+          wt: 5.08,
+          l1: 6,
+          l2: 6,
+          stage_code: 'VDI',
+          stage_name: 'Visual Dimension Inspection',
+          current_wip: 576,
+          current_wip_pcs: 96, // valid pieces
+          available_mt: 4.97,
+          last_activity_date: '2026-10-15',
+          days_stuck: 7,
+          severity: 'WARNING' as const,
+        },
+        {
+          work_order_id: 'wo-3',
+          work_order_no: '6400',
+          customer_name: 'Customer C',
+          grade: 'A106 Gr B',
+          od: 60.3,
+          wt: 5.54,
+          l1: 10,
+          l2: 10,
+          stage_code: 'DRAW',
+          stage_name: 'Cold Draw Bench',
+          current_wip: 0, // 0 wip - must be eliminated
+          current_wip_pcs: 0,
+          available_mt: 0,
+          last_activity_date: '2026-10-10',
+          days_stuck: 12,
+          severity: 'CRITICAL' as const,
+        },
+      ];
+
+      const filteredAll = filterAgingRows(rows, { selectedStage: 'ALL' });
+      expect(filteredAll).toHaveLength(1);
+      expect(filteredAll[0].work_order_no).toBe('6524');
+      expect(filteredAll[0].current_wip_pcs).toBe(96);
+
+      const filteredVdi = filterAgingRows(rows, { selectedStage: 'VDI' });
+      expect(filteredVdi).toHaveLength(1);
+      expect(filteredVdi[0].work_order_no).toBe('6524');
+      expect(filteredVdi[0].current_wip_pcs).toBe(96);
+    });
+
+    it('derives pieces from meters and average length when normalizing rows without pieces', () => {
+      const rawRow = {
+        work_order_id: 'wo-vdi-no-pcs',
+        work_order_no: '6605',
+        stage_code: 'VDI',
+        stage_name: 'VDI',
+        current_wip: 60,
+        current_wip_pcs: 0, // No pieces provided
+        l1: 6,
+        l2: 6,
+        od: 48.3,
+        wt: 3.68,
+        days_stuck: 4,
+      };
+
+      const normalized = normalizeAgingRow(rawRow);
+      expect(normalized.current_wip_pcs).toBe(10); // 60m / 6m = 10 pcs
+      expect(normalized.current_wip).toBe(60);
+    });
+
+    it('KPI calculation excludes lots with zero pieces or zero WIP', () => {
+      const rows = [
+        {
+          work_order_id: 'wo-zero',
+          work_order_no: '9999',
+          customer_name: 'Zero Cust',
+          grade: 'A106',
+          od: 50,
+          wt: 5,
+          l1: 6,
+          l2: 6,
+          stage_code: 'VDI',
+          stage_name: 'VDI',
+          current_wip: 20,
+          current_wip_pcs: 0, // Zero pcs
+          available_mt: 0.1,
+          last_activity_date: '2026-10-10',
+          days_stuck: 10,
+          severity: 'CRITICAL' as const,
+        },
+        {
+          work_order_id: 'wo-valid',
+          work_order_no: '8888',
+          customer_name: 'Valid Cust',
+          grade: 'A106',
+          od: 50,
+          wt: 5,
+          l1: 6,
+          l2: 6,
+          stage_code: 'VDI',
+          stage_name: 'VDI',
+          current_wip: 120,
+          current_wip_pcs: 20,
+          available_mt: 0.6,
+          last_activity_date: '2026-10-10',
+          days_stuck: 10,
+          severity: 'CRITICAL' as const,
+        },
+      ];
+
+      const kpis = computeAgingKpis(rows);
+      expect(kpis.totalLots).toBe(1);
+      expect(kpis.totalWipPcs).toBe(20);
+      expect(kpis.totalWipMtr).toBe(120);
+    });
+  });
 });
 

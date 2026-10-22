@@ -83,19 +83,53 @@ export default function AgingReportClient() {
           const queueJson = await queueRes.json();
           if (queueJson?.success && Array.isArray(queueJson.data) && queueJson.data.length > 0) {
             const now = Date.now();
-            const validRows: AgingRow[] = queueJson.data
-              .filter((r: any) => {
-                if (isHollowBankOrder(r)) return false;
-                const sc = (r.stage_code || '').toUpperCase();
-                if (sc === 'HOT_ROLLING' || sc === 'ROLLING') return false;
-                const pcs = Math.round(Number(r.ready_pcs ?? r.current_wip_pcs ?? 0));
-                const mtr = Number(r.ready_mtr ?? r.current_wip ?? 0);
-                return pcs > 0 || mtr > 0;
-              })
+            const validRows: AgingRow[] = (queueJson.data as any[])
               .map((r: any) => {
+                if (isHollowBankOrder(r)) return null;
                 const sc = (r.stage_code || '').toUpperCase();
-                const pcs = Math.round(Number(r.ready_pcs ?? r.current_wip_pcs ?? 0));
-                const mtr = Number(Number(r.ready_mtr ?? r.current_wip ?? 0).toFixed(2));
+                if (sc === 'HOT_ROLLING' || sc === 'ROLLING') return null;
+
+                const l1 = r.l1 != null ? Number(r.l1) : null;
+                const l2 = r.l2 != null ? Number(r.l2) : null;
+                const avgLen = Number(
+                  r.avg_length ||
+                  (l1 && l2 ? (l1 + l2) / 2 : l1 || l2 || 6.0)
+                );
+
+                const rawPcs = Number(
+                  r.ready_pcs != null && Number(r.ready_pcs) > 0
+                    ? r.ready_pcs
+                    : (r.current_wip_pcs != null && Number(r.current_wip_pcs) > 0
+                        ? r.current_wip_pcs
+                        : (r.balance_to_make_pcs != null && Number(r.balance_to_make_pcs) > 0 ? r.balance_to_make_pcs : 0))
+                );
+
+                const rawMtr = Number(
+                  r.ready_mtr != null && Number(r.ready_mtr) > 0
+                    ? r.ready_mtr
+                    : (r.current_wip != null && Number(r.current_wip) > 0
+                        ? r.current_wip
+                        : (r.balance_to_make_mtr != null && Number(r.balance_to_make_mtr) > 0 ? r.balance_to_make_mtr : 0))
+                );
+
+                let pcs = Math.round(rawPcs);
+                let mtr = Number(rawMtr.toFixed(2));
+
+                // If pieces is 0 but meters > 0, derive pieces from average pipe length
+                if (pcs <= 0 && mtr > 0 && avgLen > 0) {
+                  pcs = Math.max(1, Math.round(mtr / avgLen));
+                }
+
+                // If meters is 0 but pieces > 0, derive meters from pieces * average pipe length
+                if (mtr <= 0 && pcs > 0 && avgLen > 0) {
+                  mtr = Number((pcs * avgLen).toFixed(2));
+                }
+
+                // Strictly filter out any zero-piece or zero-meter rows (eliminates "0 nos" in Aging Report)
+                if (pcs <= 0 || mtr <= 0) {
+                  return null;
+                }
+
                 const mt = Number(Number(r.ready_mt ?? r.available_mt ?? 0).toFixed(2));
                 const effectiveDate = r.last_activity_date || r.rolling_date || r.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
                 const diffMs = now - new Date(effectiveDate).getTime();
@@ -112,8 +146,8 @@ export default function AgingReportClient() {
                   grade: r.specification || r.grade || null,
                   od: Number(r.final_od || r.size_od || r.wo_od || r.od || 0),
                   wt: Number(r.final_wt || r.size_wt || r.wo_wt || r.wt || 0),
-                  l1: r.l1 != null ? Number(r.l1) : null,
-                  l2: r.l2 != null ? Number(r.l2) : null,
+                  l1,
+                  l2,
                   stage_id: r.stage_id,
                   stage_code: sc,
                   stage_name: r.stage_name || sc,
@@ -130,8 +164,9 @@ export default function AgingReportClient() {
                   acknowledged_by: ackObj?.acknowledged_by || null,
                   ack_notes: ackObj?.notes || null,
                   ack_snooze_until: ackObj?.snooze_until || null,
-                };
+                } as AgingRow;
               })
+              .filter((r): r is AgingRow => r !== null)
               .sort((a: AgingRow, b: AgingRow) => b.days_stuck - a.days_stuck);
 
             setRows(validRows);
@@ -164,7 +199,7 @@ export default function AgingReportClient() {
         const normalizedRows: AgingRow[] = viewData
           .filter((r: any) => !isHollowBankOrder(r))
           .map((r: any) => normalizeAgingRow(r, localAcks))
-          .filter((r: AgingRow) => !isHollowBankOrder(r))
+          .filter((r: AgingRow) => !isHollowBankOrder(r) && r.current_wip_pcs > 0 && r.current_wip > 0)
           .filter((r: AgingRow) => {
             const sc = (r.stage_code || '').toUpperCase();
             if ((sc === 'DRAW' || sc === 'PILGER' || sc === 'HEAT_TREATMENT' || sc === 'HOLLOW_HEAT_TREATMENT') && Array.isArray(prodLogs)) {
@@ -237,7 +272,7 @@ export default function AgingReportClient() {
         asOfDate: new Date(),
       });
 
-      setRows(computed.filter((r) => !isHollowBankOrder(r)));
+      setRows(computed.filter((r) => !isHollowBankOrder(r) && r.current_wip_pcs > 0 && r.current_wip > 0));
     } catch (err) {
       toast.error('Failed to load WIP aging data');
     } finally {

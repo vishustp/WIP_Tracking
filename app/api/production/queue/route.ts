@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
               } else if (!row.is_feeder_source) {
                 const readyPcs = Number(row.ready_pcs ?? 0);
                 const readyMtr = Number(row.ready_mtr ?? 0);
-                if (readyPcs >= 1 || readyMtr >= 1.0) {
+                if (readyPcs >= 1 && readyMtr > 0) {
                   selectedRows.push(row);
                 }
               }
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
           if (vdiSalvageRow) {
             const readyPcs = Number(vdiSalvageRow.ready_pcs ?? 0);
             const readyMtr = Number(vdiSalvageRow.ready_mtr ?? 0);
-            if (readyPcs >= 1 || readyMtr >= 1.0) {
+            if (readyPcs >= 1 && readyMtr > 0) {
               selectedRows.push(vdiSalvageRow);
             }
           }
@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
           if (!r.is_feeder_source) {
             const readyPcs = Number(r.ready_pcs ?? 0);
             const readyMtr = Number(r.ready_mtr ?? 0);
-            if (readyPcs >= 1 || readyMtr >= 1.0) {
+            if (readyPcs >= 1 && readyMtr > 0) {
               selectedRows.push(r);
             }
           }
@@ -1066,7 +1066,11 @@ export async function GET(req: NextRequest) {
 
       let vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs);
       let vdiAvailMtr = Math.max(0, Number((vdiIncomingMtr + effVdiDivInMtr - qcInspectedMtr - vdiDivOut).toFixed(3)));
-      if (vdiAvailMtr === 0 && vdiAvailPcs > 0 && avgLength > 0) {
+      if (vdiAvailPcs <= 0 && vdiAvailMtr > 0 && avgLength > 0 && qcInspectedPcs === 0) {
+        vdiAvailPcs = Math.max(1, Math.round(vdiAvailMtr / avgLength));
+      } else if (vdiAvailPcs <= 0) {
+        vdiAvailMtr = 0;
+      } else if (vdiAvailMtr === 0 && vdiAvailPcs > 0 && avgLength > 0) {
         vdiAvailMtr = Number((vdiAvailPcs * avgLength).toFixed(3));
       }
       let vdiAvailMt = mtFromMtr(vdiAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
@@ -1086,7 +1090,11 @@ export async function GET(req: NextRequest) {
       let finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finConsumedPcs - finDivOutPcs);
       const finIncomingMtr = avgLength > 0 ? Number((finIncomingPcs * avgLength).toFixed(3)) : 0;
       let finAvailMtr = Math.max(0, Number((finIncomingMtr + finDivIn - (finOutMtr + finRejMtr) - totalFinDivOut).toFixed(3)));
-      if (finAvailMtr === 0 && finAvailPcs > 0 && avgLength > 0) {
+      if (finAvailPcs <= 0 && finAvailMtr > 0 && avgLength > 0 && finConsumedPcs === 0) {
+        finAvailPcs = Math.max(1, Math.round(finAvailMtr / avgLength));
+      } else if (finAvailPcs <= 0) {
+        finAvailMtr = 0;
+      } else if (finAvailMtr === 0 && finAvailPcs > 0 && avgLength > 0) {
         finAvailMtr = Number((finAvailPcs * avgLength).toFixed(3));
       }
       let finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
@@ -1576,10 +1584,10 @@ export async function GET(req: NextRequest) {
       const isBsReady = bandSawAvailMtr >= 1.0 || bandSawAvailPcs >= 1;
       const isBsFeeder = !isBsReady && (bsFeederMtr >= 1.0 || bsFeederPcs >= 1);
 
-      const isVdiReady = vdiAvailMtr >= 1.0 || vdiAvailPcs >= 1;
+      const isVdiReady = vdiAvailPcs >= 1 && vdiAvailMtr >= 0.5;
       const isVdiFeeder = !isVdiReady && (vdiFeederMtr >= 1.0 || vdiFeederPcs >= 1);
 
-      const isFinReady = finAvailMtr >= 1.0 || finAvailPcs >= 1;
+      const isFinReady = finAvailPcs >= 1 && finAvailMtr >= 0.5;
       const isFinFeeder = !isFinReady && (finFeederMtr >= 1.0 || finFeederPcs >= 1);
 
       const queueRows: Record<StageCode, Row | null> = {

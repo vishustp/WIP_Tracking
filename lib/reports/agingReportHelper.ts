@@ -476,15 +476,19 @@ export function computeAgingReportRows(options: {
       };
     });
 
-  // Sort descending by days stuck
-  return rows.sort((a, b) => b.days_stuck - a.days_stuck);
+  // Filter active lots and sort descending by days stuck
+  return rows
+    .filter((r) => r.current_wip_pcs > 0 && r.current_wip > 0)
+    .sort((a, b) => b.days_stuck - a.days_stuck);
 }
 
 /**
  * Computes executive KPI summary metrics for the Aging Report.
  */
 export function computeAgingKpis(rows: AgingRow[]): AgingKpiSummary {
-  const activeRows = rows.filter((r) => !isHollowBankOrder(r));
+  const activeRows = rows.filter(
+    (r) => !isHollowBankOrder(r) && (r.current_wip_pcs || 0) > 0 && (r.current_wip || 0) > 0
+  );
   const totalLots = activeRows.length;
   const criticalLots = activeRows.filter((r) => r.severity === 'CRITICAL').length;
   const warningLots = activeRows.filter((r) => r.severity === 'WARNING').length;
@@ -587,6 +591,7 @@ export function computeAgingKpis(rows: AgingRow[]): AgingKpiSummary {
 
 /**
  * Filters aging rows by selected stage, severity tier, and text query.
+ * Strictly eliminates any rows with zero pieces or zero WIP.
  */
 export function filterAgingRows(
   rows: AgingRow[],
@@ -603,8 +608,18 @@ export function filterAgingRows(
     if (isHollowBankOrder(r)) {
       return false;
     }
-    if (selectedStage !== 'ALL' && r.stage_code !== selectedStage) {
+    // Strict domain rule: Aging Report displays active physical WIP lots only; eliminate 0-piece and 0-WIP rows
+    if (Number(r.current_wip_pcs || 0) <= 0 || Number(r.current_wip || 0) <= 0) {
       return false;
+    }
+    if (selectedStage !== 'ALL') {
+      const rsc = (r.stage_code || '').toUpperCase();
+      const sel = selectedStage.toUpperCase();
+      if (sel === 'VDI') {
+        if (rsc !== 'VDI' && rsc !== 'VDI_SALVAGE') return false;
+      } else if (rsc !== sel) {
+        return false;
+      }
     }
     if (selectedSeverity !== 'ALL' && r.severity !== selectedSeverity) {
       return false;
