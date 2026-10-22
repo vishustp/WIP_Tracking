@@ -1038,20 +1038,19 @@ export async function GET(req: NextRequest) {
       let htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
       let htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
-      // Apply downstream consumption and rejection declarations to Draw availability
-      const downstreamDrawPassed = Math.max(drawOutPcs + drawRejPcs, htPassedPcs);
+      // Apply rejection declarations to Draw availability (Rule 1 & Rule 2: Preceding Stage OK - Current Stage OK)
       const drawRejDecl = getStageRejDecl(woId, "DRAW");
+      const effDrawRej = Math.max(drawRejPcs, drawRejDecl.pcs);
       if (isCds) {
-        drawAvailPcs = Math.max(0, drawIncomingPcs + drawDivInPcs - downstreamDrawPassed - drawDivOutPcs - drawRejDecl.pcs);
+        drawAvailPcs = Math.max(0, drawIncomingPcs + drawDivInPcs - (drawOutPcs + effDrawRej) - drawDivOutPcs);
         drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;
         drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
       }
 
-      // Apply downstream consumption and rejection declarations to Pilger availability
-      const downstreamPilgerPassed = Math.max(pilgerOutPcs + pilgerRejPcs, htPassedPcs);
+      // Apply rejection declarations to Pilger availability (Rule 1 & Rule 2: Preceding Stage OK - Current Stage OK)
       const pilgerRejDecl = getStageRejDecl(woId, "PILGER");
       if (isSsSteel) {
-        pilgerAvailPcs = Math.max(0, pilgerIncomingPcs + pilgerDivInPcs - downstreamPilgerPassed - pilgerDivOutPcs - pilgerRejDecl.pcs);
+        pilgerAvailPcs = Math.max(0, pilgerIncomingPcs + pilgerDivInPcs - (pilgerOutPcs + pilgerRejPcs) - pilgerDivOutPcs - pilgerRejDecl.pcs);
         pilgerAvailMtr = effPilgerLen > 0 ? Number((pilgerAvailPcs * effPilgerLen).toFixed(3)) : 0;
         pilgerAvailMt = mtFromMtr(pilgerAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
       }
@@ -1126,8 +1125,20 @@ export async function GET(req: NextRequest) {
       }
       let finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
-      // Universal Rule: Work orders marked Completed / Closed must not show phantom WIP in upstream stations
-      const isOrderCompleted = (wo.status || "").toLowerCase() === "completed" || (wo.status || "").toLowerCase() === "closed";
+      // Universal Rule: Work orders marked Completed / Closed must not show phantom WIP in upstream stations.
+      // Exception: For a master campaign whose child work orders are still active (In Progress / Pending),
+      // the upstream campaign stock (e.g. Draw Bench queue) is real feeding inventory and must remain available.
+      const isOrderCompletedRaw = (wo.status || "").toLowerCase() === "completed" || (wo.status || "").toLowerCase() === "closed";
+      const hasActiveChildOrders = Boolean(
+        campaign &&
+        Array.isArray(campaign.child_work_orders) &&
+        campaign.child_work_orders.some((c: any) => {
+          const childWo = woMap.get(c.work_order_id || c.id);
+          const st = (childWo?.status || "").toLowerCase();
+          return st !== "completed" && st !== "closed";
+        })
+      );
+      const isOrderCompleted = isOrderCompletedRaw && !hasActiveChildOrders;
       if (isOrderCompleted) {
         rollAvailPcs = 0; rollAvailMtr = 0; rollAvailMt = 0;
         hollowHtAvailPcs = 0; hollowHtAvailMtr = 0; hollowHtAvailMt = 0;
@@ -1139,6 +1150,9 @@ export async function GET(req: NextRequest) {
         if (Number(wo.balance_qty_mtr ?? 0) === 0 && Number(wo.balance_qty_pcs ?? 0) === 0) {
           finAvailPcs = 0; finAvailMtr = 0; finAvailMt = 0;
         }
+      }
+      if (isOrderCompletedRaw && Number(wo.balance_qty_mtr ?? 0) === 0 && Number(wo.balance_qty_pcs ?? 0) === 0) {
+        finAvailPcs = 0; finAvailMtr = 0; finAvailMt = 0;
       }
 
 
