@@ -472,9 +472,10 @@ export function computeAgingReportRows(options: {
         ack && (!ack.snooze_until || ack.snooze_until >= todayStr)
       );
 
-      const woQc = qcInspections.filter((q) => q.work_order_id === r.work_order_id);
-      const vdiSalvagePcs = woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0);
-      const vdiSalvageMtr = woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+      const isSalvageStage = (r.stage_code || '').toUpperCase() === 'VDI_SALVAGE' || (r.stage_code || '').toUpperCase() === 'VDI';
+      const woQc = isSalvageStage ? qcInspections.filter((q) => q.work_order_id === r.work_order_id) : [];
+      const vdiSalvagePcs = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0) : 0;
+      const vdiSalvageMtr = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0) : 0;
 
       return {
         work_order_id: r.work_order_id,
@@ -741,12 +742,13 @@ export function normalizeAgingRow(
 
     const isSalvage = String(raw.stage_code || '').toUpperCase() === 'VDI_SALVAGE' ||
       String(raw.stage_name || '').toUpperCase().includes('SALVAGE');
-    const salvagePcs = Number(raw.vdi_salvage_pcs) > 0
-      ? Number(raw.vdi_salvage_pcs)
-      : (isSalvage ? currentWipPcs : 0);
-    const salvageMtr = Number(raw.vdi_salvage_mtr) > 0
-      ? Number(raw.vdi_salvage_mtr)
-      : (isSalvage ? currentWip : 0);
+    const isVdi = String(raw.stage_code || '').toUpperCase() === 'VDI';
+    const salvagePcs = (isSalvage || isVdi)
+      ? (Number(raw.vdi_salvage_pcs) > 0 ? Number(raw.vdi_salvage_pcs) : (isSalvage ? currentWipPcs : 0))
+      : 0;
+    const salvageMtr = (isSalvage || isVdi)
+      ? (Number(raw.vdi_salvage_mtr) > 0 ? Number(raw.vdi_salvage_mtr) : (isSalvage ? currentWip : 0))
+      : 0;
 
     return {
       work_order_id: String(raw.work_order_id || ''),

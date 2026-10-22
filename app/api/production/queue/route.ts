@@ -1471,8 +1471,8 @@ export async function GET(req: NextRequest) {
         balance_to_make_order_mt: balanceToMakeOrderMt,
         finished_output_mtr: woFinishedMtr,
         finished_output_pcs: woFinishedPcs,
-        vdi_salvage_pcs: qcSalvagePcs,
-        vdi_salvage_mtr: qcSalvageMtr,
+        vdi_salvage_pcs: 0,
+        vdi_salvage_mtr: 0,
         order_capping_mtr: orderCappingMtr,
         order_capping_pcs: orderCappingPcs,
         rolled_pcs: rollGrossPcs,
@@ -1846,6 +1846,8 @@ export async function GET(req: NextRequest) {
                 stage_code: "VDI",
                 heat_lot_no: latestBandSawLotNo,
                 heat_lots: vdiLots,
+                vdi_salvage_pcs: qcSalvagePcs,
+                vdi_salvage_mtr: qcSalvageMtr,
                 balance_to_make_mtr: isVdiReady ? vdiAvailMtr : vdiFeederMtr,
                 balance_to_make_pcs: isVdiReady ? vdiAvailPcs : vdiFeederPcs,
                 balance_to_make_mt: isVdiReady ? vdiAvailMt : vdiFeederMt,
@@ -2022,7 +2024,7 @@ export async function GET(req: NextRequest) {
       }
 
       const vdiSalvageRow: Row | null =
-        !isOrderCompleted && (qcSalvagePcs >= 1 || qcSalvageMtr >= 1.0)
+        (qcSalvagePcs >= 1 || qcSalvageMtr >= 1.0)
           ? {
               ...baseRowData,
               stage_code: "VDI_SALVAGE" as any,

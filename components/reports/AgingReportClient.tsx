@@ -139,13 +139,14 @@ export default function AgingReportClient() {
                 const woId = r.work_order_id || r.id;
                 const ackObj = localAcks.find((a) => a.work_order_id === woId && a.stage_code === sc);
 
-                  const isSalvage = sc === 'VDI_SALVAGE' || (r.stage_name || '').toUpperCase().includes('SALVAGE');
-                  const salvagePcs = Number(r.vdi_salvage_pcs || 0) > 0
-                    ? Number(r.vdi_salvage_pcs)
-                    : (isSalvage ? pcs : 0);
-                  const salvageMtr = Number(r.vdi_salvage_mtr || 0) > 0
-                    ? Number(r.vdi_salvage_mtr)
-                    : (isSalvage ? mtr : 0);
+                const isSalvage = sc === 'VDI_SALVAGE' || (r.stage_name || '').toUpperCase().includes('SALVAGE');
+                const isVdi = sc === 'VDI';
+                const salvagePcs = (isSalvage || isVdi)
+                  ? (Number(r.vdi_salvage_pcs || 0) > 0 ? Number(r.vdi_salvage_pcs) : (isSalvage ? pcs : 0))
+                  : 0;
+                const salvageMtr = (isSalvage || isVdi)
+                  ? (Number(r.vdi_salvage_mtr || 0) > 0 ? Number(r.vdi_salvage_mtr) : (isSalvage ? mtr : 0))
+                  : 0;
 
                   return {
                     work_order_id: woId,

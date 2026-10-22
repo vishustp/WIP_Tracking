@@ -49,6 +49,18 @@ describe('Aging VDI and Zero Nos Integration', () => {
     // Verify L1 and L2 are present on rows for Aging Report display
     const rowsWithL1 = json.data?.filter((r: any) => r.l1 != null);
     expect(rowsWithL1.length).toBeGreaterThan(0);
+
+    // WO 6349: Finishing row must have 0 salvage pcs (not 71), and ready_pcs === 4
+    const fin6349 = json.data?.find((r: any) => r.work_order_no === '6349' && r.stage_code === 'FINISHING');
+    expect(fin6349).toBeDefined();
+    expect(Number(fin6349.ready_pcs)).toBe(4);
+    expect(Number(fin6349.vdi_salvage_pcs || 0)).toBe(0);
+
+    // WO 6349: VDI_SALVAGE row must have 71 salvage pieces
+    const salvage6349 = json.data?.find((r: any) => r.work_order_no === '6349' && r.stage_code === 'VDI_SALVAGE');
+    expect(salvage6349).toBeDefined();
+    expect(Number(salvage6349.ready_pcs)).toBe(71);
+    expect(Number(salvage6349.vdi_salvage_pcs)).toBe(71);
   });
 
   it('verifies computeAgingReportRows deducts rejection_declarations for HT and DB', () => {
