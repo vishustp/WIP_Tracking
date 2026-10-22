@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100" fill="none">
+  <defs>
+    <!-- Radial Sunburst Core Gradient -->
+    <radialGradient id="sunburstGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FF4D4D"/>
+      <stop offset="70%" stop-color="#DC2626"/>
+      <stop offset="100%" stop-color="#991B1B"/>
+    </radialGradient>
+    
+    <!-- Outer Glow Ring -->
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF4444"/>
+      <stop offset="50%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#DC2626"/>
+    </linearGradient>
+
+    <!-- Metallic R Gradient -->
+    <linearGradient id="metalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F1F5F9"/>
+    </linearGradient>
+
+    <!-- Subtle Drop Shadow -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#DC2626" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Left: Emblem (Center at x=50, y=50) -->
+  <g transform="translate(10, 10)" filter="url(#glow)">
+    <!-- Outer Halo / Dark Disc Backdrop -->
+    <circle cx="40" cy="40" r="38" fill="#0B132B" stroke="url(#ringGrad)" stroke-width="2"/>
+    
+    <!-- Sunburst Radiant Beams (16 Beams) -->
+    <!-- Cardinal & Diagonal Beams (Length 28 to 36) -->
+    <g stroke="url(#ringGrad)" stroke-width="2.5" stroke-linecap="round">
+      <line x1="40" y1="12" x2="40" y2="4"/>
+      <line x1="40" y1="68" x2="40" y2="76"/>
+      <line x1="12" y1="40" x2="4" y2="40"/>
+      <line x1="68" y1="40" x2="76" y2="40"/>
+      
+      <line x1="20.2" y1="20.2" x2="14.5" y2="14.5"/>
+      <line x1="59.8" y1="59.8" x2="65.5" y2="65.5"/>
+      <line x1="20.2" y1="59.8" x2="14.5" y2="65.5"/>
+      <line x1="59.8" y1="20.2" x2="65.5" y2="14.5"/>
+    </g>
+
+    <!-- Secondary Beams (8 intermediate short beams) -->
+    <g stroke="#F59E0B" stroke-width="1.75" stroke-linecap="round" opacity="0.9">
+      <line x1="40" y1="18" x2="40" y2="14" transform="rotate(22.5 40 40)"/>
+      <line x1="40" y1="18" x2="40" y2="14" transform="rotate(67.5 40 40)"/>
+      <line x1="40" y1="18" x2="40" y2="14" transform="rotate(112.5 40 40)"/>
+      <line x1="40" y1="18" x2="40" y2="14" transform="rotate(157.5 40 40)"/>
+      <line x1="40" y1="18" x2="40" y2="14" transform="rotate(202.5 40 40)"/>
+      <line x1="40" y1="18" x2="40" y2="14" transform="rotate(247.5 40 40)"/>
+      <line x1="40" y1="18" x2="40" y2="14" transform="rotate(292.5 40 40)"/>
+      <line x1="40" y1="18" x2="40" y2="14" transform="rotate(337.5 40 40)"/>
+    </g>
+
+    <!-- Golden Intermediate Ring -->
+    <circle cx="40" cy="40" r="23" fill="none" stroke="#F59E0B" stroke-width="1.2" stroke-dasharray="2 2" opacity="0.8"/>
+
+    <!-- Sunburst Core Disc (Red Radiant Core) -->
+    <circle cx="40" cy="40" r="19" fill="url(#sunburstGrad)" stroke="#FFFFFF" stroke-width="1.5"/>
+
+    <!-- Bold Monogram "R" in Central Disc -->
+    <path d="M34 29 H41.5 C44.5 29 46.5 30.5 46.5 33.2 C46.5 35.5 44.8 37 42.5 37.4 L47 49 H43.2 L39 38.5 H37 V49 H34 Z M37 36 H41 C42.6 36 43.6 35 43.6 33.5 C43.6 32 42.6 31.2 41 31.2 H37 Z" fill="url(#metalGrad)"/>
+  </g>
+
+  <!-- Right: Typography & Brandmark -->
+  <g transform="translate(105, 0)">
+    <!-- RASHMI Signature Wordmark -->
+    <text x="0" y="48" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="38" font-weight="900" letter-spacing="2.5" fill="#DC2626">
+      RASHMI
+    </text>
+    
+    <!-- Green Hydrogen Pill / Badge -->
+    <rect x="180" y="24" width="105" height="22" rx="4" fill="#047857" opacity="0.15" stroke="#10B981" stroke-width="1"/>
+    <circle cx="190" cy="35" r="3.5" fill="#10B981"/>
+    <text x="198" y="39" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="800" letter-spacing="1" fill="#10B981">
+      SEAMLESS
+    </text>
+
+    <!-- Company Full Subtitle -->
+    <text x="1" y="68" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="800" letter-spacing="1.2" fill="#F8FAFC">
+      GREEN HYDROGEN STEEL PVT. LTD.
+    </text>
+
+    <!-- Division Identification -->
+    <text x="1" y="84" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="9.5" font-weight="600" letter-spacing="1.5" fill="#38BDF8">
+      SEAMLESS PIPE DIVISION · MANUFACTURING SYSTEM
+    </text>
+  </g>
+</svg>

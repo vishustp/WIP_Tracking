@@ -6,8 +6,9 @@ import { createClient } from '@/lib/supabase/client';
 import { mapAppUser } from '@/lib/users/client';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import Image from 'next/image';
 import {
-  Factory, User, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, AlertCircle, RefreshCw, CheckCircle2,
+  User, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, AlertCircle, RefreshCw, CheckCircle2,
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -147,8 +148,16 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-6 relative z-10 animate-login-card">
         {/* Brand Header with Stagger Entrance */}
         <div className="text-center space-y-2.5 animate-login-item-1">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-b from-blue-600/20 to-sky-500/10 border border-sky-400/30 text-sky-400 shadow-[0_0_20px_-3px_rgba(14,165,233,0.3)] mb-1 animate-pulse-glow transition-transform duration-300 hover:scale-105">
-            <Factory className="w-7 h-7" />
+          {/* Company Logo Badge */}
+          <div className="inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-white shadow-[0_0_25px_-3px_rgba(227,30,36,0.35)] border border-slate-100 mb-1 animate-pulse-glow transition-transform duration-300 hover:scale-105">
+            <Image
+              src="/rashmi-group-logo.png"
+              alt="RASHMI GROUP"
+              width={100}
+              height={39}
+              priority
+              className="h-9 w-auto object-contain select-none"
+            />
           </div>
           <h1 className="text-lg sm:text-xl font-black tracking-tight text-white uppercase leading-snug">
             RASHMI GREEN HYDROGEN STEEL PVT. LTD.

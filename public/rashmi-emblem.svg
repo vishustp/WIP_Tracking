@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <radialGradient id="sunburstGradEmblem" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FF5757"/>
+      <stop offset="65%" stop-color="#DC2626"/>
+      <stop offset="100%" stop-color="#991B1B"/>
+    </radialGradient>
+    
+    <linearGradient id="ringGradEmblem" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF4444"/>
+      <stop offset="50%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#DC2626"/>
+    </linearGradient>
+
+    <linearGradient id="metalGradEmblem" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E2E8F0"/>
+    </linearGradient>
+
+    <filter id="glowEmblem" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#DC2626" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#glowEmblem)">
+    <!-- Outer Dark Steel Backplate -->
+    <circle cx="50" cy="50" r="46" fill="#0B132B" stroke="url(#ringGradEmblem)" stroke-width="2.5"/>
+    
+    <!-- 8 Primary Cardinal & Diagonal Radiant Beams -->
+    <g stroke="url(#ringGradEmblem)" stroke-width="3" stroke-linecap="round">
+      <line x1="50" y1="16" x2="50" y2="6"/>
+      <line x1="50" y1="84" x2="50" y2="94"/>
+      <line x1="16" y1="50" x2="6" y2="50"/>
+      <line x1="84" y1="50" x2="94" y2="50"/>
+      
+      <line x1="26" y1="26" x2="19" y2="19"/>
+      <line x1="74" y1="74" x2="81" y2="81"/>
+      <line x1="26" y1="74" x2="19" y2="81"/>
+      <line x1="74" y1="26" x2="81" y2="19"/>
+    </g>
+
+    <!-- 8 Secondary Intermediate Beams -->
+    <g stroke="#F59E0B" stroke-width="2" stroke-linecap="round" opacity="0.9">
+      <line x1="50" y1="22" x2="50" y2="17" transform="rotate(22.5 50 50)"/>
+      <line x1="50" y1="22" x2="50" y2="17" transform="rotate(67.5 50 50)"/>
+      <line x1="50" y1="22" x2="50" y2="17" transform="rotate(112.5 50 50)"/>
+      <line x1="50" y1="22" x2="50" y2="17" transform="rotate(157.5 50 50)"/>
+      <line x1="50" y1="22" x2="50" y2="17" transform="rotate(202.5 50 50)"/>
+      <line x1="50" y1="22" x2="50" y2="17" transform="rotate(247.5 50 50)"/>
+      <line x1="50" y1="22" x2="50" y2="17" transform="rotate(292.5 50 50)"/>
+      <line x1="50" y1="22" x2="50" y2="17" transform="rotate(337.5 50 50)"/>
+    </g>
+
+    <!-- Dashed Golden Energy Ring -->
+    <circle cx="50" cy="50" r="28" fill="none" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.85"/>
+
+    <!-- Inner Core Disc (Crimson Heat) -->
+    <circle cx="50" cy="50" r="23" fill="url(#sunburstGradEmblem)" stroke="#FFFFFF" stroke-width="1.8"/>
+
+    <!-- Monogram R -->
+    <path d="M43 37 H51.8 C55.2 37 57.5 38.8 57.5 41.8 C57.5 44.4 55.6 46.1 53 46.6 L58.2 59 H53.8 L49 47.8 H46.5 V59 H43 Z M46.5 44.8 H51.2 C53 44.8 54.2 43.7 54.2 42 C54.2 40.3 53 39.4 51.2 39.4 H46.5 Z" fill="url(#metalGradEmblem)"/>
+  </g>
+</svg>
