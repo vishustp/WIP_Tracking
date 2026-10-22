@@ -6,10 +6,12 @@ import { createClient } from '@/lib/supabase/client';
 import { mapAppUser } from '@/lib/users/client';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import Image from 'next/image';
 import {
   User, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, AlertCircle, RefreshCw, CheckCircle2,
 } from 'lucide-react';
+
+// Exact brandmark uploaded for Rashmi Group - inlined as base64 data URI to guarantee instant 100% offline/cached load
+const RASHMI_GROUP_LOGO_BASE64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAE0AAAAeCAYAAABpE5PpAAAFLElEQVR4AexY30tbVxz/UIILoXuwL0UatCxqjP9BQZahTCUg3g360McgBKEv7kFF8LEgRljLxkACJY99KGy3EzK1RLAr+B8Y449hJKX0pcJaQgaB7fy895ybe5Ob6KyFXO455+b763zv53x/JLnxb+dqGYEb6FwtI9ABrWXIgA5oHdDaQKANlU6kdUBrA4E2VDwizcSbaBQnHqOULnhsVcC7MYdeyvSQBc5TDlm23xjeSfNmSvEhhXPVUiGNEpPnNt5Y27j4QORsPjGi2eX6J2NpVAiL3pX0mL2vQqc8OjxAoyzvUXtq4MQNjMIGqmWH3m5Of1nG5ofyfpd9uJKpdihPAqgcnlxoT1+gBVeLiBRN3Awre7mAUdnYQo2JhBGMS+FdVKwoYExU0j+jyh+vbK5tbYhIKuDDlvNkW3PDF2jcZAxfTkggOEWfVWciCCUiFruac6BmcehDGDfNIjkUOfK4HaP0yxhhBKTL5WP8w0wWUROYBcKSyRi+pxZAU0Eh9uMJdJPFus3H+CicQbgfX0T7EZBMR1SGpiZsHsr4aKRcUlgqy3UX70ltsuqs8VREteS7rREErLMTEW/mRJTHCU867KbrTfMFWnWRFkvDBiW+ikjG0Kye5+wCFZiYQig2CAs0CIelRmwBfeaMxueAKE1Ayl5wDSXilgVa16x6Rg7W9s8S8fXgCzSnpWBCBwwwUWGYgV2BQZpfBkK2v6hLUQpckaakqdRKGnVRaJ2OWbzApEQ8rWsfjnl00YPtatOsL9BoI7ilArDoiAgr5LkXPDKj0LqjI0W5JJ1juJ1fRZA+ilEHMKPHcYuBTIEmQ4tUJuA+xaYQlKWrvIUqa5ykUU3Rg3VXaUb1BRo10p1RX4xExGO7uKupSWXdh5KiZsr+HsTq1CL+v26qNrCyaAIRdLWPWSs/2A0t3WBFjiM1Z0ylE6qph/oUdUWXdNMfDFdOu8TQoNUNuAlnE+NU37PvSKMWu5WiClLc/6a/DEzZjaiEM+xj6FL9tYCmsi4jPIOeYv4Sv3KIPYwEguKRLoH+KF3aHh6gGbij1I878uCNjBJFRfQtkBjXaPUv3J0h9ceylUE3dVXTUfj5BYQoXw5NTuhKntVIuL7lI2iN5LRIUero78P8JnY035S9Qwt5+z0VOlFhtwdojNeZPBDogOYBTCNyB7RG6HjwmoB2hJXxEfQNyzGP34Shwtp9hU74s5uCQ5dNJC2dESRfUJoYL+aJnsPO+C/g/0Hoen3DtpzQvhZLA9AoYEms4wE291+jxMYavtPcvocnlL5yD3iVF4BSvUfY+XqZ6/z6AMdLIzpwmo36D73JLNHNYja8hx/XjuoFPjHFG7SDbeTKPZj96SFIj2zoZuHw1OZLvblJThsaR4J8I9/5Q41EzvpcZ2/Qiqc4w10MDQF2Kt7HygGUaw9zJA0nX35DolFEoaLHBQcw9BV/8jufZZMkhZMsyjPzA37VrkzOGzTmwikOCEix+ecokTTrZTR1oum5jNHyM6S0NOJ6XPIIB3/xJ78zT8/XKG03j3K/Ni9Tzhu06TGM4i3WnzRLq0ksJHtwls3wmjadIrVI0XOma/QuerGH31lzOIL58i16vx1vWgIu86UvassbNEwiu7+M0VePSKqQ7vj9M8h0dW4am5/BKAFijnXQASxt63r9K8+xRNKc6Q09RIaAvEOaQ9/w9U1B5qvH1AA0qkGBk52TrqJuERZL2X35Wciti+LPAKfyfGSniYJyc13OK2kpyO38eQ3rmOI+/gMAAP//1KKR9wAAAAZJREFUAwD5x1o2VgKSwQAAAABJRU5ErkJggg==';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -149,14 +151,14 @@ export default function LoginPage() {
         {/* Brand Header with Stagger Entrance */}
         <div className="text-center space-y-2.5 animate-login-item-1">
           {/* Company Logo Badge */}
-          <div className="inline-flex items-center justify-center px-4 py-2 rounded-2xl bg-white shadow-[0_0_25px_-3px_rgba(227,30,36,0.35)] border border-slate-100 mb-1 animate-pulse-glow transition-transform duration-300 hover:scale-105">
-            <Image
-              src="/rashmi-group-logo.png"
+          <div className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-white shadow-[0_0_25px_-3px_rgba(227,30,36,0.35)] border border-slate-100 mb-1 animate-pulse-glow transition-transform duration-300 hover:scale-105">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={RASHMI_GROUP_LOGO_BASE64}
               alt="RASHMI GROUP"
-              width={100}
-              height={39}
-              priority
-              className="h-9 w-auto object-contain select-none"
+              width={108}
+              height={42}
+              className="h-10 w-auto object-contain select-none block"
             />
           </div>
           <h1 className="text-lg sm:text-xl font-black tracking-tight text-white uppercase leading-snug">
