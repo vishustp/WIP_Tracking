@@ -139,27 +139,35 @@ export default function AgingReportClient() {
                 const woId = r.work_order_id || r.id;
                 const ackObj = localAcks.find((a) => a.work_order_id === woId && a.stage_code === sc);
 
-                return {
-                  work_order_id: woId,
-                  work_order_no: r.work_order_no,
-                  customer_name: r.customer_name || null,
-                  grade: r.specification || r.grade || null,
-                  od: Number(r.final_od || r.size_od || r.wo_od || r.od || 0),
-                  wt: Number(r.final_wt || r.size_wt || r.wo_wt || r.wt || 0),
-                  l1,
-                  l2,
-                  stage_id: r.stage_id,
-                  stage_code: sc,
-                  stage_name: r.stage_name || sc,
-                  sequence_no: Number(r.sequence_no || 0),
-                  current_wip: mtr,
-                  current_wip_pcs: pcs,
-                  available_mt: mt,
-                  vdi_salvage_pcs: Number(r.vdi_salvage_pcs || 0),
-                  vdi_salvage_mtr: Number(r.vdi_salvage_mtr || 0),
-                  last_activity_date: effectiveDate,
-                  days_stuck: diffDays,
-                  severity,
+                  const isSalvage = sc === 'VDI_SALVAGE' || (r.stage_name || '').toUpperCase().includes('SALVAGE');
+                  const salvagePcs = Number(r.vdi_salvage_pcs || 0) > 0
+                    ? Number(r.vdi_salvage_pcs)
+                    : (isSalvage ? pcs : 0);
+                  const salvageMtr = Number(r.vdi_salvage_mtr || 0) > 0
+                    ? Number(r.vdi_salvage_mtr)
+                    : (isSalvage ? mtr : 0);
+
+                  return {
+                    work_order_id: woId,
+                    work_order_no: r.work_order_no,
+                    customer_name: r.customer_name || null,
+                    grade: r.specification || r.grade || null,
+                    od: Number(r.final_od || r.size_od || r.wo_od || r.od || 0),
+                    wt: Number(r.final_wt || r.size_wt || r.wo_wt || r.wt || 0),
+                    l1,
+                    l2,
+                    stage_id: r.stage_id,
+                    stage_code: sc,
+                    stage_name: r.stage_name || sc,
+                    sequence_no: Number(r.sequence_no || 0),
+                    current_wip: mtr,
+                    current_wip_pcs: pcs,
+                    available_mt: mt,
+                    vdi_salvage_pcs: salvagePcs,
+                    vdi_salvage_mtr: salvageMtr,
+                    last_activity_date: effectiveDate,
+                    days_stuck: diffDays,
+                    severity,
                   is_acknowledged: Boolean(ackObj),
                   acknowledged_by: ackObj?.acknowledged_by || null,
                   ack_notes: ackObj?.notes || null,

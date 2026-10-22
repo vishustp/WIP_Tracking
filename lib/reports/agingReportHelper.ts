@@ -690,30 +690,39 @@ export function normalizeAgingRow(
     }
   }
 
-  return {
-    work_order_id: String(raw.work_order_id || ''),
-    work_order_no: String(raw.work_order_no || ''),
-    customer_name: raw.customer_name || null,
-    grade: raw.grade || null,
-    od: Number(raw.od ?? raw.size_od) || 0,
-    wt: Number(raw.wt ?? raw.size_wt) || 0,
-    l1: raw.l1 != null ? Number(raw.l1) : null,
-    l2: raw.l2 != null ? Number(raw.l2) : null,
-    stage_id: raw.stage_id ? String(raw.stage_id) : undefined,
-    stage_code: String(raw.stage_code || ''),
-    stage_name: String(raw.stage_name || raw.stage_code || ''),
-    sequence_no: raw.sequence_no != null ? Number(raw.sequence_no) : undefined,
-    current_wip: currentWip,
-    current_wip_pcs: currentWipPcs,
-    available_mt: Number(raw.available_mt ?? raw.current_wip_mt) || 0,
-    last_activity_date: lastActivityDate,
-    days_stuck: daysStuck,
-    severity,
-    is_acknowledged: isAcknowledged,
-    acknowledged_by: matchLocal?.acknowledged_by || raw.acknowledged_by || null,
-    ack_notes: matchLocal?.notes || raw.ack_notes || null,
-    ack_snooze_until: matchLocal?.snooze_until || raw.ack_snooze_until || null,
-    vdi_salvage_pcs: Number(raw.vdi_salvage_pcs) || 0,
-    vdi_salvage_mtr: Number(raw.vdi_salvage_mtr) || 0,
-  };
-}
+    const isSalvage = String(raw.stage_code || '').toUpperCase() === 'VDI_SALVAGE' ||
+      String(raw.stage_name || '').toUpperCase().includes('SALVAGE');
+    const salvagePcs = Number(raw.vdi_salvage_pcs) > 0
+      ? Number(raw.vdi_salvage_pcs)
+      : (isSalvage ? currentWipPcs : 0);
+    const salvageMtr = Number(raw.vdi_salvage_mtr) > 0
+      ? Number(raw.vdi_salvage_mtr)
+      : (isSalvage ? currentWip : 0);
+
+    return {
+      work_order_id: String(raw.work_order_id || ''),
+      work_order_no: String(raw.work_order_no || ''),
+      customer_name: raw.customer_name || null,
+      grade: raw.grade || null,
+      od: Number(raw.od ?? raw.size_od) || 0,
+      wt: Number(raw.wt ?? raw.size_wt) || 0,
+      l1: raw.l1 != null ? Number(raw.l1) : null,
+      l2: raw.l2 != null ? Number(raw.l2) : null,
+      stage_id: raw.stage_id ? String(raw.stage_id) : undefined,
+      stage_code: String(raw.stage_code || ''),
+      stage_name: String(raw.stage_name || raw.stage_code || ''),
+      sequence_no: raw.sequence_no != null ? Number(raw.sequence_no) : undefined,
+      current_wip: currentWip,
+      current_wip_pcs: currentWipPcs,
+      available_mt: Number(raw.available_mt ?? raw.current_wip_mt) || 0,
+      last_activity_date: lastActivityDate,
+      days_stuck: daysStuck,
+      severity,
+      is_acknowledged: isAcknowledged,
+      acknowledged_by: matchLocal?.acknowledged_by || raw.acknowledged_by || null,
+      ack_notes: matchLocal?.notes || raw.ack_notes || null,
+      ack_snooze_until: matchLocal?.snooze_until || raw.ack_snooze_until || null,
+      vdi_salvage_pcs: salvagePcs,
+      vdi_salvage_mtr: salvageMtr,
+    };
+  }

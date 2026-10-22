@@ -26,5 +26,12 @@ describe('Aging VDI and Zero Nos Integration', () => {
 
     const sample6558 = json.data?.find((r: any) => r.work_order_no === '6558' && r.stage_code === 'VDI');
     expect(sample6558).toBeUndefined();
+
+    const salvageRows = json.data?.filter((r: any) => (r.stage_code || '').toUpperCase() === 'VDI_SALVAGE');
+    expect(salvageRows.length).toBeGreaterThan(0);
+    for (const sRow of salvageRows) {
+      expect(Number(sRow.vdi_salvage_pcs ?? 0)).toBeGreaterThan(0);
+      expect(Number(sRow.vdi_salvage_mtr ?? 0)).toBeGreaterThan(0);
+    }
   });
 });
