@@ -150,15 +150,18 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-6 relative z-10 animate-login-card">
         {/* Brand Header with Stagger Entrance */}
         <div className="text-center space-y-2.5 animate-login-item-1">
-          {/* Company Logo Badge */}
-          <div className="inline-flex items-center justify-center px-5 py-2.5 rounded-2xl bg-white shadow-[0_0_25px_-3px_rgba(227,30,36,0.35)] border border-slate-100 mb-1 animate-pulse-glow transition-transform duration-300 hover:scale-105">
+          {/* Company Logo Badge with Impeccable Motion & Steel Shimmer */}
+          <div className="relative inline-flex items-center justify-center px-7 py-3 rounded-2xl bg-white border border-white/90 mb-2 overflow-hidden shadow-xl animate-logo-entrance animate-logo-glow transition-transform duration-300 hover:scale-[1.04] active:scale-[0.98] select-none group cursor-default">
+            {/* Polished Steel Sheen Sweep */}
+            <div className="logo-shimmer-sweep" aria-hidden="true" />
+
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={RASHMI_GROUP_LOGO_BASE64}
               alt="RASHMI GROUP"
-              width={108}
-              height={42}
-              className="h-10 w-auto object-contain select-none block"
+              width={140}
+              height={55}
+              className="h-12 sm:h-14 w-auto object-contain select-none block relative z-10 transition-transform duration-300 group-hover:scale-[1.02]"
             />
           </div>
           <h1 className="text-lg sm:text-xl font-black tracking-tight text-white uppercase leading-snug">

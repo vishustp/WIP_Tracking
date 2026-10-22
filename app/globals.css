@@ -426,6 +426,61 @@ select option {
   animation: errorShake 0.35s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
+@keyframes logoEntrance {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes logoEnergyPulse {
+  0%, 100% {
+    box-shadow: 0 4px 20px -2px rgba(227, 30, 36, 0.28), 0 0 12px 1px rgba(14, 165, 233, 0.16);
+    border-color: rgba(255, 255, 255, 0.95);
+  }
+  50% {
+    box-shadow: 0 6px 30px 4px rgba(227, 30, 36, 0.45), 0 0 24px 4px rgba(14, 165, 233, 0.32);
+    border-color: rgba(255, 255, 255, 1);
+  }
+}
+
+@keyframes logoShimmerSweep {
+  0% {
+    transform: translateX(-160%) skewX(-20deg);
+  }
+  25%, 100% {
+    transform: translateX(260%) skewX(-20deg);
+  }
+}
+
+.animate-logo-entrance {
+  animation: logoEntrance 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-logo-glow {
+  animation: logoEnergyPulse 3.5s ease-in-out infinite;
+}
+
+.logo-shimmer-sweep {
+  position: absolute;
+  inset: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.7) 50%,
+    transparent 100%
+  );
+  animation: logoShimmerSweep 4.5s ease-in-out infinite 0.8s;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-login-card,
   .animate-login-item-1,
@@ -433,16 +488,19 @@ select option {
   .animate-login-item-3,
   .animate-login-item-4,
   .animate-login-item-5,
+  .animate-logo-entrance,
   .animate-status-step {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
   }
-  .animate-induction-beam {
+  .animate-induction-beam,
+  .logo-shimmer-sweep {
     animation: none !important;
     display: none !important;
   }
-  .animate-pulse-glow {
+  .animate-pulse-glow,
+  .animate-logo-glow {
     animation: none !important;
   }
   .animate-error-shake {
