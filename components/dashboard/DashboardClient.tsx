@@ -28,7 +28,7 @@ import {
   ExternalLink,
   ShieldAlert,
 } from 'lucide-react';
-import { mtFromMtr } from '@/lib/productionUtils';
+import { mtFromMtr, isStockOrHollowBankOrder } from '@/lib/productionUtils';
 
 const formatNum = (v: unknown, decimals = 0) => {
   const num = Number(v);
@@ -393,12 +393,16 @@ export default function DashboardClient({
   }, [stageWipMap]);
 
   // 7. Row 4: Priority / Delayed Work Orders (ordered by priority & target completion date)
+  // Excludes internal Stock and Hollow Bank buffer orders
   const priorityWorkOrders = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const todayTime = new Date(todayStr).getTime();
 
+    // Filter out Stock and Hollow Bank orders
+    const eligiblePending = pending.filter((row) => !isStockOrHollowBankOrder(row));
+
     // Sort pending orders strictly by completion date / target date ascending (earliest / overdue first)
-    const sortedPending = [...pending].sort((a, b) => {
+    const sortedPending = [...eligiblePending].sort((a, b) => {
       const prioA = localPriorities[a.work_order_id] || localPriorities[a.work_order_no];
       const prioB = localPriorities[b.work_order_id] || localPriorities[b.work_order_no];
 

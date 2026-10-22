@@ -20,7 +20,7 @@ describe('WO 1446 VDI WIP Reconciliation', () => {
 
     // Load all data exactly like SizeGradeWipReportClient
     const [wipRes, plansRes, prodRes, stagesRes, qcRes] = await Promise.all([
-      admin.from('vw_route_stage_wip').select('*').limit(5000),
+      admin.from('vw_route_stage_wip').select('*').eq('work_order_id', wo.id),
       admin.from('rolling_plans').select('*').not('status', 'is', null).limit(5000),
       admin.from('production_logs').select('*, process_stages(stage_name, stage_code)').limit(5000),
       admin.from('process_stages').select('*'),

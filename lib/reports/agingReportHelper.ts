@@ -1,6 +1,4 @@
-// lib/reports/agingReportHelper.ts
-
-import { isHollowBankOrder } from '@/lib/productionUtils';
+import { isHollowBankOrder, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 
 export type AgingSeverity = 'NORMAL' | 'WARNING' | 'CRITICAL';
 
@@ -78,6 +76,9 @@ export interface RawProductionLog {
   output_qty?: number;
   htc_ok?: number;
   created_at?: string;
+  remarks?: string | null;
+  stage_code?: string;
+  process_stages?: { stage_code?: string } | null;
 }
 
 export interface RawQcInspection {
@@ -326,6 +327,59 @@ export function computeAgingReportRows(options: {
       if (isHollowBankOrder(r)) return false;
       const wo = woMap.get(r.work_order_id);
       if (isHollowBankOrder(wo)) return false;
+
+      // Piece-based clearance for DRAW, PILGER, HEAT_TREATMENT, and HOLLOW_HEAT_TREATMENT
+      const sc = (r.stage_code || '').toUpperCase();
+      if ((sc === 'DRAW' || sc === 'PILGER' || sc === 'HEAT_TREATMENT' || sc === 'HOLLOW_HEAT_TREATMENT') && Array.isArray(productionLogs) && productionLogs.length > 0) {
+        const stageCodeMap = new Map<string, string>();
+        routeStages.forEach((rs) => {
+          const code = rs.process_stages?.stage_code || rs.stage_code;
+          if (rs.stage_id && code) stageCodeMap.set(rs.stage_id, code.toUpperCase());
+        });
+        wipRows.forEach((wr) => {
+          if (wr.stage_id && wr.stage_code) stageCodeMap.set(wr.stage_id, wr.stage_code.toUpperCase());
+        });
+
+        const getLogStageCode = (l: RawProductionLog) =>
+          (l.process_stages?.stage_code || l.stage_code || stageCodeMap.get(l.stage_id) || '').toUpperCase();
+
+        const woLogs = productionLogs.filter((l) => l.work_order_id === r.work_order_id);
+        const curLogs = woLogs.filter((l) => getLogStageCode(l) === sc || l.stage_id === r.stage_id);
+        const curPcs = curLogs.reduce((acc, l) => {
+          const { pcs } = extractPcsFromRemarks(l.remarks);
+          return acc + (pcs || (r.l1 ? Math.round(Number(l.output_qty || 0) / Number(r.l1)) : 0));
+        }, 0);
+
+        const rollLogs = woLogs.filter((l) => getLogStageCode(l) === 'ROLLING');
+        const rollPcs = rollLogs.reduce((acc, l) => {
+          const { pcs } = extractPcsFromRemarks(l.remarks);
+          return acc + (pcs || 0);
+        }, 0);
+
+        const downLogs = woLogs.filter((l) => {
+          const lsc = getLogStageCode(l);
+          if (sc === 'DRAW' || sc === 'PILGER') {
+            return lsc === 'HEAT_TREATMENT' || lsc === 'BAND_SAW' || lsc === 'VDI' || lsc === 'FINISHING';
+          }
+          if (sc === 'HEAT_TREATMENT') {
+            return lsc === 'BAND_SAW' || lsc === 'VDI' || lsc === 'FINISHING';
+          }
+          if (sc === 'HOLLOW_HEAT_TREATMENT') {
+            return lsc === 'DRAW' || lsc === 'PILGER' || lsc === 'HEAT_TREATMENT' || lsc === 'BAND_SAW' || lsc === 'VDI' || lsc === 'FINISHING';
+          }
+          return false;
+        });
+        const downPcs = downLogs.reduce((acc, l) => {
+          const { pcs } = extractPcsFromRemarks(l.remarks);
+          const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
+          return Math.max(acc, motherPcs || pcs || 0);
+        }, 0);
+
+        if (rollPcs > 0 && (curPcs >= rollPcs || downPcs >= rollPcs)) {
+          return false;
+        }
+      }
+
       return true;
     })
     .map((r) => {

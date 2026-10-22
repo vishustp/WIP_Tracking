@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import DashboardClient from '@/components/dashboard/DashboardClient';
-import { mtFromMtr, extractPcsFromRemarks } from '@/lib/productionUtils';
+import { mtFromMtr, extractPcsFromRemarks, isStockOrHollowBankOrder } from '@/lib/productionUtils';
 import { buildCampaignHierarchyMaps, reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
 import { computeAgingReportRows, calculateAgingSeverity } from '@/lib/reports/agingReportHelper';
 
@@ -288,7 +288,8 @@ export default async function Dashboard() {
     const todayThroughput = todayProdMt + todayRejMt;
     const todayRejectionPct = todayThroughput > 0 ? (todayRejMt / todayThroughput) * 100 : overallRejectionPct;
 
-    const delayedCount = pendingRes.data?.filter((p: any) => p.target_date && new Date(p.target_date) < new Date()).length ?? kpiRes.data?.delayed_orders ?? 0;
+    const eligiblePendingRes = ((pendingRes.data ?? []) as any[]).filter((p: any) => !isStockOrHollowBankOrder(p));
+    const delayedCount = eligiblePendingRes.filter((p: any) => p.target_date && new Date(p.target_date) < new Date()).length;
     const activeCount = kpiRes.data?.active_orders ?? workOrders.filter((w: any) => !['Completed', 'Cancelled'].includes(w.status)).length;
 
     kpi = {
@@ -333,7 +334,7 @@ export default async function Dashboard() {
       active_work_orders: activeCount,
     };
     wip = calculatedWip;
-    pending = pendingRes.data ?? [];
+    pending = eligiblePendingRes;
 
     // Real recent production logs (sorted newest first)
     const sortedLogs = [...productionLogs].sort((a, b) => {

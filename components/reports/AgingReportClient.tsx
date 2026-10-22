@@ -21,9 +21,10 @@ import {
   Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { isHollowBankOrder } from '@/lib/productionUtils';
+import { isHollowBankOrder, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 import {
   type AgingRow,
+  type AgingSeverity,
   type RawWipRow,
   type RawProductionLog,
   type RawQcInspection,
@@ -74,7 +75,79 @@ export default function AgingReportClient() {
         }
       } catch {}
 
-      // 1. Try reading from database view if present
+      // 1. Live Production Queue Engine (100% unified with WIP Matrix & Production Stations)
+      let queueLoaded = false;
+      try {
+        const queueRes = await fetch(`/api/production/queue?all_stages=true&_t=${Date.now()}`);
+        if (queueRes.ok) {
+          const queueJson = await queueRes.json();
+          if (queueJson?.success && Array.isArray(queueJson.data) && queueJson.data.length > 0) {
+            const now = Date.now();
+            const validRows: AgingRow[] = queueJson.data
+              .filter((r: any) => {
+                if (isHollowBankOrder(r)) return false;
+                const sc = (r.stage_code || '').toUpperCase();
+                if (sc === 'HOT_ROLLING' || sc === 'ROLLING') return false;
+                const pcs = Math.round(Number(r.ready_pcs ?? r.current_wip_pcs ?? 0));
+                const mtr = Number(r.ready_mtr ?? r.current_wip ?? 0);
+                return pcs > 0 || mtr > 0;
+              })
+              .map((r: any) => {
+                const sc = (r.stage_code || '').toUpperCase();
+                const pcs = Math.round(Number(r.ready_pcs ?? r.current_wip_pcs ?? 0));
+                const mtr = Number(Number(r.ready_mtr ?? r.current_wip ?? 0).toFixed(2));
+                const mt = Number(Number(r.ready_mt ?? r.available_mt ?? 0).toFixed(2));
+                const effectiveDate = r.last_activity_date || r.rolling_date || r.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+                const diffMs = now - new Date(effectiveDate).getTime();
+                const diffDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+                const severity: AgingSeverity = diffDays >= 15 ? 'CRITICAL' : diffDays >= 7 ? 'WARNING' : 'NORMAL';
+
+                const woId = r.work_order_id || r.id;
+                const ackObj = localAcks.find((a) => a.work_order_id === woId && a.stage_code === sc);
+
+                return {
+                  work_order_id: woId,
+                  work_order_no: r.work_order_no,
+                  customer_name: r.customer_name || null,
+                  grade: r.specification || r.grade || null,
+                  od: Number(r.final_od || r.size_od || r.wo_od || r.od || 0),
+                  wt: Number(r.final_wt || r.size_wt || r.wo_wt || r.wt || 0),
+                  l1: r.l1 != null ? Number(r.l1) : null,
+                  l2: r.l2 != null ? Number(r.l2) : null,
+                  stage_id: r.stage_id,
+                  stage_code: sc,
+                  stage_name: r.stage_name || sc,
+                  sequence_no: Number(r.sequence_no || 0),
+                  current_wip: mtr,
+                  current_wip_pcs: pcs,
+                  available_mt: mt,
+                  vdi_salvage_pcs: Number(r.vdi_salvage_pcs || 0),
+                  vdi_salvage_mtr: Number(r.vdi_salvage_mtr || 0),
+                  last_activity_date: effectiveDate,
+                  days_stuck: diffDays,
+                  severity,
+                  is_acknowledged: Boolean(ackObj),
+                  acknowledged_by: ackObj?.acknowledged_by || null,
+                  ack_notes: ackObj?.notes || null,
+                  ack_snooze_until: ackObj?.snooze_until || null,
+                };
+              })
+              .sort((a: AgingRow, b: AgingRow) => b.days_stuck - a.days_stuck);
+
+            setRows(validRows);
+            setLoading(false);
+            queueLoaded = true;
+          }
+        }
+      } catch (queueErr) {
+        console.warn('Queue API fetch failed in Aging Report, falling back to database view:', queueErr);
+      }
+
+      if (queueLoaded) {
+        return;
+      }
+
+      // 2. Try reading from database view if present
       const { data: viewData, error: viewError } = await supabase
         .from('vw_wip_aging')
         .select('*')
@@ -82,11 +155,57 @@ export default function AgingReportClient() {
         .order('days_stuck', { ascending: false });
 
       if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
+        // Query production logs to eliminate phantom WIP where pieces were fully drawn or passed downstream
+        const { data: prodLogs } = await supabase
+          .from('production_logs')
+          .select('work_order_id, stage_id, output_qty, htc_ok, remarks, process_stages(stage_code)');
+
         // Robust normalization merging database columns & local acknowledgements
         const normalizedRows: AgingRow[] = viewData
           .filter((r: any) => !isHollowBankOrder(r))
           .map((r: any) => normalizeAgingRow(r, localAcks))
-          .filter((r: AgingRow) => !isHollowBankOrder(r));
+          .filter((r: AgingRow) => !isHollowBankOrder(r))
+          .filter((r: AgingRow) => {
+            const sc = (r.stage_code || '').toUpperCase();
+            if ((sc === 'DRAW' || sc === 'PILGER' || sc === 'HEAT_TREATMENT' || sc === 'HOLLOW_HEAT_TREATMENT') && Array.isArray(prodLogs)) {
+              const woLogs = prodLogs.filter((l: any) => l.work_order_id === r.work_order_id);
+              const curLogs = woLogs.filter((l: any) => (l.process_stages?.stage_code || '').toUpperCase() === sc || l.stage_id === r.stage_id);
+              const curPcs = curLogs.reduce((acc: number, l: any) => {
+                const { pcs } = extractPcsFromRemarks(l.remarks);
+                return acc + (pcs || (r.l1 ? Math.round(Number(l.output_qty || 0) / Number(r.l1)) : 0));
+              }, 0);
+
+              const rollLogs = woLogs.filter((l: any) => (l.process_stages?.stage_code || '').toUpperCase() === 'ROLLING');
+              const rollPcs = rollLogs.reduce((acc: number, l: any) => {
+                const { pcs } = extractPcsFromRemarks(l.remarks);
+                return acc + (pcs || 0);
+              }, 0);
+
+              const downLogs = woLogs.filter((l: any) => {
+                const lsc = (l.process_stages?.stage_code || '').toUpperCase();
+                if (sc === 'DRAW' || sc === 'PILGER') {
+                  return lsc === 'HEAT_TREATMENT' || lsc === 'BAND_SAW' || lsc === 'VDI' || lsc === 'FINISHING';
+                }
+                if (sc === 'HEAT_TREATMENT') {
+                  return lsc === 'BAND_SAW' || lsc === 'VDI' || lsc === 'FINISHING';
+                }
+                if (sc === 'HOLLOW_HEAT_TREATMENT') {
+                  return lsc === 'DRAW' || lsc === 'PILGER' || lsc === 'HEAT_TREATMENT' || lsc === 'BAND_SAW' || lsc === 'VDI' || lsc === 'FINISHING';
+                }
+                return false;
+              });
+              const downPcs = downLogs.reduce((acc: number, l: any) => {
+                const { pcs } = extractPcsFromRemarks(l.remarks);
+                const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
+                return Math.max(acc, motherPcs || pcs || 0);
+              }, 0);
+
+              if (rollPcs > 0 && (curPcs >= rollPcs || downPcs >= rollPcs)) {
+                return false;
+              }
+            }
+            return true;
+          });
 
         setRows(normalizedRows);
         setLoading(false);
@@ -96,7 +215,7 @@ export default function AgingReportClient() {
       // 2. Comprehensive fallback with accurate domain calculations
       const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).order('sequence_no', { ascending: true }),
-        supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok').order('process_date', { ascending: false }),
+        supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok, remarks, process_stages(stage_code)').order('process_date', { ascending: false }),
         supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr').order('inspection_date', { ascending: false }),
         supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, planned_rolling_date, created_at').not('status', 'is', null),
         supabase.from('work_orders').select('id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, created_at'),

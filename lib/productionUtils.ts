@@ -37,11 +37,75 @@ export function isHollowBankOrder(
   const woId = (w as any).id || (w as any).work_order_id || (w as any).workOrderId;
   if (woId === HOLLOW_BANK_WO_ID) return true;
   const woNo = String((w as any).work_order_no || (w as any).workOrderNo || '').trim().toUpperCase();
-  if (woNo === 'HB-BUFFER' || woNo === 'HOLLOW BANK' || woNo === 'HB BUFFER' || woNo.includes('HOLLOW BANK') || woNo.includes('HB-BUFFER') || woNo.includes('HB BUFFER')) return true;
+  if (
+    woNo === 'HB-BUFFER' ||
+    woNo === 'HOLLOW BANK' ||
+    woNo === 'HB BUFFER' ||
+    woNo.includes('HOLLOW BANK') ||
+    woNo.includes('HB-BUFFER') ||
+    woNo.includes('HB BUFFER') ||
+    woNo.startsWith('HB-') ||
+    woNo.startsWith('HB_')
+  ) return true;
   const cust = String((w as any).customer_name || (w as any).customer || '').trim().toUpperCase();
-  if (cust.includes('HOLLOW BANK') || cust.includes('HB-BUFFER') || cust.includes('HB BUFFER')) return true;
+  if (
+    cust.includes('HOLLOW BANK') ||
+    cust.includes('HB-BUFFER') ||
+    cust.includes('HB BUFFER') ||
+    cust === 'HOLLOW'
+  ) return true;
   return false;
 }
+
+export function isStockOrder(
+  w: { work_order_no?: string | null; workOrderNo?: string | null; customer_name?: string | null; customer?: string | null } | null | undefined
+): boolean {
+  if (!w) return false;
+  const woNo = String((w as any).work_order_no || (w as any).workOrderNo || '').trim().toUpperCase();
+  const cust = String((w as any).customer_name || (w as any).customer || '').trim().toUpperCase();
+
+  // Work order number checks
+  if (
+    woNo === 'STOCK' ||
+    woNo.startsWith('STOCK') ||
+    woNo.endsWith('STOCK') ||
+    woNo.includes('-STOCK') ||
+    woNo.includes('STOCK-') ||
+    woNo.includes('_STOCK') ||
+    woNo.includes('STOCK_')
+  ) {
+    return true;
+  }
+
+  // Customer name checks
+  if (
+    cust === 'STOCK' ||
+    cust === 'INTERNAL STOCK' ||
+    cust === 'STANDARD STOCK' ||
+    cust === 'STOCK BUFFER' ||
+    cust === 'GENERIC / STOCK' ||
+    cust === 'GENERIC STOCK' ||
+    cust.startsWith('STOCK') ||
+    cust.includes('INTERNAL STOCK') ||
+    cust.includes('STOCK BUFFER') ||
+    cust.includes('STANDARD STOCK') ||
+    cust.includes('PLANT STOCK')
+  ) {
+    return true;
+  }
+
+  // Word boundary match for "STOCK" in customer name (e.g., "FOR STOCK", "MILL STOCK", but not "WOODSTOCK")
+  if (/\bSTOCK\b/i.test(cust)) return true;
+
+  return false;
+}
+
+export function isStockOrHollowBankOrder(
+  w: { id?: string; work_order_id?: string; workOrderId?: string; work_order_no?: string | null; workOrderNo?: string | null; customer_name?: string | null; customer?: string | null } | null | undefined
+): boolean {
+  return isHollowBankOrder(w) || isStockOrder(w);
+}
+
 
 export const pcsFromMtr = (mtr: number, avg: number) =>
   avg > 0 ? Math.round(mtr / avg) : 0;
