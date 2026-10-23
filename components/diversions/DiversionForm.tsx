@@ -172,7 +172,7 @@ type WipViewRow = {
 
 async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: string, wo: WO): Promise<WoWipSummary> {
   // Query actual production logs, diversion plans, rolling plans, routes, and QC inspections
-  const [logsRes, divRes, plansRes, routesRes, qcRes, stageWipRes] = await Promise.all([
+  const [logsRes, divRes, plansRes, routesRes, qcRes, stageWipRes, stagesRes] = await Promise.all([
     supabase
       .from('production_logs')
       .select('*, process_stages(stage_code, stage_name)')
@@ -190,13 +190,16 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
       .select('id, route_code, route_name'),
     supabase
       .from('qc_inspections')
-      .select('work_order_id, inspected_mtr, vdi_ok_mtr, vdi_salvage_mtr, vdi_rejection_mtr')
+      .select('*')
       .eq('work_order_id', id),
     supabase
       .from('vw_route_stage_wip')
       .select('*')
       .eq('work_order_id', id)
       .order('sequence_no', { ascending: true }),
+    supabase
+      .from('process_stages')
+      .select('*'),
   ]);
 
   const logs = logsRes.data || [];
@@ -205,6 +208,13 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const routes = routesRes.data || [];
   const qcList = qcRes.data || [];
   const stageRows = stageWipRes.data || [];
+  const stagesList = stagesRes.data || [];
+
+  const stageCodeById = new Map<string, string>();
+  stagesList.forEach((s: any) => {
+    if (s.id && s.stage_code) stageCodeById.set(s.id, s.stage_code.toUpperCase());
+  });
+  const finishingStageId = stagesList.find((s: any) => (s.stage_code || '').toUpperCase() === 'FINISHING')?.id;
 
   // Determine active route for this work order
   const plan = plans.find((p: any) => p.work_order_id === id);
@@ -304,6 +314,8 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     productionLogs: effectiveLogs,
     hierarchyMaps,
     routeCode,
+    stageCodeById,
+    finishingStageId,
   });
 
   // Elongation multiple for this work order

@@ -150,13 +150,15 @@ export function reconcileWorkOrderWip(
   }
 
   // 3. Collect stage production & rejection in PCS
-  const stageProdMap = new Map<string, { prodPcs: number; rejPcs: number; prodMtr: number; rejMtr: number; motherPcs?: number }>();
+  const stageProdMap = new Map<string, { prodPcs: number; rejPcs: number; prodMtr: number; rejMtr: number; grossPcs: number; grossMtr: number; motherPcs?: number }>();
   for (const s of sortedStages) {
-    const prodPcs = Number(s.gross_output_pcs || s.net_output_pcs || 0);
+    const grossPcs = Number(s.gross_output_pcs || 0);
     const rejPcs = Number(s.rejection_pcs || 0);
-    const prodMtr = Number(s.gross_output_mtr || s.net_output_mtr || 0);
+    const prodPcs = Number(s.gross_output_pcs || s.net_output_pcs || 0);
+    const grossMtr = Number(s.gross_output_mtr || 0);
     const rejMtr = Number(s.rejection_mtr || 0);
-    stageProdMap.set(s.stage_code, { prodPcs, rejPcs, prodMtr, rejMtr, motherPcs: s.mother_pcs });
+    const prodMtr = Number(s.gross_output_mtr || s.net_output_mtr || 0);
+    stageProdMap.set(s.stage_code, { prodPcs, rejPcs, prodMtr, rejMtr, grossPcs, grossMtr, motherPcs: s.mother_pcs });
   }
 
   // 4. Calculate stage WIP in PCS along the physical route
@@ -216,13 +218,13 @@ export function reconcileWorkOrderWip(
 
     // Determine incoming feeder PCS based on route
     let incomingPcs = 0;
-    let stageLen = finalAvgLen;
+    let stageLen = Number(cur.avg_length || finalAvgLen);
     let stageOd = Number(cur.od || 0);
     let stageWt = Number(cur.wt || 0);
 
     if (cur.incoming_pcs !== undefined) {
       incomingPcs = Number(cur.incoming_pcs);
-      stageLen = finalAvgLen;
+      stageLen = Number(cur.avg_length || finalAvgLen);
     } else if (sc === 'HOLLOW_HEAT_TREATMENT') {
       // Alloy Steel (ALLOY_HFS / ALLOY_CDS): Feeder is Rolling HTC OK
       incomingPcs = isAlloy ? rollHtcPcs : 0;
@@ -303,7 +305,7 @@ export function reconcileWorkOrderWip(
       // Feeder is cut pieces from Band Saw
       const bsProd = stageProdMap.get('BAND_SAW');
       incomingPcs = bsProd?.prodPcs || 0;
-      stageLen = finalAvgLen;
+      stageLen = Number(cur.avg_length || finalAvgLen);
     } else if (sc === 'FINISHING') {
       // Feeder is VDI OK pieces minus any VDI diversions out
       const vdiProd = stageProdMap.get('VDI');
@@ -311,7 +313,7 @@ export function reconcileWorkOrderWip(
       const vdiDivOutPcs = Number(vdiStageInput?.diversion_out_pcs || 0);
       const vdiPassedPcs = Math.max(0, (vdiProd?.prodPcs || 0) - vdiDivOutPcs);
       incomingPcs = cur.incoming_pcs !== undefined ? Number(cur.incoming_pcs) : vdiPassedPcs;
-      stageLen = finalAvgLen;
+      stageLen = Number(cur.avg_length || finalAvgLen);
     } else {
       // Fallback: previous stage production
       const prevStage = sortedStages[i - 1];
@@ -347,7 +349,7 @@ export function reconcileWorkOrderWip(
       }
     }
 
-    const curProd = stageProdMap.get(sc) || { prodPcs: 0, rejPcs: 0, prodMtr: 0, rejMtr: 0 };
+    const curProd = stageProdMap.get(sc) || { prodPcs: 0, rejPcs: 0, prodMtr: 0, rejMtr: 0, grossPcs: 0, grossMtr: 0, motherPcs: undefined as number | undefined };
     let curPassedPcs = curProd.prodPcs;
     if (sc === 'BAND_SAW') {
       if (curProd.motherPcs && curProd.motherPcs > 0) {

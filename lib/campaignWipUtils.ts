@@ -129,8 +129,10 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
       cur.mtr += Number(l.output_qty || 0);
       cur.rejMtr += Number(l.rejection_qty || 0);
       const { pcs: pPcs, rejPcs: rPcs } = extractPcsFromRemarks(l.remarks);
-      if (pPcs != null) cur.pcs += pPcs;
-      if (rPcs != null) cur.rejPcs += rPcs;
+      const effectivePcs = l.output_pcs != null ? Number(l.output_pcs) : (l.pieces != null ? Number(l.pieces) : pPcs);
+      const effectiveRejPcs = l.rejection_pcs != null ? Number(l.rejection_pcs) : rPcs;
+      if (effectivePcs != null && !isNaN(effectivePcs)) cur.pcs += effectivePcs;
+      if (effectiveRejPcs != null && !isNaN(effectiveRejPcs)) cur.rejPcs += effectiveRejPcs;
       if (sc === 'BAND_SAW') {
         const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(l.remarks);
         if (mPcs != null && mPcs > 0) cur.motherPcs += mPcs;
@@ -149,6 +151,12 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
 
   const mhOd = Number(planMh?.mh_od || rollStage?.mh_od || rollStage?.od || wo?.size_od || 0);
   const mhWt = Number(planMh?.mh_wt || rollStage?.mh_wt || rollStage?.wt || wo?.size_wt || 0);
+
+  const woFinalLen = Number(
+    (wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : wo?.l1 || wo?.l2) ||
+    wo?.avg_length ||
+    6.0
+  );
 
   // Direct QC inspections for this specific work order
   let directVdiOkMtr = 0;
@@ -204,8 +212,10 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
         cur.mtr += Number(l.output_qty || 0);
         cur.rejMtr += Number(l.rejection_qty || 0);
         const { pcs: pPcs, rejPcs: rPcs } = extractPcsFromRemarks(l.remarks);
-        if (pPcs != null) cur.pcs += pPcs;
-        if (rPcs != null) cur.rejPcs += rPcs;
+        const effectivePcs = l.output_pcs != null ? Number(l.output_pcs) : (l.pieces != null ? Number(l.pieces) : pPcs);
+        const effectiveRejPcs = l.rejection_pcs != null ? Number(l.rejection_pcs) : rPcs;
+        if (effectivePcs != null && !isNaN(effectivePcs)) cur.pcs += effectivePcs;
+        if (effectiveRejPcs != null && !isNaN(effectiveRejPcs)) cur.rejPcs += effectiveRejPcs;
         if (sc === 'BAND_SAW') {
           const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(l.remarks);
           if (mPcs != null && mPcs > 0) cur.motherPcs += mPcs;
@@ -267,7 +277,11 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
       let incomingPcsOverride: number | undefined = undefined;
       let incomingMtrOverride: number | undefined = undefined;
 
-      const stageAvgLen = Number(r.avg_length || (r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2 || 6.0));
+      const stageAvgLen = Number(
+        r.avg_length ||
+        (r.l1 && r.l2 ? (Number(r.l1) + Number(r.l2)) / 2 : r.l1 || r.l2) ||
+        woFinalLen
+      );
 
       if (sc === 'BAND_SAW' && !hasActualBsLogs && vdiHasDivIn) {
         // If Band Saw has no actual production logs and material arrived via diversion at VDI,
@@ -366,7 +380,7 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
         net_output_mtr: netMtr,
         net_output_pcs: netPcs,
         incoming_pcs: incomingPcsOverride,
-        incoming_mtr: incomingMtrOverride !== undefined ? incomingMtrOverride : Number(r.incoming_qty || 0),
+        incoming_mtr: incomingMtrOverride !== undefined ? incomingMtrOverride : (r.incoming_qty != null && Number(r.incoming_qty) > 0 ? Number(r.incoming_qty) : undefined),
         diversion_in_mtr: divInMtr,
         diversion_in_pcs: divInPcs,
         diversion_out_mtr: divOutMtr,
@@ -387,6 +401,7 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
       mh_od: mhOd > 0 ? mhOd : undefined,
       mh_wt: mhWt > 0 ? mhWt : undefined,
       mh_avg_length: actualMhLen > 0 ? actualMhLen : undefined,
+      final_avg_length: woFinalLen,
       multiple: planMh?.multiple || undefined,
     }
   );
