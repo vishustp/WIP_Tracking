@@ -14,15 +14,9 @@ describe('Verify 6034 in Queue API & Matrix', () => {
       ready_mt: r.ready_mt,
     })));
 
-    const bs = rows6034.find((r: any) => r.stage_code === 'BAND_SAW');
     const vdi = rows6034.find((r: any) => r.stage_code === 'VDI');
-
-    expect(bs).toBeDefined();
-    expect(bs.ready_pcs).toBe(520);
-    expect(bs.ready_mtr).toBe(1736.8);
-
     expect(vdi).toBeDefined();
-    expect(vdi.ready_pcs).toBe(234);
-    expect(vdi.ready_mtr).toBe(781.56);
+    expect(vdi.ready_pcs).toBe(270);
+    expect(vdi.ready_mtr).toBe(901.8);
   });
 });

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { mtFromMtr, fmt, parseDiversionStages, extractPcsFromRemarks } from '@/lib/productionUtils';
+import { mtFromMtr, fmt, parseDiversionStages, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 import { exportJsonToExcel } from '@/lib/excelUtils';
 import {
   Search,
@@ -616,11 +616,24 @@ export default function WorkOrderTrackingClient() {
         planMultiple = Number(plan?.multiple || parsed?.multiple || 1);
       } catch {}
 
-      const downstreamMotherPcsFromBandSaw = mhAvgLen > 0 && (bandSawOutMtr + bandSawRejMtr) > 0
-        ? Math.round((bandSawOutMtr + bandSawRejMtr) / mhAvgLen)
-        : (planMultiple > 1
-            ? Math.round((bandSawOutPcs + bandSawRejPcs) / planMultiple)
-            : (bandSawOutPcs + bandSawRejPcs));
+      let motherPcsCutTotal = 0;
+      for (const log of masterBandSawLogs) {
+        const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(log.remarks);
+        if (mPcs != null && mPcs > 0) {
+          motherPcsCutTotal += mPcs;
+        } else {
+          const p = getLogPcs(log);
+          motherPcsCutTotal += planMultiple > 1 ? Math.round(p / planMultiple) : p;
+        }
+      }
+
+      const downstreamMotherPcsFromBandSaw = motherPcsCutTotal > 0
+        ? motherPcsCutTotal
+        : (mhAvgLen > 0 && (bandSawOutMtr + bandSawRejMtr) > 0
+            ? Math.round((bandSawOutMtr + bandSawRejMtr) / mhAvgLen)
+            : (planMultiple > 1
+                ? Math.round((bandSawOutPcs + bandSawRejPcs) / planMultiple)
+                : (bandSawOutPcs + bandSawRejPcs)));
 
       const stagesData: StageTrackingMetric[] = STAGES_ORDER.map((stageDef): StageTrackingMetric => {
         const stageCode = stageDef.code;
@@ -1080,7 +1093,7 @@ export default function WorkOrderTrackingClient() {
           const effLen = isHfsLike && mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = effLen > 0 ? Math.round(divIn / effLen) : 0;
           const divOutPcs = effLen > 0 ? Math.round(divOut / effLen) : 0;
-          const consumedPcs = bandSawOutPcs + bandSawRejPcs;
+          const consumedPcs = downstreamMotherPcsFromBandSaw;
 
           let wipPcs = 0;
           if (incomingPcs > 0 || divInPcs > 0) {
