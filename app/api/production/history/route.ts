@@ -33,11 +33,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: rpcErr.message }, { status: 500 });
     }
 
-    // 2. Fetch created_by from production_logs and operators from app_users
+    const entryIds = (entries || []).map((e: any) => e.id).filter(Boolean);
+
+    // 2. Fetch created_by from production_logs (scoped to current entries) and operators from app_users
     const [{ data: logs }, { data: appUsers }] = await Promise.all([
-      admin
-        .from('production_logs')
-        .select('id, created_by, created_at, work_order_id, work_orders(id, grade, specification)'),
+      entryIds.length > 0
+        ? admin
+            .from('production_logs')
+            .select('id, created_by, created_at, work_order_id, work_orders(id, grade, specification)')
+            .in('id', entryIds)
+        : Promise.resolve({ data: [] }),
       admin.from('app_users').select('id, auth_user_id, employee_name, email'),
     ]);
 

@@ -118,7 +118,7 @@ export default function QcInspectionClient() {
     try {
       const [woRes, logsRes, qcRes, stagesRes, routesRes, plansRes, divsRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
-        supabase.from('production_logs').select('*'),
+        supabase.from('production_logs').select('*').order('created_at', { ascending: false }).limit(20000),
         supabase.from('qc_inspections').select('*').order('created_at', { ascending: false }),
         supabase.from('process_stages').select('*'),
         supabase.from('process_routes').select('id, route_code, route_name'),

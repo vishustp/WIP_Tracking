@@ -58,7 +58,7 @@ export default async function Dashboard() {
         .from('work_orders')
         .select('id,work_order_no,customer_name,ordered_qty_mt,ordered_qty_mtr,size_od,size_wt,grade,target_date,status,l1,l2'),
       supabase.from('qc_inspections').select('id,work_order_id,vdi_ok_mtr,vdi_ok_pcs,vdi_ok_mt,vdi_rejection_mtr,vdi_salvage_mtr,vdi_rejection_pcs,vdi_salvage_pcs,inspection_date,created_at'),
-      supabase.from('production_logs').select('id,work_order_id,stage_id,output_qty,rejection_qty,remarks,process_date,created_at,created_by,process_stages(stage_code,stage_name)'),
+      supabase.from('production_logs').select('id,work_order_id,stage_id,output_qty,rejection_qty,remarks,process_date,created_at,created_by,process_stages(stage_code,stage_name)').order('created_at', { ascending: false }).limit(20000),
       supabase.from('app_users').select('id,auth_user_id,employee_name,email'),
       supabase.from('vw_wip_aging').select('*').gt('current_wip', 0).order('days_stuck', { ascending: false }).limit(50),
       supabase.from('route_stages').select('route_id,stage_id,sequence_no,process_stages(stage_code)').order('sequence_no', { ascending: true }),

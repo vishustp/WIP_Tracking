@@ -607,14 +607,14 @@ export default function AdminControlPanelClient() {
     try {
       const supabase = createClient();
       const [workOrders, rollingPlans, diversions, productionLogs, usersRes, auditLogs, routesRes, stagesRes] = await Promise.all([
-        supabase.from('work_orders').select('*'),
-        supabase.from('rolling_plans').select('*'),
-        supabase.from('diversion_plans').select('*'),
-        supabase.from('production_logs').select('*'),
-        supabase.from('app_users').select('*'),
-        supabase.from('audit_log').select('*'),
-        supabase.from('process_routes').select('*'),
-        supabase.from('process_stages').select('*'),
+        supabase.from('work_orders').select('*').limit(100000),
+        supabase.from('rolling_plans').select('*').limit(100000),
+        supabase.from('diversion_plans').select('*').limit(100000),
+        supabase.from('production_logs').select('*').limit(100000),
+        supabase.from('app_users').select('*').limit(100000),
+        supabase.from('audit_log').select('*').limit(100000),
+        supabase.from('process_routes').select('*').limit(100000),
+        supabase.from('process_stages').select('*').limit(100000),
       ]);
       const results = [workOrders, rollingPlans, diversions, productionLogs, usersRes, auditLogs, routesRes, stagesRes];
       const failed = results.find(r => r.error);
