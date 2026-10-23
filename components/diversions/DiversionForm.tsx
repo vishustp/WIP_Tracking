@@ -865,6 +865,7 @@ export default function DiversionForm() {
   };
 
   const handleExecuteCutDivert = async (payload: {
+    strategy?: 'SINGLE_ORDER' | 'MULTI_ORDER' | 'NO_CUT';
     motherLength: number;
     motherPcs: number;
     splits: any[];
@@ -891,17 +892,26 @@ export default function DiversionForm() {
         : '';
 
       const sameOrderDesc = sameOrderSplits.length > 0
-        ? `[RETAINED_IN_SOURCE: ${sameOrderSplits.map((s) => `${payload.motherPcs} pcs @ ${s.cut_length}m = ${(s.cut_length * payload.motherPcs).toFixed(2)}m at ${s.target_stage_code}`).join(', ')}]`
+        ? `[RETAINED_IN_SOURCE: ${sameOrderSplits.map((s) => `${payload.motherPcs * (s.cuts_per_pipe || 1)} pcs @ ${s.cut_length}m = ${(s.cut_length * payload.motherPcs * (s.cuts_per_pipe || 1)).toFixed(2)}m at ${s.target_stage_code}`).join(', ')}]`
         : '';
 
       // Record external diversions into diversion_plans
       for (let i = 0; i < externalSplits.length; i++) {
         const split = externalSplits[i];
-        const splitMtr = Number((split.cut_length * payload.motherPcs).toFixed(2));
+        const cutsPerPipe = split.cuts_per_pipe || 1;
+        const totalPieces = payload.motherPcs * cutsPerPipe;
+        const splitMtr = Number((split.cut_length * totalPieces).toFixed(2));
         const targetWoObj = wos.find((w) => w.id === split.target_wo_id);
         const targetWoNo = targetWoObj?.work_order_no || 'Target';
 
-        const finalReason = `Cut & Split Diversion (#${i + 1}/${externalSplits.length}): Mother ${payload.motherPcs} pcs @ ${payload.motherLength}m cut from middle. Diverting ${splitMtr}m (${payload.motherPcs} pcs @ ${split.cut_length}m) to WO #${targetWoNo} at [${split.target_stage_code}]. ${sameOrderDesc} ${remnantTag}`.trim();
+        let finalReason = '';
+        if (payload.strategy === 'NO_CUT') {
+          finalReason = `Direct Transfer (Without Cutting): ${payload.motherPcs} whole pipes @ ${payload.motherLength}m (${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}]`.trim();
+        } else if (payload.strategy === 'SINGLE_ORDER') {
+          finalReason = `Cut from Middle & Diverted: ${payload.motherPcs} mother pipes @ ${payload.motherLength}m cut into ${totalPieces} pcs (${cutsPerPipe} cuts/pipe @ ${split.cut_length}m = ${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}] ${remnantTag}`.trim();
+        } else {
+          finalReason = `Cut & Multi-Order Diversion (#${i + 1}/${externalSplits.length}): Mother ${payload.motherPcs} pcs @ ${payload.motherLength}m cut from middle. Diverting ${payload.motherPcs} pcs @ ${split.cut_length}m (${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}]. ${sameOrderDesc} ${remnantTag}`.trim();
+        }
 
         const { error: insErr } = await supabase.from('diversion_plans').insert({
           source_wo_id: source,
@@ -909,7 +919,7 @@ export default function DiversionForm() {
           diverted_qty: splitMtr,
           work_center: split.target_stage_code,
           process_route_id: route || (routes.length ? routes[0].id : ''),
-          multiple: 1,
+          multiple: cutsPerPipe,
           reason: finalReason,
           approved_by: user?.id || null,
           diversion_date: date,
@@ -917,19 +927,28 @@ export default function DiversionForm() {
         if (insErr) throw new Error(insErr.message);
       }
 
-      const totalRetainedMtr = Number(sameOrderSplits.reduce((acc, s) => acc + (s.cut_length * payload.motherPcs), 0).toFixed(2));
-      const totalDivertedMtr = Number(externalSplits.reduce((acc, s) => acc + (s.cut_length * payload.motherPcs), 0).toFixed(2));
+      const totalRetainedMtr = Number(sameOrderSplits.reduce((acc, s) => acc + (s.cut_length * payload.motherPcs * (s.cuts_per_pipe || 1)), 0).toFixed(2));
+      const totalDivertedMtr = Number(externalSplits.reduce((acc, s) => acc + (s.cut_length * payload.motherPcs * (s.cuts_per_pipe || 1)), 0).toFixed(2));
 
-      if (externalSplits.length === 0) {
+      if (payload.strategy === 'NO_CUT') {
+        const targetWoObj = wos.find((w) => w.id === externalSplits[0]?.target_wo_id);
         toast.success(
-          `Internal Cut Confirmed for WO #${sourceWoNo}: ${payload.motherPcs} mother pipes (${payload.motherLength}m) cut into ${sameOrderSplits.length * payload.motherPcs} customer pieces (${totalRetainedMtr}m) at ${sourceWorkCenter}! Remnant: ${payload.remnantMtr}m (${payload.remnantClassification}).`
+          `Successfully diverted ${payload.motherPcs} whole pipes (${totalDivertedMtr}m) without cutting to WO #${targetWoObj?.work_order_no || 'Target'}!`
         );
-      } else if (sameOrderSplits.length > 0) {
+      } else if (payload.strategy === 'SINGLE_ORDER') {
+        const targetWoObj = wos.find((w) => w.id === externalSplits[0]?.target_wo_id);
+        const cutsPerPipe = externalSplits[0]?.cuts_per_pipe || 1;
         toast.success(
-          `Successfully cut ${payload.motherPcs} pipes from middle: Retained ${totalRetainedMtr}m in WO #${sourceWoNo}, and diverted ${totalDivertedMtr}m to target order(s)!`
+          `Successfully cut ${payload.motherPcs} mother pipes into ${payload.motherPcs * cutsPerPipe} pieces (${totalDivertedMtr}m) and diverted all to WO #${targetWoObj?.work_order_no || 'Target'}!`
+        );
+      } else if (externalSplits.length === 0) {
+        toast.success(
+          `Internal Cut Confirmed for WO #${sourceWoNo}: ${payload.motherPcs} mother pipes (${payload.motherLength}m) cut into customer pieces (${totalRetainedMtr}m) at ${sourceWorkCenter}! Remnant: ${payload.remnantMtr}m (${payload.remnantClassification}).`
         );
       } else {
-        toast.success(`Successfully cut and diverted ${payload.motherPcs} mother pipes into ${payload.splits.length} destination orders!`);
+        toast.success(
+          `Successfully cut and split ${payload.motherPcs} mother pipes into multiple target work orders!`
+        );
       }
 
       await handleSourceChange(source);

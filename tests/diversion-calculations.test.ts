@@ -156,6 +156,59 @@ describe('Diversion & Cut-Split Calculations (Mill Rules)', () => {
       expect(result.is_usable_offcut).toBe(true);
       expect(result.is_scrap).toBe(false);
     });
+
+    it('supports Example 1: 14 Nos in 10m length across the 3 diversion pathways', () => {
+      // Pathway 1: Divert to single work order after cutting from the middle (2 cuts/pipe => 28 pcs @ 5.0m)
+      const singleOrderSplits: CutSplitItem[] = [
+        {
+          target_wo_id: 'wo-target-single',
+          target_stage_code: 'DRAW',
+          cut_length: 5.0,
+          cuts_per_pipe: 2, // cut from middle yields 2 pieces per mother pipe
+        },
+      ];
+      const singleRes = calcCutSplitRemnant(10.0, 14, singleOrderSplits);
+      expect(singleRes.remnant_length).toBe(0);
+      expect(singleRes.total_remnant_mtr).toBe(0);
+      const totalPiecesSingle = 14 * 2;
+      const totalMtrSingle = totalPiecesSingle * 5.0;
+      expect(totalPiecesSingle).toBe(28);
+      expect(totalMtrSingle).toBe(140.0);
+
+      // Pathway 2: After cutting, divert to multiple work orders (14 pcs @ 5m to WO 1, 14 pcs @ 5m to WO 2)
+      const multiOrderSplits: CutSplitItem[] = [
+        {
+          target_wo_id: 'wo-target-1',
+          target_stage_code: 'DRAW',
+          cut_length: 5.0,
+          cuts_per_pipe: 1,
+        },
+        {
+          target_wo_id: 'wo-target-2',
+          target_stage_code: 'BAND_SAW',
+          cut_length: 5.0,
+          cuts_per_pipe: 1,
+        },
+      ];
+      const multiRes = calcCutSplitRemnant(10.0, 14, multiOrderSplits);
+      expect(multiRes.remnant_length).toBe(0);
+      expect(multiRes.total_remnant_mtr).toBe(0);
+      expect(14 * 5.0 + 14 * 5.0).toBe(140.0);
+
+      // Pathway 3: Send without cutting (14 pcs @ 10.0m as-is => 140.0m)
+      const noCutSplits: CutSplitItem[] = [
+        {
+          target_wo_id: 'wo-target-direct',
+          target_stage_code: 'DRAW',
+          cut_length: 10.0,
+          cuts_per_pipe: 1,
+        },
+      ];
+      const noCutRes = calcCutSplitRemnant(10.0, 14, noCutSplits);
+      expect(noCutRes.remnant_length).toBe(0);
+      expect(noCutRes.total_remnant_mtr).toBe(0);
+      expect(14 * 10.0).toBe(140.0);
+    });
   });
 
   describe('checkStpHollowLimit (STP 9.5m Constraint)', () => {
