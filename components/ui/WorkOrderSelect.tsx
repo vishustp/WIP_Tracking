@@ -54,7 +54,7 @@ export function WorkOrderSelect({
   className = '',
   buttonClassName = '',
   excludeId,
-  zIndex = 50,
+  zIndex = 60,
   showWipBadge = false,
 }: WorkOrderSelectProps) {
   // Convert WorkOrderOptionLike array to SearchableOption format

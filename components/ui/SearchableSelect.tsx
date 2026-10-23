@@ -44,7 +44,7 @@ export function SearchableSelect({
   required = false,
   className = '',
   buttonClassName = '',
-  zIndex = 50,
+  zIndex = 60,
   autoFocusSearch = true,
   renderOption,
 }: SearchableSelectProps) {
@@ -275,7 +275,8 @@ export function SearchableSelect({
         <>
           {/* Mobile Backdrop (< 640px) */}
           <div
-            className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-2xs sm:hidden"
+            style={{ zIndex: Math.max(1, zIndex - 1) }}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-2xs sm:hidden"
             onClick={closeDropdown}
           />
 
@@ -283,10 +284,12 @@ export function SearchableSelect({
           <div
             style={{ zIndex }}
             className={cn(
+              // Common Popover Layout
+              'flex flex-col overflow-hidden bg-white border border-slate-200',
               // Mobile Bottom Sheet / Modal View (< 640px)
-              'fixed inset-x-2 bottom-2 max-h-[85vh] rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden sm:hidden',
+              'fixed inset-x-2 bottom-2 max-h-[85vh] rounded-2xl shadow-2xl',
               // Desktop Floating Dropdown (>= 640px)
-              'sm:absolute sm:inset-x-0 sm:bottom-auto sm:top-full sm:mt-1.5 sm:max-h-80 sm:rounded-xl sm:border sm:border-slate-200 sm:bg-white sm:shadow-lg'
+              'sm:absolute sm:inset-x-0 sm:bottom-auto sm:top-full sm:mt-1.5 sm:max-h-80 sm:rounded-xl sm:shadow-lg'
             )}
           >
             {/* Mobile Header / Drag Indicator */}
