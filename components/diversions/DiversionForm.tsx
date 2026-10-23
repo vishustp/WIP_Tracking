@@ -878,16 +878,30 @@ export default function DiversionForm() {
     setBusy(true);
     try {
       const supabase = createClient();
+      const sourceWo = wos.find((w) => w.id === source);
+      const sourceWoNo = sourceWo?.work_order_no || 'Unknown';
+
+      const externalSplits = payload.splits.filter((s) => s.target_wo_id && s.target_wo_id !== source);
+      const sameOrderSplits = payload.splits.filter((s) => s.target_wo_id === source);
+
       const remnantTag = payload.remnantClassification === 'USABLE_OFFCUT'
-        ? `[OFFCUT_REMNANT: ${(payload.remnantMtr / payload.motherPcs).toFixed(2)}m x ${payload.motherPcs}]`
+        ? `[OFFCUT_REMNANT: ${(payload.remnantMtr / payload.motherPcs).toFixed(2)}m x ${payload.motherPcs} = ${payload.remnantMtr}m]`
         : payload.remnantMtr > 0
-        ? `[SCRAP_REMNANT: ${(payload.remnantMtr / payload.motherPcs).toFixed(2)}m x ${payload.motherPcs}]`
+        ? `[SCRAP_REMNANT: ${(payload.remnantMtr / payload.motherPcs).toFixed(2)}m x ${payload.motherPcs} = ${payload.remnantMtr}m]`
         : '';
 
-      for (let i = 0; i < payload.splits.length; i++) {
-        const split = payload.splits[i];
+      const sameOrderDesc = sameOrderSplits.length > 0
+        ? `[RETAINED_IN_SOURCE: ${sameOrderSplits.map((s) => `${payload.motherPcs} pcs @ ${s.cut_length}m = ${(s.cut_length * payload.motherPcs).toFixed(2)}m at ${s.target_stage_code}`).join(', ')}]`
+        : '';
+
+      // Record external diversions into diversion_plans
+      for (let i = 0; i < externalSplits.length; i++) {
+        const split = externalSplits[i];
         const splitMtr = Number((split.cut_length * payload.motherPcs).toFixed(2));
-        const finalReason = `Cut & Split Diversion (#${i + 1}/${payload.splits.length}) [FROM_STAGE: ${sourceWorkCenter}] [TO_STAGE: ${split.target_stage_code}] ${remnantTag}`.trim();
+        const targetWoObj = wos.find((w) => w.id === split.target_wo_id);
+        const targetWoNo = targetWoObj?.work_order_no || 'Target';
+
+        const finalReason = `Cut & Split Diversion (#${i + 1}/${externalSplits.length}): Mother ${payload.motherPcs} pcs @ ${payload.motherLength}m cut from middle. Diverting ${splitMtr}m (${payload.motherPcs} pcs @ ${split.cut_length}m) to WO #${targetWoNo} at [${split.target_stage_code}]. ${sameOrderDesc} ${remnantTag}`.trim();
 
         const { error: insErr } = await supabase.from('diversion_plans').insert({
           source_wo_id: source,
@@ -903,11 +917,27 @@ export default function DiversionForm() {
         if (insErr) throw new Error(insErr.message);
       }
 
-      toast.success(`Successfully cut and diverted ${payload.motherPcs} mother pipes into ${payload.splits.length} destination orders!`);
+      const totalRetainedMtr = Number(sameOrderSplits.reduce((acc, s) => acc + (s.cut_length * payload.motherPcs), 0).toFixed(2));
+      const totalDivertedMtr = Number(externalSplits.reduce((acc, s) => acc + (s.cut_length * payload.motherPcs), 0).toFixed(2));
+
+      if (externalSplits.length === 0) {
+        toast.success(
+          `Internal Cut Confirmed for WO #${sourceWoNo}: ${payload.motherPcs} mother pipes (${payload.motherLength}m) cut into ${sameOrderSplits.length * payload.motherPcs} customer pieces (${totalRetainedMtr}m) at ${sourceWorkCenter}! Remnant: ${payload.remnantMtr}m (${payload.remnantClassification}).`
+        );
+      } else if (sameOrderSplits.length > 0) {
+        toast.success(
+          `Successfully cut ${payload.motherPcs} pipes from middle: Retained ${totalRetainedMtr}m in WO #${sourceWoNo}, and diverted ${totalDivertedMtr}m to target order(s)!`
+        );
+      } else {
+        toast.success(`Successfully cut and diverted ${payload.motherPcs} mother pipes into ${payload.splits.length} destination orders!`);
+      }
+
       await handleSourceChange(source);
       await loadData();
       await loadPlans();
-      setActiveTab('LOGS');
+      if (externalSplits.length > 0) {
+        setActiveTab('LOGS');
+      }
     } catch (err: any) {
       toast.error('Failed to execute cut & divert: ' + err.message);
     } finally {

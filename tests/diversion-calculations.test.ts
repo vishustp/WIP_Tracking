@@ -80,6 +80,82 @@ describe('Diversion & Cut-Split Calculations (Mill Rules)', () => {
 
       expect(() => calcCutSplitRemnant(10.0, 1, splits)).toThrow('exceeds mother pipe length');
     });
+
+    it('supports cutting pipes from middle: allocating half to same work order and half to another order', () => {
+      // Mill scenario: WO 5978 has 9 mother pipes of 11.8m (106.20m total).
+      // Cut from middle: Split 1 = 5.8m to same order WO 5978, Split 2 = 5.8m diverted to WO 6307.
+      // Remnant per pipe = 11.8 - (5.8 + 5.8) = 0.2m (< 3.0m => Rule 5B Scrap).
+      const splits: CutSplitItem[] = [
+        {
+          target_wo_id: 'wo-5978-same-order',
+          target_stage_code: 'FINISHING',
+          cut_length: 5.8,
+        },
+        {
+          target_wo_id: 'wo-6307-target-order',
+          target_stage_code: 'DRAW',
+          cut_length: 5.8,
+        },
+      ];
+
+      const result = calcCutSplitRemnant(11.8, 9, splits);
+
+      expect(result.remnant_length).toBe(0.2);
+      expect(result.total_remnant_mtr).toBe(1.8);
+      expect(result.classification).toBe('SCRAP');
+      expect(result.is_scrap).toBe(true);
+
+      // Verify allocated quantities
+      const sameOrderMtr = Number((splits[0].cut_length * 9).toFixed(2));
+      const externalMtr = Number((splits[1].cut_length * 9).toFixed(2));
+      expect(sameOrderMtr).toBe(52.2);
+      expect(externalMtr).toBe(52.2);
+      expect(Number((sameOrderMtr + externalMtr + result.total_remnant_mtr).toFixed(2))).toBe(106.2);
+    });
+
+    it('supports internal pipe cut: both halves allocated to same work order', () => {
+      // 9 mother pipes of 11.8m cut into 18 customer pieces of 5.8m, all for WO 5978
+      const splits: CutSplitItem[] = [
+        {
+          target_wo_id: 'wo-5978',
+          target_stage_code: 'FINISHING',
+          cut_length: 5.8,
+        },
+        {
+          target_wo_id: 'wo-5978',
+          target_stage_code: 'FINISHING',
+          cut_length: 5.8,
+        },
+      ];
+
+      const result = calcCutSplitRemnant(11.8, 9, splits);
+
+      expect(result.remnant_length).toBe(0.2);
+      expect(result.total_remnant_mtr).toBe(1.8);
+      expect(result.classification).toBe('SCRAP');
+
+      const totalRetainedMtr = Number(((splits[0].cut_length + splits[1].cut_length) * 9).toFixed(2));
+      expect(totalRetainedMtr).toBe(104.4);
+    });
+
+    it('supports cutting for same order and auto-saving remaining offcut >= 3.0m under Rule 5C', () => {
+      // 9 mother pipes of 11.8m cut: 6.0m to same WO, remaining 5.8m auto-classified as USABLE_OFFCUT
+      const splits: CutSplitItem[] = [
+        {
+          target_wo_id: 'wo-5978',
+          target_stage_code: 'FINISHING',
+          cut_length: 6.0,
+        },
+      ];
+
+      const result = calcCutSplitRemnant(11.8, 9, splits);
+
+      expect(result.remnant_length).toBe(5.8);
+      expect(result.total_remnant_mtr).toBe(52.2);
+      expect(result.classification).toBe('USABLE_OFFCUT');
+      expect(result.is_usable_offcut).toBe(true);
+      expect(result.is_scrap).toBe(false);
+    });
   });
 
   describe('checkStpHollowLimit (STP 9.5m Constraint)', () => {

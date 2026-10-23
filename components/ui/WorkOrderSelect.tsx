@@ -36,6 +36,7 @@ export interface WorkOrderSelectProps {
   className?: string;
   buttonClassName?: string;
   excludeId?: string;
+  sameOrderId?: string;
   zIndex?: number;
   showWipBadge?: boolean;
 }
@@ -54,6 +55,7 @@ export function WorkOrderSelect({
   className = '',
   buttonClassName = '',
   excludeId,
+  sameOrderId,
   zIndex = 60,
   showWipBadge = false,
 }: WorkOrderSelectProps) {
@@ -76,11 +78,14 @@ export function WorkOrderSelect({
           lengthStr = `${wo.avg_length}m`;
         }
 
-        const label = `${woNo} · ${customer}`;
+        const isSameOrder = Boolean(sameOrderId && wo.id === sameOrderId);
+        const label = isSameOrder ? `${woNo} · ${customer} (Same Order)` : `${woNo} · ${customer}`;
         const sublabel = [grade, sizeStr, lengthStr].filter(Boolean).join(' · ');
 
         let badge: string | undefined;
-        if (showWipBadge && (wo.available_pcs != null || wo.available_mtr != null)) {
+        if (isSameOrder) {
+          badge = 'Current Order (Internal Cut)';
+        } else if (showWipBadge && (wo.available_pcs != null || wo.available_mtr != null)) {
           badge = `${wo.available_pcs ?? 0} pcs / ${wo.available_mtr ?? 0}m`;
         }
 
@@ -93,6 +98,7 @@ export function WorkOrderSelect({
           wt != null ? `${wt}` : '',
           od != null && wt != null ? `${od}x${wt}` : '',
           od != null && wt != null ? `${od}×${wt}` : '',
+          isSameOrder ? 'same current internal order' : '',
         ].filter(Boolean);
 
         return {
@@ -103,7 +109,7 @@ export function WorkOrderSelect({
           keywords,
         };
       });
-  }, [workOrders, excludeId, showWipBadge]);
+  }, [workOrders, excludeId, sameOrderId, showWipBadge]);
 
   return (
     <SearchableSelect
