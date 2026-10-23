@@ -1093,7 +1093,7 @@ export default function WorkOrderTrackingClient() {
           const effLen = isHfsLike && mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = effLen > 0 ? Math.round(divIn / effLen) : 0;
           const divOutPcs = effLen > 0 ? Math.round(divOut / effLen) : 0;
-          const consumedPcs = downstreamMotherPcsFromBandSaw;
+          const consumedPcs = bandSawOutPcs + bandSawRejPcs;
 
           let wipPcs = 0;
           if (incomingPcs > 0 || divInPcs > 0) {
