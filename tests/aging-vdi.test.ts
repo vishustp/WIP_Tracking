@@ -141,9 +141,9 @@ describe('Aging VDI and Zero Nos Integration', () => {
     // wo-3 should remain active with L1 and L2 preserved
     const remaining = result.find((r: any) => r.work_order_id === 'wo-3');
     expect(remaining).toBeDefined();
-    expect(remaining.current_wip_pcs).toBe(4);
-    expect(remaining.l1).toBe(6.0);
-    expect(remaining.l2).toBe(6.0);
+    expect(remaining!.current_wip_pcs).toBe(4);
+    expect(remaining!.l1).toBe(6.0);
+    expect(remaining!.l2).toBe(6.0);
 
     // Test normalizeAgingRow
     const normalizedWo1 = normalizeAgingRow(wipRows[0], [], undefined, rejectionDeclarations);

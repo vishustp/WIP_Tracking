@@ -458,6 +458,7 @@ export default function DiversionIssueReportClient() {
 
       // Row 15: Values
       ws.getRow(15).height = 24;
+      const v1 = ws.getCell(15, 1);
       const mult = plan.multiple && Number(plan.multiple) > 1 ? Number(plan.multiple) : 1;
       const cutPcs = Math.round(Number(plan.diverted_pcs || 0) * mult);
       v1.value = mult > 1 ? `${cutPcs} PCS (${plan.diverted_pcs} mother × ${mult})` : `${fmt(plan.diverted_pcs, 0)} PCS`;

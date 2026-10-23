@@ -66,11 +66,12 @@ describe('WO 6495 Draw Bench WIP & Aging', () => {
     expect(drawStage!.capped_wip_pcs).toBe(0);
     expect(htStage!.reconciled_wip_pcs).toBe(0);
     expect(htStage!.capped_wip_pcs).toBe(0);
-    // Band Saw was cut (100 mother pcs -> 198 cut pcs at VDI)
+    // Band Saw was cut (100 mother pcs -> 198 cut pcs at VDI, minus any QC inspected pcs)
     expect(bsStage!.reconciled_wip_pcs).toBe(0);
     const vdiStage = reconciled.summary.stages.find((s) => s.stage_code === 'VDI');
     expect(vdiStage).toBeDefined();
-    expect(vdiStage!.reconciled_wip_pcs).toBe(198);
+    const totalQcInspected = (qcRes.data || []).reduce((sum: number, q: any) => sum + Number(q.inspected_pcs || 0), 0);
+    expect(vdiStage!.reconciled_wip_pcs).toBe(Math.max(0, 198 - totalQcInspected));
 
     // 2. Verify Aging Report rows calculation
     const agingRows = computeAgingReportRows({

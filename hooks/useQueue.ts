@@ -80,7 +80,7 @@ export function useQueue(stage: StageCode) {
           .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2, work_orders(work_order_no)")
           .not("status", "is", null)
           .order("created_at", { ascending: false })
-          .limit(250),
+          .limit(1000),
         supabase
           .from("process_stages")
           .select("id, stage_code"),
@@ -335,8 +335,8 @@ export function useQueue(stage: StageCode) {
       if (s === "ROLLING") {
         // Filter out any child work orders AND only show work orders with an ISSUED rolling plan!
         const filtered = rawRows.filter((r) => {
-          if (childWoMap.has(r.work_order_id) || (r.work_order_no && childWoMap.has(r.work_order_no))) return false;
           const campaign = masterCampaignMap.get(r.work_order_id) || (r.work_order_no ? masterCampaignMap.get(r.work_order_no) : null);
+          if (!campaign && (childWoMap.has(r.work_order_id) || (r.work_order_no && childWoMap.has(r.work_order_no)))) return false;
           const planInfo = planByWoMap.get(r.work_order_id);
           const isPlanIssued = campaign ? Boolean(campaign.is_issued) : Boolean(planInfo?.is_issued);
           return isPlanIssued;

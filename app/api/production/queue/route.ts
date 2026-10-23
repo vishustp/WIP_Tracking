@@ -240,7 +240,7 @@ export async function GET(req: NextRequest) {
         .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2, multiple, created_at")
         .not("status", "is", null)
         .order("created_at", { ascending: false })
-        .limit(300),
+        .limit(1000),
       admin.from("process_stages").select("id, stage_code, stage_name"),
       fetchAllLogs(admin),
       admin
@@ -680,7 +680,17 @@ export async function GET(req: NextRequest) {
     // Collect all candidate master / standalone work orders
     const candidateWoIds = new Set<string>();
     plans.forEach((p) => {
-      if (!childWoMap.has(p.work_order_id)) candidateWoIds.add(p.work_order_id);
+      let isChild = false;
+      try {
+        const parsed = typeof p.status === "string" ? JSON.parse(p.status) : p.status;
+        isChild = Boolean(parsed?.is_child);
+      } catch {}
+      // If this plan is a master or standalone plan, its work order is a candidate master WO
+      if (!isChild) {
+        candidateWoIds.add(p.work_order_id);
+      } else if (!childWoMap.has(p.work_order_id)) {
+        candidateWoIds.add(p.work_order_id);
+      }
     });
     logs.forEach((l) => {
       if (!childWoMap.has(l.work_order_id)) candidateWoIds.add(l.work_order_id);
