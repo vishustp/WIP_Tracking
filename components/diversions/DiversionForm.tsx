@@ -23,10 +23,18 @@ import {
   Shuffle,
   Calendar,
   Layers,
+  Scissors,
+  Recycle,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import { buildCampaignHierarchyMaps, reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
+import { DrawReductionBadge } from '@/components/diversions/DrawReductionBadge';
+import { StpConstraintAlert } from '@/components/diversions/StpConstraintAlert';
+import { CutAndDivertSection } from '@/components/diversions/CutAndDivertSection';
+import { OffcutPoolManager } from '@/components/diversions/OffcutPoolManager';
+import { calcOrderBalanceSurplus } from '@/lib/diversionCalculations';
 
 type WO = {
   id: string;
@@ -490,6 +498,10 @@ export default function DiversionForm() {
   const [reason, setReason] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
+  const [activeTab, setActiveTab] = useState<'ISSUE' | 'REMNANTS' | 'LOGS'>('ISSUE');
+  const [transferMode, setTransferMode] = useState<'DIRECT' | 'CUT_DIVERT'>('DIRECT');
+  const [isStpExempt, setIsStpExempt] = useState(false);
+  const [pcsInput, setPcsInput] = useState('');
 
   // WIP summaries for Source and Target
   const [sourceWip, setSourceWip] = useState<WoWipSummary | null>(null);
@@ -665,6 +677,7 @@ export default function DiversionForm() {
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceWip]);
 
   // Selected Work Center WIP for Source (where material will be deducted)
@@ -763,6 +776,94 @@ export default function DiversionForm() {
   const targetPostWipMt = targetOd > targetWt ? (targetOd - targetWt) * targetWt * 0.0246615 * 0.001 * targetPostWipMtr : 0;
 
   const isExceeding = diversionMtr > sourceInitialBalanceMtr;
+
+  const overAlloc = useMemo(() => {
+    if (!targetWip || diversionMtr <= 0) return null;
+    return calcOrderBalanceSurplus(diversionMtr, targetWip.orderedMtr || 0, targetWip.finishingDoneMtr || 0);
+  }, [targetWip, diversionMtr]);
+
+  const handleMtrChange = (val: string) => {
+    setQty(val);
+    const m = Number(val);
+    if (m > 0 && sourceStagePieceLen > 0) {
+      setPcsInput(String(Math.round(m / sourceStagePieceLen)));
+    } else {
+      setPcsInput('');
+    }
+  };
+
+  const handlePcsChange = (val: string) => {
+    setPcsInput(val);
+    const p = Number(val);
+    if (p > 0 && sourceStagePieceLen > 0) {
+      setQty(String(Number((p * sourceStagePieceLen).toFixed(2))));
+    } else {
+      setQty('');
+    }
+  };
+
+  const handleExecuteCutDivert = async (payload: {
+    motherLength: number;
+    motherPcs: number;
+    splits: any[];
+    remnantMtr: number;
+    remnantClassification: 'SCRAP' | 'USABLE_OFFCUT';
+  }) => {
+    if (!canManagePlans) {
+      toast.error('Permission denied: Diversion planning requires Admin or Super User group');
+      return;
+    }
+    setBusy(true);
+    try {
+      const supabase = createClient();
+      const remnantTag = payload.remnantClassification === 'USABLE_OFFCUT'
+        ? `[OFFCUT_REMNANT: ${(payload.remnantMtr / payload.motherPcs).toFixed(2)}m x ${payload.motherPcs}]`
+        : payload.remnantMtr > 0
+        ? `[SCRAP_REMNANT: ${(payload.remnantMtr / payload.motherPcs).toFixed(2)}m x ${payload.motherPcs}]`
+        : '';
+
+      for (let i = 0; i < payload.splits.length; i++) {
+        const split = payload.splits[i];
+        const splitMtr = Number((split.cut_length * payload.motherPcs).toFixed(2));
+        const finalReason = `Cut & Split Diversion (#${i + 1}/${payload.splits.length}) [FROM_STAGE: ${sourceWorkCenter}] [TO_STAGE: ${split.target_stage_code}] ${remnantTag}`.trim();
+
+        const { error: insErr } = await supabase.from('diversion_plans').insert({
+          source_wo_id: source,
+          target_wo_id: split.target_wo_id,
+          diverted_qty: splitMtr,
+          work_center: split.target_stage_code,
+          process_route_id: route || (routes.length ? routes[0].id : ''),
+          multiple: 1,
+          reason: finalReason,
+          approved_by: user?.id || null,
+          diversion_date: date,
+        });
+        if (insErr) throw new Error(insErr.message);
+      }
+
+      toast.success(`Successfully cut and diverted ${payload.motherPcs} mother pipes into ${payload.splits.length} destination orders!`);
+      await handleSourceChange(source);
+      await loadData();
+      await loadPlans();
+      setActiveTab('LOGS');
+    } catch (err: any) {
+      toast.error('Failed to execute cut & divert: ' + err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDivertRemnant = async (remnant: any) => {
+    setActiveTab('ISSUE');
+    setTransferMode('DIRECT');
+    await handleSourceChange(remnant.source_wo_id);
+    setSource(remnant.source_wo_id);
+    setSourceWorkCenter(remnant.work_center);
+    setQty(String(remnant.total_mtr));
+    setPcsInput(String(remnant.pcs));
+    setReason(`Off-cut Remnant Diversion (${remnant.length_mtr}m)`);
+    toast.info(`Pre-filled diversion with ${remnant.pcs} pcs (${remnant.total_mtr}m) from WO ${remnant.source_wo_no}`);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -950,153 +1051,343 @@ export default function DiversionForm() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 sm:pb-6">
       {/* Form Accessibility Banner */}
       <FormAccessBanner access={formAccess} />
 
-      {/* ISSUE DIVERSION PLAN FORM */}
-      <form onSubmit={submit} className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <Shuffle className="h-5 w-5 text-blue-600" />
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Issue Diversion Plan</h1>
-          </div>
-          {!canManagePlans && (
-            <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
-              <Lock size={12} /> View-Only Access
-            </span>
-          )}
-        </div>
+      {/* Top View Tabs (Mobile-Friendly Pill Bar) */}
+      <div className="flex border-b border-slate-200 gap-1 sm:gap-2 overflow-x-auto pb-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab('ISSUE')}
+          className={`px-3 sm:px-4 py-2.5 text-xs font-bold border-b-2 cursor-pointer transition flex items-center gap-1.5 whitespace-nowrap min-h-[44px] ${
+            activeTab === 'ISSUE'
+              ? 'border-[#0078d4] text-[#0078d4]'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <ArrowRightLeft className="h-4 w-4" /> Issue Diversion
+        </button>
 
-        {/* Work Order Selection Section */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Source Work Order (From) <span className="text-red-500">*</span>
-            </label>
-            <Select
-              value={source}
-              onChange={(e) => void handleSourceChange(e.target.value)}
-              required
-              disabled={!canManagePlans}
-              className="font-mono text-sm"
-            >
-              <option value="">Select Source Work Order...</option>
-              {wos.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.work_order_no} · {x.customer_name || 'Generic'} ({x.grade || 'Grade N/A'} · {x.size_od || x.od}×{x.size_wt || x.wt}mm)
-                </option>
-              ))}
-            </Select>
-          </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab('REMNANTS')}
+          className={`px-3 sm:px-4 py-2.5 text-xs font-bold border-b-2 cursor-pointer transition flex items-center gap-1.5 whitespace-nowrap min-h-[44px] ${
+            activeTab === 'REMNANTS'
+              ? 'border-emerald-600 text-emerald-700'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Recycle className="h-4 w-4 text-emerald-600" /> Off-cuts &amp; Remnants Pool
+        </button>
 
-          <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Target Work Order (To) <span className="text-red-500">*</span>
-            </label>
-            <Select
-              value={target}
-              onChange={(e) => handleTargetChange(e.target.value)}
-              required
-              disabled={!canManagePlans}
-              className="font-mono text-sm"
-            >
-              <option value="">Select Target Work Order...</option>
-              {wos
-                .filter((x) => x.id !== source)
-                .map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.work_order_no} · {x.customer_name || 'Generic'} ({x.grade || 'Grade N/A'} · {x.size_od || x.od}×{x.size_wt || x.wt}mm)
-                  </option>
-                ))}
-            </Select>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab('LOGS')}
+          className={`px-3 sm:px-4 py-2.5 text-xs font-bold border-b-2 cursor-pointer transition flex items-center gap-1.5 whitespace-nowrap min-h-[44px] ${
+            activeTab === 'LOGS'
+              ? 'border-slate-800 text-slate-900'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Layers className="h-4 w-4" /> Diversion History &amp; Logs ({plans.length})
+        </button>
+      </div>
 
-        {/* Work Center Fields: Divert From Stage (Source WO) and Divert To Stage (Target WO) */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Divert From (Source WO) <span className="text-red-500">*</span>
-            </label>
-            <Select
-              value={sourceWorkCenter}
-              onChange={(e) => setSourceWorkCenter(e.target.value)}
-              required
-              disabled={!canManagePlans}
-              className="font-semibold text-slate-900 border-amber-400 bg-amber-50/20"
-            >
-              {availableWorkCenters.map((wc) => {
-                const stg = sourceWip?.stageBreakdown?.find((s) => s.stage_code === wc.code);
-                const availMtr = stg ? stg.available_mtr : null;
-                const availPcs = stg ? stg.available_pcs : (sourceAvgLen > 0 && availMtr != null ? Math.round(availMtr / sourceAvgLen) : null);
-                return (
-                  <option key={wc.code} value={wc.code}>
-                    {wc.name} {availMtr != null ? `(${fmt(availPcs, 0)} Pcs / ${fmt(availMtr)} Mtr)` : ''}
-                  </option>
-                );
-              })}
-            </Select>
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              Stage deducted on source WO
+      {/* TAB 1: ISSUE DIVERSION CONSOLE */}
+      {activeTab === 'ISSUE' && (
+        <div className="space-y-5">
+          {/* Mode Switch Bar: Direct Transfer vs Cut & Divert */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                Operational Mode:
+              </span>
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setTransferMode('DIRECT')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold cursor-pointer transition flex items-center gap-1.5 min-h-[36px] ${
+                    transferMode === 'DIRECT'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <ArrowRightLeft className="h-3.5 w-3.5 text-[#0078d4]" />
+                  Mode A: Direct Transfer
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTransferMode('CUT_DIVERT')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold cursor-pointer transition flex items-center gap-1.5 min-h-[36px] ${
+                    transferMode === 'CUT_DIVERT'
+                      ? 'bg-white text-purple-900 shadow-2xs font-black'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Scissors className="h-3.5 w-3.5 text-purple-600" />
+                  Mode B: Cut &amp; Divert (Split)
+                </button>
+              </div>
+            </div>
+
+            <span className="text-[11px] text-slate-500">
+              {transferMode === 'DIRECT'
+                ? 'Standard 1-to-1 material reallocation without cutting'
+                : 'Cut long mother pipes into multiple target pieces with auto-scrap & remnant tracking'}
             </span>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Divert To (Target WO) <span className="text-red-500">*</span>
-            </label>
-            <Select
-              value={targetWorkCenter}
-              onChange={(e) => setTargetWorkCenter(e.target.value)}
-              required
-              disabled={!canManagePlans}
-              className="font-semibold text-slate-900 border-emerald-400 bg-emerald-50/20"
-            >
-              {WORK_CENTERS.map((wc) => (
-                <option key={wc.code} value={wc.code}>
-                  {wc.name}
-                </option>
-              ))}
-            </Select>
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              Stage credited on target WO
-            </span>
-          </div>
+          {/* MODE B: CUT & DIVERT SECTION */}
+          {transferMode === 'CUT_DIVERT' ? (
+            <div className="rounded-xl border border-purple-200 bg-white p-5 shadow-xs space-y-4">
+              <div className="border-b border-purple-100 pb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-bold text-purple-950 flex items-center gap-2">
+                    <Scissors className="h-5 w-5 text-purple-600" />
+                    Cut &amp; Divert Workflow (STP Trimming &amp; Multi-WO Split)
+                  </h2>
+                  <p className="text-slate-500 text-xs">
+                    Cut mother hollows into target lengths for up to 2 work orders. Balance &ge; 3.0m is saved as usable off-cut; balance &lt; 3.0m is logged as scrap.
+                  </p>
+                </div>
+              </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Target Process Route <span className="text-red-500">*</span>
-            </label>
-            <Select value={route} onChange={(e) => setRoute(e.target.value)} required disabled={!canManagePlans}>
-              <option value="">Select Route...</option>
-              {routes.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.route_code} — {r.route_name}
-                </option>
-              ))}
-            </Select>
-          </div>
+              {/* Source Work Order & Stage Selector */}
+              <div className="grid gap-4 md:grid-cols-2 bg-purple-50/30 p-3.5 rounded-lg border border-purple-200/60">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Source Work Order (From) *
+                  </label>
+                  <Select
+                    value={source}
+                    onChange={(e) => void handleSourceChange(e.target.value)}
+                    required
+                    disabled={!canManagePlans}
+                    className="font-mono text-sm min-h-[44px]"
+                  >
+                    <option value="">Select Source Work Order...</option>
+                    {wos.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.work_order_no} · {x.customer_name || 'Generic'} ({x.grade || 'Grade N/A'} · {x.size_od || x.od}×{x.size_wt || x.wt}mm)
+                      </option>
+                    ))}
+                  </Select>
+                </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Mother Pipe Multiple
-            </label>
-            <Input
-              type="number"
-              min="1"
-              step="0.1"
-              value={multiple}
-              onChange={(e) => setMultiple(e.target.value)}
-              required
-              disabled={!canManagePlans}
-              className="font-mono"
-            />
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              1 Mother Pipe = {multiple} Output Pipe(s)
-            </span>
-          </div>
-        </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Deduct From Stage (Source WO) *
+                  </label>
+                  <Select
+                    value={sourceWorkCenter}
+                    onChange={(e) => setSourceWorkCenter(e.target.value)}
+                    required
+                    disabled={!canManagePlans}
+                    className="font-semibold text-slate-900 border-amber-400 bg-amber-50/20 min-h-[44px]"
+                  >
+                    {availableWorkCenters.map((wc) => {
+                      const stg = sourceWip?.stageBreakdown?.find((s) => s.stage_code === wc.code);
+                      const availMtr = stg ? stg.available_mtr : null;
+                      const availPcs = stg ? stg.available_pcs : (sourceAvgLen > 0 && availMtr != null ? Math.round(availMtr / sourceAvgLen) : null);
+                      return (
+                        <option key={wc.code} value={wc.code}>
+                          {wc.name} {availMtr != null ? `(${fmt(availPcs, 0)} Pcs / ${fmt(availMtr)} Mtr)` : ''}
+                        </option>
+                      );
+                    })}
+                  </Select>
+                </div>
+              </div>
+
+              {source && sourceWip ? (
+                <CutAndDivertSection
+                  wos={wos}
+                  routes={routes}
+                  workCenters={WORK_CENTERS}
+                  sourceWoId={source}
+                  sourceStageCode={sourceWorkCenter}
+                  defaultMotherLength={sourceStagePieceLen || sourceWip.avgLength || 10.0}
+                  availableStageMtr={availableAtWorkCenterMtr}
+                  availableStagePcs={availableAtWorkCenterPcs}
+                  canManagePlans={canManagePlans}
+                  onExecuteCutDivert={handleExecuteCutDivert}
+                  busy={busy}
+                />
+              ) : (
+                <div className="p-8 text-center text-slate-400 text-xs bg-slate-50 rounded-lg border border-dashed border-slate-300">
+                  Select a Source Work Order above to configure pipe cutting and destination splits.
+                </div>
+              )}
+            </div>
+          ) : (
+            /* MODE A: DIRECT TRANSFER (AS-IS) */
+            <form onSubmit={submit} className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Shuffle className="h-5 w-5 text-blue-600" />
+                  <h1 className="text-xl font-bold text-slate-900 tracking-tight">Direct Material Diversion</h1>
+                </div>
+                {!canManagePlans && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
+                    <Lock size={12} /> View-Only Access
+                  </span>
+                )}
+              </div>
+
+              {/* Work Order Selection Section */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Source Work Order (From) <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={source}
+                    onChange={(e) => void handleSourceChange(e.target.value)}
+                    required
+                    disabled={!canManagePlans}
+                    className="font-mono text-sm min-h-[44px]"
+                  >
+                    <option value="">Select Source Work Order...</option>
+                    {wos.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.work_order_no} · {x.customer_name || 'Generic'} ({x.grade || 'Grade N/A'} · {x.size_od || x.od}×{x.size_wt || x.wt}mm)
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Target Work Order (To) <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={target}
+                    onChange={(e) => handleTargetChange(e.target.value)}
+                    required
+                    disabled={!canManagePlans}
+                    className="font-mono text-sm min-h-[44px]"
+                  >
+                    <option value="">Select Target Work Order...</option>
+                    {wos
+                      .filter((x) => x.id !== source)
+                      .map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.work_order_no} · {x.customer_name || 'Generic'} ({x.grade || 'Grade N/A'} · {x.size_od || x.od}×{x.size_wt || x.wt}mm)
+                        </option>
+                      ))}
+                  </Select>
+                </div>
+              </div>
+
+              {/* Work Center Fields: Divert From Stage (Source WO) and Divert To Stage (Target WO) */}
+              <div className="grid gap-4 md:grid-cols-4">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Divert From (Source WO) <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={sourceWorkCenter}
+                    onChange={(e) => setSourceWorkCenter(e.target.value)}
+                    required
+                    disabled={!canManagePlans}
+                    className="font-semibold text-slate-900 border-amber-400 bg-amber-50/20 min-h-[44px]"
+                  >
+                    {availableWorkCenters.map((wc) => {
+                      const stg = sourceWip?.stageBreakdown?.find((s) => s.stage_code === wc.code);
+                      const availMtr = stg ? stg.available_mtr : null;
+                      const availPcs = stg ? stg.available_pcs : (sourceAvgLen > 0 && availMtr != null ? Math.round(availMtr / sourceAvgLen) : null);
+                      return (
+                        <option key={wc.code} value={wc.code}>
+                          {wc.name} {availMtr != null ? `(${fmt(availPcs, 0)} Pcs / ${fmt(availMtr)} Mtr)` : ''}
+                        </option>
+                      );
+                    })}
+                  </Select>
+                  <span className="text-[11px] text-slate-500 mt-1 block">
+                    Stage deducted on source WO
+                  </span>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Divert To (Target WO) <span className="text-red-500">*</span>
+                  </label>
+                  <Select
+                    value={targetWorkCenter}
+                    onChange={(e) => setTargetWorkCenter(e.target.value)}
+                    required
+                    disabled={!canManagePlans}
+                    className="font-semibold text-slate-900 border-emerald-400 bg-emerald-50/20 min-h-[44px]"
+                  >
+                    {WORK_CENTERS.map((wc) => (
+                      <option key={wc.code} value={wc.code}>
+                        {wc.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <span className="text-[11px] text-slate-500 mt-1 block">
+                    Stage credited on target WO
+                  </span>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Target Process Route <span className="text-red-500">*</span>
+                  </label>
+                  <Select value={route} onChange={(e) => setRoute(e.target.value)} required disabled={!canManagePlans} className="min-h-[44px]">
+                    <option value="">Select Route...</option>
+                    {routes.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.route_code} — {r.route_name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Mother Pipe Multiple
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="0.1"
+                    value={multiple}
+                    onChange={(e) => setMultiple(e.target.value)}
+                    required
+                    disabled={!canManagePlans}
+                    className="font-mono min-h-[44px]"
+                  />
+                  <span className="text-[11px] text-slate-500 mt-1 block">
+                    1 Mother Pipe = {multiple} Output Pipe(s)
+                  </span>
+                </div>
+              </div>
+
+              {/* STP Constraint Alert & Draw Reduction Metallurgy Indicators */}
+              {sourceWip && (
+                <div className="space-y-3">
+                  <StpConstraintAlert
+                    pipeLength={sourceStagePieceLen || sourceWip.avgLength || 0}
+                    targetStageCode={targetWorkCenter}
+                    isExempt={isStpExempt}
+                    onToggleExempt={setIsStpExempt}
+                    onSwitchToCutMode={() => setTransferMode('CUT_DIVERT')}
+                  />
+
+                  {targetWorkCenter === 'DRAW' && selectedSource && selectedTarget && (
+                    <DrawReductionBadge
+                      sourceOd={Number(selectedSource.size_od || selectedSource.od || 0)}
+                      sourceWt={Number(selectedSource.size_wt || selectedSource.wt || 0)}
+                      targetOd={Number(selectedTarget.size_od || selectedTarget.od || 0)}
+                      targetWt={Number(selectedTarget.size_wt || selectedTarget.wt || 0)}
+                      divertedMtr={diversionMtr}
+                    />
+                  )}
+                </div>
+              )}
 
         {/* ========================================================================= */}
         {/* RULE 1 & 4: SOURCE WO BALANCE WIP DISPLAYED ACCORDING TO SELECTED WORK CENTER */}
@@ -1309,28 +1600,56 @@ export default function DiversionForm() {
           </div>
         )}
 
-        {/* Diversion Quantity & Details */}
+        {/* Diversion Quantity & Details: Synchronized Pieces <-> Meters Entry */}
         <div className="grid gap-4 sm:grid-cols-2 pt-1">
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Diversion Quantity (Mtrs) <span className="text-red-500">*</span>
-            </label>
-            <Input
-              type="number"
-              min="0.001"
-              step="0.001"
-              placeholder="Enter diversion meters..."
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-              required
-              disabled={!canManagePlans}
-              className="font-mono font-bold text-sm"
-            />
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Diversion Quantity <span className="text-red-500">*</span>
+              </label>
+              {sourceStagePieceLen > 0 && (
+                <span className="text-[11px] font-mono text-slate-500">
+                  Piece Length: <strong>{fmt(sourceStagePieceLen)} m/pc</strong>
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="text-[10px] text-slate-500 block mb-0.5">Quantity in Meters</span>
+                <Input
+                  type="number"
+                  min="0.001"
+                  step="0.001"
+                  placeholder="Meters..."
+                  value={qty}
+                  onChange={(e) => handleMtrChange(e.target.value)}
+                  required
+                  disabled={!canManagePlans}
+                  className="font-mono font-bold text-sm min-h-[44px]"
+                />
+              </div>
+
+              <div>
+                <span className="text-[10px] text-slate-500 block mb-0.5">Quantity in Pieces</span>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="Pieces..."
+                  value={pcsInput}
+                  onChange={(e) => handlePcsChange(e.target.value)}
+                  disabled={!canManagePlans}
+                  className="font-mono font-bold text-sm min-h-[44px]"
+                />
+              </div>
+            </div>
+
             {sourceWip && (
               <div className="mt-1 text-xs text-slate-500 flex justify-between">
                 <span>Available at {selectedSourceWcObj?.name.split(' ')[0] || sourceWorkCenter}: <strong className="font-mono text-[#0078d4]">{fmt(availableAtWorkCenterPcs, 0)} Pcs</strong> ({fmt(availableAtWorkCenterMtr)} m)</span>
                 {diversionMtr > 0 && (
-                  <span className="font-mono font-bold text-slate-800">≈ {fmt(sourceDivPcs, 0)} Pcs</span>
+                  <span className="font-mono font-bold text-slate-800">Transfer: {fmt(sourceDivPcs, 0)} Pcs</span>
                 )}
               </div>
             )}
@@ -1524,13 +1843,45 @@ export default function DiversionForm() {
               </div>
             </div>
 
+            {/* Target Over-allocation Warning (Soft Warning Only, Non-Blocking) */}
+            {overAlloc && overAlloc.isOverAllocated && (
+              <div className="rounded border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">Target Order Over-allocation Notice:</span> Incoming diversion of{' '}
+                  <strong>{fmt(diversionMtr)} Mtrs</strong> exceeds remaining required balance on{' '}
+                  <strong>{selectedTarget?.work_order_no}</strong> ({fmt(overAlloc.remainingBefore)} Mtrs needed).
+                  This will generate <strong>{fmt(overAlloc.surplusMtr)} Mtrs</strong> surplus finished stock upon completion.
+                </div>
+              </div>
+            )}
+
             {/* Status Explanation Banner */}
             <div className="rounded bg-emerald-100/60 p-2.5 border border-emerald-200 text-xs text-emerald-950 flex items-start gap-2">
               <CheckCircle2 className="h-4 w-4 text-[#107c41] mt-0.5 shrink-0" />
               <div>
-                <strong>Deduction & Allocation Rule Enforced:</strong> On submission, <strong>{fmt(diversionMtr)} Mtrs</strong> will be automatically deducted from <strong>{selectedSource?.work_order_no}</strong> at <strong>{selectedSourceWcObj?.name || sourceWorkCenter}</strong> and credited to <strong>{selectedTarget?.work_order_no}</strong> at <strong>{selectedTargetWcObj?.name || targetWorkCenter}</strong>.
+                <strong>Deduction &amp; Allocation Rule Enforced:</strong> On submission, <strong>{fmt(diversionMtr)} Mtrs</strong> will be automatically deducted from <strong>{selectedSource?.work_order_no}</strong> at <strong>{selectedSourceWcObj?.name || sourceWorkCenter}</strong> and credited to <strong>{selectedTarget?.work_order_no}</strong> at <strong>{selectedTargetWcObj?.name || targetWorkCenter}</strong>.
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Mobile Sticky Action Drawer (< sm screens) */}
+        {source && target && diversionMtr > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-300 p-3 shadow-2xl flex items-center justify-between sm:hidden">
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase font-bold block">Diversion Total</span>
+              <span className="text-sm font-mono font-black text-slate-900">
+                {fmt(diversionMtr)} m <span className="text-xs text-blue-600 font-normal">({fmt(sourceDivPcs, 0)} pcs)</span>
+              </span>
+            </div>
+            <Button
+              type="submit"
+              disabled={busy || !canManagePlans || isExceeding || availableAtWorkCenterMtr <= 0}
+              className="bg-[#0078d4] hover:bg-[#106ebe] text-white font-bold text-xs px-4 min-h-[44px] shadow-sm"
+            >
+              {busy ? 'Issuing...' : 'Issue Plan'}
+            </Button>
           </div>
         )}
 
@@ -1548,8 +1899,8 @@ export default function DiversionForm() {
             disabled={busy || !canManagePlans || isExceeding || !source || !target || diversionMtr <= 0 || availableAtWorkCenterMtr <= 0}
             className={
               canManagePlans && !isExceeding && diversionMtr > 0 && availableAtWorkCenterMtr > 0
-                ? 'bg-[#0078d4] text-white hover:bg-[#106ebe] px-5 font-semibold'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed px-5'
+                ? 'bg-[#0078d4] text-white hover:bg-[#106ebe] px-5 font-semibold min-h-[44px]'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed px-5 min-h-[44px]'
             }
           >
             {busy
@@ -1562,10 +1913,20 @@ export default function DiversionForm() {
           </Button>
         </div>
       </form>
+          )}
+        </div>
+      )}
 
-      {/* ========================================================================= */}
-      {/* ISSUED DIVERSION PLANS TABLE WITH EDIT & DELETE (OFFICE / SPREADSHEET STYLE) */}
-      {/* ========================================================================= */}
+      {/* TAB 2: OFFCUTS & REMNANTS POOL */}
+      {activeTab === 'REMNANTS' && (
+        <OffcutPoolManager onDivertRemnant={handleDivertRemnant} canManagePlans={canManagePlans} />
+      )}
+
+      {/* TAB 3: DIVERSION LOGS & HISTORY TABLE */}
+      {(activeTab === 'LOGS' || activeTab === 'ISSUE') && (
+      /* ========================================================================= */
+      /* ISSUED DIVERSION PLANS TABLE WITH EDIT & DELETE (OFFICE / SPREADSHEET STYLE) */
+      /* ========================================================================= */
       <section className="rounded-lg border border-slate-300 bg-white p-5 shadow-2xs space-y-4">
         <div className="border-b border-slate-200 pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1869,6 +2230,7 @@ export default function DiversionForm() {
           </table>
         </div>
       </section>
+      )}
 
       {/* ========================================================================= */}
       {/* EDIT DIVERSION MODAL DIALOG */}

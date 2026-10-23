@@ -9,12 +9,12 @@ import { Scissors, AlertCircle, Plus, Trash2, CheckCircle2, Recycle } from 'luci
 interface WO {
   id: string;
   work_order_no: string;
-  customer_name?: string;
-  grade?: string;
-  size_od?: number;
-  size_wt?: number;
-  od?: number;
-  wt?: number;
+  customer_name?: string | null;
+  grade?: string | null;
+  size_od?: number | null;
+  size_wt?: number | null;
+  od?: number | null;
+  wt?: number | null;
 }
 
 interface Route {

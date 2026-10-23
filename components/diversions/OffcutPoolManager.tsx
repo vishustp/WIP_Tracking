@@ -212,7 +212,7 @@ export function OffcutPoolManager({ onDivertRemnant, canManagePlans }: OffcutPoo
           <Layers className="h-8 w-8 text-slate-300 mx-auto" />
           <p className="font-bold text-slate-700">No active off-cuts currently in pool.</p>
           <p className="text-slate-400">
-            When mother pipes are cut in "Cut &amp; Divert" mode, remnants &ge; 3.0m will automatically register here.
+            When mother pipes are cut in &quot;Cut &amp; Divert&quot; mode, remnants &ge; 3.0m will automatically register here.
           </p>
         </div>
       ) : (
