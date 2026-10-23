@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { calcCutSplitRemnant, type CutSplitItem } from '@/lib/diversionCalculations';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { WorkOrderSelect } from '@/components/ui/WorkOrderSelect';
 import { Scissors, AlertCircle, Plus, Trash2, CheckCircle2, Recycle } from 'lucide-react';
 
 interface WO {
@@ -217,21 +218,16 @@ export function CutAndDivertSection({
             <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
               Target Work Order (1) *
             </label>
-            <Select
+            <WorkOrderSelect
               value={target1Wo}
-              onChange={(e) => setTarget1Wo(e.target.value)}
+              onChange={(val) => setTarget1Wo(val)}
+              workOrders={wos}
+              excludeId={sourceWoId}
               required
-              className="min-h-[44px]"
-            >
-              <option value="">Select Target Order...</option>
-              {wos
-                .filter((w) => w.id !== sourceWoId)
-                .map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.work_order_no} · {w.customer_name || 'Generic'} ({w.grade || 'Grade N/A'} · {w.size_od || w.od}×{w.size_wt || w.wt}mm)
-                  </option>
-                ))}
-            </Select>
+              placeholder="Select Target Order..."
+              searchPlaceholder="Search target order by WO#, customer, size..."
+              buttonClassName="font-mono text-sm min-h-[44px]"
+            />
           </div>
 
           <div>
@@ -305,21 +301,16 @@ export function CutAndDivertSection({
               <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                 Target Work Order (2) *
               </label>
-              <Select
+              <WorkOrderSelect
                 value={target2Wo}
-                onChange={(e) => setTarget2Wo(e.target.value)}
+                onChange={(val) => setTarget2Wo(val)}
+                workOrders={wos}
+                excludeId={sourceWoId}
                 required={hasTarget2}
-                className="min-h-[44px]"
-              >
-                <option value="">Select Secondary Order...</option>
-                {wos
-                  .filter((w) => w.id !== sourceWoId && w.id !== target1Wo)
-                  .map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.work_order_no} · {w.customer_name || 'Generic'} ({w.grade || 'Grade N/A'} · {w.size_od || w.od}×{w.size_wt || w.wt}mm)
-                    </option>
-                  ))}
-              </Select>
+                placeholder="Select Secondary Order..."
+                searchPlaceholder="Search secondary order by WO#, customer, size..."
+                buttonClassName="font-mono text-sm min-h-[44px]"
+              />
             </div>
 
             <div>

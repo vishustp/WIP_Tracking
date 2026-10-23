@@ -35,6 +35,7 @@ import { StpConstraintAlert } from '@/components/diversions/StpConstraintAlert';
 import { CutAndDivertSection } from '@/components/diversions/CutAndDivertSection';
 import { OffcutPoolManager } from '@/components/diversions/OffcutPoolManager';
 import { calcOrderBalanceSurplus } from '@/lib/diversionCalculations';
+import { WorkOrderSelect } from '@/components/ui/WorkOrderSelect';
 
 type WO = {
   id: string;
@@ -1160,20 +1161,16 @@ export default function DiversionForm() {
                   <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Source Work Order (From) *
                   </label>
-                  <Select
+                  <WorkOrderSelect
                     value={source}
-                    onChange={(e) => void handleSourceChange(e.target.value)}
+                    onChange={(val) => void handleSourceChange(val)}
+                    workOrders={wos}
                     required
                     disabled={!canManagePlans}
-                    className="font-mono text-sm min-h-[44px]"
-                  >
-                    <option value="">Select Source Work Order...</option>
-                    {wos.map((x) => (
-                      <option key={x.id} value={x.id}>
-                        {x.work_order_no} · {x.customer_name || 'Generic'} ({x.grade || 'Grade N/A'} · {x.size_od || x.od}×{x.size_wt || x.wt}mm)
-                      </option>
-                    ))}
-                  </Select>
+                    placeholder="Select Source Work Order..."
+                    searchPlaceholder="Search source order by WO#, customer, grade, size..."
+                    buttonClassName="font-mono text-sm min-h-[44px]"
+                  />
                 </div>
 
                 <div>
@@ -1242,42 +1239,33 @@ export default function DiversionForm() {
                   <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Source Work Order (From) <span className="text-red-500">*</span>
                   </label>
-                  <Select
+                  <WorkOrderSelect
                     value={source}
-                    onChange={(e) => void handleSourceChange(e.target.value)}
+                    onChange={(val) => void handleSourceChange(val)}
+                    workOrders={wos}
                     required
                     disabled={!canManagePlans}
-                    className="font-mono text-sm min-h-[44px]"
-                  >
-                    <option value="">Select Source Work Order...</option>
-                    {wos.map((x) => (
-                      <option key={x.id} value={x.id}>
-                        {x.work_order_no} · {x.customer_name || 'Generic'} ({x.grade || 'Grade N/A'} · {x.size_od || x.od}×{x.size_wt || x.wt}mm)
-                      </option>
-                    ))}
-                  </Select>
+                    placeholder="Select Source Work Order..."
+                    searchPlaceholder="Search source order by WO#, customer, grade, size..."
+                    buttonClassName="font-mono text-sm min-h-[44px]"
+                  />
                 </div>
 
                 <div>
                   <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wider">
                     Target Work Order (To) <span className="text-red-500">*</span>
                   </label>
-                  <Select
+                  <WorkOrderSelect
                     value={target}
-                    onChange={(e) => handleTargetChange(e.target.value)}
+                    onChange={(val) => handleTargetChange(val)}
+                    workOrders={wos}
+                    excludeId={source}
                     required
                     disabled={!canManagePlans}
-                    className="font-mono text-sm min-h-[44px]"
-                  >
-                    <option value="">Select Target Work Order...</option>
-                    {wos
-                      .filter((x) => x.id !== source)
-                      .map((x) => (
-                        <option key={x.id} value={x.id}>
-                          {x.work_order_no} · {x.customer_name || 'Generic'} ({x.grade || 'Grade N/A'} · {x.size_od || x.od}×{x.size_wt || x.wt}mm)
-                        </option>
-                      ))}
-                  </Select>
+                    placeholder="Select Target Work Order..."
+                    searchPlaceholder="Search target order by WO#, customer, grade, size..."
+                    buttonClassName="font-mono text-sm min-h-[44px]"
+                  />
                 </div>
               </div>
 

@@ -14,6 +14,8 @@ import {
   Wrench, ArrowRightLeft, GitFork, AlertTriangle, FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { WorkOrderSelect } from '@/components/ui/WorkOrderSelect';
 
 const DEFAULT_SALVAGE_REASONS = [
   'Bend / Str Mark / OD Wave',
@@ -1376,20 +1378,54 @@ export default function QcInspectionClient() {
       {/* TAB 1: PENDING INSPECTION QUEUE */}
       {activeTab === 'queue' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="relative flex-1 max-w-md">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
-              <input
-                type="text"
-                aria-label="Search inspection queue by work order number, lot number, customer, or specification"
-                value={queueSearch}
-                onChange={(e) => setQueueSearch(e.target.value)}
-                placeholder="Search by WO#, Lot No, customer, specification..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex-1 max-w-sm">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                Quick Select Order to Inspect
+              </label>
+              <WorkOrderSelect
+                value=""
+                onChange={(woId) => {
+                  const item = queueItems.find((q) => q.work_order_id === woId);
+                  if (item) {
+                    openRecordModal(item);
+                  }
+                }}
+                workOrders={queueItems.map((q) => ({
+                  id: q.work_order_id,
+                  work_order_no: q.work_order_no,
+                  customer_name: q.customer_name,
+                  grade: q.specification,
+                  size_od: q.size_od,
+                  size_wt: q.size_wt,
+                  avg_length: q.avg_length,
+                  available_pcs: q.available_ht_ok_pcs,
+                  available_mtr: q.available_ht_ok_mtr,
+                }))}
+                placeholder="Select / Search WO to inspect..."
+                searchPlaceholder="Search queue by WO#, customer, size..."
+                showWipBadge
+                buttonClassName="text-xs min-h-[38px]"
               />
             </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              Showing <span className="font-bold text-slate-800 dark:text-slate-200">{filteredQueue.length}</span> work orders awaiting QC inspection
+            <div className="relative flex-1 max-w-sm">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                Filter Queue List
+              </label>
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                <input
+                  type="text"
+                  aria-label="Search inspection queue by work order number, lot number, customer, or specification"
+                  value={queueSearch}
+                  onChange={(e) => setQueueSearch(e.target.value)}
+                  placeholder="Filter by WO#, Lot, Customer..."
+                  className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[38px]"
+                />
+              </div>
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium self-end sm:self-center">
+              Showing <span className="font-bold text-slate-800 dark:text-slate-200">{filteredQueue.length}</span> awaiting QC
             </div>
           </div>
 
@@ -1438,8 +1474,84 @@ export default function QcInspectionClient() {
                 </div>
               </div>
             ) : (
-              <div className="overflow-auto max-h-[70vh] relative">
-                <table className="min-w-full text-left text-xs">
+              <>
+                {/* 1. Mobile Responsive Queue Cards (< 768px) */}
+                <div className="grid grid-cols-1 gap-2.5 p-2.5 md:hidden">
+                  {filteredQueue.map((item) => (
+                    <div
+                      key={item.work_order_id}
+                      className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 p-3 shadow-2xs space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/60 pb-2">
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-bold text-sm text-slate-900 dark:text-slate-100">
+                              {item.work_order_no}
+                            </span>
+                            {item.is_master && (
+                              <span className="rounded bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                                Master
+                              </span>
+                            )}
+                            {item.is_child && (
+                              <span className="rounded bg-teal-50 dark:bg-teal-950/70 border border-teal-200 dark:border-teal-800 px-1.5 py-0.5 text-[10px] font-bold text-teal-700 dark:text-teal-300">
+                                Child
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[200px]">
+                            {item.customer_name || 'Commercial Tube'}
+                          </div>
+                        </div>
+                        {item.heat_lot_no && (
+                          <span className="font-mono font-bold text-[10px] px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
+                            {item.heat_lot_no}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block">Dimensions:</span>
+                          <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                            {item.size_od} × {item.size_wt} mm
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block">Length:</span>
+                          <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                            {item.l1 && item.l2 ? `${item.l1}-${item.l2}m` : `${item.avg_length}m`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 p-2 text-xs">
+                        <div>
+                          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold block">Available to Inspect:</span>
+                          <span className="font-mono font-black text-sm text-blue-900 dark:text-blue-200">
+                            {fmt(item.available_ht_ok_pcs)} Nos
+                          </span>
+                          <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300 ml-1">
+                            ({fmt(item.available_ht_ok_mt, ' MT')})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openRecordModal(item)}
+                          disabled={!canModify}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white shadow hover:bg-blue-700 active:scale-95 disabled:opacity-40 min-h-[40px] cursor-pointer"
+                        >
+                          <ClipboardCheck size={14} />
+                          Inspect
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 2. Desktop Queue Table (>= 768px) */}
+                <div className="hidden md:block overflow-auto max-h-[70vh] relative">
+                  <table className="min-w-full text-left text-xs">
                   <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold shadow-2xs">
                     <tr>
                       <th className="py-3 px-3.5">Work Order #</th>
@@ -1545,6 +1657,7 @@ export default function QcInspectionClient() {
                   </tbody>
                 </table>
               </div>
+            </>
             )}
           </div>
         </div>
@@ -1890,24 +2003,31 @@ export default function QcInspectionClient() {
                   <label className="block text-xs font-bold text-indigo-950 dark:text-indigo-200">
                     Assign Inspection to Work Order *
                   </label>
-                  <select
+                  <SearchableSelect
                     value={targetWorkOrderId}
-                    onChange={(e) => setTargetWorkOrderId(e.target.value)}
-                    className="w-full rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-bold text-indigo-900 dark:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm cursor-pointer"
-                  >
-                    <option value={selectedQueueItem.work_order_id}>
-                      Master WO #{selectedQueueItem.work_order_no} — {selectedQueueItem.customer_name || 'Commercial Tube'}
-                    </option>
-                    {selectedQueueItem.child_work_orders.map((c: any) => {
-                      const cId = c.work_order_id || c.id;
-                      const matchedWo = workOrders.find((w) => w.id === cId);
-                      return (
-                        <option key={cId} value={cId}>
-                          Child WO #{c.work_order_no || matchedWo?.work_order_no} — {c.customer_name || matchedWo?.customer_name || 'Commercial Tube'}
-                        </option>
-                      );
-                    })}
-                  </select>
+                    onChange={(val) => setTargetWorkOrderId(val)}
+                    placeholder="Select Work Order..."
+                    searchPlaceholder="Search campaign work order..."
+                    buttonClassName="text-xs font-bold text-indigo-900 dark:text-indigo-200 border-indigo-300 dark:border-indigo-700 min-h-[40px]"
+                    options={[
+                      {
+                        value: selectedQueueItem.work_order_id,
+                        label: `Master WO #${selectedQueueItem.work_order_no}`,
+                        sublabel: selectedQueueItem.customer_name || 'Commercial Tube',
+                        badge: 'Master Order',
+                      },
+                      ...selectedQueueItem.child_work_orders.map((c: any) => {
+                        const cId = c.work_order_id || c.id;
+                        const matchedWo = workOrders.find((w) => w.id === cId);
+                        return {
+                          value: cId,
+                          label: `Child WO #${c.work_order_no || matchedWo?.work_order_no}`,
+                          sublabel: c.customer_name || matchedWo?.customer_name || 'Commercial Tube',
+                          badge: 'Child Order',
+                        };
+                      }),
+                    ]}
+                  />
                   <p className="text-[11px] text-indigo-700 dark:text-indigo-300 font-medium">
                     This rolling campaign includes {selectedQueueItem.child_work_orders.length} child orders. Select which order these inspected cut pieces belong to.
                   </p>
@@ -2448,19 +2568,15 @@ export default function QcInspectionClient() {
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                         Select Target Work Order *
                       </label>
-                      <select
+                      <WorkOrderSelect
                         required
                         value={reworkTargetWoId}
-                        onChange={(e) => setReworkTargetWoId(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">-- Choose Target WO --</option>
-                        {availableTargetWos.map((w) => (
-                          <option key={w.id} value={w.id}>
-                            WO #{w.work_order_no} ({w.customer_name || 'Commercial'} · {w.size_od}×{w.size_wt}mm · {w.specification || w.grade})
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => setReworkTargetWoId(val)}
+                        workOrders={availableTargetWos}
+                        placeholder="-- Choose Target WO --"
+                        searchPlaceholder="Search target order by WO#, customer, size..."
+                        buttonClassName="text-xs min-h-[40px]"
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
