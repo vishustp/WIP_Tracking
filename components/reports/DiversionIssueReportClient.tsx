@@ -170,8 +170,9 @@ export default function DiversionIssueReportClient() {
     const stageCounts: Record<string, number> = {};
 
     plans.forEach((p) => {
+      const mult = p.multiple && Number(p.multiple) > 1 ? Number(p.multiple) : 1;
       totalMtr += Number(p.diverted_qty || 0);
-      totalPcs += Number(p.diverted_pcs || 0);
+      totalPcs += Math.round(Number(p.diverted_pcs || 0) * mult);
       totalMt += Number(p.diverted_mt || 0);
       stageCounts[p.work_center] = (stageCounts[p.work_center] || 0) + 1;
     });
@@ -223,7 +224,7 @@ export default function DiversionIssueReportClient() {
       p.target_grade || '',
       `"${p.target_size || ''}"`,
       p.diverted_qty ?? 0,
-      p.diverted_pcs ?? 0,
+      p.multiple && Number(p.multiple) > 1 ? Math.round(Number(p.diverted_pcs || 0) * Number(p.multiple)) : (p.diverted_pcs ?? 0),
       p.diverted_mt ?? 0,
       p.multiple ?? 1,
       p.route_code || '',
@@ -457,8 +458,9 @@ export default function DiversionIssueReportClient() {
 
       // Row 15: Values
       ws.getRow(15).height = 24;
-      const v1 = ws.getCell(15, 1);
-      v1.value = `${fmt(plan.diverted_pcs, 0)} PCS`;
+      const mult = plan.multiple && Number(plan.multiple) > 1 ? Number(plan.multiple) : 1;
+      const cutPcs = Math.round(Number(plan.diverted_pcs || 0) * mult);
+      v1.value = mult > 1 ? `${cutPcs} PCS (${plan.diverted_pcs} mother × ${mult})` : `${fmt(plan.diverted_pcs, 0)} PCS`;
       v1.font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF312E81' } };
       v1.alignment = { horizontal: 'center', vertical: 'middle' };
       v1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
@@ -884,8 +886,18 @@ export default function DiversionIssueReportClient() {
                       {/* Primary Focus Cells: Diverted Pcs (Highlighted, Bold) */}
                       <td className="px-3 py-2 text-right font-mono bg-indigo-50/60 border-l border-indigo-200 print:bg-white print:border-black">
                         <span className="inline-block px-2 py-0.5 rounded-md font-black text-xs sm:text-sm text-indigo-950 bg-indigo-100/90 border border-indigo-300 print:bg-white print:border-black print:text-black">
-                          {fmt(p.diverted_pcs, 0)}
+                          {fmt(
+                            p.multiple && Number(p.multiple) > 1
+                              ? Number(p.diverted_pcs || 0) * Number(p.multiple)
+                              : p.diverted_pcs,
+                            0
+                          )}
                         </span>
+                        {p.multiple && Number(p.multiple) > 1 ? (
+                          <div className="text-[10px] text-indigo-600 font-mono print:text-black">
+                            ({fmt(p.diverted_pcs, 0)} mother × {p.multiple})
+                          </div>
+                        ) : null}
                       </td>
 
                       {/* Primary Focus Cells: Weight MT (Highlighted, Bold) */}
@@ -1139,7 +1151,20 @@ export default function DiversionIssueReportClient() {
                 <div className="grid grid-cols-4 gap-3 rounded-lg border border-slate-200 p-3 bg-slate-50 print:bg-white print:border-black font-mono text-center">
                   <div className="rounded-md bg-indigo-50 border border-indigo-200 p-2 print:bg-white print:border-black">
                     <span className="text-indigo-900 text-[10px] block uppercase font-bold print:text-black">Transferred Pcs ★</span>
-                    <span className="text-lg font-black text-indigo-950 print:text-black">{fmt(selectedPlanForSlip.diverted_pcs, 0)} PCS</span>
+                    <span className="text-lg font-black text-indigo-950 print:text-black">
+                      {fmt(
+                        selectedPlanForSlip.multiple && Number(selectedPlanForSlip.multiple) > 1
+                          ? Number(selectedPlanForSlip.diverted_pcs || 0) * Number(selectedPlanForSlip.multiple)
+                          : selectedPlanForSlip.diverted_pcs,
+                        0
+                      )}{' '}
+                      PCS
+                    </span>
+                    {selectedPlanForSlip.multiple && Number(selectedPlanForSlip.multiple) > 1 ? (
+                      <span className="text-[10px] text-indigo-600 block font-mono print:text-black">
+                        ({fmt(selectedPlanForSlip.diverted_pcs, 0)} mother × {selectedPlanForSlip.multiple})
+                      </span>
+                    ) : null}
                   </div>
                   <div className="rounded-md bg-emerald-50 border border-emerald-200 p-2 print:bg-white print:border-black">
                     <span className="text-emerald-900 text-[10px] block uppercase font-bold print:text-black">Transferred MT ★</span>

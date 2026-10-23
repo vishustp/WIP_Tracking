@@ -206,7 +206,7 @@ export default function WorkOrderTrackingClient() {
           .limit(10000),
         supabase.from('process_routes').select('id, route_code, route_name'),
         supabase.from('qc_inspections').select('*').order('inspection_date', { ascending: false }),
-        supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, reason'),
+        supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, reason'),
       ]);
 
       if (woRes.data) setWorkOrders(woRes.data);
@@ -436,6 +436,31 @@ export default function WorkOrderTrackingClient() {
         diversionPlans
           .filter((d: any) => d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode)
           .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+      const getStageDivInPcs = (wId: string, stageCode: string, fallbackTargetAvgLen: number = avgLen) => {
+        const matching = diversionPlans.filter((d: any) => d.target_wo_id === wId && parseDiversionStages(d).targetStage === stageCode);
+        return matching.reduce((sum: number, d: any) => {
+          const dQty = Number(d.diverted_qty || 0);
+          if (dQty <= 0) return sum;
+          const mult = parseDiversionStages(d).multiple;
+          const srcWo = workOrders.find((w) => w.id === d.source_wo_id);
+          const srcL1 = Number(srcWo?.l1 || 0);
+          const srcL2 = Number(srcWo?.l2 || 0);
+          const srcAvgLen = srcL1 > 0 && srcL2 > 0 ? (srcL1 + srcL2) / 2 : srcL1 || fallbackTargetAvgLen;
+          const srcMotherPcs = srcAvgLen > 0 ? Math.round(dQty / srcAvgLen) : 0;
+          const cutPcs = srcMotherPcs > 0 ? Math.round(srcMotherPcs * mult) : (fallbackTargetAvgLen > 0 ? Math.round(dQty / fallbackTargetAvgLen) : 0);
+          return sum + cutPcs;
+        }, 0);
+      };
+
+      const getStageDivOutPcs = (wId: string, stageCode: string, sourceAvgLen: number = avgLen) => {
+        const matching = diversionPlans.filter((d: any) => d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode);
+        return matching.reduce((sum: number, d: any) => {
+          const dQty = Number(d.diverted_qty || 0);
+          if (dQty <= 0) return sum;
+          return sum + (sourceAvgLen > 0 ? Math.round(dQty / sourceAvgLen) : 0);
+        }, 0);
+      };
 
       // Route determination: check stageWip (from vw_route_stage_wip) or rolling plan route
       const planRoute = processRoutes.find((r) => r.id === plan?.process_route_id);
@@ -872,8 +897,8 @@ export default function WorkOrderTrackingClient() {
 
           const incomingPcs = hasHtcInRoute ? Math.max(0, htcOutPcs - htcRejPcs) : rollingHtcOkPcs;
           const effDrawLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
-          const divInPcs = effDrawLen > 0 ? Math.round(divIn / effDrawLen) : 0;
-          const divOutPcs = effDrawLen > 0 ? Math.round(divOut / effDrawLen) : 0;
+          const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'DRAW', effDrawLen);
+          const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'DRAW', effDrawLen);
           const consumedPcs = drawOutPcs + drawRejPcs;
 
           let wipPcs = 0;
@@ -949,8 +974,8 @@ export default function WorkOrderTrackingClient() {
 
           const incomingPcs = rollingHtcOkPcs;
           const effPilgerLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
-          const divInPcs = effPilgerLen > 0 ? Math.round(divIn / effPilgerLen) : 0;
-          const divOutPcs = effPilgerLen > 0 ? Math.round(divOut / effPilgerLen) : 0;
+          const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'PILGER', effPilgerLen);
+          const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'PILGER', effPilgerLen);
           const consumedPcs = Math.max(
             pilgerOutPcs + pilgerRejPcs,
             hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
@@ -1027,8 +1052,8 @@ export default function WorkOrderTrackingClient() {
           const incomingNetPcs = hasPilgerInRoute
             ? Math.max(0, pilgerOutPcs - pilgerRejPcs)
             : Math.max(0, drawOutPcs - drawRejPcs);
-          const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
-          const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
+          const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'HEAT_TREATMENT', avgLen);
+          const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'HEAT_TREATMENT', avgLen);
           const consumedPcs = Math.max(
             htOutPcs + htRejPcs,
             downstreamMotherPcsFromBandSaw
@@ -1091,8 +1116,8 @@ export default function WorkOrderTrackingClient() {
           }
           const isHfsLike = !hasDrawInRoute && !hasPilgerInRoute;
           const effLen = isHfsLike && mhAvgLen > 0 ? mhAvgLen : avgLen;
-          const divInPcs = effLen > 0 ? Math.round(divIn / effLen) : 0;
-          const divOutPcs = effLen > 0 ? Math.round(divOut / effLen) : 0;
+          const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'BAND_SAW', effLen);
+          const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'BAND_SAW', effLen);
           const consumedPcs = bandSawOutPcs + bandSawRejPcs;
 
           let wipPcs = 0;
@@ -1145,8 +1170,8 @@ export default function WorkOrderTrackingClient() {
           const divIn = getStageDivIn(effectiveMasterWoId, 'VDI');
           const divOut = getStageDivOut(effectiveMasterWoId, 'VDI');
           const incomingPcs = bandSawOutPcs > 0 ? Math.max(0, bandSawOutPcs - bandSawRejPcs) : 0;
-          let divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
-          const divOutPcs = avgLen > 0 ? Math.round(divOut / avgLen) : 0;
+          let divInPcs = getStageDivInPcs(effectiveMasterWoId, 'VDI', avgLen);
+          const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'VDI', avgLen);
 
           const qcInspectedPcs = relevantVdiQcList.reduce(
             (sum: number, q: any) => sum + Number(q.inspected_pcs || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0))),
@@ -1234,8 +1259,8 @@ export default function WorkOrderTrackingClient() {
         const divOut = getStageDivOut(wo.id, 'FINISHING');
         const vdiDivOut = getStageDivOut(wo.id, 'VDI');
         const totalDivOut = divOut + vdiDivOut;
-        const divInPcs = avgLen > 0 ? Math.round(divIn / avgLen) : 0;
-        const divOutPcs = avgLen > 0 ? Math.round(totalDivOut / avgLen) : 0;
+        const divInPcs = getStageDivInPcs(wo.id, 'FINISHING', avgLen);
+        const divOutPcs = getStageDivOutPcs(wo.id, 'FINISHING', avgLen) + getStageDivOutPcs(wo.id, 'VDI', avgLen);
 
         let wipPcs = 0;
         const consumedPcs = finOutPcs + finRejPcs;

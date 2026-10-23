@@ -711,16 +711,19 @@ export function normalizeGrade(rawGrade?: string | null): string {
  * Recognizes [FROM_STAGE: <stage>] and [TO_STAGE: <stage>] tags in reason,
  * falling back gracefully to d.work_center when either tag is absent.
  */
-export function parseDiversionStages(d: { reason?: string | null; work_center?: string | null }): {
+export function parseDiversionStages(d: { reason?: string | null; work_center?: string | null; multiple?: number | null }): {
   sourceStage: string;
   targetStage: string;
+  multiple: number;
 } {
   const reason = d.reason || '';
   const fromMatch = reason.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i);
   const toMatch = reason.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i);
+  const multMatch = reason.match(/\[MULTIPLE:\s*([0-9.]+)\]/i);
   const sourceStage = (fromMatch ? fromMatch[1] : d.work_center || '').toUpperCase();
   const targetStage = (toMatch ? toMatch[1] : d.work_center || '').toUpperCase();
-  return { sourceStage, targetStage };
+  const multiple = Math.max(1, Number(multMatch ? multMatch[1] : (d.multiple || 1)));
+  return { sourceStage, targetStage, multiple };
 }
 
 /**
@@ -740,7 +743,11 @@ export function formatDiversionReason(
  * Strips internal stage routing tags from diversion reason for clean UI display.
  */
 export function cleanDiversionReason(reason: string | null | undefined): string {
-  return (reason || '').replace(/\[FROM_STAGE:[^\]]*\]/gi, '').replace(/\[TO_STAGE:[^\]]*\]/gi, '').trim();
+  return (reason || '')
+    .replace(/\[FROM_STAGE:[^\]]*\]/gi, '')
+    .replace(/\[TO_STAGE:[^\]]*\]/gi, '')
+    .replace(/\[MULTIPLE:[^\]]*\]/gi, '')
+    .trim();
 }
 
 export interface WorkOrderFormData {

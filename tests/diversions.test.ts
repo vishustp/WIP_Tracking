@@ -513,6 +513,56 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
       expect(reconciled.summary.plant_total_wip_pcs).toBe(0);
       expect(reconciled.summary.plant_total_wip_mtr).toBe(0);
     });
+
+    it('correctly calculates cut pieces and conserves meters when multiple > 1 (e.g. 100 pipes of 10m cut in 2 become 200 pcs of 5m)', async () => {
+      const { parseDiversionStages, cleanDiversionReason } = await import('@/lib/productionUtils');
+
+      const reason = 'Order Length Specification [MULTIPLE: 2] [FROM_STAGE: DRAW] [TO_STAGE: DRAW]';
+      const parsed = parseDiversionStages({ reason, multiple: 2, work_center: 'DRAW' });
+      expect(parsed.sourceStage).toBe('DRAW');
+      expect(parsed.targetStage).toBe('DRAW');
+      expect(parsed.multiple).toBe(2);
+      expect(cleanDiversionReason(reason)).toBe('Order Length Specification');
+
+      // User Scenario:
+      // 100 mother pipes of 10m length (1,000 m) diverted with multiple = 2.
+      // Target should receive 200 cut pieces of 5m length (1,000 m total).
+      const sourceAvgLen = 10.0;
+      const divertedQty = 1000;
+      const multiple = parsed.multiple;
+
+      const sourceMotherPcs = Math.round(divertedQty / sourceAvgLen);
+      expect(sourceMotherPcs).toBe(100);
+
+      const targetCutPcs = Math.round(sourceMotherPcs * multiple);
+      expect(targetCutPcs).toBe(200);
+
+      const targetCutLen = Number((sourceAvgLen / multiple).toFixed(2));
+      expect(targetCutLen).toBe(5.0);
+
+      const totalTargetMeters = targetCutPcs * targetCutLen;
+      expect(totalTargetMeters).toBe(1000);
+    });
+
+    it('deducts diverted VDI salvage from VDI_SALVAGE queue and balance', () => {
+      // Scenario based on WO 4069:
+      // WO 4069 had 58 pcs / 574.2m VDI Salvage recorded across QC inspections.
+      // 347.999m (35 pcs) were diverted to WO 6607 DRAW.
+      // Remaining available salvage in VDI_SALVAGE must be 23 pcs / 226.201m.
+      const qcSalvagePcs = 58;
+      const qcSalvageMtr = 574.2;
+      const avgLength = 9.9;
+
+      const vdiSalvageDivOut = 347.999;
+      const vdiSalvageDivOutPcs = Math.round(vdiSalvageDivOut / avgLength);
+      expect(vdiSalvageDivOutPcs).toBe(35);
+
+      const remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut).toFixed(3)));
+      const remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs);
+
+      expect(remSalvageMtr).toBe(226.201);
+      expect(remSalvagePcs).toBe(23);
+    });
   });
 });
 

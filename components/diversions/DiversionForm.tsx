@@ -712,12 +712,18 @@ export default function DiversionForm() {
   const targetAvgLen = targetWip?.avgLength || 6.0;
   const targetOd = targetWip?.od || 0;
   const targetWt = targetWip?.wt || 0;
-  const targetDivPcs = targetAvgLen > 0 ? diversionMtr / targetAvgLen : 0;
+  const targetDivPcs = numMultiple > 1
+    ? Math.round(sourceDivPcs * numMultiple)
+    : (targetAvgLen > 0 ? diversionMtr / targetAvgLen : sourceDivPcs);
+  const targetCutLen = numMultiple > 1 && sourceAvgLen > 0
+    ? Number((sourceAvgLen / numMultiple).toFixed(2))
+    : targetAvgLen;
   const targetDivMt = targetOd > targetWt ? (targetOd - targetWt) * targetWt * 0.0246615 * 0.001 * diversionMtr : 0;
 
   const targetInitialWipMtr = (targetWip?.rollingHtcOkMtr || 0) + (targetWip?.divertedInMtr || 0);
+  const targetInitialWipPcs = (targetWip?.rollingHtcOkPcs || 0) + (targetWip?.divertedInPcs || 0);
   const targetPostWipMtr = targetInitialWipMtr + diversionMtr;
-  const targetPostWipPcs = targetAvgLen > 0 ? targetPostWipMtr / targetAvgLen : 0;
+  const targetPostWipPcs = targetInitialWipPcs + targetDivPcs;
   const targetPostWipMt = targetOd > targetWt ? (targetOd - targetWt) * targetWt * 0.0246615 * 0.001 * targetPostWipMtr : 0;
 
   const isExceeding = diversionMtr > sourceInitialBalanceMtr;
@@ -750,7 +756,7 @@ export default function DiversionForm() {
       .replace(/\[FROM_STAGE:\s*[A-Z_]+\]/gi, '')
       .replace(/\[TO_STAGE:\s*[A-Z_]+\]/gi, '')
       .trim();
-    const finalReason = `${cleanedUserReason} [FROM_STAGE: ${sourceWorkCenter}] [TO_STAGE: ${targetWorkCenter}]`.trim();
+    const finalReason = `${cleanedUserReason}${numMultiple > 1 ? ` [MULTIPLE: ${numMultiple}]` : ''} [FROM_STAGE: ${sourceWorkCenter}] [TO_STAGE: ${targetWorkCenter}]`.trim();
 
     setBusy(true);
     let success = false;
@@ -1455,9 +1461,16 @@ export default function DiversionForm() {
                     <span className="font-bold text-emerald-800 flex items-center gap-1">
                       <TrendingUp size={13} /> Incoming Diverted WIP:
                     </span>
-                    <span className="font-mono font-black text-emerald-700 text-xs">
-                      + {fmt(targetDivPcs, 0)} Pcs (+ {fmt(diversionMtr)} Mtr)
-                    </span>
+                    <div className="text-right">
+                      <span className="font-mono font-black text-emerald-700 text-xs block">
+                        + {fmt(targetDivPcs, 0)} Pcs (+ {fmt(diversionMtr)} Mtr)
+                      </span>
+                      {numMultiple > 1 && (
+                        <span className="text-[10px] text-emerald-700 font-mono block">
+                          ({fmt(sourceDivPcs, 0)} mother pipes × {numMultiple} cuts @ {fmt(targetCutLen)}m)
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex justify-between items-center pt-1 border-t border-slate-100 font-medium">
@@ -1751,7 +1764,14 @@ export default function DiversionForm() {
                       </td>
 
                       <td className="px-3 py-2 text-right font-mono text-slate-700 border-r border-slate-200">
-                        {fmt(p.diverted_pcs, 0)}
+                        {Number(p.multiple || 1) > 1 ? (
+                          <div className="flex flex-col items-end">
+                            <span className="font-bold text-slate-900">{fmt(Number(p.diverted_pcs || 0) * Number(p.multiple), 0)} cut</span>
+                            <span className="text-[10px] text-slate-400 font-normal">({fmt(p.diverted_pcs, 0)} mother × {p.multiple})</span>
+                          </div>
+                        ) : (
+                          fmt(p.diverted_pcs, 0)
+                        )}
                       </td>
 
                       <td className="px-3 py-2 text-right font-mono text-slate-700 border-r border-slate-200">

@@ -313,6 +313,32 @@ export async function GET(req: NextRequest) {
         .filter((d: any) => d.source_wo_id === wId && parseDivStages(d).sourceStage === stageCode)
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
+    const getStageDivInPcs = (wId: string, stageCode: string, fallbackTargetAvgLen: number = 6.0) => {
+      const matching = diversions.filter((d: any) => d.target_wo_id === wId && parseDivStages(d).targetStage === stageCode);
+      return matching.reduce((sum: number, d: any) => {
+        const dQty = Number(d.diverted_qty || 0);
+        if (dQty <= 0) return sum;
+        const multMatch = typeof d.reason === "string" ? d.reason.match(/\[MULTIPLE:\s*([0-9.]+)\]/i) : null;
+        const mult = Math.max(1, Number(multMatch ? multMatch[1] : (d.multiple || 1)));
+        const srcWo = woMap.get(d.source_wo_id);
+        const srcL1 = Number(srcWo?.l1 || 0);
+        const srcL2 = Number(srcWo?.l2 || 0);
+        const srcAvgLen = srcL1 > 0 && srcL2 > 0 ? (srcL1 + srcL2) / 2 : srcL1 || fallbackTargetAvgLen;
+        const srcMotherPcs = srcAvgLen > 0 ? Math.round(dQty / srcAvgLen) : 0;
+        const cutPcs = srcMotherPcs > 0 ? Math.round(srcMotherPcs * mult) : (fallbackTargetAvgLen > 0 ? Math.round(dQty / fallbackTargetAvgLen) : 0);
+        return sum + cutPcs;
+      }, 0);
+    };
+
+    const getStageDivOutPcs = (wId: string, stageCode: string, sourceAvgLen: number = 6.0) => {
+      const matching = diversions.filter((d: any) => d.source_wo_id === wId && parseDivStages(d).sourceStage === stageCode);
+      return matching.reduce((sum: number, d: any) => {
+        const dQty = Number(d.diverted_qty || 0);
+        if (dQty <= 0) return sum;
+        return sum + (sourceAvgLen > 0 ? Math.round(dQty / sourceAvgLen) : 0);
+      }, 0);
+    };
+
     const stageCodeToId = new Map<string, string>();
     const stageIdToCode = new Map<string, string>();
     stages.forEach((s) => {
@@ -843,8 +869,8 @@ export async function GET(req: NextRequest) {
 
       const hhtDivIn = getStageDivIn(woId, "HOLLOW_HEAT_TREATMENT");
       const hhtDivOut = getStageDivOut(woId, "HOLLOW_HEAT_TREATMENT");
-      const hhtDivInPcs = effHhtAvg > 0 ? Math.round(hhtDivIn / effHhtAvg) : 0;
-      const hhtDivOutPcs = effHhtAvg > 0 ? Math.round(hhtDivOut / effHhtAvg) : 0;
+      const hhtDivInPcs = getStageDivInPcs(woId, "HOLLOW_HEAT_TREATMENT", effHhtAvg > 0 ? effHhtAvg : avgLength);
+      const hhtDivOutPcs = getStageDivOutPcs(woId, "HOLLOW_HEAT_TREATMENT", effHhtAvg > 0 ? effHhtAvg : avgLength);
 
       // Hollow HT incoming: strictly from Rolling HTC OK!
       const isHhtRoute = isAlloy || routeCode.includes("ALLOY");
@@ -870,8 +896,8 @@ export async function GET(req: NextRequest) {
 
       const drawDivIn = getStageDivIn(woId, "DRAW");
       const drawDivOut = getStageDivOut(woId, "DRAW");
-      const drawDivInPcs = avgLength > 0 ? Math.round(drawDivIn / avgLength) : 0;
-      const drawDivOutPcs = avgLength > 0 ? Math.round(drawDivOut / avgLength) : 0;
+      const drawDivInPcs = getStageDivInPcs(woId, "DRAW", effMhAvg > 0 ? effMhAvg : avgLength);
+      const drawDivOutPcs = getStageDivOutPcs(woId, "DRAW", effMhAvg > 0 ? effMhAvg : avgLength);
 
       // Draw incoming:
       // - CDS route: incoming is Rolling HTC OK pieces
@@ -895,16 +921,16 @@ export async function GET(req: NextRequest) {
       const pilgerRejMtr = rawPilgerRej > 0 ? rawPilgerRej : (avgLength > 0 ? Number((pilgerRejPcs * avgLength).toFixed(3)) : 0);
       const pilgerNetMtr = Math.max(0, pilgerOutMtr - pilgerRejMtr);
 
+      const effPilgerLen = effMhAvg > 0 ? effMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength);
       const pilgerDivIn = getStageDivIn(woId, "PILGER");
       const pilgerDivOut = getStageDivOut(woId, "PILGER");
-      const pilgerDivInPcs = avgLength > 0 ? Math.round(pilgerDivIn / avgLength) : 0;
-      const pilgerDivOutPcs = avgLength > 0 ? Math.round(pilgerDivOut / avgLength) : 0;
+      const pilgerDivInPcs = getStageDivInPcs(woId, "PILGER", effPilgerLen > 0 ? effPilgerLen : avgLength);
+      const pilgerDivOutPcs = getStageDivOutPcs(woId, "PILGER", effPilgerLen > 0 ? effPilgerLen : avgLength);
 
       const pilgerIncomingPcs = rollHtcOkPcs;
       let pilgerAvailPcs = isSsSteel
         ? Math.max(0, pilgerIncomingPcs + pilgerDivInPcs - pilgerOutPcs - pilgerRejPcs - pilgerDivOutPcs)
         : 0;
-      const effPilgerLen = effMhAvg > 0 ? effMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength);
       let pilgerAvailMtr = effPilgerLen > 0 ? Number((pilgerAvailPcs * effPilgerLen).toFixed(3)) : 0;
       let pilgerAvailMt = mtFromMtr(pilgerAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
@@ -928,8 +954,8 @@ export async function GET(req: NextRequest) {
 
       const htDivIn = getStageDivIn(woId, "HEAT_TREATMENT");
       const htDivOut = getStageDivOut(woId, "HEAT_TREATMENT");
-      const htDivInPcs = avgLength > 0 ? Math.round(htDivIn / avgLength) : 0;
-      const htDivOutPcs = avgLength > 0 ? Math.round(htDivOut / avgLength) : 0;
+      const htDivInPcs = getStageDivInPcs(woId, "HEAT_TREATMENT", avgLength);
+      const htDivOutPcs = getStageDivOutPcs(woId, "HEAT_TREATMENT", avgLength);
 
       const htIncomingPcs = isSsSteel ? pilgerNetPcs : drawNetPcs;
 
@@ -993,8 +1019,8 @@ export async function GET(req: NextRequest) {
 
       const bandSawDivIn = getStageDivIn(woId, "BAND_SAW");
       const bandSawDivOut = getStageDivOut(woId, "BAND_SAW");
-      const bandSawDivInPcs = avgLength > 0 ? Math.round(bandSawDivIn / avgLength) : 0;
-      const bandSawDivOutPcs = avgLength > 0 ? Math.round(bandSawDivOut / avgLength) : 0;
+      const bandSawDivInPcs = getStageDivInPcs(woId, "BAND_SAW", avgLength);
+      const bandSawDivOutPcs = getStageDivOutPcs(woId, "BAND_SAW", avgLength);
 
       // 5. Finishing Stage Metrics (adjusted for Finishing Diversions)
       const finLogs = getStageLogs(woId, finStageId);
@@ -1074,10 +1100,26 @@ export async function GET(req: NextRequest) {
       // VDI Stage WIP (Waiting for QC Inspection)
       const vdiDivIn = getStageDivIn(woId, "VDI");
       const vdiDivOut = getStageDivOut(woId, "VDI");
-      let vdiDivInPcs = avgLength > 0 ? Math.round(vdiDivIn / avgLength) : 0;
+      let vdiDivInPcs = getStageDivInPcs(woId, "VDI", avgLength);
       let effVdiDivInMtr = vdiDivIn;
-      const vdiDivOutPcs = avgLength > 0 ? Math.round(vdiDivOut / avgLength) : 0;
+      const vdiDivOutPcs = getStageDivOutPcs(woId, "VDI", avgLength);
       const vdiRejDecl = getStageRejDecl(woId, "VDI");
+
+      // Distinguish salvage diversions out vs prime diversions out from VDI
+      const vdiSalvageDivOut = diversions
+        .filter(
+          (d: any) =>
+            d.source_wo_id === woId &&
+            (parseDivStages(d).sourceStage === "VDI_SALVAGE" ||
+              (parseDivStages(d).sourceStage === "VDI" &&
+                typeof d.reason === "string" &&
+                (d.reason.includes("Salvage") || d.reason.includes("Rejection"))))
+        )
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+      const vdiSalvageDivOutPcs = avgLength > 0 ? Math.round(vdiSalvageDivOut / avgLength) : 0;
+
+      const vdiPrimeDivOut = Math.max(0, vdiDivOut - vdiSalvageDivOut);
+      const vdiPrimeDivOutPcs = Math.max(0, vdiDivOutPcs - vdiSalvageDivOutPcs);
 
       // VDI incoming: strictly from Band Saw Net Output Pieces
       const vdiIncomingPcs = allBandSawLogs.length > 0 ? bandSawNetPcs : 0;
@@ -1102,9 +1144,9 @@ export async function GET(req: NextRequest) {
 
       const finDivIn = getStageDivIn(woId, "FINISHING");
       const finDivOut = getStageDivOut(woId, "FINISHING");
-      const totalFinDivOut = finDivOut + vdiDivOut;
-      const finDivInPcs = avgLength > 0 ? Math.round(finDivIn / avgLength) : 0;
-      const finDivOutPcs = avgLength > 0 ? Math.round(totalFinDivOut / avgLength) : 0;
+      const totalFinDivOut = finDivOut + vdiPrimeDivOut;
+      const finDivInPcs = getStageDivInPcs(woId, "FINISHING", avgLength);
+      const finDivOutPcs = getStageDivOutPcs(woId, "FINISHING", avgLength) + vdiPrimeDivOutPcs;
       const finRejDecl = getStageRejDecl(woId, "FINISHING");
 
       const isCampaignMaster = Boolean(campaign && Array.isArray(campaign.child_work_orders) && campaign.child_work_orders.length > 0);
@@ -2037,27 +2079,31 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      const remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut).toFixed(3)));
+      const remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs);
+      const remSalvageMt = mtFromMtr(remSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
       const vdiSalvageRow: Row | null =
-        (qcSalvagePcs >= 1 || qcSalvageMtr >= 1.0)
+        (remSalvagePcs >= 1 || remSalvageMtr >= 1.0)
           ? {
               ...baseRowData,
               stage_code: "VDI_SALVAGE" as any,
               stage_name: "VDI Salvage",
               heat_lot_no: latestBandSawLotNo,
-              balance_to_make_mtr: qcSalvageMtr,
-              balance_to_make_pcs: qcSalvagePcs,
-              balance_to_make_mt: qcSalvageMt,
-              ready_pcs: qcSalvagePcs,
-              ready_mtr: qcSalvageMtr,
-              ready_mt: qcSalvageMt,
-              vdi_salvage_pcs: qcSalvagePcs,
-              vdi_salvage_mtr: qcSalvageMtr,
+              balance_to_make_mtr: remSalvageMtr,
+              balance_to_make_pcs: remSalvagePcs,
+              balance_to_make_mt: remSalvageMt,
+              ready_pcs: remSalvagePcs,
+              ready_mtr: remSalvageMtr,
+              ready_mt: remSalvageMt,
+              vdi_salvage_pcs: remSalvagePcs,
+              vdi_salvage_mtr: remSalvageMtr,
               feeder_pcs: 0,
               feeder_mtr: 0,
               feeder_mt: 0,
               is_feeder_source: false,
-              max_allowed_mtr: qcSalvageMtr,
-              max_allowed_pcs: qcSalvagePcs,
+              max_allowed_mtr: remSalvageMtr,
+              max_allowed_pcs: remSalvagePcs,
               prev_stage_code: "VDI",
               prev_net_output: qcOkMtr,
               feeder_source_label: "VDI Inspection Salvage",
@@ -2330,8 +2376,8 @@ export async function GET(req: NextRequest) {
       const childFinDivOut = getStageDivOut(childId, "FINISHING");
       const childVdiDivOut = getStageDivOut(childId, "VDI");
       const childTotalDivOut = childFinDivOut + childVdiDivOut;
-      const childFinDivInPcs = avgLength > 0 ? Math.round(childFinDivIn / avgLength) : 0;
-      const childFinDivOutPcs = avgLength > 0 ? Math.round(childTotalDivOut / avgLength) : 0;
+      const childFinDivInPcs = getStageDivInPcs(childId, "FINISHING", avgLength);
+      const childFinDivOutPcs = getStageDivOutPcs(childId, "FINISHING", avgLength) + getStageDivOutPcs(childId, "VDI", avgLength);
 
       // Available WIP at Finishing for this child work order is strictly its VDI OK pcs (+ diversion) minus finished pcs
       const childAvailPcs = Math.max(0, childVdiOkPcs + childFinDivInPcs - childFinOutPcs - childFinRejPcs - childFinDivOutPcs);
