@@ -483,7 +483,7 @@ export default function DiversionForm() {
   const [target, setTarget] = useState('');
   const [sourceWorkCenter, setSourceWorkCenter] = useState('ROLLING');
   const [targetWorkCenter, setTargetWorkCenter] = useState('ROLLING');
-  const workCenter = targetWorkCenter;
+  const workCenter = sourceWorkCenter;
   const [qty, setQty] = useState('');
   const [route, setRoute] = useState('');
   const [multiple, setMultiple] = useState('1');
@@ -639,7 +639,7 @@ export default function DiversionForm() {
   const selectedRouteObj = useMemo(() => routes.find(r => r.id === route), [routes, route]);
   const selectedSourceWcObj = useMemo(() => WORK_CENTERS.find(w => w.code === sourceWorkCenter), [sourceWorkCenter]);
   const selectedTargetWcObj = useMemo(() => WORK_CENTERS.find(w => w.code === targetWorkCenter), [targetWorkCenter]);
-  const selectedWorkCenterObj = selectedTargetWcObj;
+  const selectedWorkCenterObj = selectedSourceWcObj;
 
   // Work centers available for the selected Source Work Order (only active stages in its route)
   const availableWorkCenters = useMemo(() => {
@@ -653,16 +653,19 @@ export default function DiversionForm() {
   // If current sourceWorkCenter is not valid or has 0 WIP, default to the first stage with active WIP
   useEffect(() => {
     if (sourceWip?.stageBreakdown?.length) {
-      const stageWithWip = sourceWip.stageBreakdown.find((s) => s.available_mtr > 0);
-      if (stageWithWip) {
-        setSourceWorkCenter(stageWithWip.stage_code);
-        setTargetWorkCenter(stageWithWip.stage_code === 'VDI' ? 'FINISHING' : stageWithWip.stage_code);
-      } else if (availableWorkCenters.length > 0 && !availableWorkCenters.some((wc) => wc.code === sourceWorkCenter)) {
-        setSourceWorkCenter(availableWorkCenters[0].code);
-        setTargetWorkCenter(availableWorkCenters[0].code);
+      const currentValid = sourceWip.stageBreakdown.some((s) => s.stage_code === sourceWorkCenter && s.available_mtr > 0);
+      if (!currentValid) {
+        const stageWithWip = sourceWip.stageBreakdown.find((s) => s.available_mtr > 0);
+        if (stageWithWip) {
+          setSourceWorkCenter(stageWithWip.stage_code);
+          setTargetWorkCenter(stageWithWip.stage_code === 'VDI' ? 'FINISHING' : stageWithWip.stage_code);
+        } else if (availableWorkCenters.length > 0 && !availableWorkCenters.some((wc) => wc.code === sourceWorkCenter)) {
+          setSourceWorkCenter(availableWorkCenters[0].code);
+          setTargetWorkCenter(availableWorkCenters[0].code);
+        }
       }
     }
-  }, [sourceWip, availableWorkCenters, sourceWorkCenter]);
+  }, [sourceWip]);
 
   // Selected Work Center WIP for Source (where material will be deducted)
   const sourceStageWip = useMemo(() => {
@@ -698,13 +701,39 @@ export default function DiversionForm() {
   const sourceAvgLen = sourceWip?.avgLength || 6.0;
   const sourceOd = sourceWip?.od || 0;
   const sourceWt = sourceWip?.wt || 0;
-  const sourceDivPcs = sourceAvgLen > 0 ? diversionMtr / sourceAvgLen : 0;
+
+  // Discrete stage piece length:
+  // If the source stage has tracked pieces and meters (e.g. at VDI 237 pcs = 1422 m => 6.0 m/pc),
+  // use the exact stage piece length so piece deductions match physical inventory.
+  const sourceStagePieceLen = useMemo(() => {
+    if (sourceStageWip && sourceStageWip.available_pcs > 0 && sourceStageWip.available_mtr > 0) {
+      return sourceStageWip.available_mtr / sourceStageWip.available_pcs;
+    }
+    const isCutStage = sourceWorkCenter === 'VDI' || sourceWorkCenter === 'FINISHING' || sourceWorkCenter === 'BAND_SAW';
+    const mult = Number(sourceWip?.planMultiple || 1);
+    if (isCutStage && mult > 1 && sourceAvgLen > 0) {
+      return sourceAvgLen / mult;
+    }
+    return sourceAvgLen;
+  }, [sourceStageWip, sourceWorkCenter, sourceWip, sourceAvgLen]);
+
+  const sourceDivPcs = useMemo(() => {
+    if (!diversionMtr || diversionMtr <= 0) return 0;
+    if (availableAtWorkCenterMtr > 0 && Math.abs(diversionMtr - availableAtWorkCenterMtr) < 0.01) {
+      return availableAtWorkCenterPcs;
+    }
+    return sourceStagePieceLen > 0 ? Math.round(diversionMtr / sourceStagePieceLen) : 0;
+  }, [diversionMtr, availableAtWorkCenterMtr, availableAtWorkCenterPcs, sourceStagePieceLen]);
+
   const sourceDivMt = sourceOd > sourceWt ? (sourceOd - sourceWt) * sourceWt * 0.0246615 * 0.001 * diversionMtr : 0;
 
   // STRICT: Source initial balance for diversion is strictly the physical WIP at the selected work center!
   const sourceInitialBalanceMtr = availableAtWorkCenterMtr;
   const sourceRemainingBalanceMtr = Math.max(0, sourceInitialBalanceMtr - diversionMtr);
-  const sourceRemainingBalancePcs = sourceAvgLen > 0 ? sourceRemainingBalanceMtr / sourceAvgLen : 0;
+  const sourceRemainingBalancePcs = useMemo(() => {
+    if (sourceRemainingBalanceMtr <= 0) return 0;
+    return Math.max(0, availableAtWorkCenterPcs - sourceDivPcs);
+  }, [sourceRemainingBalanceMtr, availableAtWorkCenterPcs, sourceDivPcs]);
   const sourceRemainingBalanceMt =
     sourceOd > sourceWt ? (sourceOd - sourceWt) * sourceWt * 0.0246615 * 0.001 * sourceRemainingBalanceMtr : 0;
 
@@ -712,11 +741,18 @@ export default function DiversionForm() {
   const targetAvgLen = targetWip?.avgLength || 6.0;
   const targetOd = targetWip?.od || 0;
   const targetWt = targetWip?.wt || 0;
-  const targetDivPcs = numMultiple > 1
-    ? Math.round(sourceDivPcs * numMultiple)
-    : (targetAvgLen > 0 ? diversionMtr / targetAvgLen : sourceDivPcs);
-  const targetCutLen = numMultiple > 1 && sourceAvgLen > 0
-    ? Number((sourceAvgLen / numMultiple).toFixed(2))
+  const targetDivPcs = useMemo(() => {
+    if (numMultiple > 1) {
+      return Math.round(sourceDivPcs * numMultiple);
+    }
+    if (targetAvgLen > 0 && diversionMtr > 0) {
+      return Math.round(diversionMtr / targetAvgLen);
+    }
+    return sourceDivPcs;
+  }, [numMultiple, sourceDivPcs, targetAvgLen, diversionMtr]);
+
+  const targetCutLen = numMultiple > 1 && sourceStagePieceLen > 0
+    ? Number((sourceStagePieceLen / numMultiple).toFixed(2))
     : targetAvgLen;
   const targetDivMt = targetOd > targetWt ? (targetOd - targetWt) * targetWt * 0.0246615 * 0.001 * diversionMtr : 0;
 
@@ -1073,7 +1109,7 @@ export default function DiversionForm() {
                   1
                 </span>
                 <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                  Source Work Order WIP Status (Selected Work Center: {selectedWorkCenterObj?.name || workCenter})
+                  Source Work Order WIP Status (Selected Work Center: {selectedSourceWcObj?.name || sourceWorkCenter})
                 </h2>
               </div>
               <div className="flex items-center gap-2">
@@ -1122,7 +1158,7 @@ export default function DiversionForm() {
               }`}>
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-[#0078d4] uppercase tracking-wider">
-                    Available WIP at {selectedWorkCenterObj?.name.split(' ')[0] || workCenter}
+                    Available WIP at {selectedSourceWcObj?.name.split(' ')[0] || sourceWorkCenter}
                   </span>
                   <span className={`rounded text-[10px] font-bold px-1.5 py-0.5 ${
                     availableAtWorkCenterMtr > 0
@@ -1166,7 +1202,7 @@ export default function DiversionForm() {
                 {availableAtWorkCenterMtr <= 0 && (
                   <p className="mt-1.5 text-[11px] text-amber-700 font-medium leading-tight">
                     {sourceWip.balanceWipMtr > 0
-                      ? `0 physical WIP currently at ${selectedWorkCenterObj?.name || workCenter}. Material has moved downstream (${fmt(sourceWip.balanceWipPcs, 0)} Pcs / ${fmt(sourceWip.balanceWipMtr)} m active in mill).`
+                      ? `0 physical WIP currently at ${selectedSourceWcObj?.name || sourceWorkCenter}. Material has moved downstream (${fmt(sourceWip.balanceWipPcs, 0)} Pcs / ${fmt(sourceWip.balanceWipMtr)} m active in mill).`
                       : 'No physical WIP remaining for this work order.'}
                   </p>
                 )}
@@ -1233,14 +1269,15 @@ export default function DiversionForm() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {sourceWip.stageBreakdown.map((stg, idx) => {
-                    const isCurrent = stg.stage_code === workCenter;
+                    const isCurrent = stg.stage_code === sourceWorkCenter;
                     return (
                       <div
                         key={idx}
-                        className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-mono border transition ${
+                        onClick={() => setSourceWorkCenter(stg.stage_code)}
+                        className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-mono border transition cursor-pointer ${
                           isCurrent
                             ? 'bg-blue-50 border-[#0078d4] text-[#0078d4] font-bold ring-1 ring-[#0078d4]'
-                            : 'bg-slate-50 border-slate-200 text-slate-700'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                         }`}
                       >
                         <span>{stg.stage_name || stg.stage_code}:</span>
@@ -1261,7 +1298,7 @@ export default function DiversionForm() {
                 <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                 <div>
                   <strong className="font-semibold text-amber-900">
-                    Cannot Divert: 0 Mtrs Physical WIP at {selectedWorkCenterObj?.name || workCenter}
+                    Cannot Divert: 0 Mtrs Physical WIP at {selectedSourceWcObj?.name || sourceWorkCenter}
                   </strong>
                   <p className="mt-0.5 text-amber-800">
                     Only physically produced material can be diverted. Unrolled / unproduced order quantities ({fmt(sourceWip.orderedMtr)} Mtrs) cannot be transferred. Physical production entry and inspection must occur first.
@@ -1291,7 +1328,7 @@ export default function DiversionForm() {
             />
             {sourceWip && (
               <div className="mt-1 text-xs text-slate-500 flex justify-between">
-                <span>Available at {selectedWorkCenterObj?.name.split(' ')[0] || workCenter}: <strong className="font-mono text-[#0078d4]">{fmt(availableAtWorkCenterPcs, 0)} Pcs</strong> ({fmt(availableAtWorkCenterMtr)} m)</span>
+                <span>Available at {selectedSourceWcObj?.name.split(' ')[0] || sourceWorkCenter}: <strong className="font-mono text-[#0078d4]">{fmt(availableAtWorkCenterPcs, 0)} Pcs</strong> ({fmt(availableAtWorkCenterMtr)} m)</span>
                 {diversionMtr > 0 && (
                   <span className="font-mono font-bold text-slate-800">≈ {fmt(sourceDivPcs, 0)} Pcs</span>
                 )}
@@ -1357,7 +1394,7 @@ export default function DiversionForm() {
                   2
                 </span>
                 <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                  Rule 2: WIP Transfer & Deduction Real-Time Preview ({selectedWorkCenterObj?.name || workCenter})
+                  Rule 2: WIP Transfer & Deduction Real-Time Preview ({getWcShortName(sourceWorkCenter)} → {getWcShortName(targetWorkCenter)})
                 </h2>
               </div>
               {isExceeding ? (
@@ -1491,7 +1528,7 @@ export default function DiversionForm() {
             <div className="rounded bg-emerald-100/60 p-2.5 border border-emerald-200 text-xs text-emerald-950 flex items-start gap-2">
               <CheckCircle2 className="h-4 w-4 text-[#107c41] mt-0.5 shrink-0" />
               <div>
-                <strong>Deduction & Allocation Rule Enforced:</strong> On submission, <strong>{fmt(diversionMtr)} Mtrs</strong> will be automatically deducted from <strong>{selectedSource?.work_order_no}</strong> at <strong>{selectedWorkCenterObj?.name || workCenter}</strong> and credited to <strong>{selectedTarget?.work_order_no}</strong>.
+                <strong>Deduction & Allocation Rule Enforced:</strong> On submission, <strong>{fmt(diversionMtr)} Mtrs</strong> will be automatically deducted from <strong>{selectedSource?.work_order_no}</strong> at <strong>{selectedSourceWcObj?.name || sourceWorkCenter}</strong> and credited to <strong>{selectedTarget?.work_order_no}</strong> at <strong>{selectedTargetWcObj?.name || targetWorkCenter}</strong>.
               </div>
             </div>
           </div>
