@@ -351,26 +351,58 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
       const sc = stg.stage_code;
       const recStage = reconciled.summary.stages.find((s: any) => s.stage_code === sc);
 
-      let dbWipMtr = Number(stg.current_wip || 0) + Number(stg.pending_rej_mtr || 0);
-      let dbWipPcs = Number(stg.current_wip_pcs || 0) + Number(stg.pending_rej_pcs || 0);
-      if (dbWipPcs <= 0 && dbWipMtr > 0 && avgLength > 0) {
-        dbWipPcs = Math.max(1, Math.round(dbWipMtr / avgLength));
+      let curWipPcs = Number(recStage?.capped_wip_pcs ?? recStage?.reconciled_wip_pcs ?? 0);
+      let curWipMtr = Number(recStage?.capped_wip_mtr ?? recStage?.reconciled_wip_mtr ?? 0);
+      let curWipMt = Number(recStage?.capped_wip_mt ?? recStage?.reconciled_wip_mt ?? (curWipMtr * mtPerMtr));
+
+      // Reconcile VDI WIP under Rule 2 Option B:
+      // Rejections/salvage logged by QC inspections remain active WIP and are available for diversion.
+      if (sc === 'VDI') {
+        const totalVdiRejMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0), 0);
+        const totalVdiRejPcs = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0), 0);
+        const vdiDivOutMtr = Number(stg.diversion_out || 0);
+        const vdiDivOutPcs = avgLength > 0 ? Math.round(vdiDivOutMtr / avgLength) : 0;
+        const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - vdiDivOutMtr);
+        const availableVdiRejPcs = Math.max(0, totalVdiRejPcs - vdiDivOutPcs);
+
+        // When prime uninspected material has fully passed downstream, active WIP at VDI is strictly the undispositioned salvage pool
+        if (curWipPcs === 0 && availableVdiRejPcs > 0) {
+          curWipPcs = availableVdiRejPcs;
+          curWipMtr = avgLength > 0 ? Number((availableVdiRejPcs * avgLength).toFixed(2)) : availableVdiRejMtr;
+          curWipMt = curWipMtr * mtPerMtr;
+        } else if (availableVdiRejPcs > 0 && curWipPcs < availableVdiRejPcs) {
+          curWipPcs = availableVdiRejPcs;
+          curWipMtr = avgLength > 0 ? Number((availableVdiRejPcs * avgLength).toFixed(2)) : availableVdiRejMtr;
+          curWipMt = curWipMtr * mtPerMtr;
+        }
       }
-      let dbWipMt = Number(stg.current_wip_mt ?? (dbWipMtr * mtPerMtr));
 
-      let curWipPcs = dbWipPcs;
-      let curWipMtr = dbWipMtr;
-      let curWipMt = dbWipMt;
+      // Reconcile Finishing WIP if VDI QC inspection exists (guarding against database view double-deduction of salvage)
+      if (sc === 'FINISHING' && allQcList.length > 0 && curWipPcs > 0) {
+        const totalVdiOkMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+        if (totalVdiOkMtr > 0) {
+          const divIn = Number(stg.diversion_in || 0);
+          const divOut = Number(stg.diversion_out || 0);
+          const prodMtr = Number(stg.production_qty || 0);
+          const rejMtr = Number(stg.rejection_qty || 0);
+          const trueFinWipMtr = Math.max(0, totalVdiOkMtr + divIn - prodMtr - rejMtr - divOut);
+          if (Math.abs(trueFinWipMtr - curWipMtr) > 0.01) {
+            curWipMtr = Number(trueFinWipMtr.toFixed(3));
+            curWipPcs = avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0;
+            curWipMt = curWipMtr * mtPerMtr;
+          }
+        }
+      }
 
-      if (recStage) {
-        const recPcs = Number(recStage.capped_wip_pcs ?? recStage.reconciled_wip_pcs ?? 0);
-        const recMtr = Number(recStage.capped_wip_mtr ?? recStage.reconciled_wip_mtr ?? 0);
-        const recMt = Number(recStage.capped_wip_mt ?? recStage.reconciled_wip_mt ?? (recMtr * mtPerMtr));
-
-        if (recPcs > 0 || recMtr > 0) {
-          curWipPcs = recPcs;
-          curWipMtr = recMtr;
-          curWipMt = recMt;
+      // Fallback: if reconciled WIP is 0, only use db current_wip if downstream hasn't consumed it
+      if (curWipPcs === 0 && curWipMtr === 0 && Number(stg.current_wip || 0) > 0 && sc !== 'VDI') {
+        const downstreamProduced = stageRows
+          .filter((sr: any) => sr.sequence_no > stg.sequence_no)
+          .some((sr: any) => Number(sr.production_qty || 0) > 0);
+        if (!downstreamProduced) {
+          curWipMtr = Number(stg.current_wip || 0);
+          curWipPcs = Number(stg.current_wip_pcs || (avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0));
+          curWipMt = curWipMtr * mtPerMtr;
         }
       }
 
@@ -383,23 +415,6 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
         curWipPcs = 0;
         curWipMtr = 0;
         curWipMt = 0;
-      }
-
-      // Reconcile VDI WIP under Rule 2 Option B: Rejections/salvage logged by QC inspections remain active WIP
-      // and do not vanish as dead scrap until explicitly diverted or declared commercial.
-      if (sc === 'VDI' && allQcList.length > 0) {
-        const totalVdiRejMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0), 0);
-        const totalVdiRejPcs = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0), 0);
-        const vdiDivOutMtr = Number(stg.diversion_out || 0);
-        const vdiDivOutPcs = avgLength > 0 ? Math.round(vdiDivOutMtr / avgLength) : 0;
-        const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - vdiDivOutMtr);
-        const availableVdiRejPcs = Math.max(0, totalVdiRejPcs - vdiDivOutPcs);
-
-        if (availableVdiRejMtr > 0 && curWipMtr < Number(stg.current_wip || 0) + availableVdiRejMtr) {
-          curWipMtr = Number((curWipMtr + availableVdiRejMtr).toFixed(3));
-          curWipPcs += availableVdiRejPcs;
-          curWipMt = curWipMtr * mtPerMtr;
-        }
       }
 
       // Reconcile Finishing WIP if VDI QC inspection exists (guarding against database view double-deduction of salvage)
