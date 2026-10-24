@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import DashboardClient from '@/components/dashboard/DashboardClient';
 import { mtFromMtr, extractPcsFromRemarks, isStockOrHollowBankOrder } from '@/lib/productionUtils';
 import { buildCampaignHierarchyMaps, reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
-import { computeAgingReportRows, calculateAgingSeverity } from '@/lib/reports/agingReportHelper';
+import { computeAgingReportRows } from '@/lib/reports/agingReportHelper';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +70,6 @@ export default async function Dashboard() {
         .order('created_at', { ascending: false })
         .limit(2500),
       supabase.from('app_users').select('id,auth_user_id,employee_name,email'),
-      supabase.from('vw_wip_aging').select('*').gt('current_wip', 0).order('days_stuck', { ascending: false }).limit(50),
       supabase.from('route_stages').select('route_id,stage_id,sequence_no,process_stages(stage_code)').order('sequence_no', { ascending: true }),
       supabase.from('process_stages').select('id,stage_code,stage_name'),
     ]);
@@ -80,19 +79,39 @@ export default async function Dashboard() {
       if (res.status === 'fulfilled' && (res.value as any)?.data) {
         return (res.value as any).data as T;
       }
+      if (res.status === 'rejected') {
+        console.error(`[Dashboard] Query ${idx} rejected:`, res.reason);
+      } else if ((res.value as any)?.error) {
+        console.error(`[Dashboard] Query ${idx} error:`, (res.value as any).error);
+      }
       return fallback;
     };
 
-    const rawWip = getVal<any[]>(0, []);
+    let rawWip = getVal<any[]>(0, []);
+    // Secondary fallback retry for vw_route_stage_wip if first attempt had a transient timeout/hiccup
+    if (rawWip.length === 0) {
+      console.warn('[Dashboard] rawWip empty on initial load, retrying vw_route_stage_wip directly...');
+      try {
+        const retryRes = await supabase
+          .from('vw_route_stage_wip')
+          .select('*')
+          .order('sequence_no', { ascending: true });
+        if (retryRes.data && retryRes.data.length > 0) {
+          rawWip = retryRes.data;
+        }
+      } catch (e) {
+        console.error('[Dashboard] Retry fetch failed:', e);
+      }
+    }
+
     const eligiblePending = getVal<any[]>(1, []);
     const rollingPlans = getVal<any[]>(2, []);
     const workOrders = getVal<any[]>(3, []);
     const qcInspections = getVal<any[]>(4, []);
     const productionLogs = getVal<any[]>(5, []);
     const appUsers = getVal<any[]>(6, []);
-    const rawAging = getVal<any[]>(7, []);
-    const routeStages = getVal<any[]>(8, []);
-    const processStages = getVal<any[]>(9, []);
+    const routeStages = getVal<any[]>(7, []);
+    const processStages = getVal<any[]>(8, []);
 
     const stageIdToCodeMap = new Map<string, string>();
     processStages.forEach((s: any) => {
@@ -162,6 +181,8 @@ export default async function Dashboard() {
             stage_code: recStage.stage_code,
             od: recStage.od,
             wt: recStage.wt,
+            size_od: recStage.od || originalRow?.size_od || originalRow?.od,
+            size_wt: recStage.wt || originalRow?.size_wt || originalRow?.wt,
             mh_od: planMh?.mh_od || null,
             mh_wt: planMh?.mh_wt || null,
             mh_l1: planMh?.mh_l1 || null,
@@ -420,56 +441,33 @@ export default async function Dashboard() {
       };
     });
 
-    // WIP Aging items for dashboard
-    if (rawAging && rawAging.length > 0) {
-      agingData = (rawAging as any[])
-        .filter((r) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
-        .slice(0, 10)
-        .map((r) => ({
-          id: `${r.work_order_id}_${r.stage_code}`,
-          woNo: r.work_order_no,
-          customer: r.customer_name || 'Generic Customer',
-          grade: r.grade || '—',
-          od: r.od,
-          wt: r.wt,
-          stage: r.stage_name || r.stage_code,
-          stageCode: r.stage_code,
-          wipMt: Number(r.available_mt || 0).toFixed(1),
-          wipPcs: Number(r.current_wip_pcs || 0),
-          wipMtr: Number(r.current_wip || 0),
-          daysStuck: Number(r.days_stuck || 0),
-          severity: calculateAgingSeverity(Number(r.days_stuck || 0)),
-          lastActivityDate: r.last_activity_date || r.effective_reference_date || '—',
-        }));
-    } else {
-      // Robust calculation using shared domain engine
-      const computedAging = computeAgingReportRows({
-        wipRows: rawWip,
-        workOrders: workOrders,
-        productionLogs: productionLogs,
-        qcInspections: qcInspections,
-        rollingPlans: rollingPlans,
-        routeStages: (routeStages as any[]),
-        asOfDate: new Date(),
-      });
+    // WIP Aging items for dashboard computed in-memory (1ms) using shared domain engine
+    const computedAging = computeAgingReportRows({
+      wipRows: rawWip,
+      workOrders: workOrders,
+      productionLogs: productionLogs,
+      qcInspections: qcInspections,
+      rollingPlans: rollingPlans,
+      routeStages: (routeStages as any[]),
+      asOfDate: new Date(),
+    });
 
-      agingData = computedAging.slice(0, 10).map((r) => ({
-        id: `${r.work_order_id}_${r.stage_code}`,
-        woNo: r.work_order_no,
-        customer: r.customer_name || 'Generic Customer',
-        grade: r.grade || '—',
-        od: r.od,
-        wt: r.wt,
-        stage: r.stage_name || r.stage_code,
-        stageCode: r.stage_code,
-        wipMt: Number(r.available_mt || 0).toFixed(1),
-        wipPcs: Number(r.current_wip_pcs || 0),
-        wipMtr: Number(r.current_wip || 0),
-        daysStuck: Number(r.days_stuck || 0),
-        severity: r.severity,
-        lastActivityDate: r.last_activity_date || '—',
-      }));
-    }
+    agingData = computedAging.slice(0, 10).map((r) => ({
+      id: `${r.work_order_id}_${r.stage_code}`,
+      woNo: r.work_order_no,
+      customer: r.customer_name || 'Generic Customer',
+      grade: r.grade || '—',
+      od: r.od,
+      wt: r.wt,
+      stage: r.stage_name || r.stage_code,
+      stageCode: r.stage_code,
+      wipMt: Number(r.available_mt || 0).toFixed(1),
+      wipPcs: Number(r.current_wip_pcs || 0),
+      wipMtr: Number(r.current_wip || 0),
+      daysStuck: Number(r.days_stuck || 0),
+      severity: r.severity,
+      lastActivityDate: r.last_activity_date || '—',
+    }));
 
     // Real 7-day trend calculated strictly from project's 7 canonical work centers
     const last7Days: string[] = [];

@@ -89,6 +89,8 @@ type WIPRow = {
   current_wip_mt?: number;
   size_od?: number | null;
   size_wt?: number | null;
+  od?: number | null;
+  wt?: number | null;
   grade?: string | null;
   target_date?: string | null;
 };
@@ -211,11 +213,12 @@ export default function DashboardClient({
       const stage = (r.stage_code || '').toUpperCase();
       if (stage.includes('ROLL')) return acc; // Exclude rolling
       const mtr = Number(r.current_wip || 0);
-      const od = Number(r.size_od || 0);
-      const wt = Number(r.size_wt || 0);
-      return acc + Number(r.current_wip_mt ?? (od > 0 && wt > 0 ? mtFromMtr(mtr, od, wt) : 0));
+      const od = Number(r.size_od || r.od || 0);
+      const wt = Number(r.size_wt || r.wt || 0);
+      const mt = Number(r.current_wip_mt) > 0 ? Number(r.current_wip_mt) : (od > 0 && wt > 0 ? mtFromMtr(mtr, od, wt) : 0);
+      return acc + mt;
     }, 0);
-    return Number(kpi?.total_wip_mt ?? rawSum);
+    return Number(kpi?.total_wip_mt && Number(kpi.total_wip_mt) > 0 ? kpi.total_wip_mt : rawSum);
   }, [kpi, wip]);
 
   // 2. Real WIP by Stage strictly across the 6 Post-Rolling Work Centers
@@ -246,11 +249,12 @@ export default function DashboardClient({
       if (key && map[key]) {
         const mtr = Number(r.current_wip || 0);
         const pcs = Number(r.current_wip_pcs || 0);
-        const od = Number(r.size_od || 0);
-        const wt = Number(r.size_wt || 0);
-        const mt = Number(r.current_wip_mt ?? (od > 0 && wt > 0 ? mtFromMtr(mtr, od, wt) : 0));
+        const od = Number(r.size_od || r.od || 0);
+        const wt = Number(r.size_wt || r.wt || 0);
+        const mt = Number(r.current_wip_mt) > 0 ? Number(r.current_wip_mt) : (od > 0 && wt > 0 ? mtFromMtr(mtr, od, wt) : 0);
         map[key].mt += mt;
         map[key].pcs += pcs;
+        map[key].mtr += mtr;
       }
     }
     return map;
