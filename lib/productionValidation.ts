@@ -222,16 +222,20 @@ export function validateProductionEntry(
     }
   }
 
-  // 6. Finishing specific: Bundling cannot exceed 110% of total order quantity
+  // 6. Finishing specific: Bundling cannot exceed capping limit (default 110% of total order quantity or PPC custom capping)
   if (currentStage === "FINISHING") {
     const totalOrderPcs = Number(row.total_order_pcs || (row.total_order_mtr && d.avg > 0 ? Math.round(row.total_order_mtr / d.avg) : 0));
-    if (totalOrderPcs > 0) {
-      const max110Pcs = Math.round(totalOrderPcs * 1.10);
+    const customCapPcs = Number(row.order_capping_pcs || 0);
+    const maxCappingPcs = customCapPcs > 0
+      ? customCapPcs
+      : (totalOrderPcs > 0 ? Math.round(totalOrderPcs * 1.10) : 0);
+
+    if (maxCappingPcs > 0) {
       const alreadyFinishedPcs = Number(row.finished_output_pcs || (d.avg > 0 ? Math.round(Number(row.finished_output_mtr || 0) / d.avg) : 0));
-      if (d.pcs + alreadyFinishedPcs > max110Pcs) {
+      if (d.pcs + alreadyFinishedPcs > maxCappingPcs) {
         errors.push({
           workOrder: row.work_order_no,
-          message: `Finishing production (${d.pcs} PCS${alreadyFinishedPcs > 0 ? ` + already finished ${alreadyFinishedPcs} PCS` : ""}) exceeds maximum allowed 110% of Total Order Quantity (${totalOrderPcs} PCS, max capping is ${max110Pcs} PCS).`,
+          message: `Finishing production (${d.pcs} PCS${alreadyFinishedPcs > 0 ? ` + already finished ${alreadyFinishedPcs} PCS` : ""}) exceeds maximum allowed ${customCapPcs > 0 ? "PPC custom capping limit" : "110% of Total Order Quantity"} (${maxCappingPcs} PCS${customCapPcs > 0 ? " - PPC custom capping" : ` - 110% of ${totalOrderPcs} PCS`}). PPC can increase the finishing capping in Work Orders.`,
         });
       }
     }

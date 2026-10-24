@@ -1,10 +1,12 @@
 'use client';
 
+import React, { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2, Package, CheckCircle2, AlertTriangle, Crown, Link2, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Package, CheckCircle2, AlertTriangle, Crown, Link2, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { Row } from '@/types';
 import { calc, fmt, n, mtFromMtr } from '@/lib/productionUtils';
+import AdjustCappingModal from '@/components/work-orders/AdjustCappingModal';
 
 export interface CampaignBundle {
   id: string;
@@ -44,6 +46,7 @@ export function BundlingCampaignModal({
   onSaveBundles,
   saving,
 }: BundlingCampaignModalProps) {
+  const [cappingModalWo, setCappingModalWo] = useState<{ id: string; woNo: string } | null>(null);
   const totalEnteredMtr = campaignBundles.reduce((sum, v) => sum + n(v.mtr), 0);
   const totalEnteredPcs = campaignBundles.reduce((sum, v) => sum + n(v.pcs), 0);
   const totalBundleCount = campaignBundles.filter((v) => n(v.pcs) > 0 || n(v.mtr) > 0).length;
@@ -82,7 +85,7 @@ export function BundlingCampaignModal({
         bundlingCampaign.finished_output_pcs ||
         (masterCalc.avg > 0 ? Math.round(Number(bundlingCampaign.finished_output_mtr || 0) / masterCalc.avg) : 0),
       finished_mtr: bundlingCampaign.finished_output_mtr || 0,
-      capping_pcs: Math.round(Number(bundlingCampaign.total_order_pcs || 0) * 1.1),
+      capping_pcs: Number(bundlingCampaign.order_capping_pcs || Math.round(Number(bundlingCampaign.total_order_pcs || 0) * 1.1)),
       capping_mtr: bundlingCampaign.order_capping_mtr || Number(((bundlingCampaign.total_order_mtr || 0) * 1.1).toFixed(3)),
     },
     ...(bundlingCampaign.child_work_orders || []).map((c: any) => {
@@ -99,7 +102,7 @@ export function BundlingCampaignModal({
       const childBalMtr = Number(c.balance_to_make_mtr ?? Math.max(0, childTotalMtr - childFinishedMtr));
       const childBalPcs = childAvg > 0 ? Math.round(childBalMtr / childAvg) : 0;
       const childBalMt = mtFromMtr(childBalMtr, childOd, childWt);
-      const childCapPcs = Math.round(childTotalPcs * 1.1);
+      const childCapPcs = Number(c.order_capping_pcs || Math.round(childTotalPcs * 1.1));
       const childCapMtr = Number(c.order_capping_mtr || (childTotalMtr * 1.1).toFixed(3));
 
       return {
@@ -227,6 +230,19 @@ export function BundlingCampaignModal({
                     <span className="text-indigo-900">
                       Balance: <b>{fmt(wo.balance_to_make_pcs)} PCS</b> ({fmt(wo.balance_to_make_mtr, 'm')})
                     </span>
+                    <span className="text-slate-300">|</span>
+                    <span className="text-slate-500">
+                      Cap: <b className={woExceeds110 ? 'text-rose-600 font-bold' : ''}>{maxCapPcs} PCS</b>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCappingModalWo({ id: wo.id, woNo: wo.work_order_no })}
+                      className="px-2 py-0.5 rounded text-[11px] font-sans font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1 border border-slate-300 transition-colors cursor-pointer"
+                      title="Adjust Finishing Capping for this Work Order"
+                    >
+                      <SlidersHorizontal size={11} className="text-slate-600" />
+                      Adjust Cap
+                    </button>
                     <span className="text-slate-300">|</span>
                     <div
                       className={`rounded-lg px-2.5 py-1 font-sans text-xs font-bold border transition-colors ${
@@ -435,6 +451,17 @@ export function BundlingCampaignModal({
           </div>
         </div>
       </div>
+      {cappingModalWo && (
+        <AdjustCappingModal
+          isOpen={!!cappingModalWo}
+          onClose={() => setCappingModalWo(null)}
+          workOrderId={cappingModalWo.id}
+          workOrderNo={cappingModalWo.woNo}
+          onSuccess={() => {
+            setCappingModalWo(null);
+          }}
+        />
+      )}
     </Modal>
   );
 }

@@ -551,8 +551,10 @@ export async function GET(req: NextRequest) {
               const cBalOrderPcs = cAvg > 0 ? Math.round(cBalOrderMtr / cAvg) : 0;
               const cBalOrderMt = mtFromMtr(cBalOrderMtr, cOd, cWt);
 
-              const cCappingMtr = Number((cTotalOrderMtr * 1.10).toFixed(2));
-              const cCappingPcs = cAvg > 0 ? Math.round(cCappingMtr / cAvg) : 0;
+              const childCustomCapPcs = Number(child.order_capping_pcs || child.capping_pcs || 0);
+              const childCustomCapMtr = Number(child.order_capping_mtr || child.capping_mtr || 0);
+              const cCappingMtr = childCustomCapMtr > 0 ? childCustomCapMtr : Number((cTotalOrderMtr * 1.10).toFixed(2));
+              const cCappingPcs = childCustomCapPcs > 0 ? childCustomCapPcs : (cAvg > 0 ? Math.round(cCappingMtr / cAvg) : 0);
 
               return {
                 ...child,
@@ -1503,8 +1505,24 @@ export async function GET(req: NextRequest) {
       const balanceToMakeOrderPcs = avgLength > 0 ? Math.round(balanceToMakeOrderMtr / avgLength) : 0;
       const balanceToMakeOrderMt = mtFromMtr(balanceToMakeOrderMtr, woOd, woWt);
 
-      const orderCappingMtr = Number((totalOrderMtr * 1.10).toFixed(2));
-      const orderCappingPcs = avgLength > 0 ? Math.round(orderCappingMtr / avgLength) : 0;
+      const parsedPlanStatus = typeof plan?.status === "string" ? JSON.parse(plan.status) : plan?.status || {};
+      const customCapPcs = Number(parsedPlanStatus?.order_capping_pcs || parsedPlanStatus?.capping_pcs || (campaign as any)?.order_capping_pcs || 0);
+      const customCapMtr = Number(parsedPlanStatus?.order_capping_mtr || parsedPlanStatus?.capping_mtr || (campaign as any)?.order_capping_mtr || 0);
+
+      const campaignMasterPlannedPcs = campaign?.child_work_orders ? (
+        Number(campaign.planned_pcs || 0) + (campaign.child_work_orders || []).reduce((s: number, c: any) => s + Number(c.total_order_pcs || c.planned_pcs || 0), 0)
+      ) : 0;
+
+      const defaultCapPcs = campaignMasterPlannedPcs > totalOrderPcs
+        ? Math.round(campaignMasterPlannedPcs * 1.10)
+        : (avgLength > 0 ? Math.round((totalOrderMtr * 1.10) / avgLength) : 0);
+
+      const defaultCapMtr = campaignMasterPlannedPcs > totalOrderPcs && avgLength > 0
+        ? Number((defaultCapPcs * avgLength).toFixed(2))
+        : Number((totalOrderMtr * 1.10).toFixed(2));
+
+      const orderCappingMtr = customCapMtr > 0 ? customCapMtr : defaultCapMtr;
+      const orderCappingPcs = customCapPcs > 0 ? customCapPcs : defaultCapPcs;
 
       // Pre-build Row objects for this work order for all 6 stages
       const rollingDate = rollLogs.length > 0
@@ -2423,8 +2441,10 @@ export async function GET(req: NextRequest) {
           routes[0]?.id ||
           "";
 
-        const childCappingMtr = Number((childTotalOrderMtr * 1.10).toFixed(2));
-        const childCappingPcs = avgLength > 0 ? Math.round(childCappingMtr / avgLength) : 0;
+        const childCustomCapPcs = Number(child.order_capping_pcs || child.capping_pcs || 0);
+        const childCustomCapMtr = Number(child.order_capping_mtr || child.capping_mtr || 0);
+        const childCappingMtr = childCustomCapMtr > 0 ? childCustomCapMtr : Number((childTotalOrderMtr * 1.10).toFixed(2));
+        const childCappingPcs = childCustomCapPcs > 0 ? childCustomCapPcs : (avgLength > 0 ? Math.round(childCappingMtr / avgLength) : 0);
 
         const childMaxAllowedMtr = isChildReady
           ? Math.min(childAvailMtr, Math.max(0, childCappingMtr - childFinOutMtr))

@@ -32,7 +32,9 @@ import {
   Calculator,
   Pencil,
   X,
+  SlidersHorizontal,
 } from 'lucide-react';
+import AdjustCappingModal from '@/components/work-orders/AdjustCappingModal';
 
 type WO = {
   id: string;
@@ -103,6 +105,7 @@ export default function WorkOrders() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingWO, setEditingWO] = useState<WO | null>(null);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
+  const [cappingWo, setCappingWo] = useState<{ id: string; work_order_no: string } | null>(null);
 
   const [form, setForm] = useState({
     work_order_no: '',
@@ -1094,6 +1097,17 @@ export default function WorkOrders() {
                             {canCreateWO && (
                               <button
                                 type="button"
+                                onClick={() => setCappingWo({ id: w.id, work_order_no: w.work_order_no })}
+                                aria-label={`Adjust capping for ${w.work_order_no}`}
+                                className="inline-flex items-center gap-1 rounded border border-indigo-200 bg-indigo-50/60 px-2.5 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100 hover:text-indigo-900 hover:border-indigo-300 transition-colors shadow-2xs cursor-pointer"
+                                title={`Adjust Finishing Capping for ${w.work_order_no}`}
+                              >
+                                <SlidersHorizontal className="h-3 w-3 text-indigo-600" /> Capping
+                              </button>
+                            )}
+                            {canCreateWO && (
+                              <button
+                                type="button"
                                 onClick={() => handleStartEdit(w)}
                                 aria-label={`Edit work order ${w.work_order_no}`}
                                 className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 hover:text-blue-900 hover:border-blue-300 transition-colors shadow-2xs cursor-pointer"
@@ -1188,6 +1202,15 @@ export default function WorkOrders() {
           </div>
       </div>
     </div>
+
+    {/* Adjust Finishing Capping Modal */}
+    <AdjustCappingModal
+      isOpen={!!cappingWo}
+      workOrderId={cappingWo?.id}
+      workOrderNo={cappingWo?.work_order_no}
+      onClose={() => setCappingWo(null)}
+      onSuccess={() => load()}
+    />
     </RouteAccessGuard>
   );
 }

@@ -278,15 +278,24 @@ export default function SizeGradeWipReportClient() {
             const mapped = validQueueRows.map((r: any) => {
               const stCode = (r.stage_code || '').toUpperCase() as StageCode;
               const isRolling = stCode === 'HOT_ROLLING' || stCode === 'ROLLING';
-              const pcs = isRolling
+              const rawPcs = isRolling
                 ? Math.round(Number(r.rolled_pcs ?? 0))
                 : Math.round(Number(r.ready_pcs ?? r.current_wip_pcs ?? 0));
-              const mtr = isRolling
+              const rawMtr = isRolling
                 ? Number(Number(r.rolled_mtr ?? 0).toFixed(2))
                 : Number(Number(r.ready_mtr ?? r.current_wip ?? 0).toFixed(2));
-              const mt = isRolling
+              const rawMt = isRolling
                 ? Number(Number(r.rolled_mt ?? 0).toFixed(2))
                 : Number(Number(r.ready_mt ?? r.available_mt ?? 0).toFixed(2));
+
+              // Physical balance sanity check: if current stage production >= incoming quantity,
+              // no active physical WIP can remain at this station (eliminates phantom DB/HT WIP)
+              const prodQty = Number(r.production_qty ?? r.gross_output_mtr ?? 0);
+              const incQty = Number(r.incoming_qty ?? 0);
+              const isFullyProcessed = !isRolling && incQty > 0 && prodQty >= incQty && (stCode === 'DRAW' || stCode === 'HEAT_TREATMENT' || stCode === 'HOLLOW_HEAT_TREATMENT');
+              const pcs = isFullyProcessed ? 0 : rawPcs;
+              const mtr = isFullyProcessed ? 0 : (pcs <= 0 && !isRolling ? 0 : rawMtr);
+              const mt = isFullyProcessed ? 0 : (pcs <= 0 && !isRolling ? 0 : rawMt);
 
               return {
                 ...r,
