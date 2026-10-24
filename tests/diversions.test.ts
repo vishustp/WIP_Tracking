@@ -625,36 +625,60 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
       expect(finWipMtr).toBe(0);
     });
 
-    it('preserves VDI salvage and finishing WIP for in-progress orders (WO 6540 scenario)', () => {
+    it('correctly suppresses phantom Finishing WIP when upstream material was depleted by diversions (WO 6540 scenario)', () => {
       // Scenario based on WO 6540:
       // Band Saw cut 3,699.4m (611 pcs).
       // 3,394.4m was diverted as Prime Material Reallocation to Stock.
-      // QC logged 107 pcs inspected = 82 ok (410m) + 25 salvage (125m).
-      // Finishing bundled 46 pcs (276m).
-      // WO 6540 status is 'In Progress' (ordered: 460 pcs).
-      // VDI must show 25 pcs (125m) salvage available.
-      // Finishing must show 36 pcs (134m) unbundled OK available.
+      // Net material remaining on shop floor = 305m (61 pcs).
+      // QC Lot 1 inspected 61 pcs = 46 ok (230m) + 15 salvage (75m).
+      // Finishing bundled 46 pcs (276m) in BDL-01 (exhausting all prime OK pieces).
+      // Operator diverted out the 125m salvage to DRAW.
+      // After diversions, WO 6540 has ZERO pieces at VDI and ZERO pieces at Finishing.
 
       const totalVdiRejMtr = 125;
       const totalVdiRejPcs = 25;
-      const vdiSalvageDivOutMtr = 0;
+      const vdiSalvageDivOutMtr = 125; // 125m diverted to DRAW
 
       const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - vdiSalvageDivOutMtr);
-      const availableVdiRejPcs = Math.max(0, totalVdiRejPcs - Math.round(vdiSalvageDivOutMtr / 5));
+      const availableVdiRejPcs = totalVdiRejMtr > 0
+        ? Math.max(0, Math.round(totalVdiRejPcs * (availableVdiRejMtr / totalVdiRejMtr)))
+        : 0;
 
-      expect(availableVdiRejMtr).toBe(125);
-      expect(availableVdiRejPcs).toBe(25);
+      expect(availableVdiRejMtr).toBe(0);
+      expect(availableVdiRejPcs).toBe(0);
 
+      // Finishing WIP calculation:
+      // VDI incoming was 3,699.4m; VDI total diversion out was 3,519.4m (3,394.4 prime + 125 salvage).
+      // Effective prime OK that could pass to Finishing cannot exceed incoming - diversions out:
       const totalVdiOkMtr = 410;
-      const totalVdiOkPcs = 82;
+      const vdiDivOutMtr = 3519.4;
+      const effectiveVdiOkMtr = Math.max(0, totalVdiOkMtr - vdiDivOutMtr); // 0m
       const finBundledMtr = 276;
-      const finBundledPcs = 46;
+      const trueFinWipMtr = Math.max(0, effectiveVdiOkMtr - finBundledMtr);
 
-      const trueFinWipMtr = Math.max(0, totalVdiOkMtr - finBundledMtr);
-      const trueFinWipPcs = Math.max(0, totalVdiOkPcs - finBundledPcs);
+      expect(effectiveVdiOkMtr).toBe(0);
+      expect(trueFinWipMtr).toBe(0);
+    });
 
-      expect(trueFinWipMtr).toBe(134);
-      expect(trueFinWipPcs).toBe(36);
+    it('preserves genuine unbundled Finishing WIP for active orders with physical material available', () => {
+      // Scenario:
+      // 600m (100 pcs) passed VDI OK.
+      // 240m (40 pcs) bundled at Finishing.
+      // Zero diversions out.
+      // Finishing has 60 pcs (360m) active WIP waiting to be bundled.
+      const totalVdiOkMtr = 600;
+      const totalVdiOkPcs = 100;
+      const vdiDivOutMtr = 0;
+      const effectiveVdiOkMtr = Math.max(0, totalVdiOkMtr - vdiDivOutMtr);
+      const effectiveVdiOkPcs = totalVdiOkPcs;
+
+      const finBundledMtr = 240;
+      const finBundledPcs = 40;
+      const trueFinWipMtr = Math.max(0, effectiveVdiOkMtr - finBundledMtr);
+      const trueFinWipPcs = Math.max(0, effectiveVdiOkPcs - finBundledPcs);
+
+      expect(trueFinWipMtr).toBe(360);
+      expect(trueFinWipPcs).toBe(60);
     });
   });
 });

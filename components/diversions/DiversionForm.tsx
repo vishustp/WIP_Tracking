@@ -395,30 +395,43 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
       }
 
       // Reconcile Finishing WIP:
-      // If work order is completed, no finishing WIP remains.
-      // For active work orders, reconcile Finishing WIP against this order's own inspected OK pieces.
+      // If work order is completed or is a campaign master, no finishing WIP remains.
+      // For active work orders with unbundled material (curWipPcs > 0), reconcile Finishing WIP
+      // against this order's own inspected OK pieces, capped by incoming material surviving VDI diversions.
       if (sc === 'FINISHING') {
-        if (isOrderCompleted) {
+        if (isCampaignMaster || isOrderCompleted) {
           curWipPcs = 0;
           curWipMtr = 0;
           curWipMt = 0;
-        } else if (qcList.length > 0) {
+        } else if (qcList.length > 0 && curWipPcs > 0) {
           const totalVdiOkMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
           const totalVdiOkPcs = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
           if (totalVdiOkMtr > 0) {
+            const vdiRow = stageRows.find((sr: any) => (sr.stage_code || '').toUpperCase() === 'VDI');
+            const vdiDivOutMtr = Number(vdiRow?.diversion_out || 0);
+            const effectiveVdiOkMtr = Math.max(0, totalVdiOkMtr - vdiDivOutMtr);
+            const effectiveVdiOkPcs = avgLength > 0 ? Math.round(effectiveVdiOkMtr / avgLength) : Math.max(0, totalVdiOkPcs - Math.round(vdiDivOutMtr / 6));
+
             const divIn = Number(stg.diversion_in || 0);
             const divOut = Number(stg.diversion_out || 0);
             const prodMtr = Number(stg.production_qty || 0);
             const prodPcs = Number(stg.production_qty_pcs || (avgLength > 0 ? Math.round(prodMtr / avgLength) : 0));
             const rejMtr = Number(stg.rejection_qty || 0);
-            const trueFinWipMtr = Math.max(0, totalVdiOkMtr + divIn - prodMtr - rejMtr - divOut);
-            const trueFinWipPcs = Math.max(0, totalVdiOkPcs - prodPcs);
-            if (Math.abs(trueFinWipMtr - curWipMtr) > 0.01 || trueFinWipPcs !== curWipPcs) {
+            const trueFinWipMtr = Math.max(0, effectiveVdiOkMtr + divIn - prodMtr - rejMtr - divOut);
+            const trueFinWipPcs = Math.max(0, effectiveVdiOkPcs - prodPcs);
+            if (trueFinWipPcs === 0 || trueFinWipMtr === 0) {
+              curWipMtr = 0;
+              curWipPcs = 0;
+              curWipMt = 0;
+            } else if (Math.abs(trueFinWipMtr - curWipMtr) > 0.01 || trueFinWipPcs !== curWipPcs) {
               curWipMtr = Number(trueFinWipMtr.toFixed(3));
               curWipPcs = trueFinWipPcs > 0 ? trueFinWipPcs : (avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0);
               curWipMt = curWipMtr * mtPerMtr;
             }
           }
+        } else if (curWipPcs === 0) {
+          curWipMtr = 0;
+          curWipMt = 0;
         }
       }
 
