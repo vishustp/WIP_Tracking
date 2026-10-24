@@ -233,6 +233,8 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const masterWoId = hierarchyMaps.childToMasterMap.get(id) || id;
   const campaignMembers = hierarchyMaps.campaignMembersMap.get(masterWoId);
   const memberIds = campaignMembers && campaignMembers.size > 0 ? Array.from(campaignMembers) : [id];
+  const isCampaignMaster = masterWoId === id && Boolean(campaignMembers && campaignMembers.size > 1);
+  const isOrderCompleted = (wo.status || '').toLowerCase() === 'completed';
 
   // Fetch campaign-wide QC inspections and production logs if this order is part of a multi-WO campaign
   let effectiveLogs = logs;
@@ -398,25 +400,42 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
         }
       }
 
-      // Reconcile Finishing WIP if VDI QC inspection exists (guarding against database view double-deduction of salvage)
-      if (sc === 'FINISHING' && allQcList.length > 0 && curWipPcs > 0) {
-        const totalVdiOkMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
-        if (totalVdiOkMtr > 0) {
-          const divIn = Number(stg.diversion_in || 0);
-          const divOut = Number(stg.diversion_out || 0);
-          const prodMtr = Number(stg.production_qty || 0);
-          const rejMtr = Number(stg.rejection_qty || 0);
-          const trueFinWipMtr = Math.max(0, totalVdiOkMtr + divIn - prodMtr - rejMtr - divOut);
-          if (Math.abs(trueFinWipMtr - curWipMtr) > 0.01) {
-            curWipMtr = Number(trueFinWipMtr.toFixed(3));
-            curWipPcs = avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0;
-            curWipMt = curWipMtr * mtPerMtr;
+      // Reconcile Finishing WIP:
+      // In a master-child rolling campaign, finishing bundling is tracked under individual child work orders.
+      // The master work order has no finishing queue.
+      // For standalone work orders, reconcile Finishing WIP against this order's own QC passed meters.
+      if (sc === 'FINISHING') {
+        if (isCampaignMaster || isOrderCompleted) {
+          curWipPcs = 0;
+          curWipMtr = 0;
+          curWipMt = 0;
+        } else if (qcList.length > 0 && curWipPcs > 0) {
+          const totalVdiOkMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+          if (totalVdiOkMtr > 0) {
+            const divIn = Number(stg.diversion_in || 0);
+            const divOut = Number(stg.diversion_out || 0);
+            const prodMtr = Number(stg.production_qty || 0);
+            const rejMtr = Number(stg.rejection_qty || 0);
+            const trueFinWipMtr = Math.max(0, totalVdiOkMtr + divIn - prodMtr - rejMtr - divOut);
+            if (Math.abs(trueFinWipMtr - curWipMtr) > 0.01) {
+              curWipMtr = Number(trueFinWipMtr.toFixed(3));
+              curWipPcs = avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0;
+              curWipMt = curWipMtr * mtPerMtr;
+            }
           }
         }
       }
 
       // Fallback: if reconciled WIP is 0, only use db current_wip if downstream hasn't consumed it
-      if (curWipPcs === 0 && curWipMtr === 0 && Number(stg.current_wip || 0) > 0 && sc !== 'VDI') {
+      // Do not apply fallback to completed orders or master orders at FINISHING
+      if (
+        curWipPcs === 0 &&
+        curWipMtr === 0 &&
+        Number(stg.current_wip || 0) > 0 &&
+        sc !== 'VDI' &&
+        !isOrderCompleted &&
+        !(isCampaignMaster && sc === 'FINISHING')
+      ) {
         const downstreamProduced = stageRows
           .filter((sr: any) => sr.sequence_no > stg.sequence_no)
           .some((sr: any) => Number(sr.production_qty || 0) > 0);
@@ -436,23 +455,6 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
         curWipPcs = 0;
         curWipMtr = 0;
         curWipMt = 0;
-      }
-
-      // Reconcile Finishing WIP if VDI QC inspection exists (guarding against database view double-deduction of salvage)
-      if (sc === 'FINISHING' && allQcList.length > 0 && curWipPcs > 0) {
-        const totalVdiOkMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
-        if (totalVdiOkMtr > 0) {
-          const divIn = Number(stg.diversion_in || 0);
-          const divOut = Number(stg.diversion_out || 0);
-          const prodMtr = Number(stg.production_qty || 0);
-          const rejMtr = Number(stg.rejection_qty || 0);
-          const trueFinWipMtr = Math.max(0, totalVdiOkMtr + divIn - prodMtr - rejMtr - divOut);
-          if (Math.abs(trueFinWipMtr - curWipMtr) > 0.01) {
-            curWipMtr = Number(trueFinWipMtr.toFixed(3));
-            curWipPcs = avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0;
-            curWipMt = curWipMtr * mtPerMtr;
-          }
-        }
       }
 
       return {

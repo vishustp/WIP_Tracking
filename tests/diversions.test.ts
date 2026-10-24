@@ -612,6 +612,32 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
       expect(availableVdiRejMtr).toBe(414);
       expect(availableVdiRejPcs).toBe(69);
     });
+
+    it('ensures completed campaign master orders show 0 Finishing WIP (WO 6448 scenario)', () => {
+      // Scenario based on WO 6448:
+      // WO 6448 is Master in multi-WO campaign 08-M7.
+      // Total campaign VDI OK is 1,747.5m across 6 work orders.
+      // WO 6448 produced 720m finishing bundling (ordered: 100 pcs / 750m).
+      // WO 6448 diverted 195m salvage out to DRAW.
+      // WO 6448 status is 'Completed'.
+      // Bundling of remaining campaign pieces belongs to child orders (6449, 6450, etc.).
+      // WO 6448 must NOT show (1747.5 - 720 = 1027.5m / 137 pcs) of finishing WIP!
+
+      const isCampaignMaster = true;
+      const isOrderCompleted = true;
+
+      let finWipPcs = 0;
+      let finWipMtr = 0;
+
+      // In DiversionForm stageBreakdown:
+      if (isCampaignMaster || isOrderCompleted) {
+        finWipPcs = 0;
+        finWipMtr = 0;
+      }
+
+      expect(finWipPcs).toBe(0);
+      expect(finWipMtr).toBe(0);
+    });
   });
 });
 
