@@ -596,19 +596,13 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
         })
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
-      const primeAvailableBeforeDiv = Math.max(0, incomingMtr - totalVdiRejMtr - totalVdiOkMtr);
-      const excessDivOutMtr = Math.max(0, vdiDivOutMtr - primeAvailableBeforeDiv);
-      const effectiveSalvageDivOutMtr = Math.max(vdiSalvageDivOutMtr, excessDivOutMtr);
-
-      const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - effectiveSalvageDivOutMtr);
+      // Rejections/salvage only leave when explicitly diverted as salvage/rejection
+      const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - vdiSalvageDivOutMtr);
       const availableVdiRejPcs = totalVdiRejMtr > 0
         ? Math.max(0, Math.round(totalVdiRejPcs * (availableVdiRejMtr / totalVdiRejMtr)))
         : 0;
 
       expect(vdiSalvageDivOutMtr).toBe(0);
-      expect(primeAvailableBeforeDiv).toBe(4773.5);
-      expect(excessDivOutMtr).toBe(0);
-      expect(effectiveSalvageDivOutMtr).toBe(0);
       expect(availableVdiRejMtr).toBe(414);
       expect(availableVdiRejPcs).toBe(69);
     });
@@ -616,27 +610,51 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
     it('ensures completed campaign master orders show 0 Finishing WIP (WO 6448 scenario)', () => {
       // Scenario based on WO 6448:
       // WO 6448 is Master in multi-WO campaign 08-M7.
-      // Total campaign VDI OK is 1,747.5m across 6 work orders.
-      // WO 6448 produced 720m finishing bundling (ordered: 100 pcs / 750m).
-      // WO 6448 diverted 195m salvage out to DRAW.
       // WO 6448 status is 'Completed'.
-      // Bundling of remaining campaign pieces belongs to child orders (6449, 6450, etc.).
-      // WO 6448 must NOT show (1747.5 - 720 = 1027.5m / 137 pcs) of finishing WIP!
-
-      const isCampaignMaster = true;
       const isOrderCompleted = true;
 
       let finWipPcs = 0;
       let finWipMtr = 0;
 
-      // In DiversionForm stageBreakdown:
-      if (isCampaignMaster || isOrderCompleted) {
+      if (isOrderCompleted) {
         finWipPcs = 0;
         finWipMtr = 0;
       }
 
       expect(finWipPcs).toBe(0);
       expect(finWipMtr).toBe(0);
+    });
+
+    it('preserves VDI salvage and finishing WIP for in-progress orders (WO 6540 scenario)', () => {
+      // Scenario based on WO 6540:
+      // Band Saw cut 3,699.4m (611 pcs).
+      // 3,394.4m was diverted as Prime Material Reallocation to Stock.
+      // QC logged 107 pcs inspected = 82 ok (410m) + 25 salvage (125m).
+      // Finishing bundled 46 pcs (276m).
+      // WO 6540 status is 'In Progress' (ordered: 460 pcs).
+      // VDI must show 25 pcs (125m) salvage available.
+      // Finishing must show 36 pcs (134m) unbundled OK available.
+
+      const totalVdiRejMtr = 125;
+      const totalVdiRejPcs = 25;
+      const vdiSalvageDivOutMtr = 0;
+
+      const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - vdiSalvageDivOutMtr);
+      const availableVdiRejPcs = Math.max(0, totalVdiRejPcs - Math.round(vdiSalvageDivOutMtr / 5));
+
+      expect(availableVdiRejMtr).toBe(125);
+      expect(availableVdiRejPcs).toBe(25);
+
+      const totalVdiOkMtr = 410;
+      const totalVdiOkPcs = 82;
+      const finBundledMtr = 276;
+      const finBundledPcs = 46;
+
+      const trueFinWipMtr = Math.max(0, totalVdiOkMtr - finBundledMtr);
+      const trueFinWipPcs = Math.max(0, totalVdiOkPcs - finBundledPcs);
+
+      expect(trueFinWipMtr).toBe(134);
+      expect(trueFinWipPcs).toBe(36);
     });
   });
 });

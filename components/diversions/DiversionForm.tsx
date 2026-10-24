@@ -377,13 +377,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
           })
           .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
-        const totalVdiOkMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
-        const incomingMtr = Number(stg.incoming_qty || 0);
-        const primeAvailableBeforeDiv = Math.max(0, incomingMtr - totalVdiRejMtr - totalVdiOkMtr);
-        const excessDivOutMtr = Math.max(0, vdiDivOutMtr - primeAvailableBeforeDiv);
-        const effectiveSalvageDivOutMtr = Math.max(vdiSalvageDivOutMtr, excessDivOutMtr);
-
-        const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - effectiveSalvageDivOutMtr);
+        const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - vdiSalvageDivOutMtr);
         const availableVdiRejPcs = totalVdiRejMtr > 0
           ? Math.max(0, Math.round(totalVdiRejPcs * (availableVdiRejMtr / totalVdiRejMtr)))
           : 0;
@@ -391,35 +385,37 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
         // When prime uninspected material has fully passed downstream, active WIP at VDI is strictly the undispositioned salvage pool
         if (curWipPcs === 0 && availableVdiRejPcs > 0) {
           curWipPcs = availableVdiRejPcs;
-          curWipMtr = avgLength > 0 ? Number((availableVdiRejPcs * avgLength).toFixed(2)) : availableVdiRejMtr;
+          curWipMtr = availableVdiRejMtr > 0 ? availableVdiRejMtr : (avgLength > 0 ? Number((availableVdiRejPcs * avgLength).toFixed(2)) : 0);
           curWipMt = curWipMtr * mtPerMtr;
         } else if (availableVdiRejPcs > 0 && curWipPcs < availableVdiRejPcs) {
           curWipPcs = availableVdiRejPcs;
-          curWipMtr = avgLength > 0 ? Number((availableVdiRejPcs * avgLength).toFixed(2)) : availableVdiRejMtr;
+          curWipMtr = availableVdiRejMtr > 0 ? availableVdiRejMtr : (avgLength > 0 ? Number((availableVdiRejPcs * avgLength).toFixed(2)) : 0);
           curWipMt = curWipMtr * mtPerMtr;
         }
       }
 
       // Reconcile Finishing WIP:
-      // In a master-child rolling campaign, finishing bundling is tracked under individual child work orders.
-      // The master work order has no finishing queue.
-      // For standalone work orders, reconcile Finishing WIP against this order's own QC passed meters.
+      // If work order is completed, no finishing WIP remains.
+      // For active work orders, reconcile Finishing WIP against this order's own inspected OK pieces.
       if (sc === 'FINISHING') {
-        if (isCampaignMaster || isOrderCompleted) {
+        if (isOrderCompleted) {
           curWipPcs = 0;
           curWipMtr = 0;
           curWipMt = 0;
-        } else if (qcList.length > 0 && curWipPcs > 0) {
+        } else if (qcList.length > 0) {
           const totalVdiOkMtr = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+          const totalVdiOkPcs = qcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
           if (totalVdiOkMtr > 0) {
             const divIn = Number(stg.diversion_in || 0);
             const divOut = Number(stg.diversion_out || 0);
             const prodMtr = Number(stg.production_qty || 0);
+            const prodPcs = Number(stg.production_qty_pcs || (avgLength > 0 ? Math.round(prodMtr / avgLength) : 0));
             const rejMtr = Number(stg.rejection_qty || 0);
             const trueFinWipMtr = Math.max(0, totalVdiOkMtr + divIn - prodMtr - rejMtr - divOut);
-            if (Math.abs(trueFinWipMtr - curWipMtr) > 0.01) {
+            const trueFinWipPcs = Math.max(0, totalVdiOkPcs - prodPcs);
+            if (Math.abs(trueFinWipMtr - curWipMtr) > 0.01 || trueFinWipPcs !== curWipPcs) {
               curWipMtr = Number(trueFinWipMtr.toFixed(3));
-              curWipPcs = avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0;
+              curWipPcs = trueFinWipPcs > 0 ? trueFinWipPcs : (avgLength > 0 ? Math.round(curWipMtr / avgLength) : 0);
               curWipMt = curWipMtr * mtPerMtr;
             }
           }
