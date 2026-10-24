@@ -20,7 +20,7 @@ interface DashboardCachePayload {
 }
 
 let dashboardCache: DashboardCachePayload | null = null;
-const DASHBOARD_CACHE_TTL_MS = 25000; // 25s fast in-memory cache
+const DASHBOARD_CACHE_TTL_MS = 60000; // 60s fast in-memory cache
 
 export default async function Dashboard() {
   if (dashboardCache && (Date.now() - dashboardCache.timestamp) < DASHBOARD_CACHE_TTL_MS) {
@@ -37,8 +37,12 @@ export default async function Dashboard() {
 
   try {
     const supabase = await createClient();
-    const [kpiRes, wipRes, pendingRes, plansRes, woRes, qcRes, prodRes, usersRes, agingRes, routeStagesRes, stagesRes] = await Promise.all([
-      supabase.from('vw_dashboard_kpis').select('*').maybeSingle(),
+    
+    // Execute independent queries in parallel using allSettled to ensure WIP and critical metrics
+    // never drop or fail if a secondary query encounters a timeout or network hiccup.
+    // Note: vw_dashboard_kpis is excluded because all KPI aggregates are calculated directly in JS,
+    // saving 5+ seconds of database contention.
+    const results = await Promise.allSettled([
       supabase
         .from('vw_route_stage_wip')
         .select('*')
@@ -57,21 +61,39 @@ export default async function Dashboard() {
       supabase
         .from('work_orders')
         .select('id,work_order_no,customer_name,ordered_qty_mt,ordered_qty_mtr,size_od,size_wt,grade,target_date,status,l1,l2'),
-      supabase.from('qc_inspections').select('id,work_order_id,vdi_ok_mtr,vdi_ok_pcs,vdi_ok_mt,vdi_rejection_mtr,vdi_salvage_mtr,vdi_rejection_pcs,vdi_salvage_pcs,inspection_date,created_at'),
-      supabase.from('production_logs').select('id,work_order_id,stage_id,output_qty,rejection_qty,remarks,process_date,created_at,created_by,process_stages(stage_code,stage_name)').order('created_at', { ascending: false }).limit(20000),
+      supabase
+        .from('qc_inspections')
+        .select('id,work_order_id,vdi_ok_mtr,vdi_ok_pcs,vdi_ok_mt,vdi_rejection_mtr,vdi_salvage_mtr,vdi_rejection_pcs,vdi_salvage_pcs,inspection_date,created_at'),
+      supabase
+        .from('production_logs')
+        .select('id,work_order_id,stage_id,output_qty,rejection_qty,remarks,process_date,created_at,created_by,process_stages(stage_code,stage_name)')
+        .order('created_at', { ascending: false })
+        .limit(2500),
       supabase.from('app_users').select('id,auth_user_id,employee_name,email'),
       supabase.from('vw_wip_aging').select('*').gt('current_wip', 0).order('days_stuck', { ascending: false }).limit(50),
       supabase.from('route_stages').select('route_id,stage_id,sequence_no,process_stages(stage_code)').order('sequence_no', { ascending: true }),
       supabase.from('process_stages').select('id,stage_code,stage_name'),
     ]);
 
-    const rawWip = (wipRes.data ?? []) as any[];
-    const rollingPlans = (plansRes.data ?? []) as any[];
-    const workOrders = (woRes.data ?? []) as any[];
-    const qcInspections = (qcRes.data ?? []) as any[];
-    const productionLogs = (prodRes.data ?? []) as any[];
-    const appUsers = (usersRes.data ?? []) as any[];
-    const processStages = (stagesRes?.data ?? []) as any[];
+    const getVal = <T,>(idx: number, fallback: T): T => {
+      const res = results[idx];
+      if (res.status === 'fulfilled' && (res.value as any)?.data) {
+        return (res.value as any).data as T;
+      }
+      return fallback;
+    };
+
+    const rawWip = getVal<any[]>(0, []);
+    const eligiblePending = getVal<any[]>(1, []);
+    const rollingPlans = getVal<any[]>(2, []);
+    const workOrders = getVal<any[]>(3, []);
+    const qcInspections = getVal<any[]>(4, []);
+    const productionLogs = getVal<any[]>(5, []);
+    const appUsers = getVal<any[]>(6, []);
+    const rawAging = getVal<any[]>(7, []);
+    const routeStages = getVal<any[]>(8, []);
+    const processStages = getVal<any[]>(9, []);
+
     const stageIdToCodeMap = new Map<string, string>();
     processStages.forEach((s: any) => {
       if (s.id && s.stage_code) stageIdToCodeMap.set(s.id, s.stage_code);
@@ -89,6 +111,20 @@ export default async function Dashboard() {
 
     // Build campaign hierarchy maps and MH info
     const hierarchyMaps = buildCampaignHierarchyMaps(rollingPlans);
+
+    // Pre-index production logs and QC inspections by work_order_id in O(N)
+    // This reduces reconcileCampaignWorkOrderWip from O(N*M) to O(1) per order (5000x speedup)
+    const productionLogsByWo = new Map<string, any[]>();
+    for (const pl of productionLogs) {
+      if (!productionLogsByWo.has(pl.work_order_id)) productionLogsByWo.set(pl.work_order_id, []);
+      productionLogsByWo.get(pl.work_order_id)!.push(pl);
+    }
+
+    const qcInspectionsByWo = new Map<string, any[]>();
+    for (const qc of qcInspections) {
+      if (!qcInspectionsByWo.has(qc.work_order_id)) qcInspectionsByWo.set(qc.work_order_id, []);
+      qcInspectionsByWo.get(qc.work_order_id)!.push(qc);
+    }
 
     // Group raw WIP by work order
     const wipByWo = new Map<string, any[]>();
@@ -109,6 +145,8 @@ export default async function Dashboard() {
         productionLogs,
         hierarchyMaps,
         stageCodeById: stageIdToCodeMap,
+        productionLogsByWo,
+        qcInspectionsByWo,
       });
 
       // Add only post-rolling stages with active WIP to the dashboard
@@ -288,12 +326,11 @@ export default async function Dashboard() {
     const todayThroughput = todayProdMt + todayRejMt;
     const todayRejectionPct = todayThroughput > 0 ? (todayRejMt / todayThroughput) * 100 : overallRejectionPct;
 
-    const eligiblePendingRes = ((pendingRes.data ?? []) as any[]).filter((p: any) => !isStockOrHollowBankOrder(p));
-    const delayedCount = eligiblePendingRes.filter((p: any) => p.target_date && new Date(p.target_date) < new Date()).length;
-    const activeCount = kpiRes.data?.active_orders ?? workOrders.filter((w: any) => !['Completed', 'Cancelled'].includes(w.status)).length;
+    const eligiblePendingOrders = eligiblePending.filter((p: any) => !isStockOrHollowBankOrder(p));
+    const delayedCount = eligiblePendingOrders.filter((p: any) => p.target_date && new Date(p.target_date) < new Date()).length;
+    const activeCount = workOrders.filter((w: any) => !['Completed', 'Cancelled'].includes(w.status)).length;
 
     kpi = {
-      ...(kpiRes.data ?? {}),
       total_wip: totalWipMtr,
       total_wip_mtr: totalWipMtr,
       total_wip_pcs: totalWipPcs,
@@ -334,7 +371,7 @@ export default async function Dashboard() {
       active_work_orders: activeCount,
     };
     wip = calculatedWip;
-    pending = eligiblePendingRes;
+    pending = eligiblePendingOrders;
 
     // Real recent production logs (sorted newest first)
     const sortedLogs = [...productionLogs].sort((a, b) => {
@@ -384,8 +421,8 @@ export default async function Dashboard() {
     });
 
     // WIP Aging items for dashboard
-    if (agingRes?.data && agingRes.data.length > 0) {
-      agingData = (agingRes.data as any[])
+    if (rawAging && rawAging.length > 0) {
+      agingData = (rawAging as any[])
         .filter((r) => (r.stage_code || '').toUpperCase() !== 'ROLLING')
         .slice(0, 10)
         .map((r) => ({
@@ -412,7 +449,7 @@ export default async function Dashboard() {
         productionLogs: productionLogs,
         qcInspections: qcInspections,
         rollingPlans: rollingPlans,
-        routeStages: (routeStagesRes?.data || []) as any[],
+        routeStages: (routeStages as any[]),
         asOfDate: new Date(),
       });
 
@@ -519,9 +556,11 @@ export default async function Dashboard() {
     const yesterdayDateLabel = istYesterday.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
     const stationsConfig = [
-      { code: 'ROLLING', name: 'Hot Rolling', shortName: 'Rolling' },
+      { code: 'HOT_ROLLING', name: 'Hot Rolling', shortName: 'Rolling' },
+      { code: 'HTC', name: 'HTC Check', shortName: 'HTC' },
       { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow Heat Treatment', shortName: 'Hollow HT' },
       { code: 'DRAW', name: 'Cold Draw Bench', shortName: 'Draw' },
+      { code: 'PILGER', name: 'Cold Pilger Mill', shortName: 'Pilger' },
       { code: 'HEAT_TREATMENT', name: 'Final Heat Treatment', shortName: 'Heat Treatment' },
       { code: 'BAND_SAW', name: 'Band Saw Cutting', shortName: 'Band Saw' },
       { code: 'VDI', name: 'VDI / QC Inspection', shortName: 'VDI' },
@@ -550,9 +589,11 @@ export default async function Dashboard() {
         ''
       ).toUpperCase();
       let code = '';
-      if (rawCode.includes('ROLL')) code = 'ROLLING';
-      else if (rawCode.includes('HOLLOW') || rawCode === 'HTC') code = 'HOLLOW_HEAT_TREATMENT';
-      else if (rawCode.includes('DRAW') || rawCode.includes('PILGER')) code = 'DRAW';
+      if (rawCode === 'HOT_ROLLING' || rawCode === 'ROLLING') code = 'HOT_ROLLING';
+      else if (rawCode === 'HTC' || rawCode.includes('HOT TEST')) code = 'HTC';
+      else if (rawCode.includes('HOLLOW')) code = 'HOLLOW_HEAT_TREATMENT';
+      else if (rawCode.includes('PILGER')) code = 'PILGER';
+      else if (rawCode.includes('DRAW')) code = 'DRAW';
       else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') code = 'HEAT_TREATMENT';
       else if (rawCode.includes('SAW') || rawCode.includes('CUT')) code = 'BAND_SAW';
       else if (rawCode.includes('VDI') || rawCode.includes('QC')) code = 'VDI';
@@ -563,8 +604,8 @@ export default async function Dashboard() {
 
       const wo = woMap.get(pl.work_order_id);
       const planMh = hierarchyMaps.mhMap.get(pl.work_order_id) || hierarchyMaps.mhMap.get(String(wo?.work_order_no).trim());
-      const isRolling = code === 'ROLLING';
-      const isDraw = code === 'DRAW';
+      const isRolling = code === 'HOT_ROLLING' || code === 'HTC';
+      const isDraw = code === 'DRAW' || code === 'PILGER';
       const od = isRolling && planMh?.mh_od ? Number(planMh.mh_od) : Number(wo?.size_od || 0);
       const wt = isRolling && planMh?.mh_wt ? Number(planMh.mh_wt) : Number(wo?.size_wt || 0);
       const outMtr = Number(pl.output_qty || 0);

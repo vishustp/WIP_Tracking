@@ -89,6 +89,8 @@ export interface PrepareCampaignWipParams {
   finishingStageId?: string;
   stageCodeById?: Map<string, string>;
   routeCode?: string;
+  productionLogsByWo?: Map<string, any[]>;
+  qcInspectionsByWo?: Map<string, any[]>;
 }
 
 export interface PreparedCampaignWipResult {
@@ -107,7 +109,18 @@ export interface PreparedCampaignWipResult {
  * and downstream finishing stage synthesis.
  */
 export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams): PreparedCampaignWipResult {
-  const { woId, wo, rows, qcInspections, productionLogs, hierarchyMaps, finishingStageId, stageCodeById } = params;
+  const {
+    woId,
+    wo,
+    rows,
+    qcInspections,
+    productionLogs,
+    hierarchyMaps,
+    finishingStageId,
+    stageCodeById,
+    productionLogsByWo,
+    qcInspectionsByWo,
+  } = params;
   const { campaignMembersMap, childToMasterMap, mhMap } = hierarchyMaps;
 
   const planMh = mhMap.get(woId) || mhMap.get(String(wo?.work_order_no).trim());
@@ -116,29 +129,29 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
 
   // Direct production logs per stage for this work order
   const directStageLogsMap = new Map<string, { mtr: number; pcs: number; rejMtr: number; rejPcs: number; motherPcs: number }>();
-  productionLogs.forEach((l: any) => {
-    if (l.work_order_id === woId) {
-      const sc = (
-        l.process_stages?.stage_code ||
-        l.stage_code ||
-        (stageCodeById && stageCodeById.get(l.stage_id)) ||
-        ''
-      ).toUpperCase();
-      if (!sc) return;
-      const cur = directStageLogsMap.get(sc) || { mtr: 0, pcs: 0, rejMtr: 0, rejPcs: 0, motherPcs: 0 };
-      cur.mtr += Number(l.output_qty || 0);
-      cur.rejMtr += Number(l.rejection_qty || 0);
-      const { pcs: pPcs, rejPcs: rPcs } = extractPcsFromRemarks(l.remarks);
-      const effectivePcs = l.output_pcs != null ? Number(l.output_pcs) : (l.pieces != null ? Number(l.pieces) : pPcs);
-      const effectiveRejPcs = l.rejection_pcs != null ? Number(l.rejection_pcs) : rPcs;
-      if (effectivePcs != null && !isNaN(effectivePcs)) cur.pcs += effectivePcs;
-      if (effectiveRejPcs != null && !isNaN(effectiveRejPcs)) cur.rejPcs += effectiveRejPcs;
-      if (sc === 'BAND_SAW') {
-        const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(l.remarks);
-        if (mPcs != null && mPcs > 0) cur.motherPcs += mPcs;
-      }
-      directStageLogsMap.set(sc, cur);
+  const woDirectLogs = productionLogsByWo ? (productionLogsByWo.get(woId) || []) : productionLogs.filter((l: any) => l.work_order_id === woId);
+
+  woDirectLogs.forEach((l: any) => {
+    const sc = (
+      l.process_stages?.stage_code ||
+      l.stage_code ||
+      (stageCodeById && stageCodeById.get(l.stage_id)) ||
+      ''
+    ).toUpperCase();
+    if (!sc) return;
+    const cur = directStageLogsMap.get(sc) || { mtr: 0, pcs: 0, rejMtr: 0, rejPcs: 0, motherPcs: 0 };
+    cur.mtr += Number(l.output_qty || 0);
+    cur.rejMtr += Number(l.rejection_qty || 0);
+    const { pcs: pPcs, rejPcs: rPcs } = extractPcsFromRemarks(l.remarks);
+    const effectivePcs = l.output_pcs != null ? Number(l.output_pcs) : (l.pieces != null ? Number(l.pieces) : pPcs);
+    const effectiveRejPcs = l.rejection_pcs != null ? Number(l.rejection_pcs) : rPcs;
+    if (effectivePcs != null && !isNaN(effectivePcs)) cur.pcs += effectivePcs;
+    if (effectiveRejPcs != null && !isNaN(effectiveRejPcs)) cur.rejPcs += effectiveRejPcs;
+    if (sc === 'BAND_SAW') {
+      const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(l.remarks);
+      if (mPcs != null && mPcs > 0) cur.motherPcs += mPcs;
     }
+    directStageLogsMap.set(sc, cur);
   });
 
   const rollLog = directStageLogsMap.get('ROLLING');
@@ -163,13 +176,13 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
   let directVdiOkPcs = 0;
   let directVdiRejMtr = 0;
   let directVdiRejPcs = 0;
-  qcInspections.forEach((qc: any) => {
-    if (qc.work_order_id === woId) {
-      directVdiOkMtr += Number(qc.vdi_ok_mtr || 0);
-      directVdiOkPcs += Number(qc.vdi_ok_pcs || 0);
-      directVdiRejMtr += Number(qc.vdi_rejection_mtr || 0) + Number(qc.vdi_salvage_mtr || 0);
-      directVdiRejPcs += Number(qc.vdi_rejection_pcs || 0) + Number(qc.vdi_salvage_pcs || 0);
-    }
+  const woDirectQc = qcInspectionsByWo ? (qcInspectionsByWo.get(woId) || []) : qcInspections.filter((qc: any) => qc.work_order_id === woId);
+
+  woDirectQc.forEach((qc: any) => {
+    directVdiOkMtr += Number(qc.vdi_ok_mtr || 0);
+    directVdiOkPcs += Number(qc.vdi_ok_pcs || 0);
+    directVdiRejMtr += Number(qc.vdi_rejection_mtr || 0) + Number(qc.vdi_salvage_mtr || 0);
+    directVdiRejPcs += Number(qc.vdi_rejection_pcs || 0) + Number(qc.vdi_salvage_pcs || 0);
   });
 
   // Direct Finishing production logs for this specific work order
@@ -186,15 +199,22 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
   let campaignFinPcs = 0;
 
   if (campaignMembers && campaignMembers.size > 1) {
-    qcInspections.forEach((qc: any) => {
-      if (qc.work_order_id !== woId && campaignMembers.has(qc.work_order_id)) {
+    for (const memberId of campaignMembers) {
+      if (memberId === woId) continue;
+      const memberQc = qcInspectionsByWo ? (qcInspectionsByWo.get(memberId) || []) : qcInspections.filter((qc: any) => qc.work_order_id === memberId);
+      memberQc.forEach((qc: any) => {
         campaignVdiOkMtr += Number(qc.vdi_ok_mtr || 0);
         campaignVdiOkPcs += Number(qc.vdi_ok_pcs || 0);
         campaignVdiRejMtr += Number(qc.vdi_rejection_mtr || 0) + Number(qc.vdi_salvage_mtr || 0);
         campaignVdiRejPcs += Number(qc.vdi_rejection_pcs || 0) + Number(qc.vdi_salvage_pcs || 0);
-      }
-    });
-    productionLogs.forEach((l: any) => {
+      });
+    }
+
+    const campaignLogsList = productionLogsByWo
+      ? Array.from(campaignMembers).flatMap((mId) => productionLogsByWo.get(mId) || [])
+      : productionLogs.filter((l: any) => campaignMembers.has(l.work_order_id));
+
+    campaignLogsList.forEach((l: any) => {
       const sc = (
         l.process_stages?.stage_code ||
         l.stage_code ||

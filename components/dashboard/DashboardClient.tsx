@@ -734,6 +734,7 @@ export default function DashboardClient({
                   ROLLING: '#6366f1',
                   HOLLOW_HEAT_TREATMENT: '#f97316',
                   DRAW: '#3b82f6',
+                  PILGER: '#a855f7',
                   HEAT_TREATMENT: '#10b981',
                   BAND_SAW: '#eab308',
                   VDI: '#8b5cf6',

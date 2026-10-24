@@ -749,15 +749,15 @@ export default function WorkCenterProductionReportClient() {
     const doneMtr = metrics.outputMtr;
 
     // Strict Stage Balancing:
-    // If preceding stage production is in scope, Received = feederOk (exactly matches upstream Production OK).
-    // If work orders were rolled prior to date filter, ensure Received >= Done.
-    const receivedPcs = feederOkPcs > 0 ? feederOkPcs : (donePcs + fallbackWipPcs);
-    const receivedMt = feederOkMt > 0 ? feederOkMt : (doneMt + fallbackWipMt);
-    const receivedMtr = feederOkMtr > 0 ? feederOkMtr : (doneMtr + fallbackWipMtr);
+    // Physical Work Center Active WIP is resident inventory currently queued at this station.
+    // It is constant regardless of whether "Today", "Yesterday", or "7 Days" date filter is selected.
+    const balancePcs = fallbackWipPcs;
+    const balanceMtr = fallbackWipMtr;
+    const balanceMt = fallbackWipMt;
 
-    const balancePcs = Math.max(0, receivedPcs - donePcs);
-    const balanceMtr = Math.max(0, receivedMtr - doneMtr);
-    const balanceMt = Math.max(0, receivedMt - doneMt);
+    const receivedPcs = feederOkPcs > 0 ? feederOkPcs : (donePcs + balancePcs);
+    const receivedMt = feederOkMt > 0 ? feederOkMt : (doneMt + balanceMt);
+    const receivedMtr = feederOkMtr > 0 ? feederOkMtr : (doneMtr + balanceMtr);
 
     return {
       lastWcName,
@@ -1333,6 +1333,132 @@ export default function WorkCenterProductionReportClient() {
             </button>
           </div>
         )}
+      </div>
+
+      {/* 5-Metric Shop Floor Work Center Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 print:grid-cols-5">
+        {/* Card 1: Material Received from Upstream */}
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-900/90 p-4 border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              {cardConfig.c1Category}
+            </span>
+            <div className="text-xs font-black text-slate-900 dark:text-white truncate mt-0.5">
+              {cardConfig.c1Title}
+            </div>
+            <div className="my-2.5 flex items-baseline justify-between gap-1 flex-wrap">
+              <span className="text-xl sm:text-2xl font-black font-mono text-slate-900 dark:text-white tabular-nums">
+                {fmt(feederMetrics.receivedPcs, 0)}
+              </span>
+              <span className="text-xs font-bold font-mono text-slate-600 dark:text-slate-300">
+                {fmt(feederMetrics.receivedMt, 2)} MT
+              </span>
+            </div>
+          </div>
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            <span>Inflow Length</span>
+            <span className="font-bold text-slate-700 dark:text-slate-200">{fmt(feederMetrics.receivedMtr, 1)} MTR</span>
+          </div>
+        </div>
+
+        {/* Card 2: Production OK Logged in Period */}
+        <div className="rounded-xl bg-blue-50/70 dark:bg-blue-950/30 p-4 border-2 border-blue-400/80 dark:border-blue-700/80 shadow-2xs flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
+              {cardConfig.c2Category}
+            </span>
+            <div className="text-xs font-black text-blue-950 dark:text-blue-100 truncate mt-0.5">
+              {cardConfig.c2Title}
+            </div>
+            <div className="my-2.5 flex items-baseline justify-between gap-1 flex-wrap">
+              <span className="text-xl sm:text-2xl font-black font-mono text-blue-950 dark:text-blue-100 tabular-nums">
+                {fmt(metrics.outputPcs, 0)}
+              </span>
+              <span className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-md font-mono bg-blue-100 dark:bg-blue-900/60 text-blue-950 dark:text-blue-200 border border-blue-300 dark:border-blue-700 tabular-nums">
+                <span className="text-xs font-black">{fmt(metrics.outputMt, 2)}</span>
+                <span className="text-[10px] font-black uppercase">MT</span>
+              </span>
+            </div>
+          </div>
+          <div className="pt-2 border-t border-blue-200/80 dark:border-blue-900/60 flex items-center justify-between text-[11px] font-mono text-blue-900 dark:text-blue-300">
+            <span>Output Length</span>
+            <span className="font-bold text-blue-950 dark:text-blue-100">{fmt(metrics.outputMtr, 1)} MTR</span>
+          </div>
+        </div>
+
+        {/* Card 3: Active Work Center WIP Balance */}
+        <div className="rounded-xl bg-amber-50/70 dark:bg-amber-950/30 p-4 border-2 border-amber-400 dark:border-amber-600 shadow-2xs flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+              {cardConfig.c3Category}
+            </span>
+            <div className="text-xs font-black text-amber-950 dark:text-amber-200 truncate mt-0.5">
+              {cardConfig.c3Title}
+            </div>
+            <div className="my-2.5 flex items-baseline justify-between gap-1 flex-wrap">
+              <span className="text-xl sm:text-2xl font-black font-mono text-amber-950 dark:text-amber-100 tabular-nums">
+                {fmt(feederMetrics.balancePcs, 0)}
+              </span>
+              <span className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-md font-mono bg-amber-100 dark:bg-amber-900/60 text-amber-950 dark:text-amber-200 border border-amber-400 dark:border-amber-700 tabular-nums">
+                <span className="text-xs font-black">{fmt(feederMetrics.balanceMt, 2)}</span>
+                <span className="text-[10px] font-black uppercase">MT</span>
+              </span>
+            </div>
+          </div>
+          <div className="pt-2 border-t border-amber-200/80 dark:border-amber-900/60 flex items-center justify-between text-[11px] font-mono text-amber-900 dark:text-amber-300">
+            <span>Active Queue</span>
+            <span className="font-bold text-amber-950 dark:text-amber-100">{fmt(feederMetrics.balanceMtr, 1)} MTR</span>
+          </div>
+        </div>
+
+        {/* Card 4: Rejections / Defects Logged */}
+        <div className="rounded-xl bg-rose-50/70 dark:bg-rose-950/30 p-4 border border-rose-300 dark:border-rose-900/60 shadow-2xs flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">
+              {cardConfig.c4Category}
+            </span>
+            <div className="text-xs font-black text-rose-950 dark:text-rose-200 truncate mt-0.5">
+              {cardConfig.c4Title}
+            </div>
+            <div className="my-2.5 flex items-baseline justify-between gap-1 flex-wrap">
+              <span className="text-xl sm:text-2xl font-black font-mono text-rose-950 dark:text-rose-100 tabular-nums">
+                {fmt(metrics.rejPcs, 0)}
+              </span>
+              <span className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-md font-mono bg-rose-100 dark:bg-rose-900/60 text-rose-950 dark:text-rose-200 border border-rose-300 dark:border-rose-800 tabular-nums">
+                <span className="text-xs font-black">{fmt(metrics.rejMt, 2)}</span>
+                <span className="text-[10px] font-black uppercase">MT</span>
+              </span>
+            </div>
+          </div>
+          <div className="pt-2 border-t border-rose-200/80 dark:border-rose-900/60 flex items-center justify-between text-[11px] font-mono text-rose-900 dark:text-rose-300">
+            <span>Rejected Length</span>
+            <span className="font-bold text-rose-950 dark:text-rose-100">{fmt(metrics.rejMtr, 1)} MTR</span>
+          </div>
+        </div>
+
+        {/* Card 5: Efficiency / Yield */}
+        <div className="rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 p-4 border border-emerald-300 dark:border-emerald-800/80 shadow-2xs flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+              {cardConfig.c5Category}
+            </span>
+            <div className="text-xs font-black text-emerald-950 dark:text-emerald-200 truncate mt-0.5">
+              {cardConfig.c5Title}
+            </div>
+            <div className="my-2.5 flex items-baseline justify-between gap-1">
+              <span className="text-xl sm:text-2xl font-black text-emerald-950 dark:text-emerald-100 font-mono tabular-nums">
+                {fmt(metrics.yieldPct, 1)}%
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 tabular-nums">
+                Yield
+              </span>
+            </div>
+          </div>
+          <div className="pt-2 border-t border-emerald-200/80 dark:border-emerald-900/60 flex items-center justify-between text-[11px] font-mono text-emerald-900 dark:text-emerald-300">
+            <span>Entries Count</span>
+            <span className="font-bold text-emerald-950 dark:text-emerald-100">{metrics.count}</span>
+          </div>
+        </div>
       </div>
 
       {/* Production Log Detailed Table */}
