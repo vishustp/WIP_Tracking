@@ -179,12 +179,13 @@ interface Props {
   yesterdayProduction?: YesterdayProductionData;
 }
 
-// 6 Real Canonical Post-Rolling WIP Work Centers (Rolling is feeder stage, WIP can't be at Rolling)
+// 7 Real Canonical Post-Rolling WIP Work Centers (Rolling is feeder stage, WIP starts at HTC)
 const CANONICAL_WIP_WORK_CENTERS = [
+  { code: 'HTC', name: 'HTC', fullName: 'Hot Test Check', icon: Flame, color: '#f59e0b', badgeBg: 'bg-amber-50/90 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200' },
   { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow HT', fullName: 'Hollow Heat Treatment', icon: Flame, color: '#f97316', badgeBg: 'bg-orange-50/90 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800 text-orange-900 dark:text-orange-200' },
   { code: 'DRAW', name: 'Draw', fullName: 'Cold Draw Bench', icon: Wrench, color: '#3b82f6', badgeBg: 'bg-blue-50/90 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200' },
   { code: 'HEAT_TREATMENT', name: 'Heat Treatment', fullName: 'Final Heat Treatment', icon: Flame, color: '#10b981', badgeBg: 'bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200' },
-  { code: 'BAND_SAW', name: 'Bandsaw', fullName: 'Band Saw Cutting', icon: Disc, color: '#eab308', badgeBg: 'bg-amber-50/90 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200' },
+  { code: 'BAND_SAW', name: 'Bandsaw', fullName: 'Band Saw Cutting', icon: Disc, color: '#eab308', badgeBg: 'bg-yellow-50/90 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800 text-yellow-900 dark:text-yellow-200' },
   { code: 'VDI', name: 'VDI', fullName: 'VDI / QC Inspection', icon: Package, color: '#8b5cf6', badgeBg: 'bg-purple-50/90 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800 text-purple-900 dark:text-purple-200' },
   { code: 'FINISHING', name: 'Finishing', fullName: 'Finishing & Dispatch', icon: CheckCircle2, color: '#06b6d4', badgeBg: 'bg-cyan-50/90 dark:bg-cyan-950/30 border-cyan-200 dark:border-cyan-800 text-cyan-900 dark:text-cyan-200' },
 ];
@@ -583,7 +584,7 @@ export default function DashboardClient({
             <h2 className="text-base font-bold text-[var(--text-main,#0f172a)] tracking-tight flex items-center gap-2">
               <span>WIP by Process Stage</span>
               <span className="text-xs font-semibold text-[var(--text-muted,#64748b)] bg-[var(--bg-surface-subtle,#f1f5f9)] px-2 py-0.5 rounded-full border border-[var(--border-subtle,#e2e8f0)]">
-                6 Post-Rolling Work Centers
+                7 Post-Rolling Work Centers
               </span>
             </h2>
             <p className="text-xs text-[var(--text-muted,#64748b)] mt-0.5">

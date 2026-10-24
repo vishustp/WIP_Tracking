@@ -48,7 +48,7 @@ export default function DashboardLoading() {
       </div>
 
       {/* ========================================================================= */}
-      {/* ROW 2: WIP BY PROCESS STAGE (6 POST-ROLLING WORK CENTERS)                 */}
+      {/* ROW 2: WIP BY PROCESS STAGE (7 POST-ROLLING WORK CENTERS)                 */}
       {/* ========================================================================= */}
       <div className="bg-[var(--bg-surface,#ffffff)] rounded-xl border border-[var(--border-subtle,#e2e8f0)] shadow-2xs p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
@@ -62,10 +62,10 @@ export default function DashboardLoading() {
           <div className="h-7 w-28 bg-slate-100 dark:bg-slate-800 rounded-lg" />
         </div>
 
-        {/* 6 Stage pipeline cards */}
+        {/* 7 Stage pipeline cards */}
         <div className="overflow-x-auto pb-2 scrollbar-thin">
-          <div className="flex items-center gap-2 min-w-[860px]">
-            {['Hollow HT', 'Draw', 'Heat Treatment', 'Bandsaw', 'VDI', 'Finishing'].map((name, idx) => (
+          <div className="flex items-center gap-2 min-w-[980px]">
+            {['HTC', 'Hollow HT', 'Draw', 'Heat Treatment', 'Bandsaw', 'VDI', 'Finishing'].map((name, idx) => (
               <div key={name} className="flex items-center flex-1">
                 <div className="flex-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-3 flex flex-col items-center justify-center">
                   <div className="h-3.5 w-16 bg-slate-200 dark:bg-slate-800 rounded" />
@@ -73,7 +73,7 @@ export default function DashboardLoading() {
                   <div className="h-5 w-16 bg-slate-200 dark:bg-slate-800 rounded mb-1" />
                   <div className="h-3.5 w-14 bg-slate-100 dark:bg-slate-800/60 rounded" />
                 </div>
-                {idx < 5 && (
+                {idx < 6 && (
                   <div className="px-1 text-slate-300 dark:text-slate-700 shrink-0">→</div>
                 )}
               </div>

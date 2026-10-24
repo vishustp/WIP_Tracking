@@ -194,12 +194,127 @@ export default async function Dashboard() {
           });
         }
       }
+
+      // Compute HTC active WIP: Mother hollows produced at Hot Rolling awaiting HTC testing/clearance
+      const woLogs = productionLogsByWo.get(woId) || [];
+      let hotRollingPcs = 0;
+      let htcPcs = 0;
+      let downstreamPcs = 0;
+
+      for (const l of woLogs) {
+        const sc = (l.process_stages?.stage_code || l.stage_code || stageIdToCodeMap.get(l.stage_id) || '').toUpperCase();
+        const { pcs } = extractPcsFromRemarks(l.remarks);
+        const effectivePcs = pcs != null ? pcs : (planMh?.mh_avg_length && Number(l.output_qty) > 0 ? Math.round(Number(l.output_qty) / planMh.mh_avg_length) : 0);
+
+        if (sc === 'HOT_ROLLING') {
+          hotRollingPcs += effectivePcs;
+        } else if (sc === 'HTC') {
+          htcPcs += effectivePcs;
+        } else if (sc !== 'ROLLING') {
+          downstreamPcs += effectivePcs;
+        }
+      }
+
+      if (hotRollingPcs > 0) {
+        const consumedPcs = Math.max(htcPcs, downstreamPcs);
+        const htcWipPcs = Math.max(0, hotRollingPcs - consumedPcs);
+        if (htcWipPcs > 0) {
+          const mhLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 4.49);
+          const mhOd = Number(planMh?.mh_od || wo?.size_od || 0);
+          const mhWt = Number(planMh?.mh_wt || wo?.size_wt || 0);
+          const htcWipMtr = Number((htcWipPcs * mhLen).toFixed(2));
+          const htcWipMt = mhOd > 0 && mhWt > 0 ? mtFromMtr(htcWipMtr, mhOd, mhWt) : 0;
+
+          calculatedWip.push({
+            work_order_id: woId,
+            work_order_no: wo?.work_order_no || '—',
+            customer_name: wo?.customer_name || 'Generic Customer',
+            stage_code: 'HTC',
+            stage_name: 'Hot Test Check',
+            sequence_no: 1,
+            od: mhOd,
+            wt: mhWt,
+            size_od: mhOd,
+            size_wt: mhWt,
+            mh_od: mhOd,
+            mh_wt: mhWt,
+            mh_l1: planMh?.mh_l1 || null,
+            mh_l2: planMh?.mh_l2 || null,
+            mh_avg_length: mhLen,
+            current_wip: htcWipMtr,
+            current_wip_pcs: htcWipPcs,
+            current_wip_mt: htcWipMt,
+            grade: wo?.grade || '—',
+          });
+        }
+      }
+    }
+
+    // Also include any active orders that have HOT_ROLLING production logs not captured in wipByWo
+    for (const [woId, woLogs] of productionLogsByWo.entries()) {
+      if (wipByWo.has(woId)) continue;
+      const wo = woMap.get(woId);
+      if (!wo || ['Completed', 'Cancelled'].includes(wo.status)) continue;
+      const planMh = hierarchyMaps.mhMap.get(woId) || hierarchyMaps.mhMap.get(String(wo.work_order_no).trim());
+
+      let hotRollingPcs = 0;
+      let htcPcs = 0;
+      let downstreamPcs = 0;
+
+      for (const l of woLogs) {
+        const sc = (l.process_stages?.stage_code || l.stage_code || stageIdToCodeMap.get(l.stage_id) || '').toUpperCase();
+        const { pcs } = extractPcsFromRemarks(l.remarks);
+        const effectivePcs = pcs != null ? pcs : (planMh?.mh_avg_length && Number(l.output_qty) > 0 ? Math.round(Number(l.output_qty) / planMh.mh_avg_length) : 0);
+
+        if (sc === 'HOT_ROLLING') {
+          hotRollingPcs += effectivePcs;
+        } else if (sc === 'HTC') {
+          htcPcs += effectivePcs;
+        } else if (sc !== 'ROLLING') {
+          downstreamPcs += effectivePcs;
+        }
+      }
+
+      if (hotRollingPcs > 0) {
+        const consumedPcs = Math.max(htcPcs, downstreamPcs);
+        const htcWipPcs = Math.max(0, hotRollingPcs - consumedPcs);
+        if (htcWipPcs > 0) {
+          const mhLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 4.49);
+          const mhOd = Number(planMh?.mh_od || wo.size_od || 0);
+          const mhWt = Number(planMh?.mh_wt || wo.size_wt || 0);
+          const htcWipMtr = Number((htcWipPcs * mhLen).toFixed(2));
+          const htcWipMt = mhOd > 0 && mhWt > 0 ? mtFromMtr(htcWipMtr, mhOd, mhWt) : 0;
+
+          calculatedWip.push({
+            work_order_id: woId,
+            work_order_no: wo.work_order_no,
+            customer_name: wo.customer_name || 'Generic Customer',
+            stage_code: 'HTC',
+            stage_name: 'Hot Test Check',
+            sequence_no: 1,
+            od: mhOd,
+            wt: mhWt,
+            size_od: mhOd,
+            size_wt: mhWt,
+            mh_od: mhOd,
+            mh_wt: mhWt,
+            mh_l1: planMh?.mh_l1 || null,
+            mh_l2: planMh?.mh_l2 || null,
+            mh_avg_length: mhLen,
+            current_wip: htcWipMtr,
+            current_wip_pcs: htcWipPcs,
+            current_wip_mt: htcWipMt,
+            grade: wo.grade || '—',
+          });
+        }
+      }
     }
 
     const CANONICAL_STAGE_ORDER: Record<string, number> = {
+      HOT_ROLLING: 10,
       ROLLING: 10,
+      HTC: 15,
       HOLLOW_HEAT_TREATMENT: 20,
-      HTC: 20,
       DRAW: 30,
       HEAT_TREATMENT: 40,
       HT: 40,
