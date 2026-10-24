@@ -563,6 +563,55 @@ describe('Material Diversion Calculations & Universal Rejection Rule (Rule 2)', 
       expect(remSalvageMtr).toBe(226.201);
       expect(remSalvagePcs).toBe(23);
     });
+
+    it('preserves VDI salvage WIP when prime material is reallocated at VDI (WO 6430 scenario)', () => {
+      // Scenario based on WO 6430:
+      // Band Saw produced 14,205.5m incoming to VDI.
+      // 9,018m passed VDI as OK (1,503 pcs).
+      // 414m logged as Salvage / Rejection (69 pcs).
+      // 4,773.5m was diverted as PRIME material reallocation ([FROM_STAGE: VDI] [TO_STAGE: VDI]).
+      // Total VDI diversion out is 4,773.5m.
+      // Salvage pool must NOT be consumed by prime diversion and must remain 69 pcs / 414m.
+
+      const incomingMtr = 14205.5;
+      const totalVdiOkMtr = 9018;
+      const totalVdiRejMtr = 414;
+      const totalVdiRejPcs = 69;
+      const vdiDivOutMtr = 4773.5;
+
+      const divs = [
+        {
+          source_wo_id: 'wo-6430',
+          work_center: 'VDI',
+          reason: 'Prime Material Reallocation [FROM_STAGE: VDI] [TO_STAGE: VDI]',
+          diverted_qty: 4773.5,
+        },
+      ];
+
+      // Distinguish salvage/rejection diversions from prime diversions
+      const vdiSalvageDivOutMtr = divs
+        .filter((d: any) => {
+          const r = (d.reason || '').toLowerCase();
+          return r.includes('salvage') || r.includes('rejection') || r.includes('second') || r.includes('scrap');
+        })
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+      const primeAvailableBeforeDiv = Math.max(0, incomingMtr - totalVdiRejMtr - totalVdiOkMtr);
+      const excessDivOutMtr = Math.max(0, vdiDivOutMtr - primeAvailableBeforeDiv);
+      const effectiveSalvageDivOutMtr = Math.max(vdiSalvageDivOutMtr, excessDivOutMtr);
+
+      const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - effectiveSalvageDivOutMtr);
+      const availableVdiRejPcs = totalVdiRejMtr > 0
+        ? Math.max(0, Math.round(totalVdiRejPcs * (availableVdiRejMtr / totalVdiRejMtr)))
+        : 0;
+
+      expect(vdiSalvageDivOutMtr).toBe(0);
+      expect(primeAvailableBeforeDiv).toBe(4773.5);
+      expect(excessDivOutMtr).toBe(0);
+      expect(effectiveSalvageDivOutMtr).toBe(0);
+      expect(availableVdiRejMtr).toBe(414);
+      expect(availableVdiRejPcs).toBe(69);
+    });
   });
 });
 

@@ -361,9 +361,30 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
         const totalVdiRejMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0), 0);
         const totalVdiRejPcs = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0), 0);
         const vdiDivOutMtr = Number(stg.diversion_out || 0);
-        const vdiDivOutPcs = avgLength > 0 ? Math.round(vdiDivOutMtr / avgLength) : 0;
-        const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - vdiDivOutMtr);
-        const availableVdiRejPcs = Math.max(0, totalVdiRejPcs - vdiDivOutPcs);
+
+        // Distinguish salvage/rejection diversions from prime diversions:
+        // Diversions of prime material reallocate prime queue and do not consume the salvage pool.
+        const vdiSalvageDivOutMtr = divs
+          .filter((d: any) => {
+            if (d.source_wo_id !== id) return false;
+            const fromMatch = d.reason?.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i);
+            const fromStage = fromMatch ? fromMatch[1].toUpperCase() : (d.work_center || '').toUpperCase();
+            if (fromStage !== 'VDI') return false;
+            const r = (d.reason || '').toLowerCase();
+            return r.includes('salvage') || r.includes('rejection') || r.includes('second') || r.includes('scrap');
+          })
+          .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+        const totalVdiOkMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
+        const incomingMtr = Number(stg.incoming_qty || 0);
+        const primeAvailableBeforeDiv = Math.max(0, incomingMtr - totalVdiRejMtr - totalVdiOkMtr);
+        const excessDivOutMtr = Math.max(0, vdiDivOutMtr - primeAvailableBeforeDiv);
+        const effectiveSalvageDivOutMtr = Math.max(vdiSalvageDivOutMtr, excessDivOutMtr);
+
+        const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - effectiveSalvageDivOutMtr);
+        const availableVdiRejPcs = totalVdiRejMtr > 0
+          ? Math.max(0, Math.round(totalVdiRejPcs * (availableVdiRejMtr / totalVdiRejMtr)))
+          : 0;
 
         // When prime uninspected material has fully passed downstream, active WIP at VDI is strictly the undispositioned salvage pool
         if (curWipPcs === 0 && availableVdiRejPcs > 0) {
