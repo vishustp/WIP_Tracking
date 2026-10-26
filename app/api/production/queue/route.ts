@@ -313,6 +313,9 @@ export async function GET(req: NextRequest) {
         .filter((d: any) => d.source_wo_id === wId && parseDivStages(d).sourceStage === stageCode)
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
+    const woMap = new Map<string, any>();
+    workOrders.forEach((w) => woMap.set(w.id, w));
+
     const getStageDivInPcs = (wId: string, stageCode: string, fallbackTargetAvgLen: number = 6.0) => {
       const matching = diversions.filter((d: any) => d.target_wo_id === wId && parseDivStages(d).targetStage === stageCode);
       return matching.reduce((sum: number, d: any) => {
@@ -339,6 +342,83 @@ export async function GET(req: NextRequest) {
       }, 0);
     };
 
+    const getStageDivDetails = (wId: string, stageCode: string, fallbackTargetAvgLen: number = 6.0) => {
+      const matching = diversions.filter((d: any) => d.target_wo_id === wId && parseDivStages(d).targetStage === stageCode);
+      if (matching.length === 0) {
+        return {
+          has_diversion: false,
+          diversion_in_pcs: 0,
+          diversion_in_mtr: 0,
+          diversion_source_wo: null,
+          diversion_remarks: null,
+        };
+      }
+      const totalMtr = matching.reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+      const totalPcs = matching.reduce((sum: number, d: any) => {
+        const dQty = Number(d.diverted_qty || 0);
+        if (dQty <= 0) return sum;
+        const multMatch = typeof d.reason === "string" ? d.reason.match(/\[MULTIPLE:\s*([0-9.]+)\]/i) : null;
+        const mult = Math.max(1, Number(multMatch ? multMatch[1] : (d.multiple || 1)));
+        const srcWo = woMap.get(d.source_wo_id);
+        const srcL1 = Number(srcWo?.l1 || 0);
+        const srcL2 = Number(srcWo?.l2 || 0);
+        const srcAvgLen = srcL1 > 0 && srcL2 > 0 ? (srcL1 + srcL2) / 2 : srcL1 || fallbackTargetAvgLen;
+        const srcMotherPcs = srcAvgLen > 0 ? Math.round(dQty / srcAvgLen) : 0;
+        const cutPcs = srcMotherPcs > 0 ? Math.round(srcMotherPcs * mult) : (fallbackTargetAvgLen > 0 ? Math.round(dQty / fallbackTargetAvgLen) : 0);
+        return sum + cutPcs;
+      }, 0);
+      const sourceWoList = Array.from(
+        new Set(
+          matching
+            .map((d: any) => {
+              const src = woMap.get(d.source_wo_id);
+              return src?.work_order_no || d.source_wo_id?.slice(0, 8);
+            })
+            .filter(Boolean)
+        )
+      );
+      const remarks = matching.map((d: any) => d.reason).filter(Boolean).join("; ");
+      return {
+        has_diversion: totalMtr > 0 || totalPcs > 0,
+        diversion_in_pcs: totalPcs,
+        diversion_in_mtr: Number(totalMtr.toFixed(2)),
+        diversion_source_wo: sourceWoList.join(", ") || null,
+        diversion_remarks: remarks || null,
+      };
+    };
+
+    const getWoDivDetails = (wId: string) => {
+      const matching = diversions.filter((d: any) => d.target_wo_id === wId);
+      if (matching.length === 0) {
+        return {
+          has_diversion: false,
+          diversion_in_pcs: 0,
+          diversion_in_mtr: 0,
+          diversion_source_wo: null,
+          diversion_remarks: null,
+        };
+      }
+      const totalMtr = matching.reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+      const sourceWoList = Array.from(
+        new Set(
+          matching
+            .map((d: any) => {
+              const src = woMap.get(d.source_wo_id);
+              return src?.work_order_no || d.source_wo_id?.slice(0, 8);
+            })
+            .filter(Boolean)
+        )
+      );
+      const remarks = matching.map((d: any) => d.reason).filter(Boolean).join("; ");
+      return {
+        has_diversion: totalMtr > 0,
+        diversion_in_pcs: 0,
+        diversion_in_mtr: Number(totalMtr.toFixed(2)),
+        diversion_source_wo: sourceWoList.join(", ") || null,
+        diversion_remarks: remarks || null,
+      };
+    };
+
     const stageCodeToId = new Map<string, string>();
     const stageIdToCode = new Map<string, string>();
     stages.forEach((s) => {
@@ -348,9 +428,6 @@ export async function GET(req: NextRequest) {
 
     const routeMap = new Map<string, any>();
     routes.forEach((r) => routeMap.set(r.id, r));
-
-    const woMap = new Map<string, any>();
-    workOrders.forEach((w) => woMap.set(w.id, w));
 
     const hotRollingStageId = stageCodeToId.get("HOT_ROLLING") || stageCodeToId.get("ROLLING");
     const htcStageId = stageCodeToId.get("HTC") || stageCodeToId.get("ROLLING");
@@ -1529,11 +1606,18 @@ export async function GET(req: NextRequest) {
         ? (rollLogs[0].process_date ? String(rollLogs[0].process_date).slice(0, 10) : (rollLogs[0].created_at ? String(rollLogs[0].created_at).slice(0, 10) : null))
         : null;
 
+      const woDivDetails = getWoDivDetails(wo.id);
+
       const baseRowData = {
         work_order_id: wo.id,
         work_order_no: wo.work_order_no,
         customer_name: wo.customer_name || null,
         specification: wo.grade || null,
+        has_diversion: woDivDetails.has_diversion,
+        diversion_in_pcs: woDivDetails.diversion_in_pcs,
+        diversion_in_mtr: woDivDetails.diversion_in_mtr,
+        diversion_source_wo: woDivDetails.diversion_source_wo,
+        diversion_remarks: woDivDetails.diversion_remarks,
         od: woOd,
         wl: woWt,
         final_od: woOd,
@@ -1703,11 +1787,23 @@ export async function GET(req: NextRequest) {
       const isFinReady = finAvailPcs >= 1 && finAvailMtr >= 0.5;
       const isFinFeeder = !isFinReady && (finFeederMtr >= 1.0 || finFeederPcs >= 1);
 
+      const rollDivDetails = getStageDivDetails(woId, "HOT_ROLLING", effMhAvg > 0 ? effMhAvg : avgLength);
+      const htcDivDetails = getStageDivDetails(woId, "HTC", effMhAvg > 0 ? effMhAvg : avgLength);
+      const legacyRollDivDetails = getStageDivDetails(woId, "ROLLING", effMhAvg > 0 ? effMhAvg : avgLength);
+      const hhtDivDetails = getStageDivDetails(woId, "HOLLOW_HEAT_TREATMENT", effHhtAvg > 0 ? effHhtAvg : avgLength);
+      const drawDivDetails = getStageDivDetails(woId, "DRAW", effDrawLen > 0 ? effDrawLen : avgLength);
+      const pilgerDivDetails = getStageDivDetails(woId, "PILGER", effPilgerLen > 0 ? effPilgerLen : avgLength);
+      const htDivDetails = getStageDivDetails(woId, "HEAT_TREATMENT", avgLength);
+      const bsDivDetails = getStageDivDetails(woId, "BAND_SAW", avgLength);
+      const vdiDivDetails = getStageDivDetails(woId, "VDI", avgLength);
+      const finDivDetails = getStageDivDetails(woId, "FINISHING", avgLength);
+
       const queueRows: Record<StageCode, Row | null> = {
         HOT_ROLLING:
           (isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)) || (rollGrossPcs > 0 || rollOutMtr > 0)
             ? {
                 ...baseRowData,
+                ...(rollDivDetails.has_diversion ? rollDivDetails : {}),
                 od: woOd,
                 wl: woWt,
                 l1: mhL1 > 0 ? mhL1 : l1,
@@ -1740,6 +1836,7 @@ export async function GET(req: NextRequest) {
           (htcAvailMtr >= 1.0 || htcAvailPcs >= 1)
             ? {
                 ...baseRowData,
+                ...(htcDivDetails.has_diversion ? htcDivDetails : {}),
                 od: woOd,
                 wl: woWt,
                 l1: mhL1 > 0 ? mhL1 : l1,
@@ -1769,6 +1866,7 @@ export async function GET(req: NextRequest) {
           isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)
             ? {
                 ...baseRowData,
+                ...(legacyRollDivDetails.has_diversion ? legacyRollDivDetails : {}),
                 od: woOd,
                 wl: woWt,
                 l1: mhL1 > 0 ? mhL1 : l1,
@@ -1797,6 +1895,7 @@ export async function GET(req: NextRequest) {
           isAlloy && (isHhtReady || isHhtFeeder)
             ? {
                 ...baseRowData,
+                ...(hhtDivDetails.has_diversion ? hhtDivDetails : {}),
                 od: woOd,
                 wl: woWt,
                 l1: mhL1 > 0 ? mhL1 : l1,
@@ -1825,6 +1924,7 @@ export async function GET(req: NextRequest) {
           isCds && (isDrawReady || isDrawFeeder)
             ? {
                 ...baseRowData,
+                ...(drawDivDetails.has_diversion ? drawDivDetails : {}),
                 od: woOd,
                 wl: woWt,
                 avg_length: effDrawLen > 0 ? effDrawLen : avgLength,
@@ -1852,6 +1952,7 @@ export async function GET(req: NextRequest) {
           isSsSteel && (isPilgerReady || isPilgerFeeder)
             ? {
                 ...baseRowData,
+                ...(pilgerDivDetails.has_diversion ? pilgerDivDetails : {}),
                 od: woOd,
                 wl: woWt,
                 avg_length: effPilgerLen > 0 ? effPilgerLen : avgLength,
@@ -1878,6 +1979,7 @@ export async function GET(req: NextRequest) {
           (isCds || isSsSteel) && (isHtReady || isHtFeeder)
             ? {
                 ...baseRowData,
+                ...(htDivDetails.has_diversion ? htDivDetails : {}),
                 stage_code: "HEAT_TREATMENT",
                 balance_to_make_mtr: isHtReady ? htAvailMtr : htFeederMtr,
                 balance_to_make_pcs: isHtReady ? htAvailPcs : htFeederPcs,
@@ -1901,6 +2003,7 @@ export async function GET(req: NextRequest) {
           (isBsReady || isBsFeeder)
             ? {
                 ...baseRowData,
+                ...(bsDivDetails.has_diversion ? bsDivDetails : {}),
                 stage_code: "BAND_SAW",
                 heat_lot_no: latestHtLotNo,
                 heat_lots: htLots,
@@ -1927,6 +2030,7 @@ export async function GET(req: NextRequest) {
           (isVdiReady || isVdiFeeder)
             ? {
                 ...baseRowData,
+                ...(vdiDivDetails.has_diversion ? vdiDivDetails : {}),
                 stage_code: "VDI",
                 heat_lot_no: latestBandSawLotNo,
                 heat_lots: vdiLots,
@@ -1955,6 +2059,7 @@ export async function GET(req: NextRequest) {
           (isFinReady || isFinFeeder)
             ? {
                 ...baseRowData,
+                ...(finDivDetails.has_diversion ? finDivDetails : {}),
                 stage_code: "FINISHING",
                 balance_to_make_mtr: isFinReady ? finAvailMtr : finFeederMtr,
                 balance_to_make_pcs: isFinReady ? finAvailPcs : finFeederPcs,
@@ -2461,11 +2566,20 @@ export async function GET(req: NextRequest) {
           : childFeederMtr;
         const childMaxAllowedPcs = avgLength > 0 ? Math.round(childMaxAllowedMtr / avgLength) : (isChildReady ? childAvailPcs : childFeederPcs);
 
+        const childDivDetails = getStageDivDetails(childId, "FINISHING", avgLength);
+        const childWoDivDetails = getWoDivDetails(childId);
+        const childDivInfo = childDivDetails.has_diversion ? childDivDetails : childWoDivDetails;
+
         childFinishingRows.push({
           work_order_id: childId,
           work_order_no: child.work_order_no || childWo?.work_order_no || "Child Order",
           customer_name: child.customer_name || childWo?.customer_name || null,
           specification: child.grade || childWo?.grade || null,
+          has_diversion: childDivInfo.has_diversion,
+          diversion_in_pcs: childDivInfo.diversion_in_pcs,
+          diversion_in_mtr: childDivInfo.diversion_in_mtr,
+          diversion_source_wo: childDivInfo.diversion_source_wo,
+          diversion_remarks: childDivInfo.diversion_remarks,
           od,
           wl: wt,
           l1,

@@ -103,6 +103,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [validationErrors, setValidationErrors] = useState<Array<{ workOrder: string; message: string; rowKey?: string }>>([]);
 
   // Expandable work center WIP breakdown per row
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
@@ -621,15 +622,28 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       return;
     }
 
+    setError('');
+    setMessage('');
+    setValidationErrors([]);
+
     const selected = rows.filter((r) => n(r.mtr) > 0 || n(r.pcs) > 0);
     if (!selected.length) {
       setError('Enter Production PCS/MTR for at least one row.');
       return;
     }
 
-    const allErrors = selected.flatMap((r) => validateProductionEntry(r, stage));
+    const allErrors = selected.flatMap((r) => {
+      const errs = validateProductionEntry(r, stage);
+      const rowKey = r.plan_id ? `${r.work_order_id}|${r.route_id}|${r.plan_id}` : `${r.work_order_id}|${r.route_id}`;
+      return errs.map((e) => ({
+        workOrder: e.workOrder,
+        message: e.message,
+        rowKey,
+      }));
+    });
+
     if (allErrors.length) {
-      setError(allErrors.map((e) => `${e.workOrder}: ${e.message}`).join(' | '));
+      setValidationErrors(allErrors);
       return;
     }
 
@@ -929,6 +943,23 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
     }
   };
 
+  const jumpToRow = (rowKey?: string) => {
+    if (!rowKey) return;
+    const el = document.getElementById(`row-${rowKey}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-rose-500', 'bg-rose-50/60');
+      setTimeout(() => {
+        el.classList.remove('ring-2', 'ring-rose-500', 'bg-rose-50/60');
+      }, 3000);
+      const input = el.querySelector('input:not([disabled])') as HTMLInputElement | null;
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+  };
+
   const getEntryAvgLength = (entry: ProductionEntry | null) => {
     if (!entry) return 6.0;
     const isMhStage = entry.stage_code === 'HOT_ROLLING' || entry.stage_code === 'ROLLING' || entry.stage_code === 'HOLLOW_HEAT_TREATMENT';
@@ -1102,6 +1133,52 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-xs sm:text-sm font-medium text-rose-800 shadow-2xs animate-in fade-in">
           <AlertTriangle size={16} className="mt-0.5 text-rose-600 shrink-0" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {/* Validation Errors Card List */}
+      {validationErrors.length > 0 && (
+        <div className="rounded-xl border border-rose-300 dark:border-rose-900/60 bg-rose-50/90 dark:bg-rose-950/40 p-4 shadow-sm animate-in fade-in">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-rose-200 dark:border-rose-900/50">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={18} className="text-rose-600 dark:text-rose-400 shrink-0" />
+              <h4 className="text-xs sm:text-sm font-bold text-rose-900 dark:text-rose-200">
+                Validation Issues ({validationErrors.length}) — Please resolve before saving
+              </h4>
+            </div>
+            <button
+              type="button"
+              onClick={() => setValidationErrors([])}
+              className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
+          <div className="space-y-1.5 max-h-60 overflow-y-auto">
+            {validationErrors.map((err, i) => (
+              <div
+                key={`${err.workOrder}-${i}`}
+                className="flex items-center justify-between gap-3 bg-white/80 dark:bg-slate-900/80 rounded-lg p-2 border border-rose-200/60 dark:border-rose-900/40 text-xs text-rose-900 dark:text-rose-200"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-950 dark:text-rose-200 border border-rose-300 dark:border-rose-800 shrink-0">
+                    {err.workOrder}
+                  </span>
+                  <span className="truncate">{err.message}</span>
+                </div>
+                {err.rowKey && (
+                  <button
+                    type="button"
+                    onClick={() => jumpToRow(err.rowKey)}
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/60 dark:hover:bg-rose-900 text-rose-900 dark:text-rose-100 font-bold text-[11px] transition-colors"
+                  >
+                    <span>Fix Row</span>
+                    <span>→</span>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

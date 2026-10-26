@@ -123,6 +123,13 @@ export interface Row {
   daily_plan_machine?: string | null;
   daily_plan_priority?: number | null;
 
+  // Diversion info (indicates WIP received or augmented by Diversions)
+  has_diversion?: boolean;
+  diversion_in_pcs?: number | null;
+  diversion_in_mtr?: number | null;
+  diversion_source_wo?: string | null;
+  diversion_remarks?: string | null;
+
   // Work Center WIP Breakdown across the entire route
   work_centers_wip?: WorkCenterWipInfo[];
 

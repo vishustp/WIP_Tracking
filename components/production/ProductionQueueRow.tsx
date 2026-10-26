@@ -1,6 +1,7 @@
 'use client';
 
-import { Package, Crown, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { Package, Crown, AlertTriangle, ArrowRightLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { Row, StageCode } from '@/types';
 import { calc, fmt, n, mtFromMtr } from '@/lib/productionUtils';
 
@@ -34,6 +35,7 @@ export function ProductionQueueRow({
   onOpenBandSawCutting,
   onOpenReject,
 }: ProductionQueueRowProps) {
+  const [showAllChildren, setShowAllChildren] = useState(false);
   const key = row.plan_id ? `${row.work_order_id}|${row.route_id}|${row.plan_id}` : `${row.work_order_id}|${row.route_id}`;
   const d = calc({ ...row, stage_code: stage });
   const isRollingStage = stage === 'HOT_ROLLING' || stage === 'ROLLING';
@@ -52,7 +54,7 @@ export function ProductionQueueRow({
       : 0;
 
   return (
-    <tr className="group hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
+    <tr id={`row-${key}`} className="group hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
       {/* Order Information (Frozen Left Column) */}
       <td className="sticky left-0 z-10 py-2.5 px-3 sm:px-4 align-middle bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800 border-r border-slate-200 dark:border-slate-800 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[220px] sm:min-w-[260px] text-slate-900 dark:text-slate-100">
         <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 flex-wrap">
@@ -73,6 +75,22 @@ export function ProductionQueueRow({
               <Crown size={10} /> MASTER
             </span>
           )}
+          {row.has_diversion && (
+            <span
+              className="inline-flex items-center gap-1 rounded bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 border border-purple-300 dark:border-purple-700 px-1.5 py-0.2 text-[10px] font-mono font-bold tracking-tight shadow-2xs"
+              title={
+                row.diversion_source_wo
+                  ? `Diverted WIP: ${row.diversion_in_pcs ?? 0} PCS (${row.diversion_in_mtr ?? 0}m) from ${row.diversion_source_wo}${row.diversion_remarks ? ` - ${row.diversion_remarks}` : ''}`
+                  : 'Diverted WIP'
+              }
+            >
+              <ArrowRightLeft size={10} className="shrink-0 text-purple-700 dark:text-purple-300" />
+              <span>DIV</span>
+              {row.diversion_source_wo && (
+                <span className="font-normal opacity-90 text-[9px]">← {row.diversion_source_wo}</span>
+              )}
+            </span>
+          )}
           {row.daily_plan_target_pcs && Number(row.daily_plan_target_pcs) > 0 && (
             <span className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-1.5 py-0.2 text-[10px] font-mono font-bold tracking-tight shadow-2xs">
               ★ TODAY&apos;S TARGET: {row.daily_plan_target_pcs} PCS{row.daily_plan_machine ? ` (${row.daily_plan_machine})` : ''}
@@ -90,12 +108,29 @@ export function ProductionQueueRow({
         </div>
 
         {row.child_work_orders && row.child_work_orders.length > 0 && (
-          <div className="mt-1.5 pt-1 border-t border-slate-100">
-            <div className="text-[10px] font-bold uppercase text-slate-500 mb-0.5 flex items-center gap-1">
+          <div className="mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+            <div className="text-[10px] font-bold uppercase text-slate-500 mb-0.5 flex items-center justify-between">
               <span>Children ({row.child_work_orders.length}):</span>
+              {row.child_work_orders.length > 2 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllChildren((prev) => !prev)}
+                  className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5"
+                >
+                  {showAllChildren ? (
+                    <>Less <ChevronUp size={10} /></>
+                  ) : (
+                    <>+{row.child_work_orders.length - 2} more <ChevronDown size={10} /></>
+                  )}
+                </button>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-1 max-w-[260px]">
-              {row.child_work_orders.map((c: any, idx: number) => {
+              {(showAllChildren || (woFilter && row.child_work_orders.some((c: any) => {
+                const cNo = c.work_order_no || c.wo_no || c.order_no || '';
+                const qClean = (woFilter || '').trim().toLowerCase();
+                return cNo.toLowerCase().includes(qClean) || (c.customer_name || '').toLowerCase().includes(qClean);
+              })) ? row.child_work_orders : row.child_work_orders.slice(0, 2)).map((c: any, idx: number) => {
                 const cNo = c.work_order_no || c.wo_no || c.order_no || `#${idx + 1}`;
                 const qClean = (woFilter || '').trim().toLowerCase();
                 const qNorm = qClean.replace(/[^a-z0-9]/g, '');
@@ -186,6 +221,12 @@ export function ProductionQueueRow({
           <div className="mt-1 inline-flex items-center gap-1 rounded bg-amber-50 text-amber-900 border border-amber-300 px-1.5 py-0.5 text-[10px] font-bold">
             <AlertTriangle size={11} className="text-amber-700 shrink-0" />
             <span>{row.pending_rejection_pcs || 0} PCS ({fmt(row.pending_rejection_mtr, 'm')}) Under Review</span>
+          </div>
+        )}
+        {row.has_diversion && (
+          <div className="mt-1 inline-flex items-center gap-1 rounded bg-purple-50 dark:bg-purple-950/70 text-purple-900 dark:text-purple-200 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 text-[10px] font-bold">
+            <ArrowRightLeft size={10} className="text-purple-700 dark:text-purple-300 shrink-0" />
+            <span>Includes Div: {row.diversion_in_pcs ?? 0} PCS</span>
           </div>
         )}
       </td>

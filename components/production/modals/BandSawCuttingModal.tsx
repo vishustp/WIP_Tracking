@@ -1372,7 +1372,7 @@ export function BandSawCuttingModal({
                         (singlePipeUtilization.trimScrap / (motherAvgLenNum || 1)) * 100
                       )}%`,
                     }}
-                    className="h-full bg-amber-200/80 flex items-center justify-center text-[8px] font-mono font-bold text-amber-900"
+                    className="h-full bg-amber-200/80 flex items-center justify-center text-[10px] font-mono font-bold text-amber-900"
                     title={`Trim / Scrap Loss: ${singlePipeUtilization.trimScrap}m`}
                   >
                     {singlePipeUtilization.trimScrap >= 1 ? `${singlePipeUtilization.trimScrap}m` : ''}

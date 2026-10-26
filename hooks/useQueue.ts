@@ -915,6 +915,9 @@ export function useQueue(stage: StageCode) {
           const availMt = Math.max(od - wt, 0) * Math.max(wt, 0) * 0.0246615 * 0.001 * availMtr;
           const rowToUse = {
             ...r,
+            has_diversion: finDivIn > 0 || finDivInPcs > 0 || Boolean(r.has_diversion),
+            diversion_in_pcs: finDivInPcs || r.diversion_in_pcs || 0,
+            diversion_in_mtr: finDivIn || r.diversion_in_mtr || 0,
             balance_to_make_pcs: availPcs,
             balance_to_make_mtr: availMtr,
             balance_to_make_mt: Number(availMt.toFixed(2)),
@@ -981,6 +984,10 @@ export function useQueue(stage: StageCode) {
                   work_order_no: child.work_order_no,
                   customer_name: child.customer_name || null,
                   specification: child.grade || r.specification,
+                  has_diversion: childDivIn > 0 || childDivInPcs > 0,
+                  diversion_in_pcs: childDivInPcs,
+                  diversion_in_mtr: childDivIn,
+                  diversion_source_wo: r.work_order_no,
                   od: cod,
                   wl: cwt,
                   l1,
