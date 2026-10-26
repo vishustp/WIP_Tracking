@@ -109,24 +109,38 @@ export function validateProductionEntry(
     }
   }
 
-  // 6. Rolling Stage: Rolling production cannot exceed Rolling Plan Quantity (Strictly PCS / Nos)
+  // 6. Rolling Stage: Rolling production cannot exceed 104% of Rolling Plan Quantity in Nos (Pieces)
   if (currentStage === "HOT_ROLLING" || currentStage === "ROLLING") {
-    const planPcs =
-      n(row.max_allowed_pcs) > 0
-        ? n(row.max_allowed_pcs)
-        : n(row.balance_to_make_pcs) > 0
+    const rawPcs =
+      n(row.balance_to_make_pcs) > 0
         ? n(row.balance_to_make_pcs)
-        : n(row.planned_pcs);
+        : n(row.planned_pcs) > 0
+        ? n(row.planned_pcs)
+        : n(row.max_allowed_pcs);
 
-    if (planPcs <= 0) {
+    let maxAllowedPcs = 0;
+    if (row.max_allowed_pcs !== undefined && row.max_allowed_pcs !== null) {
+      const explicitMax = n(row.max_allowed_pcs);
+      if (explicitMax === 0) {
+        maxAllowedPcs = 0;
+      } else if (explicitMax === n(row.balance_to_make_pcs) || explicitMax === n(row.planned_pcs)) {
+        maxAllowedPcs = Math.round(explicitMax * 1.04);
+      } else {
+        maxAllowedPcs = explicitMax;
+      }
+    } else if (rawPcs > 0) {
+      maxAllowedPcs = Math.round(rawPcs * 1.04);
+    }
+
+    if (maxAllowedPcs <= 0) {
       errors.push({
         workOrder: row.work_order_no,
         message: "Rolling production cannot exceed Rolling Plan balance. Planned piece quantity has already been fully rolled for this plan.",
       });
-    } else if (d.pcs > 0 && d.pcs > planPcs) {
+    } else if (d.pcs > 0 && d.pcs > maxAllowedPcs) {
       errors.push({
         workOrder: row.work_order_no,
-        message: `Rolling production (${d.pcs} PCS) exceeds remaining Rolling Plan Quantity balance (${fmt(planPcs)} PCS).`,
+        message: `Rolling production (${d.pcs} PCS) exceeds remaining Rolling Plan Quantity balance (104% limit: ${fmt(maxAllowedPcs, 0)} PCS).`,
       });
     }
   }

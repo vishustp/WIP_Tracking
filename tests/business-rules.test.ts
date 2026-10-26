@@ -93,7 +93,42 @@ describe("Route-Specific Production Capping and Mother Hollow Rules", () => {
       };
       expect(validateProductionEntry(excessMtrRow, "ROLLING")).toHaveLength(0);
 
-      // 3. Rolling production where PCS exceeds remaining plan is BLOCKED
+      // 3. Rolling production up to 104% of Rolling Plan in Nos is ALLOWED
+      const valid104Row: Row = {
+        ...baseRow,
+        stage_code: "ROLLING",
+        route_code: "CDS",
+        balance_to_make_pcs: 100,
+        balance_to_make_mtr: 600,
+        max_allowed_pcs: 100,
+        max_allowed_mtr: 600,
+        mtr: "624",
+        pcs: "104",
+        htc_ok_pcs: "104",
+        htc_ok_mtr: "624",
+      };
+      expect(validateProductionEntry(valid104Row, "ROLLING")).toHaveLength(0);
+
+      // 4. Rolling production exceeding 104% of Rolling Plan in Nos is BLOCKED (e.g. 105 PCS on 100 plan)
+      const excess104Row: Row = {
+        ...baseRow,
+        stage_code: "ROLLING",
+        route_code: "CDS",
+        balance_to_make_pcs: 100,
+        balance_to_make_mtr: 600,
+        max_allowed_pcs: 100,
+        max_allowed_mtr: 600,
+        mtr: "630",
+        pcs: "105",
+        htc_ok_pcs: "105",
+        htc_ok_mtr: "630",
+      };
+      const errors104 = validateProductionEntry(excess104Row, "ROLLING");
+      expect(errors104.length).toBeGreaterThan(0);
+      expect(errors104[0].message).toContain("exceeds remaining Rolling Plan Quantity");
+      expect(errors104[0].message).toContain("104% limit: 104 PCS");
+
+      // 5. Rolling production where PCS exceeds remaining plan (e.g. 100 PCS on 90 balance where 104% is 94) is BLOCKED
       const excessPcsRow: Row = {
         ...baseRow,
         stage_code: "ROLLING",

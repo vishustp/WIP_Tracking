@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
       } else if (targetStage === "ROLLING") {
         selectedRows.push(
           ...memoryCache.rollingPlanRows.filter(
-            (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+            (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.max_allowed_pcs ?? 0) >= 1
           )
         );
       } else {
@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
           if (st === "ROLLING") {
             selectedRows.push(
               ...memoryCache.rollingPlanRows.filter(
-                (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+                (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.max_allowed_pcs ?? 0) >= 1
               )
             );
           } else if ((st as string) === "VDI_SALVAGE") {
@@ -2323,13 +2323,23 @@ export async function GET(req: NextRequest) {
               ? Math.max(0, plPlannedPcs - plLoggedTotalPcs)
               : (effPlMhAvg > 0 ? Math.max(0, Math.round((plPlannedMtr - directLoggedMtr) / effPlMhAvg)) : 0);
 
+            // Rolling production can be entered up to 104% of Rolling Plan in Nos
+            const plMaxPlannedPcs = plPlannedPcs > 0
+              ? Math.round(plPlannedPcs * 1.04)
+              : (effPlMhAvg > 0 ? Math.round((plPlannedMtr * 1.04) / effPlMhAvg) : 0);
+            const plMaxAllowedPcs = Math.max(0, plMaxPlannedPcs - plLoggedTotalPcs);
+
             const plAvailMtr = plPlannedPcs > 0 && effPlMhAvg > 0
               ? Number((plAvailPcs * (plMhL1 && plMhL2 ? (plMhL1 + plMhL2) / 2 : (plMhL1 || effPlMhAvg))).toFixed(2))
               : Math.max(0, Number((plPlannedMtr - directLoggedMtr).toFixed(2)));
 
+            const plMaxAllowedMtr = effPlMhAvg > 0
+              ? Number((plMaxAllowedPcs * (plMhL1 && plMhL2 ? (plMhL1 + plMhL2) / 2 : (plMhL1 || effPlMhAvg))).toFixed(2))
+              : Math.max(0, Number(((plPlannedMtr * 1.04) - directLoggedMtr).toFixed(2)));
+
             const plAvailMt = mtFromMtr(plAvailMtr, plMhOd, plMhWt);
 
-            if (plAvailMtr >= 1.0 || plAvailPcs >= 1) {
+            if (plAvailMtr >= 1.0 || plAvailPcs >= 1 || plMaxAllowedPcs >= 1) {
               rollingPlanRows.push({
                 ...baseRowData,
                 od: plMhOd > 0 ? plMhOd : baseRowData.od,
@@ -2364,8 +2374,8 @@ export async function GET(req: NextRequest) {
                 mh_l1: plMhL1,
                 mh_l2: plMhL2,
                 mh_avg_length: effPlMhAvg,
-                max_allowed_mtr: plAvailMtr,
-                max_allowed_pcs: plAvailPcs,
+                max_allowed_mtr: plMaxAllowedMtr,
+                max_allowed_pcs: plMaxAllowedPcs,
                 feeder_source_label: `Rolling Plan: ${pl.plan_no}`,
                 feeder_stage_code: "ROLLING_PLAN",
               });
@@ -2601,7 +2611,7 @@ export async function GET(req: NextRequest) {
     } else if (targetStage === "HOT_ROLLING" || targetStage === "ROLLING") {
       selectedRows.push(
         ...rollingPlanRows.map(r => ({ ...r, stage_code: targetStage === "HOT_ROLLING" ? "HOT_ROLLING" as StageCode : "ROLLING" as StageCode })).filter(
-          (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+          (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.max_allowed_pcs ?? 0) >= 1
         )
       );
     } else {
@@ -2609,7 +2619,7 @@ export async function GET(req: NextRequest) {
         if (st === "HOT_ROLLING" || st === "ROLLING") {
           selectedRows.push(
             ...rollingPlanRows.map(r => ({ ...r, stage_code: st })).filter(
-              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0
+              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.max_allowed_pcs ?? 0) >= 1
             )
           );
         } else if ((st as string) === "VDI_SALVAGE") {

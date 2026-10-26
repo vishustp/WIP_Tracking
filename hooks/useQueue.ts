@@ -428,8 +428,8 @@ export function useQueue(stage: StageCode) {
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
               balance_to_make_mt: Number(availMt.toFixed(2)),
-              max_allowed_mtr: availMtr,
-              max_allowed_pcs: availPcs,
+              max_allowed_mtr: Number((availMtr * 1.04).toFixed(2)),
+              max_allowed_pcs: masterPlannedPcs > 0 ? Math.max(0, Math.round(masterPlannedPcs * 1.04) - totalLoggedPcs) : availPcs,
             };
           } else {
             // Standard single work order plan
@@ -468,8 +468,8 @@ export function useQueue(stage: StageCode) {
               balance_to_make_mtr: availMtr,
               balance_to_make_pcs: availPcs,
               balance_to_make_mt: Number(availMt.toFixed(2)),
-              max_allowed_mtr: availMtr,
-              max_allowed_pcs: availPcs,
+              max_allowed_mtr: Number((availMtr * 1.04).toFixed(2)),
+              max_allowed_pcs: planPcs > 0 ? Math.max(0, Math.round(planPcs * 1.04) - (totalLoggedMtr > 0 ? Math.round(totalLoggedMtr / effPlanLen) : 0)) : availPcs,
             };
           }
         });
@@ -567,8 +567,8 @@ export function useQueue(stage: StageCode) {
                     balance_to_make_mtr: availMtr,
                     balance_to_make_pcs: availPcs,
                     balance_to_make_mt: Number(availMt.toFixed(2)),
-                    max_allowed_mtr: availMtr,
-                    max_allowed_pcs: availPcs,
+                    max_allowed_mtr: Number((availMtr * 1.04).toFixed(2)),
+                    max_allowed_pcs: Number(campaign.total_campaign_pcs || 0) > 0 ? Math.max(0, Math.round(Number(campaign.total_campaign_pcs) * 1.04) - totalLoggedPcs) : availPcs,
                     multiple: 1,
                     ht_nos: null,
                     is_master: true,
@@ -587,7 +587,7 @@ export function useQueue(stage: StageCode) {
           }
         }
 
-        setRows(enriched.filter((r) => Number(r.balance_to_make_mtr || 0) > 0));
+        setRows(enriched.filter((r) => Number(r.balance_to_make_mtr || 0) > 0 || Number(r.balance_to_make_pcs || 0) > 0 || Number(r.max_allowed_pcs || 0) > 0));
       } else if (isMasterOnlyStage) {
         const hollowHtStageId = stages.find((st: any) => st.stage_code === "HOLLOW_HEAT_TREATMENT")?.id;
         const drawStageId = stages.find((st: any) => st.stage_code === "DRAW")?.id;

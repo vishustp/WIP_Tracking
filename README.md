@@ -114,8 +114,8 @@ The platform strictly enforces the following engineering and accounting rules ac
   1. **Diversion:** Reallocated to another customer work order via the Diversion module.
   2. **Commercial Declaration:** Approved for secondary commercial sale via QC verification and PPC sign-off.
 
-### Rule 6: Strict Rolling Plan Quantity Capping
-- Rolling output is strictly capped by pieces (`balance_to_make_pcs`) against the authorized PPC campaign plan. Attempts to log output exceeding planned pieces are blocked by client validation and backend APIs.
+### Rule 6: Rolling Plan Quantity Capping (104% Allowance in Nos)
+- Rolling output can be entered up to 104% of the authorized PPC Rolling Plan in pieces/Nos (`Math.round(planned_pcs * 1.04)`). Attempts to log output exceeding 104% of planned pieces are blocked by client validation and backend APIs.
 
 ### Rule 7: Mutual Work Center Permissions
 - **Joint Band Saw & Finishing Line:** Operators assigned to either station possess mutual recording and editing permissions across both cutting and bundling.

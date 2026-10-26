@@ -155,12 +155,24 @@ export function ProductionQueueRow({
             (() => {
               const planPcs = Number(row.planned_pcs || row.campaign_total_pcs || 0);
               const donePcs = Math.max(0, planPcs - availPcs);
+              const max104Pcs = planPcs > 0 ? Math.round(planPcs * 1.04) : 0;
+              const rem104Pcs = n(row.max_allowed_pcs) > 0 ? Math.round(n(row.max_allowed_pcs)) : Math.max(0, max104Pcs - donePcs);
               return (
-                <span>
-                  Plan: <span className="font-semibold text-slate-700">{fmt(planPcs)} PCS</span>
-                  {donePcs > 0 && (
-                    <span className="text-emerald-600 font-semibold ml-1">
-                      ({fmt(donePcs)} done)
+                <span className="flex flex-col gap-0.5">
+                  <span>
+                    Plan: <span className="font-semibold text-slate-700">{fmt(planPcs)} PCS</span>
+                    {donePcs > 0 && (
+                      <span className="text-emerald-600 font-semibold ml-1">
+                        ({fmt(donePcs)} done)
+                      </span>
+                    )}
+                  </span>
+                  {max104Pcs > planPcs && (
+                    <span className="text-[10px] text-sky-700 font-medium">
+                      Max (104%): <span className="font-bold font-mono">{fmt(max104Pcs)} PCS</span>
+                      {rem104Pcs > 0 && rem104Pcs !== availPcs && (
+                        <span className="text-sky-600 ml-1">({fmt(rem104Pcs)} can roll)</span>
+                      )}
                     </span>
                   )}
                 </span>

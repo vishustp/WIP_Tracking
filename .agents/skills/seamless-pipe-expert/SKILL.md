@@ -56,7 +56,7 @@ Every work order and rolling plan belongs to one of four core process routes:
 
 ### Rule 4: Rolling Stage Rules
 - **HTC OK Requirement:** Any positive rolling production strictly requires entering `HTC OK` quantity ($\ge 1\text{ pc / mtr}$).
-- **Strict Rolling Plan Capping:** Rolling production cannot exceed the Rolling Plan Quantity (Pieces or Meters). Output is strictly capped at the remaining plan balance to prevent over-rolling beyond PPC authorized campaign schedules.
+- **Rolling Plan 104% Capping:** Rolling production can be entered up to 104% of the Rolling Plan in Nos (Pieces) (`Math.round(planned_pcs * 1.04)`). Output is strictly capped at 104% of the planned pieces to accommodate hot rolling yield variations while preventing uncontrolled over-rolling beyond PPC authorized campaign schedules.
 
 ### Rule 5: Stage WIP & No Supply Process (Direct Stage Balancing)
 - There is **no separate Supply process**. WIP at any stage is directly computed from preceding stage production:

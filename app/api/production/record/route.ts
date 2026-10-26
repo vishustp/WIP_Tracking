@@ -179,14 +179,23 @@ export async function POST(req: NextRequest) {
 
           let remainingPcs = Infinity;
           if (st.balance_to_make_pcs !== undefined && Number(st.balance_to_make_pcs) >= 0) {
-            remainingPcs = Math.max(0, Number(st.balance_to_make_pcs) - batchAlreadyAdded);
+            const maxBalPcs = Math.round(Number(st.balance_to_make_pcs) * 1.04);
+            remainingPcs = Math.max(0, maxBalPcs - batchAlreadyAdded);
           } else if (planTotalPcs > 0) {
-            remainingPcs = Math.max(0, planTotalPcs - alreadyLoggedPcs - batchAlreadyAdded);
+            const maxPlanPcs = Math.round(planTotalPcs * 1.04);
+            remainingPcs = Math.max(0, maxPlanPcs - alreadyLoggedPcs - batchAlreadyAdded);
+          } else if (Number(matchedPlan.planned_qty || 0) > 0) {
+            const avgLen = Number(st.mh_avg_length || st.avg_length || 6.0);
+            const estPcs = avgLen > 0 ? Math.round(Number(matchedPlan.planned_qty) / avgLen) : 0;
+            if (estPcs > 0) {
+              const maxPlanPcs = Math.round(estPcs * 1.04);
+              remainingPcs = Math.max(0, maxPlanPcs - alreadyLoggedPcs - batchAlreadyAdded);
+            }
           }
 
           if (remainingPcs !== Infinity && outPcs > remainingPcs) {
             return NextResponse.json(
-              { error: `Rolling production (${outPcs} PCS) exceeds remaining Rolling Plan Quantity (${remainingPcs} PCS).` },
+              { error: `Rolling production (${outPcs} PCS) exceeds remaining Rolling Plan Quantity (104% limit: ${remainingPcs} PCS).` },
               { status: 400 }
             );
           }
