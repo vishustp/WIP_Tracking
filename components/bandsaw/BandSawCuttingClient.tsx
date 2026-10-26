@@ -656,10 +656,10 @@ export default function BandSawCuttingClient() {
                               </span>
                             ) : null}
                           </div>
-                          {(entry.grade || entry.specification) && (
+                          {(entry.specification || entry.grade) && (
                             <div className="mt-0.5">
                               <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                                {normalizeGrade(entry.grade || entry.specification)}
+                                {normalizeGrade(entry.specification || entry.grade)}
                               </span>
                             </div>
                           )}

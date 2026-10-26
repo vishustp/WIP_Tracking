@@ -40,6 +40,7 @@ export interface Row {
   work_order_no: string;
   customer_name: string | null;
   specification: string | null;
+  grade?: string | null;
   od: number | null;
   wl: number | null;
   final_od?: number | null;

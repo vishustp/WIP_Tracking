@@ -66,7 +66,7 @@ export function WorkOrderSelect({
       .map((wo) => {
         const woNo = wo.work_order_no || 'Unknown WO';
         const customer = wo.customer_name?.trim() || 'Generic Customer';
-        const grade = wo.grade?.trim() || wo.specification?.trim() || 'Grade N/A';
+        const grade = wo.specification?.trim() || wo.grade?.trim() || 'Grade N/A';
         const od = wo.size_od ?? wo.od;
         const wt = wo.size_wt ?? wo.wt;
         const sizeStr = od && wt ? `${od}×${wt}mm` : '';

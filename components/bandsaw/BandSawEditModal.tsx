@@ -59,7 +59,7 @@ export function BandSawEditModal({
   // Dimensions & Metallurgy
   const pipeOd = Number(entry.od || queueRow?.od || 0);
   const pipeWt = Number(entry.wl || queueRow?.wl || 0);
-  const rawGrade = entry.grade || entry.specification || (queueRow as any)?.grade || queueRow?.specification || null;
+  const rawGrade = queueRow?.specification || entry.specification || queueRow?.grade || entry.grade || null;
   const gradeLabel = rawGrade ? normalizeGrade(rawGrade) : 'Standard Carbon';
 
   // Target length specifications from Work Order

@@ -637,7 +637,7 @@ export default function DiversionForm() {
         s
           .from('work_orders')
           .select(
-            'id,work_order_no,customer_name,grade,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_pcs,balance_qty_mtr,balance_qty_mt,status,target_date'
+            'id,work_order_no,customer_name,grade,specification,size_od,size_wt,l1,l2,ordered_qty,uom,balance_qty_pcs,balance_qty_mtr,balance_qty_mt,status,target_date'
           )
           .order('work_order_no'),
         s.from('process_routes').select('id,route_code,route_name').eq('active', true).order('route_code'),
@@ -1547,7 +1547,7 @@ export default function DiversionForm() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white p-2.5 rounded border border-slate-200">
               <div>
                 <span className="text-slate-500 block">Grade / Spec:</span>
-                <span className="font-semibold text-slate-800">{sourceWip.wo.grade || sourceWip.wo.specification || '—'}</span>
+                <span className="font-semibold text-slate-800">{sourceWip.wo.specification || sourceWip.wo.grade || '—'}</span>
               </div>
               <div>
                 <span className="text-slate-500 block">Size (OD × WT):</span>
@@ -1939,7 +1939,7 @@ export default function DiversionForm() {
                   <div className="flex justify-between items-center text-slate-600">
                     <span>Target Size & Grade:</span>
                     <span className="font-mono font-semibold text-slate-800">
-                      {selectedTarget?.size_od || selectedTarget?.od}×{selectedTarget?.size_wt || selectedTarget?.wt} mm ({selectedTarget?.grade || 'Grade N/A'})
+                      {selectedTarget?.size_od || selectedTarget?.od}×{selectedTarget?.size_wt || selectedTarget?.wt} mm ({selectedTarget?.specification || selectedTarget?.grade || 'Grade N/A'})
                     </span>
                   </div>
 

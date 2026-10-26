@@ -48,6 +48,8 @@ interface ContributingOrder {
   work_order_id: string;
   work_order_no: string;
   customer_name: string | null;
+  specification?: string | null;
+  grade?: string | null;
   order_status?: string | null;
   balance_qty_pcs?: number | null;
   stage_code: StageCode;
@@ -313,6 +315,7 @@ export default function SizeGradeWipReportClient() {
                             stCode === 'VDI' ? 'VDI / QC Inspection' :
                             stCode === 'VDI_SALVAGE' ? 'VDI Salvage' :
                             stCode === 'FINISHING' ? 'Finishing & Dispatch' : (r.stage_name || stCode),
+                specification: r.specification || r.grade || null,
                 grade: normalizeGrade(r.specification || r.grade || 'Standard'),
                 // Strict Final Finished Size (never Mother Hollow size)
                 od: Number(r.final_od || r.size_od || r.wo_od || r.target_od || r.od || 0),
@@ -452,7 +455,7 @@ export default function SizeGradeWipReportClient() {
         (woRes.data || []).forEach((w: any) => {
           woDetailsMap.set(w.id, w);
           if (w.work_order_no) woDetailsMap.set(String(w.work_order_no).trim(), w);
-          const g = String(w.grade || w.specification || '').trim();
+          const g = String(w.specification || w.grade || '').trim();
           if (g) {
             gradeMap.set(w.id, g);
             if (w.work_order_no) gradeMap.set(String(w.work_order_no).trim(), g);
@@ -470,7 +473,7 @@ export default function SizeGradeWipReportClient() {
               woRouteMap.set(p.work_order_id, routeMap.get(p.process_route_id)!);
             }
             const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
-            const planGrade = String(parsed?.grade || parsed?.specification || '').trim();
+            const planGrade = String(parsed?.spec || parsed?.specification || parsed?.grade || '').trim();
             if (planGrade && p.work_order_id && !gradeMap.has(p.work_order_id)) {
               gradeMap.set(p.work_order_id, planGrade);
             }
@@ -505,7 +508,7 @@ export default function SizeGradeWipReportClient() {
                     woRouteMap.set(cId, routeMap.get(p.process_route_id)!);
                   }
                 }
-                const cGrade = String(c.grade || c.specification || planGrade).trim();
+                const cGrade = String(c.specification || c.grade || planGrade).trim();
                 if (cId && cGrade) gradeMap.set(cId, cGrade);
                 if (c.work_order_no && cGrade) gradeMap.set(String(c.work_order_no).trim(), cGrade);
                 if (cId) mhMap.set(cId, mhEntry);
@@ -631,10 +634,10 @@ export default function SizeGradeWipReportClient() {
           const resolvedGrade =
             gradeMap.get(woId) ||
             gradeMap.get(String(rows[0]?.work_order_no).trim()) ||
-            wo?.grade ||
             wo?.specification ||
-            rows[0]?.grade ||
+            wo?.grade ||
             rows[0]?.specification ||
+            rows[0]?.grade ||
             'Standard';
 
           const hasPilgerStage = rows.some((r: any) => (r.stage_code || '').toUpperCase() === 'PILGER') || (woPieceLedger.get(woId)?.pilgerPcs || 0) > 0;
@@ -975,6 +978,8 @@ export default function SizeGradeWipReportClient() {
         work_order_id: r.work_order_id,
         work_order_no: r.work_order_no,
         customer_name: r.customer_name,
+        specification: r.specification || r.grade || null,
+        grade: r.grade || null,
         order_status: r.order_status,
         balance_qty_pcs: r.balance_qty_pcs,
         stage_code: stage,
@@ -1737,16 +1742,16 @@ export default function SizeGradeWipReportClient() {
           {/* Material Grade Dropdown */}
           <div>
             <label htmlFor="wip-matrix-grade" className="block text-[11px] font-semibold text-[var(--text-muted,#475569)] mb-1">
-              Material Grade
+              Specification / Grade
             </label>
             <Select
               id="wip-matrix-grade"
-              aria-label="Filter by material grade"
+              aria-label="Filter by specification or grade"
               value={selectedGrade}
               onChange={(e) => setSelectedGrade(e.target.value)}
               className="text-xs h-8.5 w-full"
             >
-              <option value="ALL">All Material Grades</option>
+              <option value="ALL">All Specifications / Grades</option>
               {uniqueGrades.map((g) => (
                 <option key={g} value={g}>
                   {g}
@@ -1897,7 +1902,7 @@ export default function SizeGradeWipReportClient() {
                 <tr>
                   <th scope="col" className="sticky left-0 top-0 z-30 bg-slate-900 text-slate-300 py-3 px-3 w-10 text-center border-b-2 border-slate-700 bg-clip-padding" aria-label="Row expand collapse toggle"></th>
                   <th scope="col" className="sticky left-10 top-0 z-30 bg-slate-900 text-white py-3 px-3 min-w-[125px] border-b-2 border-slate-700 bg-clip-padding font-bold">Size (OD × WT)</th>
-                  <th scope="col" className="sticky left-[160px] top-0 z-30 bg-slate-900 text-white py-3 px-3 border-r-2 border-b-2 border-r-slate-500 border-b-slate-700 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.3)] min-w-[100px] bg-clip-padding font-bold">Grade</th>
+                  <th scope="col" className="sticky left-[160px] top-0 z-30 bg-slate-900 text-white py-3 px-3 border-r-2 border-b-2 border-r-slate-500 border-b-slate-700 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.3)] min-w-[100px] bg-clip-padding font-bold" title="Customer Specification / Grade">Grade / Spec</th>
                   <th
                     scope="col"
                     className="py-3 px-3 text-right border-l border-slate-700 bg-clip-padding text-slate-300 font-semibold"
@@ -2218,7 +2223,7 @@ export default function SizeGradeWipReportClient() {
                   <th scope="col" className="py-3 px-3 bg-clip-padding">Order Status</th>
                   <th scope="col" className="py-3 px-3 bg-clip-padding">Route</th>
                   <th scope="col" className="py-3 px-3 bg-clip-padding">Size (OD × WT)</th>
-                  <th scope="col" className="py-3 px-3 bg-clip-padding">Material Grade</th>
+                  <th scope="col" className="py-3 px-3 bg-clip-padding">Specification / Grade</th>
                   <th scope="col" className="py-3 px-3 bg-clip-padding">Current Station</th>
                   <th scope="col" className="py-3 px-3 text-right bg-clip-padding">Physical WIP (Mtrs)</th>
                   <th scope="col" className="py-3 px-3 text-right bg-clip-padding">WIP (Pcs)</th>

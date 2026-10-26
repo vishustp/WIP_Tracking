@@ -245,7 +245,7 @@ export async function GET(req: NextRequest) {
       fetchAllLogs(admin),
       admin
         .from("work_orders")
-        .select("id, work_order_no, customer_name, grade, status, size_od, size_wt, l1, l2, ordered_qty, ordered_qty_mtr, ordered_qty_pcs, ordered_qty_mt, balance_qty_mtr, balance_qty_pcs, balance_qty_mt"),
+        .select("id, work_order_no, customer_name, grade, specification, status, size_od, size_wt, l1, l2, ordered_qty, ordered_qty_mtr, ordered_qty_pcs, ordered_qty_mt, balance_qty_mtr, balance_qty_pcs, balance_qty_mt"),
       admin.from("process_routes").select("id, route_code, route_name"),
       admin
         .from("qc_inspections")
@@ -639,6 +639,7 @@ export async function GET(req: NextRequest) {
                 id: cId,
                 work_order_no: child.work_order_no || cWo?.work_order_no || "Child Order",
                 customer_name: child.customer_name || cWo?.customer_name || null,
+                specification: child.specification || cWo?.specification || child.grade || cWo?.grade || null,
                 grade: child.grade || cWo?.grade || null,
                 size_od: cOd,
                 size_wt: cWt,
@@ -1612,7 +1613,8 @@ export async function GET(req: NextRequest) {
         work_order_id: wo.id,
         work_order_no: wo.work_order_no,
         customer_name: wo.customer_name || null,
-        specification: wo.grade || null,
+        specification: wo.specification || wo.grade || null,
+        grade: wo.grade || null,
         has_diversion: woDivDetails.has_diversion,
         diversion_in_pcs: woDivDetails.diversion_in_pcs,
         diversion_in_mtr: woDivDetails.diversion_in_mtr,
@@ -2395,6 +2397,7 @@ export async function GET(req: NextRequest) {
                   id: cId,
                   work_order_no: child.work_order_no || cWo?.work_order_no || "Child Order",
                   customer_name: child.customer_name || cWo?.customer_name || null,
+                  specification: child.specification || cWo?.specification || child.grade || cWo?.grade || null,
                   grade: child.grade || cWo?.grade || null,
                   size_od: cOd,
                   size_wt: cWt,
@@ -2574,7 +2577,8 @@ export async function GET(req: NextRequest) {
           work_order_id: childId,
           work_order_no: child.work_order_no || childWo?.work_order_no || "Child Order",
           customer_name: child.customer_name || childWo?.customer_name || null,
-          specification: child.grade || childWo?.grade || null,
+          specification: child.specification || childWo?.specification || child.grade || childWo?.grade || null,
+          grade: child.grade || childWo?.grade || null,
           has_diversion: childDivInfo.has_diversion,
           diversion_in_pcs: childDivInfo.diversion_in_pcs,
           diversion_in_mtr: childDivInfo.diversion_in_mtr,

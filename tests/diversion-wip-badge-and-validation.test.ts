@@ -4,7 +4,7 @@ import { validateProductionEntry } from '@/lib/productionValidation';
 
 describe('Diversion WIP Row Metadata and Validation Error Recovery', () => {
   it('supports diversion tracking fields on Row interface', () => {
-    const row: Row = {
+    const row = {
       work_order_id: 'wo-101',
       work_order_no: 'WO-101',
       customer_name: 'Industrial Pipelines Ltd',
@@ -25,7 +25,7 @@ describe('Diversion WIP Row Metadata and Validation Error Recovery', () => {
       diversion_in_mtr: 62.5,
       diversion_source_wo: 'WO-099',
       diversion_remarks: '[FROM_STAGE:HEAT_TREATMENT] [TO_STAGE:BAND_SAW] Excess mother pipes transferred',
-    };
+    } as unknown as Row;
 
     expect(row.has_diversion).toBe(true);
     expect(row.diversion_in_pcs).toBe(10);
@@ -35,7 +35,7 @@ describe('Diversion WIP Row Metadata and Validation Error Recovery', () => {
   });
 
   it('generates structured validation errors with matching row keys for focus navigation', () => {
-    const row1: Row = {
+    const row1 = {
       work_order_id: 'wo-1',
       work_order_no: 'WO-001',
       route_id: 'r-1',
@@ -51,9 +51,9 @@ describe('Diversion WIP Row Metadata and Validation Error Recovery', () => {
       max_allowed_mtr: 60,
       pcs: '15', // exceeds max allowed
       mtr: '90',
-    };
+    } as unknown as Row;
 
-    const row2: Row = {
+    const row2 = {
       work_order_id: 'wo-2',
       work_order_no: 'WO-002',
       route_id: 'r-2',
@@ -71,7 +71,7 @@ describe('Diversion WIP Row Metadata and Validation Error Recovery', () => {
       rejection_pcs: '25', // rejection exceeds entered pcs
       mtr: '60',
       rejection_mtr: '150',
-    };
+    } as unknown as Row;
 
     const selectedRows = [row1, row2];
     const structuredErrors = selectedRows.flatMap((r) => {

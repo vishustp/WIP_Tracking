@@ -134,7 +134,7 @@ export function ProductionQueueRow({
                 const cNo = c.work_order_no || c.wo_no || c.order_no || `#${idx + 1}`;
                 const qClean = (woFilter || '').trim().toLowerCase();
                 const qNorm = qClean.replace(/[^a-z0-9]/g, '');
-                const cText = `${cNo} ${c.customer_name || ''} ${c.grade || ''}`.toLowerCase();
+                const cText = `${cNo} ${c.customer_name || ''} ${c.specification || c.grade || ''}`.toLowerCase();
                 const cNorm = cText.replace(/[^a-z0-9]/g, '');
                 const isMatched =
                   qClean.length > 0 &&
@@ -148,7 +148,7 @@ export function ProductionQueueRow({
                         ? 'bg-amber-100 text-amber-950 border-amber-400 ring-1 ring-amber-400 font-black shadow-2xs'
                         : 'bg-slate-100 text-slate-700 border-slate-200'
                     }`}
-                    title={`${cNo} | ${c.customer_name || 'Direct'} | ${c.grade || ''} | Planned: ${c.planned_pcs || 0} pcs / ${c.planned_mtr || 0} m`}
+                    title={`${cNo} | ${c.customer_name || 'Direct'} | ${c.specification || c.grade || ''} | Planned: ${c.planned_pcs || 0} pcs / ${c.planned_mtr || 0} m`}
                   >
                     {isMatched && <span className="text-amber-600 font-black">★</span>}
                     <span>{cNo}</span>
