@@ -742,22 +742,50 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <Menu size={20} />
           </button>
 
-          {/* RASHMI GROUP Logo - High Contrast & Crisp Across All Themes */}
+          {/* RASHMI GROUP Logo with Animated Seamless Core & High-Contrast Molten Shimmer */}
           <div
-            className="flex flex-col items-start leading-none shrink-0 cursor-pointer select-none group"
+            className="flex items-center gap-2.5 shrink-0 cursor-pointer select-none group"
             onClick={() => router.push('/dashboard')}
             title="Rashmi Green Hydrogen Steel — Return to Dashboard"
           >
-            <span className="text-red-600 font-black text-xl sm:text-2xl tracking-wider leading-none transition-transform duration-150 group-hover:scale-[1.02]">
-              RASHMI
-            </span>
-            <span
-              className={`text-[10px] font-bold tracking-[0.22em] pl-0.5 mt-0.5 transition-colors ${
-                hasDarkHeader ? 'text-white' : 'text-slate-900'
-              }`}
-            >
-              GROUP
-            </span>
+            {/* Precision Seamless Pipe & Induction Core Emblem */}
+            <div className="relative flex items-center justify-center h-9 w-9 rounded-xl bg-gradient-to-br from-red-600 via-rose-600 to-amber-600 p-[1.5px] shadow-sm group-hover:shadow-red-500/30 transition-all duration-300 group-hover:scale-105 overflow-hidden shrink-0">
+              <div className="h-full w-full rounded-[10px] bg-slate-950 flex items-center justify-center relative overflow-hidden">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5 animate-molten-ring text-red-500"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  {/* Outer seamless pipe ring */}
+                  <circle cx="12" cy="12" r="9" className="text-slate-400 opacity-60" stroke="currentColor" />
+                  {/* Inner pierced hollow molten core */}
+                  <circle cx="12" cy="12" r="4.5" stroke="#ef4444" fill="#dc2626" fillOpacity="0.35" />
+                  {/* Mandrel precision guides */}
+                  <path d="M12 3v2M12 19v2M3 12h2M19 12h2" stroke="#f59e0b" strokeWidth="2" />
+                </svg>
+                {/* Metallic Sheen Sweep */}
+                <div className="logo-shimmer-sweep" aria-hidden="true" />
+              </div>
+            </div>
+
+            {/* Typography with High-Contrast Motion Shimmer */}
+            <div className="flex flex-col items-start leading-none">
+              <span className="logo-text-shimmer font-black text-xl sm:text-2xl tracking-wider leading-none transition-transform duration-200 group-hover:scale-[1.02]">
+                RASHMI
+              </span>
+              <span
+                className={`text-[9.5px] font-bold tracking-[0.22em] pl-0.5 mt-0.5 transition-colors ${
+                  hasDarkHeader ? 'text-white/90' : 'text-slate-900 font-extrabold'
+                }`}
+              >
+                GROUP
+              </span>
+            </div>
           </div>
 
           <div

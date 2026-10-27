@@ -704,19 +704,41 @@ select option {
   }
 }
 
+/* High-contrast molten crimson shimmer for light themes (never washes out or turns white) */
 .logo-text-shimmer {
   background: linear-gradient(
     90deg,
+    #b91c1c 0%,
+    #ef4444 25%,
+    #d97706 50%,
+    #ef4444 75%,
+    #b91c1c 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: logoTextShimmer 4.5s linear infinite;
+}
+
+/* Vibrant ruby-gold shimmer for dark and rich header themes */
+[data-theme="foundry-dark"] .logo-text-shimmer,
+[data-theme="ocean"] .logo-text-shimmer,
+[data-theme="titanium"] .logo-text-shimmer,
+[data-theme="high-contrast"] .logo-text-shimmer,
+[data-theme="cobalt"] .logo-text-shimmer,
+[data-theme="mint-sage"] .logo-text-shimmer,
+[data-theme="royal-executive"] .logo-text-shimmer {
+  background: linear-gradient(
+    90deg,
     #dc2626 0%,
-    #ef4444 30%,
-    #ffffff 50%,
-    #ef4444 70%,
+    #f87171 25%,
+    #fbbf24 50%,
+    #f87171 75%,
     #dc2626 100%
   );
   background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: logoTextShimmer 5.5s linear infinite;
 }
 
 @keyframes moltenRingPulse {
