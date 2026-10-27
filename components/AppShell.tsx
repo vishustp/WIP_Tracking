@@ -20,29 +20,89 @@ import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
 import GlobalKeyboardNavigation from '@/components/common/GlobalKeyboardNavigation';
 
-export type AppTheme = 'light' | 'foundry-dark' | 'ocean' | 'titanium' | 'high-contrast' | 'cobalt';
+export type AppTheme =
+  | 'light'
+  | 'cobalt'
+  | 'sandstone'
+  | 'mint-sage'
+  | 'nordic-slate'
+  | 'royal-executive'
+  | 'foundry-dark'
+  | 'ocean'
+  | 'titanium'
+  | 'high-contrast';
 
 const THEMES: {
   id: AppTheme;
   name: string;
   badge: string;
   desc: string;
+  category: 'Light' | 'Dark';
   headerSwatch: string;
   sidebarSwatch: string;
 }[] = [
+  // --- LIGHT THEMES ---
   {
     id: 'light',
     name: 'Clean Executive Light',
     badge: 'Standard',
     desc: 'Crisp all-white topbar & sidebar for daytime clarity',
+    category: 'Light',
     headerSwatch: 'bg-white border border-slate-300',
     sidebarSwatch: 'bg-white border border-slate-300',
   },
+  {
+    id: 'cobalt',
+    name: 'Steel-Blue Hybrid',
+    badge: 'Classic Mill',
+    desc: 'Polished steel-blue topbar with high-contrast white sidebar',
+    category: 'Light',
+    headerSwatch: 'bg-[#16325c] border border-blue-900',
+    sidebarSwatch: 'bg-white border border-slate-300',
+  },
+  {
+    id: 'sandstone',
+    name: 'Warm Sandstone / Ivory',
+    badge: 'Warm Light',
+    desc: 'Soft ivory topbar with warm linen canvas; reduces eye strain',
+    category: 'Light',
+    headerSwatch: 'bg-[#faf8f5] border border-[#d6cfc5]',
+    sidebarSwatch: 'bg-[#fcfbfa] border border-[#e7e2db]',
+  },
+  {
+    id: 'mint-sage',
+    name: 'Rashmi Green Steel',
+    badge: 'Eco Mill',
+    desc: 'Deep forest emerald topbar with crisp white sidebar & fresh mint canvas',
+    category: 'Light',
+    headerSwatch: 'bg-[#0f3e2e] border border-[#064e3b]',
+    sidebarSwatch: 'bg-white border border-[#cbdad0]',
+  },
+  {
+    id: 'nordic-slate',
+    name: 'Industrial Silver / Nordic',
+    badge: 'Cool Light',
+    desc: 'Anodized silver topbar with cool mist sidebar & technical indigo accents',
+    category: 'Light',
+    headerSwatch: 'bg-[#e2e8f0] border border-[#cbd5e1]',
+    sidebarSwatch: 'bg-[#f8fafc] border border-[#cbd5e1]',
+  },
+  {
+    id: 'royal-executive',
+    name: 'Royal Sapphire',
+    badge: 'Prestige',
+    desc: 'Imperial sapphire blue topbar with crisp white sidebar for executive reports',
+    category: 'Light',
+    headerSwatch: 'bg-[#1e3a8a] border border-[#172554]',
+    sidebarSwatch: 'bg-white border border-slate-300',
+  },
+  // --- DARK THEMES ---
   {
     id: 'foundry-dark',
     name: 'Foundry Night (Dark)',
     badge: 'Popular',
     desc: 'Deep charcoal #0f172a with glowing cyan accents for night shifts',
+    category: 'Dark',
     headerSwatch: 'bg-[#0f172a] border border-slate-700',
     sidebarSwatch: 'bg-[#1e293b] border border-slate-700',
   },
@@ -51,6 +111,7 @@ const THEMES: {
     name: 'Deep Ocean / Steel Navy',
     badge: 'Console',
     desc: 'Midnight ocean #0a192f with cobalt & icy cyan indicators',
+    category: 'Dark',
     headerSwatch: 'bg-[#0a192f] border border-blue-900',
     sidebarSwatch: 'bg-[#0d1b2a] border border-blue-900',
   },
@@ -59,6 +120,7 @@ const THEMES: {
     name: 'Titanium / Obsidian',
     badge: 'Modern',
     desc: 'Ultra-modern matte zinc #18181b with emerald accents',
+    category: 'Dark',
     headerSwatch: 'bg-[#18181b] border border-zinc-700',
     sidebarSwatch: 'bg-[#202024] border border-zinc-700',
   },
@@ -67,16 +129,9 @@ const THEMES: {
     name: 'High-Contrast Operator',
     badge: 'Shop Floor',
     desc: 'Jet black with vivid safety yellow & white high-visibility borders',
+    category: 'Dark',
     headerSwatch: 'bg-black border border-white/60',
     sidebarSwatch: 'bg-[#0a0a0a] border border-white/60',
-  },
-  {
-    id: 'cobalt',
-    name: 'Steel-Blue Hybrid',
-    badge: 'Classic',
-    desc: 'Polished steel-blue topbar with high-contrast white sidebar',
-    headerSwatch: 'bg-[#16325c] border border-blue-900',
-    sidebarSwatch: 'bg-white border border-slate-300',
   },
 ];
 
@@ -158,7 +213,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       try {
         let saved = localStorage.getItem('app_theme') as string;
         if (saved === 'navy') saved = 'ocean';
-        if (saved && ['light', 'foundry-dark', 'ocean', 'titanium', 'high-contrast', 'cobalt'].includes(saved)) {
+        if (saved && THEMES.some(t => t.id === saved)) {
           return saved as AppTheme;
         }
       } catch {
@@ -186,7 +241,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     try {
       let savedTheme = localStorage.getItem('app_theme') as string;
       if (savedTheme === 'navy') savedTheme = 'ocean';
-      if (savedTheme && ['light', 'foundry-dark', 'ocean', 'titanium', 'high-contrast', 'cobalt'].includes(savedTheme)) {
+      if (savedTheme && THEMES.some(t => t.id === savedTheme)) {
         setTheme(savedTheme as AppTheme);
       }
     } catch {
@@ -288,7 +343,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   // Synchronize documentElement with theme and dark class for tailwind darkMode & native tokens
   useEffect(() => {
-    const isDarkTheme = theme !== 'light' && theme !== 'cobalt';
+    const isDarkTheme = theme === 'foundry-dark' || theme === 'ocean' || theme === 'titanium' || theme === 'high-contrast';
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.classList.toggle('dark', isDarkTheme);
   }, [theme]);
@@ -338,8 +393,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const formattedDay = now.toLocaleDateString('en-GB', { weekday: 'long' });
 
   const currentThemeConfig = THEMES.find((t) => t.id === theme) || THEMES[0];
-  const isLight = theme === 'light';
-  const isDark = theme !== 'light' && theme !== 'cobalt';
+  const isDark = theme === 'foundry-dark' || theme === 'ocean' || theme === 'titanium' || theme === 'high-contrast';
+  const isLight = !isDark;
+  const hasDarkHeader = isDark || theme === 'cobalt' || theme === 'mint-sage' || theme === 'royal-executive';
 
   const getHeaderClasses = () => {
     switch (theme) {
@@ -353,6 +409,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'bg-black border-b border-neutral-700 text-white shadow-md';
       case 'cobalt':
         return 'bg-[#16325c] border-b border-[#0f2444] text-white shadow-md';
+      case 'sandstone':
+        return 'bg-[#faf8f5] border-b border-[#e7e2db] text-stone-800 shadow-2xs';
+      case 'mint-sage':
+        return 'bg-[#0f3e2e] border-b border-[#064e3b] text-white shadow-md';
+      case 'nordic-slate':
+        return 'bg-[#e2e8f0] border-b border-[#cbd5e1] text-slate-800 shadow-2xs';
+      case 'royal-executive':
+        return 'bg-[#1e3a8a] border-b border-[#172554] text-white shadow-md';
       case 'light':
       default:
         return 'bg-white border-b border-slate-200/90 text-slate-800 shadow-2xs';
@@ -371,6 +435,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'bg-neutral-900 text-white placeholder:text-neutral-400 border-neutral-600 focus:bg-black focus:ring-amber-400 focus:border-amber-400';
       case 'cobalt':
         return 'bg-[#0f2444]/90 hover:bg-[#0f2444] text-white placeholder:text-blue-200/80 border-blue-900/60 focus:bg-[#0a182e] focus:ring-blue-400 focus:border-blue-400';
+      case 'sandstone':
+        return 'bg-[#f2eee6] hover:bg-[#ede8df] text-stone-900 placeholder:text-stone-400 border-[#e0dad0] focus:bg-white focus:ring-amber-600 focus:border-amber-600';
+      case 'mint-sage':
+        return 'bg-[#1b4d3c] hover:bg-[#205744] text-white placeholder:text-emerald-200/70 border-[#0a3324] focus:bg-[#0c3023] focus:ring-emerald-400 focus:border-emerald-400';
+      case 'nordic-slate':
+        return 'bg-[#f1f5f9] hover:bg-white text-slate-900 placeholder:text-slate-400 border-slate-300 focus:bg-white focus:ring-indigo-500 focus:border-indigo-500';
+      case 'royal-executive':
+        return 'bg-[#2546a3] hover:bg-[#2c52bd] text-white placeholder:text-blue-200/70 border-blue-900/60 focus:bg-[#193278] focus:ring-amber-400 focus:border-amber-400';
       case 'light':
       default:
         return 'bg-slate-100/90 hover:bg-slate-100 text-slate-900 placeholder:text-slate-400 border-slate-200 focus:bg-white focus:ring-blue-500 focus:border-blue-500';
@@ -389,6 +461,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'border-neutral-500 bg-neutral-900 hover:bg-black text-white ring-1 ring-neutral-400 shadow-2xs';
       case 'cobalt':
         return 'border-blue-700/60 bg-[#0f2444]/90 hover:bg-[#0f2444] text-white shadow-2xs';
+      case 'sandstone':
+        return 'border-[#e7e2db] bg-[#faf8f5] hover:bg-[#f2eee6] text-stone-800 shadow-2xs';
+      case 'mint-sage':
+        return 'border-[#064e3b] bg-[#164937] hover:bg-[#1b5541] text-white shadow-2xs';
+      case 'nordic-slate':
+        return 'border-slate-300 bg-white hover:bg-slate-100 text-slate-800 shadow-2xs';
+      case 'royal-executive':
+        return 'border-blue-700/60 bg-[#2546a3] hover:bg-[#2c52bd] text-white shadow-2xs';
       case 'light':
       default:
         return 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700 shadow-2xs';
@@ -407,6 +487,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'bg-amber-400 text-black border border-amber-300 font-black';
       case 'cobalt':
         return 'bg-blue-900/60 text-blue-200 border border-blue-700/50';
+      case 'sandstone':
+        return 'bg-amber-100 text-amber-800 border border-amber-300';
+      case 'mint-sage':
+        return 'bg-emerald-900/60 text-emerald-200 border border-emerald-700/60';
+      case 'nordic-slate':
+        return 'bg-indigo-100 text-indigo-800 border border-indigo-200';
+      case 'royal-executive':
+        return 'bg-amber-400 text-slate-950 font-bold border border-amber-300';
       case 'light':
       default:
         return 'bg-blue-50 text-blue-700 border border-blue-200';
@@ -423,6 +511,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'bg-[#141416] border-r border-zinc-800 text-zinc-200';
       case 'high-contrast':
         return 'bg-black border-r border-neutral-700 text-white';
+      case 'sandstone':
+        return 'bg-[#fcfbfa] border-r border-[#ede9e3] text-stone-800';
+      case 'nordic-slate':
+        return 'bg-[#f8fafc] border-r border-[#cbd5e1] text-slate-800';
+      case 'mint-sage':
+        return 'bg-white border-r border-[#e2ebe5] text-slate-800';
+      case 'royal-executive':
       case 'cobalt':
       case 'light':
       default:
@@ -441,6 +536,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           return 'bg-emerald-600 text-white shadow-xs font-semibold';
         case 'high-contrast':
           return 'bg-amber-400 text-black shadow-xs font-black ring-1 ring-white';
+        case 'sandstone':
+          return 'bg-amber-700 text-white shadow-xs font-semibold';
+        case 'mint-sage':
+          return 'bg-emerald-700 text-white shadow-xs font-semibold';
+        case 'nordic-slate':
+          return 'bg-indigo-600 text-white shadow-xs font-semibold';
+        case 'royal-executive':
+          return 'bg-blue-700 text-white shadow-xs font-semibold';
         case 'cobalt':
         case 'light':
         default:
@@ -456,6 +559,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white';
       case 'high-contrast':
         return 'text-white hover:bg-neutral-800 hover:text-amber-300';
+      case 'sandstone':
+        return 'text-stone-700 hover:bg-[#f2eee6] hover:text-stone-900';
+      case 'mint-sage':
+        return 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-900';
+      case 'nordic-slate':
+        return 'text-slate-700 hover:bg-slate-200/70 hover:text-slate-900';
+      case 'royal-executive':
+        return 'text-slate-700 hover:bg-blue-50 hover:text-blue-900';
       case 'cobalt':
       case 'light':
       default:
@@ -473,6 +584,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'border-zinc-800 bg-[#0e0e10] text-zinc-300';
       case 'high-contrast':
         return 'border-neutral-700 bg-neutral-900 text-white';
+      case 'sandstone':
+        return 'border-[#ede9e3] bg-[#f7f4ee]/80 text-stone-700';
+      case 'mint-sage':
+        return 'border-[#e2ebe5] bg-[#f2f8f5]/80 text-slate-700';
+      case 'nordic-slate':
+        return 'border-[#cbd5e1] bg-[#e2e8f0]/60 text-slate-700';
+      case 'royal-executive':
       case 'cobalt':
       case 'light':
       default:
@@ -490,6 +608,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'border-zinc-800 bg-[#0e0e10] text-zinc-400';
       case 'high-contrast':
         return 'border-neutral-700 bg-black text-neutral-300';
+      case 'sandstone':
+        return 'border-[#ede9e3] bg-[#f7f4ee]/80 text-stone-600';
+      case 'mint-sage':
+        return 'border-[#e2ebe5] bg-[#f2f8f5]/80 text-slate-600';
+      case 'nordic-slate':
+        return 'border-[#cbd5e1] bg-[#e2e8f0]/60 text-slate-600';
+      case 'royal-executive':
       case 'cobalt':
       case 'light':
       default:
@@ -507,10 +632,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'bg-[#121214] text-zinc-100';
       case 'high-contrast':
         return 'bg-black text-white';
+      case 'sandstone':
+        return 'bg-[#f7f4ee] text-stone-900';
+      case 'mint-sage':
+        return 'bg-[#f2f8f5] text-slate-900';
+      case 'nordic-slate':
+        return 'bg-[#f1f5f9] text-slate-900';
+      case 'royal-executive':
+        return 'bg-[#f0f4f8] text-slate-900';
       case 'cobalt':
+        return 'bg-[#f4f6fa] text-slate-900';
       case 'light':
       default:
-        return 'bg-[#f4f6fa] text-slate-900';
+        return 'bg-[#f8fafc] text-slate-900';
     }
   };
 
@@ -525,6 +659,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'bg-[#1e1e22] border border-zinc-700 text-zinc-100 shadow-2xl';
       case 'high-contrast':
         return 'bg-black border border-white text-white shadow-2xl';
+      case 'sandstone':
+        return 'bg-[#faf8f5] border border-[#e7e2db] text-stone-800 shadow-2xl';
       case 'cobalt':
       case 'light':
       default:
@@ -542,6 +678,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'hover:bg-zinc-800 hover:text-white text-zinc-200';
       case 'high-contrast':
         return 'hover:bg-neutral-800 hover:text-amber-300 text-white';
+      case 'sandstone':
+        return 'hover:bg-[#f2ede4] hover:text-stone-900 text-stone-700';
       case 'cobalt':
       case 'light':
       default:
@@ -559,6 +697,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         return 'border-zinc-800';
       case 'high-contrast':
         return 'border-neutral-700';
+      case 'sandstone':
+        return 'border-[#ede7dc]';
       case 'cobalt':
       case 'light':
       default:
@@ -585,9 +725,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <button
             type="button"
             className={`lg:hidden rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center p-2 transition cursor-pointer ${
-              isLight
-                ? 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                : 'text-white/80 hover:bg-white/10 hover:text-white'
+              hasDarkHeader
+                ? 'text-white/80 hover:bg-white/10 hover:text-white'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`}
             onClick={() => setOpen(true)}
             aria-label="Open navigation menu"
@@ -603,7 +743,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-red-600 font-black text-xl tracking-wider leading-none">RASHMI</span>
             <span
               className={`text-[10px] font-bold tracking-widest pl-0.5 mt-0.5 ${
-                isLight ? 'text-slate-800' : 'text-white'
+                hasDarkHeader ? 'text-white' : 'text-slate-800'
               }`}
             >
               GROUP
@@ -612,10 +752,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           <div
             className={`h-8 w-[1px] mx-2 hidden sm:block shrink-0 ${
-              isLight
+              !hasDarkHeader
                 ? 'bg-slate-200'
                 : theme === 'cobalt'
                 ? 'bg-blue-800/60'
+                : theme === 'mint-sage'
+                ? 'bg-emerald-800/60'
+                : theme === 'royal-executive'
+                ? 'bg-blue-900/60'
                 : theme === 'titanium'
                 ? 'bg-zinc-800'
                 : 'bg-slate-800'
@@ -626,17 +770,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="hidden sm:flex flex-col min-w-0">
             <span
               className={`font-bold text-base tracking-tight leading-tight truncate ${
-                isLight ? 'text-slate-900' : 'text-white'
+                hasDarkHeader ? 'text-white' : 'text-slate-900'
               }`}
             >
               Seamless WIP Tracking
             </span>
             <span
               className={`text-xs font-normal leading-tight truncate ${
-                isLight
-                  ? 'text-slate-500'
-                  : theme === 'cobalt'
+                !hasDarkHeader
+                  ? theme === 'sandstone'
+                    ? 'text-stone-500'
+                    : 'text-slate-500'
+                  : theme === 'cobalt' || theme === 'royal-executive'
                   ? 'text-blue-200'
+                  : theme === 'mint-sage'
+                  ? 'text-emerald-200'
                   : theme === 'titanium'
                   ? 'text-zinc-400'
                   : theme === 'high-contrast'
@@ -658,10 +806,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="relative w-full">
             <Search
               className={`absolute left-3 top-2.5 h-4 w-4 pointer-events-none ${
-                isLight
-                  ? 'text-slate-400'
-                  : theme === 'cobalt'
+                !hasDarkHeader
+                  ? theme === 'sandstone'
+                    ? 'text-stone-400'
+                    : 'text-slate-400'
+                  : theme === 'cobalt' || theme === 'royal-executive'
                   ? 'text-blue-300'
+                  : theme === 'mint-sage'
+                  ? 'text-emerald-300'
                   : theme === 'titanium'
                   ? 'text-zinc-400'
                   : 'text-slate-400'
@@ -794,9 +946,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             type="button"
             onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
             className={`md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center p-2 rounded-lg transition cursor-pointer ${
-              theme === 'light'
-                ? 'text-slate-600 hover:bg-slate-100'
-                : 'text-white/80 hover:bg-white/10'
+              hasDarkHeader
+                ? 'text-white/80 hover:bg-white/10'
+                : 'text-slate-600 hover:bg-slate-100'
             }`}
             aria-label="Toggle search"
           >
@@ -813,7 +965,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               aria-label="Select application theme"
               className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 min-h-[38px] text-xs font-semibold border transition cursor-pointer ${getThemeButtonClasses()}`}
             >
-              <Palette className={`h-4 w-4 shrink-0 ${isLight ? 'text-blue-600' : theme === 'titanium' ? 'text-emerald-400' : theme === 'high-contrast' ? 'text-amber-400' : 'text-cyan-300'}`} />
+              <Palette className={`h-4 w-4 shrink-0 ${
+                hasDarkHeader
+                  ? theme === 'titanium'
+                    ? 'text-emerald-400'
+                    : theme === 'high-contrast'
+                    ? 'text-amber-400'
+                    : theme === 'mint-sage'
+                    ? 'text-emerald-300'
+                    : 'text-cyan-300'
+                  : theme === 'sandstone'
+                  ? 'text-amber-700'
+                  : 'text-blue-600'
+              }`} />
               <span className="hidden sm:inline font-medium">Theme</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${getThemeBadgeClasses()}`}>
                 {currentThemeConfig.name.split(' ')[0]}
@@ -823,61 +987,121 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Theme Dropdown Menu */}
             {themeDropdownOpen && (
-              <div className={`absolute right-0 mt-2 w-76 rounded-xl p-2.5 z-50 animate-in fade-in zoom-in-95 text-xs ${getDropdownClasses()}`}>
-                <div className={`px-2 py-1.5 border-b ${getDropdownDividerClass()} mb-1 flex items-center justify-between`}>
+              <div className={`absolute right-0 mt-2 w-84 max-h-[80vh] overflow-y-auto rounded-xl p-2.5 z-50 animate-in fade-in zoom-in-95 text-xs shadow-2xl ${getDropdownClasses()}`}>
+                <div className={`px-2 py-1.5 border-b ${getDropdownDividerClass()} mb-2 flex items-center justify-between`}>
                   <div className="font-bold flex items-center gap-1.5 text-xs">
                     <Palette className="h-3.5 w-3.5 text-blue-500" />
-                    <span>Select Interface Theme</span>
+                    <span>Interface Themes</span>
                   </div>
-                  <span className="text-[10px] opacity-70 font-mono">{THEMES.length} themes</span>
+                  <span className="text-[10px] opacity-70 font-mono">10 Themes (6 Light, 4 Dark)</span>
                 </div>
 
-                <div className="space-y-1 py-1">
-                  {THEMES.map((t) => {
-                    const isSelected = theme === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => handleSelectTheme(t.id)}
-                        className={`flex w-full items-start gap-3 p-2 rounded-lg text-left transition cursor-pointer border ${
-                          isSelected
-                            ? isDark
-                              ? 'bg-blue-950/70 border-blue-600 text-white ring-1 ring-blue-500/40'
-                              : 'bg-blue-50/80 border-blue-200 text-slate-900 ring-1 ring-blue-500/20'
-                            : `border-transparent ${getDropdownItemHoverClass()}`
-                        }`}
-                      >
-                        {/* Preview swatch representing Topbar + Sidebar */}
-                        <div data-swatch="true" className={`flex flex-col gap-0.5 shrink-0 mt-0.5 p-1 rounded shadow-2xs border ${
-                          isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
-                        }`}>
-                          <div data-swatch="true" className={`h-2.5 w-7 rounded-xs ${t.headerSwatch}`} />
-                          <div data-swatch="true" className={`h-4 w-7 rounded-xs ${t.sidebarSwatch}`} />
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="font-bold text-xs truncate">{t.name}</span>
-                            {t.badge && (
-                              <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase border ${
-                                isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'
-                              }`}>
-                                {t.badge}
-                              </span>
-                            )}
+                {/* Section 1: Light Themes (Daytime Shift) */}
+                <div className="mb-2">
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <span>☀️ Light Themes (Daytime Shift)</span>
+                  </div>
+                  <div className="space-y-1">
+                    {THEMES.filter(t => !['foundry-dark', 'ocean', 'titanium', 'high-contrast'].includes(t.id)).map((t) => {
+                      const isSelected = theme === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => handleSelectTheme(t.id)}
+                          className={`flex w-full items-start gap-2.5 p-2 rounded-lg text-left transition cursor-pointer border ${
+                            isSelected
+                              ? isDark
+                                ? 'bg-blue-950/70 border-blue-600 text-white ring-1 ring-blue-500/40'
+                                : 'bg-blue-50/80 border-blue-200 text-slate-900 ring-1 ring-blue-500/20'
+                              : `border-transparent ${getDropdownItemHoverClass()}`
+                          }`}
+                        >
+                          {/* Preview swatch representing Topbar + Sidebar */}
+                          <div data-swatch="true" className={`flex flex-col gap-0.5 shrink-0 mt-0.5 p-1 rounded shadow-2xs border ${
+                            isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                          }`}>
+                            <div data-swatch="true" className={`h-2.5 w-6 rounded-xs ${t.headerSwatch}`} />
+                            <div data-swatch="true" className={`h-3.5 w-6 rounded-xs ${t.sidebarSwatch}`} />
                           </div>
-                          <p className="text-[11px] opacity-75 leading-tight mt-0.5 line-clamp-2">
-                            {t.desc}
-                          </p>
-                        </div>
 
-                        {isSelected && (
-                          <Check className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                        )}
-                      </button>
-                    );
-                  })}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-bold text-xs truncate">{t.name}</span>
+                              {t.badge && (
+                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase border ${
+                                  isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}>
+                                  {t.badge}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] opacity-75 leading-tight mt-0.5 line-clamp-2">
+                              {t.desc}
+                            </p>
+                          </div>
+
+                          {isSelected && (
+                            <Check className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Section 2: Dark Themes (Night Shift) */}
+                <div className={`pt-2 border-t ${getDropdownDividerClass()}`}>
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <span>🌙 Dark Themes (Night Shift)</span>
+                  </div>
+                  <div className="space-y-1">
+                    {THEMES.filter(t => ['foundry-dark', 'ocean', 'titanium', 'high-contrast'].includes(t.id)).map((t) => {
+                      const isSelected = theme === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => handleSelectTheme(t.id)}
+                          className={`flex w-full items-start gap-2.5 p-2 rounded-lg text-left transition cursor-pointer border ${
+                            isSelected
+                              ? isDark
+                                ? 'bg-blue-950/70 border-blue-600 text-white ring-1 ring-blue-500/40'
+                                : 'bg-blue-50/80 border-blue-200 text-slate-900 ring-1 ring-blue-500/20'
+                              : `border-transparent ${getDropdownItemHoverClass()}`
+                          }`}
+                        >
+                          {/* Preview swatch representing Topbar + Sidebar */}
+                          <div data-swatch="true" className={`flex flex-col gap-0.5 shrink-0 mt-0.5 p-1 rounded shadow-2xs border ${
+                            isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
+                          }`}>
+                            <div data-swatch="true" className={`h-2.5 w-6 rounded-xs ${t.headerSwatch}`} />
+                            <div data-swatch="true" className={`h-3.5 w-6 rounded-xs ${t.sidebarSwatch}`} />
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-bold text-xs truncate">{t.name}</span>
+                              {t.badge && (
+                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase border ${
+                                  isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}>
+                                  {t.badge}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] opacity-75 leading-tight mt-0.5 line-clamp-2">
+                              {t.desc}
+                            </p>
+                          </div>
+
+                          {isSelected && (
+                            <Check className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
@@ -887,28 +1111,42 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="hidden lg:flex items-center gap-2.5 text-right">
             <Calendar
               className={`h-4 w-4 shrink-0 ${
-                isLight ? 'text-blue-600' : theme === 'titanium' ? 'text-emerald-400' : theme === 'high-contrast' ? 'text-amber-400' : 'text-cyan-300'
+                hasDarkHeader
+                  ? theme === 'titanium'
+                    ? 'text-emerald-400'
+                    : theme === 'high-contrast'
+                    ? 'text-amber-400'
+                    : theme === 'mint-sage'
+                    ? 'text-emerald-300'
+                    : 'text-cyan-300'
+                  : theme === 'sandstone'
+                  ? 'text-amber-700'
+                  : 'text-blue-600'
               }`}
             />
             <div className="flex flex-col leading-tight">
               <span
                 className={`text-xs font-bold tracking-tight ${
-                  isLight ? 'text-slate-800' : 'text-white'
+                  hasDarkHeader ? 'text-white' : 'text-slate-800'
                 }`}
               >
                 {formattedDate}
               </span>
               <span
                 className={`text-xs font-medium ${
-                  isLight
-                    ? 'text-slate-500'
-                    : theme === 'cobalt'
-                    ? 'text-blue-200'
-                    : theme === 'titanium'
-                    ? 'text-zinc-400'
-                    : theme === 'high-contrast'
-                    ? 'text-neutral-300'
-                    : 'text-slate-400'
+                  hasDarkHeader
+                    ? theme === 'cobalt' || theme === 'royal-executive'
+                      ? 'text-blue-200'
+                      : theme === 'mint-sage'
+                      ? 'text-emerald-200'
+                      : theme === 'titanium'
+                      ? 'text-zinc-400'
+                      : theme === 'high-contrast'
+                      ? 'text-neutral-300'
+                      : 'text-slate-400'
+                    : theme === 'sandstone'
+                    ? 'text-stone-500'
+                    : 'text-slate-500'
                 }`}
               >
                 {formattedDay}
@@ -927,9 +1165,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => setUserDropdownOpen(!userDropdownOpen)}
               className={`flex items-center gap-2.5 rounded-lg p-1.5 transition cursor-pointer text-left ${
-                isLight
-                  ? 'hover:bg-slate-100 text-slate-900'
-                  : 'hover:bg-white/10 text-white'
+                hasDarkHeader
+                  ? 'hover:bg-white/10 text-white'
+                  : 'hover:bg-slate-100 text-slate-900'
               }`}
               aria-expanded={userDropdownOpen}
               aria-label="User account menu"
@@ -940,14 +1178,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <div className="hidden xl:flex flex-col leading-tight">
                 <span
                   className={`text-xs font-bold leading-tight ${
-                    theme === 'light' ? 'text-slate-900' : 'text-white'
+                    hasDarkHeader ? 'text-white' : 'text-slate-900'
                   }`}
                 >
                   {currentUser?.name || 'Finishing'}
                 </span>
                 <span
                   className={`text-xs font-medium leading-tight ${
-                    theme === 'light' ? 'text-slate-500' : theme === 'cobalt' ? 'text-blue-200' : 'text-slate-400'
+                    hasDarkHeader
+                      ? theme === 'cobalt' || theme === 'royal-executive'
+                        ? 'text-blue-200'
+                        : theme === 'mint-sage'
+                        ? 'text-emerald-200'
+                        : 'text-slate-400'
+                      : 'text-slate-500'
                   }`}
                 >
                   {currentUser?.role_title || 'Production'}
@@ -955,7 +1199,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               <ChevronDown
                 className={`h-3.5 w-3.5 hidden xl:block ${
-                  theme === 'light' ? 'text-slate-400' : theme === 'cobalt' ? 'text-blue-200' : 'text-slate-400'
+                  hasDarkHeader
+                    ? theme === 'cobalt' || theme === 'royal-executive'
+                      ? 'text-blue-200'
+                      : 'text-slate-300'
+                    : 'text-slate-400'
                 }`}
               />
             </button>

@@ -29,7 +29,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   if (saved === 'navy') saved = 'ocean';
                   var theme = saved || 'light';
                   document.documentElement.setAttribute('data-theme', theme);
-                  if (theme !== 'light' && theme !== 'cobalt') {
+                  var darkThemes = ['foundry-dark', 'ocean', 'titanium', 'high-contrast'];
+                  if (darkThemes.indexOf(theme) !== -1) {
                     document.documentElement.classList.add('dark');
                   } else {
                     document.documentElement.classList.remove('dark');
