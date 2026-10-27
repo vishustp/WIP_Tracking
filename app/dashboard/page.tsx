@@ -22,6 +22,34 @@ interface DashboardCachePayload {
 let dashboardCache: DashboardCachePayload | null = null;
 const DASHBOARD_CACHE_TTL_MS = 60000; // 60s fast in-memory cache
 
+/**
+ * Helper to fetch production logs overcoming the 1,000-row PostgREST default limit.
+ * Uses range pagination to ensure no historical or current-month logs are truncated.
+ */
+async function fetchAllDashboardProductionLogs(client: any): Promise<{ data: any[]; error: any }> {
+  const PAGE_SIZE = 1000;
+  const all: any[] = [];
+  let from = 0;
+  const MAX_LOGS = 10000; // Safeguard up to 10,000 logs
+  while (from < MAX_LOGS) {
+    const { data, error } = await client
+      .from('production_logs')
+      .select('id,work_order_id,stage_id,output_qty,rejection_qty,remarks,process_date,created_at,created_by,process_stages(stage_code,stage_name)')
+      .order('created_at', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) {
+      console.error('[Dashboard] Error fetching production_logs page:', error);
+      if (all.length > 0) return { data: all, error: null };
+      return { data: [], error };
+    }
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return { data: all, error: null };
+}
+
 export default async function Dashboard() {
   if (dashboardCache && (Date.now() - dashboardCache.timestamp) < DASHBOARD_CACHE_TTL_MS) {
     return <DashboardClient {...dashboardCache.props} />;
@@ -64,11 +92,7 @@ export default async function Dashboard() {
       supabase
         .from('qc_inspections')
         .select('id,work_order_id,vdi_ok_mtr,vdi_ok_pcs,vdi_ok_mt,vdi_rejection_mtr,vdi_salvage_mtr,vdi_rejection_pcs,vdi_salvage_pcs,inspection_date,created_at'),
-      supabase
-        .from('production_logs')
-        .select('id,work_order_id,stage_id,output_qty,rejection_qty,remarks,process_date,created_at,created_by,process_stages(stage_code,stage_name)')
-        .order('created_at', { ascending: false })
-        .limit(2500),
+      fetchAllDashboardProductionLogs(supabase),
       supabase.from('app_users').select('id,auth_user_id,employee_name,email'),
       supabase.from('route_stages').select('route_id,stage_id,sequence_no,process_stages(stage_code)').order('sequence_no', { ascending: true }),
       supabase.from('process_stages').select('id,stage_code,stage_name'),
