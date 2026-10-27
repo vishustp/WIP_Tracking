@@ -16,7 +16,6 @@ import {
   TrendingUp,
   AlertTriangle,
   Clock,
-  Activity,
   Factory,
   FileText,
   Flame,
@@ -535,76 +534,6 @@ export default function DashboardClient({
 
   return (
     <div className="space-y-4">
-      {/* ========================================================================= */}
-      {/* EXECUTIVE PLANT OPERATIONS & LIVE WIP BANNER                              */}
-      {/* ========================================================================= */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-950 to-blue-950 text-white p-4 sm:p-5 border border-slate-800/80 shadow-md">
-        {/* Ambient Hydrogen & Induction Aura */}
-        <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-sky-500/10 blur-3xl pointer-events-none animate-banner-aura" />
-        <div className="absolute -left-20 -bottom-20 h-56 w-56 rounded-full bg-red-600/10 blur-3xl pointer-events-none animate-banner-aura" />
-        
-        {/* Animated Laser Telemetry Track */}
-        <div className="absolute top-0 inset-x-0 h-[2px] bg-slate-800/80 overflow-hidden">
-          <div className="h-full w-40 bg-gradient-to-r from-transparent via-cyan-400 to-transparent animate-telemetry-scan" />
-        </div>
-
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-red-600 via-rose-600 to-amber-600 p-[1.5px] shrink-0 shadow-lg shadow-red-950/50">
-              <div className="h-full w-full rounded-[10px] bg-slate-950 flex items-center justify-center relative overflow-hidden">
-                <svg viewBox="0 0 24 24" className="h-6 w-6 animate-molten-ring text-red-500" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="9" className="opacity-40" stroke="currentColor" />
-                  <circle cx="12" cy="12" r="4.5" stroke="#ef4444" fill="#dc2626" fillOpacity="0.3" />
-                  <path d="M12 3v2M12 19v2M3 12h2M19 12h2" stroke="#f59e0b" strokeWidth="2" />
-                </svg>
-                <div className="logo-shimmer-sweep" aria-hidden="true" />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-cyan-400">
-                  Rashmi Green Hydrogen Steel
-                </span>
-                <span className="h-1 w-1 rounded-full bg-slate-500" />
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
-                  </span>
-                  PLANT TELEMETRY ACTIVE
-                </span>
-              </div>
-              <h1 className="text-lg sm:text-xl font-black tracking-tight text-white mt-0.5 flex items-center gap-2">
-                Seamless Division WIP & Operations Console
-              </h1>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 sm:gap-4 shrink-0 flex-wrap">
-            <div className="bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 flex items-center gap-2.5">
-              <Activity className="h-4 w-4 text-cyan-400 animate-pulse" />
-              <div className="flex flex-col">
-                <span className="text-[10px] font-mono font-semibold text-slate-400 uppercase tracking-tight">Active Plant WIP</span>
-                <span className="font-mono text-xs font-bold text-white tabular-nums">
-                  {totalPlantWipMt.toFixed(1)} MT
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 flex items-center gap-2.5">
-              <Clock className="h-4 w-4 text-amber-400" />
-              <div className="flex flex-col">
-                <span className="text-[10px] font-mono font-semibold text-slate-400 uppercase tracking-tight">Post-Rolling Work Centers</span>
-                <span className="font-mono text-xs font-bold text-white tabular-nums">
-                  6 Work Centers Monitored
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* ========================================================================= */}
       {/* ROW 1: 5 SUMMARY KPI CARDS                                                */}
       {/* ========================================================================= */}
