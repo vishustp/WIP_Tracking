@@ -206,16 +206,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       }
     };
 
+    const isBenignError = (msg?: string, filename?: string) => {
+      if (!msg) return true;
+      if (
+        msg.includes('ResizeObserver') ||
+        msg.includes('NEXT_REDIRECT') ||
+        msg.includes('parentNode') ||
+        msg.includes('Loading chunk') ||
+        msg.includes('Script error.')
+      ) {
+        return true;
+      }
+      if (
+        filename &&
+        (filename.startsWith('moz-extension:') ||
+          filename.startsWith('chrome-extension:') ||
+          filename.startsWith('safari-extension:'))
+      ) {
+        return true;
+      }
+      return false;
+    };
+
     const handleGlobalError = (event: ErrorEvent) => {
-      if (event.message && !event.message.includes('ResizeObserver')) {
+      if (!isBenignError(event.message, event.filename)) {
         toast.error(event.message);
       }
     };
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       const reason = event.reason;
-      const msg = reason instanceof Error ? reason.message : typeof reason === 'string' ? reason : 'An unexpected error occurred';
-      if (msg && !msg.includes('NEXT_REDIRECT') && !msg.includes('ResizeObserver')) {
-        toast.error(msg);
+      const msg = reason instanceof Error ? reason.message : typeof reason === 'string' ? reason : '';
+      if (!isBenignError(msg)) {
+        toast.error(msg || 'An unexpected error occurred');
       }
     };
 

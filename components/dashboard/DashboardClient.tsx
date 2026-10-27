@@ -200,8 +200,10 @@ export default function DashboardClient({
   yesterdayProduction,
 }: Props) {
   const [localPriorities, setLocalPriorities] = useState<Record<string, PriorityItem>>({});
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     setLocalPriorities(loadLocalPriorities());
     const handleSync = () => setLocalPriorities(loadLocalPriorities());
     window.addEventListener('focus', handleSync);
@@ -650,31 +652,35 @@ export default function DashboardClient({
           <div className="my-2 flex flex-col sm:flex-row items-center justify-between gap-4">
             {/* Donut graphic */}
             <div className="relative h-44 w-44 shrink-0 flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={distributionData.length > 0 ? distributionData : [{ name: 'Empty', mt: 1, color: '#cbd5e1', pct: '0%' }]}
-                    innerRadius={50}
-                    outerRadius={72}
-                    paddingAngle={2}
-                    dataKey="mt"
-                  >
-                    {distributionData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(val: any, name: any) => [`${formatNum(val, 1)} MT`, name]}
-                    contentStyle={{
-                      borderRadius: '8px',
-                      fontSize: '0.8125rem',
-                      backgroundColor: 'var(--bg-surface-elevated, #ffffff)',
-                      borderColor: 'var(--border-subtle, #e2e8f0)',
-                      color: 'var(--text-main, #0f172a)'
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              {mounted ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={distributionData.length > 0 ? distributionData : [{ name: 'Empty', mt: 1, color: '#cbd5e1', pct: '0%' }]}
+                      innerRadius={50}
+                      outerRadius={72}
+                      paddingAngle={2}
+                      dataKey="mt"
+                    >
+                      {distributionData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(val: any, name: any) => [`${formatNum(val, 1)} MT`, name]}
+                      contentStyle={{
+                        borderRadius: '8px',
+                        fontSize: '0.8125rem',
+                        backgroundColor: 'var(--bg-surface-elevated, #ffffff)',
+                        borderColor: 'var(--border-subtle, #e2e8f0)',
+                        color: 'var(--text-main, #0f172a)'
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-36 w-36 rounded-full border-8 border-slate-200 dark:border-slate-800 animate-pulse" />
+              )}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
                 <span className="text-base font-black font-mono text-[var(--text-main,#0f172a)] leading-none">
                   {formatNum(totalPlantWipMt, 0)}
