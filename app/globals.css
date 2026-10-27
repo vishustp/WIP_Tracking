@@ -260,32 +260,149 @@ input.bg-slate-900:-webkit-autofill:active {
   border-color: var(--border-strong);
 }
 
-/* Form controls native dark mode integration */
+/* =========================================================================
+   UNIVERSAL THEME ENGINE FOR INDUSTRIAL STEEL MILL UI
+   Guarantees all 6 themes (Light, Foundry Dark, Deep Ocean, Titanium,
+   High-Contrast, and Cobalt) render with consistent surfaces, high contrast,
+   and zero un-themed white rectangles or dark-on-dark text clashing.
+   ========================================================================= */
+
+/* 1. Surfaces: Remap hardcoded white cards, modals & legacy dark classes */
+.dark .bg-white:not([data-swatch]):not([data-keep-white]),
+.dark .dark\:bg-slate-900,
+.dark .dark\:bg-slate-900\/90,
+.dark .dark\:bg-slate-900\/80,
+.dark .dark\:bg-slate-950,
+.dark [class*="bg-white"]:not([data-swatch]):not([data-keep-white]):not([class*="hover"]):not([class*="text"]):not([class*="shadow"]):not([class*="ring"]) {
+  background-color: var(--bg-surface) !important;
+}
+
+/* 2. Elevated / Secondary Surfaces & Modals */
+.dark .bg-slate-50:not([data-swatch]):not([data-keep-color]),
+.dark .bg-slate-100:not([data-swatch]):not([data-keep-color]),
+.dark .dark\:bg-slate-800,
+.dark .dark\:bg-slate-800\/80,
+.dark .dark\:bg-slate-800\/60,
+.dark .dark\:bg-slate-800\/40,
+.dark .dark\:bg-slate-800\/90 {
+  background-color: var(--bg-surface-elevated) !important;
+}
+
+/* 3. Table Rows, Zebra Striping & Hover States */
+.dark tr.bg-slate-50\/80,
+.dark tr.bg-slate-50\/50,
+.dark tr.bg-slate-50\/70,
+.dark .bg-slate-50\/70 {
+  background-color: var(--bg-surface-subtle) !important;
+}
+
+.dark tr:hover td,
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover,
+.dark .dark\:hover\:bg-slate-800:hover,
+.dark .dark\:hover\:bg-slate-800\/50:hover {
+  background-color: var(--bg-surface-subtle) !important;
+}
+
+/* 4. Text Contrast (WCAG 2.1 AA Compliance >= 4.5:1) */
+.dark .text-slate-900:not([data-keep-color]),
+.dark .text-slate-800:not([data-keep-color]),
+.dark .text-slate-700:not([data-keep-color]),
+.dark .dark\:text-slate-100,
+.dark .dark\:text-slate-200,
+.dark .dark\:text-white {
+  color: var(--text-main) !important;
+}
+
+.dark .text-slate-600:not([data-keep-color]),
+.dark .text-slate-500:not([data-keep-color]),
+.dark .dark\:text-slate-400,
+.dark .dark\:text-slate-500 {
+  color: var(--text-muted) !important;
+}
+
+/* 5. Borders Across All Panels & Cards */
+.dark .border-slate-200,
+.dark .border-slate-200\/90,
+.dark .border-slate-300,
+.dark .dark\:border-slate-800,
+.dark .dark\:border-slate-700 {
+  border-color: var(--border-subtle) !important;
+}
+
+.dark .border-slate-400,
+.dark .dark\:border-slate-600 {
+  border-color: var(--border-strong) !important;
+}
+
+/* 6. Form Controls: Universal Input & Select Styling */
 select, input, textarea {
   color-scheme: light dark;
 }
 
 .dark select,
-.dark input,
-.dark textarea,
-[data-theme="foundry-dark"] select,
-[data-theme="foundry-dark"] input,
-[data-theme="foundry-dark"] textarea,
-[data-theme="ocean"] select,
-[data-theme="ocean"] input,
-[data-theme="ocean"] textarea,
-[data-theme="titanium"] select,
-[data-theme="titanium"] input,
-[data-theme="titanium"] textarea,
-[data-theme="high-contrast"] select,
-[data-theme="high-contrast"] input,
-[data-theme="high-contrast"] textarea {
+.dark input:not([type="checkbox"]):not([type="radio"]):not([data-swatch]),
+.dark textarea {
   color-scheme: dark;
+  background-color: var(--bg-surface-subtle) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  background-color: var(--bg-surface) !important;
+  border-color: var(--border-focus) !important;
+  outline: none !important;
 }
 
 select option {
   background-color: var(--bg-surface);
   color: var(--text-main);
+}
+
+/* 7. Sticky Table Columns & Table Headers */
+.dark th.sticky,
+.dark td.sticky {
+  background-color: var(--bg-surface) !important;
+  color: var(--text-main) !important;
+}
+
+.dark table thead th {
+  background-color: var(--bg-surface-elevated) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+/* 8. Specific Per-Theme Polish */
+/* High-Contrast: stark white borders, pure black backgrounds, amber highlights */
+[data-theme="high-contrast"] .rounded-xl,
+[data-theme="high-contrast"] .rounded-2xl,
+[data-theme="high-contrast"] .rounded-lg,
+[data-theme="high-contrast"] table,
+[data-theme="high-contrast"] th,
+[data-theme="high-contrast"] td {
+  border-color: #52525b !important;
+}
+
+[data-theme="high-contrast"] input:focus,
+[data-theme="high-contrast"] select:focus,
+[data-theme="high-contrast"] button:focus-visible {
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 2px !important;
+}
+
+/* Ocean: Deep midnight glow and oceanic borders */
+[data-theme="ocean"] .rounded-xl,
+[data-theme="ocean"] .rounded-2xl {
+  box-shadow: 0 4px 20px -2px rgba(6, 13, 23, 0.7);
+}
+
+/* Titanium: Precision obsidian matte finish */
+[data-theme="titanium"] .rounded-xl,
+[data-theme="titanium"] .rounded-2xl {
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.5);
 }
 
 @media print {

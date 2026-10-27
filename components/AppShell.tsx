@@ -849,11 +849,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         }`}
                       >
                         {/* Preview swatch representing Topbar + Sidebar */}
-                        <div className={`flex flex-col gap-0.5 shrink-0 mt-0.5 p-1 rounded shadow-2xs border ${
+                        <div data-swatch="true" className={`flex flex-col gap-0.5 shrink-0 mt-0.5 p-1 rounded shadow-2xs border ${
                           isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'
                         }`}>
-                          <div className={`h-2.5 w-7 rounded-xs ${t.headerSwatch}`} />
-                          <div className={`h-4 w-7 rounded-xs ${t.sidebarSwatch}`} />
+                          <div data-swatch="true" className={`h-2.5 w-7 rounded-xs ${t.headerSwatch}`} />
+                          <div data-swatch="true" className={`h-4 w-7 rounded-xs ${t.sidebarSwatch}`} />
                         </div>
 
                         <div className="flex-1 min-w-0">
