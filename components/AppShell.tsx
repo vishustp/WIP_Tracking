@@ -658,9 +658,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       case 'titanium':
         return 'bg-[#1e1e22] border border-zinc-700 text-zinc-100 shadow-2xl';
       case 'high-contrast':
-        return 'bg-black border border-white text-white shadow-2xl';
+        return 'bg-black border-2 border-white text-white shadow-2xl';
       case 'sandstone':
-        return 'bg-[#faf8f5] border border-[#e7e2db] text-stone-800 shadow-2xl';
+        return 'bg-[#faf8f5] border border-[#d6cfc5] text-stone-900 shadow-2xl';
+      case 'mint-sage':
+        return 'bg-white border border-[#cbdad0] text-slate-900 shadow-2xl';
+      case 'nordic-slate':
+        return 'bg-white border border-slate-300 text-slate-900 shadow-2xl';
+      case 'royal-executive':
+        return 'bg-white border border-blue-200 text-slate-900 shadow-2xl';
       case 'cobalt':
       case 'light':
       default:
@@ -716,14 +722,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </a>
       <GlobalKeyboardNavigation />
 
-      {/* Top Header Bar */}
       {/* Top Header Bar (Banner) */}
       <header
         role="banner"
-        className={`sticky top-0 z-50 flex h-16 w-full items-center justify-between px-4 sm:px-6 shrink-0 print:hidden transition-colors duration-150 relative overflow-hidden ${getHeaderClasses()}`}
+        className={`sticky top-0 z-50 flex h-16 w-full items-center justify-between px-4 sm:px-6 shrink-0 print:hidden transition-colors duration-150 relative ${getHeaderClasses()}`}
       >
         {/* Animated Precision Ambient Laser Beam along bottom border */}
-        <div className="header-banner-beam" aria-hidden="true" />
+        <div className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden pointer-events-none z-10">
+          <div className="header-banner-beam" aria-hidden="true" />
+        </div>
 
         {/* Left: Brand Logo & Title */}
         <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">
@@ -1034,22 +1041,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
             {/* Theme Dropdown Menu */}
             {themeDropdownOpen && (
-              <div className={`absolute right-0 mt-2 w-84 max-h-[80vh] overflow-y-auto rounded-xl p-2.5 z-50 animate-in fade-in zoom-in-95 text-xs shadow-2xl ${getDropdownClasses()}`}>
+              <div className={`absolute right-0 mt-2 w-80 sm:w-[360px] max-h-[82vh] overflow-y-auto rounded-xl p-3 z-[100] animate-in fade-in zoom-in-95 text-xs shadow-2xl ${getDropdownClasses()}`}>
                 <div className={`px-2 py-1.5 border-b ${getDropdownDividerClass()} mb-2 flex items-center justify-between`}>
                   <div className="font-bold flex items-center gap-1.5 text-xs">
                     <Palette className="h-3.5 w-3.5 text-blue-500" />
                     <span>Interface Themes</span>
                   </div>
-                  <span className="text-[10px] opacity-70 font-mono">10 Themes (6 Light, 4 Dark)</span>
+                  <span className="text-[10px] opacity-75 font-mono">10 Themes (6 Light, 4 Dark)</span>
                 </div>
 
                 {/* Section 1: Light Themes (Daytime Shift) */}
                 <div className="mb-2">
-                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                     <span>☀️ Light Themes (Daytime Shift)</span>
                   </div>
                   <div className="space-y-1">
-                    {THEMES.filter(t => !['foundry-dark', 'ocean', 'titanium', 'high-contrast'].includes(t.id)).map((t) => {
+                    {THEMES.filter(t => t.category === 'Light').map((t) => {
                       const isSelected = theme === t.id;
                       return (
                         <button
@@ -1060,7 +1067,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                             isSelected
                               ? isDark
                                 ? 'bg-blue-950/70 border-blue-600 text-white ring-1 ring-blue-500/40'
-                                : 'bg-blue-50/80 border-blue-200 text-slate-900 ring-1 ring-blue-500/20'
+                                : 'bg-blue-50 border-blue-300 text-slate-900 ring-1 ring-blue-500/20 shadow-2xs'
                               : `border-transparent ${getDropdownItemHoverClass()}`
                           }`}
                         >
@@ -1074,16 +1081,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-1">
-                              <span className="font-bold text-xs truncate">{t.name}</span>
+                              <span className={`font-bold text-xs truncate ${
+                                isSelected
+                                  ? isDark ? 'text-white' : 'text-blue-950 font-black'
+                                  : isDark ? 'text-slate-100' : 'text-slate-900'
+                              }`}>
+                                {t.name}
+                              </span>
                               {t.badge && (
                                 <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase border ${
-                                  isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'
+                                  isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300'
                                 }`}>
                                   {t.badge}
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] opacity-75 leading-tight mt-0.5 line-clamp-2">
+                            <p className={`text-[11px] leading-snug mt-0.5 line-clamp-2 ${
+                              isDark ? 'text-slate-400' : 'text-slate-600'
+                            }`}>
                               {t.desc}
                             </p>
                           </div>
@@ -1099,11 +1114,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
                 {/* Section 2: Dark Themes (Night Shift) */}
                 <div className={`pt-2 border-t ${getDropdownDividerClass()}`}>
-                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
                     <span>🌙 Dark Themes (Night Shift)</span>
                   </div>
                   <div className="space-y-1">
-                    {THEMES.filter(t => ['foundry-dark', 'ocean', 'titanium', 'high-contrast'].includes(t.id)).map((t) => {
+                    {THEMES.filter(t => t.category === 'Dark').map((t) => {
                       const isSelected = theme === t.id;
                       return (
                         <button
@@ -1114,7 +1129,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                             isSelected
                               ? isDark
                                 ? 'bg-blue-950/70 border-blue-600 text-white ring-1 ring-blue-500/40'
-                                : 'bg-blue-50/80 border-blue-200 text-slate-900 ring-1 ring-blue-500/20'
+                                : 'bg-blue-50 border-blue-300 text-slate-900 ring-1 ring-blue-500/20 shadow-2xs'
                               : `border-transparent ${getDropdownItemHoverClass()}`
                           }`}
                         >
@@ -1128,16 +1143,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-1">
-                              <span className="font-bold text-xs truncate">{t.name}</span>
+                              <span className={`font-bold text-xs truncate ${
+                                isSelected
+                                  ? isDark ? 'text-white' : 'text-blue-950 font-black'
+                                  : isDark ? 'text-slate-100' : 'text-slate-900'
+                              }`}>
+                                {t.name}
+                              </span>
                               {t.badge && (
                                 <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase border ${
-                                  isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'
+                                  isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-300'
                                 }`}>
                                   {t.badge}
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] opacity-75 leading-tight mt-0.5 line-clamp-2">
+                            <p className={`text-[11px] leading-snug mt-0.5 line-clamp-2 ${
+                              isDark ? 'text-slate-400' : 'text-slate-600'
+                            }`}>
                               {t.desc}
                             </p>
                           </div>
