@@ -3,6 +3,7 @@ export const STAGE_CODES = [
   "HTC",
   "ROLLING",
   "HOLLOW_HEAT_TREATMENT",
+  "IP_CUTTING",
   "DRAW",
   "PILGER",
   "HEAT_TREATMENT",
@@ -131,6 +132,11 @@ export interface Row {
   diversion_source_wo?: string | null;
   diversion_remarks?: string | null;
 
+  // Intermediate Pipe Cutting (IP Cutting) pre-draw parameters
+  is_ip_cutting?: boolean;
+  ip_cut_length?: number | null;
+  ip_multiple?: number | null;
+
   // Work Center WIP Breakdown across the entire route
   work_centers_wip?: WorkCenterWipInfo[];
 
@@ -232,6 +238,9 @@ export interface ProductionEntry {
   operator_name?: string | null;
   operator_role?: string | null;
   can_modify: boolean;
+  is_ip_cutting?: boolean;
+  ip_cut_length?: number | null;
+  ip_multiple?: number | null;
 }
 
 export const STAGES: { code: StageCode; label: string }[] = [
@@ -239,6 +248,7 @@ export const STAGES: { code: StageCode; label: string }[] = [
   { code: "HTC", label: "HTC" },
   { code: "ROLLING", label: "Rolling" },
   { code: "HOLLOW_HEAT_TREATMENT", label: "Hollow Heat Treatment" },
+  { code: "IP_CUTTING", label: "IP Cutting (Band Saw)" },
   { code: "DRAW", label: "Draw" },
   { code: "PILGER", label: "Cold Pilger Mill" },
   { code: "HEAT_TREATMENT", label: "Heat Treatment" },
