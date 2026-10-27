@@ -654,6 +654,115 @@ select option {
   pointer-events: none;
 }
 
+/* ========================================================================= */
+/* IMPECCABLE LOGO & BANNER MOTION SUITE                                     */
+/* ========================================================================= */
+
+@keyframes headerBannerBeam {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.9;
+  }
+  60% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateX(320%);
+    opacity: 0;
+  }
+}
+
+.header-banner-beam {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 1.5px;
+  width: 32%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(220, 38, 38, 0.5) 20%,
+    rgba(14, 165, 233, 0.95) 50%,
+    rgba(16, 185, 129, 0.7) 80%,
+    transparent 100%
+  );
+  filter: drop-shadow(0 0 6px rgba(14, 165, 233, 0.65));
+  animation: headerBannerBeam 7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes logoTextShimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.logo-text-shimmer {
+  background: linear-gradient(
+    90deg,
+    #dc2626 0%,
+    #ef4444 30%,
+    #ffffff 50%,
+    #ef4444 70%,
+    #dc2626 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: logoTextShimmer 5.5s linear infinite;
+}
+
+@keyframes moltenRingPulse {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+    filter: drop-shadow(0 0 3px rgba(220, 38, 38, 0.45));
+  }
+  50% {
+    transform: rotate(180deg) scale(1.06);
+    filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.85)) drop-shadow(0 0 4px rgba(14, 165, 233, 0.5));
+  }
+}
+
+.animate-molten-ring {
+  animation: moltenRingPulse 10s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transform-origin: center;
+}
+
+@keyframes bannerAuraPulse {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.02);
+  }
+}
+
+.animate-banner-aura {
+  animation: bannerAuraPulse 6s ease-in-out infinite;
+}
+
+@keyframes telemetryScan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-telemetry-scan {
+  animation: telemetryScan 3.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-login-card,
   .animate-login-item-1,
@@ -668,17 +777,28 @@ select option {
     transform: none !important;
   }
   .animate-induction-beam,
-  .logo-shimmer-sweep {
+  .logo-shimmer-sweep,
+  .header-banner-beam,
+  .animate-telemetry-scan {
     animation: none !important;
     display: none !important;
   }
   .animate-pulse-glow,
-  .animate-logo-glow {
+  .animate-logo-glow,
+  .animate-molten-ring,
+  .animate-banner-aura {
     animation: none !important;
+  }
+  .logo-text-shimmer {
+    animation: none !important;
+    background: none !important;
+    -webkit-text-fill-color: #dc2626 !important;
+    color: #dc2626 !important;
   }
   .animate-error-shake {
     animation: none !important;
   }
 }
+
 
 

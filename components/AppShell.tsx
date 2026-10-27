@@ -717,11 +717,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <GlobalKeyboardNavigation />
 
       {/* Top Header Bar */}
+      {/* Top Header Bar (Banner) */}
       <header
-        className={`sticky top-0 z-50 flex h-16 w-full items-center justify-between px-4 sm:px-6 shrink-0 print:hidden transition-colors duration-150 ${getHeaderClasses()}`}
+        role="banner"
+        className={`sticky top-0 z-50 flex h-16 w-full items-center justify-between px-4 sm:px-6 shrink-0 print:hidden transition-colors duration-150 relative overflow-hidden ${getHeaderClasses()}`}
       >
+        {/* Animated Precision Ambient Laser Beam along bottom border */}
+        <div className="header-banner-beam" aria-hidden="true" />
+
         {/* Left: Brand Logo & Title */}
-        <div className="flex items-center gap-3.5 min-w-0">
+        <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">
           <button
             type="button"
             className={`lg:hidden rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center p-2 transition cursor-pointer ${
@@ -735,23 +740,56 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <Menu size={20} />
           </button>
 
-          {/* RASHMI GROUP Logo */}
+          {/* RASHMI GROUP Logo with Authored Molten Ring & Metallic Shimmer */}
           <div
-            className="flex flex-col items-start leading-none shrink-0 cursor-pointer select-none"
+            className="flex items-center gap-2.5 shrink-0 cursor-pointer select-none group"
             onClick={() => router.push('/dashboard')}
+            title="Rashmi Green Hydrogen Steel — Return to Dashboard"
           >
-            <span className="text-red-600 font-black text-xl tracking-wider leading-none">RASHMI</span>
-            <span
-              className={`text-[10px] font-bold tracking-widest pl-0.5 mt-0.5 ${
-                hasDarkHeader ? 'text-white' : 'text-slate-800'
-              }`}
-            >
-              GROUP
-            </span>
+            {/* Precision Seamless Pipe & Induction Core Emblem */}
+            <div className="relative flex items-center justify-center h-9 w-9 rounded-xl bg-gradient-to-br from-red-600 via-rose-600 to-amber-600 p-[1.5px] shadow-sm group-hover:shadow-red-500/30 transition-all duration-300 group-hover:scale-105 overflow-hidden">
+              <div className={`h-full w-full rounded-[10px] flex items-center justify-center transition-colors ${
+                hasDarkHeader ? 'bg-slate-950/85' : 'bg-white'
+              }`}>
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5 animate-molten-ring text-red-500"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  {/* Concentric pipe wall geometry */}
+                  <circle cx="12" cy="12" r="9" className="opacity-40" stroke="currentColor" />
+                  {/* Inner pierced hollow core */}
+                  <circle cx="12" cy="12" r="4.5" stroke="#ef4444" fill="#dc2626" fillOpacity="0.25" />
+                  {/* Mandrel precision guides */}
+                  <path d="M12 3v2M12 19v2M3 12h2M19 12h2" stroke="#f59e0b" strokeWidth="2" />
+                </svg>
+              </div>
+              {/* Metallic Sheen Sweep */}
+              <div className="logo-shimmer-sweep" aria-hidden="true" />
+            </div>
+
+            {/* Typography */}
+            <div className="flex flex-col items-start leading-none">
+              <span className="logo-text-shimmer font-black text-xl tracking-wider leading-none transition-transform duration-200 group-hover:scale-[1.02]">
+                RASHMI
+              </span>
+              <span
+                className={`text-[9.5px] font-bold tracking-[0.22em] pl-0.5 mt-0.5 transition-colors ${
+                  hasDarkHeader ? 'text-white/90' : 'text-slate-800'
+                }`}
+              >
+                GROUP
+              </span>
+            </div>
           </div>
 
           <div
-            className={`h-8 w-[1px] mx-2 hidden sm:block shrink-0 ${
+            className={`h-8 w-[1.5px] mx-1.5 hidden sm:block shrink-0 transition-colors ${
               !hasDarkHeader
                 ? 'bg-slate-200'
                 : theme === 'cobalt'
@@ -762,21 +800,30 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 ? 'bg-blue-900/60'
                 : theme === 'titanium'
                 ? 'bg-zinc-800'
-                : 'bg-slate-800'
+                : 'bg-white/15'
             }`}
           />
 
-          {/* Title & Division */}
+          {/* Title & Division Banner Block */}
           <div className="hidden sm:flex flex-col min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className={`font-bold text-base tracking-tight leading-tight truncate transition-colors ${
+                  hasDarkHeader ? 'text-white' : 'text-slate-900'
+                }`}
+              >
+                Seamless WIP Tracking
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                </span>
+                LIVE
+              </span>
+            </div>
             <span
-              className={`font-bold text-base tracking-tight leading-tight truncate ${
-                hasDarkHeader ? 'text-white' : 'text-slate-900'
-              }`}
-            >
-              Seamless WIP Tracking
-            </span>
-            <span
-              className={`text-xs font-normal leading-tight truncate ${
+              className={`text-xs font-normal leading-tight truncate transition-colors ${
                 !hasDarkHeader
                   ? theme === 'sandstone'
                     ? 'text-stone-500'
