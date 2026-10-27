@@ -31,6 +31,7 @@ import {
   FileText,
   Send,
   CheckSquare,
+  Scissors,
 } from 'lucide-react';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
@@ -1550,9 +1551,12 @@ export default function RollingPlanForm() {
     setEditTolWtMin(String(parsed.tol_wt_min != null ? parsed.tol_wt_min : (parsed.tolerances?.wt_min ?? 5.78)));
     setEditTolWtMax(String(parsed.tol_wt_max != null ? parsed.tol_wt_max : (parsed.tolerances?.wt_max ?? 6.88)));
     setEditProcessYieldPct(String(parsed.process_yield_pct != null ? parsed.process_yield_pct : 95.22));
-    setEditIsIpCutting(Boolean(parsed.is_ip_cutting));
-    setEditIpCutLength(parsed.ip_cut_length != null ? String(parsed.ip_cut_length) : '');
-    setEditIpMultiple(parsed.ip_multiple != null ? String(parsed.ip_multiple) : '1');
+    const isIpCut = Boolean(parsed.is_ip_cutting || (p as any).is_ip_cutting);
+    const ipCutLen = parsed.ip_cut_length != null ? String(parsed.ip_cut_length) : ((p as any).ip_cut_length != null ? String((p as any).ip_cut_length) : '');
+    const ipMult = parsed.ip_multiple != null ? String(parsed.ip_multiple) : ((p as any).ip_multiple != null ? String((p as any).ip_multiple) : '1');
+    setEditIsIpCutting(isIpCut);
+    setEditIpCutLength(ipCutLen);
+    setEditIpMultiple(ipMult);
 
     if (isMaster && childList.length > 0) {
       setEditChildOrders(
@@ -4025,6 +4029,70 @@ export default function RollingPlanForm() {
                     />
                   </div>
                 </div>
+
+                {/* IP Cutting Configuration (Pre-Draw Band Saw Cut) */}
+                <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 space-y-3 mt-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="edit-ip-cut-toggle"
+                        checked={editIsIpCutting}
+                        onChange={(e) => setEditIsIpCutting(e.target.checked)}
+                        className="h-4 w-4 rounded border-amber-400 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <label htmlFor="edit-ip-cut-toggle" className="text-xs font-bold text-amber-950 cursor-pointer select-none flex items-center gap-1.5">
+                        <Scissors className="h-3.5 w-3.5 text-amber-600 rotate-90" />
+                        <span>Enable IP Cutting {editingIsMaster && <span className="text-purple-600 font-normal">(Sync to Campaign)</span>}</span>
+                      </label>
+                    </div>
+                    {editIsIpCutting ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900 border border-amber-300 shadow-2xs">
+                        ACTIVE (BAND SAW → COLD DRAW)
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-500 font-medium">Standard Route (HTC → Cold Draw)</span>
+                    )}
+                  </div>
+
+                  {editIsIpCutting && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2.5 border-t border-amber-200">
+                      <div>
+                        <label className="block text-xs font-bold text-amber-950 mb-1">
+                          IP Cut Length (m) * {editingIsMaster && <span className="text-purple-600 font-normal">(Sync)</span>}
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={editIpCutLength}
+                          onChange={(e) => setEditIpCutLength(e.target.value)}
+                          placeholder="e.g. 6.20"
+                          className="bg-white border-amber-300 font-mono font-bold text-slate-900"
+                        />
+                        <span className="text-[10px] text-amber-800 mt-0.5 block">
+                          Target pre-draw length cut at Band Saw before Cold Drawing.
+                        </span>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-amber-950 mb-1">
+                          IP Multiple (Pieces per Mother Pipe) * {editingIsMaster && <span className="text-purple-600 font-normal">(Sync)</span>}
+                        </label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="1"
+                          value={editIpMultiple}
+                          onChange={(e) => setEditIpMultiple(e.target.value)}
+                          placeholder="1"
+                          className="bg-white border-amber-300 font-mono font-bold text-slate-900"
+                        />
+                        <span className="text-[10px] text-amber-800 mt-0.5 block">
+                          Number of draw-bench pieces produced per mother pipe.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Setup Specifications (35-Column Standards) */}
@@ -4248,64 +4316,6 @@ export default function RollingPlanForm() {
                     <Input type="number" step="0.01" value={editProcessYieldPct} onChange={(e) => setEditProcessYieldPct(e.target.value)} />
                   </div>
                 </div>
-              </div>
-
-              {/* IP Cutting Configuration (Pre-Draw Band Saw Cut) */}
-              <div className="bg-amber-50/60 rounded-xl p-4 border border-amber-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
-                    <Sparkles className="h-4 w-4 text-amber-600" />
-                    <span>IP Cutting (Pre-Draw Band Saw Cut)</span>
-                  </h4>
-                  {editIsIpCutting && (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                      ENABLED
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="edit-ip-cut-toggle"
-                    checked={editIsIpCutting}
-                    onChange={(e) => setEditIsIpCutting(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                  />
-                  <label htmlFor="edit-ip-cut-toggle" className="text-xs font-bold text-slate-800 cursor-pointer select-none">
-                    Enable IP Cutting for this Plan (routes to Band Saw before Cold Draw)
-                  </label>
-                </div>
-
-                {editIsIpCutting && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-amber-200/60">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Target IP Cut Length (m) *
-                      </label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={editIpCutLength}
-                        onChange={(e) => setEditIpCutLength(e.target.value)}
-                        placeholder="e.g. 6.20"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        IP Multiple (Pieces per Mother Pipe) *
-                      </label>
-                      <Input
-                        type="number"
-                        step="1"
-                        min="1"
-                        value={editIpMultiple}
-                        onChange={(e) => setEditIpMultiple(e.target.value)}
-                        placeholder="1"
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Linked Child Orders Section (When editing Master Plan) */}
