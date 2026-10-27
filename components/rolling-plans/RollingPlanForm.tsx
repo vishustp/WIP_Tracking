@@ -138,6 +138,9 @@ export interface WorkOrderGroup {
   tolWtMin: string;
   tolWtMax: string;
   processYieldPct: string;
+  isIpCutting?: boolean;
+  ipCutLength?: string;
+  ipMultiple?: string;
 
   isSpecsExpanded?: boolean;
 }
@@ -468,6 +471,9 @@ function createDefaultGroup(
     tolWtMin: '',
     tolWtMax: '',
     processYieldPct: '',
+    isIpCutting: false,
+    ipCutLength: '',
+    ipMultiple: '1',
     isSpecsExpanded: false,
   };
 }
@@ -638,6 +644,9 @@ export default function RollingPlanForm() {
   const [editTolWtMin, setEditTolWtMin] = useState('');
   const [editTolWtMax, setEditTolWtMax] = useState('');
   const [editProcessYieldPct, setEditProcessYieldPct] = useState('');
+  const [editIsIpCutting, setEditIsIpCutting] = useState(false);
+  const [editIpCutLength, setEditIpCutLength] = useState('');
+  const [editIpMultiple, setEditIpMultiple] = useState('1');
 
   const [editChildOrders, setEditChildOrders] = useState<
     Array<{
@@ -1306,6 +1315,9 @@ export default function RollingPlanForm() {
             tol_wt_min: Number(g.tolWtMin),
             tol_wt_max: Number(g.tolWtMax),
             process_yield_pct: Number(g.processYieldPct),
+            is_ip_cutting: Boolean(g.isIpCutting),
+            ip_cut_length: g.isIpCutting && g.ipCutLength ? Number(g.ipCutLength) : null,
+            ip_multiple: g.isIpCutting && g.ipMultiple ? Number(g.ipMultiple) : 1,
 
             child_work_orders: g.children.map((c, cIdx) => {
               const cSummary = gSummary.childSummaries.find((cs) => cs.id === c.id)!;
@@ -1538,6 +1550,9 @@ export default function RollingPlanForm() {
     setEditTolWtMin(String(parsed.tol_wt_min != null ? parsed.tol_wt_min : (parsed.tolerances?.wt_min ?? 5.78)));
     setEditTolWtMax(String(parsed.tol_wt_max != null ? parsed.tol_wt_max : (parsed.tolerances?.wt_max ?? 6.88)));
     setEditProcessYieldPct(String(parsed.process_yield_pct != null ? parsed.process_yield_pct : 95.22));
+    setEditIsIpCutting(Boolean(parsed.is_ip_cutting));
+    setEditIpCutLength(parsed.ip_cut_length != null ? String(parsed.ip_cut_length) : '');
+    setEditIpMultiple(parsed.ip_multiple != null ? String(parsed.ip_multiple) : '1');
 
     if (isMaster && childList.length > 0) {
       setEditChildOrders(
@@ -1636,6 +1651,9 @@ export default function RollingPlanForm() {
         tol_wt_min: Number(editTolWtMin),
         tol_wt_max: Number(editTolWtMax),
         process_yield_pct: Number(editProcessYieldPct) || 95.22,
+        is_ip_cutting: editIsIpCutting,
+        ip_cut_length: editIsIpCutting && editIpCutLength ? Number(editIpCutLength) : null,
+        ip_multiple: editIsIpCutting && editIpMultiple ? Number(editIpMultiple) : 1,
 
         // Sync mother hollow root columns
         mh_od: mhOdVal,
@@ -2461,7 +2479,7 @@ export default function RollingPlanForm() {
                             </span>
                           </div>
 
-                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 text-xs">
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 text-xs">
                             {/* 1. Route & Work Order Classification */}
                             <div className="space-y-1.5 p-2.5 rounded-md bg-white border border-slate-200 shadow-2xs">
                               <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider border-b pb-1">
@@ -2811,6 +2829,75 @@ export default function RollingPlanForm() {
                                   <span className="font-mono font-bold text-blue-700">{fmt(specs.rollingMtr, 1)} m</span>
                                 </div>
                               </div>
+                            </div>
+
+                            {/* 7. IP Cutting (Pre-Draw Band Saw Cut) */}
+                            <div className="space-y-1.5 p-2.5 rounded-md bg-white border border-slate-200 shadow-2xs">
+                              <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider border-b pb-1 flex items-center justify-between">
+                                <span>7. IP Cutting</span>
+                                {group.isIpCutting && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                    ACTIVE
+                                  </span>
+                                )}
+                              </span>
+                              <div className="flex items-center gap-2 pt-1">
+                                <input
+                                  type="checkbox"
+                                  id={`ip-cut-toggle-${group.id}`}
+                                  checked={Boolean(group.isIpCutting)}
+                                  onChange={(e) =>
+                                    handleUpdateGroupField(group.id, 'isIpCutting', e.target.checked)
+                                  }
+                                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                />
+                                <label
+                                  htmlFor={`ip-cut-toggle-${group.id}`}
+                                  className="text-[11px] font-bold text-slate-700 cursor-pointer select-none"
+                                >
+                                  Enable IP Cut
+                                </label>
+                              </div>
+                              {group.isIpCutting && (
+                                <div className="space-y-1.5 pt-1 border-t border-slate-100">
+                                  <div className="flex gap-1.5">
+                                    <div className="w-1/2">
+                                      <label className="text-[10px] text-indigo-700 font-bold block">
+                                        Cut Len (m)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={group.ipCutLength ?? ''}
+                                        onChange={(e) =>
+                                          handleUpdateGroupField(group.id, 'ipCutLength', e.target.value)
+                                        }
+                                        className="w-full rounded border border-indigo-300 bg-indigo-50/30 p-1 text-xs font-mono font-bold"
+                                        placeholder="e.g. 6.20"
+                                      />
+                                    </div>
+                                    <div className="w-1/2">
+                                      <label className="text-[10px] text-indigo-700 font-bold block">
+                                        IP Multi
+                                      </label>
+                                      <input
+                                        type="number"
+                                        step="1"
+                                        min="1"
+                                        value={group.ipMultiple ?? '1'}
+                                        onChange={(e) =>
+                                          handleUpdateGroupField(group.id, 'ipMultiple', e.target.value)
+                                        }
+                                        className="w-full rounded border border-indigo-300 bg-indigo-50/30 p-1 text-xs font-mono font-bold text-center"
+                                        placeholder="1"
+                                      />
+                                    </div>
+                                  </div>
+                                  <p className="text-[10px] text-slate-500 leading-tight">
+                                    Mother pipe will route to Band Saw for pre-draw cut before Cold Draw.
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -4161,6 +4248,64 @@ export default function RollingPlanForm() {
                     <Input type="number" step="0.01" value={editProcessYieldPct} onChange={(e) => setEditProcessYieldPct(e.target.value)} />
                   </div>
                 </div>
+              </div>
+
+              {/* IP Cutting Configuration (Pre-Draw Band Saw Cut) */}
+              <div className="bg-amber-50/60 rounded-xl p-4 border border-amber-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-amber-600" />
+                    <span>IP Cutting (Pre-Draw Band Saw Cut)</span>
+                  </h4>
+                  {editIsIpCutting && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                      ENABLED
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="edit-ip-cut-toggle"
+                    checked={editIsIpCutting}
+                    onChange={(e) => setEditIsIpCutting(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <label htmlFor="edit-ip-cut-toggle" className="text-xs font-bold text-slate-800 cursor-pointer select-none">
+                    Enable IP Cutting for this Plan (routes to Band Saw before Cold Draw)
+                  </label>
+                </div>
+
+                {editIsIpCutting && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-amber-200/60">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Target IP Cut Length (m) *
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={editIpCutLength}
+                        onChange={(e) => setEditIpCutLength(e.target.value)}
+                        placeholder="e.g. 6.20"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        IP Multiple (Pieces per Mother Pipe) *
+                      </label>
+                      <Input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={editIpMultiple}
+                        onChange={(e) => setEditIpMultiple(e.target.value)}
+                        placeholder="1"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Linked Child Orders Section (When editing Master Plan) */}

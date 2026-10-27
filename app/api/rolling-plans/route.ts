@@ -94,6 +94,9 @@ export interface MasterGroupPayload {
   tol_wt_min?: number | null;
   tol_wt_max?: number | null;
   process_yield_pct?: number | null;
+  is_ip_cutting?: boolean | null;
+  ip_cut_length?: number | null;
+  ip_multiple?: number | null;
 }
 
 export interface CreateMultiWoRollingPlanPayload {
@@ -373,6 +376,9 @@ export async function POST(req: NextRequest) {
           hollow_len: c.hollow_len || `${grpSmLen}-${grpSmLen}`,
           htc_mtr: childRollingMtr,
           alloc_tag: c.alloc_tag || `${cIdx + 1}`,
+          is_ip_cutting: Boolean(g.is_ip_cutting),
+          ip_cut_length: g.is_ip_cutting && g.ip_cut_length ? Number(g.ip_cut_length) : null,
+          ip_multiple: g.is_ip_cutting && g.ip_multiple ? Number(g.ip_multiple) : 1,
         });
 
         // 1. First attempt: Insert with the exact same plan_no as the parent work order
@@ -588,6 +594,9 @@ export async function POST(req: NextRequest) {
         child_work_orders: childMetadataList,
         group_index: gIdx + 1,
         total_master_groups: masterGroups.length,
+        is_ip_cutting: Boolean(g.is_ip_cutting),
+        ip_cut_length: g.is_ip_cutting && g.ip_cut_length ? Number(g.ip_cut_length) : null,
+        ip_multiple: g.is_ip_cutting && g.ip_multiple ? Number(g.ip_multiple) : 1,
       });
 
       await admin
@@ -855,6 +864,9 @@ export interface UpdateRollingPlanPayload {
   tol_wt_min?: number;
   tol_wt_max?: number;
   process_yield_pct?: number;
+  is_ip_cutting?: boolean | null;
+  ip_cut_length?: number | null;
+  ip_multiple?: number | null;
 
   // Lifecycle actions
   lifecycle_action?: 'ISSUE' | 'REVISE' | 'CLOSE_PARTIAL' | 'EDIT' | 'BATCH_ISSUE';
@@ -1241,6 +1253,11 @@ export async function PUT(req: NextRequest) {
     const effTolWtMin = tol_wt_min != null ? Number(tol_wt_min) : (parsedStatus.tolerances?.wt_min ?? (effCustWt * 0.92));
     const effTolWtMax = tol_wt_max != null ? Number(tol_wt_max) : (parsedStatus.tolerances?.wt_max ?? (effCustWt * 1.1));
     const effYieldPct = process_yield_pct != null ? Number(process_yield_pct) : (parsedStatus.process_yield_pct ?? 95.22);
+    if (body.is_ip_cutting !== undefined) {
+      parsedStatus.is_ip_cutting = Boolean(body.is_ip_cutting);
+      parsedStatus.ip_cut_length = body.is_ip_cutting && body.ip_cut_length ? Number(body.ip_cut_length) : null;
+      parsedStatus.ip_multiple = body.is_ip_cutting && body.ip_multiple ? Number(body.ip_multiple) : 1;
+    }
 
     let targetAvg = 6.0;
     if (effMinLen > 0 && effMaxLen > 0) {
@@ -1300,6 +1317,11 @@ export async function PUT(req: NextRequest) {
         try {
           cpStatus = typeof cp.status === 'string' ? JSON.parse(cp.status) : cp.status || {};
         } catch {}
+        if (body.is_ip_cutting !== undefined) {
+          cpStatus.is_ip_cutting = Boolean(body.is_ip_cutting);
+          cpStatus.ip_cut_length = body.is_ip_cutting && body.ip_cut_length ? Number(body.ip_cut_length) : null;
+          cpStatus.ip_multiple = body.is_ip_cutting && body.ip_multiple ? Number(body.ip_multiple) : 1;
+        }
 
         const childAvg = effMinLen > 0 ? effMinLen : (Number(childWo?.l1 || 6.0));
 
