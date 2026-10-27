@@ -108,12 +108,32 @@ export default function BandSawCuttingClient() {
     fetchData();
   }, [fetchData]);
 
+  // Sub-tab for cutting queue: ALL, FINAL, or IP_CUT
+  const [cutCategoryTab, setCutCategoryTab] = useState<'ALL' | 'FINAL' | 'IP_CUT'>('ALL');
+
+  // Counts for tabs
+  const { allCutCount, finalCutCount, ipCutCount } = useMemo(() => {
+    const nonHollowQueue = queueRows.filter((r) => !isHollowBankOrder(r));
+    const ipCount = nonHollowQueue.filter((r) => r.stage_code === 'IP_CUTTING').length;
+    const finalCount = nonHollowQueue.filter((r) => r.stage_code !== 'IP_CUTTING').length;
+    return {
+      allCutCount: nonHollowQueue.length,
+      finalCutCount: finalCount,
+      ipCutCount: ipCount,
+    };
+  }, [queueRows]);
+
   // Filtered Queue Rows
   const filteredQueue = useMemo(() => {
-    const nonHollowQueue = queueRows.filter((r) => !isHollowBankOrder(r));
-    if (!searchTerm.trim()) return nonHollowQueue;
+    let list = queueRows.filter((r) => !isHollowBankOrder(r));
+    if (cutCategoryTab === 'FINAL') {
+      list = list.filter((r) => r.stage_code !== 'IP_CUTTING');
+    } else if (cutCategoryTab === 'IP_CUT') {
+      list = list.filter((r) => r.stage_code === 'IP_CUTTING');
+    }
+    if (!searchTerm.trim()) return list;
     const term = searchTerm.toLowerCase();
-    return nonHollowQueue.filter(
+    return list.filter(
       (r) =>
         r.work_order_no.toLowerCase().includes(term) ||
         (r.customer_name || '').toLowerCase().includes(term) ||
@@ -121,7 +141,7 @@ export default function BandSawCuttingClient() {
         (r.heat_lot_no || '').toLowerCase().includes(term) ||
         (r.heat_lots && r.heat_lots.some((l) => l.lot_no.toLowerCase().includes(term)))
     );
-  }, [queueRows, searchTerm]);
+  }, [queueRows, cutCategoryTab, searchTerm]);
 
   // Filtered History Entries
   const filteredHistory = useMemo(() => {
@@ -400,7 +420,7 @@ export default function BandSawCuttingClient() {
       {/* Tab 1: Cutting Queue */}
       {activeTab === 'queue' && (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3.5">
             <div>
               <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                 Work Orders Ready for Cutting
@@ -408,6 +428,44 @@ export default function BandSawCuttingClient() {
               <p className="text-[11px] text-slate-500">
                 Pipes processed from previous stage (Heat Treatment / Hollow HT / Rolling HTC OK).
               </p>
+            </div>
+
+            {/* Sub-tabs: All Cuts | Final Cuts | IP Cuts (Draw Prep) */}
+            <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setCutCategoryTab('ALL')}
+                className={`rounded-md px-2.5 py-1 text-xs font-bold transition-all ${
+                  cutCategoryTab === 'ALL'
+                    ? 'bg-slate-800 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                All Cuts ({allCutCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCutCategoryTab('FINAL')}
+                className={`rounded-md px-2.5 py-1 text-xs font-bold transition-all ${
+                  cutCategoryTab === 'FINAL'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Final Cuts ({finalCutCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCutCategoryTab('IP_CUT')}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold transition-all ${
+                  cutCategoryTab === 'IP_CUT'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+                IP Cuts (Draw Prep) ({ipCutCount})
+              </button>
             </div>
           </div>
 
@@ -480,6 +538,11 @@ export default function BandSawCuttingClient() {
                         <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-3.5 px-4 font-mono font-bold text-slate-900 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[180px]">
                           <div className="flex items-center gap-1.5">
                             <span>WO #{row.work_order_no}</span>
+                            {row.stage_code === 'IP_CUTTING' && (
+                              <span className="rounded-md bg-amber-100 border border-amber-300 px-1.5 py-0.5 text-[9.5px] font-bold text-amber-900 shadow-2xs">
+                                IP CUT
+                              </span>
+                            )}
                             {row.route_code && (
                               <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
                                 {row.route_code}
@@ -549,10 +612,14 @@ export default function BandSawCuttingClient() {
                             <Button
                               size="sm"
                               onClick={() => handleOpenCutModal(row)}
-                              className="h-8 min-h-[34px] sm:min-h-[32px] gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-2xs touch-manipulation active:scale-95 transition-all"
+                              className={`h-8 min-h-[34px] sm:min-h-[32px] gap-1.5 text-white font-semibold text-xs shadow-2xs touch-manipulation active:scale-95 transition-all ${
+                                row.stage_code === 'IP_CUTTING'
+                                  ? 'bg-amber-600 hover:bg-amber-700'
+                                  : 'bg-indigo-600 hover:bg-indigo-700'
+                              }`}
                             >
                               <Scissors size={13} className="rotate-90" />
-                              Record Cutting
+                              {row.stage_code === 'IP_CUTTING' ? 'Record IP Cut' : 'Record Cutting'}
                             </Button>
                           ) : (
                             <span className="text-[11px] font-medium text-slate-400 italic">View Only</span>
@@ -643,7 +710,14 @@ export default function BandSawCuttingClient() {
                       <tr key={entry.id} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-3 px-4 font-mono text-slate-600">{entry.process_date}</td>
                         <td className="py-3 px-3 font-mono font-bold text-slate-900">
-                          WO #{entry.work_order_no}
+                          <div className="flex items-center gap-1.5">
+                            <span>WO #{entry.work_order_no}</span>
+                            {entry.stage_code === 'IP_CUTTING' && (
+                              <span className="rounded-md bg-amber-100 border border-amber-300 px-1.5 py-0.5 text-[9px] font-bold text-amber-900 shadow-2xs">
+                                IP CUT
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] font-normal text-slate-500">
                             {entry.customer_name || 'Standard'}
                             {entry.l1 ? (

@@ -109,11 +109,22 @@ export function BandSawCuttingModal({
 
   // Multi-length cut items list - Hybrid Pre-fill from Rolling Plan
   const [cutItems, setCutItems] = useState<BandSawCutItem[]>(() => {
-    const planMultiple = Math.max(1, Math.round(Number(row.multiple || 1)));
-    const targetOrderLen = Number(row.l1 || row.avg_length || 0);
+    const isIpCutting = row.stage_code === 'IP_CUTTING' || Boolean(row.is_ip_cutting);
+    const ipMultiple = Number(row.ip_multiple || 1);
+    const ipCutLen = Number(row.ip_cut_length || 0);
+
+    const planMultiple = isIpCutting && ipMultiple > 0
+      ? ipMultiple
+      : Math.max(1, Math.round(Number(row.multiple || 1)));
+
+    const targetOrderLen = isIpCutting && ipCutLen > 0
+      ? ipCutLen
+      : Number(row.l1 || row.avg_length || 0);
 
     let cutLen = defaultMotherLen > 0 ? defaultMotherLen : 6.0;
-    if (targetOrderLen > 0 && targetOrderLen < defaultMotherLen) {
+    if (isIpCutting && ipCutLen > 0) {
+      cutLen = ipCutLen;
+    } else if (targetOrderLen > 0 && targetOrderLen < defaultMotherLen) {
       cutLen = targetOrderLen;
     } else if (planMultiple > 1 && defaultMotherLen > 0) {
       cutLen = Number((defaultMotherLen / planMultiple).toFixed(2));
@@ -628,7 +639,7 @@ export function BandSawCuttingModal({
             work_order_id: row.work_order_id,
             route_id: row.route_id,
             rolling_plan_id: row.plan_id || null,
-            stage_code: 'BAND_SAW',
+            stage_code: row.stage_code === 'IP_CUTTING' ? 'IP_CUTTING' : 'BAND_SAW',
             input_qty: totalMotherMtr,
             output_qty: totalPrimeCutMtr,
             rejection_qty: nRejMtr,
@@ -660,8 +671,10 @@ export function BandSawCuttingModal({
         throw new Error(data.error || 'Failed to record Band Saw cutting log.');
       }
 
+      const isIpCuttingMode = row.stage_code === 'IP_CUTTING' || Boolean(row.is_ip_cutting);
+      const destStageName = isIpCuttingMode ? 'Cold Draw Bench' : 'VDI QC';
       toast.success(
-        `Band Saw cut recorded: ${netVdiFeedPcs} prime cut pieces (${fmt(netVdiFeedMtr, 'm')} / ${fmt(netVdiFeedMt, 3)} MT) sent to VDI QC queue! Scrap: ${fmt(totalScrapMt, 3)} MT (${scrapPct}%).`,
+        `${isIpCuttingMode ? 'IP Cut' : 'Band Saw cut'} recorded: ${netVdiFeedPcs} prime cut pieces (${fmt(netVdiFeedMtr, 'm')} / ${fmt(netVdiFeedMt, 3)} MT) sent to ${destStageName} queue! Scrap: ${fmt(totalScrapMt, 3)} MT (${scrapPct}%).`,
         { duration: 4000 }
       );
       onSuccess();
@@ -676,17 +689,19 @@ export function BandSawCuttingModal({
 
   if (!isOpen) return null;
 
+  const isIpCuttingMode = row.stage_code === 'IP_CUTTING' || Boolean(row.is_ip_cutting);
+
   return (
-    <Modal onClose={onClose} maxWidth="4xl" title="Band Saw Pipe Cutting & Multi-Length Station">
+    <Modal onClose={onClose} maxWidth="4xl" title={isIpCuttingMode ? "IP Cutting — Pre-Draw Band Saw Station" : "Band Saw Pipe Cutting & Multi-Length Station"}>
       <div className="space-y-6">
         {/* Work Order Information Banner */}
         <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/90 via-blue-50/70 to-slate-50 p-4.5 shadow-2xs">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-bold text-white shadow-2xs">
+                <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold text-white shadow-2xs ${isIpCuttingMode ? 'bg-amber-600' : 'bg-indigo-600'}`}>
                   <Scissors size={13} className="rotate-90" />
-                  Band Saw Cutting Station
+                  {isIpCuttingMode ? 'IP Cutting (Draw Prep)' : 'Band Saw Cutting Station'}
                 </span>
                 <span className="font-mono text-base font-bold text-slate-900">
                   WO #{row.work_order_no}
@@ -1669,7 +1684,7 @@ export function BandSawCuttingModal({
                 <div className="flex items-center justify-between rounded-md bg-emerald-50/80 px-2.5 py-1.5 border border-emerald-100 text-emerald-950">
                   <div className="flex items-center gap-1.5 font-medium">
                     <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                    <span>Prime Net Cuts (To VDI QC):</span>
+                    <span>Prime Net Cuts ({isIpCuttingMode ? 'To Cold Draw Bench' : 'To VDI QC'}):</span>
                   </div>
                   <div className="font-mono font-bold">
                     {netVdiFeedPcs} PCS • {fmt(netVdiFeedMtr)}m • <span className="text-emerald-700">{fmt(netVdiFeedMt, 3)} MT</span>
@@ -1767,7 +1782,9 @@ export function BandSawCuttingModal({
             ) : (
               <>
                 <Scissors size={14} className="rotate-90" />
-                Save &amp; Send to VDI QC ({netVdiFeedPcs} Cut Pcs)
+                {isIpCuttingMode
+                  ? `Save & Send to Cold Draw (${netVdiFeedPcs} Cut Pcs)`
+                  : `Save & Send to VDI QC (${netVdiFeedPcs} Cut Pcs)`}
               </>
             )}
           </Button>
