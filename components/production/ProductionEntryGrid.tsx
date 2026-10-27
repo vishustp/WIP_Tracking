@@ -492,6 +492,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         availMt: 0,
         count: 0,
       },
+      IP_CUTTING: { label: 'IP Cutting (Band Saw)', stage_code: 'IP_CUTTING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       DRAW: { label: 'Draw Bench', stage_code: 'DRAW', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       PILGER: { label: 'Cold Pilger Mill', stage_code: 'PILGER', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HEAT_TREATMENT: { label: 'Heat Treatment', stage_code: 'HEAT_TREATMENT', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },

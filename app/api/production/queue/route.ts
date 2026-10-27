@@ -433,6 +433,7 @@ export async function GET(req: NextRequest) {
     const htcStageId = stageCodeToId.get("HTC") || stageCodeToId.get("ROLLING");
     const rollingStageId = stageCodeToId.get("ROLLING");
     const hollowHtStageId = stageCodeToId.get("HOLLOW_HEAT_TREATMENT");
+    const ipCuttingStageId = stageCodeToId.get("IP_CUTTING");
     const drawStageId = stageCodeToId.get("DRAW");
     const pilgerStageId = stageCodeToId.get("PILGER");
     const htStageId = stageCodeToId.get("HEAT_TREATMENT");
@@ -441,9 +442,14 @@ export async function GET(req: NextRequest) {
     const finStageId = stageCodeToId.get("FINISHING");
 
     // Helper to calculate stage totals for a work order
-    const getStageLogs = (woId: string, stageId?: string) => {
-      if (!stageId) return [];
-      return logs.filter((l) => l.work_order_id === woId && l.stage_id === stageId);
+    const getStageLogs = (woId: string, stageId?: string, fallbackCode?: string) => {
+      if (!stageId && !fallbackCode) return [];
+      return logs.filter((l) => {
+        if (l.work_order_id !== woId) return false;
+        if (stageId && l.stage_id === stageId) return true;
+        if (fallbackCode && (l.stage_code === fallbackCode || l.stage?.stage_code === fallbackCode)) return true;
+        return false;
+      });
     };
 
     const sumQty = (logList: any[], field: string) =>
@@ -517,6 +523,7 @@ export async function GET(req: NextRequest) {
       HTC: { label: "HTC", stage_code: "HTC", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       ROLLING: { label: "Rolling Mill (Legacy)", stage_code: "ROLLING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HOLLOW_HEAT_TREATMENT: { label: "Hollow Heat Treatment", stage_code: "HOLLOW_HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      IP_CUTTING: { label: "IP Cutting (Band Saw)", stage_code: "IP_CUTTING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       DRAW: { label: "Draw Bench", stage_code: "DRAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       PILGER: { label: "Cold Pilger Mill", stage_code: "PILGER", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
@@ -549,6 +556,10 @@ export async function GET(req: NextRequest) {
           0
         );
 
+        const isIpCut = Boolean(parsed?.is_ip_cutting);
+        const ipCutLen = parsed?.ip_cut_length ? Number(parsed.ip_cut_length) : null;
+        const ipMult = parsed?.ip_multiple ? Number(parsed.ip_multiple) : 1;
+
         const existingPlan = planByWoMap.get(p.work_order_id);
         if (!existingPlan) {
           planByWoMap.set(p.work_order_id, {
@@ -565,6 +576,9 @@ export async function GET(req: NextRequest) {
             mh_wt: mhWtVal,
             mh_l1: mhL1Val,
             mh_l2: mhL2Val,
+            is_ip_cutting: isIpCut,
+            ip_cut_length: ipCutLen,
+            ip_multiple: ipMult,
           });
         } else {
           const updatedPlanNos = Array.from(new Set([...(existingPlan.plan_nos || []), planNoStr].filter(Boolean)));
@@ -577,6 +591,11 @@ export async function GET(req: NextRequest) {
           if (!existingPlan.mh_wt && mhWtVal) existingPlan.mh_wt = mhWtVal;
           if (!existingPlan.mh_l1 && mhL1Val) existingPlan.mh_l1 = mhL1Val;
           if (!existingPlan.mh_l2 && mhL2Val) existingPlan.mh_l2 = mhL2Val;
+          if (isIpCut) {
+            existingPlan.is_ip_cutting = true;
+            existingPlan.ip_cut_length = ipCutLen;
+            existingPlan.ip_multiple = ipMult;
+          }
         }
 
         if (parsed?.is_master && Array.isArray(parsed?.child_work_orders)) {
@@ -683,6 +702,9 @@ export async function GET(req: NextRequest) {
               lifecycle_status: lifecycle,
               revision_no: Number(parsed?.revision_no || 0),
               revision_date: parsed?.revision_date || null,
+              is_ip_cutting: isIpCut,
+              ip_cut_length: ipCutLen,
+              ip_multiple: ipMult,
             });
 
             for (const child of enrichedChildOrders) {
@@ -693,6 +715,9 @@ export async function GET(req: NextRequest) {
                 master_plan_no: combinedPlanNos.join(', ') || p.plan_no,
                 master_plan_id: p.id,
                 route_id: p.process_route_id,
+                is_ip_cutting: isIpCut || Boolean(child.is_ip_cutting),
+                ip_cut_length: ipCutLen || (child.ip_cut_length ? Number(child.ip_cut_length) : null),
+                ip_multiple: ipMult || (child.ip_multiple ? Number(child.ip_multiple) : 1),
               });
             }
           } else if (existing) {
@@ -702,6 +727,11 @@ export async function GET(req: NextRequest) {
             existing.master_planned_mtr = (existing.master_planned_mtr || 0) + masterPlannedMtr;
             existing.total_campaign_mtr = (existing.total_campaign_mtr || 0) + totalCampaignMtr;
             if (isIssued) existing.is_issued = true;
+            if (isIpCut) {
+              existing.is_ip_cutting = true;
+              existing.ip_cut_length = ipCutLen;
+              existing.ip_multiple = ipMult;
+            }
           }
         } else if (parsed?.is_child) {
           const masterPlan = plans.find(
@@ -736,6 +766,9 @@ export async function GET(req: NextRequest) {
             master_plan_no: parsed.master_plan_no,
             planned_mtr: childPlannedMtr,
             planned_pcs: childPlannedPcs,
+            is_ip_cutting: Boolean(parsed.is_ip_cutting || mParsed.is_ip_cutting),
+            ip_cut_length: parsed.ip_cut_length ? Number(parsed.ip_cut_length) : (mParsed.ip_cut_length ? Number(mParsed.ip_cut_length) : null),
+            ip_multiple: parsed.ip_multiple ? Number(parsed.ip_multiple) : (mParsed.ip_multiple ? Number(mParsed.ip_multiple) : 1),
           });
         }
       } catch {
@@ -989,14 +1022,71 @@ export async function GET(req: NextRequest) {
       const drawDivInPcs = getStageDivInPcs(woId, "DRAW", effMhAvg > 0 ? effMhAvg : avgLength);
       const drawDivOutPcs = getStageDivOutPcs(woId, "DRAW", effMhAvg > 0 ? effMhAvg : avgLength);
 
+      // 2.5 IP Cutting Stage Metrics (between Rolling/HTC/HHT and Cold Draw Bench)
+      const childPlanInfo = childWoMap.get(woId);
+      const isIpCutting = Boolean(planInfo?.is_ip_cutting || campaign?.is_ip_cutting || childPlanInfo?.is_ip_cutting);
+      const ipCutLength = Number(planInfo?.ip_cut_length || campaign?.ip_cut_length || childPlanInfo?.ip_cut_length || 0);
+      const ipMultiple = Number(planInfo?.ip_multiple || campaign?.ip_multiple || childPlanInfo?.ip_multiple || 1);
+
+      const ipCutLogs = getStageLogs(woId, ipCuttingStageId, "IP_CUTTING");
+      const allIpCutLogs = [...ipCutLogs];
+      if (campaign && Array.isArray(campaign.child_work_orders)) {
+        for (const child of campaign.child_work_orders) {
+          const cId = child.work_order_id || child.id;
+          allIpCutLogs.push(...getStageLogs(cId, ipCuttingStageId, "IP_CUTTING"));
+        }
+      }
+
+      const ipCutOutPcs = sumPcs(allIpCutLogs, ipCutLength > 0 ? ipCutLength : effMhAvg);
+      const ipCutRejPcs = sumRejPcs(allIpCutLogs, ipCutLength > 0 ? ipCutLength : effMhAvg);
+      const ipCutNetPcs = Math.max(0, ipCutOutPcs - ipCutRejPcs);
+      const rawIpCutOutMtr = sumQty(allIpCutLogs, "output_qty");
+      const rawIpCutRejMtr = sumQty(allIpCutLogs, "rejection_qty");
+      const ipCutOutMtr = rawIpCutOutMtr > 0 ? rawIpCutOutMtr : (ipCutLength > 0 ? Number((ipCutOutPcs * ipCutLength).toFixed(3)) : Number((ipCutOutPcs * effMhAvg).toFixed(3)));
+      const ipCutRejMtr = rawIpCutRejMtr > 0 ? rawIpCutRejMtr : (ipCutLength > 0 ? Number((ipCutRejPcs * ipCutLength).toFixed(3)) : Number((ipCutRejPcs * effMhAvg).toFixed(3)));
+      const ipCutNetMtr = Math.max(0, ipCutOutMtr - ipCutRejMtr);
+
+      let ipMotherPcsCut = 0;
+      for (const log of allIpCutLogs) {
+        const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(log.remarks);
+        if (mPcs != null && mPcs > 0) {
+          ipMotherPcsCut += mPcs;
+        } else {
+          const p = getLogPcs(log, ipCutLength > 0 ? ipCutLength : effMhAvg);
+          ipMotherPcsCut += ipMultiple > 1 ? Math.ceil(p / ipMultiple) : p;
+        }
+      }
+
+      // Material feeding IP Cutting: HTC OK (for CDS) or Hollow HT OK (for ALLOY_CDS)
+      const ipCutFeederPcs = isAlloy ? hollowHtNetPcs : rollHtcOkPcs;
+      const ipCutFeederMtr = isAlloy ? hollowHtNetMtr : rollHtcOkMtr;
+      const ipCutFeederMt = mtFromMtr(ipCutFeederMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
+
+      const ipCutAvailPcs = isIpCutting ? Math.max(0, ipCutFeederPcs - ipMotherPcsCut) : 0;
+      const ipCutAvailMtr = effMhAvg > 0 ? Number((ipCutAvailPcs * effMhAvg).toFixed(3)) : 0;
+      const ipCutAvailMt = mtFromMtr(ipCutAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
+
+      const isIpCutReady = ipCutAvailMtr >= 1.0 || ipCutAvailPcs >= 1;
+      const isIpCutFeeder = !isIpCutReady && (ipCutFeederMtr >= 1.0 || ipCutFeederPcs >= 1);
+
       // Draw incoming:
-      // - CDS route: incoming is Rolling HTC OK pieces
-      // - ALLOY_CDS: incoming is Hollow HT Net Output pieces
-      const drawIncomingPcs = isAlloy ? hollowHtNetPcs : rollHtcOkPcs;
+      // - When IP Cutting enabled: incoming is IP Cutting Net Passed Cut Pieces
+      // - CDS route without IP Cutting: incoming is Rolling HTC OK pieces
+      // - ALLOY_CDS without IP Cutting: incoming is Hollow HT Net Output pieces
+      const drawIncomingPcs = isIpCutting
+        ? ipCutNetPcs
+        : (isAlloy ? hollowHtNetPcs : rollHtcOkPcs);
+
+      const drawIncomingMtr = isIpCutting
+        ? ipCutNetMtr
+        : (isAlloy ? hollowHtNetMtr : rollHtcOkMtr);
+
       let drawAvailPcs = isCds
         ? Math.max(0, drawIncomingPcs + drawDivInPcs - drawOutPcs - drawRejPcs - drawDivOutPcs)
         : 0;
-      const effDrawLen = effMhAvg > 0 ? effMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength);
+      const effDrawLen = isIpCutting && ipCutLength > 0
+        ? ipCutLength
+        : (effMhAvg > 0 ? effMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength));
       let drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;
       let drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
@@ -1527,6 +1617,17 @@ export async function GET(req: NextRequest) {
         workCenterSummary.HOLLOW_HEAT_TREATMENT.availMt += hollowHtAvailMt;
         workCenterSummary.HOLLOW_HEAT_TREATMENT.count += 1;
       }
+      if (isIpCutting && (ipCutAvailMtr >= 1.0 || ipCutAvailPcs >= 1)) {
+        workCenterSummary.IP_CUTTING.availMtr += ipCutAvailMtr;
+        workCenterSummary.IP_CUTTING.availPcs += ipCutAvailPcs;
+        workCenterSummary.IP_CUTTING.availMt += ipCutAvailMt;
+        workCenterSummary.IP_CUTTING.count += 1;
+
+        // Till final draw complete, IP cut stock is part of Draw Bench WIP
+        workCenterSummary.DRAW.availMtr += ipCutAvailMtr;
+        workCenterSummary.DRAW.availPcs += ipCutAvailPcs * (ipMultiple || 1);
+        workCenterSummary.DRAW.availMt += ipCutAvailMt;
+      }
       if (isCds && (drawAvailMtr >= 1.0 || drawAvailPcs >= 1)) {
         workCenterSummary.DRAW.availMtr += drawAvailMtr;
         workCenterSummary.DRAW.availPcs += drawAvailPcs;
@@ -1729,9 +1830,9 @@ export async function GET(req: NextRequest) {
       const hhtFeederMtr = effHhtAvg > 0 ? Number((hhtFeederPcs * effHhtAvg).toFixed(3)) : Math.max(0, totalCampaignMtr - hollowHtOutMtr - hollowHtRejMtr - hhtRejDecl.mtr);
       const hhtFeederMt = mtFromMtr(hhtFeederMtr, hollowHtEffOd, hollowHtEffWt);
 
-      // 2. Draw Bench Feeder: Rolling Plan issued quantity (or Hollow HT output for Alloy)
+      // 2. Draw Bench Feeder: Rolling Plan issued quantity (or Hollow HT output for Alloy, or IP Cutting for IP Cutting)
       const drawFeederPcs = isCds
-        ? Math.max(0, isAlloy ? (hollowHtNetPcs + hollowHtAvailPcs - drawOutPcs - drawRejPcs - drawRejDecl.pcs) : (totalCampaignPcs - drawOutPcs - drawRejPcs - drawRejDecl.pcs))
+        ? Math.max(0, isIpCutting ? (ipCutNetPcs - drawOutPcs - drawRejPcs - drawRejDecl.pcs) : (isAlloy ? (hollowHtNetPcs + hollowHtAvailPcs - drawOutPcs - drawRejPcs - drawRejDecl.pcs) : (totalCampaignPcs - drawOutPcs - drawRejPcs - drawRejDecl.pcs)))
         : 0;
       const drawFeederMtr = effDrawLen > 0 ? Number((drawFeederPcs * effDrawLen).toFixed(3)) : Math.max(0, totalCampaignMtr - drawOutMtr - drawRejMtr - drawRejDecl.mtr);
       const drawFeederMt = mtFromMtr(drawFeederMtr, mhOd > 0 ? mhOd : woOd, mhWt > 0 ? mhWt : woWt);
@@ -1922,6 +2023,39 @@ export async function GET(req: NextRequest) {
                 feeder_stage_code: "ROLLING",
               }
             : null,
+        IP_CUTTING:
+          isIpCutting && (isIpCutReady || isIpCutFeeder)
+            ? {
+                ...baseRowData,
+                stage_code: "IP_CUTTING",
+                stage_name: "IP Cutting (Band Saw)",
+                od: mhOd > 0 ? mhOd : woOd,
+                wl: mhWt > 0 ? mhWt : woWt,
+                l1: ipCutLength > 0 ? ipCutLength : (mhL1 > 0 ? mhL1 : l1),
+                l2: ipCutLength > 0 ? ipCutLength : (mhL2 > 0 ? mhL2 : l2),
+                avg_length: ipCutLength > 0 ? ipCutLength : (effMhAvg > 0 ? effMhAvg : avgLength),
+                balance_to_make_mtr: isIpCutReady ? ipCutAvailMtr : ipCutFeederMtr,
+                balance_to_make_pcs: isIpCutReady ? ipCutAvailPcs : ipCutFeederPcs,
+                balance_to_make_mt: isIpCutReady ? ipCutAvailMt : ipCutFeederMt,
+                ready_pcs: isIpCutReady ? ipCutAvailPcs : 0,
+                ready_mtr: isIpCutReady ? ipCutAvailMtr : 0,
+                ready_mt: isIpCutReady ? ipCutAvailMt : 0,
+                feeder_pcs: ipCutFeederPcs,
+                feeder_mtr: ipCutFeederMtr,
+                feeder_mt: ipCutFeederMt,
+                is_feeder_source: isIpCutFeeder,
+                max_allowed_mtr: isIpCutReady ? ipCutAvailMtr : ipCutFeederMtr,
+                max_allowed_pcs: isIpCutReady ? ipCutAvailPcs : ipCutFeederPcs,
+                prev_stage_code: isAlloy ? "HOLLOW_HEAT_TREATMENT" : "HTC",
+                prev_htc_ok: isAlloy ? undefined : rollHtcOkMtr,
+                prev_net_output: isAlloy ? hollowHtNetMtr : rollHtcOkMtr,
+                feeder_source_label: isAlloy ? "Hollow HT Qty" : "HTC OK Qty",
+                feeder_stage_code: isAlloy ? "HOLLOW_HEAT_TREATMENT" : "HTC",
+                is_ip_cutting: true,
+                ip_cut_length: ipCutLength,
+                ip_multiple: ipMultiple,
+              }
+            : null,
         DRAW:
           isCds && (isDrawReady || isDrawFeeder)
             ? {
@@ -1943,11 +2077,14 @@ export async function GET(req: NextRequest) {
                 is_feeder_source: isDrawFeeder,
                 max_allowed_mtr: isDrawReady ? drawAvailMtr : drawFeederMtr,
                 max_allowed_pcs: isDrawReady ? drawAvailPcs : drawFeederPcs,
-                prev_stage_code: isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING",
-                prev_htc_ok: isAlloy ? undefined : rollHtcOkMtr,
-                prev_net_output: isAlloy ? hollowHtNetMtr : undefined,
-                feeder_source_label: isDrawReady ? (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK") : (isAlloy ? "Hollow HT Net OK" : "Rolling Plan Issued"),
-                feeder_stage_code: isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING",
+                prev_stage_code: isIpCutting ? "IP_CUTTING" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
+                prev_htc_ok: isIpCutting ? undefined : (isAlloy ? undefined : rollHtcOkMtr),
+                prev_net_output: isIpCutting ? ipCutNetMtr : (isAlloy ? hollowHtNetMtr : undefined),
+                feeder_source_label: isIpCutting ? "IP Cutting (Band Saw) OK" : (isDrawReady ? (isAlloy ? "Hollow HT Net OK" : "Rolling HTC OK") : (isAlloy ? "Hollow HT Net OK" : "Rolling Plan Issued")),
+                feeder_stage_code: isIpCutting ? "IP_CUTTING" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
+                is_ip_cutting: isIpCutting,
+                ip_cut_length: ipCutLength,
+                ip_multiple: ipMultiple,
               }
             : null,
         PILGER:
@@ -2685,6 +2822,7 @@ export async function GET(req: NextRequest) {
         "HOT_ROLLING",
         "HTC",
         "HOLLOW_HEAT_TREATMENT",
+        "IP_CUTTING",
         "DRAW",
         "PILGER",
         "HEAT_TREATMENT",
@@ -2747,6 +2885,33 @@ export async function GET(req: NextRequest) {
               const readyMtr = Number(vdiSalvageRow.ready_mtr ?? vdiSalvageRow.balance_to_make_mtr ?? 0);
               if (readyPcs >= 1 || readyMtr >= 1.0) {
                 selectedRows.push(vdiSalvageRow);
+              }
+            }
+          }
+        } else if (st === "BAND_SAW") {
+          for (const { queueRows } of allCalculatedRows.values()) {
+            const bsRow = queueRows.BAND_SAW;
+            const ipRow = queueRows.IP_CUTTING;
+            if (bsRow) {
+              if (includeFeeder) {
+                if (Number(bsRow.balance_to_make_pcs ?? 0) >= 1 || Number(bsRow.balance_to_make_mtr ?? 0) >= 1.0 || Number(bsRow.feeder_pcs ?? 0) >= 1) {
+                  selectedRows.push(bsRow);
+                }
+              } else {
+                if (!bsRow.is_feeder_source && (Number(bsRow.ready_pcs ?? bsRow.balance_to_make_pcs ?? 0) >= 1 || Number(bsRow.ready_mtr ?? bsRow.balance_to_make_mtr ?? 0) >= 1.0)) {
+                  selectedRows.push(bsRow);
+                }
+              }
+            }
+            if (ipRow) {
+              if (includeFeeder) {
+                if (Number(ipRow.balance_to_make_pcs ?? 0) >= 1 || Number(ipRow.balance_to_make_mtr ?? 0) >= 1.0 || Number(ipRow.feeder_pcs ?? 0) >= 1) {
+                  selectedRows.push(ipRow);
+                }
+              } else {
+                if (!ipRow.is_feeder_source && (Number(ipRow.ready_pcs ?? ipRow.balance_to_make_pcs ?? 0) >= 1 || Number(ipRow.ready_mtr ?? ipRow.balance_to_make_mtr ?? 0) >= 1.0)) {
+                  selectedRows.push(ipRow);
+                }
               }
             }
           }

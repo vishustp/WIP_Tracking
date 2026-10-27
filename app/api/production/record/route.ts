@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Rule: Band Saw cuts cannot have length <= 0
-      if (item.stage_code === 'BAND_SAW' && item.remarks) {
+      if ((item.stage_code === 'BAND_SAW' || item.stage_code === 'IP_CUTTING') && item.remarks) {
         const { cuts } = extractBandSawCutsFromRemarks(item.remarks);
         if (cuts && cuts.some((c: any) => Number(c.len || 0) <= 0 || Number(c.pcs || 0) <= 0)) {
           return NextResponse.json(
@@ -246,6 +246,9 @@ export async function POST(req: NextRequest) {
         }
         if (!stageId && item.stage_code === 'HTC') {
           stageId = stageMap.get('HTC') || stageMap.get('ROLLING');
+        }
+        if (!stageId && item.stage_code === 'IP_CUTTING') {
+          stageId = stageMap.get('IP_CUTTING') || stageMap.get('BAND_SAW');
         }
         if (!stageId) {
           errors.push(`Unknown stage code: ${item.stage_code}`);
