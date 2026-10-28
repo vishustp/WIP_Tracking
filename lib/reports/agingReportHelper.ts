@@ -73,6 +73,7 @@ export interface RawWipRow {
   grade?: string | null;
   created_at?: string;
   available_mt?: number | null;
+  ready_mt?: number | null;
 }
 
 export interface RawProductionLog {

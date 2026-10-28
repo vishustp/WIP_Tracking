@@ -15,7 +15,7 @@ export type DefectDispositionType = 'REJECTION' | 'SALVAGE';
 
 export interface MillRejectionEntry {
   id: string;
-  source: 'PRODUCTION_LOG' | 'QC_INSPECTION';
+  source: 'PRODUCTION_LOG' | 'QC_INSPECTION' | 'REJECTION_DECLARATION';
   date: string; // YYYY-MM-DD
   category: MillRejectionCategory;
   workCenterName: string;

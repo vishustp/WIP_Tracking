@@ -60,6 +60,7 @@ type WO = {
   balance_qty_mt?: number | null;
   target_date: string | null;
   status: string;
+  created_at?: string | null;
   po_no?: string | null;
   po_date?: string | null;
   purchase_order_no?: string | null;
@@ -243,8 +244,8 @@ export default function WorkOrders() {
 
     // 3. Sorting
     list.sort((a, b) => {
-      let valA: any = a[sortField];
-      let valB: any = b[sortField];
+      let valA: any = (a as Record<string, any>)[sortField];
+      let valB: any = (b as Record<string, any>)[sortField];
 
       if (sortField === 'work_order_no') {
         const numA = Number(a.work_order_no);
