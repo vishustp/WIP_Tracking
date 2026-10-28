@@ -1,7 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { GET as getProductionQueue } from '@/app/api/production/queue/route';
+import { NextRequest } from 'next/server';
 import DashboardClient from '@/components/dashboard/DashboardClient';
-import { mtFromMtr, extractPcsFromRemarks, isStockOrHollowBankOrder } from '@/lib/productionUtils';
-import { buildCampaignHierarchyMaps, reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
+import { mtFromMtr, extractPcsFromRemarks, isStockOrHollowBankOrder, isHollowBankOrder } from '@/lib/productionUtils';
+import { buildCampaignHierarchyMaps } from '@/lib/campaignWipUtils';
 import { computeAgingReportRows } from '@/lib/reports/agingReportHelper';
 
 export const dynamic = 'force-dynamic';
@@ -64,18 +67,21 @@ export default async function Dashboard() {
   let yesterdayProduction: any = null;
 
   try {
-    const supabase = await createClient();
+    const admin = createAdminClient();
+    const supabase = admin || (await createClient());
     
-    // Execute independent queries in parallel using allSettled to ensure WIP and critical metrics
-    // never drop or fail if a secondary query encounters a timeout or network hiccup.
-    // Note: vw_dashboard_kpis is excluded because all KPI aggregates are calculated directly in JS,
-    // saving 5+ seconds of database contention.
+    // Fetch canonical queue directly so Dashboard WIP is 100% synchronized with the Size-Grade WIP Matrix
+    const queueReq = new NextRequest('http://localhost:3000/api/production/queue?all_stages=true&_t=' + Date.now());
+    const queuePromise = getProductionQueue(queueReq).then(async (res) => {
+      if (!res.ok) return { data: [], summary: [] };
+      return res.json();
+    }).catch((err) => {
+      console.error('[Dashboard] Error fetching production queue:', err);
+      return { data: [], summary: [] };
+    });
+
     const results = await Promise.allSettled([
-      supabase
-        .from('vw_route_stage_wip')
-        .select('*')
-        .order('sequence_no', { ascending: true })
-        .order('work_order_no', { ascending: true }),
+      queuePromise,
       supabase
         .from('vw_work_order_summary')
         .select('*')
@@ -100,8 +106,11 @@ export default async function Dashboard() {
 
     const getVal = <T,>(idx: number, fallback: T): T => {
       const res = results[idx];
-      if (res.status === 'fulfilled' && (res.value as any)?.data) {
+      if (res.status === 'fulfilled' && (res.value as any)?.data !== undefined) {
         return (res.value as any).data as T;
+      }
+      if (res.status === 'fulfilled' && res.value !== undefined) {
+        return res.value as T;
       }
       if (res.status === 'rejected') {
         console.error(`[Dashboard] Query ${idx} rejected:`, res.reason);
@@ -111,22 +120,10 @@ export default async function Dashboard() {
       return fallback;
     };
 
-    let rawWip = getVal<any[]>(0, []);
-    // Secondary fallback retry for vw_route_stage_wip if first attempt had a transient timeout/hiccup
-    if (rawWip.length === 0) {
-      console.warn('[Dashboard] rawWip empty on initial load, retrying vw_route_stage_wip directly...');
-      try {
-        const retryRes = await supabase
-          .from('vw_route_stage_wip')
-          .select('*')
-          .order('sequence_no', { ascending: true });
-        if (retryRes.data && retryRes.data.length > 0) {
-          rawWip = retryRes.data;
-        }
-      } catch (e) {
-        console.error('[Dashboard] Retry fetch failed:', e);
-      }
-    }
+    const queueResValue = results[0].status === 'fulfilled' ? results[0].value : null;
+    const queueRows: any[] = Array.isArray(queueResValue?.data)
+      ? queueResValue.data
+      : (Array.isArray(queueResValue) ? queueResValue : []);
 
     const eligiblePending = getVal<any[]>(1, []);
     const rollingPlans = getVal<any[]>(2, []);
@@ -155,199 +152,68 @@ export default async function Dashboard() {
     // Build campaign hierarchy maps and MH info
     const hierarchyMaps = buildCampaignHierarchyMaps(rollingPlans);
 
-    // Pre-index production logs and QC inspections by work_order_id in O(N)
-    // This reduces reconcileCampaignWorkOrderWip from O(N*M) to O(1) per order (5000x speedup)
-    const productionLogsByWo = new Map<string, any[]>();
-    for (const pl of productionLogs) {
-      if (!productionLogsByWo.has(pl.work_order_id)) productionLogsByWo.set(pl.work_order_id, []);
-      productionLogsByWo.get(pl.work_order_id)!.push(pl);
-    }
-
-    const qcInspectionsByWo = new Map<string, any[]>();
-    for (const qc of qcInspections) {
-      if (!qcInspectionsByWo.has(qc.work_order_id)) qcInspectionsByWo.set(qc.work_order_id, []);
-      qcInspectionsByWo.get(qc.work_order_id)!.push(qc);
-    }
-
-    // Group raw WIP by work order
-    const wipByWo = new Map<string, any[]>();
-    for (const r of rawWip) {
-      if (!wipByWo.has(r.work_order_id)) wipByWo.set(r.work_order_id, []);
-      wipByWo.get(r.work_order_id)!.push(r);
-    }
-
-    const calculatedWip: any[] = [];
-
-    for (const [woId, rows] of wipByWo.entries()) {
-      const wo = woMap.get(woId);
-      const { summary, isChild, planMh } = reconcileCampaignWorkOrderWip({
-        woId,
-        wo,
-        rows,
-        qcInspections,
-        productionLogs,
-        hierarchyMaps,
-        stageCodeById: stageIdToCodeMap,
-        productionLogsByWo,
-        qcInspectionsByWo,
-      });
-
-      // Add only post-rolling stages with active WIP to the dashboard
-      for (const recStage of summary.stages) {
-        if (recStage.is_feeder_stage) continue; // Rolling is feeder, excluded from Plant WIP
-        if (isChild && recStage.stage_code !== 'FINISHING') continue; // Child orders bundled under master
-        const campMembers = hierarchyMaps.campaignMembersMap.get(woId);
-        if (campMembers && campMembers.size > 1 && recStage.stage_code === 'FINISHING') continue; // Finishing tracked on child orders
-        if (recStage.capped_wip_pcs > 0 || recStage.capped_wip_mtr > 0) {
-          const originalRow = rows.find((r) => (r.stage_code || '').toUpperCase() === recStage.stage_code) || rows[0];
-          calculatedWip.push({
-            ...originalRow,
-            stage_code: recStage.stage_code,
-            od: recStage.od,
-            wt: recStage.wt,
-            size_od: recStage.od || originalRow?.size_od || originalRow?.od,
-            size_wt: recStage.wt || originalRow?.size_wt || originalRow?.wt,
-            mh_od: planMh?.mh_od || null,
-            mh_wt: planMh?.mh_wt || null,
-            mh_l1: planMh?.mh_l1 || null,
-            mh_l2: planMh?.mh_l2 || null,
-            mh_avg_length: planMh?.mh_avg_length || null,
-            current_wip: recStage.capped_wip_mtr,
-            current_wip_pcs: recStage.capped_wip_pcs,
-            current_wip_mt: recStage.capped_wip_mt,
-          });
-        }
-      }
-
-      // Compute HTC active WIP: Mother hollows produced at Hot Rolling awaiting HTC testing/clearance
-      const woLogs = productionLogsByWo.get(woId) || [];
-      let hotRollingPcs = 0;
-      let htcPcs = 0;
-      let downstreamPcs = 0;
-
-      for (const l of woLogs) {
-        const sc = (l.process_stages?.stage_code || l.stage_code || stageIdToCodeMap.get(l.stage_id) || '').toUpperCase();
-        const { pcs } = extractPcsFromRemarks(l.remarks);
-        const effectivePcs = pcs != null ? pcs : (planMh?.mh_avg_length && Number(l.output_qty) > 0 ? Math.round(Number(l.output_qty) / planMh.mh_avg_length) : 0);
-
-        if (sc === 'HOT_ROLLING') {
-          hotRollingPcs += effectivePcs;
-        } else if (sc === 'HTC') {
-          htcPcs += effectivePcs;
-        } else if (sc !== 'ROLLING') {
-          downstreamPcs += effectivePcs;
-        }
-      }
-
-      if (hotRollingPcs > 0) {
-        const consumedPcs = Math.max(htcPcs, downstreamPcs);
-        const htcWipPcs = Math.max(0, hotRollingPcs - consumedPcs);
-        if (htcWipPcs > 0) {
-          const mhLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 4.49);
-          const mhOd = Number(planMh?.mh_od || wo?.size_od || 0);
-          const mhWt = Number(planMh?.mh_wt || wo?.size_wt || 0);
-          const htcWipMtr = Number((htcWipPcs * mhLen).toFixed(2));
-          const htcWipMt = mhOd > 0 && mhWt > 0 ? mtFromMtr(htcWipMtr, mhOd, mhWt) : 0;
-
-          calculatedWip.push({
-            work_order_id: woId,
-            work_order_no: wo?.work_order_no || '—',
-            customer_name: wo?.customer_name || 'Generic Customer',
-            stage_code: 'HTC',
-            stage_name: 'Hot Test Check',
-            sequence_no: 1,
-            od: mhOd,
-            wt: mhWt,
-            size_od: mhOd,
-            size_wt: mhWt,
-            mh_od: mhOd,
-            mh_wt: mhWt,
-            mh_l1: planMh?.mh_l1 || null,
-            mh_l2: planMh?.mh_l2 || null,
-            mh_avg_length: mhLen,
-            current_wip: htcWipMtr,
-            current_wip_pcs: htcWipPcs,
-            current_wip_mt: htcWipMt,
-            grade: wo?.grade || '—',
-          });
-        }
-      }
-    }
-
-    // Also include any active orders that have HOT_ROLLING production logs not captured in wipByWo
-    for (const [woId, woLogs] of productionLogsByWo.entries()) {
-      if (wipByWo.has(woId)) continue;
-      const wo = woMap.get(woId);
-      if (!wo || ['Completed', 'Cancelled'].includes(wo.status)) continue;
-      const planMh = hierarchyMaps.mhMap.get(woId) || hierarchyMaps.mhMap.get(String(wo.work_order_no).trim());
-
-      let hotRollingPcs = 0;
-      let htcPcs = 0;
-      let downstreamPcs = 0;
-
-      for (const l of woLogs) {
-        const sc = (l.process_stages?.stage_code || l.stage_code || stageIdToCodeMap.get(l.stage_id) || '').toUpperCase();
-        const { pcs } = extractPcsFromRemarks(l.remarks);
-        const effectivePcs = pcs != null ? pcs : (planMh?.mh_avg_length && Number(l.output_qty) > 0 ? Math.round(Number(l.output_qty) / planMh.mh_avg_length) : 0);
-
-        if (sc === 'HOT_ROLLING') {
-          hotRollingPcs += effectivePcs;
-        } else if (sc === 'HTC') {
-          htcPcs += effectivePcs;
-        } else if (sc !== 'ROLLING') {
-          downstreamPcs += effectivePcs;
-        }
-      }
-
-      if (hotRollingPcs > 0) {
-        const consumedPcs = Math.max(htcPcs, downstreamPcs);
-        const htcWipPcs = Math.max(0, hotRollingPcs - consumedPcs);
-        if (htcWipPcs > 0) {
-          const mhLen = Number(planMh?.mh_avg_length || planMh?.mh_l1 || 4.49);
-          const mhOd = Number(planMh?.mh_od || wo.size_od || 0);
-          const mhWt = Number(planMh?.mh_wt || wo.size_wt || 0);
-          const htcWipMtr = Number((htcWipPcs * mhLen).toFixed(2));
-          const htcWipMt = mhOd > 0 && mhWt > 0 ? mtFromMtr(htcWipMtr, mhOd, mhWt) : 0;
-
-          calculatedWip.push({
-            work_order_id: woId,
-            work_order_no: wo.work_order_no,
-            customer_name: wo.customer_name || 'Generic Customer',
-            stage_code: 'HTC',
-            stage_name: 'Hot Test Check',
-            sequence_no: 1,
-            od: mhOd,
-            wt: mhWt,
-            size_od: mhOd,
-            size_wt: mhWt,
-            mh_od: mhOd,
-            mh_wt: mhWt,
-            mh_l1: planMh?.mh_l1 || null,
-            mh_l2: planMh?.mh_l2 || null,
-            mh_avg_length: mhLen,
-            current_wip: htcWipMtr,
-            current_wip_pcs: htcWipPcs,
-            current_wip_mt: htcWipMt,
-            grade: wo.grade || '—',
-          });
-        }
-      }
-    }
-
     const CANONICAL_STAGE_ORDER: Record<string, number> = {
       HOT_ROLLING: 10,
       ROLLING: 10,
       HTC: 15,
       HOLLOW_HEAT_TREATMENT: 20,
       DRAW: 30,
+      IP_CUTTING: 30,
+      PILGER: 30,
       HEAT_TREATMENT: 40,
       HT: 40,
       BAND_SAW: 50,
       CUTTING: 50,
       VDI: 60,
+      VDI_SALVAGE: 65,
       QC: 60,
       FINISHING: 70,
     };
+
+    // Filter out hollow bank yard buffer orders (matching SizeGradeWipReportClient)
+    const validQueueRows = queueRows.filter((r: any) => !isHollowBankOrder(r));
+    const calculatedWip: any[] = [];
+
+    for (const r of validQueueRows) {
+      const stCode = (r.stage_code || '').toUpperCase();
+      const isRolling = stCode === 'HOT_ROLLING' || stCode === 'ROLLING';
+      if (isRolling) continue; // Rolling is feeder stage, excluded from Active Plant WIP (AGENTS.md Rule 1)
+
+      const pcs = Math.round(Number(r.ready_pcs ?? r.current_wip_pcs ?? 0));
+      const mtr = Number(Number(r.ready_mtr ?? r.current_wip ?? 0).toFixed(2));
+      const mt = Number(Number(r.ready_mt ?? r.available_mt ?? 0).toFixed(2));
+
+      if (pcs > 0 || mtr > 0) {
+        calculatedWip.push({
+          work_order_id: r.work_order_id || r.id,
+          work_order_no: r.work_order_no || '—',
+          customer_name: r.customer_name || 'Generic Customer',
+          stage_code: stCode,
+          stage_name: r.stage_name || (
+            stCode === 'HTC' ? 'Hot Test Check' :
+            stCode === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
+            stCode === 'DRAW' ? 'Cold Draw Bench' :
+            stCode === 'IP_CUTTING' ? 'IP Cutting' :
+            stCode === 'HEAT_TREATMENT' ? 'Final Heat Treatment' :
+            stCode === 'BAND_SAW' ? 'Band Saw Cutting' :
+            stCode === 'VDI' ? 'VDI / QC Inspection' :
+            stCode === 'VDI_SALVAGE' ? 'VDI Salvage' :
+            stCode === 'FINISHING' ? 'Finishing & Dispatch' : stCode
+          ),
+          route_code: r.route_code || 'CDS',
+          route_name: r.route_name || 'Standard CDS',
+          sequence_no: r.sequence_no ?? (CANONICAL_STAGE_ORDER[stCode] || 99),
+          od: Number(r.size_od || r.wo_od || r.target_od || r.od || 0),
+          wt: Number(r.size_wt || r.wo_wt || r.target_wt || r.wt || 0),
+          size_od: Number(r.size_od || r.wo_od || r.target_od || r.od || 0),
+          size_wt: Number(r.size_wt || r.wo_wt || r.target_wt || r.wt || 0),
+          grade: r.grade || '—',
+          current_wip: mtr,
+          current_wip_pcs: pcs,
+          current_wip_mt: mt,
+        });
+      }
+    }
 
     calculatedWip.sort((a: any, b: any) => {
       const seqA = CANONICAL_STAGE_ORDER[(a.stage_code || '').toUpperCase()] ?? a.sequence_no ?? 99;
@@ -356,9 +222,9 @@ export default async function Dashboard() {
       return (a.work_order_no || '').localeCompare(b.work_order_no || '');
     });
 
-    const totalWipMtr = calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip) || 0), 0);
+    const totalWipMtr = Number(calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip) || 0), 0).toFixed(2));
     const totalWipPcs = calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip_pcs) || 0), 0);
-    const totalWipMt = calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip_mt) || 0), 0);
+    const totalWipMt = Number(calculatedWip.reduce((sum, r: any) => sum + (Number(r.current_wip_mt) || 0), 0).toFixed(2));
 
     // Calculate real production and rejection from production_logs
     const now = new Date();
@@ -582,7 +448,7 @@ export default async function Dashboard() {
 
     // WIP Aging items for dashboard computed in-memory (1ms) using shared domain engine
     const computedAging = computeAgingReportRows({
-      wipRows: rawWip,
+      wipRows: calculatedWip,
       workOrders: workOrders,
       productionLogs: productionLogs,
       qcInspections: qcInspections,

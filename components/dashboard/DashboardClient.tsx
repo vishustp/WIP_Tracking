@@ -243,7 +243,7 @@ export default function DashboardClient({
       if (rawCode === 'HOT_ROLLING' || rawCode === 'ROLLING') key = 'HOT_ROLLING';
       else if (rawCode === 'HTC' || rawCode.includes('HOT TEST')) key = 'HTC';
       else if (rawCode.includes('HOLLOW')) key = 'HOLLOW_HEAT_TREATMENT';
-      else if (rawCode.includes('DRAW') || rawCode.includes('PILGER')) key = 'DRAW';
+      else if (rawCode.includes('DRAW') || rawCode.includes('PILGER') || rawCode === 'IP_CUTTING') key = 'DRAW';
       else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') key = 'HEAT_TREATMENT';
       else if (rawCode.includes('SAW') || rawCode.includes('CUT')) key = 'BAND_SAW';
       else if (rawCode.includes('VDI') || rawCode.includes('QC')) key = 'VDI';

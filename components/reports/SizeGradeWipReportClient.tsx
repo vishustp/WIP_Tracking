@@ -42,7 +42,7 @@ const STANDARD_ROUTES: { code: string; name: string }[] = [
   { code: 'SS_STEEL', name: 'Stainless Steel' },
 ];
 
-type StageCode = 'HOT_ROLLING' | 'HTC' | 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'PILGER' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING' | 'VDI_SALVAGE';
+type StageCode = 'HOT_ROLLING' | 'HTC' | 'ROLLING' | 'HOLLOW_HEAT_TREATMENT' | 'IP_CUTTING' | 'PILGER' | 'DRAW' | 'HEAT_TREATMENT' | 'BAND_SAW' | 'VDI' | 'FINISHING' | 'VDI_SALVAGE';
 
 interface ContributingOrder {
   work_order_id: string;
@@ -941,7 +941,7 @@ export default function SizeGradeWipReportClient() {
         group.draw_mtr += mtr;
         group.draw_pcs += pcs;
         group.draw_mt += mt;
-      } else if (stage === 'DRAW') {
+      } else if (stage === 'DRAW' || stage === 'IP_CUTTING') {
         group.draw_mtr += mtr;
         group.draw_pcs += pcs;
         group.draw_mt += mt;

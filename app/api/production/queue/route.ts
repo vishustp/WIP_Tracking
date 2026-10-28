@@ -82,6 +82,7 @@ export async function GET(req: NextRequest) {
           "HOT_ROLLING",
           "HTC",
           "HOLLOW_HEAT_TREATMENT",
+          "IP_CUTTING",
           "DRAW",
           "PILGER",
           "HEAT_TREATMENT",
@@ -100,7 +101,7 @@ export async function GET(req: NextRequest) {
               } else if (!row.is_feeder_source) {
                 const readyPcs = Number(row.ready_pcs ?? 0);
                 const readyMtr = Number(row.ready_mtr ?? 0);
-                if (readyPcs >= 1 && readyMtr > 0) {
+                if (readyPcs >= 1 || readyMtr >= 1.0) {
                   selectedRows.push(row);
                 }
               }
@@ -109,7 +110,7 @@ export async function GET(req: NextRequest) {
           if (vdiSalvageRow) {
             const readyPcs = Number(vdiSalvageRow.ready_pcs ?? 0);
             const readyMtr = Number(vdiSalvageRow.ready_mtr ?? 0);
-            if (readyPcs >= 1 && readyMtr > 0) {
+            if (readyPcs >= 1 || readyMtr >= 1.0) {
               selectedRows.push(vdiSalvageRow);
             }
           }
@@ -118,7 +119,7 @@ export async function GET(req: NextRequest) {
           if (!r.is_feeder_source) {
             const readyPcs = Number(r.ready_pcs ?? 0);
             const readyMtr = Number(r.ready_mtr ?? 0);
-            if (readyPcs >= 1 && readyMtr > 0) {
+            if (readyPcs >= 1 || readyMtr >= 1.0) {
               selectedRows.push(r);
             }
           }
