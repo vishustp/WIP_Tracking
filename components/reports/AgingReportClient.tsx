@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Factory,
   ArrowRight,
+  ArrowRightLeft,
   TrendingUp,
   ShieldCheck,
   Check,
@@ -131,7 +132,10 @@ export default function AgingReportClient() {
                 }
 
                 const mt = Number(Number(r.ready_mt ?? r.available_mt ?? 0).toFixed(2));
-                const effectiveDate = r.last_activity_date || r.rolling_date || r.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+                const rawLastDate = r.last_activity_date || r.rolling_date || r.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+                const effectiveDate = r.diversion_date && (!rawLastDate || new Date(r.diversion_date).getTime() > new Date(rawLastDate).getTime())
+                  ? r.diversion_date.slice(0, 10)
+                  : rawLastDate;
                 const diffMs = now - new Date(effectiveDate).getTime();
                 const diffDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
                 const severity: AgingSeverity = diffDays >= 15 ? 'CRITICAL' : diffDays >= 7 ? 'WARNING' : 'NORMAL';
@@ -148,27 +152,33 @@ export default function AgingReportClient() {
                   ? (Number(r.vdi_salvage_mtr || 0) > 0 ? Number(r.vdi_salvage_mtr) : (isSalvage ? mtr : 0))
                   : 0;
 
-                  return {
-                    work_order_id: woId,
-                    work_order_no: r.work_order_no,
-                    customer_name: r.customer_name || null,
-                    grade: r.specification || r.grade || null,
-                    od: Number(r.final_od || r.size_od || r.wo_od || r.od || 0),
-                    wt: Number(r.final_wt || r.size_wt || r.wo_wt || r.wt || 0),
-                    l1,
-                    l2,
-                    stage_id: r.stage_id,
-                    stage_code: sc,
-                    stage_name: r.stage_name || sc,
-                    sequence_no: Number(r.sequence_no || 0),
-                    current_wip: mtr,
-                    current_wip_pcs: pcs,
-                    available_mt: mt,
-                    vdi_salvage_pcs: salvagePcs,
-                    vdi_salvage_mtr: salvageMtr,
-                    last_activity_date: effectiveDate,
-                    days_stuck: diffDays,
-                    severity,
+                return {
+                  work_order_id: woId,
+                  work_order_no: r.work_order_no,
+                  customer_name: r.customer_name || null,
+                  grade: r.specification || r.grade || null,
+                  od: Number(r.final_od || r.size_od || r.wo_od || r.od || 0),
+                  wt: Number(r.final_wt || r.size_wt || r.wo_wt || r.wt || 0),
+                  l1,
+                  l2,
+                  stage_id: r.stage_id,
+                  stage_code: sc,
+                  stage_name: r.stage_name || sc,
+                  sequence_no: Number(r.sequence_no || 0),
+                  current_wip: mtr,
+                  current_wip_pcs: pcs,
+                  available_mt: mt,
+                  vdi_salvage_pcs: salvagePcs,
+                  vdi_salvage_mtr: salvageMtr,
+                  last_activity_date: effectiveDate,
+                  days_stuck: diffDays,
+                  severity,
+                  has_diversion: Boolean(r.has_diversion),
+                  diversion_in_pcs: r.diversion_in_pcs != null ? Number(r.diversion_in_pcs) : undefined,
+                  diversion_in_mtr: r.diversion_in_mtr != null ? Number(r.diversion_in_mtr) : undefined,
+                  diversion_source_wo: r.diversion_source_wo || undefined,
+                  diversion_remarks: r.diversion_remarks || undefined,
+                  diversion_date: r.diversion_date || undefined,
                   is_acknowledged: Boolean(ackObj),
                   acknowledged_by: ackObj?.acknowledged_by || null,
                   ack_notes: ackObj?.notes || null,
@@ -199,8 +209,8 @@ export default function AgingReportClient() {
         .order('days_stuck', { ascending: false });
 
       if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
-        // Query production logs and rejection declarations to eliminate phantom WIP and seconds
-        const [{ data: prodLogs }, { data: rejDecls }] = await Promise.all([
+        // Query production logs, rejection declarations, and diversion plans to eliminate phantom WIP and seconds
+        const [{ data: prodLogs }, { data: rejDecls }, { data: divPlans }] = await Promise.all([
           supabase
             .from('production_logs')
             .select('work_order_id, stage_id, output_qty, htc_ok, remarks, process_stages(stage_code)'),
@@ -208,12 +218,16 @@ export default function AgingReportClient() {
             .from('rejection_declarations')
             .select('work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status')
             .not('status', 'in', '("REJECTED_BY_QC","REJECTED_BY_PPC")'),
+          supabase
+            .from('diversion_plans')
+            .select('id, target_work_order_id, target_work_center, diverted_pcs, diverted_mtr, source_work_order_id, work_orders!diversion_plans_source_work_order_id_fkey(work_order_no), remarks, diversion_date, created_at, status')
+            .neq('status', 'CANCELLED'),
         ]);
 
         // Robust normalization merging database columns & local acknowledgements
         const normalizedRows: AgingRow[] = viewData
           .filter((r: any) => !isHollowBankOrder(r))
-          .map((r: any) => normalizeAgingRow(r, localAcks, undefined, (rejDecls || []) as any))
+          .map((r: any) => normalizeAgingRow(r, localAcks, undefined, (rejDecls || []) as any, (divPlans || []) as any))
           .filter((r: AgingRow) => !isHollowBankOrder(r) && r.current_wip_pcs > 0 && r.current_wip > 0)
           .filter((r: AgingRow) => {
             const sc = (r.stage_code || '').toUpperCase();
@@ -263,7 +277,7 @@ export default function AgingReportClient() {
       }
 
       // 2. Comprehensive fallback with accurate domain calculations
-      const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes, rejDeclRes] = await Promise.all([
+      const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes, rejDeclRes, divRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).order('sequence_no', { ascending: true }),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok, remarks, process_stages(stage_code)').order('process_date', { ascending: false }),
         supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr').order('inspection_date', { ascending: false }),
@@ -272,6 +286,7 @@ export default function AgingReportClient() {
         supabase.from('route_stages').select('route_id, stage_id, sequence_no, process_stages(stage_code)').order('sequence_no', { ascending: true }),
         supabase.from('aging_alert_acknowledgements').select('work_order_id, stage_code, acknowledged_by, notes, snooze_until'),
         supabase.from('rejection_declarations').select('work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status').not('status', 'in', '("REJECTED_BY_QC","REJECTED_BY_PPC")'),
+        supabase.from('diversion_plans').select('id, target_work_order_id, target_work_center, diverted_pcs, diverted_mtr, source_work_order_id, work_orders!diversion_plans_source_work_order_id_fkey(work_order_no), remarks, diversion_date, created_at, status').neq('status', 'CANCELLED'),
       ]);
 
       const dbAcks: RawAcknowledgement[] = ackRes?.data || [];
@@ -286,6 +301,7 @@ export default function AgingReportClient() {
         routeStages: (routeStagesRes.data || []) as RawRouteStage[],
         acknowledgements: combinedAcks,
         rejectionDeclarations: (rejDeclRes?.data || []) as any[],
+        diversions: (divRes?.data || []) as any[],
         asOfDate: new Date(),
       });
 
@@ -386,6 +402,7 @@ export default function AgingReportClient() {
     const exportData = filteredRows.map((r, i) => ({
       '#': i + 1,
       'Work Order No': r.work_order_no,
+      'Diversion': r.has_diversion ? `Yes (${r.diversion_in_pcs || 0} Pcs${r.diversion_source_wo ? ` from ${r.diversion_source_wo}` : ''})` : 'No',
       'Customer': r.customer_name || '—',
       'Grade': r.grade || '—',
       'Size (ODxWT mm)': `${r.od} × ${r.wt}`,
@@ -619,13 +636,27 @@ export default function AgingReportClient() {
                     >
                       {/* WO */}
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-900 dark:text-slate-100">
-                        <button
-                          type="button"
-                          onClick={() => router.push(`/reports/tracking?wo=${encodeURIComponent(r.work_order_no)}`)}
-                          className="hover:text-[#0078d4] dark:hover:text-blue-400 hover:underline flex items-center gap-1 text-left"
-                        >
-                          {r.work_order_no}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/reports/tracking?wo=${encodeURIComponent(r.work_order_no)}`)}
+                            className="hover:text-[#0078d4] dark:hover:text-blue-400 hover:underline flex items-center gap-1 text-left"
+                          >
+                            {r.work_order_no}
+                          </button>
+                          {r.has_diversion && (
+                            <span
+                              title={`Diverted Material In${r.diversion_in_pcs ? `: ${r.diversion_in_pcs} PCS` : ''}${r.diversion_source_wo ? ` from ${r.diversion_source_wo}` : ''}${r.diversion_date ? ` on ${r.diversion_date.slice(0, 10)}` : ''}${r.diversion_remarks ? ` (${r.diversion_remarks})` : ''} — Aging reset`}
+                              className="inline-flex items-center gap-0.5 rounded bg-purple-100 dark:bg-purple-950/80 text-purple-900 dark:text-purple-200 border border-purple-300 dark:border-purple-700 px-1.5 py-0.5 text-[10px] font-mono font-bold tracking-tight shadow-2xs"
+                            >
+                              <ArrowRightLeft size={10} className="shrink-0 text-purple-700 dark:text-purple-300" />
+                              <span>DIV</span>
+                              {r.diversion_source_wo && (
+                                <span className="font-normal opacity-90 text-[9px]">← {r.diversion_source_wo}</span>
+                              )}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Customer */}
@@ -706,11 +737,22 @@ export default function AgingReportClient() {
                           <span className="mx-1 text-slate-300 dark:text-slate-600">·</span>
                           {fmt(r.available_mt, 2)} <span className="text-[10px] text-slate-500 dark:text-slate-400">MT</span>
                         </div>
+                        {r.has_diversion && Boolean(r.diversion_in_pcs) && (
+                          <div className="text-[10px] text-purple-700 dark:text-purple-300 font-sans font-medium mt-0.5">
+                            Incl. Div: {fmt(r.diversion_in_pcs, 0)} PCS
+                          </div>
+                        )}
                       </td>
 
                       {/* Last Activity */}
                       <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-300">
-                        {r.last_activity_date}
+                        <div>{r.last_activity_date}</div>
+                        {r.has_diversion && r.diversion_date && (
+                          <div className="text-[10px] font-sans font-semibold text-purple-700 dark:text-purple-400 flex items-center gap-0.5 mt-0.5">
+                            <ArrowRightLeft size={9} className="shrink-0" />
+                            <span>Reset via DIV</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Days Stuck */}

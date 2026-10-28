@@ -893,5 +893,154 @@ describe('WIP Aging & Bottlenecks Calculation Engine', () => {
       expect(kpis.totalWipMtr).toBe(120);
     });
   });
+
+  describe('Diversion Aging Reset & DIV Badge Support', () => {
+    it('resets effective activity date when diversion date is newer than production date', () => {
+      const routeStages: RawRouteStage[] = [
+        { route_id: 'R1', stage_id: 'S_DRAW', sequence_no: 1, stage_code: 'DRAW' },
+        { route_id: 'R1', stage_id: 'S_HT', sequence_no: 2, stage_code: 'HEAT_TREATMENT' },
+      ];
+
+      const prodLogs: RawProductionLog[] = [
+        { work_order_id: 'WO_DIV_1', stage_id: 'S_DRAW', process_date: '2026-10-01' },
+      ];
+
+      // Material was drawn on 2026-10-01, but additional material was diverted into HEAT_TREATMENT on 2026-10-20
+      const diversions = [
+        {
+          id: 'div-1',
+          target_work_order_id: 'WO_DIV_1',
+          target_work_center: 'HEAT_TREATMENT',
+          diverted_pcs: 10,
+          diverted_mtr: 60,
+          source_work_order_id: 'WO_SRC',
+          work_orders: { work_order_no: 'WO-SOURCE-99' },
+          diversion_date: '2026-10-20',
+        },
+      ];
+
+      const effDate = determineStageEffectiveActivityDate({
+        workOrderId: 'WO_DIV_1',
+        routeId: 'R1',
+        currentStageId: 'S_HT',
+        currentStageCode: 'HEAT_TREATMENT',
+        currentStageSeq: 2,
+        routeStages,
+        productionLogs: prodLogs,
+        qcInspections: [],
+        diversions,
+        rollingPlanDate: '2026-09-25',
+        workOrderCreatedDate: '2026-09-20',
+      });
+
+      // The date must be reset to the diversion date 2026-10-20 instead of the old 2026-10-01
+      expect(effDate).toBe('2026-10-20');
+    });
+
+    it('computeAgingReportRows sets has_diversion and resets days_stuck', () => {
+      const asOf = new Date('2026-10-22T00:00:00Z');
+
+      const wipRows: RawWipRow[] = [
+        {
+          work_order_id: 'WO_DIV_2',
+          work_order_no: 'WO-1002',
+          customer_name: 'Industrial Piping Co',
+          grade: 'SA-106B',
+          size_od: 60.3,
+          size_wt: 5.54,
+          route_id: 'R1',
+          stage_id: 'S_HT',
+          stage_code: 'HEAT_TREATMENT',
+          stage_name: 'Heat Treatment',
+          sequence_no: 2,
+          current_wip: 100,
+          current_wip_pcs: 20,
+          ready_mt: 0.75,
+        },
+      ];
+
+      const prodLogs: RawProductionLog[] = [
+        { work_order_id: 'WO_DIV_2', stage_id: 'S_DRAW', process_date: '2026-10-01' },
+      ];
+
+      const diversions = [
+        {
+          id: 'div-2',
+          target_work_order_id: 'WO_DIV_2',
+          target_work_center: 'HEAT_TREATMENT',
+          diverted_pcs: 15,
+          diverted_mtr: 75,
+          source_work_order_id: 'WO_SRC_2',
+          work_orders: { work_order_no: 'WO-SRC-02' },
+          diversion_date: '2026-10-20',
+          remarks: 'Salvaged draw tubes transferred',
+        },
+      ];
+
+      const rows = computeAgingReportRows({
+        wipRows,
+        workOrders: [{ id: 'WO_DIV_2', work_order_no: 'WO-1002', created_at: '2026-09-20' }],
+        productionLogs: prodLogs,
+        qcInspections: [],
+        rollingPlans: [],
+        routeStages: [
+          { route_id: 'R1', stage_id: 'S_DRAW', sequence_no: 1, stage_code: 'DRAW' },
+          { route_id: 'R1', stage_id: 'S_HT', sequence_no: 2, stage_code: 'HEAT_TREATMENT' },
+        ],
+        acknowledgements: [],
+        diversions,
+        asOfDate: asOf,
+      });
+
+      expect(rows).toHaveLength(1);
+      const row = rows[0];
+
+      // Stagnation should be 2 days (2026-10-20 to 2026-10-22), NOT 21 days (2026-10-01 to 2026-10-22)
+      expect(row.last_activity_date).toBe('2026-10-20');
+      expect(row.days_stuck).toBe(2);
+      expect(row.severity).toBe('NORMAL');
+
+      // Diversion metadata for DIV badge
+      expect(row.has_diversion).toBe(true);
+      expect(row.diversion_in_pcs).toBe(15);
+      expect(row.diversion_in_mtr).toBe(75);
+      expect(row.diversion_source_wo).toBe('WO-SRC-02');
+      expect(row.diversion_date).toBe('2026-10-20');
+    });
+
+    it('normalizeAgingRow attaches diversion metadata and recalculates days stuck', () => {
+      const rawViewRow = {
+        work_order_id: 'WO_NORM_1',
+        work_order_no: 'WO-NORM-01',
+        customer_name: 'Apex Tube',
+        stage_code: 'DRAW',
+        current_wip: 200,
+        current_wip_pcs: 30,
+        last_activity_date: '2026-10-01',
+        days_stuck: 25,
+        severity: 'CRITICAL',
+      };
+
+      const diversions = [
+        {
+          id: 'div-3',
+          target_work_order_id: 'WO_NORM_1',
+          target_work_center: 'DRAW',
+          diverted_pcs: 10,
+          diverted_mtr: 60,
+          source_work_order_id: 'WO_SRC_3',
+          work_orders: { work_order_no: 'WO-SRC-03' },
+          diversion_date: new Date().toISOString().slice(0, 10), // Today
+        },
+      ];
+
+      const normalized = normalizeAgingRow(rawViewRow, [], undefined, [], diversions);
+
+      expect(normalized.has_diversion).toBe(true);
+      expect(normalized.diversion_source_wo).toBe('WO-SRC-03');
+      expect(normalized.days_stuck).toBe(0);
+      expect(normalized.severity).toBe('NORMAL');
+    });
+  });
 });
 

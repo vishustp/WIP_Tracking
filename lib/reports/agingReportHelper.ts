@@ -27,6 +27,12 @@ export interface AgingRow {
   acknowledged_by?: string | null;
   ack_notes?: string | null;
   ack_snooze_until?: string | null;
+  has_diversion?: boolean;
+  diversion_in_pcs?: number;
+  diversion_in_mtr?: number;
+  diversion_source_wo?: string | null;
+  diversion_remarks?: string | null;
+  diversion_date?: string | null;
 }
 
 export interface AgingKpiSummary {
@@ -144,6 +150,36 @@ export interface RawRejectionDeclaration {
   status?: string | null;
 }
 
+export interface RawDiversionPlan {
+  id?: string;
+  source_wo_id?: string;
+  source_work_order_id?: string;
+  target_wo_id?: string;
+  target_work_order_id?: string;
+  diverted_qty?: number;
+  diverted_pcs?: number;
+  diverted_mtr?: number;
+  work_center?: string;
+  target_work_center?: string;
+  source_work_center?: string;
+  multiple?: number;
+  process_route_id?: string;
+  reason?: string | null;
+  remarks?: string | null;
+  diversion_date?: string | null;
+  created_at?: string;
+  work_orders?: { work_order_no?: string };
+}
+
+export function parseDivStages(d: any) {
+  const reasonStr = String(d.reason || d.remarks || "");
+  const fromMatch = reasonStr.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i);
+  const toMatch = reasonStr.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i);
+  const sourceStage = (fromMatch ? fromMatch[1] : (d.source_work_center || d.work_center || "ROLLING")).toUpperCase();
+  const targetStage = (toMatch ? toMatch[1] : (d.target_work_center || d.work_center || "ROLLING")).toUpperCase();
+  return { sourceStage, targetStage };
+}
+
 export const AGING_STAGES = [
   { code: 'ALL', name: 'All Work Centers' },
   { code: 'HOLLOW_HEAT_TREATMENT', name: 'Hollow Heat Treatment (HTC)' },
@@ -200,6 +236,7 @@ export function determineStageEffectiveActivityDate(params: {
   qcInspections: RawQcInspection[];
   rollingPlanDate?: string | null;
   workOrderCreatedDate?: string | null;
+  diversions?: RawDiversionPlan[];
 }): string {
   const {
     workOrderId,
@@ -212,6 +249,7 @@ export function determineStageEffectiveActivityDate(params: {
     qcInspections,
     rollingPlanDate,
     workOrderCreatedDate,
+    diversions = [],
   } = params;
 
   // 1. Check current stage activity
@@ -259,22 +297,43 @@ export function determineStageEffectiveActivityDate(params: {
     }
   }
 
-  // 3. Fallbacks: Rolling plan date or work order creation date
+  // 3. Check diversion activity affecting this stage or upstream feeding stages
+  let diversionDate: string | null = null;
+  if (Array.isArray(diversions) && diversions.length > 0) {
+    const upstreamStageCodes = new Set(
+      upstreamStages.map((u) => (u.stage_code || u.process_stages?.stage_code || '').toUpperCase())
+    );
+    for (const d of diversions) {
+      const targetWo = d.target_work_order_id || d.target_wo_id;
+      const sourceWo = d.source_work_order_id || d.source_wo_id;
+      const isTarget = targetWo === workOrderId;
+      const isSource = sourceWo === workOrderId;
+      if (!isTarget && !isSource) continue;
+
+      const st = parseDivStages(d);
+      const divStage = isTarget ? st.targetStage : st.sourceStage;
+
+      // Diversion at the current work center or into an upstream feeding stage
+      if (divStage === currentStageCode || (isTarget && upstreamStageCodes.has(divStage))) {
+        const dDate = (d.diversion_date || d.created_at || '').slice(0, 10);
+        if (dDate && (!diversionDate || dDate > diversionDate)) {
+          diversionDate = dDate;
+        }
+      }
+    }
+  }
+
+  // 4. Fallbacks: Rolling plan date or work order creation date
   const fallbackDate =
     rollingPlanDate?.slice(0, 10) ||
     workOrderCreatedDate?.slice(0, 10) ||
     new Date().toISOString().slice(0, 10);
 
-  // 4. Determine effective date:
-  // If both current and upstream have dates, take the latest one (most recent activity or inflow)
-  if (currentStageDate && upstreamDate) {
-    return currentStageDate > upstreamDate ? currentStageDate : upstreamDate;
-  }
-  if (currentStageDate) {
-    return currentStageDate;
-  }
-  if (upstreamDate) {
-    return upstreamDate;
+  // 5. Determine effective date:
+  // Diversion resets the aging clock if it is the latest event or introduced material
+  const candidateDates = [currentStageDate, upstreamDate, diversionDate].filter(Boolean) as string[];
+  if (candidateDates.length > 0) {
+    return candidateDates.sort().reverse()[0];
   }
   return fallbackDate;
 }
@@ -291,6 +350,7 @@ export function computeAgingReportRows(options: {
   routeStages?: RawRouteStage[];
   acknowledgements?: RawAcknowledgement[];
   rejectionDeclarations?: RawRejectionDeclaration[];
+  diversions?: RawDiversionPlan[];
   asOfDate?: Date | string;
 }): AgingRow[] {
   const {
@@ -302,6 +362,7 @@ export function computeAgingReportRows(options: {
     routeStages = [],
     acknowledgements = [],
     rejectionDeclarations = [],
+    diversions = [],
     asOfDate = new Date(),
   } = options;
 
@@ -448,7 +509,7 @@ export function computeAgingReportRows(options: {
         ? Number(r.current_wip_mt || r.available_mt)
         : Number(computedMt.toFixed(3));
 
-      // Calculate effective activity date
+      // Calculate effective activity date (reset after diversion if latest)
       const effDate = determineStageEffectiveActivityDate({
         workOrderId: r.work_order_id,
         routeId: r.route_id,
@@ -460,6 +521,7 @@ export function computeAgingReportRows(options: {
         qcInspections,
         rollingPlanDate: plan?.rolling_date,
         workOrderCreatedDate: wo?.created_at || r.created_at,
+        diversions,
       });
 
       const daysStuck = calculateDaysStuck(effDate, asOfDate);
@@ -476,6 +538,38 @@ export function computeAgingReportRows(options: {
       const woQc = isSalvageStage ? qcInspections.filter((q) => q.work_order_id === r.work_order_id) : [];
       const vdiSalvagePcs = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0) : 0;
       const vdiSalvageMtr = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0) : 0;
+
+      // Diversion details
+      const divMatching = diversions.filter((d: any) => {
+        const targetWo = d.target_work_order_id || d.target_wo_id;
+        return targetWo === r.work_order_id && parseDivStages(d).targetStage === sc;
+      });
+      const anyWoDiv = diversions.filter((d: any) => {
+        const targetWo = d.target_work_order_id || d.target_wo_id;
+        return targetWo === r.work_order_id;
+      });
+      const hasDiv = divMatching.length > 0 || anyWoDiv.length > 0;
+      const targetDivs = divMatching.length > 0 ? divMatching : anyWoDiv;
+      const divMtr = targetDivs.reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
+      const divPcs = targetDivs.reduce((sum, d: any) => sum + Number(d.diverted_pcs ?? 0), 0) || divMatching.reduce((sum, d: any) => {
+        const l1 = Number(r.l1 ?? wo?.l1) || 6.0;
+        return sum + (l1 > 0 ? Math.round(Number(d.diverted_qty ?? d.diverted_mtr ?? 0) / l1) : 0);
+      }, 0) || Number((r as any).diversion_in_pcs || 0);
+      const divSourceWo = Array.from(
+        new Set(
+          targetDivs
+            .map((d: any) => {
+              const srcId = d.source_work_order_id || d.source_wo_id;
+              return d.work_orders?.work_order_no || woMap.get(srcId)?.work_order_no || srcId?.slice(0, 8);
+            })
+            .filter(Boolean)
+        )
+      ).join(', ') || (r as any).diversion_source_wo || null;
+      const latestDivDate = targetDivs
+        .map((d) => (d.diversion_date || d.created_at || '').slice(0, 10))
+        .filter(Boolean)
+        .sort()
+        .reverse()[0] || null;
 
       return {
         work_order_id: r.work_order_id,
@@ -502,6 +596,12 @@ export function computeAgingReportRows(options: {
         acknowledged_by: ack?.acknowledged_by || null,
         ack_notes: ack?.notes || null,
         ack_snooze_until: ack?.snooze_until || null,
+        has_diversion: hasDiv && (divMtr > 0 || divPcs > 0 || Boolean((r as any).has_diversion)),
+        diversion_in_pcs: divPcs,
+        diversion_in_mtr: Number(divMtr.toFixed(2)) || Number((r as any).diversion_in_mtr || 0),
+        diversion_source_wo: divSourceWo,
+        diversion_remarks: targetDivs.map((d: any) => d.reason || d.remarks).filter(Boolean).join('; ') || (r as any).diversion_remarks || null,
+        diversion_date: latestDivDate || (r as any).diversion_date || null,
       };
     });
 
@@ -679,14 +779,12 @@ export function normalizeAgingRow(
   raw: any,
   localAcks: RawAcknowledgement[] = [],
   todayStr: string = new Date().toISOString().slice(0, 10),
-  rejectionDeclarations: RawRejectionDeclaration[] = []
+  rejectionDeclarations: RawRejectionDeclaration[] = [],
+  diversions: RawDiversionPlan[] = []
 ): AgingRow {
-  const daysStuck = Number(raw.days_stuck) || 0;
+  let daysStuck = Number(raw.days_stuck) || 0;
 
-  // Strict domain rule: > 5 days is CRITICAL, 3-5 days is WARNING, <= 2 days is NORMAL
-  const severity: AgingSeverity = calculateAgingSeverity(daysStuck);
-
-  const lastActivityDate =
+  let lastActivityDate =
     raw.last_activity_date ||
     raw.effective_reference_date ||
     raw.stage_last_log_date ||
@@ -694,6 +792,33 @@ export function normalizeAgingRow(
     raw.rolling_plan_date ||
     raw.wo_created_date ||
     '—';
+
+  // Check diversions affecting this work order and stage
+  const sc = String(raw.stage_code || '').toUpperCase();
+  const divMatching = diversions.filter((d: any) => {
+    const targetWo = d.target_work_order_id || d.target_wo_id;
+    return targetWo === raw.work_order_id && parseDivStages(d).targetStage === sc;
+  });
+  const anyWoDiv = diversions.filter((d: any) => {
+    const targetWo = d.target_work_order_id || d.target_wo_id;
+    return targetWo === raw.work_order_id;
+  });
+  const targetDivs = divMatching.length > 0 ? divMatching : anyWoDiv;
+  const hasDiv = Boolean(raw.has_diversion) || targetDivs.length > 0;
+  const latestDivDate = targetDivs
+    .map((d: any) => (d.diversion_date || d.created_at || '').slice(0, 10))
+    .filter(Boolean)
+    .sort()
+    .reverse()[0] || null;
+
+  // Reset aging date if diversion is more recent or material arrived via diversion
+  if (latestDivDate && (lastActivityDate === '—' || latestDivDate > lastActivityDate)) {
+    lastActivityDate = latestDivDate;
+    daysStuck = calculateDaysStuck(latestDivDate, todayStr);
+  }
+
+  // Strict domain rule: > 5 days is CRITICAL, 3-5 days is WARNING, <= 2 days is NORMAL
+  const severity: AgingSeverity = calculateAgingSeverity(daysStuck);
 
   const matchLocal = localAcks.find(
     (a) => a.work_order_id === raw.work_order_id && a.stage_code === raw.stage_code
@@ -709,7 +834,6 @@ export function normalizeAgingRow(
 
   const isAcknowledged = isLocalAckActive || isDbAckActive;
 
-  const sc = String(raw.stage_code || '').toUpperCase();
   const matchingRejs = (rejectionDeclarations || []).filter(
     (rd) =>
       rd.work_order_id === raw.work_order_id &&
@@ -740,40 +864,56 @@ export function normalizeAgingRow(
   const currentWip = Math.max(0, rawWipMtr - rejDeclMtr);
   const currentWipPcs = Math.max(0, rawWipPcs - rejDeclPcs);
 
-    const isSalvage = String(raw.stage_code || '').toUpperCase() === 'VDI_SALVAGE' ||
-      String(raw.stage_name || '').toUpperCase().includes('SALVAGE');
-    const isVdi = String(raw.stage_code || '').toUpperCase() === 'VDI';
-    const salvagePcs = (isSalvage || isVdi)
-      ? (Number(raw.vdi_salvage_pcs) > 0 ? Number(raw.vdi_salvage_pcs) : (isSalvage ? currentWipPcs : 0))
-      : 0;
-    const salvageMtr = (isSalvage || isVdi)
-      ? (Number(raw.vdi_salvage_mtr) > 0 ? Number(raw.vdi_salvage_mtr) : (isSalvage ? currentWip : 0))
-      : 0;
+  const isSalvage = String(raw.stage_code || '').toUpperCase() === 'VDI_SALVAGE' ||
+    String(raw.stage_name || '').toUpperCase().includes('SALVAGE');
+  const isVdi = String(raw.stage_code || '').toUpperCase() === 'VDI';
+  const salvagePcs = (isSalvage || isVdi)
+    ? (Number(raw.vdi_salvage_pcs) > 0 ? Number(raw.vdi_salvage_pcs) : (isSalvage ? currentWipPcs : 0))
+    : 0;
+  const salvageMtr = (isSalvage || isVdi)
+    ? (Number(raw.vdi_salvage_mtr) > 0 ? Number(raw.vdi_salvage_mtr) : (isSalvage ? currentWip : 0))
+    : 0;
 
-    return {
-      work_order_id: String(raw.work_order_id || ''),
-      work_order_no: String(raw.work_order_no || ''),
-      customer_name: raw.customer_name || null,
-      grade: raw.grade || null,
-      od: Number(raw.od ?? raw.size_od) || 0,
-      wt: Number(raw.wt ?? raw.size_wt) || 0,
-      l1: raw.l1 != null ? Number(raw.l1) : null,
-      l2: raw.l2 != null ? Number(raw.l2) : null,
-      stage_id: raw.stage_id ? String(raw.stage_id) : undefined,
-      stage_code: String(raw.stage_code || ''),
-      stage_name: String(raw.stage_name || raw.stage_code || ''),
-      sequence_no: raw.sequence_no != null ? Number(raw.sequence_no) : undefined,
-      current_wip: currentWip,
-      current_wip_pcs: currentWipPcs,
-      available_mt: Number(raw.available_mt ?? raw.current_wip_mt) || 0,
-      last_activity_date: lastActivityDate,
-      days_stuck: daysStuck,
-      severity,
-      is_acknowledged: isAcknowledged,
-      acknowledged_by: matchLocal?.acknowledged_by || raw.acknowledged_by || null,
-      ack_notes: matchLocal?.notes || raw.ack_notes || null,
-      ack_snooze_until: matchLocal?.snooze_until || raw.ack_snooze_until || null,
-      vdi_salvage_pcs: salvagePcs,
-      vdi_salvage_mtr: salvageMtr,
-    };
-  }
+  const divMtr = targetDivs.reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
+  const divPcs = targetDivs.reduce((sum, d: any) => sum + Number(d.diverted_pcs ?? 0), 0) || Number(raw.diversion_in_pcs) || 0;
+  const divSourceWo = Array.from(
+    new Set(
+      targetDivs
+        .map((d: any) => d.work_orders?.work_order_no || (d.source_work_order_id || d.source_wo_id)?.slice(0, 8))
+        .filter(Boolean)
+    )
+  ).join(', ') || raw.diversion_source_wo || null;
+
+  return {
+    work_order_id: String(raw.work_order_id || ''),
+    work_order_no: String(raw.work_order_no || ''),
+    customer_name: raw.customer_name || null,
+    grade: raw.grade || null,
+    od: Number(raw.od ?? raw.size_od) || 0,
+    wt: Number(raw.wt ?? raw.size_wt) || 0,
+    l1: raw.l1 != null ? Number(raw.l1) : null,
+    l2: raw.l2 != null ? Number(raw.l2) : null,
+    stage_id: raw.stage_id ? String(raw.stage_id) : undefined,
+    stage_code: String(raw.stage_code || ''),
+    stage_name: String(raw.stage_name || raw.stage_code || ''),
+    sequence_no: raw.sequence_no != null ? Number(raw.sequence_no) : undefined,
+    current_wip: currentWip,
+    current_wip_pcs: currentWipPcs,
+    available_mt: Number(raw.available_mt ?? raw.current_wip_mt) || 0,
+    last_activity_date: lastActivityDate,
+    days_stuck: daysStuck,
+    severity,
+    is_acknowledged: isAcknowledged,
+    acknowledged_by: matchLocal?.acknowledged_by || raw.acknowledged_by || null,
+    ack_notes: matchLocal?.notes || raw.ack_notes || null,
+    ack_snooze_until: matchLocal?.snooze_until || raw.ack_snooze_until || null,
+    vdi_salvage_pcs: salvagePcs,
+    vdi_salvage_mtr: salvageMtr,
+    has_diversion: hasDiv,
+    diversion_in_pcs: divPcs,
+    diversion_in_mtr: Number(divMtr.toFixed(2)) || Number(raw.diversion_in_mtr) || 0,
+    diversion_source_wo: divSourceWo,
+    diversion_remarks: targetDivs.map((d: any) => d.reason || d.remarks).filter(Boolean).join('; ') || raw.diversion_remarks || null,
+    diversion_date: latestDivDate || raw.diversion_date || null,
+  };
+}

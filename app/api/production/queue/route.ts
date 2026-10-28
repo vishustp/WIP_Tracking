@@ -252,7 +252,7 @@ export async function GET(req: NextRequest) {
         .select("id, work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr, remarks"),
       admin
         .from("diversion_plans")
-        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id, reason"),
+        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id, reason, diversion_date, created_at"),
       admin
         .from("rejection_declarations")
         .select("id, work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status")
@@ -378,12 +378,18 @@ export async function GET(req: NextRequest) {
         )
       );
       const remarks = matching.map((d: any) => d.reason).filter(Boolean).join("; ");
+      const latestDivDate = matching
+        .map((d: any) => (d.diversion_date || d.created_at || "").slice(0, 10))
+        .filter(Boolean)
+        .sort()
+        .reverse()[0] || null;
       return {
         has_diversion: totalMtr > 0 || totalPcs > 0,
         diversion_in_pcs: totalPcs,
         diversion_in_mtr: Number(totalMtr.toFixed(2)),
         diversion_source_wo: sourceWoList.join(", ") || null,
         diversion_remarks: remarks || null,
+        diversion_date: latestDivDate,
       };
     };
 
@@ -396,6 +402,7 @@ export async function GET(req: NextRequest) {
           diversion_in_mtr: 0,
           diversion_source_wo: null,
           diversion_remarks: null,
+          diversion_date: null,
         };
       }
       const totalMtr = matching.reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
@@ -410,12 +417,18 @@ export async function GET(req: NextRequest) {
         )
       );
       const remarks = matching.map((d: any) => d.reason).filter(Boolean).join("; ");
+      const latestDivDate = matching
+        .map((d: any) => (d.diversion_date || d.created_at || "").slice(0, 10))
+        .filter(Boolean)
+        .sort()
+        .reverse()[0] || null;
       return {
         has_diversion: totalMtr > 0,
         diversion_in_pcs: 0,
         diversion_in_mtr: Number(totalMtr.toFixed(2)),
         diversion_source_wo: sourceWoList.join(", ") || null,
         diversion_remarks: remarks || null,
+        diversion_date: latestDivDate,
       };
     };
 
@@ -1721,6 +1734,7 @@ export async function GET(req: NextRequest) {
         diversion_in_mtr: woDivDetails.diversion_in_mtr,
         diversion_source_wo: woDivDetails.diversion_source_wo,
         diversion_remarks: woDivDetails.diversion_remarks,
+        diversion_date: woDivDetails.diversion_date,
         od: woOd,
         wl: woWt,
         final_od: woOd,
@@ -1900,6 +1914,27 @@ export async function GET(req: NextRequest) {
       const bsDivDetails = getStageDivDetails(woId, "BAND_SAW", avgLength);
       const vdiDivDetails = getStageDivDetails(woId, "VDI", avgLength);
       const finDivDetails = getStageDivDetails(woId, "FINISHING", avgLength);
+      const ipCutDivDetails = getStageDivDetails(woId, "IP_CUTTING", ipCutLength > 0 ? ipCutLength : (effMhAvg > 0 ? effMhAvg : avgLength));
+
+      const getStageActivityDate = (
+        stageLogs: any[],
+        precedingLogs: any[],
+        stageDiv: { diversion_date?: string | null; has_diversion?: boolean }
+      ) => {
+        const dates: string[] = [];
+        if (stageDiv.diversion_date) dates.push(stageDiv.diversion_date.slice(0, 10));
+        for (const l of stageLogs) {
+          const d = (l.process_date || l.inspection_date || l.created_at || "").slice(0, 10);
+          if (d) dates.push(d);
+        }
+        for (const l of precedingLogs) {
+          const d = (l.process_date || l.inspection_date || l.created_at || "").slice(0, 10);
+          if (d) dates.push(d);
+        }
+        if (rollingDate) dates.push(rollingDate.slice(0, 10));
+        if (wo.created_at) dates.push(wo.created_at.slice(0, 10));
+        return dates.sort().reverse()[0] || null;
+      };
 
       const queueRows: Record<StageCode, Row | null> = {
         HOT_ROLLING:
@@ -1907,6 +1942,7 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 ...(rollDivDetails.has_diversion ? rollDivDetails : {}),
+                last_activity_date: getStageActivityDate(hotRollLogs, [], rollDivDetails),
                 od: woOd,
                 wl: woWt,
                 l1: mhL1 > 0 ? mhL1 : l1,
@@ -1940,6 +1976,7 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 ...(htcDivDetails.has_diversion ? htcDivDetails : {}),
+                last_activity_date: getStageActivityDate(htcLogs, hotRollLogs, htcDivDetails),
                 od: woOd,
                 wl: woWt,
                 l1: mhL1 > 0 ? mhL1 : l1,
@@ -1970,6 +2007,7 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 ...(legacyRollDivDetails.has_diversion ? legacyRollDivDetails : {}),
+                last_activity_date: getStageActivityDate(rollLogs, hotRollLogs, legacyRollDivDetails),
                 od: woOd,
                 wl: woWt,
                 l1: mhL1 > 0 ? mhL1 : l1,
@@ -1999,6 +2037,7 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 ...(hhtDivDetails.has_diversion ? hhtDivDetails : {}),
+                last_activity_date: getStageActivityDate(hollowHtLogs, rollLogs, hhtDivDetails),
                 od: woOd,
                 wl: woWt,
                 l1: mhL1 > 0 ? mhL1 : l1,
@@ -2027,6 +2066,8 @@ export async function GET(req: NextRequest) {
           isIpCutting && (isIpCutReady || isIpCutFeeder)
             ? {
                 ...baseRowData,
+                ...(ipCutDivDetails.has_diversion ? ipCutDivDetails : {}),
+                last_activity_date: getStageActivityDate(ipCutLogs, isAlloy ? hollowHtLogs : htcLogs, ipCutDivDetails),
                 stage_code: "IP_CUTTING",
                 stage_name: "IP Cutting (Band Saw)",
                 od: mhOd > 0 ? mhOd : woOd,
@@ -2061,6 +2102,7 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 ...(drawDivDetails.has_diversion ? drawDivDetails : {}),
+                last_activity_date: getStageActivityDate(drawLogs, isIpCutting ? ipCutLogs : (isAlloy ? hollowHtLogs : rollLogs), drawDivDetails),
                 od: woOd,
                 wl: woWt,
                 avg_length: effDrawLen > 0 ? effDrawLen : avgLength,
@@ -2092,6 +2134,7 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 ...(pilgerDivDetails.has_diversion ? pilgerDivDetails : {}),
+                last_activity_date: getStageActivityDate(pilgerLogs, rollLogs, pilgerDivDetails),
                 od: woOd,
                 wl: woWt,
                 avg_length: effPilgerLen > 0 ? effPilgerLen : avgLength,
@@ -2119,6 +2162,7 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 ...(htDivDetails.has_diversion ? htDivDetails : {}),
+                last_activity_date: getStageActivityDate(htLogs, isSsSteel ? pilgerLogs : drawLogs, htDivDetails),
                 stage_code: "HEAT_TREATMENT",
                 balance_to_make_mtr: isHtReady ? htAvailMtr : htFeederMtr,
                 balance_to_make_pcs: isHtReady ? htAvailPcs : htFeederPcs,
@@ -2143,6 +2187,7 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 ...(bsDivDetails.has_diversion ? bsDivDetails : {}),
+                last_activity_date: getStageActivityDate(bandSawLogs, (isCds || isSsSteel) ? htLogs : (isAlloy ? hollowHtLogs : rollLogs), bsDivDetails),
                 stage_code: "BAND_SAW",
                 heat_lot_no: latestHtLotNo,
                 heat_lots: htLots,
@@ -2170,6 +2215,7 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 ...(vdiDivDetails.has_diversion ? vdiDivDetails : {}),
+                last_activity_date: getStageActivityDate(woQcList, bandSawLogs, vdiDivDetails),
                 stage_code: "VDI",
                 heat_lot_no: latestBandSawLotNo,
                 heat_lots: vdiLots,
@@ -2199,6 +2245,7 @@ export async function GET(req: NextRequest) {
             ? {
                 ...baseRowData,
                 ...(finDivDetails.has_diversion ? finDivDetails : {}),
+                last_activity_date: getStageActivityDate(woFinLogs, woQcList, finDivDetails),
                 stage_code: "FINISHING",
                 balance_to_make_mtr: isFinReady ? finAvailMtr : finFeederMtr,
                 balance_to_make_pcs: isFinReady ? finAvailPcs : finFeederPcs,
@@ -2351,14 +2398,18 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      const remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut).toFixed(3)));
+      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut).toFixed(3)));
       const remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs);
+      if (remSalvagePcs > 0 && remSalvageMtr <= 0 && avgLength > 0) {
+        remSalvageMtr = Number((remSalvagePcs * avgLength).toFixed(3));
+      }
       const remSalvageMt = mtFromMtr(remSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       const vdiSalvageRow: Row | null =
         (remSalvagePcs >= 1 || remSalvageMtr >= 1.0)
           ? {
               ...baseRowData,
+              last_activity_date: getStageActivityDate(woQcList, bandSawLogs, vdiDivDetails),
               stage_code: "VDI_SALVAGE" as any,
               stage_name: "VDI Salvage",
               heat_lot_no: latestBandSawLotNo,
@@ -2590,6 +2641,7 @@ export async function GET(req: NextRequest) {
             if (plAvailPcs >= 1 && plAvailMtr >= 1.0) {
               rollingPlanRows.push({
                 ...baseRowData,
+                last_activity_date: getStageActivityDate(directPlLogs, [], legacyRollDivDetails),
                 od: plMhOd > 0 ? plMhOd : baseRowData.od,
                 wl: plMhWt > 0 ? plMhWt : baseRowData.wl,
                 avg_length: effPlMhAvg > 0 ? effPlMhAvg : baseRowData.avg_length,

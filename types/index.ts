@@ -131,6 +131,8 @@ export interface Row {
   diversion_in_mtr?: number | null;
   diversion_source_wo?: string | null;
   diversion_remarks?: string | null;
+  diversion_date?: string | null;
+  last_activity_date?: string | null;
 
   // Intermediate Pipe Cutting (IP Cutting) pre-draw parameters
   is_ip_cutting?: boolean;
