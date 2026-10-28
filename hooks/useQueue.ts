@@ -587,7 +587,9 @@ export function useQueue(stage: StageCode) {
           }
         }
 
-        setRows(enriched.filter((r) => Number(r.balance_to_make_mtr || 0) > 0 || Number(r.balance_to_make_pcs || 0) > 0 || Number(r.max_allowed_pcs || 0) > 0));
+        // In Rolling production entry, 104% tolerance is not mandatory to enter.
+        // Do not show 0 pcs in Rolling production entry: only include plans with >= 1 balance pcs remaining.
+        setRows(enriched.filter((r) => Number(r.balance_to_make_pcs || 0) >= 1 && Number(r.balance_to_make_mtr || 0) >= 1.0));
       } else if (isMasterOnlyStage) {
         const hollowHtStageId = stages.find((st: any) => st.stage_code === "HOLLOW_HEAT_TREATMENT")?.id;
         const drawStageId = stages.find((st: any) => st.stage_code === "DRAW")?.id;

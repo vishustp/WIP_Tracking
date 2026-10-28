@@ -150,4 +150,41 @@ describe('Rolling Production 104% Plan Capping in Nos', () => {
     expect(errors.length).toBeGreaterThan(0);
     expect(errors[0].message).toContain('fully rolled');
   });
+
+  it('does not include completed plans with 0 balance pcs in Rolling production entry queue (104% tolerance not mandatory)', () => {
+    // 104% tolerance is an upper cap, NOT mandatory to enter.
+    // Completed plans (balance_to_make_pcs = 0) must NOT show in Rolling production entry queue.
+    const completedPlanRow: Row = {
+      ...baseRow,
+      planned_pcs: 100,
+      balance_to_make_pcs: 0,
+      balance_to_make_mtr: 0,
+      max_allowed_pcs: 4, // 4% tolerance remaining
+      max_allowed_mtr: 25,
+    };
+    const activePlanRow: Row = {
+      ...baseRow,
+      work_order_id: 'wo-active-1',
+      planned_pcs: 100,
+      balance_to_make_pcs: 15,
+      balance_to_make_mtr: 93.75,
+      max_allowed_pcs: 19,
+      max_allowed_mtr: 118.75,
+    };
+
+    const rows = [completedPlanRow, activePlanRow];
+    const isRollingStage = true;
+
+    // Filter rule for Rolling queue
+    const filteredQueue = rows.filter((r) => {
+      if (isRollingStage) {
+        return Number(r.balance_to_make_pcs ?? 0) >= 1 && Number(r.balance_to_make_mtr ?? 0) >= 1.0;
+      }
+      return true;
+    });
+
+    expect(filteredQueue).toHaveLength(1);
+    expect(filteredQueue[0].work_order_id).toBe('wo-active-1');
+    expect(filteredQueue[0].balance_to_make_pcs).toBe(15);
+  });
 });

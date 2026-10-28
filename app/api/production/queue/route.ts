@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
       } else if (targetStage === "ROLLING") {
         selectedRows.push(
           ...memoryCache.rollingPlanRows.filter(
-            (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.max_allowed_pcs ?? 0) >= 1
+            (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 && Number(r.balance_to_make_mtr ?? 0) >= 1.0
           )
         );
       } else {
@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
           if (st === "ROLLING") {
             selectedRows.push(
               ...memoryCache.rollingPlanRows.filter(
-                (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.max_allowed_pcs ?? 0) >= 1
+                (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 && Number(r.balance_to_make_mtr ?? 0) >= 1.0
               )
             );
           } else if ((st as string) === "VDI_SALVAGE") {
@@ -2584,7 +2584,10 @@ export async function GET(req: NextRequest) {
 
             const plAvailMt = mtFromMtr(plAvailMtr, plMhOd, plMhWt);
 
-            if (plAvailMtr >= 1.0 || plAvailPcs >= 1 || plMaxAllowedPcs >= 1) {
+            // In Rolling production entry, 104% tolerance is not mandatory to enter.
+            // When plan pieces have been fulfilled (plAvailPcs < 1 or plAvailMtr < 1.0),
+            // do not show 0 pcs in Rolling production entry.
+            if (plAvailPcs >= 1 && plAvailMtr >= 1.0) {
               rollingPlanRows.push({
                 ...baseRowData,
                 od: plMhOd > 0 ? plMhOd : baseRowData.od,
@@ -2867,7 +2870,7 @@ export async function GET(req: NextRequest) {
     } else if (targetStage === "HOT_ROLLING" || targetStage === "ROLLING") {
       selectedRows.push(
         ...rollingPlanRows.map(r => ({ ...r, stage_code: targetStage === "HOT_ROLLING" ? "HOT_ROLLING" as StageCode : "ROLLING" as StageCode })).filter(
-          (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.max_allowed_pcs ?? 0) >= 1
+          (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 && Number(r.balance_to_make_mtr ?? 0) >= 1.0
         )
       );
     } else {
@@ -2875,7 +2878,7 @@ export async function GET(req: NextRequest) {
         if (st === "HOT_ROLLING" || st === "ROLLING") {
           selectedRows.push(
             ...rollingPlanRows.map(r => ({ ...r, stage_code: st })).filter(
-              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 || Number(r.balance_to_make_mtr ?? 0) >= 1.0 || Number(r.max_allowed_pcs ?? 0) >= 1
+              (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 && Number(r.balance_to_make_mtr ?? 0) >= 1.0
             )
           );
         } else if ((st as string) === "VDI_SALVAGE") {

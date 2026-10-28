@@ -253,7 +253,18 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
   // Filter queue rows by Work Order No, Customer, Grade, Master Plan No, or Child Work Orders
   const filteredRows = useMemo(() => {
-    const nonHollowRows = rows.filter((r) => !isHollowBankOrder(r));
+    const isRollingStage = stage === 'HOT_ROLLING' || stage === 'ROLLING';
+    const nonHollowRows = rows
+      .filter((r) => !isHollowBankOrder(r))
+      .filter((r) => {
+        // In Rolling production entry, 104% tolerance is not mandatory to enter.
+        // Do not show 0 pcs in Rolling production entry:
+        if (isRollingStage) {
+          const balPcs = Number(r.balance_to_make_pcs ?? 0);
+          return balPcs >= 1;
+        }
+        return true;
+      });
     if (!woFilter.trim()) return nonHollowRows;
     const q = woFilter.toLowerCase().trim();
     const cleanQ = q.replace(/[^a-z0-9]/g, '');
@@ -456,23 +467,27 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       const baseList = serverSummary.map((s) => ({ ...s }));
       const activeItem = baseList.find((x) => x.stage_code === stage);
       if (activeItem) {
-        activeItem.availMtr = rows.reduce(
-          (sum, r) => sum + Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0),
+        const isRolling = stage === 'HOT_ROLLING' || stage === 'ROLLING';
+        const activeRows = isRolling
+          ? rows.filter((r) => Number(r.balance_to_make_pcs ?? 0) >= 1)
+          : rows;
+        activeItem.availMtr = activeRows.reduce(
+          (sum, r) => sum + Number(r.balance_to_make_mtr ?? (isRolling ? 0 : r.max_allowed_mtr) ?? 0),
           0
         );
-        activeItem.availPcs = rows.reduce(
-          (sum, r) => sum + Number(r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0),
+        activeItem.availPcs = activeRows.reduce(
+          (sum, r) => sum + Number(r.balance_to_make_pcs ?? (isRolling ? 0 : r.max_allowed_pcs) ?? 0),
           0
         );
-        activeItem.availMt = rows.reduce((sum, r) => {
+        activeItem.availMt = activeRows.reduce((sum, r) => {
           const isMhStage = stage === 'ROLLING' || stage === 'HOLLOW_HEAT_TREATMENT' || stage === 'DRAW';
           const planMh = planMhMap.get(r.work_order_id) || (r.work_order_no ? planMhMap.get(String(r.work_order_no).trim()) : undefined);
           const od = isMhStage ? Number(r.mh_od || planMh?.mh_od || r.od || 0) : Number(r.od || 0);
           const wt = isMhStage ? Number(r.mh_wt || planMh?.mh_wt || r.wl || 0) : Number(r.wl || 0);
-          const mtrVal = Number(r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
+          const mtrVal = Number(r.balance_to_make_mtr ?? (isRolling ? 0 : r.max_allowed_mtr) ?? 0);
           return sum + mtFromMtr(mtrVal, od, wt);
         }, 0);
-        activeItem.count = rows.length;
+        activeItem.count = activeRows.length;
       }
       return baseList;
     }

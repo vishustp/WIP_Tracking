@@ -53,6 +53,12 @@ export function ProductionQueueRow({
       ? Math.round(availMtr / effAvg)
       : 0;
 
+  // In Rolling production entry, 104% tolerance is not mandatory to enter.
+  // Do not show 0 pcs in production entry of Rolling.
+  if (isRollingStage && availPcs <= 0) {
+    return null;
+  }
+
   return (
     <tr id={`row-${key}`} className="group hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
       {/* Order Information (Frozen Left Column) */}
