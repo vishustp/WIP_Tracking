@@ -28,6 +28,7 @@ import {
   ArrowRightLeft,
 } from 'lucide-react';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
+import { useOptionalUserSession } from '@/contexts/UserSessionContext';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import { buildCampaignHierarchyMaps, reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
 import { DrawReductionBadge } from '@/components/diversions/DrawReductionBadge';
@@ -576,6 +577,7 @@ const fmt = (n: number | null | undefined, digits = 2) =>
 
 export default function DiversionForm() {
   const { user } = usePermissions();
+  const session = useOptionalUserSession();
   const formAccess = useMemo(() => getFormAccess(user, 'diversion'), [user]);
   const canManagePlans = formAccess.isAllowed;
 
@@ -945,7 +947,8 @@ export default function DiversionForm() {
           finalReason = `Cut & Multi-Order Diversion (#${i + 1}/${externalSplits.length}): Mother ${payload.motherPcs} pcs @ ${payload.motherLength}m cut from middle. Diverting ${payload.motherPcs} pcs @ ${split.cut_length}m (${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}]. ${sameOrderDesc} ${remnantTag}`.trim();
         }
 
-        const { error: insErr } = await supabase.from('diversion_plans').insert({
+        const approverAuthId = user?.auth_user_id || session?.user?.id || null;
+        let { error: insErr } = await supabase.from('diversion_plans').insert({
           source_wo_id: source,
           target_wo_id: split.target_wo_id,
           diverted_qty: splitMtr,
@@ -953,9 +956,23 @@ export default function DiversionForm() {
           process_route_id: route || (routes.length ? routes[0].id : ''),
           multiple: cutsPerPipe,
           reason: finalReason,
-          approved_by: user?.id || null,
+          approved_by: approverAuthId,
           diversion_date: date,
         });
+        if (insErr && insErr.message?.includes('diversion_plans_approved_by_fkey')) {
+          const retry = await supabase.from('diversion_plans').insert({
+            source_wo_id: source,
+            target_wo_id: split.target_wo_id,
+            diverted_qty: splitMtr,
+            work_center: split.target_stage_code,
+            process_route_id: route || (routes.length ? routes[0].id : ''),
+            multiple: cutsPerPipe,
+            reason: finalReason,
+            approved_by: null,
+            diversion_date: date,
+          });
+          insErr = retry.error;
+        }
         if (insErr) throw new Error(insErr.message);
       }
 
@@ -1047,8 +1064,8 @@ export default function DiversionForm() {
       });
       if (error) {
         console.warn('RPC create_diversion error, attempting direct insert:', error.message);
-        // Fallback: Direct insert into diversion_plans if RPC has legacy validation error
-        const { error: insertErr } = await createClient().from('diversion_plans').insert({
+        const approverAuthId = user?.auth_user_id || session?.user?.id || null;
+        let { error: insertErr } = await createClient().from('diversion_plans').insert({
           source_wo_id: source,
           target_wo_id: target,
           diverted_qty: diversionMtr,
@@ -1056,9 +1073,23 @@ export default function DiversionForm() {
           process_route_id: route,
           multiple: numMultiple,
           reason: finalReason,
-          approved_by: user?.id || null,
+          approved_by: approverAuthId,
           diversion_date: date,
         });
+        if (insertErr && insertErr.message?.includes('diversion_plans_approved_by_fkey')) {
+          const retry = await createClient().from('diversion_plans').insert({
+            source_wo_id: source,
+            target_wo_id: target,
+            diverted_qty: diversionMtr,
+            work_center: targetWorkCenter,
+            process_route_id: route,
+            multiple: numMultiple,
+            reason: finalReason,
+            approved_by: null,
+            diversion_date: date,
+          });
+          insertErr = retry.error;
+        }
         if (insertErr) throw new Error(insertErr.message);
       }
       success = true;
