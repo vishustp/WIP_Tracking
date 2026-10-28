@@ -338,6 +338,9 @@ export async function GET(req: NextRequest) {
       return matching.reduce((sum: number, d: any) => {
         const dQty = Number(d.diverted_qty || 0);
         if (dQty <= 0) return sum;
+        if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+        const pcsMatch = typeof d.reason === "string" ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+        if (pcsMatch) return sum + Number(pcsMatch[1]);
         return sum + (sourceAvgLen > 0 ? Math.round(dQty / sourceAvgLen) : 0);
       }, 0);
     };
@@ -1305,11 +1308,29 @@ export async function GET(req: NextRequest) {
             d.source_wo_id === woId &&
             (parseDivStages(d).sourceStage === "VDI_SALVAGE" ||
               (parseDivStages(d).sourceStage === "VDI" &&
-                typeof d.reason === "string" &&
-                (d.reason.includes("Salvage") || d.reason.includes("Rejection"))))
+                (d.target_wo_id === HOLLOW_BANK_WO_ID ||
+                  (typeof d.reason === "string" &&
+                    (d.reason.includes("Salvage") || d.reason.includes("Rejection") || d.reason.includes("Hollow Bank"))))))
         )
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
-      const vdiSalvageDivOutPcs = avgLength > 0 ? Math.round(vdiSalvageDivOut / avgLength) : 0;
+
+      const vdiSalvageDivOutPcs = diversions
+        .filter(
+          (d: any) =>
+            d.source_wo_id === woId &&
+            (parseDivStages(d).sourceStage === "VDI_SALVAGE" ||
+              (parseDivStages(d).sourceStage === "VDI" &&
+                (d.target_wo_id === HOLLOW_BANK_WO_ID ||
+                  (typeof d.reason === "string" &&
+                    (d.reason.includes("Salvage") || d.reason.includes("Rejection") || d.reason.includes("Hollow Bank"))))))
+        )
+        .reduce((sum: number, d: any) => {
+          if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+          const pcsMatch = typeof d.reason === "string" ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          const dQty = Number(d.diverted_qty || 0);
+          return sum + (avgLength > 0 ? Math.round(dQty / avgLength) : 0);
+        }, 0);
 
       const vdiPrimeDivOut = Math.max(0, vdiDivOut - vdiSalvageDivOut);
       const vdiPrimeDivOutPcs = Math.max(0, vdiDivOutPcs - vdiSalvageDivOutPcs);
@@ -2398,8 +2419,12 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut).toFixed(3)));
-      const remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs);
+      const vdiSalvageRejDecl = getStageRejDecl(woId, "VDI_SALVAGE");
+      const totalVdiRejMtr = vdiRejDecl.mtr + vdiSalvageRejDecl.mtr;
+      const totalVdiRejPcs = vdiRejDecl.pcs + vdiSalvageRejDecl.pcs;
+
+      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut - totalVdiRejMtr).toFixed(3)));
+      const remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs - totalVdiRejPcs);
       if (remSalvagePcs > 0 && remSalvageMtr <= 0 && avgLength > 0) {
         remSalvageMtr = Number((remSalvagePcs * avgLength).toFixed(3));
       }

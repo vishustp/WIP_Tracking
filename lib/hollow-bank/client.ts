@@ -124,6 +124,31 @@ export async function createHollowBankEntry(payload: CreateHollowBankEntryPayloa
     console.error('[createHollowBankEntry] Error:', error.message);
     throw error;
   }
+
+  // If this entry was created from a salvage or rejection declaration, update it so it is dispositioned and deducted
+  if (payload.rejection_id && data?.id) {
+    const lotNo = data.lot_no || 'HB';
+    const updatedRemarks = `${payload.remarks || ''} [DIVERTED_TO_HOLLOW_BANK: ${lotNo}]`.trim();
+    try {
+      await supabase
+        .from('rejection_declarations')
+        .update({
+          status: 'APPROVED',
+          ppc_approved_pcs: Number(payload.pcs),
+          ppc_approved_mtr: totalMtr,
+          ppc_approved_mt: weightMt,
+          ppc_remarks: updatedRemarks,
+          ppc_approved_by: user?.email || 'PPC',
+          ppc_approved_by_user_id: user?.id || null,
+          ppc_approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', payload.rejection_id);
+    } catch (rejErr: any) {
+      console.warn('[createHollowBankEntry] Failed to update rejection declaration status:', rejErr?.message || rejErr);
+    }
+  }
+
   return data as HollowBankLot;
 }
 

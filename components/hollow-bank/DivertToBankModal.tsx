@@ -18,6 +18,7 @@ export interface DivertInitialValues {
   avgLength?: number | string;
   totalMeters?: number | string;
   remarks?: string;
+  rejectionId?: string;
 }
 
 interface Props {
@@ -198,6 +199,7 @@ export default function DivertToBankModal({ isOpen, onClose, onSuccess, initialV
         total_meters: numMtr,
         weight_mt: calculatedWeightMt,
         remarks: remarks.trim() || undefined,
+        rejection_id: initialValues?.rejectionId,
       });
 
       toast.success(`Successfully parked ${numPcs} PCS (${numMtr} M) into Hollow Bank.`);

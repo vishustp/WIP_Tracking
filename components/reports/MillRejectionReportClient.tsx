@@ -97,6 +97,10 @@ export default function MillRejectionReportClient() {
       else stage = 'ROLLING';
     }
 
+    const rawRejId = item.id.startsWith('rej-')
+      ? item.id.replace('rej-', '')
+      : (item.source === 'REJECTION_DECLARATION' ? item.id : undefined);
+
     setBankInitialValues({
       sourceWoId: item.workOrderId,
       sourceStageCode: stage,
@@ -108,6 +112,7 @@ export default function MillRejectionReportClient() {
       avgLength: item.avgLength || '6.0',
       totalMeters: item.mtr ? Number(item.mtr.toFixed(2)) : '',
       remarks: `From Mill Rejection (${item.workCenterName}): ${item.remarks || ''}`.trim(),
+      rejectionId: rawRejId,
     });
     setBankModalOpen(true);
   };
@@ -605,15 +610,21 @@ export default function MillRejectionReportClient() {
 
                       {/* Action: Send to Hollow Bank */}
                       <td className="py-2.5 px-3 text-center whitespace-nowrap print:hidden">
-                        <button
-                          type="button"
-                          onClick={() => handleSendToHollowBank(item)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 transition-colors cursor-pointer shadow-xs"
-                          title="Divert and park this rejected/salvage tube into Hollow Bank"
-                        >
-                          <Layers className="w-3.5 h-3.5" />
-                          <span>Send to Hollow Bank</span>
-                        </button>
+                        {item.remarks?.includes('DIVERTED_TO_HOLLOW_BANK') ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-50 text-purple-700 border border-purple-200">
+                            Banked in HB
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleSendToHollowBank(item)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 transition-colors cursor-pointer shadow-xs"
+                            title="Divert and park this rejected/salvage tube into Hollow Bank"
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            <span>Send to Hollow Bank</span>
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

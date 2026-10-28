@@ -81,6 +81,13 @@ export default function SalvageRejectionReportClient() {
   // Hollow Bank Modal
   const [bankModalOpen, setBankModalOpen] = useState(false);
   const [bankInitialValues, setBankInitialValues] = useState<DivertInitialValues | undefined>(undefined);
+  const [hideBanked, setHideBanked] = useState(true);
+
+  const isBanked = (r: RejectionDeclaration) =>
+    Boolean(
+      r.ppc_remarks?.includes('DIVERTED_TO_HOLLOW_BANK') ||
+      r.production_remarks?.includes('DIVERTED_TO_HOLLOW_BANK')
+    );
 
   const handleSendToBank = (r: RejectionDeclaration) => {
     setBankInitialValues({
@@ -94,6 +101,7 @@ export default function SalvageRejectionReportClient() {
       avgLength: r.work_orders?.l1 || '6.0',
       totalMeters: r.ppc_approved_mtr ?? r.rejected_mtr ?? '',
       remarks: `From Salvage Declaration ${r.declaration_no} (${r.work_center}): ${r.production_remarks || ''}`.trim(),
+      rejectionId: r.id,
     });
     setBankModalOpen(true);
   };
@@ -122,6 +130,10 @@ export default function SalvageRejectionReportClient() {
     loadData();
   }, [loadData]);
 
+  const activeRecords = useMemo(() => {
+    return hideBanked ? records.filter((r) => !isBanked(r)) : records;
+  }, [records, hideBanked]);
+
   // Aggregated KPIs
   const summary = useMemo(() => {
     let totalDeclaredPcs = 0;
@@ -138,7 +150,7 @@ export default function SalvageRejectionReportClient() {
     const causeDistribution: Record<string, { pcs: number; mt: number; count: number }> = {};
     const stageDistribution: Record<string, { pcs: number; mt: number }> = {};
 
-    records.forEach((r) => {
+    activeRecords.forEach((r) => {
       totalDeclaredPcs += Number(r.rejected_pcs || 0);
       totalDeclaredMtr += Number(r.rejected_mtr || 0);
       totalDeclaredMt += Number(r.rejected_mt || 0);
@@ -183,15 +195,15 @@ export default function SalvageRejectionReportClient() {
       causeDistribution,
       stageDistribution,
     };
-  }, [records]);
+  }, [activeRecords]);
 
   // CSV Export handler
   const handleExportCsv = () => {
-    if (records.length === 0) {
+    if (activeRecords.length === 0) {
       toast.error('No records available to export.');
       return;
     }
-    const csvData = generateRejectionReportCsv(records);
+    const csvData = generateRejectionReportCsv(activeRecords);
     const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -206,20 +218,20 @@ export default function SalvageRejectionReportClient() {
 
   // Excel Export handler
   const handleExportExcel = async () => {
-    if (records.length === 0) {
+    if (activeRecords.length === 0) {
       toast.error('No records available to export.');
       return;
     }
     setExportingExcel(true);
     try {
-      const exportData = formatRejectionsForExport(records);
+      const exportData = formatRejectionsForExport(activeRecords);
       const dateStr = new Date().toISOString().slice(0, 10);
       await exportJsonToExcel(
         exportData,
         'Second Declarations',
         `Second_Declaration_Report_${dateStr}.xlsx`
       );
-      toast.success(`Exported ${records.length} records to Excel.`);
+      toast.success(`Exported ${activeRecords.length} records to Excel.`);
     } catch (err: any) {
       toast.error(`Export failed: ${err?.message || err}`);
     } finally {
@@ -427,6 +439,15 @@ export default function SalvageRejectionReportClient() {
             >
               All Time
             </button>
+            <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer font-medium ml-2 select-none">
+              <input
+                type="checkbox"
+                checked={hideBanked}
+                onChange={(e) => setHideBanked(e.target.checked)}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>Hide Banked in Hollow Bank</span>
+            </label>
           </div>
 
           {(workCenter !== 'ALL' || status !== 'ALL' || reasonCategory !== 'ALL' || gradeFilter !== 'ALL' || searchQuery || fromDate || toDate) && (
@@ -575,7 +596,7 @@ export default function SalvageRejectionReportClient() {
                     <span>Loading salvage records...</span>
                   </td>
                 </tr>
-              ) : records.length === 0 ? (
+              ) : activeRecords.length === 0 ? (
                 <tr>
                   <td colSpan={13} className="py-12 text-center text-slate-500">
                     <AlertTriangle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -584,7 +605,7 @@ export default function SalvageRejectionReportClient() {
                   </td>
                 </tr>
               ) : (
-                records.map((r) => {
+                activeRecords.map((r) => {
                   const badge = REJECTION_STATUS_BADGES[r.status] || {
                     label: r.status,
                     className: 'bg-slate-100 text-slate-700',
@@ -695,15 +716,21 @@ export default function SalvageRejectionReportClient() {
 
                       {/* Action: Send to Hollow Bank */}
                       <td className="py-2.5 px-2.5 text-center whitespace-nowrap print:hidden">
-                        <button
-                          type="button"
-                          onClick={() => handleSendToBank(r)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
-                          title="Divert this salvage tube into Hollow Bank"
-                        >
-                          <Layers className="w-3.5 h-3.5" />
-                          <span>Send to Bank</span>
-                        </button>
+                        {isBanked(r) ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-800 border border-purple-200">
+                            Banked in HB
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleSendToBank(r)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
+                            title="Divert this salvage tube into Hollow Bank"
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            <span>Send to Bank</span>
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

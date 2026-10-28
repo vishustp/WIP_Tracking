@@ -74,6 +74,7 @@ export interface CreateHollowBankEntryPayload {
   weight_mt?: number;
   banked_date?: string;
   remarks?: string;
+  rejection_id?: string;
 }
 
 export interface AllocateHollowLotPayload {

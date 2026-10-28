@@ -490,8 +490,32 @@ export function computeAgingReportRows(options: {
       const rejKey = `${r.work_order_id}_${sc}`;
       const rejDecl = rejMap.get(rejKey) || { pcs: 0, mtr: 0 };
 
-      const currentWipMtr = Math.max(0, (Number(r.current_wip) || 0) - rejDecl.mtr);
-      let currentWipPcs = Math.max(0, (Number(r.current_wip_pcs) || 0) - rejDecl.pcs);
+      // Deduct outbound diversions from this stage (including material banked into Hollow Bank)
+      const stageDivOutMtr = (diversions || [])
+        .filter((d: any) => {
+          const srcId = d.source_work_order_id || d.source_wo_id;
+          return srcId === r.work_order_id && parseDivStages(d).sourceStage === sc;
+        })
+        .reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
+
+      const stageDivOutPcs = (diversions || [])
+        .filter((d: any) => {
+          const srcId = d.source_work_order_id || d.source_wo_id;
+          return srcId === r.work_order_id && parseDivStages(d).sourceStage === sc;
+        })
+        .reduce((sum, d: any) => {
+          if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+          const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          const dQty = Number(d.diverted_mtr ?? d.diverted_qty ?? 0);
+          const l1 = Number(r.l1 ?? wo?.l1) || 0;
+          const l2 = Number(r.l2 ?? wo?.l2) || 0;
+          const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
+          return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+        }, 0);
+
+      const currentWipMtr = Math.max(0, (Number(r.current_wip) || 0) - rejDecl.mtr - stageDivOutMtr);
+      let currentWipPcs = Math.max(0, (Number(r.current_wip_pcs) || 0) - rejDecl.pcs - stageDivOutPcs);
       if (currentWipPcs <= 0 && currentWipMtr > 0) {
         const l1 = Number(r.l1 ?? wo?.l1) || 0;
         const l2 = Number(r.l2 ?? wo?.l2) || 0;

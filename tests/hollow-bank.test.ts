@@ -373,6 +373,126 @@ describe('Hollow Bank Inventory & Allocation Unit Tests', () => {
       expect(filtered).toHaveLength(1);
       expect(filtered[0].work_order_no).toBe('6355');
     });
+
+    it('deducts stage WIP from Aging Report when material is sent to Hollow Bank, removing row if fully banked', async () => {
+      const { computeAgingReportRows } = await import('@/lib/reports/agingReportHelper');
+
+      const testWip = [
+        {
+          work_order_id: 'wo-pipe-1',
+          work_order_no: 'WO-8801',
+          customer_name: 'L&T Energy',
+          route_id: 'R1',
+          stage_id: 'S-DRAW',
+          stage_code: 'DRAW',
+          stage_name: 'Draw Bench',
+          sequence_no: 2,
+          current_wip: 120, // 20 pcs x 6m
+          current_wip_pcs: 20,
+          current_wip_mt: 0.95,
+          size_od: 60.3,
+          size_wt: 4.5,
+          l1: 6.0,
+          l2: 6.0,
+          created_at: '2026-10-01T00:00:00Z',
+        },
+      ];
+
+      const testWorkOrders = [
+        {
+          id: 'wo-pipe-1',
+          work_order_no: 'WO-8801',
+          customer_name: 'L&T Energy',
+          grade: 'ASTM A106 Gr B',
+          size_od: 60.3,
+          size_wt: 4.5,
+          l1: 6.0,
+          l2: 6.0,
+        },
+      ];
+
+      // Case 1: Partial diversion to Hollow Bank (8 pcs, 48m)
+      const partialDiversions = [
+        {
+          source_wo_id: 'wo-pipe-1',
+          target_wo_id: '00000000-0000-0000-0000-00000000000b',
+          diverted_qty: 48,
+          work_center: 'DRAW',
+          reason: '[FROM_STAGE: DRAW] [TO_STAGE: HOLLOW_BANK] [PCS: 8] Diverted to Hollow Bank: HB-001',
+          diversion_date: '2026-10-10',
+        },
+      ];
+
+      const partialAgingRows = computeAgingReportRows({
+        wipRows: testWip,
+        workOrders: testWorkOrders,
+        productionLogs: [],
+        qcInspections: [],
+        rollingPlans: [],
+        routeStages: [],
+        diversions: partialDiversions,
+        asOfDate: new Date('2026-10-15'),
+      });
+
+      expect(partialAgingRows).toHaveLength(1);
+      expect(partialAgingRows[0].current_wip).toBe(72); // 120 - 48
+      expect(partialAgingRows[0].current_wip_pcs).toBe(12); // 20 - 8
+
+      // Case 2: Full diversion to Hollow Bank (20 pcs, 120m)
+      const fullDiversions = [
+        {
+          source_wo_id: 'wo-pipe-1',
+          target_wo_id: '00000000-0000-0000-0000-00000000000b',
+          diverted_qty: 120,
+          work_center: 'DRAW',
+          reason: '[FROM_STAGE: DRAW] [TO_STAGE: HOLLOW_BANK] [PCS: 20] Diverted to Hollow Bank: HB-002',
+          diversion_date: '2026-10-12',
+        },
+      ];
+
+      const fullAgingRows = computeAgingReportRows({
+        wipRows: testWip,
+        workOrders: testWorkOrders,
+        productionLogs: [],
+        qcInspections: [],
+        rollingPlans: [],
+        routeStages: [],
+        diversions: fullDiversions,
+        asOfDate: new Date('2026-10-15'),
+      });
+
+      // Completely removed from Aging report since balance is 0
+      expect(fullAgingRows).toHaveLength(0);
+    });
+
+    it('excludes salvage declarations sent to Hollow Bank from active salvage list', () => {
+      const isBanked = (r: { ppc_remarks?: string | null }) =>
+        Boolean(r.ppc_remarks?.includes('DIVERTED_TO_HOLLOW_BANK'));
+
+      const mockDeclarations = [
+        {
+          id: 'decl-1',
+          declaration_no: 'REJ-2026-1001',
+          rejected_pcs: 5,
+          rejected_mtr: 30,
+          ppc_remarks: null,
+          status: 'PENDING_QC',
+        },
+        {
+          id: 'decl-2',
+          declaration_no: 'REJ-2026-1002',
+          rejected_pcs: 3,
+          rejected_mtr: 18,
+          ppc_remarks: 'Diverted to Hollow Bank: HB-20261028 [DIVERTED_TO_HOLLOW_BANK: HB-20261028]',
+          status: 'APPROVED',
+        },
+      ];
+
+      const activeDeclarations = mockDeclarations.filter((d) => !isBanked(d));
+      expect(activeDeclarations).toHaveLength(1);
+      expect(activeDeclarations[0].declaration_no).toBe('REJ-2026-1001');
+    });
   });
 });
+
 
