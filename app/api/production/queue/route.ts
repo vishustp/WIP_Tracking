@@ -253,7 +253,7 @@ export async function GET(req: NextRequest) {
         .select("id, work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr, remarks"),
       admin
         .from("diversion_plans")
-        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id, reason, diversion_date, created_at"),
+        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id, reason, diversion_date, created_at, status"),
       admin
         .from("rejection_declarations")
         .select("id, work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status")
@@ -261,8 +261,15 @@ export async function GET(req: NextRequest) {
     ]);
 
     if (stagesRes.error) throw stagesRes.error;
+    let rawDiversions = divsRes?.data || [];
     if (divsRes?.error) {
       console.error("[production/queue] divsRes error:", divsRes.error);
+      if (divsRes.error.code === '42703') {
+        const fallbackDivs = await admin
+          .from("diversion_plans")
+          .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id, reason, diversion_date, created_at");
+        rawDiversions = (fallbackDivs?.data || []).map((d: any) => ({ ...d, status: 'APPROVED' }));
+      }
     }
     if (qcRes?.error) {
       console.error("[production/queue] qcRes error:", qcRes.error);
@@ -277,8 +284,6 @@ export async function GET(req: NextRequest) {
     const workOrders = rawWorkOrders.filter((w: any) => !isHollowBankOrder(w));
     const routes = routesRes.data || [];
     const qcInspections = qcRes?.data || [];
-    const hasQcTable = !qcRes?.error;
-    const diversions = divsRes?.data || [];
     const rejectionDeclarations = rejsRes?.data || [];
 
     const getStageRejDecl = (wId: string, stageCode: string) => {
@@ -303,6 +308,14 @@ export async function GET(req: NextRequest) {
       const targetStage = toMatch ? toMatch[1].toUpperCase() : (d.work_center || "ROLLING");
       return { sourceStage, targetStage };
     };
+
+    const isApprovedDiv = (d: any) => !d.status || d.status === "APPROVED";
+    const isPendingDrawDiv = (d: any) => d.status === "PENDING_PPC" && (d.work_center === "DRAW" || parseDivStages(d).targetStage === "DRAW");
+
+    // Stage balancing strictly uses approved diversions
+    const diversions = rawDiversions.filter(isApprovedDiv);
+    // Track pending Draw Bench diversions for source order informational hold
+    const pendingDrawDiversions = rawDiversions.filter(isPendingDrawDiv);
 
     const getStageDivIn = (wId: string, stageCode: string) =>
       diversions
@@ -433,6 +446,38 @@ export async function GET(req: NextRequest) {
         diversion_source_wo: sourceWoList.join(", ") || null,
         diversion_remarks: remarks || null,
         diversion_date: latestDivDate,
+      };
+    };
+
+    const getWoPendingDivDetails = (wId: string) => {
+      const pendingOut = pendingDrawDiversions.filter((d: any) => d.source_wo_id === wId);
+      if (pendingOut.length === 0) {
+        return {
+          has_pending_ppc_diversion: false,
+          pending_ppc_diversion_mtr: 0,
+          pending_ppc_diversion_pcs: 0,
+          pending_ppc_diversion_target_wo: null,
+          pending_ppc_diversion_note: null,
+        };
+      }
+      const totalMtr = pendingOut.reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+      const targetWoList = Array.from(
+        new Set(
+          pendingOut
+            .map((d: any) => {
+              const tgt = woMap.get(d.target_wo_id);
+              return tgt?.work_order_no || d.target_wo_id?.slice(0, 8);
+            })
+            .filter(Boolean)
+        )
+      );
+      const note = `${Number(totalMtr.toFixed(1))}m pending PPC approval for Draw Bench diversion to WO #${targetWoList.join(', ')}`;
+      return {
+        has_pending_ppc_diversion: true,
+        pending_ppc_diversion_mtr: Number(totalMtr.toFixed(2)),
+        pending_ppc_diversion_pcs: 0,
+        pending_ppc_diversion_target_wo: targetWoList.join(', '),
+        pending_ppc_diversion_note: note,
       };
     };
 
@@ -1752,6 +1797,7 @@ export async function GET(req: NextRequest) {
         : null;
 
       const woDivDetails = getWoDivDetails(wo.id);
+      const pendingDivDetails = getWoPendingDivDetails(wo.id);
 
       const baseRowData = {
         work_order_id: wo.id,
@@ -1765,6 +1811,10 @@ export async function GET(req: NextRequest) {
         diversion_source_wo: woDivDetails.diversion_source_wo,
         diversion_remarks: woDivDetails.diversion_remarks,
         diversion_date: woDivDetails.diversion_date,
+        has_pending_ppc_diversion: pendingDivDetails.has_pending_ppc_diversion,
+        pending_ppc_diversion_mtr: pendingDivDetails.pending_ppc_diversion_mtr,
+        pending_ppc_diversion_target_wo: pendingDivDetails.pending_ppc_diversion_target_wo,
+        pending_ppc_diversion_note: pendingDivDetails.pending_ppc_diversion_note,
         od: woOd,
         wl: woWt,
         final_od: woOd,
@@ -1971,9 +2021,12 @@ export async function GET(req: NextRequest) {
       const totalVdiRejPcs = vdiRejDecl.pcs + vdiSalvageRejDecl.pcs;
 
       let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut - totalVdiRejMtr).toFixed(3)));
-      const remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs - totalVdiRejPcs);
+      let remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs - totalVdiRejPcs);
       if (remSalvagePcs > 0 && remSalvageMtr <= 0 && avgLength > 0) {
         remSalvageMtr = Number((remSalvagePcs * avgLength).toFixed(3));
+      }
+      if (remSalvagePcs <= 0 && remSalvageMtr > 0 && avgLength > 0) {
+        remSalvagePcs = Math.max(1, Math.round(remSalvageMtr / avgLength));
       }
       const remSalvageMt = mtFromMtr(remSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 

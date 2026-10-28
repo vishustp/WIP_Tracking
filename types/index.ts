@@ -134,6 +134,13 @@ export interface Row {
   diversion_date?: string | null;
   last_activity_date?: string | null;
 
+  // Pending PPC Diversion Hold info (for Draw Bench diversions awaiting approval)
+  has_pending_ppc_diversion?: boolean;
+  pending_ppc_diversion_mtr?: number | null;
+  pending_ppc_diversion_pcs?: number | null;
+  pending_ppc_diversion_target_wo?: string | null;
+  pending_ppc_diversion_note?: string | null;
+
   // Intermediate Pipe Cutting (IP Cutting) pre-draw parameters
   is_ip_cutting?: boolean;
   ip_cut_length?: number | null;
@@ -581,4 +588,42 @@ export interface RejectionDeclaration {
   remaining_mtr?: number;
   is_diverted?: boolean;
 }
+
+export type DiversionStatus = 'PENDING_PPC' | 'APPROVED' | 'REJECTED_BY_PPC' | 'CANCELLED';
+
+export interface DiversionPlan {
+  id: string;
+  source_wo_id: string;
+  source_wo_no?: string;
+  source_customer?: string;
+  source_grade?: string;
+  source_size?: string;
+  target_wo_id: string;
+  target_wo_no?: string;
+  target_customer?: string;
+  target_grade?: string;
+  target_size?: string;
+  diverted_qty: number;
+  diverted_pcs?: number;
+  diverted_mt?: number;
+  work_center: StageCode | string;
+  work_center_name?: string;
+  process_route_id?: string;
+  route_id?: string;
+  route_code?: string;
+  route_name?: string;
+  multiple?: number;
+  reason: string;
+  approved_by?: string | null;
+  diversion_date: string;
+  created_at: string;
+  updated_at?: string;
+  can_modify?: boolean;
+  status: DiversionStatus;
+  ppc_approved_by?: string | null;
+  ppc_approved_at?: string | null;
+  ppc_rejection_reason?: string | null;
+  ppc_remarks?: string | null;
+}
+
 

@@ -26,6 +26,10 @@ import {
   Scissors,
   Recycle,
   ArrowRightLeft,
+  Clock,
+  Check,
+  XCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import { useOptionalUserSession } from '@/contexts/UserSessionContext';
@@ -37,6 +41,7 @@ import { CutAndDivertSection } from '@/components/diversions/CutAndDivertSection
 import { OffcutPoolManager } from '@/components/diversions/OffcutPoolManager';
 import { calcOrderBalanceSurplus } from '@/lib/diversionCalculations';
 import { WorkOrderSelect } from '@/components/ui/WorkOrderSelect';
+import { approveDiversion, rejectDiversion } from '@/lib/diversions/client';
 
 type WO = {
   id: string;
@@ -91,6 +96,11 @@ type DiversionPlanItem = {
   created_at: string;
   updated_at?: string;
   can_modify: boolean;
+  status?: string;
+  ppc_approved_by?: string | null;
+  ppc_approved_at?: string | null;
+  ppc_rejection_reason?: string | null;
+  ppc_remarks?: string | null;
 };
 
 const getWcShortName = (code?: string) => {
@@ -152,6 +162,8 @@ type WoWipSummary = {
   qcVdiRejMtr?: number;
   primeAvailableMtr?: number;
   salvageAvailableMtr?: number;
+  pendingDrawDiversionsMtr?: number;
+  pendingDrawDiversionsCount?: number;
 };
 
 type WipViewRow = {
@@ -324,21 +336,33 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   // Elongation multiple for this work order
   const planMultiple = Number(plan?.multiple || 1) > 0 ? Number(plan?.multiple || 1) : 1;
 
-  // Diversions per stage
+  // Filter approved diversions: unapproved diversions (e.g. PENDING_PPC) do NOT deduct WIP
+  const isApproved = (d: any) => !d.status || d.status === 'APPROVED';
+  const approvedDivs = divs.filter(isApproved);
+  const pendingDrawDivs = divs.filter(
+    (d: any) => d.status === 'PENDING_PPC' && (d.work_center === 'DRAW' || (d.reason || '').includes('[TO_STAGE: DRAW]'))
+  );
+
+  // Diversions per stage (strictly uses approved diversions for WIP balance)
   const getDivOut = (stageCode: string) =>
-    divs.filter((d: any) => d.source_wo_id === id && (d.work_center || 'ROLLING') === stageCode)
+    approvedDivs.filter((d: any) => d.source_wo_id === id && (d.work_center || 'ROLLING') === stageCode)
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
   const getDivIn = (stageCode: string) =>
-    divs.filter((d: any) => d.target_wo_id === id && (d.work_center || 'ROLLING') === stageCode)
+    approvedDivs.filter((d: any) => d.target_wo_id === id && (d.work_center || 'ROLLING') === stageCode)
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
-  const totalDivertedOutMtr = divs
+  const totalDivertedOutMtr = approvedDivs
     .filter((d: any) => d.source_wo_id === id)
     .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
-  const totalDivertedInMtr = divs
+  const totalDivertedInMtr = approvedDivs
     .filter((d: any) => d.target_wo_id === id)
     .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+  const pendingDrawDiversionsMtr = pendingDrawDivs
+    .filter((d: any) => d.source_wo_id === id)
+    .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+  const pendingDrawDiversionsCount = pendingDrawDivs.filter((d: any) => d.source_wo_id === id).length;
 
   // FORMULA (RULE 2): ALL material (Prime or Salvage/Rejected) can be diverted!
   // Rejections do NOT vanish as dead scrap and are NOT deducted from the diversion pool.
@@ -546,6 +570,8 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     qcVdiRejMtr,
     primeAvailableMtr,
     salvageAvailableMtr,
+    pendingDrawDiversionsMtr,
+    pendingDrawDiversionsCount,
     divertedOutMtr: totalDivertedOutMtr,
     divertedOutPcs: avgLength > 0 ? totalDivertedOutMtr / avgLength : 0,
     divertedOutMt: totalDivertedOutMtr * mtPerMtr,
@@ -594,10 +620,27 @@ export default function DiversionForm() {
   const [reason, setReason] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
-  const [activeTab, setActiveTab] = useState<'ISSUE' | 'REMNANTS' | 'LOGS'>('ISSUE');
+  const [activeTab, setActiveTab] = useState<'ISSUE' | 'PENDING_PPC' | 'REMNANTS' | 'LOGS'>('ISSUE');
   const [transferMode, setTransferMode] = useState<'DIRECT' | 'CUT_DIVERT'>('DIRECT');
   const [isStpExempt, setIsStpExempt] = useState(false);
   const [pcsInput, setPcsInput] = useState('');
+  const [ppcAutoApprove, setPpcAutoApprove] = useState(true);
+
+  // PPC User check (Admin, Super User, or PPC role/group)
+  const isPpcUser = useMemo(() => {
+    if (!user) return false;
+    const ug = (user.group || '').toLowerCase();
+    const role = (user.role || '').toLowerCase();
+    const dept = (user.department || '').toLowerCase();
+    return (
+      ug === 'admin' ||
+      ug === 'super_user' ||
+      dept.includes('ppc') ||
+      role.includes('ppc') ||
+      role.includes('manager') ||
+      role.includes('admin')
+    );
+  }, [user]);
 
   // WIP summaries for Source and Target
   const [sourceWip, setSourceWip] = useState<WoWipSummary | null>(null);
@@ -610,8 +653,18 @@ export default function DiversionForm() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterRoute, setFilterRoute] = useState('');
   const [filterWorkCenter, setFilterWorkCenter] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+
+  // PPC Action Modals
+  const [approveModalPlan, setApproveModalPlan] = useState<DiversionPlanItem | null>(null);
+  const [approveRemarks, setApproveRemarks] = useState('');
+  const [approveBusy, setApproveBusy] = useState(false);
+
+  const [rejectModalPlan, setRejectModalPlan] = useState<DiversionPlanItem | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectBusy, setRejectBusy] = useState(false);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -683,6 +736,7 @@ export default function DiversionForm() {
           ...p,
           source_work_center: src,
           target_work_center: tgt,
+          status: p.status || 'APPROVED',
         };
       });
       setPlans(mapped as DiversionPlanItem[]);
@@ -693,6 +747,44 @@ export default function DiversionForm() {
       setPlansLoading(false);
     }
   }, [debouncedSearch, filterRoute, filterWorkCenter, fromDate, toDate]);
+
+  const handleApprove = async () => {
+    if (!approveModalPlan) return;
+    setApproveBusy(true);
+    const res = await approveDiversion({ id: approveModalPlan.id, remarks: approveRemarks });
+    setApproveBusy(false);
+    if (res.success) {
+      toast.success(`Draw Bench diversion ${approveModalPlan.id} approved. Source WIP deducted and target Draw Bench queue credited.`);
+      setApproveModalPlan(null);
+      setApproveRemarks('');
+      await loadPlans();
+      if (source) await handleSourceChange(source);
+      if (target) await handleTargetChange(target);
+    } else {
+      toast.error(res.error || 'Failed to approve diversion');
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectModalPlan) return;
+    if (!rejectReason.trim()) {
+      toast.error('Rejection reason is required');
+      return;
+    }
+    setRejectBusy(true);
+    const res = await rejectDiversion({ id: rejectModalPlan.id, reason: rejectReason });
+    setRejectBusy(false);
+    if (res.success) {
+      toast.info(`Draw Bench diversion ${rejectModalPlan.id} rejected. WIP hold released.`);
+      setRejectModalPlan(null);
+      setRejectReason('');
+      await loadPlans();
+      if (source) await handleSourceChange(source);
+      if (target) await handleTargetChange(target);
+    } else {
+      toast.error(res.error || 'Failed to reject diversion');
+    }
+  };
 
   useEffect(() => {
     void loadData();
@@ -948,8 +1040,13 @@ export default function DiversionForm() {
           finalReason = `Cut & Multi-Order Diversion (#${i + 1}/${externalSplits.length}): Mother ${payload.motherPcs} pcs @ ${payload.motherLength}m cut from middle. Diverting ${payload.motherPcs} pcs @ ${split.cut_length}m (${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}]. ${sameOrderDesc} ${remnantTag} ${stageTag}`.trim();
         }
 
+        const isDrawTarget = split.target_stage_code === 'DRAW';
+        const planStatus = isDrawTarget
+          ? (isPpcUser && ppcAutoApprove ? 'APPROVED' : 'PENDING_PPC')
+          : 'APPROVED';
+
         const approverAuthId = user?.auth_user_id || session?.user?.id || null;
-        let { error: insErr } = await supabase.from('diversion_plans').insert({
+        const insertPayload: any = {
           source_wo_id: source,
           target_wo_id: split.target_wo_id,
           diverted_qty: splitMtr,
@@ -959,19 +1056,23 @@ export default function DiversionForm() {
           reason: finalReason,
           approved_by: approverAuthId,
           diversion_date: date,
-        });
+          status: planStatus,
+        };
+        if (planStatus === 'APPROVED' && isDrawTarget && approverAuthId) {
+          insertPayload.ppc_approved_by = approverAuthId;
+          insertPayload.ppc_approved_at = new Date().toISOString();
+        }
+        let { error: insErr } = await supabase.from('diversion_plans').insert(insertPayload);
+        if (insErr && insErr.message?.includes('status')) {
+          delete insertPayload.status;
+          delete insertPayload.ppc_approved_by;
+          delete insertPayload.ppc_approved_at;
+          const retry = await supabase.from('diversion_plans').insert(insertPayload);
+          insErr = retry.error;
+        }
         if (insErr && insErr.message?.includes('diversion_plans_approved_by_fkey')) {
-          const retry = await supabase.from('diversion_plans').insert({
-            source_wo_id: source,
-            target_wo_id: split.target_wo_id,
-            diverted_qty: splitMtr,
-            work_center: split.target_stage_code,
-            process_route_id: route || (routes.length ? routes[0].id : ''),
-            multiple: cutsPerPipe,
-            reason: finalReason,
-            approved_by: null,
-            diversion_date: date,
-          });
+          insertPayload.approved_by = null;
+          const retry = await supabase.from('diversion_plans').insert(insertPayload);
           insErr = retry.error;
         }
         if (insErr) throw new Error(insErr.message);
@@ -1059,17 +1160,29 @@ export default function DiversionForm() {
     const pcsTag = Number.isFinite(pcsNum) && pcsNum > 0 ? ` [PCS: ${pcsNum}]` : '';
     const finalReason = `${cleanedUserReason}${numMultiple > 1 ? ` [MULTIPLE: ${numMultiple}]` : ''} [FROM_STAGE: ${sourceWorkCenter}] [TO_STAGE: ${targetWorkCenter}]${pcsTag}`.trim();
 
+    const isDrawBenchTarget = targetWorkCenter === 'DRAW';
+    const planStatus = isDrawBenchTarget
+      ? (isPpcUser && ppcAutoApprove ? 'APPROVED' : 'PENDING_PPC')
+      : 'APPROVED';
+
     setBusy(true);
     let success = false;
     try {
       const { error } = await createClient().rpc('create_diversion', {
-        p_source: source, p_target: target, p_qty: diversionMtr, p_work_center: targetWorkCenter,
-        p_route: route, p_multiple: numMultiple, p_reason: finalReason, p_date: date,
+        p_source: source,
+        p_target: target,
+        p_qty: diversionMtr,
+        p_work_center: targetWorkCenter,
+        p_route: route,
+        p_multiple: numMultiple,
+        p_reason: finalReason,
+        p_date: date,
+        p_status: planStatus,
       });
       if (error) {
         console.warn('RPC create_diversion error, attempting direct insert:', error.message);
         const approverAuthId = user?.auth_user_id || session?.user?.id || null;
-        let { error: insertErr } = await createClient().from('diversion_plans').insert({
+        const insertPayload: any = {
           source_wo_id: source,
           target_wo_id: target,
           diverted_qty: diversionMtr,
@@ -1079,19 +1192,23 @@ export default function DiversionForm() {
           reason: finalReason,
           approved_by: approverAuthId,
           diversion_date: date,
-        });
+          status: planStatus,
+        };
+        if (planStatus === 'APPROVED' && isDrawBenchTarget && approverAuthId) {
+          insertPayload.ppc_approved_by = approverAuthId;
+          insertPayload.ppc_approved_at = new Date().toISOString();
+        }
+        let { error: insertErr } = await createClient().from('diversion_plans').insert(insertPayload);
+        if (insertErr && insertErr.message?.includes('status')) {
+          delete insertPayload.status;
+          delete insertPayload.ppc_approved_by;
+          delete insertPayload.ppc_approved_at;
+          const retry = await createClient().from('diversion_plans').insert(insertPayload);
+          insertErr = retry.error;
+        }
         if (insertErr && insertErr.message?.includes('diversion_plans_approved_by_fkey')) {
-          const retry = await createClient().from('diversion_plans').insert({
-            source_wo_id: source,
-            target_wo_id: target,
-            diverted_qty: diversionMtr,
-            work_center: targetWorkCenter,
-            process_route_id: route,
-            multiple: numMultiple,
-            reason: finalReason,
-            approved_by: null,
-            diversion_date: date,
-          });
+          insertPayload.approved_by = null;
+          const retry = await createClient().from('diversion_plans').insert(insertPayload);
           insertErr = retry.error;
         }
         if (insertErr) throw new Error(insertErr.message);
@@ -1103,9 +1220,15 @@ export default function DiversionForm() {
 
     setBusy(false);
     if (success) {
-      toast.success(
-        `Diversion of ${fmt(diversionMtr)} Mtrs from ${getWcShortName(sourceWorkCenter)} to ${getWcShortName(targetWorkCenter)} successfully issued!`
-      );
+      if (planStatus === 'PENDING_PPC') {
+        toast.info(
+          `Diversion of ${fmt(diversionMtr)} Mtrs to Draw Bench submitted for PPC Approval. WIP remains in source WO until approved.`
+        );
+      } else {
+        toast.success(
+          `Diversion of ${fmt(diversionMtr)} Mtrs from ${getWcShortName(sourceWorkCenter)} to ${getWcShortName(targetWorkCenter)} successfully issued!`
+        );
+      }
       setQty('');
       setReason('');
       setMultiple('1');
@@ -1228,6 +1351,27 @@ export default function DiversionForm() {
     [plans]
   );
 
+  const pendingPpcPlans = useMemo(() => {
+    return plans.filter((p) => {
+      const isPending = p.status === 'PENDING_PPC';
+      const isDrawTarget = p.work_center === 'DRAW' || p.target_work_center === 'DRAW' || (p.reason || '').includes('[TO_STAGE: DRAW]');
+      return isPending && isDrawTarget;
+    });
+  }, [plans]);
+
+  const filteredPlans = useMemo(() => {
+    return plans.filter((p) => {
+      if (filterStatus) {
+        if (filterStatus === 'APPROVED') {
+          if (p.status && p.status !== 'APPROVED') return false;
+        } else {
+          if (p.status !== filterStatus) return false;
+        }
+      }
+      return true;
+    });
+  }, [plans, filterStatus]);
+
   return (
     <div className="space-y-6 pb-20 sm:pb-6">
       {/* Form Accessibility Banner */}
@@ -1245,6 +1389,24 @@ export default function DiversionForm() {
           }`}
         >
           <ArrowRightLeft className="h-4 w-4" /> Issue Diversion
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('PENDING_PPC')}
+          className={`px-3 sm:px-4 py-2.5 text-xs font-bold border-b-2 cursor-pointer transition flex items-center gap-1.5 whitespace-nowrap min-h-[44px] ${
+            activeTab === 'PENDING_PPC'
+              ? 'border-amber-500 text-amber-700 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Clock className="h-4 w-4 text-amber-600" />
+          <span>Pending PPC Approvals</span>
+          {pendingPpcPlans.length > 0 && (
+            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
+              {pendingPpcPlans.length}
+            </span>
+          )}
         </button>
 
         <button
@@ -1551,6 +1713,42 @@ export default function DiversionForm() {
                       divertedMtr={diversionMtr}
                     />
                   )}
+
+                  {/* Draw Bench PPC Approval Protocol Bar (Option 1) */}
+                  {targetWorkCenter === 'DRAW' && (
+                    <div className={`p-3.5 rounded-lg border text-xs transition-colors ${
+                      isPpcUser ? 'bg-blue-50/70 border-blue-200 text-blue-950' : 'bg-amber-50/70 border-amber-200 text-amber-950'
+                    }`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2">
+                          <Factory className="h-4 w-4 text-[#0078d4]" />
+                          <span className="font-bold uppercase tracking-wider text-[11px]">
+                            Draw Bench PPC Approval Protocol
+                          </span>
+                        </div>
+                        {isPpcUser ? (
+                          <label className="flex items-center gap-2 cursor-pointer font-bold text-xs select-none">
+                            <input
+                              type="checkbox"
+                              checked={ppcAutoApprove}
+                              onChange={(e) => setPpcAutoApprove(e.target.checked)}
+                              className="rounded border-slate-300 text-[#0078d4] focus:ring-[#0078d4] h-4 w-4"
+                            />
+                            <span>Approve &amp; Issue Immediately (PPC Direct Authorization)</span>
+                          </label>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold text-[11px]">
+                            <Clock className="h-3 w-3 text-amber-600" /> Requires PPC Approval
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[11.5px] text-slate-600">
+                        {isPpcUser && ppcAutoApprove
+                          ? 'As authorized PPC Admin/Manager, this Draw Bench diversion will be immediately approved. Source WO WIP will be deducted and target Draw Bench queue credited instantly.'
+                          : 'Standard Draw Bench Rule: This diversion will be submitted as Pending PPC Approval. Source WO retains physical WIP balance and target Draw Bench queue is un-credited until approved by PPC.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1577,6 +1775,24 @@ export default function DiversionForm() {
                 </span>
               </div>
             </div>
+
+            {/* Pending PPC Approval Hold Notice on Source WO (Option 2) */}
+            {sourceWip.pendingDrawDiversionsCount != null && sourceWip.pendingDrawDiversionsCount > 0 && (
+              <div className="flex items-start gap-2.5 p-3 rounded-md bg-amber-50 border border-amber-300 text-amber-900 text-xs shadow-2xs">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 flex-1">
+                  <div className="font-bold flex items-center gap-2">
+                    <span>Draw Bench Diversion Pending PPC Approval</span>
+                    <span className="px-1.5 py-0.2 rounded bg-amber-200/80 text-amber-950 text-[10px] uppercase font-mono font-bold">
+                      {sourceWip.pendingDrawDiversionsCount} Pending
+                    </span>
+                  </div>
+                  <p className="text-amber-800 text-[11.5px] leading-relaxed">
+                    <strong>{fmt(sourceWip.pendingDrawDiversionsMtr)} Mtrs</strong> of material are currently awaiting PPC approval for Draw Bench diversion. In accordance with Mill WIP Rule 1 &amp; 2, this material <strong>remains in active source WIP balance</strong> until approved.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Source Order Specs Bar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white p-2.5 rounded border border-slate-200">
@@ -2082,6 +2298,171 @@ export default function DiversionForm() {
         </div>
       )}
 
+      {/* TAB: PENDING PPC APPROVALS */}
+      {activeTab === 'PENDING_PPC' && (
+        <section className="rounded-lg border border-amber-300 bg-white p-5 shadow-2xs space-y-4">
+          <div className="border-b border-amber-200 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-amber-600" />
+                  Draw Bench Diversions — Pending PPC Authorization
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Review and authorize requested Draw Bench diversions. Approving deducts material from the source work order and credits the Draw Bench queue. Rejecting releases the hold and discards the addition.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void loadPlans()}
+                disabled={plansLoading}
+                className="inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 cursor-pointer shadow-2xs"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${plansLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+
+            {/* Metrics cards for Pending PPC */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Pending Requests</div>
+                <div className="mt-1 text-xl font-bold font-mono text-amber-950">{pendingPpcPlans.length}</div>
+                <div className="text-[11px] text-amber-700 mt-0.5">Awaiting PPC Action</div>
+              </div>
+
+              <div className="bg-blue-50/60 border border-blue-200 rounded-lg p-3">
+                <div className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Pending Meters</div>
+                <div className="mt-1 text-xl font-bold font-mono text-blue-950">
+                  {fmt(pendingPpcPlans.reduce((sum, p) => sum + Number(p.diverted_qty || 0), 0))} Mtr
+                </div>
+                <div className="text-[11px] text-blue-600 mt-0.5 font-mono">Held at source</div>
+              </div>
+
+              <div className="bg-purple-50/60 border border-purple-200 rounded-lg p-3">
+                <div className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Pending Pieces</div>
+                <div className="mt-1 text-xl font-bold font-mono text-purple-950">
+                  {fmt(pendingPpcPlans.reduce((sum, p) => sum + Number(p.diverted_pcs || 0), 0), 0)} Pcs
+                </div>
+                <div className="text-[11px] text-purple-600 mt-0.5 font-mono">Draw Bench infeed</div>
+              </div>
+
+              <div className="bg-emerald-50/60 border border-emerald-200 rounded-lg p-3">
+                <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Estimated Mass</div>
+                <div className="mt-1 text-xl font-bold font-mono text-emerald-950">
+                  {fmt(pendingPpcPlans.reduce((sum, p) => sum + Number(p.diverted_mt || 0), 0), 2)} MT
+                </div>
+                <div className="text-[11px] text-emerald-600 mt-0.5">Physical weight</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Pending Table */}
+          <div className="overflow-x-auto border border-amber-200 rounded shadow-2xs">
+            <table className="min-w-[1200px] w-full text-xs border-collapse">
+              <thead className="bg-amber-50/60 border-b border-amber-200 text-slate-800">
+                <tr>
+                  <th className="px-3 py-2 text-left font-bold border-r border-amber-200">Plan ID</th>
+                  <th className="px-3 py-2 text-left font-bold border-r border-amber-200">Date</th>
+                  <th className="px-3 py-2 text-left font-bold border-r border-amber-200">Source WO #</th>
+                  <th className="px-3 py-2 text-left font-bold border-r border-amber-200">Source Customer</th>
+                  <th className="px-3 py-2 text-left font-bold border-r border-amber-200">Target WO # (Draw Bench)</th>
+                  <th className="px-3 py-2 text-left font-bold border-r border-amber-200">Target Customer</th>
+                  <th className="px-3 py-2 text-right font-bold border-r border-amber-200">Meters</th>
+                  <th className="px-3 py-2 text-right font-bold border-r border-amber-200">Pieces</th>
+                  <th className="px-3 py-2 text-right font-bold border-r border-amber-200">Weight (MT)</th>
+                  <th className="px-3 py-2 text-left font-bold border-r border-amber-200">Reason / Notes</th>
+                  <th className="px-3 py-2 text-center font-bold sticky right-0 bg-amber-50 border-l border-amber-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)]">
+                    PPC Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-amber-100">
+                {pendingPpcPlans.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="p-8 text-center text-slate-500">
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+                        <span className="font-semibold text-slate-700">All clear! No Draw Bench diversions pending PPC approval.</span>
+                        <span className="text-xs text-slate-400">Any newly submitted Draw Bench diversions will appear here for authorization.</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  pendingPpcPlans.map((p) => (
+                    <tr key={p.id} className="hover:bg-amber-50/50">
+                      <td className="px-3 py-2.5 font-bold font-mono text-slate-900 border-r border-slate-200">
+                        {p.id}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                        {p.diversion_date}
+                      </td>
+                      <td className="px-3 py-2.5 font-bold font-mono text-red-700 border-r border-slate-200">
+                        {p.source_wo_no}
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-600 border-r border-slate-200 max-w-[130px] truncate" title={p.source_customer}>
+                        {p.source_customer}
+                      </td>
+                      <td className="px-3 py-2.5 font-bold font-mono text-emerald-700 border-r border-slate-200">
+                        {p.target_wo_no}
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-600 border-r border-slate-200 max-w-[130px] truncate" title={p.target_customer}>
+                        {p.target_customer}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900 border-r border-slate-200">
+                        {fmt(p.diverted_qty)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-slate-700 border-r border-slate-200">
+                        {fmt(p.diverted_pcs, 0)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-slate-700 border-r border-slate-200">
+                        {fmt(p.diverted_mt, 3)}
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-600 border-r border-slate-200 max-w-[200px] truncate" title={p.reason}>
+                        {p.reason}
+                      </td>
+                      <td className="px-3 py-2.5 sticky right-0 bg-white border-l border-amber-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] whitespace-nowrap">
+                        {isPpcUser ? (
+                          <div className="flex items-center gap-1.5 justify-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setApproveModalPlan(p);
+                                setApproveRemarks('');
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-2xs transition"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRejectModalPlan(p);
+                                setRejectReason('');
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-2xs transition"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800">
+                            <Lock className="h-3 w-3" /> PPC Required
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {/* TAB 2: OFFCUTS & REMNANTS POOL */}
       {activeTab === 'REMNANTS' && (
         <OffcutPoolManager onDivertRemnant={handleDivertRemnant} canManagePlans={canManagePlans} />
@@ -2145,7 +2526,7 @@ export default function DiversionForm() {
 
           {/* Search & Filter Toolbar */}
           <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-12">
-            <div className="relative lg:col-span-4">
+            <div className="relative lg:col-span-3">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <Input
                 className="h-8.5 pl-8 text-xs w-full"
@@ -2155,7 +2536,7 @@ export default function DiversionForm() {
               />
             </div>
 
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-2">
               <Select
                 className="h-8.5 text-xs w-full"
                 value={filterWorkCenter}
@@ -2167,6 +2548,19 @@ export default function DiversionForm() {
                     {wc.name}
                   </option>
                 ))}
+              </Select>
+            </div>
+
+            <div className="lg:col-span-2">
+              <Select
+                className="h-8.5 text-xs w-full font-semibold"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="">All Statuses</option>
+                <option value="APPROVED">Approved Only</option>
+                <option value="PENDING_PPC">Pending PPC</option>
+                <option value="REJECTED_BY_PPC">Rejected</option>
               </Select>
             </div>
 
@@ -2233,6 +2627,7 @@ export default function DiversionForm() {
                   'Target Customer',
                   'Work Center',
                   'Route',
+                  'Status',
                   'Diverted Qty (Mtr)',
                   'Diverted Pcs',
                   'Diverted MT',
@@ -2261,18 +2656,18 @@ export default function DiversionForm() {
             <tbody className="divide-y divide-slate-200">
               {plansLoading ? (
                 <tr>
-                  <td colSpan={15} className="p-8 text-center text-slate-400">
+                  <td colSpan={16} className="p-8 text-center text-slate-400">
                     Loading diversion records…
                   </td>
                 </tr>
-              ) : plans.length === 0 ? (
+              ) : filteredPlans.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="p-8 text-center text-slate-500">
+                  <td colSpan={16} className="p-8 text-center text-slate-500">
                     No diversion plans found matching criteria.
                   </td>
                 </tr>
               ) : (
-                plans.map((p) => {
+                filteredPlans.map((p) => {
                   const canModifyPlan = p.can_modify && (canManagePlans || !user || user.role !== 'auditor');
                   return (
                     <tr key={p.id} className="group hover:bg-blue-50/40 even:bg-slate-50/50">
@@ -2322,6 +2717,25 @@ export default function DiversionForm() {
                         {p.route_code}
                       </td>
 
+                      <td className="px-3 py-2 border-r border-slate-200 whitespace-nowrap">
+                        {p.status === 'PENDING_PPC' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                            <Clock className="h-3 w-3 text-amber-600" />
+                            Pending PPC
+                          </span>
+                        ) : p.status === 'REJECTED_BY_PPC' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200" title={p.ppc_rejection_reason || 'Rejected by PPC'}>
+                            <XCircle className="h-3 w-3 text-rose-600" />
+                            Rejected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <Check className="h-3 w-3 text-emerald-600" />
+                            Approved
+                          </span>
+                        )}
+                      </td>
+
                       <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 border-r border-slate-200">
                         {fmt(p.diverted_qty)}
                       </td>
@@ -2356,10 +2770,32 @@ export default function DiversionForm() {
                         {p.approved_by || 'Admin'}
                       </td>
 
-                      {/* Action buttons (Edit / Delete) - Sticky Right */}
+                      {/* Action buttons (Edit / Delete / Quick PPC Approve) - Sticky Right */}
                       <td className="sticky right-0 z-10 bg-white group-even:bg-slate-50 group-hover:bg-blue-50/80 border-l border-slate-200 px-3 py-1.5 whitespace-nowrap shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)]">
                         {canModifyPlan ? (
                           <div className="flex items-center gap-1.5">
+                            {p.status === 'PENDING_PPC' && isPpcUser && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => { setApproveModalPlan(p); setApproveRemarks(''); }}
+                                  title="Authorize Draw Bench Diversion"
+                                  className="inline-flex items-center gap-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 text-xs font-bold shadow-2xs transition"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setRejectModalPlan(p); setRejectReason(''); }}
+                                  title="Reject Draw Bench Diversion"
+                                  className="inline-flex items-center gap-1 rounded bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 text-xs font-bold shadow-2xs transition"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  Reject
+                                </button>
+                              </>
+                            )}
                             <button
                               type="button"
                               onClick={() => startEdit(p)}
@@ -2541,6 +2977,132 @@ export default function DiversionForm() {
                 className="bg-[#0078d4] hover:bg-[#106ebe] px-5 text-xs font-semibold shadow-xs"
               >
                 {editSaving ? 'Saving Changes…' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PPC APPROVE CONFIRMATION MODAL */}
+      {approveModalPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl border border-emerald-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-emerald-100 pb-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                <h3 className="font-bold text-slate-900 text-base">Authorize Draw Bench Diversion</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setApproveModalPlan(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-950 space-y-1">
+              <div><strong>Plan ID:</strong> {approveModalPlan.id}</div>
+              <div><strong>Transfer:</strong> {fmt(approveModalPlan.diverted_qty)} Mtrs ({fmt(approveModalPlan.diverted_pcs, 0)} Pcs)</div>
+              <div><strong>From Source:</strong> WO #{approveModalPlan.source_wo_no} ({approveModalPlan.source_customer})</div>
+              <div><strong>To Target:</strong> WO #{approveModalPlan.target_wo_no} ({approveModalPlan.target_customer}) at Draw Bench</div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Approving will deduct this material from Source WO #{approveModalPlan.source_wo_no} WIP and immediately credit Target WO #{approveModalPlan.target_wo_no} Draw Bench infeed queue.
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                PPC Approval Remarks (Optional)
+              </label>
+              <Input
+                placeholder="e.g. Authorized as per daily rolling schedule revision..."
+                value={approveRemarks}
+                onChange={(e) => setApproveRemarks(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button
+                variant="outline"
+                type="button"
+                disabled={approveBusy}
+                onClick={() => setApproveModalPlan(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={approveBusy}
+                onClick={handleApprove}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+              >
+                {approveBusy ? 'Approving...' : 'Confirm & Authorize'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PPC REJECT CONFIRMATION MODAL */}
+      {rejectModalPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl border border-rose-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-rose-100 pb-3">
+              <div className="flex items-center gap-2">
+                <XCircle className="h-5 w-5 text-rose-600" />
+                <h3 className="font-bold text-slate-900 text-base">Reject Draw Bench Diversion</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRejectModalPlan(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="bg-rose-50/70 border border-rose-200 rounded-lg p-3 text-xs text-rose-950 space-y-1">
+              <div><strong>Plan ID:</strong> {rejectModalPlan.id}</div>
+              <div><strong>Transfer:</strong> {fmt(rejectModalPlan.diverted_qty)} Mtrs from WO #{rejectModalPlan.source_wo_no} to WO #{rejectModalPlan.target_wo_no}</div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Rejecting will release the pending hold on Source WO #{rejectModalPlan.source_wo_no}. The material will not be transferred to Target WO #{rejectModalPlan.target_wo_no}.
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                PPC Rejection Reason <span className="text-rose-600">*</span>
+              </label>
+              <textarea
+                required
+                rows={3}
+                placeholder="State why this diversion is rejected (e.g. Incompatible metallurgy / target order already fulfilled)..."
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full text-xs rounded-md border border-slate-300 p-2 focus:ring-rose-500 focus:border-rose-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button
+                variant="outline"
+                type="button"
+                disabled={rejectBusy}
+                onClick={() => setRejectModalPlan(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={rejectBusy || !rejectReason.trim()}
+                onClick={handleReject}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
+              >
+                {rejectBusy ? 'Rejecting...' : 'Reject Diversion'}
               </Button>
             </div>
           </div>

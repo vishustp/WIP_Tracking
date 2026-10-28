@@ -97,6 +97,15 @@ export function ProductionQueueRow({
               )}
             </span>
           )}
+          {row.has_pending_ppc_diversion && (
+            <span
+              className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 px-1.5 py-0.2 text-[10px] font-mono font-bold tracking-tight shadow-2xs"
+              title={row.pending_ppc_diversion_note || 'Draw Bench diversion pending PPC approval'}
+            >
+              <AlertTriangle size={10} className="shrink-0 text-amber-700 dark:text-amber-400" />
+              <span>HOLD: {row.pending_ppc_diversion_mtr}m PENDING PPC</span>
+            </span>
+          )}
           {row.daily_plan_target_pcs && Number(row.daily_plan_target_pcs) > 0 && (
             <span className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-1.5 py-0.2 text-[10px] font-mono font-bold tracking-tight shadow-2xs">
               ★ TODAY&apos;S TARGET: {row.daily_plan_target_pcs} PCS{row.daily_plan_machine ? ` (${row.daily_plan_machine})` : ''}

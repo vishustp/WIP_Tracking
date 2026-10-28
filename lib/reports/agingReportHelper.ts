@@ -169,6 +169,7 @@ export interface RawDiversionPlan {
   remarks?: string | null;
   diversion_date?: string | null;
   created_at?: string;
+  status?: string | null;
   work_orders?: { work_order_no?: string };
 }
 
@@ -305,6 +306,7 @@ export function determineStageEffectiveActivityDate(params: {
       upstreamStages.map((u) => (u.stage_code || u.process_stages?.stage_code || '').toUpperCase())
     );
     for (const d of diversions) {
+      if (d.status && d.status !== 'APPROVED') continue;
       const targetWo = d.target_work_order_id || d.target_wo_id;
       const sourceWo = d.source_work_order_id || d.source_wo_id;
       const isTarget = targetWo === workOrderId;
@@ -406,6 +408,8 @@ export function computeAgingReportRows(options: {
     rejMap.set(key, { pcs: cur.pcs + pcs, mtr: cur.mtr + mtr });
   });
 
+  const approvedDiversions = (diversions || []).filter((d: any) => !d.status || d.status === 'APPROVED');
+
   const rows: AgingRow[] = wipRows
     .filter((r) => {
       if ((r.stage_code || '').toUpperCase() === 'ROLLING') return false;
@@ -491,8 +495,8 @@ export function computeAgingReportRows(options: {
       const rejKey = `${r.work_order_id}_${sc}`;
       const rejDecl = rejMap.get(rejKey) || { pcs: 0, mtr: 0 };
 
-      // Deduct outbound diversions from this stage (including material banked into Hollow Bank)
-      const stageDivOutMtr = (diversions || [])
+      // Deduct outbound diversions from this stage (Rule 2 Option B: only approved diversions alter active WIP)
+      const stageDivOutMtr = approvedDiversions
         .filter((d: any) => {
           const srcId = d.source_work_order_id || d.source_wo_id;
           if (srcId !== r.work_order_id) return false;
@@ -505,7 +509,7 @@ export function computeAgingReportRows(options: {
         })
         .reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
 
-      const stageDivOutPcs = (diversions || [])
+      const stageDivOutPcs = approvedDiversions
         .filter((d: any) => {
           const srcId = d.source_work_order_id || d.source_wo_id;
           if (srcId !== r.work_order_id) return false;
@@ -558,7 +562,7 @@ export function computeAgingReportRows(options: {
         qcInspections,
         rollingPlanDate: plan?.rolling_date,
         workOrderCreatedDate: wo?.created_at || r.created_at,
-        diversions,
+        diversions: approvedDiversions,
       });
 
       const daysStuck = calculateDaysStuck(effDate, asOfDate);
@@ -577,7 +581,7 @@ export function computeAgingReportRows(options: {
       const rawVdiSalvageMtr = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0) : 0;
 
       // Outbound VDI salvage diversions
-      const vdiSalvageDivOutMtr = (diversions || [])
+      const vdiSalvageDivOutMtr = (approvedDiversions || [])
         .filter((d: any) => {
           const srcId = d.source_work_order_id || d.source_wo_id;
           if (srcId !== r.work_order_id) return false;
@@ -586,7 +590,7 @@ export function computeAgingReportRows(options: {
         })
         .reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
 
-      const vdiSalvageDivOutPcs = (diversions || [])
+      const vdiSalvageDivOutPcs = (approvedDiversions || [])
         .filter((d: any) => {
           const srcId = d.source_work_order_id || d.source_wo_id;
           if (srcId !== r.work_order_id) return false;
@@ -608,11 +612,11 @@ export function computeAgingReportRows(options: {
       const vdiSalvageMtr = Math.max(0, Number((rawVdiSalvageMtr - vdiSalvageDivOutMtr).toFixed(3)));
 
       // Diversion details
-      const divMatching = diversions.filter((d: any) => {
+      const divMatching = approvedDiversions.filter((d: any) => {
         const targetWo = d.target_work_order_id || d.target_wo_id;
         return targetWo === r.work_order_id && parseDivStages(d).targetStage === sc;
       });
-      const anyWoDiv = diversions.filter((d: any) => {
+      const anyWoDiv = approvedDiversions.filter((d: any) => {
         const targetWo = d.target_work_order_id || d.target_wo_id;
         return targetWo === r.work_order_id;
       });
@@ -929,8 +933,10 @@ export function normalizeAgingRow(
     }
   }
 
-  // Deduct outbound diversions from this stage
-  const stageDivOutMtr = (diversions || [])
+  const approvedDiversions = (diversions || []).filter((d: any) => !d.status || d.status === 'APPROVED');
+
+  // Deduct outbound diversions from this stage (only approved diversions alter active WIP)
+  const stageDivOutMtr = approvedDiversions
     .filter((d: any) => {
       const srcId = d.source_work_order_id || d.source_wo_id;
       if (srcId !== raw.work_order_id) return false;
@@ -943,7 +949,7 @@ export function normalizeAgingRow(
     })
     .reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
 
-  const stageDivOutPcs = (diversions || [])
+  const stageDivOutPcs = approvedDiversions
     .filter((d: any) => {
       const srcId = d.source_work_order_id || d.source_wo_id;
       if (srcId !== raw.work_order_id) return false;
