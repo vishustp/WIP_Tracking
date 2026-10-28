@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/client';
 import { cleanRemarksFromSystemTags } from '@/lib/productionUtils';
+import { parseDivStages } from '@/lib/reports/agingReportHelper';
 import {
   MillRejectionEntry,
   MillRejectionSummaryKpis,
@@ -39,8 +40,140 @@ function mapStageToCategory(stageCode: string): { category: MillRejectionCategor
 }
 
 /**
+ * Reconciles and deducts outbound diversions (to Hollow Bank or Target Work Orders)
+ * from mill rejection and salvage items.
+ */
+export function applyDiversionsToMillRejections(
+  entries: MillRejectionEntry[],
+  diversions: any[] = [],
+  hollowBankEntries: any[] = []
+): MillRejectionEntry[] {
+  // Track remaining allocated pools per (woId + '_' + stageCode)
+  const stagePools = new Map<string, { pcs: number; mtr: number }>();
+  // Also track exact lot matches
+  const lotPools = new Map<string, { pcs: number; mtr: number }>();
+
+  // Populate diversion pools from diversion_plans
+  (diversions || []).forEach((d) => {
+    const woId = d.source_wo_id || d.source_work_order_id;
+    if (!woId) return;
+    const reasonStr = String(d.reason || d.remarks || '');
+    const { sourceStage } = parseDivStages(d);
+    const key = `${woId}_${sourceStage.toUpperCase()}`;
+    const dQty = Number(d.diverted_qty ?? d.diverted_mtr ?? 0);
+
+    let pcs = 0;
+    if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) {
+      pcs = Number(d.diverted_pcs);
+    } else {
+      const pcsMatch = reasonStr.match(/\[PCS:\s*([0-9]+)\]/i);
+      if (pcsMatch) {
+        pcs = Number(pcsMatch[1]);
+      }
+    }
+
+    // Check if reason has a lot tag, e.g. [LOT: 426100249]
+    const lotMatch = reasonStr.match(/\[LOT:\s*([^\]]+)\]/i);
+    if (lotMatch) {
+      const lotKey = `${woId}_${lotMatch[1].trim()}`;
+      const curLot = lotPools.get(lotKey) || { pcs: 0, mtr: 0 };
+      lotPools.set(lotKey, {
+        pcs: curLot.pcs + (pcs || (dQty > 0 ? Math.round(dQty / 6.0) : 0)),
+        mtr: curLot.mtr + dQty,
+      });
+    }
+
+    const cur = stagePools.get(key) || { pcs: 0, mtr: 0 };
+    stagePools.set(key, {
+      pcs: cur.pcs + pcs,
+      mtr: cur.mtr + dQty,
+    });
+  });
+
+  // Also factor in hollow bank entries if they recorded extra lots
+  (hollowBankEntries || []).forEach((hb) => {
+    const woId = hb.source_wo_id;
+    if (!woId) return;
+    const stageCode = (hb.source_stage_code || 'VDI').toUpperCase();
+    const remarks = String(hb.remarks || '');
+    const lotMatch = remarks.match(/\[LOT:\s*([^\]]+)\]/i);
+    if (lotMatch) {
+      const lotKey = `${woId}_${lotMatch[1].trim()}`;
+      if (!lotPools.has(lotKey)) {
+        lotPools.set(lotKey, {
+          pcs: Number(hb.pcs || 0),
+          mtr: Number(hb.total_meters || 0),
+        });
+      }
+    }
+  });
+
+  // Process entries chronologically (oldest first) so diversions consume oldest salvage first
+  const sorted = [...entries].sort((a, b) => {
+    const cmp = (a.date || '').localeCompare(b.date || '');
+    if (cmp !== 0) return cmp;
+    return (a.createdAt || '').localeCompare(b.createdAt || '');
+  });
+
+  return sorted.map((e) => {
+    const woId = e.workOrderId;
+    const sc = (e.stageCode || (e.category === 'VDI_SALVAGE' || e.category === 'VDI_REJECTION' ? 'VDI' : e.category)).toUpperCase();
+    const stageKey = `${woId}_${sc}`;
+    const vdiKey = `${woId}_VDI`;
+    const lotKey = e.heatLotNo ? `${woId}_${e.heatLotNo.trim()}` : null;
+    const remarksLotMatch = e.remarks.match(/\[LOT:\s*([^\]]+)\]/i);
+    const effectiveLotKey = lotKey || (remarksLotMatch ? `${woId}_${remarksLotMatch[1].trim()}` : null);
+
+    let divPcs = 0;
+    let divMtr = 0;
+
+    // 1. Try exact lot match first
+    if (effectiveLotKey && lotPools.has(effectiveLotKey)) {
+      const lotPool = lotPools.get(effectiveLotKey)!;
+      if (lotPool.mtr > 0 || lotPool.pcs > 0) {
+        divMtr = Math.min(e.mtr, lotPool.mtr);
+        divPcs = Math.min(e.pcs, lotPool.pcs > 0 ? lotPool.pcs : (e.avgLength > 0 ? Math.round(divMtr / e.avgLength) : e.pcs));
+        lotPool.mtr = Math.max(0, Number((lotPool.mtr - divMtr).toFixed(3)));
+        lotPool.pcs = Math.max(0, lotPool.pcs - divPcs);
+      }
+    }
+
+    // 2. If not covered by lot, check stage pool (or VDI pool for VDI salvage)
+    const activeStageKey = stagePools.has(stageKey) ? stageKey : (e.category === 'VDI_SALVAGE' && stagePools.has(vdiKey) ? vdiKey : null);
+    if ((divMtr < e.mtr || divPcs < e.pcs) && activeStageKey) {
+      const pool = stagePools.get(activeStageKey)!;
+      if (pool.mtr > 0 || pool.pcs > 0) {
+        const neededMtr = Math.max(0, e.mtr - divMtr);
+        const neededPcs = Math.max(0, e.pcs - divPcs);
+        const applyMtr = Math.min(neededMtr, pool.mtr);
+        const applyPcs = Math.min(neededPcs, pool.pcs > 0 ? pool.pcs : (e.avgLength > 0 ? Math.round(applyMtr / e.avgLength) : neededPcs));
+        divMtr += applyMtr;
+        divPcs += applyPcs;
+        pool.mtr = Math.max(0, Number((pool.mtr - applyMtr).toFixed(3)));
+        pool.pcs = Math.max(0, pool.pcs - applyPcs);
+      }
+    }
+
+    const remainingPcs = Math.max(0, e.pcs - divPcs);
+    const remainingMtr = Math.max(0, Number((e.mtr - divMtr).toFixed(3)));
+    const isDiverted = (divPcs > 0 || divMtr > 0) && remainingPcs <= 0 && remainingMtr <= 0;
+    const isPartiallyDiverted = (divPcs > 0 || divMtr > 0) && (remainingPcs > 0 || remainingMtr > 0);
+
+    return {
+      ...e,
+      divertedPcs: divPcs,
+      divertedMtr: divMtr,
+      remainingPcs,
+      remainingMtr,
+      isDiverted,
+      isPartiallyDiverted,
+    };
+  });
+}
+
+/**
  * Fetches all shop floor rejections logged in production_logs (via get_production_entries RPC)
- * and QC inspections (VDI Salvage & VDI Rejection)
+ * and QC inspections (VDI Salvage & VDI Rejection), reconciling outbound diversions.
  */
 export async function fetchMillRejectionsAndSalvage(
   filters: MillRejectionFilterOptions = {}
@@ -55,7 +188,8 @@ export async function fetchMillRejectionsAndSalvage(
     // 1. Call get_production_entries RPC (security definer with full route, stage, and WO joins)
     // 2. Query qc_inspections for VDI Salvage & VDI Rejection
     // 3. Query work_orders to attach steel grade, specification, and customer metadata
-    const [prodRes, qcRes, woRes] = await Promise.all([
+    // 4. Query diversion_plans and hollow_bank_inventory to deduct dispositioned material
+    const [prodRes, qcRes, woRes, divRes, hbRes] = await Promise.all([
       supabase.rpc('get_production_entries', {
         p_search: null,
         p_stage_code: null,
@@ -73,6 +207,14 @@ export async function fetchMillRejectionsAndSalvage(
       supabase
         .from('work_orders')
         .select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2')
+        .limit(10000),
+      supabase
+        .from('diversion_plans')
+        .select('id, source_wo_id, target_wo_id, diverted_qty, work_center, reason, diversion_date, created_at')
+        .limit(10000),
+      supabase
+        .from('hollow_bank_inventory')
+        .select('id, lot_no, source_wo_id, source_stage_code, pcs, total_meters, remarks, created_at')
         .limit(10000),
     ]);
 
@@ -239,15 +381,25 @@ export async function fetchMillRejectionsAndSalvage(
       }
     });
 
+    // Reconcile and deduct outbound diversions
+    const reconciledEntries = applyDiversionsToMillRejections(
+      entries,
+      (divRes.data || []) as any[],
+      (hbRes.data || []) as any[]
+    );
+
     // Sort by Date descending, then created_at descending
-    entries.sort((a, b) => {
+    reconciledEntries.sort((a, b) => {
       const cmpDate = (b.date || '').localeCompare(a.date || '');
       if (cmpDate !== 0) return cmpDate;
       return (b.createdAt || '').localeCompare(a.createdAt || '');
     });
 
-    // In-memory filters for category, dispositionType, search
-    let filtered = entries;
+    // In-memory filters for category, dispositionType, search, hideDiverted
+    let filtered = reconciledEntries;
+    if (filters.hideDiverted !== false) {
+      filtered = filtered.filter((e) => !e.isDiverted);
+    }
     if (filters.category && filters.category !== 'ALL') {
       filtered = filtered.filter((e) => e.category === filters.category);
     }
@@ -270,7 +422,7 @@ export async function fetchMillRejectionsAndSalvage(
       );
     }
 
-    // Compute KPIs across all retrieved entries
+    // Compute KPIs across active/filtered entries
     const kpis: MillRejectionSummaryKpis = {
       totalRollingPcs: 0,
       totalRollingMt: 0,
@@ -288,25 +440,31 @@ export async function fetchMillRejectionsAndSalvage(
     };
 
     filtered.forEach((e) => {
-      kpis.grandTotalPcs += e.pcs;
-      kpis.grandTotalMtr += e.mtr;
-      kpis.grandTotalMt += e.mt;
+      const activePcs = e.remainingPcs != null ? e.remainingPcs : (e.isDiverted ? 0 : e.pcs);
+      const activeMtr = e.remainingMtr != null ? e.remainingMtr : (e.isDiverted ? 0 : e.mtr);
+      const activeMt = (e.pcs > 0 && activePcs !== e.pcs)
+        ? computePipeWeight(activeMtr, e.sizeOd, e.sizeWt)
+        : (e.isDiverted ? 0 : e.mt);
+
+      kpis.grandTotalPcs += activePcs;
+      kpis.grandTotalMtr += activeMtr;
+      kpis.grandTotalMt += activeMt;
 
       if (e.category === 'ROLLING') {
-        kpis.totalRollingPcs += e.pcs;
-        kpis.totalRollingMt += e.mt;
+        kpis.totalRollingPcs += activePcs;
+        kpis.totalRollingMt += activeMt;
       } else if (e.category === 'DRAW') {
-        kpis.totalDrawPcs += e.pcs;
-        kpis.totalDrawMt += e.mt;
+        kpis.totalDrawPcs += activePcs;
+        kpis.totalDrawMt += activeMt;
       } else if (e.category === 'HEAT_TREATMENT') {
-        kpis.totalHtPcs += e.pcs;
-        kpis.totalHtMt += e.mt;
+        kpis.totalHtPcs += activePcs;
+        kpis.totalHtMt += activeMt;
       } else if (e.category === 'VDI_SALVAGE') {
-        kpis.totalVdiSalvagePcs += e.pcs;
-        kpis.totalVdiSalvageMt += e.mt;
+        kpis.totalVdiSalvagePcs += activePcs;
+        kpis.totalVdiSalvageMt += activeMt;
       } else if (e.category === 'VDI_REJECTION') {
-        kpis.totalVdiRejPcs += e.pcs;
-        kpis.totalVdiRejMt += e.mt;
+        kpis.totalVdiRejPcs += activePcs;
+        kpis.totalVdiRejMt += activeMt;
       }
     });
 

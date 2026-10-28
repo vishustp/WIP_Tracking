@@ -938,13 +938,14 @@ export default function DiversionForm() {
         const targetWoObj = wos.find((w) => w.id === split.target_wo_id);
         const targetWoNo = targetWoObj?.work_order_no || 'Target';
 
+        const stageTag = `[FROM_STAGE: ${sourceWorkCenter || 'BAND_SAW'}] [TO_STAGE: ${split.target_stage_code}] [PCS: ${totalPieces}]`;
         let finalReason = '';
         if (payload.strategy === 'NO_CUT') {
-          finalReason = `Direct Transfer (Without Cutting): ${payload.motherPcs} whole pipes @ ${payload.motherLength}m (${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}]`.trim();
+          finalReason = `Direct Transfer (Without Cutting): ${payload.motherPcs} whole pipes @ ${payload.motherLength}m (${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}] ${stageTag}`.trim();
         } else if (payload.strategy === 'SINGLE_ORDER') {
-          finalReason = `Cut from Middle & Diverted: ${payload.motherPcs} mother pipes @ ${payload.motherLength}m cut into ${totalPieces} pcs (${cutsPerPipe} cuts/pipe @ ${split.cut_length}m = ${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}] ${remnantTag}`.trim();
+          finalReason = `Cut from Middle & Diverted: ${payload.motherPcs} mother pipes @ ${payload.motherLength}m cut into ${totalPieces} pcs (${cutsPerPipe} cuts/pipe @ ${split.cut_length}m = ${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}] ${remnantTag} ${stageTag}`.trim();
         } else {
-          finalReason = `Cut & Multi-Order Diversion (#${i + 1}/${externalSplits.length}): Mother ${payload.motherPcs} pcs @ ${payload.motherLength}m cut from middle. Diverting ${payload.motherPcs} pcs @ ${split.cut_length}m (${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}]. ${sameOrderDesc} ${remnantTag}`.trim();
+          finalReason = `Cut & Multi-Order Diversion (#${i + 1}/${externalSplits.length}): Mother ${payload.motherPcs} pcs @ ${payload.motherLength}m cut from middle. Diverting ${payload.motherPcs} pcs @ ${split.cut_length}m (${splitMtr}m) to WO #${targetWoNo} at [${split.target_stage_code}]. ${sameOrderDesc} ${remnantTag} ${stageTag}`.trim();
         }
 
         const approverAuthId = user?.auth_user_id || session?.user?.id || null;
@@ -1052,8 +1053,11 @@ export default function DiversionForm() {
     const cleanedUserReason = reason
       .replace(/\[FROM_STAGE:\s*[A-Z_]+\]/gi, '')
       .replace(/\[TO_STAGE:\s*[A-Z_]+\]/gi, '')
+      .replace(/\[PCS:\s*\d+\]/gi, '')
       .trim();
-    const finalReason = `${cleanedUserReason}${numMultiple > 1 ? ` [MULTIPLE: ${numMultiple}]` : ''} [FROM_STAGE: ${sourceWorkCenter}] [TO_STAGE: ${targetWorkCenter}]`.trim();
+    const pcsNum = Number(pcsInput);
+    const pcsTag = Number.isFinite(pcsNum) && pcsNum > 0 ? ` [PCS: ${pcsNum}]` : '';
+    const finalReason = `${cleanedUserReason}${numMultiple > 1 ? ` [MULTIPLE: ${numMultiple}]` : ''} [FROM_STAGE: ${sourceWorkCenter}] [TO_STAGE: ${targetWorkCenter}]${pcsTag}`.trim();
 
     setBusy(true);
     let success = false;

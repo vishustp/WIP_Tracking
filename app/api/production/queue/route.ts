@@ -1302,29 +1302,41 @@ export async function GET(req: NextRequest) {
       const vdiDivOutPcs = getStageDivOutPcs(woId, "VDI", avgLength);
       const vdiRejDecl = getStageRejDecl(woId, "VDI");
 
+      // VDI incoming: strictly from Band Saw Net Output Pieces
+      const vdiIncomingPcs = allBandSawLogs.length > 0 ? bandSawNetPcs : 0;
+      const vdiIncomingMtr = allBandSawLogs.length > 0 ? bandSawNetMtr : 0;
+
       // Distinguish salvage diversions out vs prime diversions out from VDI
+      const isVdiSalvageDiv = (d: any) => {
+        if (d.source_wo_id !== woId) return false;
+        const { sourceStage } = parseDivStages(d);
+        if (sourceStage === "VDI_SALVAGE") return true;
+        if (sourceStage === "VDI") {
+          if (d.target_wo_id === HOLLOW_BANK_WO_ID) return true;
+          const rStr = typeof d.reason === "string" ? d.reason.toLowerCase() : "";
+          if (
+            rStr.includes("salvage") ||
+            rStr.includes("rejection") ||
+            rStr.includes("hollow bank") ||
+            rStr.includes("bank") ||
+            rStr.includes("second") ||
+            rStr.includes("scrap") ||
+            rStr.includes("remnant")
+          ) {
+            return true;
+          }
+          // If no uninspected prime pieces are at VDI, any VDI diversion is from the salvage pool
+          if (vdiIncomingPcs <= (qcOkPcs + qcRejPcs)) return true;
+        }
+        return false;
+      };
+
       const vdiSalvageDivOut = diversions
-        .filter(
-          (d: any) =>
-            d.source_wo_id === woId &&
-            (parseDivStages(d).sourceStage === "VDI_SALVAGE" ||
-              (parseDivStages(d).sourceStage === "VDI" &&
-                (d.target_wo_id === HOLLOW_BANK_WO_ID ||
-                  (typeof d.reason === "string" &&
-                    (d.reason.includes("Salvage") || d.reason.includes("Rejection") || d.reason.includes("Hollow Bank"))))))
-        )
+        .filter(isVdiSalvageDiv)
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
       const vdiSalvageDivOutPcs = diversions
-        .filter(
-          (d: any) =>
-            d.source_wo_id === woId &&
-            (parseDivStages(d).sourceStage === "VDI_SALVAGE" ||
-              (parseDivStages(d).sourceStage === "VDI" &&
-                (d.target_wo_id === HOLLOW_BANK_WO_ID ||
-                  (typeof d.reason === "string" &&
-                    (d.reason.includes("Salvage") || d.reason.includes("Rejection") || d.reason.includes("Hollow Bank"))))))
-        )
+        .filter(isVdiSalvageDiv)
         .reduce((sum: number, d: any) => {
           if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
           const pcsMatch = typeof d.reason === "string" ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
@@ -1335,10 +1347,6 @@ export async function GET(req: NextRequest) {
 
       const vdiPrimeDivOut = Math.max(0, vdiDivOut - vdiSalvageDivOut);
       const vdiPrimeDivOutPcs = Math.max(0, vdiDivOutPcs - vdiSalvageDivOutPcs);
-
-      // VDI incoming: strictly from Band Saw Net Output Pieces
-      const vdiIncomingPcs = allBandSawLogs.length > 0 ? bandSawNetPcs : 0;
-      const vdiIncomingMtr = allBandSawLogs.length > 0 ? bandSawNetMtr : 0;
 
       // When material was diverted into VDI without Band Saw cuts, and inspection was completed or downstream bundling started:
       if (allBandSawLogs.length === 0 && vdiDivIn > 0 && qcInspectedPcs > 0 && (finOutPcs > 0 || qcInspectedPcs >= vdiDivInPcs * 0.9)) {
@@ -1958,6 +1966,17 @@ export async function GET(req: NextRequest) {
         return dates.sort().reverse()[0] || null;
       };
 
+      const vdiSalvageRejDecl = getStageRejDecl(woId, "VDI_SALVAGE");
+      const totalVdiRejMtr = vdiRejDecl.mtr + vdiSalvageRejDecl.mtr;
+      const totalVdiRejPcs = vdiRejDecl.pcs + vdiSalvageRejDecl.pcs;
+
+      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut - totalVdiRejMtr).toFixed(3)));
+      const remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs - totalVdiRejPcs);
+      if (remSalvagePcs > 0 && remSalvageMtr <= 0 && avgLength > 0) {
+        remSalvageMtr = Number((remSalvagePcs * avgLength).toFixed(3));
+      }
+      const remSalvageMt = mtFromMtr(remSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
       const queueRows: Record<StageCode, Row | null> = {
         HOT_ROLLING:
           (isRollingPlanIssued && (rollAvailMtr >= 1.0 || rollAvailPcs >= 1)) || (rollGrossPcs > 0 || rollOutMtr > 0)
@@ -2241,8 +2260,8 @@ export async function GET(req: NextRequest) {
                 stage_code: "VDI",
                 heat_lot_no: latestBandSawLotNo,
                 heat_lots: vdiLots,
-                vdi_salvage_pcs: qcSalvagePcs,
-                vdi_salvage_mtr: qcSalvageMtr,
+                vdi_salvage_pcs: remSalvagePcs,
+                vdi_salvage_mtr: remSalvageMtr,
                 balance_to_make_mtr: isVdiReady ? vdiAvailMtr : vdiFeederMtr,
                 balance_to_make_pcs: isVdiReady ? vdiAvailPcs : vdiFeederPcs,
                 balance_to_make_mt: isVdiReady ? vdiAvailMt : vdiFeederMt,
@@ -2419,17 +2438,6 @@ export async function GET(req: NextRequest) {
           vdiLotRows.push(queueRows.VDI);
         }
       }
-
-      const vdiSalvageRejDecl = getStageRejDecl(woId, "VDI_SALVAGE");
-      const totalVdiRejMtr = vdiRejDecl.mtr + vdiSalvageRejDecl.mtr;
-      const totalVdiRejPcs = vdiRejDecl.pcs + vdiSalvageRejDecl.pcs;
-
-      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut - totalVdiRejMtr).toFixed(3)));
-      const remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs - totalVdiRejPcs);
-      if (remSalvagePcs > 0 && remSalvageMtr <= 0 && avgLength > 0) {
-        remSalvageMtr = Number((remSalvagePcs * avgLength).toFixed(3));
-      }
-      const remSalvageMt = mtFromMtr(remSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       const vdiSalvageRow: Row | null =
         (remSalvagePcs >= 1 || remSalvageMtr >= 1.0)

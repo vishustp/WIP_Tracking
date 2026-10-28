@@ -142,6 +142,7 @@ export interface RejectionFilterOptions {
   grade?: string;
   fromDate?: string;
   toDate?: string;
+  hideDiverted?: boolean;
 }
 
 export interface RejectionSummaryKpis {

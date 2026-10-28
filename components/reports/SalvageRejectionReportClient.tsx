@@ -83,10 +83,11 @@ export default function SalvageRejectionReportClient() {
   const [bankInitialValues, setBankInitialValues] = useState<DivertInitialValues | undefined>(undefined);
   const [hideBanked, setHideBanked] = useState(true);
 
-  const isBanked = (r: RejectionDeclaration) =>
+  const isDiverted = (r: RejectionDeclaration) =>
     Boolean(
-      r.ppc_remarks?.includes('DIVERTED_TO_HOLLOW_BANK') ||
-      r.production_remarks?.includes('DIVERTED_TO_HOLLOW_BANK')
+      r.is_diverted ||
+      r.ppc_remarks?.includes('DIVERTED') ||
+      r.production_remarks?.includes('DIVERTED')
     );
 
   const handleSendToBank = (r: RejectionDeclaration) => {
@@ -116,6 +117,7 @@ export default function SalvageRejectionReportClient() {
       search: searchQuery.trim() || undefined,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
+      hideDiverted: hideBanked,
     });
 
     if (error) {
@@ -124,14 +126,14 @@ export default function SalvageRejectionReportClient() {
       setRecords(data);
     }
     setLoading(false);
-  }, [workCenter, status, reasonCategory, gradeFilter, searchQuery, fromDate, toDate]);
+  }, [workCenter, status, reasonCategory, gradeFilter, searchQuery, fromDate, toDate, hideBanked]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   const activeRecords = useMemo(() => {
-    return hideBanked ? records.filter((r) => !isBanked(r)) : records;
+    return hideBanked ? records.filter((r) => !isDiverted(r)) : records;
   }, [records, hideBanked]);
 
   // Aggregated KPIs
@@ -446,7 +448,7 @@ export default function SalvageRejectionReportClient() {
                 onChange={(e) => setHideBanked(e.target.checked)}
                 className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
-              <span>Hide Banked in Hollow Bank</span>
+              <span>Hide Diverted Material (Hollow Bank & Diversions)</span>
             </label>
           </div>
 
@@ -716,9 +718,11 @@ export default function SalvageRejectionReportClient() {
 
                       {/* Action: Send to Hollow Bank */}
                       <td className="py-2.5 px-2.5 text-center whitespace-nowrap print:hidden">
-                        {isBanked(r) ? (
+                        {isDiverted(r) ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-800 border border-purple-200">
-                            Banked in HB
+                            {r.ppc_remarks?.includes('HOLLOW_BANK') || r.production_remarks?.includes('HOLLOW_BANK')
+                              ? 'Banked in HB'
+                              : 'Diverted'}
                           </span>
                         ) : (
                           <button

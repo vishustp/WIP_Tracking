@@ -126,6 +126,62 @@ export async function fetchRejections(
       });
     }
 
+    // Fetch outbound diversions for all work orders in results to reconcile dispositions
+    const woIds = Array.from(new Set(results.map((r) => r.work_order_id).filter(Boolean)));
+    let diversions: any[] = [];
+    if (woIds.length > 0) {
+      try {
+        const { data: divData } = await supabase
+          .from('diversion_plans')
+          .select('id, source_wo_id, target_wo_id, diverted_qty, reason, work_center, created_at')
+          .in('source_wo_id', woIds);
+        diversions = divData || [];
+      } catch (e) {
+        console.warn('[fetchRejections] Failed to fetch diversions:', e);
+      }
+    }
+
+    results = results.map((r) => {
+      const declNo = (r.declaration_no || '').toLowerCase();
+      const heatLot = (r.heat_lot_no || '').toLowerCase();
+      const ppcRem = (r.ppc_remarks || '').toUpperCase();
+      const prodRem = (r.production_remarks || '').toUpperCase();
+
+      const matchingDivs = diversions.filter((d) => {
+        if (d.source_wo_id !== r.work_order_id) return false;
+        const reason = (d.reason || '').toLowerCase();
+        if (declNo && reason.includes(declNo)) return true;
+        if (heatLot && reason.includes(heatLot)) return true;
+        return false;
+      });
+
+      const isDivertedToBank = ppcRem.includes('DIVERTED_TO_HOLLOW_BANK') || prodRem.includes('DIVERTED_TO_HOLLOW_BANK');
+      const isDivertedGeneral = ppcRem.includes('DIVERTED') || prodRem.includes('DIVERTED') || matchingDivs.length > 0;
+
+      const totalQtyPcs = Number(r.ppc_approved_pcs ?? r.rejected_pcs ?? 0);
+      const totalQtyMtr = Number(r.ppc_approved_mtr ?? r.rejected_mtr ?? 0);
+
+      if (isDivertedToBank || isDivertedGeneral) {
+        r.is_diverted = true;
+        r.diverted_pcs = totalQtyPcs;
+        r.diverted_mtr = totalQtyMtr;
+        r.remaining_pcs = 0;
+        r.remaining_mtr = 0;
+      } else {
+        r.is_diverted = false;
+        r.diverted_pcs = 0;
+        r.diverted_mtr = 0;
+        r.remaining_pcs = totalQtyPcs;
+        r.remaining_mtr = totalQtyMtr;
+      }
+
+      return r;
+    });
+
+    if (filters.hideDiverted) {
+      results = results.filter((r) => !r.is_diverted);
+    }
+
     return { data: results, error: null };
   } catch (err: any) {
     return { data: [], error: err.message || 'Failed to fetch rejection declarations' };

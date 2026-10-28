@@ -49,6 +49,7 @@ export default function MillRejectionReportClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [hideDiverted, setHideDiverted] = useState(true);
 
   // Load available distinct grades from work_orders
   useEffect(() => {
@@ -126,6 +127,7 @@ export default function MillRejectionReportClient() {
       search: searchQuery.trim() || undefined,
       fromDate: fromDate || undefined,
       toDate: toDate || undefined,
+      hideDiverted,
     });
 
     if (error) {
@@ -135,7 +137,7 @@ export default function MillRejectionReportClient() {
       setKpis(summaryKpis);
     }
     setLoading(false);
-  }, [activeCategory, dispositionFilter, gradeFilter, searchQuery, fromDate, toDate]);
+  }, [activeCategory, dispositionFilter, gradeFilter, searchQuery, fromDate, toDate, hideDiverted]);
 
   useEffect(() => {
     loadData();
@@ -237,6 +239,16 @@ export default function MillRejectionReportClient() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <label className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-300 rounded-lg hover:bg-slate-100 select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hideDiverted}
+              onChange={(e) => setHideDiverted(e.target.checked)}
+              className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span>Hide Diverted Material</span>
+          </label>
+
           <button
             onClick={loadData}
             disabled={loading}
@@ -578,17 +590,51 @@ export default function MillRejectionReportClient() {
 
                       {/* Pieces */}
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                        {item.pcs}
+                        {item.isDiverted ? (
+                          <div>
+                            <span className="text-slate-400 line-through font-normal text-xs">{item.pcs}</span>
+                            <div className="text-[10px] text-purple-700 font-bold uppercase tracking-tight">Diverted</div>
+                          </div>
+                        ) : item.isPartiallyDiverted ? (
+                          <div>
+                            <span>{item.remainingPcs}</span>
+                            <div className="text-[10px] text-purple-600 font-medium font-sans">
+                              Div: {item.divertedPcs}
+                            </div>
+                          </div>
+                        ) : (
+                          item.pcs
+                        )}
                       </td>
 
                       {/* Meters */}
                       <td className="py-2.5 px-3 text-right font-mono text-slate-800">
-                        {fmt(item.mtr, 1)}
+                        {item.isDiverted ? (
+                          <div>
+                            <span className="text-slate-400 line-through font-normal text-xs">{fmt(item.mtr, 1)}</span>
+                            <div className="text-[10px] text-purple-700 font-bold uppercase tracking-tight">0.0 m</div>
+                          </div>
+                        ) : item.isPartiallyDiverted ? (
+                          <div>
+                            <span>{fmt(item.remainingMtr, 1)}</span>
+                            <div className="text-[10px] text-purple-600 font-medium font-sans">
+                              Div: {fmt(item.divertedMtr, 1)}m
+                            </div>
+                          </div>
+                        ) : (
+                          fmt(item.mtr, 1)
+                        )}
                       </td>
 
                       {/* Weight MT */}
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                        {fmt(item.mt, 3)}
+                        {item.isDiverted ? (
+                          <span className="text-slate-400 line-through font-normal text-xs">{fmt(item.mt, 3)}</span>
+                        ) : item.isPartiallyDiverted ? (
+                          fmt(item.remainingMtr && item.sizeOd && item.sizeWt ? (item.sizeOd - item.sizeWt) * item.sizeWt * 0.0246615 * 0.001 * item.remainingMtr : 0, 3)
+                        ) : (
+                          fmt(item.mt, 3)
+                        )}
                       </td>
 
                       {/* Remarks */}
@@ -610,9 +656,9 @@ export default function MillRejectionReportClient() {
 
                       {/* Action: Send to Hollow Bank */}
                       <td className="py-2.5 px-3 text-center whitespace-nowrap print:hidden">
-                        {item.remarks?.includes('DIVERTED_TO_HOLLOW_BANK') ? (
+                        {item.isDiverted || item.remarks?.includes('DIVERTED_TO_HOLLOW_BANK') ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-50 text-purple-700 border border-purple-200">
-                            Banked in HB
+                            Banked / Diverted
                           </span>
                         ) : (
                           <button

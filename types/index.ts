@@ -573,5 +573,12 @@ export interface RejectionDeclaration {
     l2?: number | null;
     avg_length?: number | null;
   };
+
+  // Diversion tracking
+  diverted_pcs?: number;
+  diverted_mtr?: number;
+  remaining_pcs?: number;
+  remaining_mtr?: number;
+  is_diverted?: boolean;
 }
 

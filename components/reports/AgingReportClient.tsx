@@ -146,11 +146,16 @@ export default function AgingReportClient() {
                 const isSalvage = sc === 'VDI_SALVAGE' || (r.stage_name || '').toUpperCase().includes('SALVAGE');
                 const isVdi = sc === 'VDI';
                 const salvagePcs = (isSalvage || isVdi)
-                  ? (Number(r.vdi_salvage_pcs || 0) > 0 ? Number(r.vdi_salvage_pcs) : (isSalvage ? pcs : 0))
+                  ? (r.vdi_salvage_pcs !== undefined ? Number(r.vdi_salvage_pcs) : (isSalvage ? pcs : 0))
                   : 0;
                 const salvageMtr = (isSalvage || isVdi)
-                  ? (Number(r.vdi_salvage_mtr || 0) > 0 ? Number(r.vdi_salvage_mtr) : (isSalvage ? mtr : 0))
+                  ? (r.vdi_salvage_mtr !== undefined ? Number(r.vdi_salvage_mtr) : (isSalvage ? mtr : 0))
                   : 0;
+
+                // If this is a salvage row and all salvage has been diverted or written off, exclude it
+                if (isSalvage && (salvagePcs <= 0 || salvageMtr <= 0)) {
+                  return null;
+                }
 
                 return {
                   work_order_id: woId,
@@ -220,8 +225,7 @@ export default function AgingReportClient() {
             .not('status', 'in', '("REJECTED_BY_QC","REJECTED_BY_PPC")'),
           supabase
             .from('diversion_plans')
-            .select('id, target_work_order_id, target_work_center, diverted_pcs, diverted_mtr, source_work_order_id, work_orders!diversion_plans_source_work_order_id_fkey(work_order_no), remarks, diversion_date, created_at, status')
-            .neq('status', 'CANCELLED'),
+            .select('id, target_wo_id, source_wo_id, diverted_qty, reason, work_center, diversion_date, created_at'),
         ]);
 
         // Robust normalization merging database columns & local acknowledgements

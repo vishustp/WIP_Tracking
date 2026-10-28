@@ -495,14 +495,26 @@ export function computeAgingReportRows(options: {
       const stageDivOutMtr = (diversions || [])
         .filter((d: any) => {
           const srcId = d.source_work_order_id || d.source_wo_id;
-          return srcId === r.work_order_id && parseDivStages(d).sourceStage === sc;
+          if (srcId !== r.work_order_id) return false;
+          const { sourceStage } = parseDivStages(d);
+          return (
+            sourceStage === sc ||
+            (sc === 'VDI_SALVAGE' && sourceStage === 'VDI') ||
+            (sc === 'VDI' && sourceStage === 'VDI_SALVAGE')
+          );
         })
         .reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
 
       const stageDivOutPcs = (diversions || [])
         .filter((d: any) => {
           const srcId = d.source_work_order_id || d.source_wo_id;
-          return srcId === r.work_order_id && parseDivStages(d).sourceStage === sc;
+          if (srcId !== r.work_order_id) return false;
+          const { sourceStage } = parseDivStages(d);
+          return (
+            sourceStage === sc ||
+            (sc === 'VDI_SALVAGE' && sourceStage === 'VDI') ||
+            (sc === 'VDI' && sourceStage === 'VDI_SALVAGE')
+          );
         })
         .reduce((sum, d: any) => {
           if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
@@ -561,8 +573,39 @@ export function computeAgingReportRows(options: {
 
       const isSalvageStage = (r.stage_code || '').toUpperCase() === 'VDI_SALVAGE' || (r.stage_code || '').toUpperCase() === 'VDI';
       const woQc = isSalvageStage ? qcInspections.filter((q) => q.work_order_id === r.work_order_id) : [];
-      const vdiSalvagePcs = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0) : 0;
-      const vdiSalvageMtr = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0) : 0;
+      const rawVdiSalvagePcs = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0) : 0;
+      const rawVdiSalvageMtr = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0) : 0;
+
+      // Outbound VDI salvage diversions
+      const vdiSalvageDivOutMtr = (diversions || [])
+        .filter((d: any) => {
+          const srcId = d.source_work_order_id || d.source_wo_id;
+          if (srcId !== r.work_order_id) return false;
+          const { sourceStage } = parseDivStages(d);
+          return sourceStage === 'VDI' || sourceStage === 'VDI_SALVAGE';
+        })
+        .reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
+
+      const vdiSalvageDivOutPcs = (diversions || [])
+        .filter((d: any) => {
+          const srcId = d.source_work_order_id || d.source_wo_id;
+          if (srcId !== r.work_order_id) return false;
+          const { sourceStage } = parseDivStages(d);
+          return sourceStage === 'VDI' || sourceStage === 'VDI_SALVAGE';
+        })
+        .reduce((sum, d: any) => {
+          if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+          const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          const dQty = Number(d.diverted_mtr ?? d.diverted_qty ?? 0);
+          const l1 = Number(r.l1 ?? wo?.l1) || 0;
+          const l2 = Number(r.l2 ?? wo?.l2) || 0;
+          const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
+          return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+        }, 0);
+
+      const vdiSalvagePcs = Math.max(0, rawVdiSalvagePcs - vdiSalvageDivOutPcs);
+      const vdiSalvageMtr = Math.max(0, Number((rawVdiSalvageMtr - vdiSalvageDivOutMtr).toFixed(3)));
 
       // Diversion details
       const divMatching = diversions.filter((d: any) => {
@@ -886,18 +929,86 @@ export function normalizeAgingRow(
     }
   }
 
-  const currentWip = Math.max(0, rawWipMtr - rejDeclMtr);
-  const currentWipPcs = Math.max(0, rawWipPcs - rejDeclPcs);
+  // Deduct outbound diversions from this stage
+  const stageDivOutMtr = (diversions || [])
+    .filter((d: any) => {
+      const srcId = d.source_work_order_id || d.source_wo_id;
+      if (srcId !== raw.work_order_id) return false;
+      const { sourceStage } = parseDivStages(d);
+      return (
+        sourceStage === sc ||
+        (sc === 'VDI_SALVAGE' && sourceStage === 'VDI') ||
+        (sc === 'VDI' && sourceStage === 'VDI_SALVAGE')
+      );
+    })
+    .reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
+
+  const stageDivOutPcs = (diversions || [])
+    .filter((d: any) => {
+      const srcId = d.source_work_order_id || d.source_wo_id;
+      if (srcId !== raw.work_order_id) return false;
+      const { sourceStage } = parseDivStages(d);
+      return (
+        sourceStage === sc ||
+        (sc === 'VDI_SALVAGE' && sourceStage === 'VDI') ||
+        (sc === 'VDI' && sourceStage === 'VDI_SALVAGE')
+      );
+    })
+    .reduce((sum, d: any) => {
+      if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+      const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+      if (pcsMatch) return sum + Number(pcsMatch[1]);
+      const dQty = Number(d.diverted_mtr ?? d.diverted_qty ?? 0);
+      const l1 = Number(raw.l1) || 0;
+      const l2 = Number(raw.l2) || 0;
+      const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
+      return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+    }, 0);
+
+  const currentWip = Math.max(0, rawWipMtr - rejDeclMtr - stageDivOutMtr);
+  const currentWipPcs = Math.max(0, rawWipPcs - rejDeclPcs - stageDivOutPcs);
 
   const isSalvage = String(raw.stage_code || '').toUpperCase() === 'VDI_SALVAGE' ||
     String(raw.stage_name || '').toUpperCase().includes('SALVAGE');
   const isVdi = String(raw.stage_code || '').toUpperCase() === 'VDI';
-  const salvagePcs = (isSalvage || isVdi)
+
+  // Deduct VDI salvage diversions
+  const vdiSalvageDivOutMtr = (diversions || [])
+    .filter((d: any) => {
+      const srcId = d.source_work_order_id || d.source_wo_id;
+      if (srcId !== raw.work_order_id) return false;
+      const { sourceStage } = parseDivStages(d);
+      return sourceStage === 'VDI' || sourceStage === 'VDI_SALVAGE';
+    })
+    .reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
+
+  const vdiSalvageDivOutPcs = (diversions || [])
+    .filter((d: any) => {
+      const srcId = d.source_work_order_id || d.source_wo_id;
+      if (srcId !== raw.work_order_id) return false;
+      const { sourceStage } = parseDivStages(d);
+      return sourceStage === 'VDI' || sourceStage === 'VDI_SALVAGE';
+    })
+    .reduce((sum, d: any) => {
+      if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+      const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+      if (pcsMatch) return sum + Number(pcsMatch[1]);
+      const dQty = Number(d.diverted_mtr ?? d.diverted_qty ?? 0);
+      const l1 = Number(raw.l1) || 0;
+      const l2 = Number(raw.l2) || 0;
+      const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
+      return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+    }, 0);
+
+  const rawSalvagePcs = (isSalvage || isVdi)
     ? (Number(raw.vdi_salvage_pcs) > 0 ? Number(raw.vdi_salvage_pcs) : (isSalvage ? currentWipPcs : 0))
     : 0;
-  const salvageMtr = (isSalvage || isVdi)
+  const rawSalvageMtr = (isSalvage || isVdi)
     ? (Number(raw.vdi_salvage_mtr) > 0 ? Number(raw.vdi_salvage_mtr) : (isSalvage ? currentWip : 0))
     : 0;
+
+  const salvagePcs = Math.max(0, rawSalvagePcs - vdiSalvageDivOutPcs);
+  const salvageMtr = Math.max(0, Number((rawSalvageMtr - vdiSalvageDivOutMtr).toFixed(3)));
 
   const divMtr = targetDivs.reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
   const divPcs = targetDivs.reduce((sum, d: any) => sum + Number(d.diverted_pcs ?? 0), 0) || Number(raw.diversion_in_pcs) || 0;

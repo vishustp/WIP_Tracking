@@ -37,6 +37,15 @@ export interface MillRejectionEntry {
   mtr: number;
   mt: number;
 
+  // Diversion tracking
+  divertedPcs?: number;
+  divertedMtr?: number;
+  remainingPcs?: number;
+  remainingMtr?: number;
+  isDiverted?: boolean;
+  isPartiallyDiverted?: boolean;
+  diversionDestination?: string;
+
   // Audit
   remarks: string;
   loggedBy?: string;
@@ -66,6 +75,7 @@ export interface MillRejectionFilterOptions {
   grade?: string;
   fromDate?: string;
   toDate?: string;
+  hideDiverted?: boolean;
 }
 
 export const CATEGORY_LABELS: Record<string, string> = {
