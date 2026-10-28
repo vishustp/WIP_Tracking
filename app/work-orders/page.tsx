@@ -33,6 +33,10 @@ import {
   Pencil,
   X,
   SlidersHorizontal,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  RefreshCw,
 } from 'lucide-react';
 import AdjustCappingModal from '@/components/work-orders/AdjustCappingModal';
 
@@ -129,15 +133,41 @@ export default function WorkOrders() {
     destination: '',
   });
 
+  type SortField =
+    | 'work_order_no'
+    | 'customer_name'
+    | 'specification'
+    | 'size_od'
+    | 'size_wt'
+    | 'l1'
+    | 'ordered_qty_pcs'
+    | 'ordered_qty_mtr'
+    | 'ordered_qty_mt'
+    | 'balance_qty_mtr'
+    | 'target_date'
+    | 'status'
+    | 'created_at';
+
+  const [sortField, setSortField] = useState<SortField>('work_order_no');
+  const [sortAsc, setSortAsc] = useState<boolean>(false);
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortAsc((prev) => !prev);
+    } else {
+      setSortField(field);
+      setSortAsc(field === 'work_order_no' || field === 'customer_name' || field === 'specification');
+    }
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const s = createClient();
-      let query = s.from('work_orders').select('*').order('target_date', { ascending: true }).limit(200);
-      if (status) query = query.eq('status', status);
+      // Fetch all work orders without the premature 200-row limit that dropped uncompleted/null-date orders
       const [{ data, error }, { data: wipData }] = await Promise.all([
-        query,
-        s.from('vw_route_stage_wip').select('*'),
+        s.from('work_orders').select('*').order('created_at', { ascending: false }).limit(5000),
+        s.from('vw_route_stage_wip').select('*').limit(5000),
       ]);
 
       if (error) throw new Error(error.message);
@@ -164,25 +194,100 @@ export default function WorkOrders() {
       setWipMap({});
     }
     setLoading(false);
-  }, [status]);
+  }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const filtered = useMemo(
-    () =>
-      rows.filter(
-        (r: WO) =>
-          !q ||
-          [r.work_order_no, r.customer_name, r.grade, r.specification]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase()
-            .includes(q.toLowerCase())
-      ),
-    [rows, q]
-  );
+  const filtered = useMemo(() => {
+    const list = rows.filter((r: WO) => {
+      // 1. Status Filter
+      if (status && status !== 'ALL') {
+        const s = (r.status || '').trim().toLowerCase();
+        if (status === 'ACTIVE') {
+          if (s === 'completed' || s === 'diverted') return false;
+        } else if (s !== status.trim().toLowerCase()) {
+          return false;
+        }
+      }
+
+      // 2. Search query (multi-term matching)
+      if (q.trim()) {
+        const queryTerms = q.trim().toLowerCase().split(/\s+/);
+        const searchableText = [
+          r.work_order_no,
+          r.customer_name,
+          r.grade,
+          r.specification,
+          r.po_no,
+          r.purchase_order_no,
+          r.material_code,
+          r.destination,
+          r.size_od != null ? String(r.size_od) : '',
+          r.size_wt != null ? String(r.size_wt) : '',
+          r.l1 != null ? String(r.l1) : '',
+          r.l2 != null ? String(r.l2) : '',
+          r.status,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        const matchesAll = queryTerms.every((term) => searchableText.includes(term));
+        if (!matchesAll) return false;
+      }
+
+      return true;
+    });
+
+    // 3. Sorting
+    list.sort((a, b) => {
+      let valA: any = a[sortField];
+      let valB: any = b[sortField];
+
+      if (sortField === 'work_order_no') {
+        const numA = Number(a.work_order_no);
+        const numB = Number(b.work_order_no);
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return sortAsc ? numA - numB : numB - numA;
+        }
+        return sortAsc
+          ? String(a.work_order_no || '').localeCompare(String(b.work_order_no || ''), undefined, { numeric: true })
+          : String(b.work_order_no || '').localeCompare(String(a.work_order_no || ''), undefined, { numeric: true });
+      }
+
+      if (sortField === 'ordered_qty_mtr') {
+        const avgA = a.l1 && a.l2 ? (a.l1 + a.l2) / 2 : a.l1 || a.l2 || 6.0;
+        const avgB = b.l1 && b.l2 ? (b.l1 + b.l2) / 2 : b.l1 || b.l2 || 6.0;
+        valA = a.ordered_qty_mtr != null && a.ordered_qty_mtr > 0 ? a.ordered_qty_mtr : (a.uom === 'Mtrs' ? a.ordered_qty : (avgA > 0 ? a.ordered_qty * avgA : 0));
+        valB = b.ordered_qty_mtr != null && b.ordered_qty_mtr > 0 ? b.ordered_qty_mtr : (b.uom === 'Mtrs' ? b.ordered_qty : (avgB > 0 ? b.ordered_qty * avgB : 0));
+      }
+
+      if (sortField === 'balance_qty_mtr') {
+        const avgA = a.l1 && a.l2 ? (a.l1 + a.l2) / 2 : a.l1 || a.l2 || 6.0;
+        const avgB = b.l1 && b.l2 ? (b.l1 + b.l2) / 2 : b.l1 || b.l2 || 6.0;
+        const ordMtrA = a.ordered_qty_mtr != null && a.ordered_qty_mtr > 0 ? a.ordered_qty_mtr : (a.uom === 'Mtrs' ? a.ordered_qty : (avgA > 0 ? a.ordered_qty * avgA : 0));
+        const ordMtrB = b.ordered_qty_mtr != null && b.ordered_qty_mtr > 0 ? b.ordered_qty_mtr : (b.uom === 'Mtrs' ? b.ordered_qty : (avgB > 0 ? b.ordered_qty * avgB : 0));
+        valA = a.balance_qty_mtr != null ? a.balance_qty_mtr : (a.status === 'Completed' ? 0 : ordMtrA);
+        valB = b.balance_qty_mtr != null ? b.balance_qty_mtr : (b.status === 'Completed' ? 0 : ordMtrB);
+      }
+
+      if (valA == null && valB == null) return 0;
+      if (valA == null) return 1;
+      if (valB == null) return -1;
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortAsc ? valA - valB : valB - valA;
+      }
+
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+      return sortAsc ? strA.localeCompare(strB) : strB.localeCompare(strA);
+    });
+
+    return list;
+  }, [rows, status, q, sortField, sortAsc]);
 
   const subtotals = useMemo(() => {
     let totalPcs = 0, totalMtr = 0, totalMt = 0, totalBalMtr = 0;
@@ -845,29 +950,71 @@ export default function WorkOrders() {
       {/* Main Table with Columns Matched to Excel Import */}
       <div className="rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center justify-between">
-          <div className="flex flex-1 items-center gap-3">
+          <div className="flex flex-1 flex-wrap items-center gap-2.5">
             <div className="relative max-w-sm w-full">
               <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
               <Input
-                className="pl-8 text-sm h-9"
-                placeholder="Search WO No, Customer, Grade/Spec..."
+                className="pl-8 pr-8 text-sm h-9"
+                placeholder="Search WO No (e.g. 6448), Customer, Spec, PO..."
                 aria-label="Search work orders"
                 value={q}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQ(e.target.value)}
               />
+              {q && (
+                <button
+                  type="button"
+                  onClick={() => setQ('')}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  title="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
-            <Select className="max-w-[180px] text-sm h-9" value={status} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value)}>
-              <option value="">All Statuses</option>
-              <option>Pending Plan</option>
-              <option>Scheduled</option>
-              <option>In Progress</option>
-              <option>Completed</option>
-              <option>Diverted</option>
+            <Select
+              className="max-w-[190px] text-sm h-9 font-medium"
+              value={status}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value)}
+            >
+              <option value="">All Statuses ({rows.length})</option>
+              <option value="ACTIVE">Active Only</option>
+              <option value="Pending Plan">Pending Plan</option>
+              <option value="Scheduled">Scheduled</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Completed">Completed</option>
+              <option value="Diverted">Diverted</option>
             </Select>
+
+            {(q || status) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQ('');
+                  setStatus('');
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors"
+                title="Reset all filters"
+              >
+                <RotateCcw className="h-3 w-3" /> Reset
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={loading}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-xs disabled:opacity-50 transition-colors"
+              title="Refresh Work Order list from database"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+
             {/* Subtotals strip — live aggregate of the filtered list */}
             {filtered.length > 0 && (
               <div className="flex flex-wrap items-center gap-0 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden text-xs font-mono divide-x divide-slate-200">
-                <span className="px-2.5 py-1.5 text-slate-500 font-sans font-semibold">{filtered.length} WO</span>
+                <span className="px-2.5 py-1.5 text-slate-500 font-sans font-semibold">
+                  {filtered.length} of {rows.length} WO
+                </span>
                 <span className="px-2.5 py-1.5 text-slate-700" title="Total Order Pieces">
                   <span className="text-slate-400 font-sans">PCS </span>
                   <span className="font-bold text-slate-900">{subtotals.totalPcs.toLocaleString()}</span>
@@ -907,26 +1054,226 @@ export default function WorkOrders() {
             <table className="min-w-[1400px] w-full text-sm">
               <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 shadow-2xs">
                 <tr>
-                  <th className="py-2.5 px-3 text-left font-semibold sticky left-0 z-10 bg-slate-100 shadow-[1px_0_0_0_#e2e8f0]">Work Order</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">Customer</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">Specification</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">OD (mm)</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">WT (mm)</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">L1 - L2 (m)</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Order PCS</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Order MTR</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Order MT</th>
-                  <th className="py-2.5 px-3 text-right font-semibold">Bal to Make (MTR)</th>
+                  <th
+                    onClick={() => toggleSort('work_order_no')}
+                    className="py-2.5 px-3 text-left font-semibold sticky left-0 z-10 bg-slate-100 shadow-[1px_0_0_0_#e2e8f0] cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Work Order No"
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span>Work Order</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'work_order_no' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('customer_name')}
+                    className="py-2.5 px-3 text-left font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Customer Name"
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span>Customer</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'customer_name' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('specification')}
+                    className="py-2.5 px-3 text-left font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Specification"
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span>Specification</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'specification' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('size_od')}
+                    className="py-2.5 px-3 text-right font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Finished OD"
+                  >
+                    <div className="inline-flex items-center justify-end w-full gap-1.5">
+                      <span>OD (mm)</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'size_od' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('size_wt')}
+                    className="py-2.5 px-3 text-right font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Finished WT"
+                  >
+                    <div className="inline-flex items-center justify-end w-full gap-1.5">
+                      <span>WT (mm)</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'size_wt' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('l1')}
+                    className="py-2.5 px-3 text-right font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Min Length L1"
+                  >
+                    <div className="inline-flex items-center justify-end w-full gap-1.5">
+                      <span>L1 - L2 (m)</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'l1' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('ordered_qty_pcs')}
+                    className="py-2.5 px-3 text-right font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Ordered Pieces"
+                  >
+                    <div className="inline-flex items-center justify-end w-full gap-1.5">
+                      <span>Order PCS</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'ordered_qty_pcs' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('ordered_qty_mtr')}
+                    className="py-2.5 px-3 text-right font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Ordered Metres"
+                  >
+                    <div className="inline-flex items-center justify-end w-full gap-1.5">
+                      <span>Order MTR</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'ordered_qty_mtr' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('ordered_qty_mt')}
+                    className="py-2.5 px-3 text-right font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Ordered MT"
+                  >
+                    <div className="inline-flex items-center justify-end w-full gap-1.5">
+                      <span>Order MT</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'ordered_qty_mt' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('balance_qty_mtr')}
+                    className="py-2.5 px-3 text-right font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Balance to Make"
+                  >
+                    <div className="inline-flex items-center justify-end w-full gap-1.5">
+                      <span>Bal to Make (MTR)</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'balance_qty_mtr' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
                   <th className="py-2.5 px-3 text-left font-semibold">Work Center WIP</th>
-                  <th className="py-2.5 px-3 text-left font-semibold">Target Date / SLA</th>
-                  <th className="py-2.5 px-3 text-center font-semibold">Status</th>
+                  <th
+                    onClick={() => toggleSort('target_date')}
+                    className="py-2.5 px-3 text-left font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Target Delivery Date"
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span>Target Date / SLA</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'target_date' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
+                  <th
+                    onClick={() => toggleSort('status')}
+                    className="py-2.5 px-3 text-center font-semibold cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                    title="Sort by Status"
+                  >
+                    <div className="inline-flex items-center justify-center w-full gap-1.5">
+                      <span>Status</span>
+                      <span className="text-slate-400 group-hover:text-slate-700 transition-colors">
+                        {sortField === 'status' ? (
+                          sortAsc ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100" />
+                        )}
+                      </span>
+                    </div>
+                  </th>
                   <th className="py-2.5 px-3 text-right font-semibold">Quick Actions</th>
                 </tr>
               </thead>
               {loading ? (
                 <tbody>{Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} columns={14} />)}</tbody>
               ) : filtered.length === 0 ? (
-                <tbody><tr><td colSpan={14} className="p-8 text-center text-sm text-slate-500">No work orders match the criteria.</td></tr></tbody>
+                <tbody>
+                  <tr>
+                    <td colSpan={14} className="p-8 text-center text-sm text-slate-500">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <span>No work orders match {q ? `"${q}"` : ''}{status ? ` status: ${status}` : ''}.</span>
+                        {(q || status) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQ('');
+                              setStatus('');
+                            }}
+                            className="mt-1 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
+                          >
+                            <RotateCcw className="h-3 w-3" /> Clear All Filters
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
               ) : (
                 <tbody className="divide-y divide-slate-100">
                 {filtered.map((w: WO) => {
