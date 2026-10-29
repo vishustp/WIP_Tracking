@@ -12,7 +12,13 @@ ALTER TABLE public.diversion_plans
   ADD COLUMN IF NOT EXISTS ppc_rejection_reason text,
   ADD COLUMN IF NOT EXISTS ppc_remarks text;
 
--- 2. Backfill existing records to APPROVED and ensure updated_at is populated
+-- 2. Backfill existing records: All cold draw diversions without PPC approval MUST be PENDING_PPC
+UPDATE public.diversion_plans
+SET status = 'PENDING_PPC'
+WHERE (work_center = 'DRAW' OR reason ~* '\[TO_STAGE:\s*DRAW\]')
+  AND ppc_approved_at IS NULL;
+
+-- Backfill other stages to APPROVED
 UPDATE public.diversion_plans
 SET status = 'APPROVED'
 WHERE status IS NULL;

@@ -408,7 +408,14 @@ export function computeAgingReportRows(options: {
     rejMap.set(key, { pcs: cur.pcs + pcs, mtr: cur.mtr + mtr });
   });
 
-  const approvedDiversions = (diversions || []).filter((d: any) => !d.status || d.status === 'APPROVED');
+  const approvedDiversions = (diversions || []).filter((d: any) => {
+    if (d.status === 'APPROVED') return true;
+    if (d.status === 'REJECTED_BY_PPC' || d.status === 'CANCELLED') return false;
+    const { targetStage } = parseDivStages(d);
+    const isDraw = d.work_center === 'DRAW' || targetStage === 'DRAW';
+    if (isDraw) return Boolean((d as any).ppc_approved_at);
+    return true;
+  });
 
   const rows: AgingRow[] = wipRows
     .filter((r) => {

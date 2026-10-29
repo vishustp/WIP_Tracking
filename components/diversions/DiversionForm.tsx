@@ -336,11 +336,19 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   // Elongation multiple for this work order
   const planMultiple = Number(plan?.multiple || 1) > 0 ? Number(plan?.multiple || 1) : 1;
 
-  // Filter approved diversions: unapproved diversions (e.g. PENDING_PPC) do NOT deduct WIP
-  const isApproved = (d: any) => !d.status || d.status === 'APPROVED';
+  // Filter approved diversions: all cold draw diversions require explicit PPC approval
+  const isDrawDiv = (d: any) => d.work_center === 'DRAW' || (d.reason || '').includes('[TO_STAGE: DRAW]');
+  const isApproved = (d: any) => {
+    if (d.status === 'APPROVED') return true;
+    if (d.status === 'REJECTED_BY_PPC' || d.status === 'CANCELLED') return false;
+    if (isDrawDiv(d)) {
+      return Boolean(d.ppc_approved_at);
+    }
+    return true;
+  };
   const approvedDivs = divs.filter(isApproved);
   const pendingDrawDivs = divs.filter(
-    (d: any) => d.status === 'PENDING_PPC' && (d.work_center === 'DRAW' || (d.reason || '').includes('[TO_STAGE: DRAW]'))
+    (d: any) => isDrawDiv(d) && (d.status === 'PENDING_PPC' || (!d.status && !d.ppc_approved_at))
   );
 
   // Diversions per stage (strictly uses approved diversions for WIP balance)
@@ -624,7 +632,7 @@ export default function DiversionForm() {
   const [transferMode, setTransferMode] = useState<'DIRECT' | 'CUT_DIVERT'>('DIRECT');
   const [isStpExempt, setIsStpExempt] = useState(false);
   const [pcsInput, setPcsInput] = useState('');
-  const [ppcAutoApprove, setPpcAutoApprove] = useState(true);
+  const [ppcAutoApprove, setPpcAutoApprove] = useState(false);
 
   // PPC User check (Admin, Super User, or PPC role/group)
   const isPpcUser = useMemo(() => {
@@ -718,7 +726,9 @@ export default function DiversionForm() {
   const loadPlans = useCallback(async () => {
     setPlansLoading(true);
     try {
-      const { data, error } = await createClient().rpc('get_diversion_plans', {
+      const supabase = createClient();
+      let rawData: any[] = [];
+      const { data, error } = await supabase.rpc('get_diversion_plans', {
         p_search: debouncedSearch.trim() || null,
         p_route_code: filterRoute || null,
         p_work_center: filterWorkCenter || null,
@@ -726,17 +736,48 @@ export default function DiversionForm() {
         p_to_date: toDate || null,
       });
 
-      if (error) throw new Error(error.message);
-      const mapped = ((data ?? []) as any[]).map((p) => {
+      if (error) {
+        console.warn('[loadPlans] RPC error, attempting direct table query:', error.message);
+        const { data: directData, error: directErr } = await supabase
+          .from('diversion_plans')
+          .select(`
+            id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, reason, diversion_date, created_at,
+            source_wo:work_orders!source_wo_id(work_order_no, customer_name, grade, specification, size_od, size_wt),
+            target_wo:work_orders!target_wo_id(work_order_no, customer_name, grade, specification, size_od, size_wt),
+            route:process_routes!process_route_id(route_code, route_name)
+          `)
+          .order('diversion_date', { ascending: false });
+
+        if (directErr) throw new Error(directErr.message);
+        rawData = (directData || []).map((d: any) => ({
+          ...d,
+          source_wo_no: d.source_wo?.work_order_no,
+          source_customer: d.source_wo?.customer_name,
+          source_grade: d.source_wo?.grade || d.source_wo?.specification,
+          source_size: `${d.source_wo?.size_od || 0}×${d.source_wo?.size_wt || 0} mm`,
+          target_wo_no: d.target_wo?.work_order_no,
+          target_customer: d.target_wo?.customer_name,
+          target_grade: d.target_wo?.grade || d.target_wo?.specification,
+          target_size: `${d.target_wo?.size_od || 0}×${d.target_wo?.size_wt || 0} mm`,
+          route_code: d.route?.route_code,
+          route_name: d.route?.route_name,
+        }));
+      } else {
+        rawData = (data ?? []) as any[];
+      }
+
+      const mapped = rawData.map((p) => {
         const fromMatch = p.reason?.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i);
         const toMatch = p.reason?.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i);
         const src = fromMatch ? fromMatch[1].toUpperCase() : (p.work_center || 'ROLLING');
         const tgt = toMatch ? toMatch[1].toUpperCase() : (p.work_center || 'ROLLING');
+        const isDraw = tgt === 'DRAW' || (p.work_center || '').toUpperCase() === 'DRAW' || (p.reason || '').includes('[TO_STAGE: DRAW]');
+        const isPending = p.status === 'PENDING_PPC' || (isDraw && !p.ppc_approved_at && p.status !== 'APPROVED');
         return {
           ...p,
           source_work_center: src,
           target_work_center: tgt,
-          status: p.status || 'APPROVED',
+          status: isPending ? 'PENDING_PPC' : (p.status || 'APPROVED'),
         };
       });
       setPlans(mapped as DiversionPlanItem[]);
@@ -1353,9 +1394,9 @@ export default function DiversionForm() {
 
   const pendingPpcPlans = useMemo(() => {
     return plans.filter((p) => {
-      const isPending = p.status === 'PENDING_PPC';
       const isDrawTarget = p.work_center === 'DRAW' || p.target_work_center === 'DRAW' || (p.reason || '').includes('[TO_STAGE: DRAW]');
-      return isPending && isDrawTarget;
+      if (!isDrawTarget) return false;
+      return p.status === 'PENDING_PPC' || (!p.ppc_approved_at && p.status !== 'APPROVED');
     });
   }, [plans]);
 

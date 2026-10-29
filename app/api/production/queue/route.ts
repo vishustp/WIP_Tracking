@@ -309,8 +309,16 @@ export async function GET(req: NextRequest) {
       return { sourceStage, targetStage };
     };
 
-    const isApprovedDiv = (d: any) => !d.status || d.status === "APPROVED";
-    const isPendingDrawDiv = (d: any) => d.status === "PENDING_PPC" && (d.work_center === "DRAW" || parseDivStages(d).targetStage === "DRAW");
+    const isDrawDiv = (d: any) => d.work_center === "DRAW" || parseDivStages(d).targetStage === "DRAW";
+    const isApprovedDiv = (d: any) => {
+      if (d.status === "APPROVED") return true;
+      if (d.status === "REJECTED_BY_PPC" || d.status === "CANCELLED") return false;
+      if (isDrawDiv(d)) {
+        return Boolean(d.ppc_approved_at);
+      }
+      return true;
+    };
+    const isPendingDrawDiv = (d: any) => isDrawDiv(d) && (d.status === "PENDING_PPC" || (!d.status && !d.ppc_approved_at));
 
     // Stage balancing strictly uses approved diversions
     const diversions = rawDiversions.filter(isApprovedDiv);
