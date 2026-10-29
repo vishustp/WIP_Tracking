@@ -238,6 +238,18 @@ export default function QcInspectionClient() {
       } catch {}
     });
 
+    // CRITICAL: Any work order that is a Master in its own campaign must not be treated as a child
+    for (const masterWoId of masterCampaignMap.keys()) {
+      childWoMap.delete(masterWoId);
+    }
+    for (const [key, campaign] of masterCampaignMap.entries()) {
+      if (Array.isArray(campaign.child_work_orders)) {
+        campaign.child_work_orders = campaign.child_work_orders.filter(
+          (c: any) => !masterCampaignMap.has(c.work_order_id || c.id) && !masterCampaignMap.has(String(c.work_order_no).trim())
+        );
+      }
+    }
+
     const items: QcQueueItem[] = [];
     const processedWoIds = new Set<string>();
 
@@ -256,7 +268,7 @@ export default function QcInspectionClient() {
       if (processedWoIds.has(wo.id)) return;
 
       const campaign = masterCampaignMap.get(wo.id);
-      const childInfo = childWoMap.get(wo.id);
+      const childInfo = campaign ? null : childWoMap.get(wo.id);
 
       // Work order dimensions & average length
       const od = Number(wo.size_od || 0);

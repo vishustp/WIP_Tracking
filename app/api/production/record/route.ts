@@ -129,12 +129,12 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // Rule: Rolling production cannot exceed Rolling Plan QTY
-        let planQuery = admin.from('rolling_plans').select('id, planned_qty, status');
+        // Rule: Rolling production cannot exceed Rolling Plan QTY (104% limit)
+        let planQuery = admin.from('rolling_plans').select('id, planned_qty, status, created_at');
         if (item.rolling_plan_id) {
           planQuery = planQuery.eq('id', item.rolling_plan_id);
         } else if (item.work_order_id) {
-          planQuery = planQuery.eq('work_order_id', item.work_order_id);
+          planQuery = planQuery.eq('work_order_id', item.work_order_id).order('created_at', { ascending: false });
         }
         const { data: matchedPlans } = await planQuery.limit(1);
         const matchedPlan = matchedPlans?.[0];
@@ -154,17 +154,20 @@ export async function POST(req: NextRequest) {
           }
           const planTotalPcs = Number(st.master_planned_pcs || st.planned_pcs || st.plan_qty?.nos || 0);
 
+          // Strictly query logs for this specific rolling plan to ensure limit is restricted by the new plan
+          const hotRollingStageId = stageMap.get('HOT_ROLLING');
+          const rollingStageId = stageMap.get('ROLLING');
+          const rollStageIds = Array.from(new Set([hotRollingStageId, rollingStageId, item.stage_id].filter(Boolean)));
+
           let existingLogsQuery = admin
             .from('production_logs')
-            .select('output_qty, rejection_qty, remarks, rolling_plan_id')
-            .eq('work_order_id', item.work_order_id);
+            .select('output_qty, rejection_qty, remarks, rolling_plan_id, created_at')
+            .eq('work_order_id', item.work_order_id)
+            .in('stage_id', rollStageIds);
 
-          const rollingStageId = stageMap.get('ROLLING') || item.stage_id;
-          if (rollingStageId) {
-            existingLogsQuery = existingLogsQuery.eq('stage_id', rollingStageId);
-          }
-          if (item.rolling_plan_id) {
-            existingLogsQuery = existingLogsQuery.or(`rolling_plan_id.eq.${item.rolling_plan_id},rolling_plan_id.is.null`);
+          const targetPlanId = item.rolling_plan_id || matchedPlan.id;
+          if (targetPlanId) {
+            existingLogsQuery = existingLogsQuery.eq('rolling_plan_id', targetPlanId);
           }
 
           const { data: existingLogs } = await existingLogsQuery;
@@ -178,10 +181,7 @@ export async function POST(req: NextRequest) {
           }
 
           let remainingPcs = Infinity;
-          if (st.balance_to_make_pcs !== undefined && Number(st.balance_to_make_pcs) >= 0) {
-            const maxBalPcs = Math.round(Number(st.balance_to_make_pcs) * 1.04);
-            remainingPcs = Math.max(0, maxBalPcs - batchAlreadyAdded);
-          } else if (planTotalPcs > 0) {
+          if (planTotalPcs > 0) {
             const maxPlanPcs = Math.round(planTotalPcs * 1.04);
             remainingPcs = Math.max(0, maxPlanPcs - alreadyLoggedPcs - batchAlreadyAdded);
           } else if (Number(matchedPlan.planned_qty || 0) > 0) {

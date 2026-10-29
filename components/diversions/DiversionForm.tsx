@@ -632,7 +632,8 @@ export default function DiversionForm() {
   const [transferMode, setTransferMode] = useState<'DIRECT' | 'CUT_DIVERT'>('DIRECT');
   const [isStpExempt, setIsStpExempt] = useState(false);
   const [pcsInput, setPcsInput] = useState('');
-  const [ppcAutoApprove, setPpcAutoApprove] = useState(false);
+  const [ppcAutoApprove, setPpcAutoApprove] = useState(true);
+  const [ppcFilterStatus, setPpcFilterStatus] = useState<'PENDING' | 'APPROVED' | 'ALL'>('PENDING');
 
   // PPC User check (Admin, Super User, or PPC role/group)
   const isPpcUser = useMemo(() => {
@@ -798,9 +799,11 @@ export default function DiversionForm() {
       toast.success(`Draw Bench diversion ${approveModalPlan.id} approved. Source WIP deducted and target Draw Bench queue credited.`);
       setApproveModalPlan(null);
       setApproveRemarks('');
+      setPpcFilterStatus('ALL');
       await loadPlans();
       if (source) await handleSourceChange(source);
       if (target) await handleTargetChange(target);
+      fetch('/api/production/queue?refresh=true').catch(() => {});
     } else {
       toast.error(res.error || 'Failed to approve diversion');
     }
@@ -822,6 +825,7 @@ export default function DiversionForm() {
       await loadPlans();
       if (source) await handleSourceChange(source);
       if (target) await handleTargetChange(target);
+      fetch('/api/production/queue?refresh=true').catch(() => {});
     } else {
       toast.error(res.error || 'Failed to reject diversion');
     }
@@ -1277,6 +1281,7 @@ export default function DiversionForm() {
       if (target) handleTargetChange(target);
       await loadData();
       await loadPlans();
+      fetch('/api/production/queue?refresh=true').catch(() => {});
     }
   };
 
@@ -1392,13 +1397,30 @@ export default function DiversionForm() {
     [plans]
   );
 
-  const pendingPpcPlans = useMemo(() => {
+  const drawBenchPlans = useMemo(() => {
     return plans.filter((p) => {
       const isDrawTarget = p.work_center === 'DRAW' || p.target_work_center === 'DRAW' || (p.reason || '').includes('[TO_STAGE: DRAW]');
-      if (!isDrawTarget) return false;
-      return p.status === 'PENDING_PPC' || (!p.ppc_approved_at && p.status !== 'APPROVED');
+      return isDrawTarget;
     });
   }, [plans]);
+
+  const pendingPpcPlans = useMemo(() => {
+    return drawBenchPlans.filter((p) => {
+      return p.status === 'PENDING_PPC' || (!p.ppc_approved_at && p.status !== 'APPROVED');
+    });
+  }, [drawBenchPlans]);
+
+  const approvedPpcPlans = useMemo(() => {
+    return drawBenchPlans.filter((p) => {
+      return p.status === 'APPROVED' || Boolean(p.ppc_approved_at);
+    });
+  }, [drawBenchPlans]);
+
+  const displayedPpcPlans = useMemo(() => {
+    if (ppcFilterStatus === 'PENDING') return pendingPpcPlans;
+    if (ppcFilterStatus === 'APPROVED') return approvedPpcPlans;
+    return drawBenchPlans;
+  }, [ppcFilterStatus, pendingPpcPlans, approvedPpcPlans, drawBenchPlans]);
 
   const filteredPlans = useMemo(() => {
     return plans.filter((p) => {
@@ -1442,7 +1464,7 @@ export default function DiversionForm() {
           }`}
         >
           <Clock className="h-4 w-4 text-amber-600" />
-          <span>Pending PPC Approvals</span>
+          <span>PPC Diversion Approvals</span>
           {pendingPpcPlans.length > 0 && (
             <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white">
               {pendingPpcPlans.length}
@@ -2347,12 +2369,50 @@ export default function DiversionForm() {
               <div>
                 <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
                   <Clock className="h-5 w-5 text-amber-600" />
-                  Draw Bench Diversions — Pending PPC Authorization
+                  Draw Bench Diversions — PPC Authorization &amp; History
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Review and authorize requested Draw Bench diversions. Approving deducts material from the source work order and credits the Draw Bench queue. Rejecting releases the hold and discards the addition.
+                  Review, authorize, and track Draw Bench material diversions. Approved diversions credit the Draw Bench queue and deduct material from source WIP.
                 </p>
               </div>
+
+              <div className="flex items-center gap-2">
+                {/* Status Segmented Filter */}
+                <div className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50/80 p-0.5 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setPpcFilterStatus('PENDING')}
+                    className={`px-2.5 py-1 rounded transition cursor-pointer ${
+                      ppcFilterStatus === 'PENDING'
+                        ? 'bg-amber-600 text-white shadow-2xs font-bold'
+                        : 'text-amber-900 hover:bg-amber-100'
+                    }`}
+                  >
+                    Pending ({pendingPpcPlans.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPpcFilterStatus('APPROVED')}
+                    className={`px-2.5 py-1 rounded transition cursor-pointer ${
+                      ppcFilterStatus === 'APPROVED'
+                        ? 'bg-emerald-600 text-white shadow-2xs font-bold'
+                        : 'text-emerald-900 hover:bg-emerald-100'
+                    }`}
+                  >
+                    Authorized ({approvedPpcPlans.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPpcFilterStatus('ALL')}
+                    className={`px-2.5 py-1 rounded transition cursor-pointer ${
+                      ppcFilterStatus === 'ALL'
+                        ? 'bg-slate-800 text-white shadow-2xs font-bold'
+                        : 'text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    All ({drawBenchPlans.length})
+                  </button>
+                </div>
 
               <button
                 type="button"
@@ -2363,6 +2423,7 @@ export default function DiversionForm() {
                 <RefreshCw className={`h-3.5 w-3.5 ${plansLoading ? 'animate-spin' : ''}`} />
                 Refresh
               </button>
+              </div>
             </div>
 
             {/* Metrics cards for Pending PPC */}
@@ -2420,83 +2481,128 @@ export default function DiversionForm() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-amber-100">
-                {pendingPpcPlans.length === 0 ? (
+                {displayedPpcPlans.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="p-8 text-center text-slate-500">
                       <div className="flex flex-col items-center justify-center gap-1.5">
                         <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-                        <span className="font-semibold text-slate-700">All clear! No Draw Bench diversions pending PPC approval.</span>
-                        <span className="text-xs text-slate-400">Any newly submitted Draw Bench diversions will appear here for authorization.</span>
+                        <span className="font-semibold text-slate-700">
+                          {ppcFilterStatus === 'PENDING'
+                            ? 'All clear! No Draw Bench diversions pending PPC approval.'
+                            : ppcFilterStatus === 'APPROVED'
+                            ? 'No approved Draw Bench diversions on record.'
+                            : 'No Draw Bench diversion plans found.'}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {ppcFilterStatus === 'PENDING'
+                            ? 'Any newly submitted Draw Bench diversions will appear here for authorization.'
+                            : 'Authorized diversions remain recorded here with source & target work order tracking.'}
+                        </span>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  pendingPpcPlans.map((p) => (
-                    <tr key={p.id} className="hover:bg-amber-50/50">
-                      <td className="px-3 py-2.5 font-bold font-mono text-slate-900 border-r border-slate-200">
-                        {p.id}
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                        {p.diversion_date}
-                      </td>
-                      <td className="px-3 py-2.5 font-bold font-mono text-red-700 border-r border-slate-200">
-                        {p.source_wo_no}
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-600 border-r border-slate-200 max-w-[130px] truncate" title={p.source_customer}>
-                        {p.source_customer}
-                      </td>
-                      <td className="px-3 py-2.5 font-bold font-mono text-emerald-700 border-r border-slate-200">
-                        {p.target_wo_no}
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-600 border-r border-slate-200 max-w-[130px] truncate" title={p.target_customer}>
-                        {p.target_customer}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900 border-r border-slate-200">
-                        {fmt(p.diverted_qty)}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-slate-700 border-r border-slate-200">
-                        {fmt(p.diverted_pcs, 0)}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-slate-700 border-r border-slate-200">
-                        {fmt(p.diverted_mt, 3)}
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-600 border-r border-slate-200 max-w-[200px] truncate" title={p.reason}>
-                        {p.reason}
-                      </td>
-                      <td className="px-3 py-2.5 sticky right-0 bg-white border-l border-amber-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] whitespace-nowrap">
-                        {isPpcUser ? (
-                          <div className="flex items-center gap-1.5 justify-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setApproveModalPlan(p);
-                                setApproveRemarks('');
-                              }}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-2xs transition"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRejectModalPlan(p);
-                                setRejectReason('');
-                              }}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-2xs transition"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                              Reject
-                            </button>
+                  displayedPpcPlans.map((p) => {
+                    const isApproved = p.status === 'APPROVED' || Boolean(p.ppc_approved_at);
+                    const isRejected = p.status === 'REJECTED_BY_PPC';
+                    return (
+                      <tr key={p.id} className={`hover:bg-amber-50/50 ${isApproved ? 'bg-emerald-50/30' : ''}`}>
+                        <td className="px-3 py-2.5 font-bold font-mono text-slate-900 border-r border-slate-200">
+                          <div className="flex items-center gap-1">
+                            <span>{p.id}</span>
+                            {isApproved && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                APPROVED
+                              </span>
+                            )}
+                            {isRejected && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
+                                REJECTED
+                              </span>
+                            )}
                           </div>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800">
-                            <Lock className="h-3 w-3" /> PPC Required
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-3 py-2.5 font-mono text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                          {p.diversion_date}
+                        </td>
+                        <td className="px-3 py-2.5 font-bold font-mono text-red-700 border-r border-slate-200">
+                          {p.source_wo_no}
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-600 border-r border-slate-200 max-w-[130px] truncate" title={p.source_customer}>
+                          {p.source_customer}
+                        </td>
+                        <td className="px-3 py-2.5 font-bold font-mono text-emerald-700 border-r border-slate-200">
+                          {p.target_wo_no}
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-600 border-r border-slate-200 max-w-[130px] truncate" title={p.target_customer}>
+                          {p.target_customer}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900 border-r border-slate-200">
+                          {fmt(p.diverted_qty)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-700 border-r border-slate-200">
+                          {fmt(p.diverted_pcs, 0)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono text-slate-700 border-r border-slate-200">
+                          {fmt(p.diverted_mt, 3)}
+                        </td>
+                        <td className="px-3 py-2.5 text-slate-600 border-r border-slate-200 max-w-[200px] truncate" title={p.reason}>
+                          {p.reason}
+                        </td>
+                        <td className="px-3 py-2.5 sticky right-0 bg-white border-l border-amber-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] whitespace-nowrap">
+                          {isApproved ? (
+                            <div className="flex flex-col items-center justify-center">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-100 text-emerald-800 font-bold text-xs">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                Approved
+                              </span>
+                              {p.ppc_approved_at && (
+                                <span className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                  {p.ppc_approved_at.slice(0, 10)}
+                                </span>
+                              )}
+                            </div>
+                          ) : isRejected ? (
+                            <div className="flex flex-col items-center justify-center">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-100 text-rose-800 font-bold text-xs">
+                                <XCircle className="h-3.5 w-3.5 text-rose-600" />
+                                Rejected
+                              </span>
+                            </div>
+                          ) : isPpcUser ? (
+                            <div className="flex items-center gap-1.5 justify-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setApproveModalPlan(p);
+                                  setApproveRemarks('');
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-2xs transition"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRejectModalPlan(p);
+                                  setRejectReason('');
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-2xs transition"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                                Reject
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800">
+                              <Lock className="h-3 w-3" /> PPC Required
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

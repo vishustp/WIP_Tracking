@@ -71,7 +71,7 @@ describe('WO 6495 Draw Bench WIP & Aging', () => {
     const vdiStage = reconciled.summary.stages.find((s) => s.stage_code === 'VDI');
     expect(vdiStage).toBeDefined();
     const totalQcInspected = (qcRes.data || []).reduce((sum: number, q: any) => sum + Number(q.inspected_pcs || 0), 0);
-    expect(vdiStage!.reconciled_wip_pcs).toBe(Math.max(0, 198 - totalQcInspected));
+    expect(vdiStage!.reconciled_wip_pcs).toBe(Math.max(0, 198 - totalQcInspected - Number(vdiStage!.diversion_out_pcs || 0)));
 
     // 2. Verify Aging Report rows calculation
     const agingRows = computeAgingReportRows({

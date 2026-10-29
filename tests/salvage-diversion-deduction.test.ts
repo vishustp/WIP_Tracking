@@ -243,4 +243,160 @@ describe('Salvage and Diversion Deduction Tests', () => {
     expect(result[1].remainingPcs).toBe(0);
     expect(result[1].remainingMtr).toBe(0);
   });
+
+  it('ensures fully diverted work orders at DRAW, BAND_SAW, or VDI do not show in Aging Report', () => {
+    const wipRows = [
+      {
+        work_order_id: 'wo-draw-diverted',
+        work_order_no: 'WO-DRAW-1',
+        stage_id: 'stg-draw',
+        stage_code: 'DRAW',
+        stage_name: 'Cold Draw Bench',
+        sequence_no: 4,
+        current_wip: 60.0,
+        current_wip_pcs: 10,
+        od: 60.3,
+        wt: 4.5,
+        l1: 6.0,
+        l2: 6.0,
+      },
+    ];
+
+    const diversions = [
+      {
+        id: 'div-draw-full',
+        source_wo_id: 'wo-draw-diverted',
+        target_wo_id: 'wo-target-client',
+        diverted_qty: 60.0,
+        diverted_pcs: 10,
+        work_center: 'DRAW',
+        reason: 'Fully diverted to target [FROM_STAGE: DRAW] [TO_STAGE: DRAW] [PCS: 10]',
+        status: 'APPROVED',
+        diversion_date: '2026-10-29',
+      },
+    ];
+
+    const result = computeAgingReportRows({
+      wipRows,
+      diversions,
+      asOfDate: new Date('2026-10-29'),
+    });
+
+    // Since all 60m / 10 pcs were diverted out, WO-DRAW-1 has 0 WIP and must not appear in Aging Report
+    const row = result.find((r) => r.work_order_id === 'wo-draw-diverted');
+    expect(row).toBeUndefined();
+    expect(result).toHaveLength(0);
+  });
+
+  it('ensures mother pipes cut & diverted from VDI salvage do not leave phantom rows in Aging Report', () => {
+    // 40 mother pipes (436m) at VDI salvage cut and diverted into 80 pcs @ 5.3m = 424m with 12m remnant scrap (< 3.0m)
+    const wipRows = [
+      {
+        work_order_id: 'wo-vdi-cut-divert',
+        work_order_no: 'WO-6307',
+        stage_id: 'stg-vdi-salvage',
+        stage_code: 'VDI_SALVAGE',
+        stage_name: 'VDI Salvage',
+        sequence_no: 8,
+        current_wip: 436.0,
+        current_wip_pcs: 40,
+        od: 60.3,
+        wt: 4.5,
+        l1: 10.9,
+        l2: 10.9,
+      },
+    ];
+
+    const qcInspections = [
+      {
+        id: 'qc-salvage-40',
+        work_order_id: 'wo-vdi-cut-divert',
+        inspection_date: '2026-10-28',
+        vdi_salvage_pcs: 40,
+        vdi_salvage_mtr: 436.0,
+      },
+    ];
+
+    const diversions = [
+      {
+        id: 'div-cut-divert-1',
+        source_wo_id: 'wo-vdi-cut-divert',
+        target_wo_id: 'wo-target-client-2',
+        diverted_qty: 424.0, // 80 pcs @ 5.3m = 424m
+        diverted_pcs: 80,
+        work_center: 'FINISHING',
+        reason: 'Cut & Divert: 40 mother pipes @ 10.9m cut into 80 pcs @ 5.3m = 424.00m [FROM_STAGE: VDI] [SCRAP_REMNANT: 12m]',
+        status: 'APPROVED',
+        diversion_date: '2026-10-28',
+      },
+    ];
+
+    const result = computeAgingReportRows({
+      wipRows,
+      qcInspections,
+      diversions,
+      asOfDate: new Date('2026-10-29'),
+    });
+
+    // All 40 mother pipes were consumed in the cut & divert. The remaining 12m remnant is melt scrap (< 3m).
+    // WO-6307 has 0 active WIP and must be completely removed from the Aging Report.
+    const row = result.find((r) => r.work_order_id === 'wo-vdi-cut-divert');
+    expect(row).toBeUndefined();
+    expect(result).toHaveLength(0);
+  });
+
+  it('preserves source and target work order numbers in PPC diversion approval filter states', () => {
+    const plans = [
+      {
+        id: 101,
+        source_wo_id: 'wo-src-1',
+        source_wo_no: 'WO-6307',
+        target_wo_id: 'wo-tgt-1',
+        target_wo_no: 'WO-6401',
+        diverted_qty: 250.0,
+        diverted_pcs: 25,
+        work_center: 'DRAW',
+        target_work_center: 'DRAW',
+        status: 'APPROVED',
+        ppc_approved_at: '2026-10-29T10:00:00Z',
+        reason: 'Draw bench transfer [TO_STAGE: DRAW]',
+      },
+      {
+        id: 102,
+        source_wo_id: 'wo-src-2',
+        source_wo_no: 'WO-6419',
+        target_wo_id: 'wo-tgt-2',
+        target_wo_no: 'WO-6495',
+        diverted_qty: 150.0,
+        diverted_pcs: 15,
+        work_center: 'DRAW',
+        target_work_center: 'DRAW',
+        status: 'PENDING_PPC',
+        ppc_approved_at: null,
+        reason: 'Pending PPC transfer [TO_STAGE: DRAW]',
+      },
+    ];
+
+    // Simulate DiversionForm filter logic
+    const drawBenchPlans = plans.filter((p) => p.work_center === 'DRAW' || p.target_work_center === 'DRAW');
+    const pendingPlans = drawBenchPlans.filter((p) => p.status === 'PENDING_PPC' || (!p.ppc_approved_at && p.status !== 'APPROVED'));
+    const approvedPlans = drawBenchPlans.filter((p) => p.status === 'APPROVED' || Boolean(p.ppc_approved_at));
+
+    // 1. Pending view contains only pending request
+    expect(pendingPlans).toHaveLength(1);
+    expect(pendingPlans[0].source_wo_no).toBe('WO-6419');
+    expect(pendingPlans[0].target_wo_no).toBe('WO-6495');
+
+    // 2. Approved view retains the approved work order number and target work order number
+    expect(approvedPlans).toHaveLength(1);
+    expect(approvedPlans[0].source_wo_no).toBe('WO-6307');
+    expect(approvedPlans[0].target_wo_no).toBe('WO-6401');
+    expect(approvedPlans[0].status).toBe('APPROVED');
+
+    // 3. All view shows both, without removing approved WO from the list
+    expect(drawBenchPlans).toHaveLength(2);
+    expect(drawBenchPlans.map((p) => p.source_wo_no)).toContain('WO-6307');
+    expect(drawBenchPlans.map((p) => p.source_wo_no)).toContain('WO-6419');
+  });
 });
+

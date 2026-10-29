@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
       : [(searchParams.get("stage")?.toUpperCase() || "ROLLING") as StageCode];
     const targetStage = targetStages[0];
     const includeFeeder = searchParams.get("include_feeder") === "true" || searchParams.get("for_planning") === "true";
-    const forceFresh = searchParams.has("nocache") || searchParams.has("refresh");
+    const forceFresh = searchParams.has("nocache") || searchParams.has("refresh") || searchParams.has("_t");
 
     if (forceFresh) {
       invalidateQueueCache();
@@ -124,17 +124,17 @@ export async function GET(req: NextRequest) {
             }
           }
         }
-      } else if (targetStage === "ROLLING") {
+      } else if (targetStage === "HOT_ROLLING" || targetStage === "ROLLING") {
         selectedRows.push(
-          ...memoryCache.rollingPlanRows.filter(
+          ...memoryCache.rollingPlanRows.map((r) => ({ ...r, stage_code: targetStage === "HOT_ROLLING" ? ("HOT_ROLLING" as StageCode) : ("ROLLING" as StageCode) })).filter(
             (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 && Number(r.balance_to_make_mtr ?? 0) >= 1.0
           )
         );
       } else {
         for (const st of targetStages) {
-          if (st === "ROLLING") {
+          if (st === "HOT_ROLLING" || st === "ROLLING") {
             selectedRows.push(
-              ...memoryCache.rollingPlanRows.filter(
+              ...memoryCache.rollingPlanRows.map((r) => ({ ...r, stage_code: st })).filter(
                 (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 && Number(r.balance_to_make_mtr ?? 0) >= 1.0
               )
             );
@@ -253,7 +253,7 @@ export async function GET(req: NextRequest) {
         .select("id, work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr, remarks"),
       admin
         .from("diversion_plans")
-        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id, reason, diversion_date, created_at, status"),
+        .select("id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, process_route_id, reason, diversion_date, created_at, status, ppc_approved_at"),
       admin
         .from("rejection_declarations")
         .select("id, work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status")
@@ -309,13 +309,11 @@ export async function GET(req: NextRequest) {
       return { sourceStage, targetStage };
     };
 
-    const isDrawDiv = (d: any) => d.work_center === "DRAW" || parseDivStages(d).targetStage === "DRAW";
+    const isDrawDiv = (d: any) => parseDivStages(d).targetStage === "DRAW";
     const isApprovedDiv = (d: any) => {
       if (d.status === "APPROVED") return true;
-      if (d.status === "REJECTED_BY_PPC" || d.status === "CANCELLED") return false;
-      if (isDrawDiv(d)) {
-        return Boolean(d.ppc_approved_at);
-      }
+      if (d.status === "PENDING_PPC" || d.status === "REJECTED_BY_PPC" || d.status === "CANCELLED") return false;
+      if (d.ppc_approved_at) return true;
       return true;
     };
     const isPendingDrawDiv = (d: any) => isDrawDiv(d) && (d.status === "PENDING_PPC" || (!d.status && !d.ppc_approved_at));
@@ -843,6 +841,18 @@ export async function GET(req: NextRequest) {
         }
       } catch {
         // text status
+      }
+    }
+
+    // Any work order that is a Master in its own campaign must not be treated as a child
+    for (const masterWoId of masterCampaignMap.keys()) {
+      childWoMap.delete(masterWoId);
+    }
+    for (const [key, campaign] of masterCampaignMap.entries()) {
+      if (Array.isArray(campaign.child_work_orders)) {
+        campaign.child_work_orders = campaign.child_work_orders.filter(
+          (c: any) => !masterCampaignMap.has(c.work_order_id || c.id) && !masterCampaignMap.has(String(c.work_order_no).trim())
+        );
       }
     }
 
@@ -1378,8 +1388,9 @@ export async function GET(req: NextRequest) {
           ) {
             return true;
           }
-          // If no uninspected prime pieces are at VDI, any VDI diversion is from the salvage pool
-          if (vdiIncomingPcs <= (qcOkPcs + qcRejPcs)) return true;
+          // If all incoming pieces have been inspected by QC (or no uninspected prime remain), any VDI diversion is from salvage
+          if (qcInspectedPcs > 0 && vdiIncomingPcs <= qcInspectedPcs) return true;
+          if (qcSalvagePcs > 0 && (vdiIncomingPcs - qcOkPcs - qcRejPcs - qcSalvagePcs) <= 0) return true;
         }
         return false;
       };
@@ -1391,6 +1402,8 @@ export async function GET(req: NextRequest) {
       const vdiSalvageDivOutPcs = diversions
         .filter(isVdiSalvageDiv)
         .reduce((sum: number, d: any) => {
+          const motherMatch = typeof d.reason === "string" ? d.reason.match(/(\d+)\s+mother pipes/i) : null;
+          if (motherMatch) return sum + Number(motherMatch[1]);
           if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
           const pcsMatch = typeof d.reason === "string" ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
           if (pcsMatch) return sum + Number(pcsMatch[1]);
@@ -2030,11 +2043,9 @@ export async function GET(req: NextRequest) {
 
       let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut - totalVdiRejMtr).toFixed(3)));
       let remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs - totalVdiRejPcs);
-      if (remSalvagePcs > 0 && remSalvageMtr <= 0 && avgLength > 0) {
-        remSalvageMtr = Number((remSalvagePcs * avgLength).toFixed(3));
-      }
-      if (remSalvagePcs <= 0 && remSalvageMtr > 0 && avgLength > 0) {
-        remSalvagePcs = Math.max(1, Math.round(remSalvageMtr / avgLength));
+      if (remSalvagePcs <= 0 || remSalvageMtr <= 0) {
+        remSalvagePcs = 0;
+        remSalvageMtr = 0;
       }
       const remSalvageMt = mtFromMtr(remSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 

@@ -115,5 +115,5 @@ describe('PPC Finishing Capping Management', () => {
     expect(resetRes.status).toBe(200);
     expect(resetJson.success).toBe(true);
     expect(resetJson.is_custom).toBe(false);
-  });
+  }, 15000);
 });

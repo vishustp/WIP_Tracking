@@ -30,6 +30,7 @@ export async function approveDiversion(
     });
 
     if (!rpcError) {
+      if (typeof window !== 'undefined') fetch('/api/production/queue?refresh=true').catch(() => {});
       return { success: true, error: null };
     }
 
@@ -49,6 +50,7 @@ export async function approveDiversion(
       return { success: false, error: updateError.message };
     }
 
+    if (typeof window !== 'undefined') fetch('/api/production/queue?refresh=true').catch(() => {});
     return { success: true, error: null };
   } catch (err: any) {
     return { success: false, error: err.message || 'Failed to approve diversion' };
@@ -76,6 +78,7 @@ export async function rejectDiversion(
     });
 
     if (!rpcError) {
+      if (typeof window !== 'undefined') fetch('/api/production/queue?refresh=true').catch(() => {});
       return { success: true, error: null };
     }
 
@@ -93,6 +96,7 @@ export async function rejectDiversion(
       return { success: false, error: updateError.message };
     }
 
+    if (typeof window !== 'undefined') fetch('/api/production/queue?refresh=true').catch(() => {});
     return { success: true, error: null };
   } catch (err: any) {
     return { success: false, error: err.message || 'Failed to reject diversion' };

@@ -79,7 +79,7 @@ export default function AgingReportClient() {
       // 1. Live Production Queue Engine (100% unified with WIP Matrix & Production Stations)
       let queueLoaded = false;
       try {
-        const queueRes = await fetch(`/api/production/queue?all_stages=true&_t=${Date.now()}`);
+        const queueRes = await fetch(`/api/production/queue?all_stages=true&refresh=true&_t=${Date.now()}`);
         if (queueRes.ok) {
           const queueJson = await queueRes.json();
           if (queueJson?.success && Array.isArray(queueJson.data) && queueJson.data.length > 0) {
@@ -98,19 +98,15 @@ export default function AgingReportClient() {
                 );
 
                 const rawPcs = Number(
-                  r.ready_pcs != null && Number(r.ready_pcs) > 0
+                  r.ready_pcs != null
                     ? r.ready_pcs
-                    : (r.current_wip_pcs != null && Number(r.current_wip_pcs) > 0
-                        ? r.current_wip_pcs
-                        : (r.balance_to_make_pcs != null && Number(r.balance_to_make_pcs) > 0 ? r.balance_to_make_pcs : 0))
+                    : (r.current_wip_pcs != null ? r.current_wip_pcs : 0)
                 );
 
                 const rawMtr = Number(
-                  r.ready_mtr != null && Number(r.ready_mtr) > 0
+                  r.ready_mtr != null
                     ? r.ready_mtr
-                    : (r.current_wip != null && Number(r.current_wip) > 0
-                        ? r.current_wip
-                        : (r.balance_to_make_mtr != null && Number(r.balance_to_make_mtr) > 0 ? r.balance_to_make_mtr : 0))
+                    : (r.current_wip != null ? r.current_wip : 0)
                 );
 
                 let pcs = Math.round(rawPcs);
@@ -290,7 +286,7 @@ export default function AgingReportClient() {
         supabase.from('route_stages').select('route_id, stage_id, sequence_no, process_stages(stage_code)').order('sequence_no', { ascending: true }),
         supabase.from('aging_alert_acknowledgements').select('work_order_id, stage_code, acknowledged_by, notes, snooze_until'),
         supabase.from('rejection_declarations').select('work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status').not('status', 'in', '("REJECTED_BY_QC","REJECTED_BY_PPC")'),
-        supabase.from('diversion_plans').select('id, target_work_order_id, target_work_center, diverted_pcs, diverted_mtr, source_work_order_id, work_orders!diversion_plans_source_work_order_id_fkey(work_order_no), remarks, diversion_date, created_at, status').neq('status', 'CANCELLED'),
+        supabase.from('diversion_plans').select('id, target_wo_id, work_center, diverted_qty, source_wo_id, reason, diversion_date, created_at, status, ppc_approved_at').neq('status', 'CANCELLED'),
       ]);
 
       const dbAcks: RawAcknowledgement[] = ackRes?.data || [];

@@ -94,7 +94,9 @@ export interface RawQcInspection {
   vdi_ok_mtr?: number;
   vdi_salvage_pcs?: number;
   vdi_salvage_mtr?: number;
+  inspected_pcs?: number;
   created_at?: string;
+  [key: string]: any;
 }
 
 export interface RawRollingPlan {
@@ -410,12 +412,11 @@ export function computeAgingReportRows(options: {
 
   const approvedDiversions = (diversions || []).filter((d: any) => {
     if (d.status === 'APPROVED') return true;
-    if (d.status === 'REJECTED_BY_PPC' || d.status === 'CANCELLED') return false;
-    const { targetStage } = parseDivStages(d);
-    const isDraw = d.work_center === 'DRAW' || targetStage === 'DRAW';
-    if (isDraw) return Boolean((d as any).ppc_approved_at);
+    if (d.status === 'PENDING_PPC' || d.status === 'REJECTED_BY_PPC' || d.status === 'CANCELLED') return false;
+    if ((d as any).ppc_approved_at) return true;
     return true;
   });
+
 
   const rows: AgingRow[] = wipRows
     .filter((r) => {
@@ -425,9 +426,9 @@ export function computeAgingReportRows(options: {
       const wo = woMap.get(r.work_order_id);
       if (isHollowBankOrder(wo)) return false;
 
-      // Piece-based clearance for DRAW, PILGER, HEAT_TREATMENT, and HOLLOW_HEAT_TREATMENT
+      // Piece-based clearance for DRAW, PILGER, HEAT_TREATMENT, HOLLOW_HEAT_TREATMENT, BAND_SAW, and VDI
       const sc = (r.stage_code || '').toUpperCase();
-      if ((sc === 'DRAW' || sc === 'PILGER' || sc === 'HEAT_TREATMENT' || sc === 'HOLLOW_HEAT_TREATMENT') && Array.isArray(productionLogs) && productionLogs.length > 0) {
+      if ((sc === 'DRAW' || sc === 'PILGER' || sc === 'HEAT_TREATMENT' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'BAND_SAW') && Array.isArray(productionLogs) && productionLogs.length > 0) {
         const stageCodeMap = new Map<string, string>();
         routeStages.forEach((rs) => {
           const code = rs.process_stages?.stage_code || rs.stage_code;
@@ -447,33 +448,86 @@ export function computeAgingReportRows(options: {
           return acc + (pcs || (r.l1 ? Math.round(Number(l.output_qty || 0) / Number(r.l1)) : 0));
         }, 0);
 
-        const rollLogs = woLogs.filter((l) => getLogStageCode(l) === 'ROLLING');
+        const rollLogs = woLogs.filter((l) => {
+          const code = getLogStageCode(l);
+          return code === 'ROLLING' || code === 'HOT_ROLLING' || code === 'HTC';
+        });
         const rollPcs = rollLogs.reduce((acc, l) => {
           const { pcs } = extractPcsFromRemarks(l.remarks);
           return acc + (pcs || 0);
         }, 0);
 
-        const downLogs = woLogs.filter((l) => {
+        const downPcsByStage = new Map<string, number>();
+        woLogs.forEach((l) => {
           const lsc = getLogStageCode(l);
-          if (sc === 'DRAW' || sc === 'PILGER') {
-            return lsc === 'HEAT_TREATMENT' || lsc === 'BAND_SAW' || lsc === 'VDI' || lsc === 'FINISHING';
-          }
-          if (sc === 'HEAT_TREATMENT') {
-            return lsc === 'BAND_SAW' || lsc === 'VDI' || lsc === 'FINISHING';
-          }
-          if (sc === 'HOLLOW_HEAT_TREATMENT') {
-            return lsc === 'DRAW' || lsc === 'PILGER' || lsc === 'HEAT_TREATMENT' || lsc === 'BAND_SAW' || lsc === 'VDI' || lsc === 'FINISHING';
-          }
-          return false;
-        });
-        const downPcs = downLogs.reduce((acc, l) => {
           const { pcs } = extractPcsFromRemarks(l.remarks);
           const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
-          return Math.max(acc, motherPcs || pcs || 0);
-        }, 0);
+          const p = motherPcs || pcs || 0;
+          downPcsByStage.set(lsc, (downPcsByStage.get(lsc) || 0) + p);
+        });
 
-        if (rollPcs > 0 && (curPcs >= rollPcs || downPcs >= rollPcs)) {
-          return false;
+        const bsMotherPcs = downPcsByStage.get('BAND_SAW') || 0;
+        const finPcs = downPcsByStage.get('FINISHING') || 0;
+        const woQcList = (qcInspections || []).filter((q) => q.work_order_id === r.work_order_id);
+        const qcPcs = woQcList.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
+
+        const targetRefPcs = rollPcs > 0 ? rollPcs : curPcs;
+
+        // Sum rejections and diversions out for this work order to account for scrapped/diverted material
+        const totalWoRejPcs = (rejectionDeclarations || [])
+          .filter((rd: any) => rd.work_order_id === r.work_order_id && rd.status !== 'REJECTED_BY_QC' && rd.status !== 'REJECTED_BY_PPC')
+          .reduce((sum: number, rd: any) => sum + Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0), 0);
+
+        const totalWoDivOutPcs = approvedDiversions
+          .filter((d: any) => (d.source_work_order_id || d.source_wo_id) === r.work_order_id)
+          .reduce((sum: number, d: any) => {
+            const motherMatch = typeof d.reason === 'string' ? d.reason.match(/(\d+)\s+mother pipes/i) : null;
+            if (motherMatch) return sum + Number(motherMatch[1]);
+            if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+            const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+            if (pcsMatch) return sum + Number(pcsMatch[1]);
+            return sum;
+          }, 0);
+
+        if (targetRefPcs > 0) {
+          if (sc === 'DRAW' || sc === 'PILGER' || sc === 'HOLLOW_HEAT_TREATMENT' || sc === 'HEAT_TREATMENT') {
+            const htPcs = downPcsByStage.get('HEAT_TREATMENT') || 0;
+            if (sc !== 'HEAT_TREATMENT' && (htPcs >= targetRefPcs || (htPcs + totalWoRejPcs + totalWoDivOutPcs) >= targetRefPcs)) return false;
+            if (bsMotherPcs >= targetRefPcs || (bsMotherPcs + totalWoRejPcs + totalWoDivOutPcs) >= targetRefPcs) return false;
+            if (qcPcs >= targetRefPcs || finPcs >= targetRefPcs) return false;
+          }
+          if (sc === 'BAND_SAW') {
+            if (qcPcs >= targetRefPcs || (qcPcs + totalWoDivOutPcs) >= targetRefPcs) return false;
+            if (finPcs >= targetRefPcs || (finPcs + totalWoRejPcs + totalWoDivOutPcs) >= targetRefPcs) return false;
+          }
+        }
+      }
+
+      if (sc === 'VDI') {
+        const woQcList = (qcInspections || []).filter((q) => q.work_order_id === r.work_order_id);
+        const totalQcInspected = woQcList.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
+        const totalQcSalvage = woQcList.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+        if (totalQcInspected > 0) {
+          const bsLogs = (productionLogs || []).filter((l) => l.work_order_id === r.work_order_id && (l.process_stages?.stage_code || l.stage_code) === 'BAND_SAW');
+          const totalCutPcs = bsLogs.reduce((sum, l) => {
+            const pcsMatch = l.remarks ? l.remarks.match(/\[PCS:\s*(\d+)\]/i) : null;
+            return sum + (pcsMatch ? parseInt(pcsMatch[1], 10) : 0);
+          }, 0);
+          if (totalCutPcs > 0 && totalCutPcs <= totalQcInspected) {
+            const salvageDivOutPcs = approvedDiversions
+              .filter((d: any) => (d.source_work_order_id || d.source_wo_id) === r.work_order_id)
+              .reduce((sum: number, d: any) => {
+                const motherMatch = typeof d.reason === 'string' ? d.reason.match(/(\d+)\s+mother pipes/i) : null;
+                if (motherMatch) return sum + Number(motherMatch[1]);
+                if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+                const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+                if (pcsMatch) return sum + Number(pcsMatch[1]);
+                return sum;
+              }, 0);
+            if (salvageDivOutPcs >= totalQcSalvage || totalQcSalvage <= 0) {
+              return false;
+            }
+          }
         }
       }
 
@@ -508,11 +562,15 @@ export function computeAgingReportRows(options: {
           const srcId = d.source_work_order_id || d.source_wo_id;
           if (srcId !== r.work_order_id) return false;
           const { sourceStage } = parseDivStages(d);
-          return (
+          if (
             sourceStage === sc ||
             (sc === 'VDI_SALVAGE' && sourceStage === 'VDI') ||
             (sc === 'VDI' && sourceStage === 'VDI_SALVAGE')
-          );
+          ) return true;
+          if (sc === 'VDI' && (sourceStage === 'FINISHING' || d.work_center === 'FINISHING') && (d.reason || '').toLowerCase().includes('hollow bank')) {
+            return true;
+          }
+          return false;
         })
         .reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
 
@@ -521,13 +579,19 @@ export function computeAgingReportRows(options: {
           const srcId = d.source_work_order_id || d.source_wo_id;
           if (srcId !== r.work_order_id) return false;
           const { sourceStage } = parseDivStages(d);
-          return (
+          if (
             sourceStage === sc ||
             (sc === 'VDI_SALVAGE' && sourceStage === 'VDI') ||
             (sc === 'VDI' && sourceStage === 'VDI_SALVAGE')
-          );
+          ) return true;
+          if (sc === 'VDI' && (sourceStage === 'FINISHING' || d.work_center === 'FINISHING') && (d.reason || '').toLowerCase().includes('hollow bank')) {
+            return true;
+          }
+          return false;
         })
         .reduce((sum, d: any) => {
+          const motherMatch = typeof d.reason === 'string' ? d.reason.match(/(\d+)\s+mother pipes/i) : null;
+          if (motherMatch) return sum + Number(motherMatch[1]);
           if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
           const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
           if (pcsMatch) return sum + Number(pcsMatch[1]);
@@ -538,15 +602,26 @@ export function computeAgingReportRows(options: {
           return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
         }, 0);
 
-      const currentWipMtr = Math.max(0, (Number(r.current_wip) || 0) - rejDecl.mtr - stageDivOutMtr);
+      let currentWipMtr = Math.max(0, (Number(r.current_wip) || 0) - rejDecl.mtr - stageDivOutMtr);
       let currentWipPcs = Math.max(0, (Number(r.current_wip_pcs) || 0) - rejDecl.pcs - stageDivOutPcs);
-      if (currentWipPcs <= 0 && currentWipMtr > 0) {
-        const l1 = Number(r.l1 ?? wo?.l1) || 0;
-        const l2 = Number(r.l2 ?? wo?.l2) || 0;
-        const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
-        if (avgLen > 0) {
-          currentWipPcs = Math.max(1, Math.round(currentWipMtr / avgLen));
+      if (currentWipPcs <= 0) {
+        if (
+          (stageDivOutPcs > 0 && stageDivOutPcs >= (Number(r.current_wip_pcs) || 0)) ||
+          (rejDecl.pcs > 0 && rejDecl.pcs >= (Number(r.current_wip_pcs) || 0))
+        ) {
+          currentWipMtr = 0;
+          currentWipPcs = 0;
+        } else if (currentWipMtr > 0) {
+          const l1 = Number(r.l1 ?? wo?.l1) || 0;
+          const l2 = Number(r.l2 ?? wo?.l2) || 0;
+          const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
+          if (avgLen > 0) {
+            currentWipPcs = Math.max(1, Math.round(currentWipMtr / avgLen));
+          }
         }
+      }
+      if (currentWipMtr <= 0) {
+        currentWipPcs = 0;
       }
 
       // Conserved mass formula (OD - WT) * WT * 0.0246615 * 0.001 * meters
@@ -605,6 +680,8 @@ export function computeAgingReportRows(options: {
           return sourceStage === 'VDI' || sourceStage === 'VDI_SALVAGE';
         })
         .reduce((sum, d: any) => {
+          const motherMatch = typeof d.reason === 'string' ? d.reason.match(/(\d+)\s+mother pipes/i) : null;
+          if (motherMatch) return sum + Number(motherMatch[1]);
           if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
           const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
           if (pcsMatch) return sum + Number(pcsMatch[1]);
@@ -615,8 +692,16 @@ export function computeAgingReportRows(options: {
           return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
         }, 0);
 
-      const vdiSalvagePcs = Math.max(0, rawVdiSalvagePcs - vdiSalvageDivOutPcs);
-      const vdiSalvageMtr = Math.max(0, Number((rawVdiSalvageMtr - vdiSalvageDivOutMtr).toFixed(3)));
+      let vdiSalvagePcs = Math.max(0, rawVdiSalvagePcs - vdiSalvageDivOutPcs);
+      let vdiSalvageMtr = Math.max(0, Number((rawVdiSalvageMtr - vdiSalvageDivOutMtr).toFixed(3)));
+      if (vdiSalvagePcs <= 0 || vdiSalvageMtr <= 0) {
+        vdiSalvagePcs = 0;
+        vdiSalvageMtr = 0;
+      }
+      if (sc === 'VDI_SALVAGE' && (vdiSalvagePcs <= 0 || vdiSalvageMtr <= 0)) {
+        currentWipMtr = 0;
+        currentWipPcs = 0;
+      }
 
       // Diversion details
       const divMatching = approvedDiversions.filter((d: any) => {
@@ -968,6 +1053,8 @@ export function normalizeAgingRow(
       );
     })
     .reduce((sum, d: any) => {
+      const motherMatch = typeof d.reason === 'string' ? d.reason.match(/(\d+)\s+mother pipes/i) : null;
+      if (motherMatch) return sum + Number(motherMatch[1]);
       if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
       const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
       if (pcsMatch) return sum + Number(pcsMatch[1]);
@@ -978,8 +1065,19 @@ export function normalizeAgingRow(
       return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
     }, 0);
 
-  const currentWip = Math.max(0, rawWipMtr - rejDeclMtr - stageDivOutMtr);
-  const currentWipPcs = Math.max(0, rawWipPcs - rejDeclPcs - stageDivOutPcs);
+  let currentWip = Math.max(0, rawWipMtr - rejDeclMtr - stageDivOutMtr);
+  let currentWipPcs = Math.max(0, rawWipPcs - rejDeclPcs - stageDivOutPcs);
+  if (currentWipPcs <= 0) {
+    if (
+      (stageDivOutPcs > 0 && stageDivOutPcs >= rawWipPcs) ||
+      (rejDeclPcs > 0 && rejDeclPcs >= rawWipPcs)
+    ) {
+      currentWip = 0;
+    }
+  }
+  if (currentWip <= 0) {
+    currentWipPcs = 0;
+  }
 
   const isSalvage = String(raw.stage_code || '').toUpperCase() === 'VDI_SALVAGE' ||
     String(raw.stage_name || '').toUpperCase().includes('SALVAGE');
@@ -1003,6 +1101,8 @@ export function normalizeAgingRow(
       return sourceStage === 'VDI' || sourceStage === 'VDI_SALVAGE';
     })
     .reduce((sum, d: any) => {
+      const motherMatch = typeof d.reason === 'string' ? d.reason.match(/(\d+)\s+mother pipes/i) : null;
+      if (motherMatch) return sum + Number(motherMatch[1]);
       if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
       const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
       if (pcsMatch) return sum + Number(pcsMatch[1]);
@@ -1020,8 +1120,16 @@ export function normalizeAgingRow(
     ? (Number(raw.vdi_salvage_mtr) > 0 ? Number(raw.vdi_salvage_mtr) : (isSalvage ? currentWip : 0))
     : 0;
 
-  const salvagePcs = Math.max(0, rawSalvagePcs - vdiSalvageDivOutPcs);
-  const salvageMtr = Math.max(0, Number((rawSalvageMtr - vdiSalvageDivOutMtr).toFixed(3)));
+  let salvagePcs = Math.max(0, rawSalvagePcs - vdiSalvageDivOutPcs);
+  let salvageMtr = Math.max(0, Number((rawSalvageMtr - vdiSalvageDivOutMtr).toFixed(3)));
+  if (salvagePcs <= 0 || salvageMtr <= 0) {
+    salvagePcs = 0;
+    salvageMtr = 0;
+  }
+  if (isSalvage && (salvagePcs <= 0 || salvageMtr <= 0)) {
+    currentWip = 0;
+    currentWipPcs = 0;
+  }
 
   const divMtr = targetDivs.reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
   const divPcs = targetDivs.reduce((sum, d: any) => sum + Number(d.diverted_pcs ?? 0), 0) || Number(raw.diversion_in_pcs) || 0;

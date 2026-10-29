@@ -217,26 +217,32 @@ export default function WorkOrderTrackingClient() {
       if (divsRes?.data) setDiversionPlans(divsRes.data);
 
       if (logsRes.data) {
-        const mappedLogs: ProductionLog[] = logsRes.data.map((l: any) => ({
-          id: l.id,
-          work_order_id: l.work_order_id,
-          stage_code: l.process_stages?.stage_code || '',
-          stage_name: l.process_stages?.stage_name || '',
-          shift_date: l.shift_date || l.created_at?.slice(0, 10),
-          shift: l.shift || null,
-          heat_no: l.heat_no || null,
-          lot_no: l.lot_no || null,
-          output_qty: Number(l.output_qty || 0),
-          output_pcs: Number(l.output_pcs || 0),
-          rejection_qty: Number(l.rejection_qty || 0),
-          rejection_pcs: Number(l.rejection_pcs || 0),
-          htc_ok: Number(l.htc_ok ?? l.htc_ok_qty ?? 0),
-          htc_ok_qty: Number(l.htc_ok ?? l.htc_ok_qty ?? 0),
-          htc_ok_pcs: Number(l.htc_ok_pcs || 0),
-          operator_name: l.operator_name || null,
-          remarks: l.remarks || null,
-          created_at: l.created_at,
-        }));
+        const mappedLogs: ProductionLog[] = logsRes.data.map((l: any) => {
+          const pcsMatch = l.remarks ? l.remarks.match(/\[PCS:\s*(\d+)\]/i) || l.remarks.match(/PCS:\s*(\d+)/i) : null;
+          const parsedPcs = pcsMatch ? parseInt(pcsMatch[1], 10) : 0;
+          const rejPcsMatch = l.remarks ? l.remarks.match(/\[REJ_PCS:\s*(\d+)\]/i) || l.remarks.match(/REJ_PCS:\s*(\d+)/i) : null;
+          const parsedRejPcs = rejPcsMatch ? parseInt(rejPcsMatch[1], 10) : 0;
+          return {
+            id: l.id,
+            work_order_id: l.work_order_id,
+            stage_code: l.process_stages?.stage_code || '',
+            stage_name: l.process_stages?.stage_name || '',
+            shift_date: l.shift_date || l.created_at?.slice(0, 10),
+            shift: l.shift || null,
+            heat_no: l.heat_no || null,
+            lot_no: l.lot_no || null,
+            output_qty: Number(l.output_qty || 0),
+            output_pcs: Number(l.output_pcs || parsedPcs || 0),
+            rejection_qty: Number(l.rejection_qty || 0),
+            rejection_pcs: Number(l.rejection_pcs || parsedRejPcs || 0),
+            htc_ok: Number(l.htc_ok ?? l.htc_ok_qty ?? 0),
+            htc_ok_qty: Number(l.htc_ok ?? l.htc_ok_qty ?? 0),
+            htc_ok_pcs: Number(l.htc_ok_pcs || (Number(l.htc_ok ?? l.htc_ok_qty ?? 0) > 0 ? parsedPcs : 0)),
+            operator_name: l.operator_name || null,
+            remarks: l.remarks || null,
+            created_at: l.created_at,
+          };
+        });
         setProductionLogs(mappedLogs);
       }
     } catch (err) {
@@ -295,6 +301,19 @@ export default function WorkOrderTrackingClient() {
           });
         }
       } catch {}
+    }
+
+    // CRITICAL: Any work order that is a Master in its own campaign must not be treated as a child!
+    for (const masterWoId of masterMap.keys()) {
+      childMap.delete(masterWoId);
+    }
+    // Also remove any order that is a master from child_work_orders of earlier campaigns
+    for (const [mWoId, masterObj] of masterMap.entries()) {
+      if (Array.isArray(masterObj.child_work_orders)) {
+        masterObj.child_work_orders = masterObj.child_work_orders.filter(
+          (c: any) => !masterMap.has(c.work_order_id || c.id)
+        );
+      }
     }
 
     return { masterMap, childMap };
@@ -411,10 +430,10 @@ export default function WorkOrderTrackingClient() {
       const avgLen = wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : wo.l1 || wo.l2 || 6.0;
       const isMaster = campaignMeta.masterMap.has(wo.id);
       const masterInfo = campaignMeta.masterMap.get(wo.id);
-      const childInfo = campaignMeta.childMap.get(wo.id);
+      const childInfo = isMaster ? null : campaignMeta.childMap.get(wo.id);
 
-      // Associated rolling plan
-      const plan = rollingPlans.find((p) => p.work_order_id === wo.id);
+      // Associated rolling plan: prioritize master campaign plan if this order is a master
+      const plan = masterInfo || rollingPlans.find((p) => p.work_order_id === wo.id);
 
       // Determine master work order ID if this is a child order
       const effectiveMasterWoId = childInfo ? childInfo.master_wo_id : wo.id;
@@ -422,7 +441,9 @@ export default function WorkOrderTrackingClient() {
       const woLogs = productionLogs.filter((l) => l.work_order_id === wo.id);
 
       const campaignChildWoIds: string[] = isMaster && masterInfo?.child_work_orders
-        ? masterInfo.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean)
+        ? masterInfo.child_work_orders
+            .map((c: any) => c.work_order_id || c.id)
+            .filter((cId: string) => Boolean(cId) && !campaignMeta.masterMap.has(cId))
         : [];
       const campaignWoIdSet = new Set<string>([wo.id, ...campaignChildWoIds]);
 
@@ -501,7 +522,7 @@ export default function WorkOrderTrackingClient() {
 
       // Rolling production stats (tracked under master campaign or single order)
       const mhAvgLen = (plan?.mh_l1 && plan?.mh_l2 ? (plan.mh_l1 + plan.mh_l2) / 2 : plan?.mh_l1 || plan?.mh_l2) || avgLen;
-      const masterRollLogs = masterLogs.filter((l) => l.stage_code === 'ROLLING' || l.stage_code === 'HOT_ROLLING');
+      const masterRollLogs = masterLogs.filter((l) => l.stage_code === 'ROLLING' || l.stage_code === 'HOT_ROLLING' || l.stage_code === 'HTC');
       const rollingOutMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
       const rollingOutPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const rollingOutPcs = rollingOutPcsLogged > 0 ? rollingOutPcsLogged : (mhAvgLen > 0 ? Math.round(rollingOutMtr / mhAvgLen) : 0);

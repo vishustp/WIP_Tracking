@@ -320,6 +320,18 @@ export function useQueue(stage: StageCode) {
         }
       }
 
+      // CRITICAL: Any work order that is a Master in its own campaign must not be treated as a child
+      for (const masterKey of masterCampaignMap.keys()) {
+        childWoMap.delete(masterKey);
+      }
+      for (const [key, campaign] of masterCampaignMap.entries()) {
+        if (Array.isArray(campaign.child_work_orders)) {
+          campaign.child_work_orders = campaign.child_work_orders.filter(
+            (c: any) => !masterCampaignMap.has(c.work_order_id || c.id) && !masterCampaignMap.has(String(c.work_order_no).trim())
+          );
+        }
+      }
+
       // RULE 2:
       // In Draw, Hollow Heat Treatment, Heat Treatment WIP: ONLY Master Work Order will be available!
       // In Finishing: ALL Master and Child Work Orders will be displayed!

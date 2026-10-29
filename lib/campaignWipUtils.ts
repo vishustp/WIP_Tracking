@@ -76,6 +76,23 @@ export function buildCampaignHierarchyMaps(rollingPlans: any[]): CampaignHierarc
     } catch {}
   }
 
+  // CRITICAL: Any work order that has its own rolling plan (not is_child) must not be treated as a child
+  for (const p of rollingPlans) {
+    if (p.work_order_id) {
+      try {
+        const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+        if (!parsed?.is_child) {
+          childToMasterMap.delete(p.work_order_id);
+          for (const [masterId, members] of campaignMembersMap.entries()) {
+            if (masterId !== p.work_order_id && members.has(p.work_order_id)) {
+              members.delete(p.work_order_id);
+            }
+          }
+        }
+      } catch {}
+    }
+  }
+
   return { campaignMembersMap, childToMasterMap, mhMap };
 }
 
@@ -285,8 +302,7 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
 
       const bsLog = directStageLogsMap.get('BAND_SAW');
       const hasActualBsLogs = Boolean(bsLog && ((bsLog.pcs || 0) > 0 || (bsLog.mtr || 0) > 0));
-      const vdiRow = stageRows.find((sr: any) => (sr.stage_code || '').toUpperCase() === 'VDI');
-      const vdiHasDivIn = Number(vdiRow?.diversion_in || 0) > 0;
+      const vdiHasDivIn = stageRows.some((sr: any) => (sr.stage_code || '').toUpperCase() === 'VDI' && Number(sr.diversion_in || 0) > 0);
 
       let grossMtr = logMtr > 0 ? logMtr : rawMtr;
       let grossPcs = logPcs > 0 ? logPcs : rawPcs;
