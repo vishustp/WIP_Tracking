@@ -143,7 +143,8 @@ interface StageTrackingMetric {
 
 const STAGES_ORDER = [
   { code: 'ROLLING', label: 'Rolling Mill', short: 'ROLL', bg: 'bg-blue-50 text-blue-900 border-blue-200' },
-  { code: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment', short: 'HTC', bg: 'bg-amber-50 text-amber-900 border-amber-200' },
+  { code: 'HTC', label: 'HTC (QC)', short: 'HTC', bg: 'bg-teal-50 text-teal-900 border-teal-200' },
+  { code: 'HOLLOW_HEAT_TREATMENT', label: 'Hollow Heat Treatment', short: 'HHT', bg: 'bg-amber-50 text-amber-900 border-amber-200' },
   { code: 'DRAW', label: 'Draw Bench', short: 'DRAW', bg: 'bg-indigo-50 text-indigo-900 border-indigo-200' },
   { code: 'PILGER', label: 'Cold Pilger Mill', short: 'PILGER', bg: 'bg-cyan-50 text-cyan-900 border-cyan-200' },
   { code: 'HEAT_TREATMENT', label: 'Heat Treatment', short: 'HT', bg: 'bg-orange-50 text-orange-900 border-orange-200' },
@@ -488,7 +489,8 @@ export default function WorkOrderTrackingClient() {
       const woWipRows = stageWip.filter((s) => s.work_order_id === wo.id || s.work_order_id === effectiveMasterWoId);
       const routeCode = (planRoute?.route_code || woWipRows[0]?.route_code || '').toUpperCase();
       const isSsSteelRoute = routeCode === 'SS_STEEL' || woWipRows.some((s) => s.stage_code === 'PILGER');
-      const hasHtcInRoute = routeCode === 'ALLOY_CDS' || routeCode === 'ALLOY_HFS' || routeCode.includes('ALLOY') || woWipRows.some((s) => s.stage_code === 'HOLLOW_HEAT_TREATMENT');
+      const hasHtcInRoute = true; // Universal for all seamless pipe routes after hot rolling
+      const hasHhtInRoute = routeCode === 'ALLOY_CDS' || routeCode === 'ALLOY_HFS' || routeCode.includes('ALLOY') || woWipRows.some((s) => s.stage_code === 'HOLLOW_HEAT_TREATMENT');
       const hasPilgerInRoute = isSsSteelRoute;
       const hasDrawInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS' || routeCode.includes('CDS') || woWipRows.some((s) => s.stage_code === 'DRAW');
       const hasHtInRoute = routeCode === 'CDS' || routeCode === 'ALLOY_CDS' || routeCode.includes('CDS') || isSsSteelRoute || woWipRows.some((s) => s.stage_code === 'HEAT_TREATMENT');
@@ -520,9 +522,9 @@ export default function WorkOrderTrackingClient() {
         return 0;
       };
 
-      // Rolling production stats (tracked under master campaign or single order)
+      // Rolling production stats (HOT_ROLLING and ROLLING only - NOT HTC!)
       const mhAvgLen = (plan?.mh_l1 && plan?.mh_l2 ? (plan.mh_l1 + plan.mh_l2) / 2 : plan?.mh_l1 || plan?.mh_l2) || avgLen;
-      const masterRollLogs = masterLogs.filter((l) => l.stage_code === 'ROLLING' || l.stage_code === 'HOT_ROLLING' || l.stage_code === 'HTC');
+      const masterRollLogs = masterLogs.filter((l) => l.stage_code === 'ROLLING' || l.stage_code === 'HOT_ROLLING');
       const rollingOutMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
       const rollingOutPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const rollingOutPcs = rollingOutPcsLogged > 0 ? rollingOutPcsLogged : (mhAvgLen > 0 ? Math.round(rollingOutMtr / mhAvgLen) : 0);
@@ -531,32 +533,52 @@ export default function WorkOrderTrackingClient() {
       const rollingRejPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const rollingRejPcs = rollingRejPcsLogged > 0 ? rollingRejPcsLogged : (mhAvgLen > 0 ? Math.round(rollingRejMtr / mhAvgLen) : 0);
 
-      // Strictly HTC OK quantity from rolling!
-      const rollingHtcOkMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty ?? l.htc_ok ?? 0), 0);
-      const rollingHtcOkPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogHtcOkPcs(l), 0);
-      const rollingHtcOkPcs = rollingHtcOkPcsLogged > 0
-        ? rollingHtcOkPcsLogged
-        : (rollingRejPcs === 0 && rollingOutPcs > 0
-            ? rollingOutPcs
-            : (mhAvgLen > 0 ? Math.round(rollingHtcOkMtr / mhAvgLen) : 0));
+      // Legacy rolling logs might have had htc_ok recorded directly on the rolling log
+      const legacyRollingHtcOkMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty ?? l.htc_ok ?? 0), 0);
+      const legacyRollingHtcOkPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogHtcOkPcs(l), 0);
+      const legacyRollingHtcOkPcs = legacyRollingHtcOkPcsLogged > 0
+        ? legacyRollingHtcOkPcsLogged
+        : (rollingRejPcs === 0 && rollingOutPcs > 0 ? rollingOutPcs : (mhAvgLen > 0 ? Math.round(legacyRollingHtcOkMtr / mhAvgLen) : 0));
 
-      // Hollow Heat Treatment (HTC) stats
-      const masterHtcLogs = masterLogs.filter((l) => l.stage_code === 'HOLLOW_HEAT_TREATMENT');
-      const htcOutMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
-      const htcOutPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
-      const htcOutPcs = htcOutPcsLogged > 0 ? htcOutPcsLogged : (mhAvgLen > 0 ? Math.round(htcOutMtr / mhAvgLen) : 0);
+      // HTC (Hot Test Check) stats (from stage_code === 'HTC')
+      const masterHtcLogs = masterLogs.filter((l) => l.stage_code === 'HTC');
+      const htcLogOutMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const htcLogOutPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
+      const htcLogOutPcs = htcLogOutPcsLogged > 0 ? htcLogOutPcsLogged : (mhAvgLen > 0 ? Math.round(htcLogOutMtr / mhAvgLen) : 0);
 
-      const htcRejMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
-      const htcRejPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
-      const htcRejPcs = htcRejPcsLogged > 0 ? htcRejPcsLogged : (mhAvgLen > 0 ? Math.round(htcRejMtr / mhAvgLen) : 0);
+      const htcLogRejMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const htcLogRejPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
+      const htcLogRejPcs = htcLogRejPcsLogged > 0 ? htcLogRejPcsLogged : (mhAvgLen > 0 ? Math.round(htcLogRejMtr / mhAvgLen) : 0);
 
-      const htcOkMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty ?? l.htc_ok ?? 0), 0);
-      const htcOkPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogHtcOkPcs(l), 0);
-      const htcOkPcs = htcOkPcsLogged > 0
-        ? htcOkPcsLogged
-        : (htcRejPcs === 0 && htcOutPcs > 0
-            ? htcOutPcs
-            : (mhAvgLen > 0 ? Math.round(htcOkMtr / mhAvgLen) : 0));
+      const htcLogOkMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty ?? l.htc_ok ?? (Number(l.output_qty || 0) - Number(l.rejection_qty || 0))), 0);
+      const htcLogOkPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogHtcOkPcs(l), 0);
+      const htcLogOkPcs = htcLogOkPcsLogged > 0
+        ? htcLogOkPcsLogged
+        : (htcLogRejPcs === 0 && htcLogOutPcs > 0 ? htcLogOutPcs : (mhAvgLen > 0 ? Math.round(htcLogOkMtr / mhAvgLen) : 0));
+
+      const hasDedicatedHtcLogs = masterHtcLogs.length > 0;
+      const htcOutMtr = hasDedicatedHtcLogs ? htcLogOutMtr : (legacyRollingHtcOkMtr > 0 ? legacyRollingHtcOkMtr : rollingOutMtr);
+      const htcOutPcs = hasDedicatedHtcLogs ? htcLogOutPcs : (legacyRollingHtcOkPcs > 0 ? legacyRollingHtcOkPcs : rollingOutPcs);
+      const htcRejMtr = hasDedicatedHtcLogs ? htcLogRejMtr : 0;
+      const htcRejPcs = hasDedicatedHtcLogs ? htcLogRejPcs : 0;
+      const htcOkMtr = hasDedicatedHtcLogs ? (htcLogOkMtr > 0 ? htcLogOkMtr : htcLogOutMtr) : (legacyRollingHtcOkMtr > 0 ? legacyRollingHtcOkMtr : rollingOutMtr);
+      const htcOkPcs = hasDedicatedHtcLogs ? (htcLogOkPcs > 0 ? htcLogOkPcs : htcLogOutPcs) : (legacyRollingHtcOkPcs > 0 ? legacyRollingHtcOkPcs : rollingOutPcs);
+
+      // Hollow Heat Treatment (HHT) stats (from stage_code === 'HOLLOW_HEAT_TREATMENT')
+      const masterHhtLogs = masterLogs.filter((l) => l.stage_code === 'HOLLOW_HEAT_TREATMENT');
+      const hhtOutMtr = masterHhtLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+      const hhtOutPcsLogged = masterHhtLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
+      const hhtOutPcs = hhtOutPcsLogged > 0 ? hhtOutPcsLogged : (mhAvgLen > 0 ? Math.round(hhtOutMtr / mhAvgLen) : 0);
+
+      const hhtRejMtr = masterHhtLogs.reduce((sum, l) => sum + Number(l.rejection_qty || 0), 0);
+      const hhtRejPcsLogged = masterHhtLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
+      const hhtRejPcs = hhtRejPcsLogged > 0 ? hhtRejPcsLogged : (mhAvgLen > 0 ? Math.round(hhtRejMtr / mhAvgLen) : 0);
+
+      const hhtOkMtr = masterHhtLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty ?? l.htc_ok ?? (Number(l.output_qty || 0) - Number(l.rejection_qty || 0))), 0);
+      const hhtOkPcsLogged = masterHhtLogs.reduce((sum, l) => sum + getLogHtcOkPcs(l), 0);
+      const hhtOkPcs = hhtOkPcsLogged > 0
+        ? hhtOkPcsLogged
+        : (hhtRejPcs === 0 && hhtOutPcs > 0 ? hhtOutPcs : (mhAvgLen > 0 ? Math.round(hhtOkMtr / mhAvgLen) : 0));
 
       // Draw Bench stats
       const masterDrawLogs = masterLogs.filter((l) => l.stage_code === 'DRAW');
@@ -687,7 +709,7 @@ export default function WorkOrderTrackingClient() {
         // RULE 2: Child work orders in campaigns are bundled under master for pre-finishing stages
         if (childInfo && stageCode !== 'FINISHING') {
           if (
-            (stageCode === 'HOLLOW_HEAT_TREATMENT' && !hasHtcInRoute) ||
+            (stageCode === 'HOLLOW_HEAT_TREATMENT' && !hasHhtInRoute) ||
             (stageCode === 'PILGER' && !hasPilgerInRoute) ||
             (stageCode === 'DRAW' && !hasDrawInRoute) ||
             (stageCode === 'HEAT_TREATMENT' && !hasHtInRoute)
@@ -759,22 +781,26 @@ export default function WorkOrderTrackingClient() {
         }
 
         if (stageCode === 'ROLLING') {
-          // RULE 1: WIP is strictly calculated AFTER rolling production is done, and ONLY from HTC OK qty!
           const divIn = getStageDivIn(effectiveMasterWoId, 'ROLLING');
           const divOut = getStageDivOut(effectiveMasterWoId, 'ROLLING');
           const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
           const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
           const downstreamConsumedPcs = Math.max(
-            hasHtcInRoute ? (htcOutPcs + htcRejPcs) : 0,
+            hasHhtInRoute ? (hhtOutPcs + hhtRejPcs) : 0,
             hasPilgerInRoute ? (pilgerOutPcs + pilgerRejPcs) : 0,
             hasDrawInRoute ? (drawOutPcs + drawRejPcs) : 0,
             hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
             downstreamMotherPcsFromBandSaw
           );
 
+          // Rolling WIP is hot rolled production that has NOT yet been tested at HTC
+          const htcTestedPcs = hasDedicatedHtcLogs
+            ? (htcLogOutPcs + htcLogRejPcs)
+            : Math.max(htcOkPcs, downstreamConsumedPcs);
+
           let wipPcs = 0;
           if (rollingOutPcs > 0 || divInPcs > 0) {
-            wipPcs = Math.max(0, rollingHtcOkPcs + divInPcs - downstreamConsumedPcs - divOutPcs);
+            wipPcs = Math.max(0, rollingOutPcs - rollingRejPcs + divInPcs - htcTestedPcs - divOutPcs);
           }
           const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
           const mhOd = plan?.mh_od || wo.size_od || 0;
@@ -784,7 +810,7 @@ export default function WorkOrderTrackingClient() {
 
           const stageOutMtr = mhAvgLen > 0 ? Number((rollingOutPcs * mhAvgLen).toFixed(3)) : rollingOutMtr;
           const stageRejMtr = mhAvgLen > 0 ? Number((rollingRejPcs * mhAvgLen).toFixed(3)) : rollingRejMtr;
-          const stageHtcOkMtr = mhAvgLen > 0 ? Number((rollingHtcOkPcs * mhAvgLen).toFixed(3)) : rollingHtcOkMtr;
+          const stageHtcOkMtr = mhAvgLen > 0 ? Number((htcOkPcs * mhAvgLen).toFixed(3)) : htcOkMtr;
 
           return {
             ...stageDef,
@@ -798,7 +824,7 @@ export default function WorkOrderTrackingClient() {
             rejMtr: stageRejMtr,
             rejPcs: rollingRejPcs,
             htcOkMtr: stageHtcOkMtr,
-            htcOkPcs: rollingHtcOkPcs,
+            htcOkPcs: htcOkPcs,
             wipMtr,
             wipPcs,
             wipMt,
@@ -810,10 +836,64 @@ export default function WorkOrderTrackingClient() {
           };
         }
 
+        if (stageCode === 'HTC') {
+          const divIn = getStageDivIn(effectiveMasterWoId, 'HTC');
+          const divOut = getStageDivOut(effectiveMasterWoId, 'HTC');
+          const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
+          const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
+          const downstreamConsumedPcs = Math.max(
+            hasHhtInRoute ? (hhtOutPcs + hhtRejPcs) : 0,
+            hasPilgerInRoute ? (pilgerOutPcs + pilgerRejPcs) : 0,
+            hasDrawInRoute ? (drawOutPcs + drawRejPcs) : 0,
+            hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
+            downstreamMotherPcsFromBandSaw
+          );
+
+          let wipPcs = 0;
+          if (htcOkPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, htcOkPcs + divInPcs - downstreamConsumedPcs - divOutPcs);
+          }
+          const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
+          const mhOd = plan?.mh_od || wo.size_od || 0;
+          const mhWt = plan?.mh_wt || wo.size_wt || 0;
+          const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
+          const { dwellDays, agingSeverity } = getStageAging(
+            wipMtr,
+            masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs,
+            masterRollLogs
+          );
+
+          const stageOutMtr = mhAvgLen > 0 ? Number((htcOutPcs * mhAvgLen).toFixed(3)) : htcOutMtr;
+          const stageRejMtr = mhAvgLen > 0 ? Number((htcRejPcs * mhAvgLen).toFixed(3)) : htcRejMtr;
+          const stageHtcOkMtr = mhAvgLen > 0 ? Number((htcOkPcs * mhAvgLen).toFixed(3)) : htcOkMtr;
+
+          return {
+            ...stageDef,
+            isBundled: false,
+            isNotInRoute: false,
+            planMtr: 0,
+            planPcs: 0,
+            outMtr: stageOutMtr,
+            outPcs: htcOutPcs,
+            rejMtr: stageRejMtr,
+            rejPcs: htcRejPcs,
+            htcOkMtr: stageHtcOkMtr,
+            htcOkPcs: htcOkPcs,
+            wipMtr,
+            wipPcs,
+            wipMt,
+            logsCount: masterHtcLogs.length,
+            dwellDays,
+            agingSeverity,
+            divertedInMtr: divIn,
+            divertedOutMtr: divOut,
+          };
+        }
+
         if (stageCode === 'HOLLOW_HEAT_TREATMENT') {
           const divIn = getStageDivIn(effectiveMasterWoId, 'HOLLOW_HEAT_TREATMENT');
           const divOut = getStageDivOut(effectiveMasterWoId, 'HOLLOW_HEAT_TREATMENT');
-          if (!hasHtcInRoute) {
+          if (!hasHhtInRoute) {
             return {
               ...stageDef,
               isBundled: false,
@@ -837,11 +917,9 @@ export default function WorkOrderTrackingClient() {
             };
           }
 
-          // Downstream WIP only exists after rolling production is done, and strictly from HTC OK!
           const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
           const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
           const consumedPcs = Math.max(
-            htcOutPcs + htcRejPcs,
             hasPilgerInRoute ? (pilgerOutPcs + pilgerRejPcs) : 0,
             hasDrawInRoute ? (drawOutPcs + drawRejPcs) : 0,
             hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
@@ -849,8 +927,10 @@ export default function WorkOrderTrackingClient() {
           );
 
           let wipPcs = 0;
-          if (rollingHtcOkPcs > 0 || divInPcs > 0) {
-            wipPcs = Math.max(0, rollingHtcOkPcs + divInPcs - consumedPcs - divOutPcs);
+          if (hhtOkPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, hhtOkPcs + divInPcs - consumedPcs - divOutPcs);
+          } else if (htcOkPcs > 0) {
+            wipPcs = Math.max(0, htcOkPcs + divInPcs - (hhtOutPcs + hhtRejPcs) - divOutPcs);
           }
           const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
           let parsedPlanStatus: any = {};
@@ -860,11 +940,15 @@ export default function WorkOrderTrackingClient() {
           const mhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
           const mhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
           const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
-          const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterHtcLogs, masterRollLogs);
+          const { dwellDays, agingSeverity } = getStageAging(
+            wipMtr,
+            masterHhtLogs,
+            masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs
+          );
 
-          const stageOutMtr = mhAvgLen > 0 ? Number((htcOutPcs * mhAvgLen).toFixed(3)) : htcOutMtr;
-          const stageRejMtr = mhAvgLen > 0 ? Number((htcRejPcs * mhAvgLen).toFixed(3)) : htcRejMtr;
-          const stageHtcOkMtr = mhAvgLen > 0 ? Number((htcOkPcs * mhAvgLen).toFixed(3)) : htcOkMtr;
+          const stageOutMtr = mhAvgLen > 0 ? Number((hhtOutPcs * mhAvgLen).toFixed(3)) : hhtOutMtr;
+          const stageRejMtr = mhAvgLen > 0 ? Number((hhtRejPcs * mhAvgLen).toFixed(3)) : hhtRejMtr;
+          const stageHhtOkMtr = mhAvgLen > 0 ? Number((hhtOkPcs * mhAvgLen).toFixed(3)) : hhtOkMtr;
 
           return {
             ...stageDef,
@@ -873,15 +957,15 @@ export default function WorkOrderTrackingClient() {
             planMtr: 0,
             planPcs: 0,
             outMtr: stageOutMtr,
-            outPcs: htcOutPcs,
+            outPcs: hhtOutPcs,
             rejMtr: stageRejMtr,
-            rejPcs: htcRejPcs,
-            htcOkMtr: stageHtcOkMtr,
-            htcOkPcs: htcOkPcs,
+            rejPcs: hhtRejPcs,
+            htcOkMtr: stageHhtOkMtr,
+            htcOkPcs: hhtOkPcs,
             wipMtr,
             wipPcs,
             wipMt,
-            logsCount: masterHtcLogs.length,
+            logsCount: masterHhtLogs.length,
             dwellDays,
             agingSeverity,
             divertedInMtr: divIn,
@@ -916,7 +1000,7 @@ export default function WorkOrderTrackingClient() {
             };
           }
 
-          const incomingPcs = hasHtcInRoute ? Math.max(0, htcOutPcs - htcRejPcs) : rollingHtcOkPcs;
+          const incomingPcs = hasHhtInRoute ? Math.max(0, hhtOutPcs - hhtRejPcs) : htcOkPcs;
           const effDrawLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'DRAW', effDrawLen);
           const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'DRAW', effDrawLen);
@@ -937,7 +1021,7 @@ export default function WorkOrderTrackingClient() {
           const { dwellDays, agingSeverity } = getStageAging(
             wipMtr,
             masterDrawLogs,
-            hasHtcInRoute ? (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs) : masterRollLogs
+            hasHhtInRoute ? (masterHhtLogs.length > 0 ? masterHhtLogs : masterHtcLogs) : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs)
           );
 
           const stageOutMtr = avgLen > 0 ? Number((drawOutPcs * avgLen).toFixed(3)) : drawOutMtr;
@@ -993,7 +1077,7 @@ export default function WorkOrderTrackingClient() {
             };
           }
 
-          const incomingPcs = rollingHtcOkPcs;
+          const incomingPcs = htcOkPcs;
           const effPilgerLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'PILGER', effPilgerLen);
           const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'PILGER', effPilgerLen);
@@ -1121,45 +1205,34 @@ export default function WorkOrderTrackingClient() {
         if (stageCode === 'BAND_SAW') {
           const divIn = getStageDivIn(effectiveMasterWoId, 'BAND_SAW');
           const divOut = getStageDivOut(effectiveMasterWoId, 'BAND_SAW');
-          // Feeding rule from AGENTS.md:
-          // - HFS: incoming from Rolling HTC OK
-          // - ALLOY_HFS: incoming from Hollow HT OK
-          // - CDS / ALLOY_CDS / SS_STEEL: incoming from Heat Treatment OK (or Draw/Pilger OK if no HT)
-          let incomingPcs = 0;
-          if (!hasDrawInRoute && !hasPilgerInRoute) {
-            // HFS or ALLOY_HFS
-            incomingPcs = hasHtcInRoute ? Math.max(0, htcOutPcs - htcRejPcs) : rollingHtcOkPcs;
-          } else {
-            // CDS, ALLOY_CDS, or SS_STEEL
-            incomingPcs = htOutPcs > 0
-              ? Math.max(0, htOutPcs - htRejPcs)
-              : (hasPilgerInRoute ? Math.max(0, pilgerOutPcs - pilgerRejPcs) : Math.max(0, drawOutPcs - drawRejPcs));
-          }
-          const isHfsLike = !hasDrawInRoute && !hasPilgerInRoute;
-          const effLen = isHfsLike && mhAvgLen > 0 ? mhAvgLen : avgLen;
-          const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'BAND_SAW', effLen);
-          const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'BAND_SAW', effLen);
-          const consumedPcs = bandSawOutPcs + bandSawRejPcs;
+          const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'BAND_SAW', avgLen);
+          const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'BAND_SAW', avgLen);
+
+          // Band Saw Output is CUT PIECES produced by cutting mother pipes.
+          // Band Saw Cut WIP is cut pieces that have been cut but NOT YET inspected at VDI!
+          // When Band Saw hasn't cut anything yet (bandSawOutPcs === 0), Cut WIP is strictly 0!
+          // Uncut mother pipes waiting to be cut are tracked at the preceding stage:
+          // - HFS: HTC WIP
+          // - ALLOY_HFS: Hollow HT WIP
+          // - CDS / ALLOY_CDS / SS_STEEL: Heat Treatment WIP (or Draw/Pilger WIP)
+          const netCutPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
+          const qcInspectedCutPcs = relevantVdiQcList.reduce(
+            (sum: number, q: any) => sum + Number(q.inspected_pcs || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0))),
+            0
+          );
+          const downstreamVdiConsumedCutPcs = Math.max(qcInspectedCutPcs, vdiOutPcs + vdiRejPcs);
 
           let wipPcs = 0;
-          if (incomingPcs > 0 || divInPcs > 0) {
-            wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
+          if (netCutPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, netCutPcs + divInPcs - downstreamVdiConsumedCutPcs - divOutPcs);
           }
-          const wipMtr = effLen > 0 ? Number((wipPcs * effLen).toFixed(3)) : 0;
-          let parsedPlanStatus: any = {};
-          try {
-            parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
-          } catch {}
-          const mhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || wo.size_od || 0);
-          const mhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || wo.size_wt || 0);
-          const wipMt = isHfsLike
-            ? mtFromMtr(wipMtr, mhOd, mhWt)
-            : mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+          const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
+          const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
           const { dwellDays, agingSeverity } = getStageAging(
             wipMtr,
             masterBandSawLogs,
-            masterHtLogs.length > 0 ? masterHtLogs : (masterDrawLogs.length > 0 ? masterDrawLogs : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs))
+            masterHtLogs.length > 0 ? masterHtLogs : (masterDrawLogs.length > 0 ? masterDrawLogs : (masterHhtLogs.length > 0 ? masterHhtLogs : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs)))
           );
 
           const stageOutMtr = avgLen > 0 ? Number((bandSawOutPcs * avgLen).toFixed(3)) : bandSawOutMtr;
@@ -1425,6 +1498,7 @@ export default function WorkOrderTrackingClient() {
       totalTargetPcs += ordPcs;
       const row = getWoTrackingData(wo);
       const rollStage = row.stagesData.find((s) => s.code === 'ROLLING' || s.code === 'HOT_ROLLING');
+      const htcStage = row.stagesData.find((s) => s.code === 'HTC');
       const finStage = row.stagesData.find((s) => s.code === 'FINISHING');
 
       // Do NOT double-count child plans in rolling totals
@@ -1436,9 +1510,9 @@ export default function WorkOrderTrackingClient() {
         totalPendingRollingMtr += pendingMtr;
         totalPendingRollingPcs += pendingPcs;
       }
-      totalRolledStockWipMtr += rollStage?.wipMtr || 0;
-      totalRolledStockWipPcs += rollStage?.wipPcs || 0;
-      totalRolledStockWipMt += rollStage?.wipMt || 0;
+      totalRolledStockWipMtr += (rollStage?.wipMtr || 0) + (htcStage?.wipMtr || 0);
+      totalRolledStockWipPcs += (rollStage?.wipPcs || 0) + (htcStage?.wipPcs || 0);
+      totalRolledStockWipMt += (rollStage?.wipMt || 0) + (htcStage?.wipMt || 0);
       totalFinishingOutMtr += finStage?.outMtr || 0;
       totalFinishingOutPcs += finStage?.outPcs || 0;
       totalRejMtr += row.totalRejMtr;
@@ -1472,7 +1546,8 @@ export default function WorkOrderTrackingClient() {
     const rows = filteredWorkOrders.map((wo) => {
       const row = getWoTrackingData(wo);
       const rRoll = row.stagesData.find((s) => s.code === 'ROLLING' || s.code === 'HOT_ROLLING');
-      const rHtc = row.stagesData.find((s) => s.code === 'HOLLOW_HEAT_TREATMENT');
+      const rHtc = row.stagesData.find((s) => s.code === 'HTC');
+      const rHht = row.stagesData.find((s) => s.code === 'HOLLOW_HEAT_TREATMENT');
       const rDraw = row.stagesData.find((s) => s.code === 'DRAW');
       const rHt = row.stagesData.find((s) => s.code === 'HEAT_TREATMENT');
       const rBandSaw = row.stagesData.find((s) => s.code === 'BAND_SAW');
@@ -1501,15 +1576,22 @@ export default function WorkOrderTrackingClient() {
         'Rolling WIP (Pcs)': rRoll?.wipPcs || 0,
         'Rolling WIP (Mtr)': rRoll?.wipMtr || 0,
         'Rolling WIP (MT)': Number(rRoll?.wipMt || 0).toFixed(2),
-        // HTC
-        'HTC Output (Nos)': rHtc?.outPcs || 0,
-        'HTC Output (Mtr)': rHtc?.outMtr || 0,
+        // HTC (Hot Test Check)
+        'HTC Tested (Nos)': rHtc?.outPcs || 0,
+        'HTC Tested (Mtr)': rHtc?.outMtr || 0,
         'HTC Rejection (Nos)': rHtc?.rejPcs || 0,
         'HTC Rejection (Mtr)': rHtc?.rejMtr || 0,
         'HTC OK (Nos)': rHtc?.htcOkPcs || 0,
         'HTC OK (Mtr)': rHtc?.htcOkMtr || 0,
         'HTC WIP (Pcs)': rHtc?.wipPcs || 0,
         'HTC WIP (Mtr)': rHtc?.wipMtr || 0,
+        // Hollow Heat Treatment
+        'Hollow HT Output (Nos)': rHht?.outPcs || 0,
+        'Hollow HT Output (Mtr)': rHht?.outMtr || 0,
+        'Hollow HT Rejection (Nos)': rHht?.rejPcs || 0,
+        'Hollow HT Rejection (Mtr)': rHht?.rejMtr || 0,
+        'Hollow HT WIP (Pcs)': rHht?.wipPcs || 0,
+        'Hollow HT WIP (Mtr)': rHht?.wipMtr || 0,
         // Draw Bench
         'Draw Output (Nos)': rDraw?.outPcs || 0,
         'Draw Output (Mtr)': rDraw?.outMtr || 0,
@@ -1772,7 +1854,7 @@ export default function WorkOrderTrackingClient() {
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-800 text-sm">Station Progress Matrix</span>
             <span className="text-xs text-slate-500">
-              (Rolling &rarr; Hollow HT &rarr; Draw Bench &rarr; HT &rarr; Band Saw &rarr; VDI &rarr; Finishing)
+              (Rolling &rarr; HTC &rarr; Hollow HT &rarr; Draw Bench &rarr; HT &rarr; Band Saw &rarr; VDI &rarr; Finishing)
             </span>
           </div>
           <button
@@ -1806,23 +1888,26 @@ export default function WorkOrderTrackingClient() {
                   <th className="py-3 px-3 text-center font-bold min-w-[125px] bg-blue-50/70 border-x border-blue-100 text-blue-900">
                     1. Rolling Mill
                   </th>
+                  <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-teal-50/70 border-r border-teal-100 text-teal-900">
+                    2. HTC (QC)
+                  </th>
                   <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-amber-50/70 border-r border-amber-100 text-amber-900">
-                    2. Hollow HT (HTC)
+                    3. Hollow HT (Alloy)
                   </th>
                   <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-indigo-50/70 border-r border-indigo-100 text-indigo-900">
-                    3. Draw Bench
+                    4. Draw Bench
                   </th>
                   <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-orange-50/70 border-r border-orange-100 text-orange-900">
-                    4. Heat Treatment
+                    5. Heat Treatment
                   </th>
                   <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-yellow-50/70 border-r border-yellow-100 text-yellow-900">
-                    5. Band Saw
+                    6. Band Saw
                   </th>
                   <th className="py-3 px-3 text-center font-bold min-w-[115px] bg-purple-50/70 border-r border-purple-100 text-purple-900">
-                    6. VDI / QC
+                    7. VDI / QC
                   </th>
                   <th className="py-3 px-3 text-center font-bold min-w-[125px] bg-emerald-50/70 border-r border-emerald-100 text-emerald-900">
-                    7. Finishing Line
+                    8. Finishing Line
                   </th>
                   <th className="py-3 px-3 text-right font-bold min-w-[110px]">Progress & Yield</th>
                 </tr>
@@ -1833,7 +1918,8 @@ export default function WorkOrderTrackingClient() {
                   const data = getWoTrackingData(wo);
                   const isExpanded = !!expandedWos[wo.id];
                   const rRoll = data.stagesData.find((s) => s.code === 'ROLLING' || s.code === 'HOT_ROLLING');
-                  const rHtc = data.stagesData.find((s) => s.code === 'HOLLOW_HEAT_TREATMENT');
+                  const rHtc = data.stagesData.find((s) => s.code === 'HTC');
+                  const rHht = data.stagesData.find((s) => s.code === 'HOLLOW_HEAT_TREATMENT');
                   const rDraw = data.stagesData.find((s) => s.code === 'DRAW');
                   const rHt = data.stagesData.find((s) => s.code === 'HEAT_TREATMENT');
                   const rBandSaw = data.stagesData.find((s) => s.code === 'BAND_SAW');
@@ -2015,8 +2101,8 @@ export default function WorkOrderTrackingClient() {
                           )}
                         </td>
 
-                        {/* 2. Hollow Heat Treatment (HTC) */}
-                        <td className="py-3 px-3 align-top bg-amber-50/30 border-r border-amber-100">
+                        {/* 2. HTC (QC) */}
+                        <td className="py-3 px-3 align-top bg-teal-50/30 border-r border-teal-100">
                           {data.childInfo ? (
                             <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2 text-center">
                               <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
@@ -2029,29 +2115,22 @@ export default function WorkOrderTrackingClient() {
                                 WIP: 0 Nos
                               </span>
                             </div>
-                          ) : rHtc?.isNotInRoute ? (
-                            <div className="text-[11px] text-slate-400 italic text-center py-4 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
-                              <div className="font-semibold text-slate-400">Not in Route</div>
-                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
-                            </div>
                           ) : (Number(rRoll?.outMtr || 0) === 0 && Number(rHtc?.wipPcs || 0) === 0 && Number(rHtc?.divertedInMtr || 0) === 0 && Number(rHtc?.outPcs || 0) === 0) ? (
                             <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
-                              Waiting Rolling HTC OK
+                              Waiting Rolling
                               <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
                             </div>
                           ) : (
                             <div className="space-y-1">
                               <div className="flex justify-between text-slate-600">
-                                <span>Output:</span>
+                                <span>Tested:</span>
                                 <span className="font-mono font-bold text-emerald-700">{fmt(rHtc?.outPcs || 0)} Nos</span>
                               </div>
 
-                              {Number(rHtc?.htcOkPcs || 0) > 0 && (
-                                <div className="flex justify-between text-indigo-700 font-medium">
-                                  <span>HTC OK:</span>
-                                  <span className="font-mono">{fmt(rHtc?.htcOkPcs || 0)} Nos</span>
-                                </div>
-                              )}
+                              <div className="flex justify-between text-teal-800 font-medium">
+                                <span>HTC OK:</span>
+                                <span className="font-mono font-bold text-teal-700">{fmt(rHtc?.htcOkPcs || 0)} Nos</span>
+                              </div>
 
                               {Number(rHtc?.rejPcs || 0) > 0 && (
                                 <div className="flex justify-between text-rose-600">
@@ -2060,8 +2139,8 @@ export default function WorkOrderTrackingClient() {
                                 </div>
                               )}
 
-                              <div className="flex justify-between pt-1 border-t border-amber-200/60 text-amber-900 font-bold">
-                                <span>WIP:</span>
+                              <div className="flex justify-between pt-1 border-t border-teal-200/60 text-teal-950 font-bold">
+                                <span>HTC WIP:</span>
                                 <span className="font-mono">{fmt(rHtc?.wipPcs || 0)} Nos</span>
                               </div>
 
@@ -2089,6 +2168,87 @@ export default function WorkOrderTrackingClient() {
                                   }`}>
                                     <Clock size={9} />
                                     {rHtc.dwellDays}d at station
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 3. Hollow Heat Treatment (Alloy) */}
+                        <td className="py-3 px-3 align-top bg-amber-50/30 border-r border-amber-100">
+                          {data.childInfo ? (
+                            <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2 text-center">
+                              <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
+                                Planned in Work order No
+                              </span>
+                              <span className="font-mono text-xs text-indigo-950 font-bold block mt-0.5">
+                                {data.childInfo.master_wo_no}
+                              </span>
+                              <span className="text-[10px] text-indigo-600 block mt-0.5 font-medium">
+                                WIP: 0 Nos
+                              </span>
+                            </div>
+                          ) : rHht?.isNotInRoute ? (
+                            <div className="text-[11px] text-slate-400 italic text-center py-4 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+                              <div className="font-semibold text-slate-400">Not in Route</div>
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">WIP: 0 Nos</div>
+                            </div>
+                          ) : (Number(rRoll?.outMtr || 0) === 0 && Number(rHht?.wipPcs || 0) === 0 && Number(rHht?.divertedInMtr || 0) === 0 && Number(rHht?.outPcs || 0) === 0) ? (
+                            <div className="text-[10px] text-slate-400 italic text-center py-2 bg-slate-50/50 rounded border border-dashed border-slate-200">
+                              Waiting Upstream
+                              <div className="font-mono font-bold text-slate-500 mt-0.5">WIP: 0 Nos</div>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-slate-600">
+                                <span>Output:</span>
+                                <span className="font-mono font-bold text-emerald-700">{fmt(rHht?.outPcs || 0)} Nos</span>
+                              </div>
+
+                              {Number(rHht?.htcOkPcs || 0) > 0 && (
+                                <div className="flex justify-between text-indigo-700 font-medium">
+                                  <span>HT OK:</span>
+                                  <span className="font-mono">{fmt(rHht?.htcOkPcs || 0)} Nos</span>
+                                </div>
+                              )}
+
+                              {Number(rHht?.rejPcs || 0) > 0 && (
+                                <div className="flex justify-between text-rose-600">
+                                  <span>Rej:</span>
+                                  <span className="font-mono">{fmt(rHht?.rejPcs || 0)} Nos</span>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between pt-1 border-t border-amber-200/60 text-amber-900 font-bold">
+                                <span>WIP:</span>
+                                <span className="font-mono">{fmt(rHht?.wipPcs || 0)} Nos</span>
+                              </div>
+
+                              {Number(rHht?.divertedInMtr || 0) > 0 && (
+                                <div className="flex justify-between text-emerald-700 text-[10px]">
+                                  <span>Div In:</span>
+                                  <span className="font-mono font-bold">+{fmt(rHht?.divertedInMtr, 'm')}</span>
+                                </div>
+                              )}
+                              {Number(rHht?.divertedOutMtr || 0) > 0 && (
+                                <div className="flex justify-between text-amber-700 text-[10px]">
+                                  <span>Div Out:</span>
+                                  <span className="font-mono font-bold">-{fmt(rHht?.divertedOutMtr, 'm')}</span>
+                                </div>
+                              )}
+
+                              {Number(rHht?.wipPcs || 0) > 0 && rHht?.dwellDays !== undefined && (
+                                <div className="mt-1 flex items-center justify-end">
+                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
+                                    rHht.agingSeverity === 'CRITICAL'
+                                      ? 'bg-red-100 text-red-700 border border-red-200'
+                                      : rHht.agingSeverity === 'WARNING'
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                  }`}>
+                                    <Clock size={9} />
+                                    {rHht.dwellDays}d at station
                                   </span>
                                 </div>
                               )}
@@ -2509,7 +2669,7 @@ export default function WorkOrderTrackingClient() {
                       {/* Expanded Child Work Orders Breakdown for Master Campaign */}
                       {expandedMasterChildren[wo.id] && data.masterInfo?.child_work_orders && data.masterInfo.child_work_orders.length > 0 && (
                         <tr className="bg-indigo-50/40 border-y-2 border-indigo-200">
-                          <td colSpan={9} className="p-3.5">
+                          <td colSpan={10} className="p-3.5">
                             <div className="rounded-xl border border-indigo-200 bg-white p-3.5 space-y-3 shadow-xs">
                               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 pb-2">
                                 <div className="flex items-center gap-2">
@@ -2538,23 +2698,26 @@ export default function WorkOrderTrackingClient() {
                                       <th className="py-2 px-3 text-center bg-blue-50/50 border-x border-blue-100 text-blue-900">
                                         1. Rolling
                                       </th>
+                                      <th className="py-2 px-3 text-center bg-teal-50/50 border-r border-teal-100 text-teal-900">
+                                        2. HTC (QC)
+                                      </th>
                                       <th className="py-2 px-3 text-center bg-amber-50/50 border-r border-amber-100 text-amber-900">
-                                        2. Hollow HT
+                                        3. Hollow HT
                                       </th>
                                       <th className="py-2 px-3 text-center bg-indigo-50/50 border-r border-indigo-100 text-indigo-900">
-                                        3. Draw Bench
+                                        4. Draw Bench
                                       </th>
                                       <th className="py-2 px-3 text-center bg-orange-50/50 border-r border-orange-100 text-orange-900">
-                                        4. Heat Treatment
+                                        5. Heat Treatment
                                       </th>
                                       <th className="py-2 px-3 text-center bg-yellow-50/50 border-r border-yellow-100 text-yellow-900">
-                                        5. Band Saw
+                                        6. Band Saw
                                       </th>
                                       <th className="py-2 px-3 text-center bg-purple-50/50 border-r border-purple-100 text-purple-900">
-                                        6. VDI / QC
+                                        7. VDI / QC
                                       </th>
                                       <th className="py-2 px-3 text-center bg-emerald-50/50 border-r border-emerald-100 text-emerald-900">
-                                        7. Finishing Line
+                                        8. Finishing Line
                                       </th>
                                       <th className="py-2 px-3 text-right">Completion</th>
                                     </tr>
@@ -2604,6 +2767,13 @@ export default function WorkOrderTrackingClient() {
                                             <div className="rounded bg-blue-50/80 p-1 border border-blue-100">
                                               <span className="text-blue-900 font-semibold block">Bundled in Master</span>
                                               <span className="text-[9.5px] text-blue-700 block">#{wo.work_order_no}</span>
+                                            </div>
+                                          </td>
+
+                                          <td className="py-2.5 px-3 text-center align-top bg-teal-50/20 border-r border-teal-100 text-[10px] text-slate-500 font-mono">
+                                            <div className="rounded bg-teal-50/80 p-1 border border-teal-100">
+                                              <span className="text-teal-900 font-semibold block">Bundled in Master</span>
+                                              <span className="text-[9.5px] text-teal-700 block">#{wo.work_order_no}</span>
                                             </div>
                                           </td>
 
@@ -2703,7 +2873,7 @@ export default function WorkOrderTrackingClient() {
                       {/* Expanded Production History Rows */}
                       {isExpanded && (
                         <tr className="bg-slate-50/80 border-b border-slate-200">
-                          <td colSpan={9} className="p-3">
+                          <td colSpan={10} className="p-3">
                             <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2 shadow-2xs">
                               <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
