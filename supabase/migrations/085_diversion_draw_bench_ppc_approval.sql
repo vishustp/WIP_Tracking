@@ -2,19 +2,24 @@
 -- Ensures that diversions targeting Cold Draw Bench (DRAW) require explicit PPC approval
 -- before WIP is deducted from the source order or credited to the target order at Draw Bench.
 
--- 1. Add status and PPC approval columns to public.diversion_plans
+-- 1. Add status, updated_at, and PPC approval columns to public.diversion_plans
 ALTER TABLE public.diversion_plans
   ADD COLUMN IF NOT EXISTS status text DEFAULT 'APPROVED'
     CHECK (status IN ('PENDING_PPC', 'APPROVED', 'REJECTED_BY_PPC', 'CANCELLED')),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now(),
   ADD COLUMN IF NOT EXISTS ppc_approved_by uuid REFERENCES auth.users(id),
   ADD COLUMN IF NOT EXISTS ppc_approved_at timestamptz,
   ADD COLUMN IF NOT EXISTS ppc_rejection_reason text,
   ADD COLUMN IF NOT EXISTS ppc_remarks text;
 
--- 2. Backfill existing records to APPROVED
+-- 2. Backfill existing records to APPROVED and ensure updated_at is populated
 UPDATE public.diversion_plans
 SET status = 'APPROVED'
 WHERE status IS NULL;
+
+UPDATE public.diversion_plans
+SET updated_at = coalesce(created_at, now())
+WHERE updated_at IS NULL;
 
 -- 3. Update create_diversion RPC to support Draw Bench approval workflow
 CREATE OR REPLACE FUNCTION public.create_diversion(
@@ -212,7 +217,7 @@ AS $$
     coalesce((select u.email from auth.users u where u.id = dp.approved_by), dp.approved_by::text, '') as approved_by,
     dp.diversion_date,
     dp.created_at,
-    dp.updated_at,
+    coalesce(dp.updated_at, dp.created_at) as updated_at,
     true as can_modify,
     coalesce(dp.status, 'APPROVED') as status,
     (select u.email from auth.users u where u.id = dp.ppc_approved_by) as ppc_approved_by,
