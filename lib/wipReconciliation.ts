@@ -365,7 +365,8 @@ export function reconcileWorkOrderWip(
     }
 
     // Option B: Current stage OK production is deducted; rejections stay in active balance until diverted or marked commercial
-    const effectivePassedPcs = Math.max(curPassedPcs, maxDownstreamPcs);
+    // If current stage has logged production, use it. Only use downstream if current stage is unlogged.
+    const effectivePassedPcs = curPassedPcs > 0 ? curPassedPcs : maxDownstreamPcs;
 
     // Diversion adjustments for this specific stage (Rule 1 & Rule 2)
     let divInPcs = Number(cur.diversion_in_pcs || 0);

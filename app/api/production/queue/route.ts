@@ -1345,13 +1345,17 @@ export async function GET(req: NextRequest) {
         ? htNetPcs
         : (isAlloy ? hollowHtNetPcs : rollHtcOkPcs);
 
-      // Deduct whichever is greater: explicit Band Saw cuts, downstream VDI inspected pieces, or downstream Finishing
-      const bandSawPassedPcs = Math.max(
-        bsMotherPcsCut,
-        mult > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / mult) : (bandSawOutPcs + bandSawRejPcs),
-        mult > 1 ? Math.ceil(qcInspectedPcs / mult) : qcInspectedPcs,
-        mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
-      );
+      // Deduct mother pipes cut at Band Saw. If Band Saw has logged cuts, use logged cuts;
+      // only estimate from downstream stages if Band Saw has no logs.
+      const loggedBsMotherPcs = bsMotherPcsCut > 0
+        ? bsMotherPcsCut
+        : (mult > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / mult) : (bandSawOutPcs + bandSawRejPcs));
+      const bandSawPassedPcs = loggedBsMotherPcs > 0
+        ? loggedBsMotherPcs
+        : Math.max(
+            mult > 1 ? Math.ceil(qcInspectedPcs / mult) : qcInspectedPcs,
+            mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
+          );
       const bsRejDecl = getStageRejDecl(woId, "BAND_SAW");
       let bandSawAvailPcs = Math.max(0, bandSawIncomingPcs + bandSawDivInPcs - bandSawPassedPcs - bandSawDivOutPcs - bsRejDecl.pcs);
       let bandSawAvailMtr = avgLength > 0 ? Number((bandSawAvailPcs * avgLength).toFixed(3)) : 0;

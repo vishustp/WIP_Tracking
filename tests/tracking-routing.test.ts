@@ -92,7 +92,7 @@ describe('Work Order Tracking Route Stage & WIP Balancing Validation', () => {
     expect(route.hasFinishingInRoute).toBe(true); // Finishing is in route
   });
 
-  it('WO 6625 case: rolled mother pipes tested at HTC reside at HTC WIP, NOT Band Saw Cut WIP', () => {
+  it('WO 6625 case: 149 rolled, 149 HTC OK, 0 cut: Band Saw has 149 mother pipes WIP in cutting queue', () => {
     // WO 6625 has:
     // Hot rolling: 149 pcs output, 0 rej
     // HTC: 149 pcs output, 149 htc_ok, 0 rej
@@ -107,22 +107,54 @@ describe('Work Order Tracking Route Stage & WIP Balancing Validation', () => {
     const bandSawRejPcs = 0;
     const vdiInspectedPcs = 0;
 
-    // Rolling Mill WIP: once inspected at HTC, rolling WIP is 0
+    // Rolling Mill WIP: once inspected at HTC, rolling cooling bed WIP is 0
     const htcTestedPcs = htcLogOutPcs + htcLogRejPcs;
     const rollingWipPcs = Math.max(0, rollingOutPcs - rollingRejPcs - htcTestedPcs);
     expect(rollingWipPcs).toBe(0);
 
-    // HTC WIP: 149 HTC OK - 0 downstream consumed = 149 mother pipes at HTC
-    const htcWipPcs = Math.max(0, htcOkPcs - downstreamMotherPcsCut);
-    expect(htcWipPcs).toBe(149);
+    // HTC WIP: rolling net output - HTC tested = 0 (all 149 tested)
+    const htcWipPcs = Math.max(0, rollingOutPcs - rollingRejPcs - htcTestedPcs);
+    expect(htcWipPcs).toBe(0);
 
-    // Band Saw Cut WIP: 0 cut output => strictly 0 Cut WIP (NEVER 149!)
+    // Band Saw WIP: 149 HTC OK - 0 cuts = 149 mother pipes in queue awaiting cutting
+    const bandSawWipPcs = Math.max(0, htcOkPcs - downstreamMotherPcsCut);
+    expect(bandSawWipPcs).toBe(149);
+
+    // VDI WIP: 0 cut output => 0 cut pieces awaiting VDI
     const netCutPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
-    const bandSawCutWipPcs = netCutPcs > 0 ? Math.max(0, netCutPcs - vdiInspectedPcs) : 0;
-    expect(bandSawCutWipPcs).toBe(0);
+    const vdiWipPcs = netCutPcs > 0 ? Math.max(0, netCutPcs - vdiInspectedPcs) : 0;
+    expect(vdiWipPcs).toBe(0);
   });
 
-  it('WO 6626 case: 223 rolled, 223 HTC OK, 223 cut into 223 pcs, 104 VDI inspected', () => {
+  it('WO 6579 case: 1,754 rolled, 1,754 HTC OK, 1,576 cut, 1,516 VDI inspected: Band Saw WIP = 178, VDI WIP = 60', () => {
+    const rollingOutPcs = 1754;
+    const rollingRejPcs = 0;
+    const htcLogOutPcs = 1754;
+    const htcOkPcs = 1754;
+    const downstreamMotherPcsCut = 1576;
+    const bandSawOutPcs = 1576;
+    const bandSawRejPcs = 0;
+    const vdiInspectedPcs = 1516; // 1431 OK + 85 Rej/Sal
+
+    // Rolling WIP = 0
+    const rollingWipPcs = Math.max(0, rollingOutPcs - htcLogOutPcs);
+    expect(rollingWipPcs).toBe(0);
+
+    // HTC WIP = 0 (all 1,754 tested)
+    const htcWipPcs = Math.max(0, rollingOutPcs - rollingRejPcs - htcLogOutPcs);
+    expect(htcWipPcs).toBe(0);
+
+    // Band Saw WIP = 1754 - 1576 = 178 mother pipes awaiting cutting
+    const bandSawWipPcs = Math.max(0, htcOkPcs - downstreamMotherPcsCut);
+    expect(bandSawWipPcs).toBe(178);
+
+    // VDI WIP = 1576 - 1516 = 60 cut pieces awaiting QC inspection
+    const netCutPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
+    const vdiWipPcs = Math.max(0, netCutPcs - vdiInspectedPcs);
+    expect(vdiWipPcs).toBe(60);
+  });
+
+  it('WO 6626 case: 223 rolled, 223 HTC OK, 223 cut into 223 pcs, 104 VDI inspected: Band Saw WIP = 0, VDI WIP = 119', () => {
     const rollingOutPcs = 223;
     const htcLogOutPcs = 223;
     const htcOkPcs = 223;
@@ -135,17 +167,21 @@ describe('Work Order Tracking Route Stage & WIP Balancing Validation', () => {
     const rollingWipPcs = Math.max(0, rollingOutPcs - htcLogOutPcs);
     expect(rollingWipPcs).toBe(0);
 
-    // HTC WIP = 223 - 223 = 0 (all consumed by Band Saw)
-    const htcWipPcs = Math.max(0, htcOkPcs - downstreamMotherPcsCut);
+    // HTC WIP = 0 (all tested)
+    const htcWipPcs = Math.max(0, rollingOutPcs - htcLogOutPcs);
     expect(htcWipPcs).toBe(0);
 
-    // Band Saw Cut WIP = 0 (handed over to VDI)
+    // Band Saw WIP = 223 - 223 = 0 (all cut)
+    const bandSawWipPcs = Math.max(0, htcOkPcs - downstreamMotherPcsCut);
+    expect(bandSawWipPcs).toBe(0);
+
+    // VDI WIP = 223 - 104 = 119 (cut pieces awaiting VDI)
     const netCutPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
     const vdiWipPcs = Math.max(0, netCutPcs - vdiInspectedPcs);
     expect(vdiWipPcs).toBe(119);
   });
 
-  it('WO 6581 case: 384 rolled, 384 HTC OK, 362 cut, 358 VDI inspected', () => {
+  it('WO 6581 case: 384 rolled, 384 HTC OK, 362 cut, 358 VDI inspected: Band Saw WIP = 22, VDI WIP = 4', () => {
     const rollingOutPcs = 384;
     const htcOkPcs = 384;
     const downstreamMotherPcsCut = 362;
@@ -157,13 +193,16 @@ describe('Work Order Tracking Route Stage & WIP Balancing Validation', () => {
     const rollingWipPcs = Math.max(0, rollingOutPcs - htcOkPcs);
     expect(rollingWipPcs).toBe(0);
 
-    // HTC WIP = 384 - 362 = 22 mother pipes waiting to be cut
-    const htcWipPcs = Math.max(0, htcOkPcs - downstreamMotherPcsCut);
-    expect(htcWipPcs).toBe(22);
+    // HTC WIP = 0
+    const htcWipPcs = Math.max(0, rollingOutPcs - htcOkPcs);
+    expect(htcWipPcs).toBe(0);
 
-    // Band Saw Cut WIP = 0 (not 22!)
-    const netCutPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
+    // Band Saw WIP = 384 - 362 = 22 mother pipes waiting to be cut
+    const bandSawWipPcs = Math.max(0, htcOkPcs - downstreamMotherPcsCut);
+    expect(bandSawWipPcs).toBe(22);
+
     // VDI WIP = 362 - 358 = 4 cut pieces waiting for QC inspection
+    const netCutPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
     const vdiWipPcs = Math.max(0, netCutPcs - vdiInspectedPcs);
     expect(vdiWipPcs).toBe(4);
   });

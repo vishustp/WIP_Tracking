@@ -841,17 +841,15 @@ export default function WorkOrderTrackingClient() {
           const divOut = getStageDivOut(effectiveMasterWoId, 'HTC');
           const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
           const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
-          const downstreamConsumedPcs = Math.max(
-            hasHhtInRoute ? (hhtOutPcs + hhtRejPcs) : 0,
-            hasPilgerInRoute ? (pilgerOutPcs + pilgerRejPcs) : 0,
-            hasDrawInRoute ? (drawOutPcs + drawRejPcs) : 0,
-            hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
-            downstreamMotherPcsFromBandSaw
-          );
+
+          // HTC WIP is hot rolled pipes on cooling bed awaiting HTC test check
+          const htcTestedPcs = hasDedicatedHtcLogs
+            ? (htcLogOutPcs + htcLogRejPcs)
+            : (rollingOutPcs > 0 ? rollingOutPcs : 0);
 
           let wipPcs = 0;
-          if (htcOkPcs > 0 || divInPcs > 0) {
-            wipPcs = Math.max(0, htcOkPcs + divInPcs - downstreamConsumedPcs - divOutPcs);
+          if (rollingOutPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, rollingOutPcs - rollingRejPcs + divInPcs - htcTestedPcs - divOutPcs);
           }
           const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
           const mhOd = plan?.mh_od || wo.size_od || 0;
@@ -1208,26 +1206,30 @@ export default function WorkOrderTrackingClient() {
           const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'BAND_SAW', avgLen);
           const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'BAND_SAW', avgLen);
 
-          // Band Saw Output is CUT PIECES produced by cutting mother pipes.
-          // Band Saw Cut WIP is cut pieces that have been cut but NOT YET inspected at VDI!
-          // When Band Saw hasn't cut anything yet (bandSawOutPcs === 0), Cut WIP is strictly 0!
-          // Uncut mother pipes waiting to be cut are tracked at the preceding stage:
-          // - HFS: HTC WIP
-          // - ALLOY_HFS: Hollow HT WIP
-          // - CDS / ALLOY_CDS / SS_STEEL: Heat Treatment WIP (or Draw/Pilger WIP)
-          const netCutPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
-          const qcInspectedCutPcs = relevantVdiQcList.reduce(
-            (sum: number, q: any) => sum + Number(q.inspected_pcs || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0))),
-            0
-          );
-          const downstreamVdiConsumedCutPcs = Math.max(qcInspectedCutPcs, vdiOutPcs + vdiRejPcs);
+          // Band Saw incoming mother pipes from preceding stage:
+          // - HFS: HTC OK
+          // - ALLOY_HFS: Hollow HT OK
+          // - CDS / ALLOY_CDS: Heat Treatment OK (or Draw OK if no HT)
+          // - SS_STEEL: Heat Treatment OK (or Pilger OK if no HT)
+          const incomingMotherPcs = hasHtInRoute
+            ? Math.max(0, htOutPcs - htRejPcs)
+            : (hasDrawInRoute
+                ? Math.max(0, drawOutPcs - drawRejPcs)
+                : (hasHhtInRoute
+                    ? Math.max(0, hhtOutPcs - hhtRejPcs)
+                    : htcOkPcs));
+
+          // Consumed mother pipes: mother pipes cut at Band Saw
+          const consumedMotherPcs = downstreamMotherPcsFromBandSaw;
 
           let wipPcs = 0;
-          if (netCutPcs > 0 || divInPcs > 0) {
-            wipPcs = Math.max(0, netCutPcs + divInPcs - downstreamVdiConsumedCutPcs - divOutPcs);
+          if (incomingMotherPcs > 0 || divInPcs > 0) {
+            wipPcs = Math.max(0, incomingMotherPcs + divInPcs - consumedMotherPcs - divOutPcs);
           }
-          const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
-          const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+          const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : (avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0);
+          const mhOd = plan?.mh_od || wo.size_od || 0;
+          const mhWt = plan?.mh_wt || wo.size_wt || 0;
+          const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
 
           const { dwellDays, agingSeverity } = getStageAging(
             wipMtr,
@@ -2443,7 +2445,7 @@ export default function WorkOrderTrackingClient() {
                               )}
 
                               <div className="flex justify-between pt-1 border-t border-yellow-200/60 text-yellow-950 font-bold">
-                                <span>Cut WIP:</span>
+                                <span>Saw WIP:</span>
                                 <span className="font-mono">{fmt(rBandSaw?.wipPcs || 0)} Nos</span>
                               </div>
 
