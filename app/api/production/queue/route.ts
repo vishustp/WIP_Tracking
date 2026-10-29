@@ -1308,18 +1308,13 @@ export async function GET(req: NextRequest) {
       const finRejMtr = avgLength > 0 ? Number((finRejPcs * avgLength).toFixed(3)) : 0;
       const finNetMtr = avgLength > 0 ? Number((finNetPcs * avgLength).toFixed(3)) : 0;
 
-      // Heat treatment incoming: strictly from Draw (or Pilger) net output pieces minus downstream processed
-      const mult = multiple > 0 ? multiple : 1;
-      const htPassedPcs = Math.max(
-        htOutPcs + htRejPcs,
-        bsMotherPcsCut,
-        mult > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / mult) : (bandSawOutPcs + bandSawRejPcs),
-        mult > 1 ? Math.ceil(qcInspectedPcs / mult) : qcInspectedPcs,
-        mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
-      );
+      // Heat treatment incoming: strictly from Draw (or Pilger) net output pieces
+      // Rule 1 & Rule 2 (Option B): Direct stage balancing
+      // Heat Treatment Active WIP = Preceding Stage OK (Draw / Pilger) - Heat Treatment Logged Production
+      const loggedHtPcs = htOutPcs + htRejPcs;
       const htRejDecl = getStageRejDecl(woId, "HEAT_TREATMENT");
       let htAvailPcs = (isCds || isSsSteel)
-        ? Math.max(0, htIncomingPcs + htDivInPcs - htPassedPcs - htDivOutPcs - htRejDecl.pcs)
+        ? Math.max(0, htIncomingPcs + htDivInPcs - loggedHtPcs - htDivOutPcs - htRejDecl.pcs)
         : 0;
       let htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
       let htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
@@ -1347,6 +1342,7 @@ export async function GET(req: NextRequest) {
 
       // Deduct mother pipes cut at Band Saw. If Band Saw has logged cuts, use logged cuts;
       // only estimate from downstream stages if Band Saw has no logs.
+      const mult = multiple > 0 ? multiple : 1;
       const loggedBsMotherPcs = bsMotherPcsCut > 0
         ? bsMotherPcsCut
         : (mult > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / mult) : (bandSawOutPcs + bandSawRejPcs));
