@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { exportJsonToExcel } from '@/lib/excelUtils';
+import { exportJsonToExcel, exportSheetsToExcel } from '@/lib/excelUtils';
 import { createClient } from '@/lib/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -79,6 +79,10 @@ interface SizeGradeGroup {
   hollow_ht_mtr: number;
   hollow_ht_pcs: number;
   hollow_ht_mt: number;
+  // IP Cutting (Band Saw)
+  ip_cutting_mtr: number;
+  ip_cutting_pcs: number;
+  ip_cutting_mt: number;
   // Cold Draw / Pilger
   draw_mtr: number;
   draw_pcs: number;
@@ -295,9 +299,14 @@ export default function SizeGradeWipReportClient() {
               const prodQty = Number(r.production_qty ?? r.gross_output_mtr ?? 0);
               const incQty = Number(r.incoming_qty ?? 0);
               const isFullyProcessed = !isRolling && incQty > 0 && prodQty >= incQty && (stCode === 'DRAW' || stCode === 'HEAT_TREATMENT' || stCode === 'HOLLOW_HEAT_TREATMENT');
-              const pcs = isFullyProcessed ? 0 : rawPcs;
-              const mtr = isFullyProcessed ? 0 : (pcs <= 0 && !isRolling ? 0 : rawMtr);
-              const mt = isFullyProcessed ? 0 : (pcs <= 0 && !isRolling ? 0 : rawMt);
+              
+              const od = Number(r.final_od || r.size_od || r.wo_od || r.target_od || r.od || 0);
+              const wt = Number(r.final_wt || r.size_wt || r.wo_wt || r.target_wt || r.wl || r.wt || 0);
+              const effLen = Number(r.avg_length || r.l1 || r.mh_avg_length || r.mh_l1 || 6.0) || 6.0;
+              const derivedPcs = rawPcs > 0 ? rawPcs : (rawMtr >= 1.0 ? Math.max(1, Math.round(rawMtr / effLen)) : 0);
+              const pcs = isFullyProcessed ? 0 : derivedPcs;
+              const mtr = isFullyProcessed ? 0 : (pcs <= 0 && rawMtr < 0.1 && !isRolling ? 0 : rawMtr);
+              const mt = isFullyProcessed ? 0 : (rawMt > 0 ? rawMt : (mtr > 0 && od > 0 && wt > 0 ? mtFromMtr(mtr, od, wt) : 0));
 
               return {
                 ...r,
@@ -308,6 +317,7 @@ export default function SizeGradeWipReportClient() {
                 stage_name: isRolling ? 'Rolling Production (Display Only)' :
                             stCode === 'HTC' ? 'HTC' :
                             stCode === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
+                            stCode === 'IP_CUTTING' ? 'IP Cutting (Band Saw)' :
                             stCode === 'PILGER' ? 'Cold Pilger Mill' :
                             stCode === 'DRAW' ? 'Cold Draw Bench' :
                             stCode === 'HEAT_TREATMENT' ? 'Final Heat Treatment' :
@@ -318,13 +328,15 @@ export default function SizeGradeWipReportClient() {
                 specification: r.specification || r.grade || null,
                 grade: normalizeGrade(r.specification || r.grade || 'Standard'),
                 // Strict Final Finished Size (never Mother Hollow size)
-                od: Number(r.final_od || r.size_od || r.wo_od || r.target_od || r.od || 0),
-                wt: Number(r.final_wt || r.size_wt || r.wo_wt || r.target_wt || r.wl || r.wt || 0),
+                od,
+                wt,
                 mh_od: r.mh_od ? Number(r.mh_od) : null,
                 mh_wt: r.mh_wt ? Number(r.mh_wt) : null,
                 route_code: r.route_code || 'CDS',
                 route_name: r.route_name || 'Standard CDS',
                 rolling_date: r.rolling_date || null,
+                total_order_pcs: r.total_order_pcs != null ? Number(r.total_order_pcs) : (r.ordered_qty_pcs != null ? Number(r.ordered_qty_pcs) : null),
+                total_order_mtr: r.total_order_mtr != null ? Number(r.total_order_mtr) : (r.ordered_qty_mtr != null ? Number(r.ordered_qty_mtr) : null),
                 order_status: r.order_status || (Number(r.balance_to_make_order_pcs ?? r.balance_qty_pcs ?? 1) === 0 ? 'Completed' : 'In Progress'),
                 balance_qty_pcs: r.balance_qty_pcs != null ? Number(r.balance_qty_pcs) : (r.balance_to_make_order_pcs != null ? Number(r.balance_to_make_order_pcs) : null),
                 balance_qty_mtr: r.balance_qty_mtr != null ? Number(r.balance_qty_mtr) : (r.balance_to_make_order_mtr != null ? Number(r.balance_to_make_order_mtr) : null),
@@ -886,6 +898,9 @@ export default function SizeGradeWipReportClient() {
           hollow_ht_mtr: 0,
           hollow_ht_pcs: 0,
           hollow_ht_mt: 0,
+          ip_cutting_mtr: 0,
+          ip_cutting_pcs: 0,
+          ip_cutting_mt: 0,
           draw_mtr: 0,
           draw_pcs: 0,
           draw_mt: 0,
@@ -934,6 +949,13 @@ export default function SizeGradeWipReportClient() {
         group.hollow_ht_mtr += mtr;
         group.hollow_ht_pcs += pcs;
         group.hollow_ht_mt += mt;
+      } else if (stage === 'IP_CUTTING') {
+        group.ip_cutting_mtr += mtr;
+        group.ip_cutting_pcs += pcs;
+        group.ip_cutting_mt += mt;
+        group.draw_mtr += mtr;
+        group.draw_pcs += pcs;
+        group.draw_mt += mt;
       } else if (stage === 'PILGER') {
         group.pilger_mtr += mtr;
         group.pilger_pcs += pcs;
@@ -941,7 +963,7 @@ export default function SizeGradeWipReportClient() {
         group.draw_mtr += mtr;
         group.draw_pcs += pcs;
         group.draw_mt += mt;
-      } else if (stage === 'DRAW' || stage === 'IP_CUTTING') {
+      } else if (stage === 'DRAW') {
         group.draw_mtr += mtr;
         group.draw_pcs += pcs;
         group.draw_mt += mt;
@@ -1015,9 +1037,15 @@ export default function SizeGradeWipReportClient() {
     let hollowHtMtr = 0;
     let hollowHtPcs = 0;
     let hollowHtMt = 0;
+    let ipCuttingMtr = 0;
+    let ipCuttingPcs = 0;
+    let ipCuttingMt = 0;
     let drawMtr = 0;
     let drawPcs = 0;
     let drawMt = 0;
+    let pilgerMtr = 0;
+    let pilgerPcs = 0;
+    let pilgerMt = 0;
     let htMtr = 0;
     let htPcs = 0;
     let htMt = 0;
@@ -1047,9 +1075,15 @@ export default function SizeGradeWipReportClient() {
       hollowHtMtr += g.hollow_ht_mtr;
       hollowHtPcs += g.hollow_ht_pcs;
       hollowHtMt += g.hollow_ht_mt;
+      ipCuttingMtr += g.ip_cutting_mtr;
+      ipCuttingPcs += g.ip_cutting_pcs;
+      ipCuttingMt += g.ip_cutting_mt;
       drawMtr += g.draw_mtr;
       drawPcs += g.draw_pcs;
       drawMt += g.draw_mt;
+      pilgerMtr += g.pilger_mtr;
+      pilgerPcs += g.pilger_pcs;
+      pilgerMt += g.pilger_mt;
       htMtr += g.ht_mtr;
       htPcs += g.ht_pcs;
       htMt += g.ht_mt;
@@ -1080,9 +1114,15 @@ export default function SizeGradeWipReportClient() {
       hollowHtMtr,
       hollowHtPcs,
       hollowHtMt,
+      ipCuttingMtr,
+      ipCuttingPcs,
+      ipCuttingMt,
       drawMtr,
       drawPcs,
       drawMt,
+      pilgerMtr,
+      pilgerPcs,
+      pilgerMt,
       htMtr,
       htPcs,
       htMt,
@@ -1190,71 +1230,166 @@ export default function SizeGradeWipReportClient() {
 
   // Excel Export
   const exportExcel = async () => {
-    if (viewMode === 'matrix') {
-      const exportData = matrixGroups.map((g, i) => ({
+    // 1. Build Comprehensive Matrix View Data with ALL stages (including IP Cutting, Pilger Mill, and Grand Total)
+    const matrixExportData: Record<string, any>[] = matrixGroups.map((g, i) => {
+      const pureDrawMtr = Number(Math.max(0, g.draw_mtr - g.ip_cutting_mtr - g.pilger_mtr).toFixed(2));
+      const pureDrawPcs = Math.max(0, g.draw_pcs - g.ip_cutting_pcs - g.pilger_pcs);
+      const pureDrawMt = Number(Math.max(0, g.draw_mt - g.ip_cutting_mt - g.pilger_mt).toFixed(2));
+
+      return {
         '#': i + 1,
         'Size (OD × WT mm)': `${g.od} × ${g.wt}`,
         'Material Grade': g.grade,
-        'Rolling Production (m) [Display Only]': g.hot_rolling_mtr,
-        'Rolling Production (pcs) [Display Only]': g.hot_rolling_pcs,
-        'Rolling Production (MT) [Display Only]': g.hot_rolling_mt,
+        'Rolling Production (m) [Feeder - Display Only]': g.hot_rolling_mtr,
+        'Rolling Production (pcs) [Feeder - Display Only]': g.hot_rolling_pcs,
+        'Rolling Production (MT) [Feeder - Display Only]': g.hot_rolling_mt,
         'HTC QC (m)': g.htc_mtr,
         'HTC QC (pcs)': g.htc_pcs,
         'HTC QC (MT)': g.htc_mt,
         'Hollow HT (m)': g.hollow_ht_mtr,
         'Hollow HT (pcs)': g.hollow_ht_pcs,
         'Hollow HT (MT)': g.hollow_ht_mt,
-        'Cold Draw (m)': g.draw_mtr,
-        'Cold Draw (pcs)': g.draw_pcs,
-        'Cold Draw (MT)': g.draw_mt,
-        'Heat Treatment (m)': g.ht_mtr,
-        'Heat Treatment (pcs)': g.ht_pcs,
-        'Heat Treatment (MT)': g.ht_mt,
+        'IP Cutting (m)': g.ip_cutting_mtr,
+        'IP Cutting (pcs)': g.ip_cutting_pcs,
+        'IP Cutting (MT)': g.ip_cutting_mt,
+        'Cold Draw Bench (m)': pureDrawMtr,
+        'Cold Draw Bench (pcs)': pureDrawPcs,
+        'Cold Draw Bench (MT)': pureDrawMt,
+        'Cold Pilger Mill (m)': g.pilger_mtr,
+        'Cold Pilger Mill (pcs)': g.pilger_pcs,
+        'Cold Pilger Mill (MT)': g.pilger_mt,
+        'Final Heat Treatment (m)': g.ht_mtr,
+        'Final Heat Treatment (pcs)': g.ht_pcs,
+        'Final Heat Treatment (MT)': g.ht_mt,
         'Band Saw Cutting (m)': g.band_saw_mtr,
         'Band Saw Cutting (pcs)': g.band_saw_pcs,
         'Band Saw Cutting (MT)': g.band_saw_mt,
-        'VDI / QC (m)': g.vdi_mtr,
-        'VDI / QC (pcs)': g.vdi_pcs,
-        'VDI / QC (MT)': g.vdi_mt,
+        'VDI / QC Inspection (m)': g.vdi_mtr,
+        'VDI / QC Inspection (pcs)': g.vdi_pcs,
+        'VDI / QC Inspection (MT)': g.vdi_mt,
         'VDI Salvage (m)': g.vdi_salvage_mtr,
         'VDI Salvage (pcs)': g.vdi_salvage_pcs,
         'VDI Salvage (MT)': g.vdi_salvage_mt,
         'Finishing Goods (m)': g.finishing_mtr,
         'Finishing Goods (pcs)': g.finishing_pcs,
         'Finishing Goods (MT)': g.finishing_mt,
-        'Total WIP (Mtrs)': g.total_mtr,
-        'Total WIP (Pcs)': g.total_pcs,
-        'Total WIP (MT)': g.total_mt,
-      }));
+        'Total Active WIP (Mtrs)': g.total_mtr,
+        'Total Active WIP (Pcs)': g.total_pcs,
+        'Total Active WIP (MT)': g.total_mt,
+      };
+    });
 
-      await exportJsonToExcel(
-        exportData,
-        'OD-WT-Grade WIP',
-        `od-wt-grade-station-wip-report-${asOnDate}.xlsx`
-      );
-    } else {
-      const exportData = filteredRawRows.map((r, i) => ({
-        '#': i + 1,
-        'Work Order': r.work_order_no,
-        'Order Status': r.order_status || '—',
-        'Balance to Make (Pcs)': r.balance_qty_pcs != null ? r.balance_qty_pcs : '—',
-        'Rolling Date': r.rolling_date || '—',
-        'Customer': r.customer_name || '—',
-        'Route': r.route_code || 'HFS',
-        'Size (OD × WT mm)': `${r.od} × ${r.wt}`,
-        'Material Grade': r.grade,
-        'Stage': r.stage_name || r.stage_code,
-        'Physical WIP (Mtrs)': r.current_wip,
-        'Physical WIP (Pcs)': r.current_wip_pcs,
-        'Physical WIP (MT)': r.available_mt,
-      }));
+    // Append Grand Total Row to Matrix Sheet
+    const totalPureDrawMtr = Number(Math.max(0, kpis.drawMtr - kpis.ipCuttingMtr - kpis.pilgerMtr).toFixed(2));
+    const totalPureDrawPcs = Math.max(0, kpis.drawPcs - kpis.ipCuttingPcs - kpis.pilgerPcs);
+    const totalPureDrawMt = Number(Math.max(0, kpis.drawMt - kpis.ipCuttingMt - kpis.pilgerMt).toFixed(2));
 
-      await exportJsonToExcel(
-        exportData,
-        'Detailed WO WIP',
-        `detailed-wo-wip-report-${asOnDate}.xlsx`
-      );
-    }
+    matrixExportData.push({
+      '#': 'TOTAL',
+      'Size (OD × WT mm)': 'PLANT TOTAL',
+      'Material Grade': `${matrixGroups.length} Sizes`,
+      'Rolling Production (m) [Feeder - Display Only]': Number(kpis.hotRollingMtr.toFixed(2)),
+      'Rolling Production (pcs) [Feeder - Display Only]': Math.round(kpis.hotRollingPcs),
+      'Rolling Production (MT) [Feeder - Display Only]': Number(kpis.hotRollingMt.toFixed(2)),
+      'HTC QC (m)': Number(kpis.htcMtr.toFixed(2)),
+      'HTC QC (pcs)': Math.round(kpis.htcPcs),
+      'HTC QC (MT)': Number(kpis.htcMt.toFixed(2)),
+      'Hollow HT (m)': Number(kpis.hollowHtMtr.toFixed(2)),
+      'Hollow HT (pcs)': Math.round(kpis.hollowHtPcs),
+      'Hollow HT (MT)': Number(kpis.hollowHtMt.toFixed(2)),
+      'IP Cutting (m)': Number(kpis.ipCuttingMtr.toFixed(2)),
+      'IP Cutting (pcs)': Math.round(kpis.ipCuttingPcs),
+      'IP Cutting (MT)': Number(kpis.ipCuttingMt.toFixed(2)),
+      'Cold Draw Bench (m)': totalPureDrawMtr,
+      'Cold Draw Bench (pcs)': totalPureDrawPcs,
+      'Cold Draw Bench (MT)': totalPureDrawMt,
+      'Cold Pilger Mill (m)': Number(kpis.pilgerMtr.toFixed(2)),
+      'Cold Pilger Mill (pcs)': Math.round(kpis.pilgerPcs),
+      'Cold Pilger Mill (MT)': Number(kpis.pilgerMt.toFixed(2)),
+      'Final Heat Treatment (m)': Number(kpis.htMtr.toFixed(2)),
+      'Final Heat Treatment (pcs)': Math.round(kpis.htPcs),
+      'Final Heat Treatment (MT)': Number(kpis.htMt.toFixed(2)),
+      'Band Saw Cutting (m)': Number(kpis.bandSawMtr.toFixed(2)),
+      'Band Saw Cutting (pcs)': Math.round(kpis.bandSawPcs),
+      'Band Saw Cutting (MT)': Number(kpis.bandSawMt.toFixed(2)),
+      'VDI / QC Inspection (m)': Number(kpis.vdiMtr.toFixed(2)),
+      'VDI / QC Inspection (pcs)': Math.round(kpis.vdiPcs),
+      'VDI / QC Inspection (MT)': Number(kpis.vdiMt.toFixed(2)),
+      'VDI Salvage (m)': Number(kpis.vdiSalvageMtr.toFixed(2)),
+      'VDI Salvage (pcs)': Math.round(kpis.vdiSalvagePcs),
+      'VDI Salvage (MT)': Number(kpis.vdiSalvageMt.toFixed(2)),
+      'Finishing Goods (m)': Number(kpis.finishingMtr.toFixed(2)),
+      'Finishing Goods (pcs)': Math.round(kpis.finishingPcs),
+      'Finishing Goods (MT)': Number(kpis.finishingMt.toFixed(2)),
+      'Total Active WIP (Mtrs)': Number(kpis.totalWipMtr.toFixed(2)),
+      'Total Active WIP (Pcs)': Math.round(kpis.totalWipPcs),
+      'Total Active WIP (MT)': Number(kpis.totalWipMt.toFixed(2)),
+    });
+
+    // 2. Build Detailed Work Order WIP Data
+    const detailedExportData: Record<string, any>[] = filteredRawRows.map((r, i) => ({
+      '#': i + 1,
+      'Work Order': r.work_order_no,
+      'Customer': r.customer_name || 'Generic Customer',
+      'Order Status': r.order_status || '—',
+      'Route': r.route_code || 'HFS',
+      'Finished Size (OD × WT mm)': `${r.od} × ${r.wt}`,
+      'Material Grade': r.grade,
+      'Customer Specification': r.specification || r.grade || '—',
+      'Mother Hollow Size (mm)': r.mh_od && r.mh_wt ? `${r.mh_od} × ${r.mh_wt}` : '—',
+      'Current Station': r.stage_name || (r.stage_code === 'IP_CUTTING' ? 'IP Cutting (Band Saw)' : r.stage_code),
+      'Physical WIP (Mtrs)': Number(r.current_wip || 0),
+      'Physical WIP (Pcs)': Number(r.current_wip_pcs || 0),
+      'Physical WIP (MT)': Number(r.available_mt || r.current_wip_mt || 0),
+      'Ordered Qty (Pcs)': r.total_order_pcs != null ? r.total_order_pcs : (r.ordered_qty_pcs != null ? r.ordered_qty_pcs : '—'),
+      'Ordered Qty (Mtrs)': r.total_order_mtr != null ? r.total_order_mtr : (r.ordered_qty_mtr != null ? r.ordered_qty_mtr : '—'),
+      'Balance to Make (Pcs)': r.balance_qty_pcs != null ? r.balance_qty_pcs : '—',
+      'Balance to Make (Mtrs)': r.balance_qty_mtr != null ? r.balance_qty_mtr : '—',
+      'Rolling Date': r.rolling_date || '—',
+    }));
+
+    // Append Grand Total Row to Detailed Sheet
+    const detTotalMtr = filteredRawRows.reduce((sum, r) => sum + Number(r.current_wip || 0), 0);
+    const detTotalPcs = filteredRawRows.reduce((sum, r) => sum + Number(r.current_wip_pcs || 0), 0);
+    const detTotalMt = filteredRawRows.reduce((sum, r) => sum + Number(r.available_mt || r.current_wip_mt || 0), 0);
+
+    detailedExportData.push({
+      '#': 'TOTAL',
+      'Work Order': 'ALL ORDERS',
+      'Customer': `${filteredRawRows.length} Active Lots`,
+      'Order Status': '—',
+      'Route': '—',
+      'Finished Size (OD × WT mm)': '—',
+      'Material Grade': '—',
+      'Customer Specification': '—',
+      'Mother Hollow Size (mm)': '—',
+      'Current Station': 'ALL STATIONS',
+      'Physical WIP (Mtrs)': Number(detTotalMtr.toFixed(2)),
+      'Physical WIP (Pcs)': Math.round(detTotalPcs),
+      'Physical WIP (MT)': Number(detTotalMt.toFixed(2)),
+      'Ordered Qty (Pcs)': '—',
+      'Ordered Qty (Mtrs)': '—',
+      'Balance to Make (Pcs)': '—',
+      'Balance to Make (Mtrs)': '—',
+      'Rolling Date': '—',
+    });
+
+    // Both sheets included in workbook with active view mode's sheet placed first
+    const sheets = viewMode === 'matrix'
+      ? [
+          { name: 'OD-WT WIP Matrix', data: matrixExportData },
+          { name: 'Work Order WIP Ledger', data: detailedExportData },
+        ]
+      : [
+          { name: 'Work Order WIP Ledger', data: detailedExportData },
+          { name: 'OD-WT WIP Matrix', data: matrixExportData },
+        ];
+
+    const fileName = viewMode === 'matrix'
+      ? `od-wt-grade-station-wip-report-${asOnDate}.xlsx`
+      : `detailed-wo-wip-report-${asOnDate}.xlsx`;
+
+    await exportSheetsToExcel(sheets, fileName);
   };
 
   return (
@@ -1337,11 +1472,12 @@ export default function SizeGradeWipReportClient() {
           <Button
             type="button"
             onClick={exportExcel}
-            aria-label="Export WIP matrix to Excel spreadsheet"
+            aria-label="Export WIP matrix and work order ledger to Excel spreadsheet"
+            title="Download complete WIP Excel workbook with both OD-WT Matrix and Work Order Ledger worksheets"
             className="text-xs h-8 bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-100 font-medium flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-transform"
           >
             <Download className="h-3.5 w-3.5 text-slate-300" />
-            Export Matrix
+            {viewMode === 'matrix' ? 'Export Matrix & Ledger' : 'Export Ledger & Matrix'}
           </Button>
 
           <Button
