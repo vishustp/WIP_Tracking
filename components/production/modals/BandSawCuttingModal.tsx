@@ -630,6 +630,12 @@ export function BandSawCuttingModal({
       );
       return;
     }
+    if (motherPcsNum > totalPrimeCutPcs * 2 && scrapPct > 50 && totalMotherMtr > totalAllCutMtr * 2) {
+      setError(
+        `Mother pipes processed (${motherPcsNum} Nos) is disproportionately higher than cuts produced (${totalPrimeCutPcs} Nos), generating ${scrapPct}% scrap (${fmt(totalScrapMtr, 'm')}). Please adjust Mother Pipes Processed to match this cutting batch.`
+      );
+      return;
+    }
 
     setSaving(true);
     try {
