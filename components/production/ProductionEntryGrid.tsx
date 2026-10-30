@@ -25,6 +25,7 @@ import { StageCode, STAGES, PRODUCTION_ENTRY_STAGES, Row, ProductionEntry } from
 import { usePermissions, getFormAccess } from '@/lib/permissions';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import { WipSummaryCards } from '@/components/production/WipSummaryCards';
+import { showErrorDialog } from '@/lib/errorDialog';
 
 // Modular Subcomponents
 import dynamic from 'next/dynamic';
@@ -660,6 +661,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
     if (allErrors.length) {
       setValidationErrors(allErrors);
+      showErrorDialog(allErrors);
       return;
     }
 

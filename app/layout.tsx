@@ -4,6 +4,7 @@ import './globals.css';
 import { Toaster } from 'sonner';
 import AppShell from '@/components/AppShell';
 import { UserSessionProvider } from '@/contexts/UserSessionContext';
+import GlobalErrorDialog from '@/components/common/GlobalErrorDialog';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -48,8 +49,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AppShell>{children}</AppShell>
         </UserSessionProvider>
         <Toaster richColors position="top-right" closeButton duration={4500} />
+        <GlobalErrorDialog />
       </body>
     </html>
   );
 }
-

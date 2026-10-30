@@ -1,4 +1,5 @@
 'use client';
+import { showErrorDialog } from '@/lib/errorDialog';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
@@ -193,7 +194,11 @@ export function BandSawCuttingModal({
   const [heatLotNo, setHeatLotNo] = useState<string>(row.heat_lot_no || '');
   const [remarks, setRemarks] = useState<string>('');
   const [saving, setSaving] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  const setError = (msg: string | null) => {
+    setErrorState(msg);
+    if (msg) showErrorDialog(msg);
+  };
 
   // Mother input computations
   const motherPcsNum = Math.max(0, parseInt(motherPcsInput, 10) || 0);

@@ -1,4 +1,5 @@
 'use client';
+import { showErrorDialog } from '@/lib/errorDialog';
 
 import React, { useState, useMemo } from 'react';
 import { Modal } from '@/components/ui/Modal';
@@ -156,7 +157,11 @@ export function BandSawEditModal({
   const [cleanRemarks, setCleanRemarks] = useState(parsed.cleanRemarks || '');
   const [heatLotNo, setHeatLotNo] = useState(entry.heat_lot_no || '');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setErrorState] = useState('');
+  const setError = (msg: string) => {
+    setErrorState(msg);
+    if (msg) showErrorDialog(msg);
+  };
 
   // Calculations
   const totalPrimeCutMtr = useMemo(() => {
