@@ -8,6 +8,7 @@ import {
   clearErrorDialog,
   showErrorDialog,
   getActiveError,
+  isIgnorableError,
   type ErrorDialogPayload,
 } from '@/lib/errorDialog';
 
@@ -61,11 +62,19 @@ export function GlobalErrorDialog() {
 
     // 2. Capture unhandled client errors
     const handleWindowError = (event: ErrorEvent) => {
-      if (event.error?.message || event.message) {
+      const msg = event.error?.message || event.message;
+      const stack = event.error?.stack || null;
+      const file = event.filename || null;
+
+      if (isIgnorableError(msg, stack, file)) {
+        return;
+      }
+
+      if (msg) {
         showErrorDialog({
           title: 'System Error',
-          message: event.error?.message || event.message,
-          details: event.error?.stack || null,
+          message: msg,
+          details: stack,
         });
       }
     };
@@ -84,6 +93,10 @@ export function GlobalErrorDialog() {
       } else if (reason?.message) {
         msg = String(reason.message);
         details = JSON.stringify(reason);
+      }
+
+      if (isIgnorableError(msg, details)) {
+        return;
       }
 
       showErrorDialog({

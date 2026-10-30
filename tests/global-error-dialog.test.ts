@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { showErrorDialog, subscribeErrorDialog, clearErrorDialog, getActiveError } from '@/lib/errorDialog';
+import {
+  showErrorDialog,
+  subscribeErrorDialog,
+  clearErrorDialog,
+  getActiveError,
+  isIgnorableError,
+} from '@/lib/errorDialog';
 
 describe('Global Error Dialog Store & Event Emitter', () => {
   beforeEach(() => {
@@ -58,6 +64,50 @@ describe('Global Error Dialog Store & Event Emitter', () => {
 
     showErrorDialog(['Error 1: Cut length > 15m', 'Error 2: Pieces <= 0']);
     expect(getActiveError()?.items).toEqual(['Error 1: Cut length > 15m', 'Error 2: Pieces <= 0']);
+  });
+
+  describe('isIgnorableError filtering', () => {
+    it('identifies and ignores Next.js $RC streaming parentNode error from screenshot', () => {
+      const msg = "can't access property \"parentNode\", c is null";
+      const stack = "$RC@https://seamless-wip.vercel.app/dashboard:16:220425\n@https://seamless-wip.vercel.app/dashboard:16:220857";
+
+      expect(isIgnorableError(msg, stack)).toBe(true);
+
+      // Calling showErrorDialog with this benign framework error must be suppressed
+      showErrorDialog({
+        title: 'System Error',
+        message: msg,
+        details: stack,
+      });
+      expect(getActiveError()).toBeNull();
+    });
+
+    it('identifies Chrome variant of parentNode hydration/streaming error', () => {
+      const msg = "Cannot read properties of null (reading 'parentNode')";
+      expect(isIgnorableError(msg)).toBe(true);
+    });
+
+    it('identifies browser extension errors', () => {
+      expect(isIgnorableError('Uncaught error', 'at moz-extension://1234/content.js')).toBe(true);
+      expect(isIgnorableError('Extension crash', null, 'chrome-extension://abcd/script.js')).toBe(true);
+    });
+
+    it('identifies benign observer and abort errors', () => {
+      expect(isIgnorableError('ResizeObserver loop completed with undelivered notifications.')).toBe(true);
+      expect(isIgnorableError('The user aborted a request.')).toBe(true);
+      expect(isIgnorableError('AbortError: signal is aborted')).toBe(true);
+      expect(isIgnorableError('Script error.')).toBe(true);
+    });
+
+    it('does NOT ignore genuine application or validation errors', () => {
+      expect(isIgnorableError('Rolling production exceeds 104% plan cap.')).toBe(false);
+      expect(isIgnorableError('Cut length cannot exceed 15.00 meters.')).toBe(false);
+      expect(isIgnorableError('Network request failed: 500 Internal Server Error')).toBe(false);
+      expect(isIgnorableError('Database foreign key violation: invalid work_order_id')).toBe(false);
+
+      showErrorDialog('Cut length cannot exceed 15.00 meters.');
+      expect(getActiveError()?.message).toBe('Cut length cannot exceed 15.00 meters.');
+    });
   });
 });
 
