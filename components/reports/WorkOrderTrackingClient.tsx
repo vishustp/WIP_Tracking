@@ -557,12 +557,13 @@ export default function WorkOrderTrackingClient() {
         : (htcLogRejPcs === 0 && htcLogOutPcs > 0 ? htcLogOutPcs : (mhAvgLen > 0 ? Math.round(htcLogOkMtr / mhAvgLen) : 0));
 
       const hasDedicatedHtcLogs = masterHtcLogs.length > 0;
-      const htcOutMtr = hasDedicatedHtcLogs ? htcLogOutMtr : (legacyRollingHtcOkMtr > 0 ? legacyRollingHtcOkMtr : rollingOutMtr);
-      const htcOutPcs = hasDedicatedHtcLogs ? htcLogOutPcs : (legacyRollingHtcOkPcs > 0 ? legacyRollingHtcOkPcs : rollingOutPcs);
-      const htcRejMtr = hasDedicatedHtcLogs ? htcLogRejMtr : 0;
-      const htcRejPcs = hasDedicatedHtcLogs ? htcLogRejPcs : 0;
-      const htcOkMtr = hasDedicatedHtcLogs ? (htcLogOkMtr > 0 ? htcLogOkMtr : htcLogOutMtr) : (legacyRollingHtcOkMtr > 0 ? legacyRollingHtcOkMtr : rollingOutMtr);
-      const htcOkPcs = hasDedicatedHtcLogs ? (htcLogOkPcs > 0 ? htcLogOkPcs : htcLogOutPcs) : (legacyRollingHtcOkPcs > 0 ? legacyRollingHtcOkPcs : rollingOutPcs);
+      const hasAnyHtcActivity = hasDedicatedHtcLogs || legacyRollingHtcOkPcs > 0 || legacyRollingHtcOkMtr > 0;
+      const htcOutMtr = hasAnyHtcActivity ? (legacyRollingHtcOkMtr + htcLogOutMtr) : rollingOutMtr;
+      const htcOutPcs = hasAnyHtcActivity ? (legacyRollingHtcOkPcs + htcLogOutPcs) : rollingOutPcs;
+      const htcRejMtr = htcLogRejMtr;
+      const htcRejPcs = htcLogRejPcs;
+      const htcOkMtr = hasAnyHtcActivity ? (legacyRollingHtcOkMtr + (htcLogOkMtr > 0 ? htcLogOkMtr : htcLogOutMtr)) : rollingOutMtr;
+      const htcOkPcs = hasAnyHtcActivity ? (legacyRollingHtcOkPcs + (htcLogOkPcs > 0 ? htcLogOkPcs : htcLogOutPcs)) : rollingOutPcs;
 
       // Hollow Heat Treatment (HHT) stats (from stage_code === 'HOLLOW_HEAT_TREATMENT')
       const masterHhtLogs = masterLogs.filter((l) => l.stage_code === 'HOLLOW_HEAT_TREATMENT');
@@ -793,10 +794,8 @@ export default function WorkOrderTrackingClient() {
             downstreamMotherPcsFromBandSaw
           );
 
-          // Rolling WIP is hot rolled production that has NOT yet been tested at HTC
-          const htcTestedPcs = hasDedicatedHtcLogs
-            ? (htcLogOutPcs + htcLogRejPcs)
-            : Math.max(htcOkPcs, downstreamConsumedPcs);
+          // Rolling WIP is hot rolled production that has NOT yet been tested at HTC or consumed downstream
+          const htcTestedPcs = Math.max(htcOutPcs + htcRejPcs, downstreamConsumedPcs);
 
           let wipPcs = 0;
           if (rollingOutPcs > 0 || divInPcs > 0) {
@@ -842,10 +841,16 @@ export default function WorkOrderTrackingClient() {
           const divInPcs = mhAvgLen > 0 ? Math.round(divIn / mhAvgLen) : 0;
           const divOutPcs = mhAvgLen > 0 ? Math.round(divOut / mhAvgLen) : 0;
 
+          const downstreamConsumedPcs = Math.max(
+            hasHhtInRoute ? (hhtOutPcs + hhtRejPcs) : 0,
+            hasPilgerInRoute ? (pilgerOutPcs + pilgerRejPcs) : 0,
+            hasDrawInRoute ? (drawOutPcs + drawRejPcs) : 0,
+            hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
+            downstreamMotherPcsFromBandSaw
+          );
+
           // HTC WIP is hot rolled pipes on cooling bed awaiting HTC test check
-          const htcTestedPcs = hasDedicatedHtcLogs
-            ? (htcLogOutPcs + htcLogRejPcs)
-            : (rollingOutPcs > 0 ? rollingOutPcs : 0);
+          const htcTestedPcs = Math.max(htcOutPcs + htcRejPcs, downstreamConsumedPcs);
 
           let wipPcs = 0;
           if (rollingOutPcs > 0 || divInPcs > 0) {
@@ -2047,11 +2052,6 @@ export default function WorkOrderTrackingClient() {
                               <div className="flex justify-between text-slate-600">
                                 <span>Rolled:</span>
                                 <span className="font-mono font-bold text-emerald-700">{fmt(rRoll?.outPcs || 0)} Nos</span>
-                              </div>
-
-                              <div className="flex justify-between text-indigo-700 font-medium">
-                                <span>HTC OK:</span>
-                                <span className="font-mono font-bold text-indigo-700">{fmt(rRoll?.htcOkPcs || 0)} Nos</span>
                               </div>
 
                               {Number(rRoll?.rejPcs || 0) > 0 && (

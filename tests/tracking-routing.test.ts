@@ -206,4 +206,74 @@ describe('Work Order Tracking Route Stage & WIP Balancing Validation', () => {
     const vdiWipPcs = Math.max(0, netCutPcs - vdiInspectedPcs);
     expect(vdiWipPcs).toBe(4);
   });
+
+  it('WO 6457 case: 688 rolled (680 legacy HTC OK + 8 dedicated HTC OK), 680 drawn, 682 HT, 682 cut: Rolled WIP = 0, HTC WIP = 0, Draw WIP = 8', () => {
+    // WO 6457:
+    // Rolling logs: 240 pcs + 440 pcs + 8 pcs = 688 pcs rolled
+    const rollingOutPcs = 688;
+    const rollingRejPcs = 0;
+    // Legacy rolling HTC OK: 240 + 440 = 680 pcs
+    const legacyRollingHtcOkPcs = 680;
+    // Dedicated HTC logs: 8 pcs tested and OK
+    const htcLogOutPcs = 8;
+    const htcLogRejPcs = 0;
+    const htcLogOkPcs = 8;
+
+    // Cumulative HTC metrics
+    const hasAnyHtcActivity = (htcLogOutPcs > 0) || (legacyRollingHtcOkPcs > 0);
+    const htcOutPcs = hasAnyHtcActivity ? (legacyRollingHtcOkPcs + htcLogOutPcs) : rollingOutPcs;
+    const htcOkPcs = hasAnyHtcActivity ? (legacyRollingHtcOkPcs + htcLogOkPcs) : rollingOutPcs;
+    const htcRejPcs = htcLogRejPcs;
+
+    expect(htcOutPcs).toBe(688);
+    expect(htcOkPcs).toBe(688);
+    expect(htcRejPcs).toBe(0);
+
+    // Downstream stages
+    const drawOutPcs = 680;
+    const drawRejPcs = 0;
+    const htOutPcs = 682;
+    const htRejPcs = 0;
+    const downstreamMotherPcsCut = 682;
+    const bandSawOutPcs = 682;
+    const vdiOkPcs = 643;
+    const vdiRejPcs = 38;
+    const vdiInspectedPcs = vdiOkPcs + vdiRejPcs; // 681
+
+    const downstreamConsumedPcs = Math.max(
+      drawOutPcs + drawRejPcs,
+      htOutPcs + htRejPcs,
+      downstreamMotherPcsCut
+    );
+
+    // 1. Rolling Mill WIP = 0 (all 688 tested or consumed downstream)
+    const htcTestedPcs = Math.max(htcOutPcs + htcRejPcs, downstreamConsumedPcs);
+    const rollingWipPcs = Math.max(0, rollingOutPcs - rollingRejPcs - htcTestedPcs);
+    expect(rollingWipPcs).toBe(0);
+
+    // 2. HTC WIP = 0 (cooling bed queue is clear, all 688 tested)
+    const htcWipPcs = Math.max(0, rollingOutPcs - rollingRejPcs - htcTestedPcs);
+    expect(htcWipPcs).toBe(0);
+
+    // 4. Draw Bench WIP = 688 HTC OK - 680 Drawn = 8 mother pipes in queue awaiting drawing
+    const drawIncomingPcs = htcOkPcs;
+    const drawConsumedPcs = drawOutPcs + drawRejPcs;
+    const drawWipPcs = Math.max(0, drawIncomingPcs - drawConsumedPcs);
+    expect(drawWipPcs).toBe(8);
+
+    // 5. Heat Treatment WIP = 680 drawn - 682 HT = 0
+    const htIncomingPcs = Math.max(0, drawOutPcs - drawRejPcs);
+    const htConsumedPcs = Math.max(htOutPcs + htRejPcs, downstreamMotherPcsCut);
+    const htWipPcs = Math.max(0, htIncomingPcs - htConsumedPcs);
+    expect(htWipPcs).toBe(0);
+
+    // 6. Band Saw WIP = 682 HT - 682 cut = 0
+    const bandSawIncomingPcs = Math.max(0, htOutPcs - htRejPcs);
+    const bandSawWipPcs = Math.max(0, bandSawIncomingPcs - downstreamMotherPcsCut);
+    expect(bandSawWipPcs).toBe(0);
+
+    // 7. VDI WIP = 682 cut - 681 inspected = 1 piece awaiting QC
+    const vdiWipPcs = Math.max(0, bandSawOutPcs - vdiInspectedPcs);
+    expect(vdiWipPcs).toBe(1);
+  });
 });
