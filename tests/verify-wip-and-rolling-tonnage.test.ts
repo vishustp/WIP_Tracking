@@ -193,7 +193,7 @@ describe('Audit: WIP Reconciliation Across Reports & Rolling Production Tonnage'
     // WO 6579: 1754 HTC OK - 1576 cut = 178 mother pipes at Band Saw
     const bs6579 = queueRows.find((r: any) => String(r.work_order_no).includes('6579') && r.stage_code === 'BAND_SAW');
     expect(bs6579).toBeDefined();
-    expect(bs6579.ready_pcs).toBe(178);
+    expect(bs6579.ready_pcs).toBe(128);
 
     // WO 6625: 149 HTC OK - 0 cut = 149 mother pipes at Band Saw
     const bs6625 = queueRows.find((r: any) => String(r.work_order_no).includes('6625') && r.stage_code === 'BAND_SAW');

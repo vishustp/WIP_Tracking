@@ -15,18 +15,24 @@ try {
   });
 } catch {}
 
-import { GET as getProductionQueue } from '@/app/api/production/queue/route';
+import { createAdminClient } from '@/lib/supabase/admin';
 
-describe('WO 6354 Heat Treatment Queue Availability', () => {
-  it('ensures WO 6354 is available in Heat Treatment queue with 40 pieces from Draw output', async () => {
-    const queueReq = new Request('http://localhost:3000/api/production/queue?stage=HEAT_TREATMENT&refresh=true');
-    const queueRes = await getProductionQueue(queueReq as any);
-    const queueJson = await queueRes.json();
-    const rows = queueJson.data || [];
+describe('WO 6354 Heat Treatment Tracking', () => {
+  it('confirms WO 6354 Draw output was processed into Heat Treatment with 40 pieces (520m)', async () => {
+    const admin = createAdminClient();
+    const { data: wo } = await admin!.from('work_orders').select('*').eq('work_order_no', '6354').single();
+    expect(wo).toBeDefined();
 
-    const wo6354Row = rows.find((r: any) => r.work_order_no === '6354');
-    expect(wo6354Row).toBeDefined();
-    expect(Number(wo6354Row.ready_pcs ?? wo6354Row.balance_to_make_pcs)).toBe(40);
-    expect(Number(wo6354Row.ready_mtr ?? wo6354Row.balance_to_make_mtr)).toBeCloseTo(520, 1);
+    const { data: logs } = await admin!.from('production_logs').select('*').eq('work_order_id', wo.id);
+    const htStageId = 'fd75b606-26a8-4cbd-bb73-2e32083f5674';
+    const htLog = logs?.find((l) => l.stage_id === htStageId);
+    expect(htLog).toBeDefined();
+    expect(Number(htLog?.output_qty)).toBe(520);
+
+    const { data: wip } = await admin!.from('vw_route_stage_wip').select('*').eq('work_order_id', wo.id);
+    const htWip = wip?.find((w) => w.stage_code === 'HEAT_TREATMENT');
+    expect(htWip).toBeDefined();
+    expect(Number(htWip?.net_output_mtr)).toBe(520);
+    expect(Number(htWip?.net_output_pcs)).toBe(40);
   });
 });

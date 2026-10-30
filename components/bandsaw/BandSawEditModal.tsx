@@ -279,6 +279,16 @@ export function BandSawEditModal({
       return;
     }
 
+    if (motherAvgLenNum > 15) {
+      setError('Mother pipe average length cannot exceed 15.00 MTR.');
+      return;
+    }
+
+    if (cutItems.some((c) => Number(c.length_mtr) > 15)) {
+      setError('Maximum allowable pipe length at Band Saw is 15.00 MTR.');
+      return;
+    }
+
     if (totalAccountedMtr > totalMotherMtr * 1.15) {
       setError(
         `Total cuts (${fmt(totalAccountedMtr, 'm')}) exceed incoming mother pipes (${fmt(totalMotherMtr, 'm')}). Please adjust mother pipes or cut lengths.`
@@ -513,6 +523,7 @@ export function BandSawEditModal({
                 type="number"
                 step="0.01"
                 min="1.0"
+                max="15"
                 value={motherAvgLenInput}
                 onChange={(e) => setMotherAvgLenInput(e.target.value)}
                 className="h-9 text-xs font-mono font-bold"
@@ -600,6 +611,7 @@ export function BandSawEditModal({
                             type="number"
                             step="0.01"
                             min="0.5"
+                            max="15"
                             value={item.length_mtr}
                             onChange={(e) =>
                               handleUpdateItem(item.id, 'length_mtr', Number(e.target.value) || 0)

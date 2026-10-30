@@ -111,6 +111,19 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
+        if (cuts && cuts.some((c: any) => Number(c.len || 0) > 15)) {
+          return NextResponse.json(
+            { error: 'Maximum allowable pipe length at Band Saw is 15.00 MTR.' },
+            { status: 400 }
+          );
+        }
+      }
+
+      if ((item.stage_code === 'BAND_SAW' || item.stage_code === 'IP_CUTTING') && outPcs > 0 && (outMtr / outPcs) > 15.001) {
+        return NextResponse.json(
+          { error: `Maximum allowable pipe length at Band Saw is 15.00 MTR (received average ${(outMtr / outPcs).toFixed(2)} MTR).` },
+          { status: 400 }
+        );
       }
 
       // Rule: Rolling piece count requirement and plan balance capping

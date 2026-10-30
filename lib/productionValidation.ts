@@ -1,5 +1,5 @@
 import { Row, StageCode } from "@/types";
-import { n, calc, fmt, isHollowBankOrder } from "./productionUtils";
+import { n, calc, fmt, isHollowBankOrder, extractBandSawCutsFromRemarks } from "./productionUtils";
 
 export type ValidationError = { workOrder: string; message: string };
 
@@ -81,6 +81,34 @@ export function validateProductionEntry(
         workOrder: row.work_order_no,
         message: `Standard 4-Meter Scrap Rule: Output length (${fmt(d.mtr, " MTR")}) is under 4.0 meters. Material below 4.0m is off-cut scrap and cannot be recorded as prime production. Please record this quantity under Rejection.`,
       });
+    }
+  }
+
+  // 4B. Band Saw & IP Cutting: Maximum allowable pipe length is 15.00 MTR
+  if (currentStage === "BAND_SAW" || currentStage === "IP_CUTTING") {
+    if (d.pcs > 0 && d.mtr > 0) {
+      const avgPieceLen = d.mtr / d.pcs;
+      if (avgPieceLen > 15.001) {
+        errors.push({
+          workOrder: row.work_order_no,
+          message: `Maximum allowable pipe length at Band Saw is 15.00 MTR (entered average ${avgPieceLen.toFixed(2)} MTR).`,
+        });
+      }
+    } else if (d.mtr > 15.001) {
+      errors.push({
+        workOrder: row.work_order_no,
+        message: `Maximum allowable pipe length at Band Saw is 15.00 MTR (entered ${fmt(d.mtr, " MTR")}).`,
+      });
+    }
+
+    if (row.remarks) {
+      const { cuts } = extractBandSawCutsFromRemarks(row.remarks);
+      if (cuts && cuts.some((c) => Number(c.len || 0) > 15.001)) {
+        errors.push({
+          workOrder: row.work_order_no,
+          message: "Maximum allowable pipe cut length at Band Saw is 15.00 MTR.",
+        });
+      }
     }
   }
 

@@ -127,11 +127,28 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (stageCode === 'BAND_SAW' && remarks) {
+    if ((stageCode === 'BAND_SAW' || stageCode === 'IP_CUTTING') && remarks) {
       const { cuts } = extractBandSawCutsFromRemarks(remarks);
       if (cuts && cuts.some((c: any) => Number(c.len || 0) <= 0 || Number(c.pcs || 0) <= 0)) {
         return NextResponse.json(
           { error: 'All Band Saw cut pieces must have a length greater than 0.00 m and piece count ≥ 1.' },
+          { status: 400 }
+        );
+      }
+      if (cuts && cuts.some((c: any) => Number(c.len || 0) > 15)) {
+        return NextResponse.json(
+          { error: 'Maximum allowable pipe length at Band Saw is 15.00 MTR.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if ((stageCode === 'BAND_SAW' || stageCode === 'IP_CUTTING') && output_qty !== undefined && output_pcs !== undefined) {
+      const oMtr = Number(output_qty);
+      const oPcs = Number(output_pcs);
+      if (oPcs > 0 && (oMtr / oPcs) > 15.001) {
+        return NextResponse.json(
+          { error: `Maximum allowable pipe length at Band Saw is 15.00 MTR (received average ${(oMtr / oPcs).toFixed(2)} MTR).` },
           { status: 400 }
         );
       }

@@ -380,6 +380,10 @@ export function BandSawCuttingModal({
       toast.error('Target cut length must be positive.');
       return;
     }
+    if (targetLen > 15) {
+      toast.error('Maximum allowable pipe length at Band Saw is 15.00 MTR.');
+      return;
+    }
     if (targetLen > motherAvgLenNum) {
       toast.error(`Target length (${targetLen}m) exceeds available mother length (${motherAvgLenNum}m).`);
       return;
@@ -433,6 +437,10 @@ export function BandSawCuttingModal({
 
   const applyTwoCombinationCut = (cut1Len: number, cut2Len: number) => {
     if (motherAvgLenNum <= 0 || cut1Len <= 0 || cut2Len <= 0) return;
+    if (cut1Len > 15 || cut2Len > 15) {
+      toast.error('Maximum allowable pipe length at Band Saw is 15.00 MTR.');
+      return;
+    }
     const sumLen = cut1Len + cut2Len;
     if (sumLen > motherAvgLenNum * 1.02) {
       toast.error(`Combined length (${sumLen}m) exceeds mother pipe length (${motherAvgLenNum}m).`);
@@ -518,6 +526,10 @@ export function BandSawCuttingModal({
       toast.error('Please enter valid mother pipe quantities for batch split.');
       return;
     }
+    if (gA_len > 15 || gB_len > 15) {
+      toast.error('Maximum allowable pipe length at Band Saw is 15.00 MTR.');
+      return;
+    }
 
     setMotherPcsInput(String(totalProcMotherPcs));
 
@@ -597,6 +609,14 @@ export function BandSawCuttingModal({
     }
     if (cutItems.some((c) => Number(c.length_mtr) <= 0 || Number(c.cut_pcs) <= 0)) {
       setError('Each cut item must have a valid length (> 0.00 m) and piece count (≥ 1).');
+      return;
+    }
+    if (motherAvgLenNum > 15) {
+      setError('Mother pipe average length cannot exceed 15.00 MTR.');
+      return;
+    }
+    if (cutItems.some((c) => Number(c.length_mtr) > 15)) {
+      setError('Maximum allowable pipe length at Band Saw is 15.00 MTR.');
       return;
     }
     if (totalAllCutMtr > totalMotherMtr * 1.15) {
@@ -873,6 +893,7 @@ export function BandSawCuttingModal({
                 type="number"
                 step="0.01"
                 min="0.5"
+                max="15"
                 value={motherAvgLenInput}
                 onChange={(e) => setMotherAvgLenInput(e.target.value)}
                 className="h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500 bg-[var(--bg-surface,#ffffff)]"
@@ -1106,7 +1127,7 @@ export function BandSawCuttingModal({
                     type="number"
                     step="0.01"
                     min="0.1"
-                    max={motherAvgLenNum}
+                    max={Math.min(15, motherAvgLenNum)}
                     value={customTargetLen}
                     onChange={(e) => setCustomTargetLen(e.target.value)}
                     className="h-8 w-28 bg-[var(--bg-surface,#ffffff)] font-mono text-xs font-bold"
@@ -1142,6 +1163,7 @@ export function BandSawCuttingModal({
                     type="number"
                     step="0.01"
                     min="0.1"
+                    max="15"
                     value={combCut1}
                     onChange={(e) => setCombCut1(e.target.value)}
                     className="h-8 w-24 bg-[var(--bg-surface,#ffffff)] font-mono text-xs font-bold"
@@ -1155,6 +1177,7 @@ export function BandSawCuttingModal({
                     type="number"
                     step="0.01"
                     min="0.1"
+                    max="15"
                     value={combCut2}
                     onChange={(e) => setCombCut2(e.target.value)}
                     className="h-8 w-24 bg-[var(--bg-surface,#ffffff)] font-mono text-xs font-bold"
@@ -1239,6 +1262,8 @@ export function BandSawCuttingModal({
                         <Input
                           type="number"
                           step="0.01"
+                          min="0.1"
+                          max="15"
                           value={batchGroupA_CutLen}
                           onChange={(e) => setBatchGroupA_CutLen(e.target.value)}
                           className="h-8 font-mono text-xs font-bold"
@@ -1284,6 +1309,8 @@ export function BandSawCuttingModal({
                         <Input
                           type="number"
                           step="0.01"
+                          min="0.1"
+                          max="15"
                           value={batchGroupB_CutLen}
                           onChange={(e) => setBatchGroupB_CutLen(e.target.value)}
                           className="h-8 font-mono text-xs font-bold"
@@ -1430,6 +1457,7 @@ export function BandSawCuttingModal({
                           type="number"
                           step="0.01"
                           min="0.1"
+                          max="15"
                           value={item.length_mtr || ''}
                           onChange={(e) =>
                             handleUpdateCutItem(item.id, 'length_mtr', parseFloat(e.target.value) || 0)
