@@ -534,13 +534,17 @@ export default function BandSawCuttingClient() {
                     const lenLabel = l1 > 0 && l2 > 0 ? `${l1}m - ${l2}m` : l1 > 0 ? `${l1}m` : '6.0m';
 
                     return (
-                      <tr key={row.work_order_id} className="group hover:bg-slate-50/70 transition-colors">
+                      <tr key={`${row.work_order_id}_${row.stage_code}`} className="group hover:bg-slate-50/70 transition-colors">
                         <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-3.5 px-4 font-mono font-bold text-slate-900 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] min-w-[180px]">
                           <div className="flex items-center gap-1.5">
                             <span>WO #{row.work_order_no}</span>
-                            {row.stage_code === 'IP_CUTTING' && (
+                            {row.stage_code === 'IP_CUTTING' ? (
                               <span className="rounded-md bg-amber-100 border border-amber-300 px-1.5 py-0.5 text-[9.5px] font-bold text-amber-900 shadow-2xs">
                                 IP CUT
+                              </span>
+                            ) : (
+                              <span className="rounded-md bg-indigo-100 border border-indigo-300 px-1.5 py-0.5 text-[9.5px] font-bold text-indigo-900 shadow-2xs">
+                                FINAL CUT
                               </span>
                             )}
                             {row.route_code && (
@@ -619,7 +623,7 @@ export default function BandSawCuttingClient() {
                               }`}
                             >
                               <Scissors size={13} className="rotate-90" />
-                              {row.stage_code === 'IP_CUTTING' ? 'Record IP Cut' : 'Record Cutting'}
+                              {row.stage_code === 'IP_CUTTING' ? 'Record IP Cut' : 'Record Final Cut'}
                             </Button>
                           ) : (
                             <span className="text-[11px] font-medium text-slate-400 italic">View Only</span>

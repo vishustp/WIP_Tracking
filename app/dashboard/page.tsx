@@ -504,7 +504,7 @@ export default async function Dashboard() {
         let code = '';
         if (rawCode.includes('ROLL')) code = 'ROLLING';
         else if (rawCode.includes('HOLLOW') || rawCode === 'HTC') code = 'HOLLOW_HEAT_TREATMENT';
-        else if (rawCode.includes('DRAW') || rawCode.includes('PILGER')) code = 'DRAW';
+        else if (rawCode.includes('DRAW') || rawCode.includes('PILGER') || rawCode === 'IP_CUTTING') code = 'DRAW';
         else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') code = 'HEAT_TREATMENT';
         else if (rawCode.includes('SAW') || rawCode.includes('CUT')) code = 'BAND_SAW';
         else if (rawCode.includes('VDI') || rawCode.includes('QC')) code = 'VDI';
@@ -596,7 +596,7 @@ export default async function Dashboard() {
       else if (rawCode === 'HTC' || rawCode.includes('HOT TEST')) code = 'HTC';
       else if (rawCode.includes('HOLLOW')) code = 'HOLLOW_HEAT_TREATMENT';
       else if (rawCode.includes('PILGER')) code = 'PILGER';
-      else if (rawCode.includes('DRAW')) code = 'DRAW';
+      else if (rawCode.includes('DRAW') || rawCode === 'IP_CUTTING') code = 'DRAW';
       else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') code = 'HEAT_TREATMENT';
       else if (rawCode.includes('SAW') || rawCode.includes('CUT')) code = 'BAND_SAW';
       else if (rawCode.includes('VDI') || rawCode.includes('QC')) code = 'VDI';

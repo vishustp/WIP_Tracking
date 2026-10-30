@@ -524,6 +524,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       if (raw === 'HTC' || raw.includes('HTC') || raw.includes('HOT TEST')) return 'HTC';
       if (raw === 'HOLLOW_HEAT_TREATMENT' || raw.includes('HOLLOW')) return 'HOLLOW_HEAT_TREATMENT';
       if (raw === 'ROLLING' || raw.includes('ROLL')) return 'HOT_ROLLING';
+      if (raw === 'IP_CUTTING' || raw.includes('IP_CUT') || raw.includes('IP CUT')) return 'IP_CUTTING';
       if (raw === 'DRAW' || raw.includes('DRAW')) return 'DRAW';
       if (raw === 'PILGER' || raw.includes('PILGER')) return 'PILGER';
       if (raw === 'HEAT_TREATMENT' || raw.includes('HEAT')) return 'HEAT_TREATMENT';
