@@ -306,6 +306,9 @@ export function isRouteVisible(user: AppUserProfile | null | undefined, href: st
   if (href === '/excel-import' || href.startsWith('/excel-import/')) {
     return perms.excel_import === 'edit' || perms.excel_import === 'view';
   }
+  if (href === '/stock-generation' || href.startsWith('/stock-generation/')) {
+    return isPpcOrAdminUser(user, group) || perms.work_order === 'edit' || perms.rolling_plan === 'edit';
+  }
   if (href === '/rejections' || href.startsWith('/rejections/')) {
     return true;
   }
