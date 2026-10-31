@@ -626,4 +626,49 @@ export interface DiversionPlan {
   ppc_remarks?: string | null;
 }
 
-
+
+
+
+export type StockPlacementType = 'INCOMING_QUEUE' | 'STAGE_OUTPUT';
+
+export type StockGenerationReason =
+  | 'Opening Balance Induction'
+  | 'Physical Stock Audit'
+  | 'External Yard / Buffer Inbound'
+  | 'Salvaged Stock Conversion'
+  | 'Customer Return / Re-induction'
+  | 'Other';
+
+export interface PpcStockGeneration {
+  id: string;
+  generation_no: string;
+  work_order_id: string;
+  stage_id: string;
+  stage_code: string;
+  stock_type: StockPlacementType;
+  pcs: number;
+  meters: number;
+  weight_mt: number;
+  reason: string;
+  heat_no?: string | null;
+  lot_no?: string | null;
+  remarks?: string | null;
+  status: 'ACTIVE' | 'CANCELLED';
+  created_by?: string | null;
+  created_by_name?: string | null;
+  created_at: string;
+  cancelled_by?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  work_orders?: {
+    work_order_no: string;
+    customer_name: string;
+    size_od?: number;
+    size_wt?: number;
+    grade?: string;
+  };
+  process_stages?: {
+    stage_name: string;
+    stage_code?: string;
+  };
+}

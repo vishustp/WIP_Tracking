@@ -831,3 +831,12 @@ export function buildWorkOrderPayload(form: WorkOrderFormData) {
   };
 }
 
+
+
+export function calculatePipeWeightMt(od: number, wt: number, meters: number): number {
+  if (!od || !wt || !meters || od <= 0 || wt <= 0 || meters <= 0) return 0;
+  // Formula: (OD - WT) * WT * 0.0246615 * length / 1000
+  const nominalKgPerMeter = (od - wt) * wt * 0.0246615;
+  const totalMt = (nominalKgPerMeter * meters) / 1000;
+  return Number(totalMt.toFixed(3));
+}
