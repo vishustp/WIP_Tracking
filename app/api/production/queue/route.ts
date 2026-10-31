@@ -784,7 +784,7 @@ export async function GET(req: NextRequest) {
               const cTotalOrderMt =
                 Number(child.planned_mt || cWo?.ordered_qty_mt || 0) || mtFromMtr(cTotalOrderMtr, cOd, cWt);
 
-              const cFinLogs = logs.filter((l) => l.work_order_id === cId && l.stage_id === finStageId);
+              const cFinLogs = getStageLogs(cId, finStageId, "FINISHING");
               const cFinishedMtr = sumQty(cFinLogs, "output_qty");
               const cFinishedPcs = cAvg > 0 ? Math.round(cFinishedMtr / cAvg) : 0;
 

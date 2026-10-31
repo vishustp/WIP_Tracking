@@ -20,17 +20,49 @@ export interface CampaignHierarchyMaps {
 
 /**
  * Builds campaign hierarchy and Mother Hollow specification lookups from rolling plans
+ * Supports both relational campaign children and JSON status metadata with zero breaking changes.
  */
-export function buildCampaignHierarchyMaps(rollingPlans: any[]): CampaignHierarchyMaps {
+export function buildCampaignHierarchyMaps(
+  rollingPlans: any[],
+  relationalChildren?: any[]
+): CampaignHierarchyMaps {
   const campaignMembersMap = new Map<string, Set<string>>();
   const childToMasterMap = new Map<string, string>();
   const mhMap = new Map<string, MotherHollowInfo>();
 
+  // If relational children rows are available, populate hierarchy relationships directly
+  if (Array.isArray(relationalChildren) && relationalChildren.length > 0) {
+    for (const rel of relationalChildren) {
+      const mId = rel.master_work_order_id;
+      const cId = rel.child_work_order_id;
+      if (mId && cId) {
+        childToMasterMap.set(cId, mId);
+        let members = campaignMembersMap.get(mId);
+        if (!members) {
+          members = new Set<string>([mId]);
+          campaignMembersMap.set(mId, members);
+        }
+        members.add(cId);
+      }
+    }
+  }
+
   for (const p of rollingPlans) {
     try {
-      const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
+      let parsed: any = null;
+      if (typeof p.status === 'string') {
+        const trimmed = p.status.trim();
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+          try {
+            parsed = JSON.parse(trimmed);
+          } catch {}
+        }
+      } else if (typeof p.status === 'object' && p.status !== null) {
+        parsed = p.status;
+      }
+
       if (parsed?.is_master && Array.isArray(parsed?.child_work_orders) && parsed.child_work_orders.length > 0) {
-        const members = new Set<string>();
+        const members = campaignMembersMap.get(p.work_order_id) || new Set<string>();
         if (p.work_order_id) members.add(p.work_order_id);
         for (const c of parsed.child_work_orders) {
           const cId = c.work_order_id || c.id;
@@ -76,12 +108,36 @@ export function buildCampaignHierarchyMaps(rollingPlans: any[]): CampaignHierarc
     } catch {}
   }
 
+  // Populate MH specs for relational child orders
+  if (Array.isArray(relationalChildren) && relationalChildren.length > 0) {
+    for (const rel of relationalChildren) {
+      const mId = rel.master_work_order_id;
+      const cId = rel.child_work_order_id;
+      if (mId && cId) {
+        const mInfo = mhMap.get(mId);
+        if (mInfo && !mhMap.has(cId)) {
+          mhMap.set(cId, mInfo);
+        }
+      }
+    }
+  }
+
   // CRITICAL: Any work order that has its own rolling plan (not is_child) must not be treated as a child
   for (const p of rollingPlans) {
     if (p.work_order_id) {
       try {
-        const parsed = typeof p.status === 'string' ? JSON.parse(p.status) : p.status;
-        if (!parsed?.is_child) {
+        let parsed: any = null;
+        if (typeof p.status === 'string') {
+          const trimmed = p.status.trim();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            try {
+              parsed = JSON.parse(trimmed);
+            } catch {}
+          }
+        } else if (typeof p.status === 'object' && p.status !== null) {
+          parsed = p.status;
+        }
+        if (parsed && !parsed.is_child) {
           childToMasterMap.delete(p.work_order_id);
           for (const [masterId, members] of campaignMembersMap.entries()) {
             if (masterId !== p.work_order_id && members.has(p.work_order_id)) {

@@ -603,6 +603,32 @@ export async function POST(req: NextRequest) {
         .from('rolling_plans')
         .update({ status: masterStatusMetadata })
         .eq('id', createdMasterPlan.id);
+
+      // Dual-write into relational rolling_campaign_children table
+      if (Array.isArray(childMetadataList) && childMetadataList.length > 0) {
+        try {
+          const relationalRows = childMetadataList.map((cMeta: any) => ({
+            master_plan_id: createdMasterPlan.id,
+            master_work_order_id: masterWo.id,
+            child_work_order_id: cMeta.work_order_id || cMeta.id,
+            planned_pcs: Number(cMeta.planned_pcs || cMeta.total_order_pcs || 0),
+            planned_mtr: Number(cMeta.planned_mtr || cMeta.total_order_mtr || 0),
+            planned_mt: Number(cMeta.planned_mt || cMeta.total_order_mt || 0),
+            alloc_tag: cMeta.alloc_tag || null,
+            metadata: cMeta,
+          }));
+
+          const { error: relErr } = await admin
+            .from('rolling_campaign_children')
+            .upsert(relationalRows, { onConflict: 'master_plan_id,child_work_order_id' });
+          if (relErr && (relErr as any).code !== '42P01') {
+            console.warn('Dual-write to rolling_campaign_children warning:', relErr.message);
+          }
+        } catch (e: any) {
+          // Gracefully continue even if table does not exist in un-migrated DB
+          console.warn('Dual-write to rolling_campaign_children caught:', e.message);
+        }
+      }
     }
 
     return NextResponse.json({

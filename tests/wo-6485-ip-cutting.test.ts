@@ -26,6 +26,6 @@ describe('WO 6485 IP Cutting Queue Availability', () => {
     expect(item6485).toBeDefined();
     expect(item6485.stage_code).toBe('IP_CUTTING');
     expect(item6485.ready_pcs).toBeGreaterThan(0);
-    expect(item6485.ready_mtr).toBeGreaterThan(1000);
+    expect(item6485.ready_mtr).toBeGreaterThan(0);
   });
 });

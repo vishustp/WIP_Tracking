@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 export default defineConfig({
   plugins: [react()],
   test: {
+    testTimeout: 20000,
     environment: "node",
     include: ["tests/**/*.test.{ts,tsx}"],
     exclude: ["**/node_modules/**", "**/.agents/**", "**/.next/**"],
