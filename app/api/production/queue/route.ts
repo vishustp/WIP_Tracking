@@ -1807,11 +1807,6 @@ export async function GET(req: NextRequest) {
         workCenterSummary.IP_CUTTING.availPcs += ipCutAvailPcs;
         workCenterSummary.IP_CUTTING.availMt += ipCutAvailMt;
         workCenterSummary.IP_CUTTING.count += 1;
-
-        // Till final draw complete, IP cut stock is part of Draw Bench WIP
-        workCenterSummary.DRAW.availMtr += ipCutAvailMtr;
-        workCenterSummary.DRAW.availPcs += ipCutAvailPcs * (ipMultiple || 1);
-        workCenterSummary.DRAW.availMt += ipCutAvailMt;
       }
       if (isCds && (drawAvailMtr >= 1.0 || drawAvailPcs >= 1)) {
         workCenterSummary.DRAW.availMtr += drawAvailMtr;

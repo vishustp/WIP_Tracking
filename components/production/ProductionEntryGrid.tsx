@@ -534,6 +534,49 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       return null;
     };
 
+    // 1. Primary Source of Truth: serverSummary returned by /api/production/queue
+    // (guarantees 100% mathematical parity with Dashboard and Size-Grade WIP Matrix)
+    if (serverSummary && serverSummary.length > 0) {
+      serverSummary.forEach((s: any) => {
+        const sc = resolveStageCode({ stage_code: s.stage_code });
+        if (sc && summary[sc]) {
+          summary[sc].availMtr = Number(s.availMtr || 0);
+          summary[sc].availPcs = Number(s.availPcs || 0);
+          summary[sc].availMt = Number(s.availMt || 0);
+          summary[sc].count = Number(s.count || 0);
+        }
+      });
+
+      const activeSc = resolveStageCode({ stage_code: stage });
+      if (activeSc && summary[activeSc] && rows && rows.length > 0) {
+        const queueTotalMtr = rows.reduce((sum, r) => {
+          if (r.is_child && r.master_wo_id) return sum;
+          return sum + Number(r.ready_mtr ?? r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
+        }, 0);
+        const queueTotalPcs = rows.reduce((sum, r) => {
+          if (r.is_child && r.master_wo_id) return sum;
+          return sum + Number(r.ready_pcs ?? r.balance_to_make_pcs ?? r.max_allowed_pcs ?? 0);
+        }, 0);
+        const queueTotalMt = rows.reduce((sum, r) => {
+          if (r.is_child && r.master_wo_id) return sum;
+          const isMhStage = activeSc === 'HOT_ROLLING' || activeSc === 'ROLLING' || activeSc === 'HOLLOW_HEAT_TREATMENT' || activeSc === 'DRAW';
+          const planMh = planMhMap.get(r.work_order_id) || (r.work_order_no ? planMhMap.get(String(r.work_order_no).trim()) : undefined);
+          const od = isMhStage ? Number(r.mh_od || planMh?.mh_od || r.od || 0) : Number(r.od || 0);
+          const wt = isMhStage ? Number(r.mh_wt || planMh?.mh_wt || r.wl || 0) : Number(r.wl || 0);
+          const mtrVal = Number(r.ready_mtr ?? r.balance_to_make_mtr ?? r.max_allowed_mtr ?? 0);
+          return sum + mtFromMtr(mtrVal, od, wt);
+        }, 0);
+
+        summary[activeSc].availMtr = queueTotalMtr;
+        summary[activeSc].availPcs = queueTotalPcs;
+        summary[activeSc].availMt = queueTotalMt;
+        summary[activeSc].count = rows.filter((r) => !(r.is_child && r.master_wo_id)).length;
+      }
+
+      return Object.values(summary);
+    }
+
+    // 2. Fallback: Local calculation if serverSummary has not yet loaded
     let hasFactoryData = false;
     if (factoryWip && factoryWip.length > 0) {
       factoryWip.forEach((w) => {
