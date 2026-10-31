@@ -147,6 +147,28 @@ describe("Production Utils Unit Tests", () => {
       expect(extracted.rejPcs).toBe(3);
       expect(extracted.cleanRemarks).toBe("Shift B rolled");
     });
+
+    it("prioritizes native output_pcs and rejection_pcs over regex remarks when object is passed", () => {
+      const extracted = extractPcsFromRemarks({
+        output_pcs: 75,
+        rejection_pcs: 5,
+        remarks: "Shift B rolled [PCS:50] [REJ_PCS:3]",
+      });
+      expect(extracted.pcs).toBe(75);
+      expect(extracted.rejPcs).toBe(5);
+      expect(extracted.cleanRemarks).toBe("Shift B rolled");
+    });
+
+    it("falls back to regex remarks when object output_pcs is 0 or null", () => {
+      const extracted = extractPcsFromRemarks({
+        output_pcs: 0,
+        rejection_pcs: null,
+        remarks: "Shift B rolled [PCS:50] [REJ_PCS:3]",
+      });
+      expect(extracted.pcs).toBe(50);
+      expect(extracted.rejPcs).toBe(3);
+      expect(extracted.cleanRemarks).toBe("Shift B rolled");
+    });
   });
 
   describe("5. Specification Normalization", () => {

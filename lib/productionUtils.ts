@@ -328,16 +328,43 @@ export function cleanRemarksFromSystemTags(remarks: string | null | undefined): 
     .trim();
 }
 
-export function extractPcsFromRemarks(remarks: string | null | undefined): {
+export function extractPcsFromRemarks(
+  remarksOrLog: string | null | undefined | { remarks?: string | null; output_pcs?: number | null; rejection_pcs?: number | null }
+): {
   pcs: number | null;
   rejPcs: number | null;
   cleanRemarks: string;
 } {
-  if (!remarks) return { pcs: null, rejPcs: null, cleanRemarks: "" };
+  if (!remarksOrLog) return { pcs: null, rejPcs: null, cleanRemarks: "" };
+
+  let remarks: string | null | undefined;
+  let nativePcs: number | null = null;
+  let nativeRejPcs: number | null = null;
+
+  if (typeof remarksOrLog === "object") {
+    remarks = remarksOrLog.remarks;
+    if (typeof remarksOrLog.output_pcs === "number" && remarksOrLog.output_pcs > 0) {
+      nativePcs = remarksOrLog.output_pcs;
+    }
+    if (typeof remarksOrLog.rejection_pcs === "number" && remarksOrLog.rejection_pcs > 0) {
+      nativeRejPcs = remarksOrLog.rejection_pcs;
+    }
+  } else {
+    remarks = remarksOrLog;
+  }
+
+  if (!remarks) {
+    return {
+      pcs: nativePcs,
+      rejPcs: nativeRejPcs,
+      cleanRemarks: "",
+    };
+  }
+
   const pcsMatch = remarks.match(/\[PCS:(\d+)/i);
   const rejMatch = remarks.match(/(?:\[REJ_PCS:|\[REJ:|[, ]REJ:)(\d+)/i);
-  let pcs = pcsMatch ? parseInt(pcsMatch[1], 10) : null;
-  const rejPcs = rejMatch ? parseInt(rejMatch[1], 10) : null;
+  let pcs = nativePcs !== null ? nativePcs : (pcsMatch ? parseInt(pcsMatch[1], 10) : null);
+  const rejPcs = nativeRejPcs !== null ? nativeRejPcs : (rejMatch ? parseInt(rejMatch[1], 10) : null);
 
   // If [PCS:...] was not found or was 0, fallback to prime cuts from [CUTS:...]
   if (pcs === null || pcs <= 0) {

@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
 
           let alreadyLoggedPcs = 0;
           for (const el of existingLogs || []) {
-            const pInfo = extractPcsFromRemarks(el.remarks);
+            const pInfo = extractPcsFromRemarks(el);
             if (pInfo?.pcs) {
               alreadyLoggedPcs += pInfo.pcs;
             }
@@ -276,22 +276,39 @@ export async function POST(req: NextRequest) {
         const rejPcs = Number(item.rejection_pcs || 0) || null;
         const htcOkPcs = Number(item.htc_ok_pcs || 0) || null;
 
-        const { error: insertErr } = await admin
-          .from('production_logs')
-          .insert({
-            work_order_id: item.work_order_id,
-            stage_id: stageId,
-            process_route_id: item.route_id,
-            rolling_plan_id: item.rolling_plan_id || null,
-            process_date: processDate,
-            input_qty: inputMtr,
-            output_qty: outputMtr,
-            rejection_qty: rejMtr,
-            htc_ok: htcOkMtr,
-            heat_lot_no: item.heat_lot_no || null,
-            remarks: item.remarks || null,
-            created_by: userId || null,
-          });
+        const basePayload: any = {
+          work_order_id: item.work_order_id,
+          stage_id: stageId,
+          process_route_id: item.route_id,
+          rolling_plan_id: item.rolling_plan_id || null,
+          process_date: processDate,
+          input_qty: inputMtr,
+          output_qty: outputMtr,
+          rejection_qty: rejMtr,
+          htc_ok: htcOkMtr,
+          heat_lot_no: item.heat_lot_no || null,
+          remarks: item.remarks || null,
+          created_by: userId || null,
+        };
+
+        const enrichedPayload: any = {
+          ...basePayload,
+          ...(outputPcs !== null ? { output_pcs: outputPcs } : {}),
+          ...(rejPcs !== null ? { rejection_pcs: rejPcs } : {}),
+          ...(htcOkPcs !== null ? { htc_ok_pcs: htcOkPcs } : {}),
+        };
+
+        let insertErr: any = null;
+        const resWithPcs = await admin.from('production_logs').insert(enrichedPayload);
+        if (resWithPcs.error) {
+          // If the column does not exist yet in DB (code 42703), fallback gracefully to basePayload
+          if (resWithPcs.error.code === '42703') {
+            const fallbackRes = await admin.from('production_logs').insert(basePayload);
+            insertErr = fallbackRes.error;
+          } else {
+            insertErr = resWithPcs.error;
+          }
+        }
 
         if (insertErr) {
           errors.push(`Error for WO ${item.work_order_id}: ${insertErr.message}`);
