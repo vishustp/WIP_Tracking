@@ -234,8 +234,8 @@ export async function GET(req: NextRequest) {
       return all;
     }
 
-    // Fetch plans, stages, logs, work orders, routes, qc, diversions, rejection declarations
-    const [plansRes, stagesRes, logs, woRes, routesRes, qcRes, divsRes, rejsRes, hbRes] = await Promise.all([
+    // Fetch plans, stages, logs, work orders, routes, qc, diversions, rejection declarations, hollow bank, and ppc stock generations
+    const [plansRes, stagesRes, logs, woRes, routesRes, qcRes, divsRes, rejsRes, hbRes, stkGenRes] = await Promise.all([
       admin
         .from("rolling_plans")
         .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2, multiple, created_at")
@@ -261,6 +261,10 @@ export async function GET(req: NextRequest) {
       admin
         .from("hollow_bank_inventory")
         .select("id, source_wo_id, source_stage_code, pcs, total_meters, status"),
+      admin
+        .from("ppc_stock_generations")
+        .select("id, work_order_id, stage_id, stage_code, stock_type, pcs, meters, weight_mt, status")
+        .eq("status", "ACTIVE"),
     ]);
 
     if (stagesRes.error) throw stagesRes.error;
@@ -289,6 +293,27 @@ export async function GET(req: NextRequest) {
     const qcInspections = qcRes?.data || [];
     const rejectionDeclarations = rejsRes?.data || [];
     const hollowBankInventory = hbRes?.data || [];
+    const stockGenerations = Array.isArray((stkGenRes as any)?.data) ? (stkGenRes as any).data : [];
+
+    const getStageStockGenIn = (wId: string, stageCode: string) => {
+      const matching = stockGenerations.filter(
+        (g: any) => g.work_order_id === wId && String(g.stage_code).toUpperCase() === stageCode.toUpperCase() && g.stock_type === 'INCOMING_QUEUE'
+      );
+      const pcs = matching.reduce((sum: number, g: any) => sum + Number(g.pcs || 0), 0);
+      const mtr = matching.reduce((sum: number, g: any) => sum + Number(g.meters || 0), 0);
+      const mt = matching.reduce((sum: number, g: any) => sum + Number(g.weight_mt || 0), 0);
+      return { pcs, mtr, mt };
+    };
+
+    const getStageStockGenOut = (wId: string, stageCode: string) => {
+      const matching = stockGenerations.filter(
+        (g: any) => g.work_order_id === wId && String(g.stage_code).toUpperCase() === stageCode.toUpperCase() && g.stock_type === 'STAGE_OUTPUT'
+      );
+      const pcs = matching.reduce((sum: number, g: any) => sum + Number(g.pcs || 0), 0);
+      const mtr = matching.reduce((sum: number, g: any) => sum + Number(g.meters || 0), 0);
+      const mt = matching.reduce((sum: number, g: any) => sum + Number(g.weight_mt || 0), 0);
+      return { pcs, mtr, mt };
+    };
 
     const getStageRejDecl = (wId: string, stageCode: string) => {
       const matching = rejectionDeclarations.filter(
@@ -1055,24 +1080,29 @@ export async function GET(req: NextRequest) {
       const htcDivInPcs = effMhAvg > 0 ? Math.round(htcDivIn / effMhAvg) : 0;
       const htcDivOutPcs = effMhAvg > 0 ? Math.round(htcDivOut / effMhAvg) : 0;
 
-      let htcAvailPcs = Math.max(0, incomingHtcPcs + htcDivInPcs - htcTestedPcs - htcDivOutPcs);
-      let htcAvailMtr = effMhAvg > 0 ? Number((htcAvailPcs * effMhAvg).toFixed(3)) : Math.max(0, incomingHtcMtr + htcDivIn - (sumQty(htcLogs, "output_qty") + sumQty(htcLogs, "rejection_qty")) - htcDivOut);
+      const htcStockIn = getStageStockGenIn(woId, "HTC");
+      const htcStockOut = getStageStockGenOut(woId, "HTC");
+
+      let htcAvailPcs = Math.max(0, incomingHtcPcs + htcDivInPcs + htcStockIn.pcs - htcTestedPcs - htcDivOutPcs);
+      let htcAvailMtr = effMhAvg > 0 ? Number((htcAvailPcs * effMhAvg).toFixed(3)) : Math.max(0, incomingHtcMtr + htcDivIn + htcStockIn.mtr - (sumQty(htcLogs, "output_qty") + sumQty(htcLogs, "rejection_qty")) - htcDivOut);
       let htcAvailMt = mtFromMtr(htcAvailMtr, mhOd, mhWt);
 
-      const rollHtcOkPcs = htcOkPcs;
-      const rollHtcOkMtr = htcOkMtr;
+      const rollHtcOkPcs = htcOkPcs + htcStockOut.pcs;
+      const rollHtcOkMtr = htcOkMtr + htcStockOut.mtr;
 
-      // 2. Hollow Heat Treatment Stage Metrics (adjusted for HHT Diversions)
+      // 2. Hollow Heat Treatment Stage Metrics (adjusted for HHT Diversions & Stock Generations)
       const effHhtAvg = mhAvgLength > 0 ? mhAvgLength : effMhAvg;
       const hollowHtLogs = getStageLogs(woId, hollowHtStageId);
       const hollowHtOutPcs = sumPcs(hollowHtLogs, effHhtAvg);
       const hollowHtRejPcs = sumRejPcs(hollowHtLogs, effHhtAvg);
-      const hollowHtNetPcs = Math.max(0, hollowHtOutPcs - hollowHtRejPcs);
+      const hhtStockIn = getStageStockGenIn(woId, "HOLLOW_HEAT_TREATMENT");
+      const hhtStockOut = getStageStockGenOut(woId, "HOLLOW_HEAT_TREATMENT");
+      const hollowHtNetPcs = Math.max(0, hollowHtOutPcs - hollowHtRejPcs) + hhtStockOut.pcs;
       const rawHhtOut = sumQty(hollowHtLogs, "output_qty");
       const rawHhtRej = sumQty(hollowHtLogs, "rejection_qty");
       const hollowHtOutMtr = rawHhtOut > 0 ? rawHhtOut : (effHhtAvg > 0 ? Number((hollowHtOutPcs * effHhtAvg).toFixed(3)) : 0);
       const hollowHtRejMtr = rawHhtRej > 0 ? rawHhtRej : (effHhtAvg > 0 ? Number((hollowHtRejPcs * effHhtAvg).toFixed(3)) : 0);
-      const hollowHtNetMtr = Math.max(0, hollowHtOutMtr - hollowHtRejMtr);
+      const hollowHtNetMtr = Math.max(0, hollowHtOutMtr - hollowHtRejMtr) + hhtStockOut.mtr;
 
       const hhtDivIn = getStageDivIn(woId, "HOLLOW_HEAT_TREATMENT");
       const hhtDivOut = getStageDivOut(woId, "HOLLOW_HEAT_TREATMENT");
@@ -1082,8 +1112,8 @@ export async function GET(req: NextRequest) {
       // Hollow HT incoming: strictly from Rolling HTC OK!
       const isHhtRoute = isAlloy || routeCode.includes("ALLOY");
       const hhtRejDecl = getStageRejDecl(woId, "HOLLOW_HEAT_TREATMENT");
-      const hollowHtRemMtr = Math.max(0, rollHtcOkMtr + hhtDivIn - hollowHtOutMtr - hollowHtRejMtr - hhtDivOut - hhtRejDecl.mtr);
-      const hollowHtRemPcs = Math.max(0, (effHhtAvg > 0 ? Math.round(hollowHtRemMtr / effHhtAvg) : (rollHtcOkPcs + hhtDivInPcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs)) - hhtRejDecl.pcs);
+      const hollowHtRemMtr = Math.max(0, rollHtcOkMtr + hhtDivIn + hhtStockIn.mtr - hollowHtOutMtr - hollowHtRejMtr - hhtDivOut - hhtRejDecl.mtr);
+      const hollowHtRemPcs = Math.max(0, (effHhtAvg > 0 ? Math.round(hollowHtRemMtr / effHhtAvg) : (rollHtcOkPcs + hhtDivInPcs + hhtStockIn.pcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs)) - hhtRejDecl.pcs);
       let hollowHtAvailPcs = isHhtRoute ? (hollowHtRemMtr >= 1.0 ? Math.max(1, hollowHtRemPcs) : 0) : 0;
       let hollowHtAvailMtr = isHhtRoute ? (hollowHtAvailPcs > 0 ? Number(hollowHtRemMtr.toFixed(3)) : 0) : 0;
       const hollowHtEffOd = mhOd > 0 ? mhOd : Number(wo.size_od || 0);
@@ -1123,12 +1153,14 @@ export async function GET(req: NextRequest) {
 
       const ipCutOutPcs = sumPcs(allIpCutLogs, ipCutLength > 0 ? ipCutLength : effMhAvg);
       const ipCutRejPcs = sumRejPcs(allIpCutLogs, ipCutLength > 0 ? ipCutLength : effMhAvg);
-      const ipCutNetPcs = Math.max(0, ipCutOutPcs - ipCutRejPcs);
+      const ipCutStockIn = getStageStockGenIn(woId, "IP_CUTTING");
+      const ipCutStockOut = getStageStockGenOut(woId, "IP_CUTTING");
+      const ipCutNetPcs = Math.max(0, ipCutOutPcs - ipCutRejPcs) + ipCutStockOut.pcs;
       const rawIpCutOutMtr = sumQty(allIpCutLogs, "output_qty");
       const rawIpCutRejMtr = sumQty(allIpCutLogs, "rejection_qty");
       const ipCutOutMtr = rawIpCutOutMtr > 0 ? rawIpCutOutMtr : (ipCutLength > 0 ? Number((ipCutOutPcs * ipCutLength).toFixed(3)) : Number((ipCutOutPcs * effMhAvg).toFixed(3)));
       const ipCutRejMtr = rawIpCutRejMtr > 0 ? rawIpCutRejMtr : (ipCutLength > 0 ? Number((ipCutRejPcs * ipCutLength).toFixed(3)) : Number((ipCutRejPcs * effMhAvg).toFixed(3)));
-      const ipCutNetMtr = Math.max(0, ipCutOutMtr - ipCutRejMtr);
+      const ipCutNetMtr = Math.max(0, ipCutOutMtr - ipCutRejMtr) + ipCutStockOut.mtr;
 
       let ipMotherPcsCut = 0;
       for (const log of allIpCutLogs) {
@@ -1146,7 +1178,7 @@ export async function GET(req: NextRequest) {
       const ipCutFeederMtr = isAlloy ? hollowHtNetMtr : rollHtcOkMtr;
       const ipCutFeederMt = mtFromMtr(ipCutFeederMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
-      const ipCutAvailPcs = isIpCutting ? Math.max(0, ipCutFeederPcs - ipMotherPcsCut) : 0;
+      const ipCutAvailPcs = isIpCutting ? Math.max(0, ipCutFeederPcs + ipCutStockIn.pcs - ipMotherPcsCut) : 0;
       const ipCutAvailMtr = effMhAvg > 0 ? Number((ipCutAvailPcs * effMhAvg).toFixed(3)) : 0;
       const ipCutAvailMt = mtFromMtr(ipCutAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
@@ -1165,8 +1197,11 @@ export async function GET(req: NextRequest) {
         ? ipCutNetMtr
         : (isAlloy ? hollowHtNetMtr : rollHtcOkMtr);
 
+      const drawStockIn = getStageStockGenIn(woId, "DRAW");
+      const drawStockOut = getStageStockGenOut(woId, "DRAW");
+
       let drawAvailPcs = isCds
-        ? Math.max(0, drawIncomingPcs + drawDivInPcs - drawOutPcs - drawRejPcs - drawDivOutPcs)
+        ? Math.max(0, drawIncomingPcs + drawDivInPcs + drawStockIn.pcs - drawOutPcs - drawRejPcs - drawDivOutPcs)
         : 0;
       const effDrawLen = isIpCutting && ipCutLength > 0
         ? ipCutLength
@@ -1178,12 +1213,14 @@ export async function GET(req: NextRequest) {
       const pilgerLogs = getStageLogs(woId, pilgerStageId);
       const pilgerOutPcs = sumPcs(pilgerLogs, avgLength);
       const pilgerRejPcs = sumRejPcs(pilgerLogs, avgLength);
-      const pilgerNetPcs = Math.max(0, pilgerOutPcs - pilgerRejPcs);
+      const pilgerStockIn = getStageStockGenIn(woId, "PILGER");
+      const pilgerStockOut = getStageStockGenOut(woId, "PILGER");
+      const pilgerNetPcs = Math.max(0, pilgerOutPcs - pilgerRejPcs) + pilgerStockOut.pcs;
       const rawPilgerOut = sumQty(pilgerLogs, "output_qty");
       const rawPilgerRej = sumQty(pilgerLogs, "rejection_qty");
       const pilgerOutMtr = rawPilgerOut > 0 ? rawPilgerOut : (avgLength > 0 ? Number((pilgerOutPcs * avgLength).toFixed(3)) : 0);
       const pilgerRejMtr = rawPilgerRej > 0 ? rawPilgerRej : (avgLength > 0 ? Number((pilgerRejPcs * avgLength).toFixed(3)) : 0);
-      const pilgerNetMtr = Math.max(0, pilgerOutMtr - pilgerRejMtr);
+      const pilgerNetMtr = Math.max(0, pilgerOutMtr - pilgerRejMtr) + pilgerStockOut.mtr;
 
       const effPilgerLen = effMhAvg > 0 ? effMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength);
       const pilgerDivIn = getStageDivIn(woId, "PILGER");
@@ -1193,7 +1230,7 @@ export async function GET(req: NextRequest) {
 
       const pilgerIncomingPcs = rollHtcOkPcs;
       let pilgerAvailPcs = isSsSteel
-        ? Math.max(0, pilgerIncomingPcs + pilgerDivInPcs - pilgerOutPcs - pilgerRejPcs - pilgerDivOutPcs)
+        ? Math.max(0, pilgerIncomingPcs + pilgerDivInPcs + pilgerStockIn.pcs - pilgerOutPcs - pilgerRejPcs - pilgerDivOutPcs)
         : 0;
       let pilgerAvailMtr = effPilgerLen > 0 ? Number((pilgerAvailPcs * effPilgerLen).toFixed(3)) : 0;
       let pilgerAvailMt = mtFromMtr(pilgerAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
@@ -1207,14 +1244,16 @@ export async function GET(req: NextRequest) {
           allHtLogsList.push(...getStageLogs(cId, htStageId));
         }
       }
+      const htStockIn = getStageStockGenIn(woId, "HEAT_TREATMENT");
+      const htStockOut = getStageStockGenOut(woId, "HEAT_TREATMENT");
       const htOutPcs = sumPcs(allHtLogsList, avgLength);
       const htRejPcs = sumRejPcs(allHtLogsList, avgLength);
-      const htNetPcs = Math.max(0, htOutPcs - htRejPcs);
+      const htNetPcs = Math.max(0, htOutPcs - htRejPcs) + htStockOut.pcs;
       const rawHtOut = sumQty(allHtLogsList, "output_qty");
       const rawHtRej = sumQty(allHtLogsList, "rejection_qty");
       const htOutMtr = rawHtOut > 0 ? rawHtOut : (avgLength > 0 ? Number((htOutPcs * avgLength).toFixed(3)) : 0);
       const htRejMtr = rawHtRej > 0 ? rawHtRej : (avgLength > 0 ? Number((htRejPcs * avgLength).toFixed(3)) : 0);
-      const htNetMtr = Math.max(0, htOutMtr - htRejMtr);
+      const htNetMtr = Math.max(0, htOutMtr - htRejMtr) + htStockOut.mtr;
 
       const htDivIn = getStageDivIn(woId, "HEAT_TREATMENT");
       const htDivOut = getStageDivOut(woId, "HEAT_TREATMENT");
@@ -1261,14 +1300,16 @@ export async function GET(req: NextRequest) {
           allBandSawLogs.push(...getStageLogs(cId, bandSawStageId));
         }
       }
+      const bsStockIn = getStageStockGenIn(woId, "BAND_SAW");
+      const bsStockOut = getStageStockGenOut(woId, "BAND_SAW");
       const bandSawOutPcs = sumPcs(allBandSawLogs, avgLength);
       const bandSawRejPcs = sumRejPcs(allBandSawLogs, avgLength);
-      const bandSawNetPcs = Math.max(0, bandSawOutPcs - bandSawRejPcs);
+      const bandSawNetPcs = (allBandSawLogs.length > 0 ? Math.max(0, bandSawOutPcs - bandSawRejPcs) : 0) + bsStockOut.pcs;
       const rawBandSawOutMtr = sumQty(allBandSawLogs, "output_qty");
       const rawBandSawRejMtr = sumQty(allBandSawLogs, "rejection_qty");
       const bandSawOutMtr = rawBandSawOutMtr > 0 ? rawBandSawOutMtr : (avgLength > 0 ? Number((bandSawOutPcs * avgLength).toFixed(3)) : 0);
       const bandSawRejMtr = rawBandSawRejMtr > 0 ? rawBandSawRejMtr : (avgLength > 0 ? Number((bandSawRejPcs * avgLength).toFixed(3)) : 0);
-      const bandSawNetMtr = Math.max(0, bandSawOutMtr - bandSawRejMtr);
+      const bandSawNetMtr = (allBandSawLogs.length > 0 ? Math.max(0, bandSawOutMtr - bandSawRejMtr) : 0) + bsStockOut.mtr;
 
       let bsMotherPcsCut = 0;
       for (const log of allBandSawLogs) {
@@ -1318,7 +1359,7 @@ export async function GET(req: NextRequest) {
       const loggedHtPcs = htOutPcs + htRejPcs;
       const htRejDecl = getStageRejDecl(woId, "HEAT_TREATMENT");
       let htAvailPcs = (isCds || isSsSteel)
-        ? Math.max(0, htIncomingPcs + htDivInPcs - loggedHtPcs - htDivOutPcs - htRejDecl.pcs)
+        ? Math.max(0, htIncomingPcs + htDivInPcs + htStockIn.pcs - loggedHtPcs - htDivOutPcs - htRejDecl.pcs)
         : 0;
       let htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
       let htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
@@ -1327,7 +1368,7 @@ export async function GET(req: NextRequest) {
       const drawRejDecl = getStageRejDecl(woId, "DRAW");
       const effDrawRej = Math.max(drawRejPcs, drawRejDecl.pcs);
       if (isCds) {
-        drawAvailPcs = Math.max(0, drawIncomingPcs + drawDivInPcs - (drawOutPcs + effDrawRej) - drawDivOutPcs);
+        drawAvailPcs = Math.max(0, drawIncomingPcs + drawDivInPcs + drawStockIn.pcs - (drawOutPcs + effDrawRej) - drawDivOutPcs);
         drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;
         drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
       }
@@ -1335,7 +1376,7 @@ export async function GET(req: NextRequest) {
       // Apply rejection declarations to Pilger availability (Rule 1 & Rule 2: Preceding Stage OK - Current Stage OK)
       const pilgerRejDecl = getStageRejDecl(woId, "PILGER");
       if (isSsSteel) {
-        pilgerAvailPcs = Math.max(0, pilgerIncomingPcs + pilgerDivInPcs - (pilgerOutPcs + pilgerRejPcs) - pilgerDivOutPcs - pilgerRejDecl.pcs);
+        pilgerAvailPcs = Math.max(0, pilgerIncomingPcs + pilgerDivInPcs + pilgerStockIn.pcs - (pilgerOutPcs + pilgerRejPcs) - pilgerDivOutPcs - pilgerRejDecl.pcs);
         pilgerAvailMtr = effPilgerLen > 0 ? Number((pilgerAvailPcs * effPilgerLen).toFixed(3)) : 0;
         pilgerAvailMt = mtFromMtr(pilgerAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
       }
@@ -1357,7 +1398,7 @@ export async function GET(req: NextRequest) {
             mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
           );
       const bsRejDecl = getStageRejDecl(woId, "BAND_SAW");
-      let bandSawAvailPcs = Math.max(0, bandSawIncomingPcs + bandSawDivInPcs - bandSawPassedPcs - bandSawDivOutPcs - bsRejDecl.pcs);
+      let bandSawAvailPcs = Math.max(0, bandSawIncomingPcs + bandSawDivInPcs + bsStockIn.pcs - bandSawPassedPcs - bandSawDivOutPcs - bsRejDecl.pcs);
       let bandSawAvailMtr = avgLength > 0 ? Number((bandSawAvailPcs * avgLength).toFixed(3)) : 0;
       let bandSawAvailMt = mtFromMtr(bandSawAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
@@ -1370,8 +1411,8 @@ export async function GET(req: NextRequest) {
       const vdiRejDecl = getStageRejDecl(woId, "VDI");
 
       // VDI incoming: strictly from Band Saw Net Output Pieces
-      const vdiIncomingPcs = allBandSawLogs.length > 0 ? bandSawNetPcs : 0;
-      const vdiIncomingMtr = allBandSawLogs.length > 0 ? bandSawNetMtr : 0;
+      const vdiIncomingPcs = bandSawNetPcs;
+      const vdiIncomingMtr = bandSawNetMtr;
 
       // Distinguish salvage diversions out vs prime diversions out from VDI
       const isVdiSalvageDiv = (d: any) => {
@@ -1449,8 +1490,11 @@ export async function GET(req: NextRequest) {
         effVdiDivInMtr = Math.min(effVdiDivInMtr, qcInspectedMtr);
       }
 
-      let vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs - qcInspectedPcs - vdiDivOutPcs - vdiRejDecl.pcs);
-      let vdiAvailMtr = Math.max(0, Number((vdiIncomingMtr + effVdiDivInMtr - qcInspectedMtr - vdiDivOut - vdiRejDecl.mtr).toFixed(3)));
+      const vdiStockIn = getStageStockGenIn(woId, "VDI");
+      const vdiStockOut = getStageStockGenOut(woId, "VDI");
+
+      let vdiAvailPcs = Math.max(0, vdiIncomingPcs + vdiDivInPcs + vdiStockIn.pcs - qcInspectedPcs - vdiDivOutPcs - vdiRejDecl.pcs);
+      let vdiAvailMtr = Math.max(0, Number((vdiIncomingMtr + effVdiDivInMtr + vdiStockIn.mtr - qcInspectedMtr - vdiDivOut - vdiRejDecl.mtr).toFixed(3)));
       if (vdiAvailPcs <= 0 && vdiAvailMtr > 0 && avgLength > 0 && qcInspectedPcs === 0) {
         vdiAvailPcs = Math.max(1, Math.round(vdiAvailMtr / avgLength));
       } else if (vdiAvailPcs <= 0) {
@@ -1466,16 +1510,18 @@ export async function GET(req: NextRequest) {
       const finDivInPcs = getStageDivInPcs(woId, "FINISHING", avgLength);
       const finDivOutPcs = getStageDivOutPcs(woId, "FINISHING", avgLength) + vdiPrimeDivOutPcs;
       const finRejDecl = getStageRejDecl(woId, "FINISHING");
+      const finStockIn = getStageStockGenIn(woId, "FINISHING");
+      const finStockOut = getStageStockGenOut(woId, "FINISHING");
 
       const isCampaignMaster = Boolean(campaign && Array.isArray(campaign.child_work_orders) && campaign.child_work_orders.length > 0);
       // For Master campaign WO, finishing WIP only comes from QC records done directly against this master WO.
       // If all QC was separated against child WOs, child WOs own the finishing WIP in childFinishingRows.
-      const finIncomingPcs = isCampaignMaster ? directQcOkPcs : Math.round(qcOkPcs);
+      const finIncomingPcs = (isCampaignMaster ? directQcOkPcs : Math.round(qcOkPcs)) + vdiStockOut.pcs;
       const finConsumedPcs = isCampaignMaster ? (directFinOutPcs + directFinRejPcs) : (finOutPcs + finRejPcs);
 
-      let finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs - finConsumedPcs - finDivOutPcs - finRejDecl.pcs);
+      let finAvailPcs = Math.max(0, finIncomingPcs + finDivInPcs + finStockIn.pcs - finConsumedPcs - finDivOutPcs - finRejDecl.pcs);
       const finIncomingMtr = avgLength > 0 ? Number((finIncomingPcs * avgLength).toFixed(3)) : 0;
-      let finAvailMtr = Math.max(0, Number((finIncomingMtr + finDivIn - (finOutMtr + finRejMtr) - totalFinDivOut - finRejDecl.mtr).toFixed(3)));
+      let finAvailMtr = Math.max(0, Number((finIncomingMtr + finDivIn + finStockIn.mtr - (finOutMtr + finRejMtr) - totalFinDivOut - finRejDecl.mtr).toFixed(3)));
       if (finAvailPcs <= 0 && finAvailMtr > 0 && avgLength > 0 && finConsumedPcs === 0) {
         finAvailPcs = Math.max(1, Math.round(finAvailMtr / avgLength));
       } else if (finAvailPcs <= 0) {
