@@ -808,6 +808,144 @@ export function computeAgingReportRows(options: {
 }
 
 /**
+ * Transforms production queue rows (from /api/production/queue) into normalized AgingRow items.
+ * Shared across the Aging Report (/reports/aging) and Aging Notification Bell.
+ * Strictly:
+ * 1. Excludes Hollow Bank orders (HB-BUFFER / isHollowBankOrder)
+ * 2. Excludes HOT_ROLLING / ROLLING
+ * 3. Derives pieces/meters from average length if missing
+ * 4. Eliminates zero-piece or zero-meter lots
+ * 5. Eliminates zero-salvage lots
+ * 6. Incorporates diversion dates to reset the aging clock
+ * 7. Applies calculateAgingSeverity (> 5 CRITICAL, 3..5 WARNING, <= 2 NORMAL)
+ * 8. Checks remote and local acknowledgements
+ */
+export function transformQueueDataToAgingRows(
+  queueData: any[],
+  acknowledgements: RawAcknowledgement[] = [],
+  asOfDate: Date | string = new Date()
+): AgingRow[] {
+  if (!Array.isArray(queueData) || queueData.length === 0) return [];
+
+  const asOf = typeof asOfDate === 'string' ? new Date(asOfDate) : asOfDate;
+  const todayStr = asOf.toISOString().slice(0, 10);
+
+  const ackMap = new Map<string, RawAcknowledgement>();
+  (acknowledgements || []).forEach((a) => {
+    if (a.work_order_id && a.stage_code) {
+      ackMap.set(`${a.work_order_id}_${a.stage_code.toUpperCase()}`, a);
+    }
+  });
+
+  return queueData
+    .map((r: any) => {
+      if (!r || isHollowBankOrder(r)) return null;
+      const sc = (r.stage_code || '').toUpperCase();
+      if (sc === 'HOT_ROLLING' || sc === 'ROLLING') return null;
+
+      const l1 = r.l1 != null ? Number(r.l1) : null;
+      const l2 = r.l2 != null ? Number(r.l2) : null;
+      const avgLen = Number(
+        r.avg_length ||
+        (l1 && l2 ? (l1 + l2) / 2 : l1 || l2 || 6.0)
+      );
+
+      const rawPcs = Number(
+        r.ready_pcs != null
+          ? r.ready_pcs
+          : (r.current_wip_pcs != null ? r.current_wip_pcs : 0)
+      );
+
+      const rawMtr = Number(
+        r.ready_mtr != null
+          ? r.ready_mtr
+          : (r.current_wip != null ? r.current_wip : 0)
+      );
+
+      let pcs = Math.round(rawPcs);
+      let mtr = Number(rawMtr.toFixed(2));
+
+      // If pieces is 0 but meters > 0, derive pieces from average pipe length
+      if (pcs <= 0 && mtr > 0 && avgLen > 0) {
+        pcs = Math.max(1, Math.round(mtr / avgLen));
+      }
+
+      // If meters is 0 but pieces > 0, derive meters from pieces * average pipe length
+      if (mtr <= 0 && pcs > 0 && avgLen > 0) {
+        mtr = Number((pcs * avgLen).toFixed(2));
+      }
+
+      // Strictly filter out any zero-piece or zero-meter rows (eliminates 0-pcs ghosts in Aging)
+      if (pcs <= 0 || mtr <= 0) {
+        return null;
+      }
+
+      const isSalvage = sc === 'VDI_SALVAGE' || (r.stage_name || '').toUpperCase().includes('SALVAGE');
+      const isVdi = sc === 'VDI';
+      const salvagePcs = (isSalvage || isVdi)
+        ? (r.vdi_salvage_pcs !== undefined ? Number(r.vdi_salvage_pcs) : (isSalvage ? pcs : 0))
+        : 0;
+      const salvageMtr = (isSalvage || isVdi)
+        ? (r.vdi_salvage_mtr !== undefined ? Number(r.vdi_salvage_mtr) : (isSalvage ? mtr : 0))
+        : 0;
+
+      // If this is a salvage row and all salvage has been diverted or written off, exclude it
+      if (isSalvage && (salvagePcs <= 0 || salvageMtr <= 0)) {
+        return null;
+      }
+
+      const rawLastDate = r.last_activity_date || r.rolling_date || r.created_at?.slice(0, 10) || todayStr;
+      const effectiveDate = r.diversion_date && (!rawLastDate || new Date(r.diversion_date).getTime() > new Date(rawLastDate).getTime())
+        ? r.diversion_date.slice(0, 10)
+        : rawLastDate;
+
+      const diffDays = calculateDaysStuck(effectiveDate, asOf);
+      const severity: AgingSeverity = calculateAgingSeverity(diffDays);
+
+      const woId = r.work_order_id || r.id;
+      const ack = ackMap.get(`${woId}_${sc}`);
+      const isAcked = Boolean(ack && (!ack.snooze_until || ack.snooze_until >= todayStr));
+
+      const mt = Number(Number(r.ready_mt ?? r.available_mt ?? 0).toFixed(2));
+
+      return {
+        work_order_id: woId,
+        work_order_no: r.work_order_no,
+        customer_name: r.customer_name || null,
+        grade: r.specification || r.grade || null,
+        od: Number(r.final_od || r.size_od || r.wo_od || r.od || 0),
+        wt: Number(r.final_wt || r.size_wt || r.wo_wt || r.wt || 0),
+        l1,
+        l2,
+        stage_id: r.stage_id,
+        stage_code: sc,
+        stage_name: r.stage_name || sc,
+        sequence_no: Number(r.sequence_no || 0),
+        current_wip: mtr,
+        current_wip_pcs: pcs,
+        available_mt: mt,
+        vdi_salvage_pcs: salvagePcs,
+        vdi_salvage_mtr: salvageMtr,
+        last_activity_date: effectiveDate,
+        days_stuck: diffDays,
+        severity,
+        has_diversion: Boolean(r.has_diversion),
+        diversion_in_pcs: r.diversion_in_pcs != null ? Number(r.diversion_in_pcs) : undefined,
+        diversion_in_mtr: r.diversion_in_mtr != null ? Number(r.diversion_in_mtr) : undefined,
+        diversion_source_wo: r.diversion_source_wo || undefined,
+        diversion_remarks: r.diversion_remarks || undefined,
+        diversion_date: r.diversion_date || undefined,
+        is_acknowledged: isAcked,
+        acknowledged_by: ack?.acknowledged_by || null,
+        ack_notes: ack?.notes || null,
+        ack_snooze_until: ack?.snooze_until || null,
+      } as AgingRow;
+    })
+    .filter((r): r is AgingRow => r !== null)
+    .sort((a: AgingRow, b: AgingRow) => b.days_stuck - a.days_stuck);
+}
+
+/**
  * Computes executive KPI summary metrics for the Aging Report.
  */
 export function computeAgingKpis(rows: AgingRow[]): AgingKpiSummary {

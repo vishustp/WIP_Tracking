@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { isHollowBankOrder } from '@/lib/productionUtils';
 import {
   type AgingRow,
   type RawWipRow,
@@ -25,6 +26,7 @@ import {
   type RawAcknowledgement,
   computeAgingReportRows,
   normalizeAgingRow,
+  transformQueueDataToAgingRows,
 } from '@/lib/reports/agingReportHelper';
 
 export type AgingAlert = AgingRow;
@@ -74,23 +76,66 @@ export default function AgingNotificationBell({
         }
       } catch {}
 
-      // 1. Attempt reading from vw_wip_aging view
+      // Query database acknowledgements to combine with local client acks
+      let dbAcks: RawAcknowledgement[] = [];
+      try {
+        const { data: dbAckData } = await supabase
+          .from('aging_alert_acknowledgements')
+          .select('work_order_id, stage_code, acknowledged_by, notes, snooze_until');
+        if (Array.isArray(dbAckData)) {
+          dbAcks = dbAckData;
+        }
+      } catch {}
+      const combinedAcks = [...dbAcks, ...localAcks];
+
+      // 1. Live Production Queue Engine (100% unified with WIP Matrix, Stations & Aging Report)
+      let queueLoaded = false;
+      try {
+        const queueRes = await fetch(`/api/production/queue?all_stages=true&refresh=true&_t=${Date.now()}`);
+        if (queueRes.ok) {
+          const queueJson = await queueRes.json();
+          if (queueJson?.success && Array.isArray(queueJson.data) && queueJson.data.length > 0) {
+            const validRows: AgingAlert[] = transformQueueDataToAgingRows(queueJson.data, combinedAcks);
+            setAlerts(validRows);
+            setLoading(false);
+            queueLoaded = true;
+          }
+        }
+      } catch (queueErr) {
+        console.warn('Queue API fetch failed in Aging Notification Bell, falling back to database view:', queueErr);
+      }
+
+      if (queueLoaded) {
+        return;
+      }
+
+      // 2. Secondary fallback: Database view vw_wip_aging
       const { data: viewData, error: viewError } = await supabase
         .from('vw_wip_aging')
         .select('*')
+        .gt('current_wip', 0)
         .order('days_stuck', { ascending: false });
 
       if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
-        const rowsWithLocalAck: AgingAlert[] = viewData.map((r: any) =>
-          normalizeAgingRow(r, localAcks)
-        );
+        const [{ data: rejDecls }, { data: divPlans }, { data: hbLots }] = await Promise.all([
+          supabase.from('rejection_declarations').select('*').not('status', 'in', '("REJECTED_BY_QC","REJECTED_BY_PPC")'),
+          supabase.from('diversion_plans').select('*').neq('status', 'CANCELLED'),
+          supabase.from('hollow_bank_inventory').select('*'),
+        ]);
 
-        setAlerts(rowsWithLocalAck.filter((a) => a.current_wip > 0));
+        const rowsWithLocalAck: AgingAlert[] = viewData
+          .filter((r: any) => !isHollowBankOrder(r))
+          .map((r: any) =>
+            normalizeAgingRow(r, combinedAcks, undefined, (rejDecls || []) as any, (divPlans || []) as any, (hbLots || []) as any)
+          )
+          .filter((a) => !isHollowBankOrder(a) && a.current_wip > 0 && a.current_wip_pcs > 0);
+
+        setAlerts(rowsWithLocalAck);
         setLoading(false);
         return;
       }
 
-      // 2. Comprehensive fallback using robust aging helper
+      // 3. Comprehensive fallback using robust in-memory aging helper
       const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes, divRes, hbRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).order('sequence_no', { ascending: true }),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok').order('process_date', { ascending: false }),
@@ -102,9 +147,6 @@ export default function AgingNotificationBell({
         supabase.from('diversion_plans').select('id, target_wo_id, source_wo_id, diverted_qty, reason, work_center, status, ppc_approved_at').neq('status', 'CANCELLED'),
         supabase.from('hollow_bank_inventory').select('id, source_wo_id, source_stage_code, pcs, total_meters'),
       ]);
-
-      const dbAcks: RawAcknowledgement[] = ackRes?.data || [];
-      const combinedAcks = [...dbAcks, ...localAcks];
 
       const computed = computeAgingReportRows({
         wipRows: (wipRes.data || []) as RawWipRow[],
@@ -119,7 +161,7 @@ export default function AgingNotificationBell({
         asOfDate: new Date(),
       });
 
-      setAlerts(computed);
+      setAlerts(computed.filter(a => !isHollowBankOrder(a) && a.current_wip > 0 && a.current_wip_pcs > 0));
     } catch (err) {
       console.warn('Error loading WIP aging alerts:', err);
     } finally {
@@ -151,8 +193,10 @@ export default function AgingNotificationBell({
       }
       result = alerts.filter(a => allowed.has(a.stage_code));
     }
-    // Only show warning or critical alerts in the bell popover (unacknowledged)
-    return result.filter(a => a.days_stuck >= 3 && !a.is_acknowledged);
+    // Only show warning or critical alerts in the bell popover (unacknowledged, not hollow bank, active WIP > 0)
+    return result.filter(
+      a => a.days_stuck >= 3 && !a.is_acknowledged && !isHollowBankOrder(a) && (a.current_wip_pcs || 0) > 0 && (a.current_wip || 0) > 0
+    );
   }, [alerts, isPlantWide, currentUser]);
 
   const criticalCount = useMemo(

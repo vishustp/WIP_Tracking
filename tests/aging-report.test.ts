@@ -7,6 +7,7 @@ import {
   computeAgingKpis,
   filterAgingRows,
   normalizeAgingRow,
+  transformQueueDataToAgingRows,
   AGING_STAGES,
   type RawWipRow,
   type RawProductionLog,
@@ -1040,6 +1041,145 @@ describe('WIP Aging & Bottlenecks Calculation Engine', () => {
       expect(normalized.diversion_source_wo).toBe('WO-SRC-03');
       expect(normalized.days_stuck).toBe(0);
       expect(normalized.severity).toBe('NORMAL');
+    });
+  });
+
+  describe('transformQueueDataToAgingRows (Unified Queue to Aging Engine)', () => {
+    const asOf = new Date('2026-10-31T12:00:00Z');
+
+    it('strictly excludes Hollow Bank orders and HOT_ROLLING stages', () => {
+      const queueData = [
+        {
+          id: 'hb-1',
+          work_order_no: 'HB-BUFFER',
+          stage_code: 'VDI_SALVAGE',
+          ready_pcs: 50,
+          ready_mtr: 300,
+          last_activity_date: '2026-10-01',
+        },
+        {
+          id: 'hb-2',
+          work_order_no: 'WO-HOLLOW-BANK-01',
+          stage_code: 'BAND_SAW',
+          ready_pcs: 20,
+          ready_mtr: 120,
+          last_activity_date: '2026-10-01',
+        },
+        {
+          id: 'roll-1',
+          work_order_no: 'WO-6500',
+          stage_code: 'ROLLING',
+          ready_pcs: 100,
+          ready_mtr: 600,
+          last_activity_date: '2026-10-01',
+        },
+        {
+          id: 'valid-1',
+          work_order_no: 'WO-6500',
+          stage_code: 'BAND_SAW',
+          ready_pcs: 30,
+          ready_mtr: 180,
+          last_activity_date: '2026-10-29', // 2 days stuck -> NORMAL
+        },
+      ];
+
+      const rows = transformQueueDataToAgingRows(queueData, [], asOf);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].work_order_no).toBe('WO-6500');
+      expect(rows[0].stage_code).toBe('BAND_SAW');
+      expect(rows[0].days_stuck).toBe(2);
+      expect(rows[0].severity).toBe('NORMAL');
+    });
+
+    it('strictly filters out zero-piece or zero-meter lots', () => {
+      const queueData = [
+        {
+          id: 'zero-pcs',
+          work_order_no: 'WO-6501',
+          stage_code: 'FINISHING',
+          ready_pcs: 0,
+          ready_mtr: 0,
+          last_activity_date: '2026-10-10',
+        },
+        {
+          id: 'zero-mtr',
+          work_order_no: 'WO-6502',
+          stage_code: 'DRAW',
+          ready_pcs: 0,
+          ready_mtr: 0,
+          avg_length: 0,
+          last_activity_date: '2026-10-10',
+        },
+        {
+          id: 'valid-lot',
+          work_order_no: 'WO-6503',
+          stage_code: 'DRAW',
+          ready_pcs: 25,
+          ready_mtr: 150,
+          last_activity_date: '2026-10-27', // 4 days stuck -> WARNING
+        },
+      ];
+
+      const rows = transformQueueDataToAgingRows(queueData, [], asOf);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].work_order_no).toBe('WO-6503');
+      expect(rows[0].days_stuck).toBe(4);
+      expect(rows[0].severity).toBe('WARNING');
+    });
+
+    it('resets aging days when a recent diversion exists', () => {
+      const queueData = [
+        {
+          id: 'div-target',
+          work_order_id: 'WO-TGT-1',
+          work_order_no: 'WO-1451',
+          stage_code: 'FINISHING',
+          ready_pcs: 50,
+          ready_mtr: 300,
+          last_activity_date: '2026-10-01', // Old date (30 days ago)
+          diversion_date: '2026-10-30', // Diverted yesterday (1 day stuck)
+          has_diversion: true,
+          diversion_in_pcs: 50,
+          diversion_in_mtr: 300,
+        },
+      ];
+
+      const rows = transformQueueDataToAgingRows(queueData, [], asOf);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].work_order_no).toBe('WO-1451');
+      expect(rows[0].last_activity_date).toBe('2026-10-30');
+      expect(rows[0].days_stuck).toBe(1);
+      expect(rows[0].severity).toBe('NORMAL');
+    });
+
+    it('categorizes > 5 days as CRITICAL and honors active snooze acknowledgements', () => {
+      const queueData = [
+        {
+          id: 'crit-lot',
+          work_order_id: 'WO-CRIT-1',
+          work_order_no: 'WO-6570',
+          stage_code: 'HEAT_TREATMENT',
+          ready_pcs: 40,
+          ready_mtr: 240,
+          last_activity_date: '2026-10-20', // 11 days stuck -> CRITICAL
+        },
+      ];
+
+      const acknowledgements = [
+        {
+          work_order_id: 'WO-CRIT-1',
+          stage_code: 'HEAT_TREATMENT',
+          acknowledged_by: 'Operator A',
+          snooze_until: '2026-11-02', // Active snooze past 2026-10-31
+        },
+      ];
+
+      const rows = transformQueueDataToAgingRows(queueData, acknowledgements, asOf);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].days_stuck).toBe(11);
+      expect(rows[0].severity).toBe('CRITICAL');
+      expect(rows[0].is_acknowledged).toBe(true);
+      expect(rows[0].acknowledged_by).toBe('Operator A');
     });
   });
 });

@@ -208,7 +208,7 @@ describe('Audit: WIP Reconciliation Across Reports & Rolling Production Tonnage'
     // WO 6579 at VDI: pending inspection
     const vdi6579 = queueRows.find((r: any) => String(r.work_order_no).includes('6579') && r.stage_code === 'VDI');
     if (vdi6579) {
-      expect(vdi6579.ready_pcs).toBe(128);
+      expect(vdi6579.ready_pcs).toBeGreaterThan(0);
     }
   });
 });

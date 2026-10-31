@@ -42,6 +42,8 @@ export function isHollowBankOrder(
     woNo === 'HOLLOW BANK' ||
     woNo === 'HB BUFFER' ||
     woNo.includes('HOLLOW BANK') ||
+    woNo.includes('HOLLOW-BANK') ||
+    woNo.includes('HOLLOW_BANK') ||
     woNo.includes('HB-BUFFER') ||
     woNo.includes('HB BUFFER') ||
     woNo.startsWith('HB-') ||
@@ -50,6 +52,8 @@ export function isHollowBankOrder(
   const cust = String((w as any).customer_name || (w as any).customer || '').trim().toUpperCase();
   if (
     cust.includes('HOLLOW BANK') ||
+    cust.includes('HOLLOW-BANK') ||
+    cust.includes('HOLLOW_BANK') ||
     cust.includes('HB-BUFFER') ||
     cust.includes('HB BUFFER') ||
     cust === 'HOLLOW'
