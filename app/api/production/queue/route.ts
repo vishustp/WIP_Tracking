@@ -1178,9 +1178,9 @@ export async function GET(req: NextRequest) {
       const ipCutFeederMtr = isAlloy ? hollowHtNetMtr : rollHtcOkMtr;
       const ipCutFeederMt = mtFromMtr(ipCutFeederMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
-      const ipCutAvailPcs = isIpCutting ? Math.max(0, ipCutFeederPcs + ipCutStockIn.pcs - ipMotherPcsCut) : 0;
-      const ipCutAvailMtr = effMhAvg > 0 ? Number((ipCutAvailPcs * effMhAvg).toFixed(3)) : 0;
-      const ipCutAvailMt = mtFromMtr(ipCutAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
+      let ipCutAvailPcs = isIpCutting ? Math.max(0, ipCutFeederPcs + ipCutStockIn.pcs - ipMotherPcsCut) : 0;
+      let ipCutAvailMtr = effMhAvg > 0 ? Number((ipCutAvailPcs * effMhAvg).toFixed(3)) : 0;
+      let ipCutAvailMt = mtFromMtr(ipCutAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
       const isIpCutReady = ipCutAvailMtr >= 1.0 || ipCutAvailPcs >= 1;
       const isIpCutFeeder = !isIpCutReady && (ipCutFeederMtr >= 1.0 || ipCutFeederPcs >= 1);
@@ -1549,6 +1549,7 @@ export async function GET(req: NextRequest) {
       if (isOrderCompleted) {
         rollAvailPcs = 0; rollAvailMtr = 0; rollAvailMt = 0;
         hollowHtAvailPcs = 0; hollowHtAvailMtr = 0; hollowHtAvailMt = 0;
+        ipCutAvailPcs = 0; ipCutAvailMtr = 0; ipCutAvailMt = 0;
         drawAvailPcs = 0; drawAvailMtr = 0; drawAvailMt = 0;
         pilgerAvailPcs = 0; pilgerAvailMtr = 0; pilgerAvailMt = 0;
         htAvailPcs = 0; htAvailMtr = 0; htAvailMt = 0;

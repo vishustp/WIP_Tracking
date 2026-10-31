@@ -5,8 +5,11 @@
  * is NOT updated for existing work orders in the database. Mill shop-floor
  * balance and WIP ledgers remain authoritative.
  *
- * Rule 2: If an existing work order in the database has balance_to_make < 5 meters
- * or is marked as completed/closed/done in Excel, its status is updated to 'Completed'.
+ * Rule 2: PPC Master Excel Completion Authority:
+ * If an incoming work order row in Excel has balance_to_make < 5 meters
+ * or is marked as completed/closed/done/dispatched in Excel, status is 'Completed'.
+ * If Excel row indicates the order is still open with pending balance (>= 5m or open status),
+ * Excel is authoritative: reopen orders previously marked Completed back to 'In Progress'.
  */
 
 export interface WorkOrderImportRow {
@@ -76,7 +79,7 @@ export function isOrderCompletedForImport(row: {
 /**
  * Builds the update payload for an existing work order.
  * EXCLUDES all balance fields (Rule 1).
- * Sets status = 'Completed' if Rule 2 criteria are met.
+ * Respects PPC Master Excel Completion Authority (Rule 2).
  */
 export function buildWorkOrderUpdatePayload(
   row: WorkOrderImportRow,
@@ -97,12 +100,18 @@ export function buildWorkOrderUpdatePayload(
   if (row.material_code) updateObj.material_code = row.material_code;
   if (row.destination) updateObj.destination = row.destination;
 
-  // RULE 2: If balance < 5 mtr or status completed in Excel, mark status as 'Completed'
+  // RULE 2: PPC Master Excel Completion Authority
+  // If Excel row indicates completion (status in completed/closed or balance < 5m), mark Completed.
+  // If Excel row indicates the order is still open with pending balance, PPC Excel is authoritative:
+  // reopen any order previously marked Completed back to 'In Progress'.
   const isCompleted = isOrderCompletedForImport(row);
-  const wasAlreadyCompleted = String(opts.currentDbStatus || '').toLowerCase().trim() === 'completed';
-
-  if (isCompleted || wasAlreadyCompleted) {
+  if (isCompleted) {
     updateObj.status = 'Completed';
+  } else {
+    const wasAlreadyCompleted = String(opts.currentDbStatus || '').toLowerCase().trim() === 'completed';
+    if (wasAlreadyCompleted) {
+      updateObj.status = 'In Progress';
+    }
   }
 
   return updateObj;

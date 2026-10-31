@@ -67,7 +67,7 @@ describe("Excel Work Order Import Rules", () => {
     });
   });
 
-  describe("Rule 2: Auto-completion on import for existing orders", () => {
+  describe("Rule 2: PPC Master Excel Completion Authority", () => {
     it("identifies order as completed if balance_to_make_mtr < 5", () => {
       expect(isOrderCompletedForImport({ balance_to_make_mtr: 4.8 })).toBe(true);
       expect(isOrderCompletedForImport({ balance_to_make_mtr: 0 })).toBe(true);
@@ -111,18 +111,19 @@ describe("Excel Work Order Import Rules", () => {
       expect(payload2.status).toBe("Completed");
     });
 
-    it("preserves Completed status if order was already Completed in DB", () => {
+    it("reopens Completed status to In Progress if PPC Excel indicates order has pending balance", () => {
       const rowNormal = {
         work_order_no: "WO-EXISTING-03",
         balance_to_make_mtr: 50,
-        current_status: "Pending",
+        current_status: "In Progress",
       };
 
       const payload = buildWorkOrderUpdatePayload(rowNormal, {
         existsInDb: true,
         currentDbStatus: "Completed",
       });
-      expect(payload.status).toBe("Completed");
+      // PPC Excel is the master authority: if Excel says pending balance, reopen!
+      expect(payload.status).toBe("In Progress");
     });
   });
 

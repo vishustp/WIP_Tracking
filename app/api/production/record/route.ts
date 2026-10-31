@@ -310,7 +310,7 @@ export async function POST(req: NextRequest) {
               .eq('stage_id', stageId),
             admin
               .from('work_orders')
-              .select('balance_qty_mtr')
+              .select('balance_qty_mtr, status')
               .eq('id', item.work_order_id)
               .single(),
           ]);
@@ -320,8 +320,12 @@ export async function POST(req: NextRequest) {
             0
           );
 
-          const targetMtr = Number(woData?.balance_qty_mtr || 0);
-          const newStatus = targetMtr > 0 && totalFinished >= targetMtr ? 'Completed' : 'In Progress';
+          // Decouple bundling entry from work order commercial auto-close:
+          // Bundling logs the physical bundles and clears Finishing stage WIP,
+          // but DOES NOT close the order commercially unless PPC Master Excel authorized completion.
+          // If the order was already marked Completed by PPC Excel, keep it Completed; otherwise keep In Progress.
+          const wasCompleted = String(woData?.status || '').toLowerCase() === 'completed';
+          const newStatus = wasCompleted ? 'Completed' : 'In Progress';
 
           await admin
             .from('work_orders')
