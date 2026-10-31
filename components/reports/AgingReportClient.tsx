@@ -210,8 +210,8 @@ export default function AgingReportClient() {
         .order('days_stuck', { ascending: false });
 
       if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
-        // Query production logs, rejection declarations, and diversion plans to eliminate phantom WIP and seconds
-        const [{ data: prodLogs }, { data: rejDecls }, { data: divPlans }] = await Promise.all([
+        // Query production logs, rejection declarations, diversion plans, and hollow bank inventory
+        const [{ data: prodLogs }, { data: rejDecls }, { data: divPlans }, { data: hbLots }] = await Promise.all([
           supabase
             .from('production_logs')
             .select('work_order_id, stage_id, output_qty, htc_ok, remarks, process_stages(stage_code)'),
@@ -222,12 +222,15 @@ export default function AgingReportClient() {
           supabase
             .from('diversion_plans')
             .select('id, target_wo_id, source_wo_id, diverted_qty, reason, work_center, diversion_date, created_at'),
+          supabase
+            .from('hollow_bank_inventory')
+            .select('id, source_wo_id, source_stage_code, pcs, total_meters'),
         ]);
 
         // Robust normalization merging database columns & local acknowledgements
         const normalizedRows: AgingRow[] = viewData
           .filter((r: any) => !isHollowBankOrder(r))
-          .map((r: any) => normalizeAgingRow(r, localAcks, undefined, (rejDecls || []) as any, (divPlans || []) as any))
+          .map((r: any) => normalizeAgingRow(r, localAcks, undefined, (rejDecls || []) as any, (divPlans || []) as any, (hbLots || []) as any))
           .filter((r: AgingRow) => !isHollowBankOrder(r) && r.current_wip_pcs > 0 && r.current_wip > 0)
           .filter((r: AgingRow) => {
             const sc = (r.stage_code || '').toUpperCase();
@@ -277,7 +280,7 @@ export default function AgingReportClient() {
       }
 
       // 2. Comprehensive fallback with accurate domain calculations
-      const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes, rejDeclRes, divRes] = await Promise.all([
+      const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes, rejDeclRes, divRes, hbRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).order('sequence_no', { ascending: true }),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok, remarks, process_stages(stage_code)').order('process_date', { ascending: false }),
         supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr').order('inspection_date', { ascending: false }),
@@ -287,6 +290,7 @@ export default function AgingReportClient() {
         supabase.from('aging_alert_acknowledgements').select('work_order_id, stage_code, acknowledged_by, notes, snooze_until'),
         supabase.from('rejection_declarations').select('work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status').not('status', 'in', '("REJECTED_BY_QC","REJECTED_BY_PPC")'),
         supabase.from('diversion_plans').select('id, target_wo_id, work_center, diverted_qty, source_wo_id, reason, diversion_date, created_at, status, ppc_approved_at').neq('status', 'CANCELLED'),
+        supabase.from('hollow_bank_inventory').select('id, source_wo_id, source_stage_code, pcs, total_meters'),
       ]);
 
       const dbAcks: RawAcknowledgement[] = ackRes?.data || [];
@@ -302,6 +306,7 @@ export default function AgingReportClient() {
         acknowledgements: combinedAcks,
         rejectionDeclarations: (rejDeclRes?.data || []) as any[],
         diversions: (divRes?.data || []) as any[],
+        hollowBankInventory: (hbRes?.data || []) as any[],
         asOfDate: new Date(),
       });
 

@@ -235,7 +235,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch plans, stages, logs, work orders, routes, qc, diversions, rejection declarations
-    const [plansRes, stagesRes, logs, woRes, routesRes, qcRes, divsRes, rejsRes] = await Promise.all([
+    const [plansRes, stagesRes, logs, woRes, routesRes, qcRes, divsRes, rejsRes, hbRes] = await Promise.all([
       admin
         .from("rolling_plans")
         .select("id, plan_no, work_order_id, status, process_route_id, planned_qty, mh_od, mh_wt, mh_l1, mh_l2, multiple, created_at")
@@ -258,6 +258,9 @@ export async function GET(req: NextRequest) {
         .from("rejection_declarations")
         .select("id, work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status")
         .not("status", "in", '("REJECTED_BY_QC","REJECTED_BY_PPC")'),
+      admin
+        .from("hollow_bank_inventory")
+        .select("id, source_wo_id, source_stage_code, pcs, total_meters, status"),
     ]);
 
     if (stagesRes.error) throw stagesRes.error;
@@ -285,6 +288,7 @@ export async function GET(req: NextRequest) {
     const routes = routesRes.data || [];
     const qcInspections = qcRes?.data || [];
     const rejectionDeclarations = rejsRes?.data || [];
+    const hollowBankInventory = hbRes?.data || [];
 
     const getStageRejDecl = (wId: string, stageCode: string) => {
       const matching = rejectionDeclarations.filter(
@@ -1411,8 +1415,33 @@ export async function GET(req: NextRequest) {
           return sum + (avgLength > 0 ? Math.round(dQty / avgLength) : 0);
         }, 0);
 
-      const vdiPrimeDivOut = Math.max(0, vdiDivOut - vdiSalvageDivOut);
-      const vdiPrimeDivOutPcs = Math.max(0, vdiDivOutPcs - vdiSalvageDivOutPcs);
+      // Direct Hollow Bank inventory deduction for this work order at VDI/salvage
+      const hbVdiEntries = (hollowBankInventory || []).filter(
+        (hb: any) => hb.source_wo_id === woId && (hb.source_stage_code === "VDI" || hb.source_stage_code === "VDI_SALVAGE")
+      );
+      const directHbMtr = hbVdiEntries.reduce((sum: number, hb: any) => sum + Number(hb.total_meters || 0), 0);
+      const directHbPcs = hbVdiEntries.reduce((sum: number, hb: any) => sum + Number(hb.pcs || 0), 0);
+
+      const divToHbMtr = diversions
+        .filter((d: any) => d.source_wo_id === woId && d.target_wo_id === HOLLOW_BANK_WO_ID && (parseDivStages(d).sourceStage === "VDI" || parseDivStages(d).sourceStage === "VDI_SALVAGE"))
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+      const divToHbPcs = diversions
+        .filter((d: any) => d.source_wo_id === woId && d.target_wo_id === HOLLOW_BANK_WO_ID && (parseDivStages(d).sourceStage === "VDI" || parseDivStages(d).sourceStage === "VDI_SALVAGE"))
+        .reduce((sum: number, d: any) => {
+          const pcsMatch = typeof d.reason === "string" ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          const dQty = Number(d.diverted_qty || 0);
+          return sum + (avgLength > 0 ? Math.round(dQty / avgLength) : 0);
+        }, 0);
+
+      const extraHbMtr = Math.max(0, directHbMtr - divToHbMtr);
+      const extraHbPcs = Math.max(0, directHbPcs - divToHbPcs);
+
+      const effVdiSalvageDivOut = vdiSalvageDivOut + extraHbMtr;
+      const effVdiSalvageDivOutPcs = vdiSalvageDivOutPcs + extraHbPcs;
+
+      const vdiPrimeDivOut = Math.max(0, vdiDivOut - effVdiSalvageDivOut);
+      const vdiPrimeDivOutPcs = Math.max(0, vdiDivOutPcs - effVdiSalvageDivOutPcs);
 
       // When material was diverted into VDI without Band Saw cuts, and inspection was completed or downstream bundling started:
       if (allBandSawLogs.length === 0 && vdiDivIn > 0 && qcInspectedPcs > 0 && (finOutPcs > 0 || qcInspectedPcs >= vdiDivInPcs * 0.9)) {
@@ -2041,8 +2070,8 @@ export async function GET(req: NextRequest) {
       const totalVdiRejMtr = vdiRejDecl.mtr + vdiSalvageRejDecl.mtr;
       const totalVdiRejPcs = vdiRejDecl.pcs + vdiSalvageRejDecl.pcs;
 
-      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - vdiSalvageDivOut - totalVdiRejMtr).toFixed(3)));
-      let remSalvagePcs = Math.max(0, qcSalvagePcs - vdiSalvageDivOutPcs - totalVdiRejPcs);
+      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - effVdiSalvageDivOut - totalVdiRejMtr).toFixed(3)));
+      let remSalvagePcs = Math.max(0, qcSalvagePcs - effVdiSalvageDivOutPcs - totalVdiRejPcs);
       if (remSalvagePcs <= 0 || remSalvageMtr <= 0) {
         remSalvagePcs = 0;
         remSalvageMtr = 0;
@@ -2512,7 +2541,7 @@ export async function GET(req: NextRequest) {
       }
 
       const vdiSalvageRow: Row | null =
-        (remSalvagePcs >= 1 || remSalvageMtr >= 1.0)
+        (!isHollowBankOrder(wo) && (remSalvagePcs >= 1 || remSalvageMtr >= 1.0))
           ? {
               ...baseRowData,
               last_activity_date: getStageActivityDate(woQcList, bandSawLogs, vdiDivDetails),

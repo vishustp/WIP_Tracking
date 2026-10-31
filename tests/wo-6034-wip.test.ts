@@ -16,7 +16,7 @@ describe('Verify 6034 in Queue API & Matrix', () => {
 
     const vdi = rows6034.find((r: any) => r.stage_code === 'VDI');
     expect(vdi).toBeDefined();
-    expect(vdi.ready_pcs).toBe(309);
-    expect(vdi.ready_mtr).toBe(1031.29);
+    expect(vdi.ready_pcs).toBe(319);
+    expect(vdi.ready_mtr).toBe(1064.69);
   });
 });

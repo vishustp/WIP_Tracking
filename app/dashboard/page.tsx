@@ -102,6 +102,8 @@ export default async function Dashboard() {
       supabase.from('app_users').select('id,auth_user_id,employee_name,email'),
       supabase.from('route_stages').select('route_id,stage_id,sequence_no,process_stages(stage_code)').order('sequence_no', { ascending: true }),
       supabase.from('process_stages').select('id,stage_code,stage_name'),
+      supabase.from('diversion_plans').select('id,target_wo_id,source_wo_id,diverted_qty,reason,work_center,status,ppc_approved_at').neq('status', 'CANCELLED'),
+      supabase.from('hollow_bank_inventory').select('id,source_wo_id,source_stage_code,pcs,total_meters'),
     ]);
 
     const getVal = <T,>(idx: number, fallback: T): T => {
@@ -133,6 +135,8 @@ export default async function Dashboard() {
     const appUsers = getVal<any[]>(6, []);
     const routeStages = getVal<any[]>(7, []);
     const processStages = getVal<any[]>(8, []);
+    const diversionPlans = getVal<any[]>(9, []);
+    const hollowBankLots = getVal<any[]>(10, []);
 
     const stageIdToCodeMap = new Map<string, string>();
     processStages.forEach((s: any) => {
@@ -454,6 +458,8 @@ export default async function Dashboard() {
       qcInspections: qcInspections,
       rollingPlans: rollingPlans,
       routeStages: (routeStages as any[]),
+      diversions: diversionPlans,
+      hollowBankInventory: hollowBankLots,
       asOfDate: new Date(),
     });
 

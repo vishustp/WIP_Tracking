@@ -53,6 +53,7 @@ export default function QcInspectionClient() {
   const [routes, setRoutes] = useState<{ id: string; route_code: string; route_name: string }[]>([]);
   const [rollingPlans, setRollingPlans] = useState<any[]>([]);
   const [diversionPlans, setDiversionPlans] = useState<any[]>([]);
+  const [hollowBankInventory, setHollowBankInventory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Search & Filter
@@ -118,7 +119,7 @@ export default function QcInspectionClient() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [woRes, logsRes, qcRes, stagesRes, routesRes, plansRes, divsRes] = await Promise.all([
+      const [woRes, logsRes, qcRes, stagesRes, routesRes, plansRes, divsRes, hbRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('production_logs').select('*').order('created_at', { ascending: false }).limit(20000),
         supabase.from('qc_inspections').select('*').order('created_at', { ascending: false }),
@@ -126,6 +127,7 @@ export default function QcInspectionClient() {
         supabase.from('process_routes').select('id, route_code, route_name'),
         supabase.from('rolling_plans').select('*').not('status', 'is', null),
         supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, reason'),
+        supabase.from('hollow_bank_inventory').select('id, source_wo_id, source_stage_code, pcs, total_meters'),
       ]);
 
       if (woRes.data) {
@@ -137,6 +139,7 @@ export default function QcInspectionClient() {
       if (routesRes.data) setRoutes(routesRes.data);
       if (plansRes.data) setRollingPlans(plansRes.data);
       if (divsRes.data) setDiversionPlans(divsRes.data);
+      if (hbRes?.data) setHollowBankInventory(hbRes.data);
 
       // Handle qc_inspections gracefully even if table was just created
       if (qcRes.data) {
@@ -618,10 +621,94 @@ export default function QcInspectionClient() {
       const l2 = Number(wo.l2 || 0);
       const avgLen = l1 > 0 && l2 > 0 ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
 
-      const totalSalvagePcs = woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0);
-      const totalSalvageMtr = Number(woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0).toFixed(2));
-      const totalSalvageMt = Number(woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_mt || 0), 0).toFixed(3));
-      if (totalSalvagePcs <= 0) return;
+      const rawSalvagePcs = woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+      const rawSalvageMtr = Number(woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0).toFixed(2));
+      const rawSalvageMt = Number(woInspections.reduce((sum, q) => sum + Number(q.vdi_salvage_mt || 0), 0).toFixed(3));
+      if (rawSalvagePcs <= 0) return;
+
+      // Deduct material diverted out from VDI / VDI Salvage (including diversions to Hollow Bank)
+      const vdiSalvageDivOutPcs = (diversionPlans || [])
+        .filter((d: any) => {
+          if (d.source_wo_id !== wo.id) return false;
+          if (d.target_wo_id === HOLLOW_BANK_WO_ID) return true;
+          const { sourceStage } = parseDiversionStages(d);
+          if (sourceStage === 'VDI_SALVAGE') return true;
+          if (sourceStage === 'VDI') {
+            const rStr = typeof d.reason === 'string' ? d.reason.toLowerCase() : '';
+            if (
+              rStr.includes('salvage') ||
+              rStr.includes('hollow bank') ||
+              rStr.includes('bank') ||
+              rStr.includes('rejection')
+            ) return true;
+          }
+          return false;
+        })
+        .reduce((sum: number, d: any) => {
+          const motherMatch = typeof d.reason === 'string' ? d.reason.match(/(\d+)\s+mother pipes/i) : null;
+          if (motherMatch) return sum + Number(motherMatch[1]);
+          if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+          const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          const dQty = Number(d.diverted_qty || 0);
+          return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+        }, 0);
+
+      const vdiSalvageDivOutMtr = (diversionPlans || [])
+        .filter((d: any) => {
+          if (d.source_wo_id !== wo.id) return false;
+          if (d.target_wo_id === HOLLOW_BANK_WO_ID) return true;
+          const { sourceStage } = parseDiversionStages(d);
+          if (sourceStage === 'VDI_SALVAGE') return true;
+          if (sourceStage === 'VDI') {
+            const rStr = typeof d.reason === 'string' ? d.reason.toLowerCase() : '';
+            if (
+              rStr.includes('salvage') ||
+              rStr.includes('hollow bank') ||
+              rStr.includes('bank') ||
+              rStr.includes('rejection')
+            ) return true;
+          }
+          return false;
+        })
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+      // Deduct material in hollow_bank_inventory (avoid double deducting if already in diversionPlans)
+      const hbEntries = (hollowBankInventory || []).filter(
+        (hb: any) => hb.source_wo_id === wo.id && (!hb.source_stage_code || hb.source_stage_code === 'VDI' || hb.source_stage_code === 'VDI_SALVAGE')
+      );
+      const directHbPcs = hbEntries.reduce((sum: number, hb: any) => sum + Number(hb.pcs || 0), 0);
+      const directHbMtr = hbEntries.reduce((sum: number, hb: any) => sum + Number(hb.total_meters || 0), 0);
+
+      const divToHbPcs = (diversionPlans || [])
+        .filter((d: any) => d.source_wo_id === wo.id && d.target_wo_id === HOLLOW_BANK_WO_ID)
+        .reduce((sum: number, d: any) => {
+          const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          const dQty = Number(d.diverted_qty || 0);
+          return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+        }, 0);
+      const divToHbMtr = (diversionPlans || [])
+        .filter((d: any) => d.source_wo_id === wo.id && d.target_wo_id === HOLLOW_BANK_WO_ID)
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+      const extraHbPcs = Math.max(0, directHbPcs - divToHbPcs);
+      const extraHbMtr = Math.max(0, directHbMtr - divToHbMtr);
+
+      const totalDeductedPcs = vdiSalvageDivOutPcs + extraHbPcs;
+      const totalDeductedMtr = vdiSalvageDivOutMtr + extraHbMtr;
+
+      const totalSalvagePcs = Math.max(0, rawSalvagePcs - totalDeductedPcs);
+      const totalSalvageMtr = Math.max(0, Number((rawSalvageMtr - totalDeductedMtr).toFixed(2)));
+      const totalSalvageMt = (rawSalvagePcs > 0 && totalSalvagePcs !== rawSalvagePcs)
+        ? mtFromMtr(totalSalvageMtr, od, wt)
+        : rawSalvageMt;
+
+      // When all salvage pieces have been diverted or banked in Hollow Bank, completely remove from Salvage queue
+      if (totalSalvagePcs <= 0 || totalSalvageMtr <= 0) return;
+
+
+
 
       // Collect all salvage reasons across inspections
       const allReasons: SalvageReasonItem[] = [];
@@ -649,7 +736,7 @@ export default function QcInspectionClient() {
     });
 
     return items;
-  }, [workOrders, qcInspections, rollingPlans]);
+  }, [workOrders, qcInspections, rollingPlans, diversionPlans, hollowBankInventory]);
 
   // Filtered Salvage Queue
   const filteredSalvageQueue = useMemo(() => {

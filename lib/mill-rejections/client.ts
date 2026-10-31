@@ -1,7 +1,7 @@
 // lib/mill-rejections/client.ts
 
 import { createClient } from '@/lib/supabase/client';
-import { cleanRemarksFromSystemTags } from '@/lib/productionUtils';
+import { cleanRemarksFromSystemTags, isHollowBankOrder, HOLLOW_BANK_WO_ID } from '@/lib/productionUtils';
 import { parseDivStages } from '@/lib/reports/agingReportHelper';
 import {
   MillRejectionEntry,
@@ -90,21 +90,52 @@ export function applyDiversionsToMillRejections(
     });
   });
 
-  // Also factor in hollow bank entries if they recorded extra lots
+  // Also factor in hollow bank entries to deduct banked material from salvage/rejections
   (hollowBankEntries || []).forEach((hb) => {
     const woId = hb.source_wo_id;
     if (!woId) return;
     const stageCode = (hb.source_stage_code || 'VDI').toUpperCase();
+    const hbPcs = Number(hb.pcs || 0);
+    const hbMtr = Number(hb.total_meters || 0);
+    if (hbPcs <= 0 && hbMtr <= 0) return;
+
     const remarks = String(hb.remarks || '');
     const lotMatch = remarks.match(/\[LOT:\s*([^\]]+)\]/i);
-    if (lotMatch) {
-      const lotKey = `${woId}_${lotMatch[1].trim()}`;
-      if (!lotPools.has(lotKey)) {
-        lotPools.set(lotKey, {
-          pcs: Number(hb.pcs || 0),
-          mtr: Number(hb.total_meters || 0),
-        });
-      }
+    const effectiveLot = hb.lot_no || (lotMatch ? lotMatch[1].trim() : null);
+
+    // 1. If lot number is present in lot_no or remarks, register in lotPools
+    if (effectiveLot) {
+      const lotKey = `${woId}_${effectiveLot.trim()}`;
+      const curLot = lotPools.get(lotKey) || { pcs: 0, mtr: 0 };
+      lotPools.set(lotKey, {
+        pcs: curLot.pcs + hbPcs,
+        mtr: curLot.mtr + hbMtr,
+      });
+    }
+
+    // 2. Add to stagePools for general stage deduction
+    const key = `${woId}_${stageCode}`;
+    const cur = stagePools.get(key) || { pcs: 0, mtr: 0 };
+    stagePools.set(key, {
+      pcs: cur.pcs + hbPcs,
+      mtr: cur.mtr + hbMtr,
+    });
+
+    // Also add to VDI / VDI_SALVAGE pool if banked from VDI
+    if (stageCode === 'VDI' || stageCode === 'VDI_SALVAGE') {
+      const vdiKey = `${woId}_VDI`;
+      const curVdi = stagePools.get(vdiKey) || { pcs: 0, mtr: 0 };
+      stagePools.set(vdiKey, {
+        pcs: curVdi.pcs + hbPcs,
+        mtr: curVdi.mtr + hbMtr,
+      });
+
+      const salKey = `${woId}_VDI_SALVAGE`;
+      const curSal = stagePools.get(salKey) || { pcs: 0, mtr: 0 };
+      stagePools.set(salKey, {
+        pcs: curSal.pcs + hbPcs,
+        mtr: curSal.mtr + hbMtr,
+      });
     }
   });
 
@@ -267,6 +298,18 @@ export async function fetchMillRejectionsAndSalvage(
       const grade = matchedWo?.grade || matchedWo?.specification || '—';
       const actualWoId = matchedWo?.id || pl.id;
 
+      // Hollow bank is yard buffer inventory, never a mill rejection or active salvage
+      if (
+        isHollowBankOrder(matchedWo) ||
+        isHollowBankOrder({
+          id: actualWoId,
+          work_order_no: pl.work_order_no,
+          customer_name: pl.customer_name || matchedWo?.customer_name,
+        })
+      ) {
+        return;
+      }
+
       entries.push({
         id: `pl-${pl.id}`,
         source: 'PRODUCTION_LOG',
@@ -304,6 +347,18 @@ export async function fetchMillRejectionsAndSalvage(
       const workOrderId = woMeta?.id || qc.work_order_id;
       const workOrderNo = woMeta?.work_order_no || qc.work_order_no || '—';
       const customerName = woMeta?.customer_name || '—';
+
+      // Hollow bank is yard buffer inventory, never a mill rejection or active salvage
+      if (
+        isHollowBankOrder(woMeta) ||
+        isHollowBankOrder({
+          id: workOrderId,
+          work_order_no: workOrderNo,
+          customer_name: customerName,
+        })
+      ) {
+        return;
+      }
       const grade = woMeta?.grade || woMeta?.specification || '—';
       const od = Number(woMeta?.size_od || 0);
       const wt = Number(woMeta?.size_wt || 0);

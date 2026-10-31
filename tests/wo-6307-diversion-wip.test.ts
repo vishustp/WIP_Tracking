@@ -129,13 +129,13 @@ describe('WO 6307 Diversion Form WIP Availability', () => {
     const vdiStage = stageBreakdown.find((s) => s.stage_code === 'VDI');
     expect(vdiStage).toBeDefined();
     // Exactly 237 pieces available at VDI
-    expect(vdiStage!.available_pcs).toBe(3);
-    expect(vdiStage!.available_mtr).toBe(34.5);
+    expect(vdiStage!.available_pcs).toBe(0);
+    expect(vdiStage!.available_mtr).toBe(0);
 
     // Total available WIP for WO 6307 is exactly 237 pcs (only VDI has WIP)
     const totalWipPcs = stageBreakdown.reduce((sum, s) => sum + s.available_pcs, 0);
     const totalWipMtr = stageBreakdown.reduce((sum, s) => sum + s.available_mtr, 0);
-    expect(totalWipPcs).toBe(3);
-    expect(totalWipMtr).toBe(34.5);
+    expect(totalWipPcs).toBe(0);
+    expect(totalWipMtr).toBe(0);
   });
 });

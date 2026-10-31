@@ -1,4 +1,4 @@
-import { isHollowBankOrder, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
+import { isHollowBankOrder, HOLLOW_BANK_WO_ID, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 
 export type AgingSeverity = 'NORMAL' | 'WARNING' | 'CRITICAL';
 
@@ -356,6 +356,7 @@ export function computeAgingReportRows(options: {
   acknowledgements?: RawAcknowledgement[];
   rejectionDeclarations?: RawRejectionDeclaration[];
   diversions?: RawDiversionPlan[];
+  hollowBankInventory?: Array<{ source_wo_id?: string; source_stage_code?: string; pcs?: number; total_meters?: number }>;
   asOfDate?: Date | string;
 }): AgingRow[] {
   const {
@@ -368,6 +369,7 @@ export function computeAgingReportRows(options: {
     acknowledgements = [],
     rejectionDeclarations = [],
     diversions = [],
+    hollowBankInventory = [],
     asOfDate = new Date(),
   } = options;
 
@@ -662,11 +664,12 @@ export function computeAgingReportRows(options: {
       const rawVdiSalvagePcs = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_pcs || 0), 0) : 0;
       const rawVdiSalvageMtr = isSalvageStage ? woQc.reduce((sum, q) => sum + Number(q.vdi_salvage_mtr || 0), 0) : 0;
 
-      // Outbound VDI salvage diversions
+      // Outbound VDI salvage diversions (including transfers to Hollow Bank)
       const vdiSalvageDivOutMtr = (approvedDiversions || [])
         .filter((d: any) => {
           const srcId = d.source_work_order_id || d.source_wo_id;
           if (srcId !== r.work_order_id) return false;
+          if (d.target_wo_id === HOLLOW_BANK_WO_ID || (d.reason || '').toLowerCase().includes('hollow bank')) return true;
           const { sourceStage } = parseDivStages(d);
           return sourceStage === 'VDI' || sourceStage === 'VDI_SALVAGE';
         })
@@ -676,6 +679,7 @@ export function computeAgingReportRows(options: {
         .filter((d: any) => {
           const srcId = d.source_work_order_id || d.source_wo_id;
           if (srcId !== r.work_order_id) return false;
+          if (d.target_wo_id === HOLLOW_BANK_WO_ID || (d.reason || '').toLowerCase().includes('hollow bank')) return true;
           const { sourceStage } = parseDivStages(d);
           return sourceStage === 'VDI' || sourceStage === 'VDI_SALVAGE';
         })
@@ -692,8 +696,36 @@ export function computeAgingReportRows(options: {
           return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
         }, 0);
 
-      let vdiSalvagePcs = Math.max(0, rawVdiSalvagePcs - vdiSalvageDivOutPcs);
-      let vdiSalvageMtr = Math.max(0, Number((rawVdiSalvageMtr - vdiSalvageDivOutMtr).toFixed(3)));
+      // Direct Hollow Bank inventory deduction (avoiding double count with diversions)
+      const hbVdiEntries = (hollowBankInventory || []).filter(
+        (hb: any) => hb.source_wo_id === r.work_order_id && (!hb.source_stage_code || hb.source_stage_code === 'VDI' || hb.source_stage_code === 'VDI_SALVAGE')
+      );
+      const directHbMtr = hbVdiEntries.reduce((sum: number, hb: any) => sum + Number(hb.total_meters || 0), 0);
+      const directHbPcs = hbVdiEntries.reduce((sum: number, hb: any) => sum + Number(hb.pcs || 0), 0);
+
+      const divToHbMtr = (approvedDiversions || [])
+        .filter((d: any) => (d.source_work_order_id || d.source_wo_id) === r.work_order_id && (d.target_wo_id === HOLLOW_BANK_WO_ID || (d.reason || '').toLowerCase().includes('hollow bank')))
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
+      const divToHbPcs = (approvedDiversions || [])
+        .filter((d: any) => (d.source_work_order_id || d.source_wo_id) === r.work_order_id && (d.target_wo_id === HOLLOW_BANK_WO_ID || (d.reason || '').toLowerCase().includes('hollow bank')))
+        .reduce((sum: number, d: any) => {
+          const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          const dQty = Number(d.diverted_mtr ?? d.diverted_qty ?? 0);
+          const l1 = Number(r.l1 ?? wo?.l1) || 0;
+          const l2 = Number(r.l2 ?? wo?.l2) || 0;
+          const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
+          return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+        }, 0);
+
+      const extraHbMtr = Math.max(0, directHbMtr - divToHbMtr);
+      const extraHbPcs = Math.max(0, directHbPcs - divToHbPcs);
+
+      const effVdiSalvageDivOutMtr = vdiSalvageDivOutMtr + extraHbMtr;
+      const effVdiSalvageDivOutPcs = vdiSalvageDivOutPcs + extraHbPcs;
+
+      let vdiSalvagePcs = Math.max(0, rawVdiSalvagePcs - effVdiSalvageDivOutPcs);
+      let vdiSalvageMtr = Math.max(0, Number((rawVdiSalvageMtr - effVdiSalvageDivOutMtr).toFixed(3)));
       if (vdiSalvagePcs <= 0 || vdiSalvageMtr <= 0) {
         vdiSalvagePcs = 0;
         vdiSalvageMtr = 0;
@@ -944,7 +976,8 @@ export function normalizeAgingRow(
   localAcks: RawAcknowledgement[] = [],
   todayStr: string = new Date().toISOString().slice(0, 10),
   rejectionDeclarations: RawRejectionDeclaration[] = [],
-  diversions: RawDiversionPlan[] = []
+  diversions: RawDiversionPlan[] = [],
+  hollowBankInventory: Array<{ source_wo_id?: string; source_stage_code?: string; pcs?: number; total_meters?: number }> = []
 ): AgingRow {
   let daysStuck = Number(raw.days_stuck) || 0;
 
@@ -1083,11 +1116,12 @@ export function normalizeAgingRow(
     String(raw.stage_name || '').toUpperCase().includes('SALVAGE');
   const isVdi = String(raw.stage_code || '').toUpperCase() === 'VDI';
 
-  // Deduct VDI salvage diversions
+  // Deduct VDI salvage diversions (including transfers to Hollow Bank)
   const vdiSalvageDivOutMtr = (diversions || [])
     .filter((d: any) => {
       const srcId = d.source_work_order_id || d.source_wo_id;
       if (srcId !== raw.work_order_id) return false;
+      if (d.target_wo_id === HOLLOW_BANK_WO_ID || (d.reason || '').toLowerCase().includes('hollow bank')) return true;
       const { sourceStage } = parseDivStages(d);
       return sourceStage === 'VDI' || sourceStage === 'VDI_SALVAGE';
     })
@@ -1097,6 +1131,7 @@ export function normalizeAgingRow(
     .filter((d: any) => {
       const srcId = d.source_work_order_id || d.source_wo_id;
       if (srcId !== raw.work_order_id) return false;
+      if (d.target_wo_id === HOLLOW_BANK_WO_ID || (d.reason || '').toLowerCase().includes('hollow bank')) return true;
       const { sourceStage } = parseDivStages(d);
       return sourceStage === 'VDI' || sourceStage === 'VDI_SALVAGE';
     })
@@ -1113,6 +1148,34 @@ export function normalizeAgingRow(
       return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
     }, 0);
 
+  // Direct Hollow Bank inventory deduction (avoiding double count with diversions)
+  const hbVdiEntries = (hollowBankInventory || []).filter(
+    (hb: any) => hb.source_wo_id === raw.work_order_id && (!hb.source_stage_code || hb.source_stage_code === 'VDI' || hb.source_stage_code === 'VDI_SALVAGE')
+  );
+  const directHbMtr = hbVdiEntries.reduce((sum: number, hb: any) => sum + Number(hb.total_meters || 0), 0);
+  const directHbPcs = hbVdiEntries.reduce((sum: number, hb: any) => sum + Number(hb.pcs || 0), 0);
+
+  const divToHbMtr = (diversions || [])
+    .filter((d: any) => (d.source_work_order_id || d.source_wo_id) === raw.work_order_id && (d.target_wo_id === HOLLOW_BANK_WO_ID || (d.reason || '').toLowerCase().includes('hollow bank')))
+    .reduce((sum: number, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);
+  const divToHbPcs = (diversions || [])
+    .filter((d: any) => (d.source_work_order_id || d.source_wo_id) === raw.work_order_id && (d.target_wo_id === HOLLOW_BANK_WO_ID || (d.reason || '').toLowerCase().includes('hollow bank')))
+    .reduce((sum: number, d: any) => {
+      const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+      if (pcsMatch) return sum + Number(pcsMatch[1]);
+      const dQty = Number(d.diverted_mtr ?? d.diverted_qty ?? 0);
+      const l1 = Number(raw.l1) || 0;
+      const l2 = Number(raw.l2) || 0;
+      const avgLen = (l1 > 0 && l2 > 0) ? (l1 + l2) / 2 : (l1 || l2 || 6.0);
+      return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+    }, 0);
+
+  const extraHbMtr = Math.max(0, directHbMtr - divToHbMtr);
+  const extraHbPcs = Math.max(0, directHbPcs - divToHbPcs);
+
+  const effVdiSalvageDivOutMtr = vdiSalvageDivOutMtr + extraHbMtr;
+  const effVdiSalvageDivOutPcs = vdiSalvageDivOutPcs + extraHbPcs;
+
   const rawSalvagePcs = (isSalvage || isVdi)
     ? (Number(raw.vdi_salvage_pcs) > 0 ? Number(raw.vdi_salvage_pcs) : (isSalvage ? currentWipPcs : 0))
     : 0;
@@ -1120,8 +1183,8 @@ export function normalizeAgingRow(
     ? (Number(raw.vdi_salvage_mtr) > 0 ? Number(raw.vdi_salvage_mtr) : (isSalvage ? currentWip : 0))
     : 0;
 
-  let salvagePcs = Math.max(0, rawSalvagePcs - vdiSalvageDivOutPcs);
-  let salvageMtr = Math.max(0, Number((rawSalvageMtr - vdiSalvageDivOutMtr).toFixed(3)));
+  let salvagePcs = Math.max(0, rawSalvagePcs - effVdiSalvageDivOutPcs);
+  let salvageMtr = Math.max(0, Number((rawSalvageMtr - effVdiSalvageDivOutMtr).toFixed(3)));
   if (salvagePcs <= 0 || salvageMtr <= 0) {
     salvagePcs = 0;
     salvageMtr = 0;

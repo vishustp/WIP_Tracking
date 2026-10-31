@@ -91,14 +91,16 @@ export default function AgingNotificationBell({
       }
 
       // 2. Comprehensive fallback using robust aging helper
-      const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes] = await Promise.all([
+      const [wipRes, prodRes, qcRes, plansRes, woRes, routeStagesRes, ackRes, divRes, hbRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').gt('current_wip', 0).order('sequence_no', { ascending: true }),
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, output_qty, htc_ok').order('process_date', { ascending: false }),
-        supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr').order('inspection_date', { ascending: false }),
+        supabase.from('qc_inspections').select('work_order_id, inspection_date, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr').order('inspection_date', { ascending: false }),
         supabase.from('rolling_plans').select('work_order_id, status, mh_od, mh_wt, planned_rolling_date, created_at').not('status', 'is', null),
         supabase.from('work_orders').select('id, work_order_no, customer_name, grade, size_od, size_wt, l1, l2, created_at'),
         supabase.from('route_stages').select('route_id, stage_id, sequence_no, process_stages(stage_code)').order('sequence_no', { ascending: true }),
         supabase.from('aging_alert_acknowledgements').select('work_order_id, stage_code, acknowledged_by, notes, snooze_until'),
+        supabase.from('diversion_plans').select('id, target_wo_id, source_wo_id, diverted_qty, reason, work_center, status, ppc_approved_at').neq('status', 'CANCELLED'),
+        supabase.from('hollow_bank_inventory').select('id, source_wo_id, source_stage_code, pcs, total_meters'),
       ]);
 
       const dbAcks: RawAcknowledgement[] = ackRes?.data || [];
@@ -112,6 +114,8 @@ export default function AgingNotificationBell({
         rollingPlans: (plansRes.data || []) as RawRollingPlan[],
         routeStages: (routeStagesRes.data || []) as RawRouteStage[],
         acknowledgements: combinedAcks,
+        diversions: (divRes?.data || []) as any,
+        hollowBankInventory: (hbRes?.data || []) as any,
         asOfDate: new Date(),
       });
 
