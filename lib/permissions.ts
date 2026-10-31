@@ -261,6 +261,7 @@ export function isRouteVisibleForGroup(group: UserGroup, href: string): boolean 
     '/reports/rejections',
     '/reports/mill-rejections',
     '/hollow-bank',
+    '/reports/stock-generation',
   ];
 
   return allowedUserRoutes.some((allowed) => href === allowed || href.startsWith(allowed + '/'));
@@ -1107,6 +1108,7 @@ export function usePermissions() {
       user?.permissions?.rolling_plan === 'edit' ||
       user?.permissions?.diversion === 'edit' ||
       user?.permissions?.work_order === 'edit',
+    canManageStockGeneration: isPpcOrAdminUser(user, group),
     canManageWorkOrders:
       group === 'admin' ||
       group === 'super_user' ||

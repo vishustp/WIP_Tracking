@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
 
     const supabase = createAdminClient();
+    if (!supabase) return NextResponse.json({ error: 'Database client unavailable' }, { status: 500 });
     let query = supabase
       .from('ppc_stock_generations')
       .select('*, work_orders(work_order_no, customer_name, size_od, size_wt, grade), process_stages(stage_name)')
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createAdminClient();
+    if (!supabase) return NextResponse.json({ error: 'Database client unavailable' }, { status: 500 });
 
     // Verify work order and dimensions
     const { data: wo, error: woErr } = await supabase

@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createAdminClient();
+    if (!supabase) return NextResponse.json({ error: 'Database client unavailable' }, { status: 500 });
     const { data, error } = await supabase
       .from('ppc_stock_generations')
       .update({

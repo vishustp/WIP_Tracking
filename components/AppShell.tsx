@@ -14,7 +14,7 @@ import {
   ClipboardCheck, FileText, Beaker, Layers, Scissors, History,
   Search, Calendar, Bell, Users, SlidersHorizontal, AlertTriangle, ScrollText,
   Palette, Check, Loader2, ChevronRight, Lock, ArrowUpDown, Recycle, AlertOctagon,
-  CalendarDays
+  CalendarDays, PackagePlus
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AgingNotificationBell from '@/components/common/AgingNotificationBell';
@@ -172,6 +172,7 @@ const navSections = [
       { href: '/diversions', label: 'Diversion', icon: Shuffle },
       { href: '/hollow-bank', label: 'Hollow Bank', icon: Layers },
       { href: '/excel-import', label: 'Excel Import', icon: FileSpreadsheet },
+      { href: '/stock-generation', label: 'Stock Generation', icon: PackagePlus },
     ],
   },
   {
@@ -189,6 +190,7 @@ const navSections = [
       { href: '/reports/rejections', label: 'Second Declaration Report', icon: AlertOctagon },
       { href: '/reports/mill-rejections', label: 'Mill Rejection & Salvage', icon: AlertTriangle },
       { href: '/reports/scrap', label: 'Scrap Generation Report', icon: Recycle },
+      { href: '/reports/stock-generation', label: 'Stock Generation Report', icon: Layers },
     ],
   },
   {
