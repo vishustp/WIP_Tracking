@@ -291,6 +291,16 @@ export async function GET(req: NextRequest) {
     const workOrders = rawWorkOrders.filter((w: any) => !isHollowBankOrder(w));
     const routes = routesRes.data || [];
     const qcInspections = qcRes?.data || [];
+    const qcByWo = new Map<string, any[]>();
+    for (const q of qcInspections) {
+      if (!q.work_order_id) continue;
+      const arr = qcByWo.get(q.work_order_id);
+      if (arr) {
+        arr.push(q);
+      } else {
+        qcByWo.set(q.work_order_id, [q]);
+      }
+    }
     const rejectionDeclarations = rejsRes?.data || [];
     const hollowBankInventory = hbRes?.data || [];
     const stockGenerations = Array.isArray((stkGenRes as any)?.data) ? (stkGenRes as any).data : [];
@@ -352,21 +362,43 @@ export async function GET(req: NextRequest) {
     // Track pending Draw Bench diversions for source order informational hold
     const pendingDrawDiversions = rawDiversions.filter(isPendingDrawDiv);
 
-    const getStageDivIn = (wId: string, stageCode: string) =>
-      diversions
-        .filter((d: any) => d.target_wo_id === wId && parseDivStages(d).targetStage === stageCode)
-        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+    // Fast indexed lookups for diversions by work order ID
+    const divsByTarget = new Map<string, any[]>();
+    const divsBySource = new Map<string, any[]>();
+    for (const d of diversions) {
+      if (d.target_wo_id) {
+        const t = divsByTarget.get(d.target_wo_id);
+        if (t) t.push(d); else divsByTarget.set(d.target_wo_id, [d]);
+      }
+      if (d.source_wo_id) {
+        const s = divsBySource.get(d.source_wo_id);
+        if (s) s.push(d); else divsBySource.set(d.source_wo_id, [d]);
+      }
+    }
 
-    const getStageDivOut = (wId: string, stageCode: string) =>
-      diversions
-        .filter((d: any) => d.source_wo_id === wId && parseDivStages(d).sourceStage === stageCode)
+    const getStageDivIn = (wId: string, stageCode: string) => {
+      const list = divsByTarget.get(wId);
+      if (!list) return 0;
+      return list
+        .filter((d: any) => parseDivStages(d).targetStage === stageCode)
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+    };
+
+    const getStageDivOut = (wId: string, stageCode: string) => {
+      const list = divsBySource.get(wId);
+      if (!list) return 0;
+      return list
+        .filter((d: any) => parseDivStages(d).sourceStage === stageCode)
+        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+    };
 
     const woMap = new Map<string, any>();
     workOrders.forEach((w) => woMap.set(w.id, w));
 
     const getStageDivInPcs = (wId: string, stageCode: string, fallbackTargetAvgLen: number = 6.0) => {
-      const matching = diversions.filter((d: any) => d.target_wo_id === wId && parseDivStages(d).targetStage === stageCode);
+      const list = divsByTarget.get(wId);
+      if (!list) return 0;
+      const matching = list.filter((d: any) => parseDivStages(d).targetStage === stageCode);
       return matching.reduce((sum: number, d: any) => {
         const dQty = Number(d.diverted_qty || 0);
         if (dQty <= 0) return sum;
@@ -383,7 +415,9 @@ export async function GET(req: NextRequest) {
     };
 
     const getStageDivOutPcs = (wId: string, stageCode: string, sourceAvgLen: number = 6.0) => {
-      const matching = diversions.filter((d: any) => d.source_wo_id === wId && parseDivStages(d).sourceStage === stageCode);
+      const list = divsBySource.get(wId);
+      if (!list) return 0;
+      const matching = list.filter((d: any) => parseDivStages(d).sourceStage === stageCode);
       return matching.reduce((sum: number, d: any) => {
         const dQty = Number(d.diverted_qty || 0);
         if (dQty <= 0) return sum;
@@ -395,7 +429,8 @@ export async function GET(req: NextRequest) {
     };
 
     const getStageDivDetails = (wId: string, stageCode: string, fallbackTargetAvgLen: number = 6.0) => {
-      const matching = diversions.filter((d: any) => d.target_wo_id === wId && parseDivStages(d).targetStage === stageCode);
+      const list = divsByTarget.get(wId);
+      const matching = list ? list.filter((d: any) => parseDivStages(d).targetStage === stageCode) : [];
       if (matching.length === 0) {
         return {
           has_diversion: false,
@@ -538,11 +573,24 @@ export async function GET(req: NextRequest) {
     const vdiStageId = stageCodeToId.get("VDI");
     const finStageId = stageCodeToId.get("FINISHING");
 
-    // Helper to calculate stage totals for a work order
+    // Fast indexed Map for production logs grouped by work_order_id
+    const logsByWo = new Map<string, any[]>();
+    for (const l of logs) {
+      if (!l.work_order_id) continue;
+      const arr = logsByWo.get(l.work_order_id);
+      if (arr) {
+        arr.push(l);
+      } else {
+        logsByWo.set(l.work_order_id, [l]);
+      }
+    }
+
+    // Helper to calculate stage totals for a work order in O(1)
     const getStageLogs = (woId: string, stageId?: string, fallbackCode?: string) => {
       if (!stageId && !fallbackCode) return [];
-      return logs.filter((l) => {
-        if (l.work_order_id !== woId) return false;
+      const woLogs = logsByWo.get(woId);
+      if (!woLogs) return [];
+      return woLogs.filter((l) => {
         if (stageId && l.stage_id === stageId) return true;
         if (fallbackCode && (l.stage_code === fallbackCode || l.stage?.stage_code === fallbackCode)) return true;
         return false;
@@ -1263,11 +1311,15 @@ export async function GET(req: NextRequest) {
       const htIncomingPcs = isSsSteel ? pilgerNetPcs : drawNetPcs;
 
       // Check QC Inspections for this WO (or related campaign)
-      const directWoQcList = qcInspections.filter((q: any) => q.work_order_id === woId);
+      const directWoQcList = qcByWo.get(woId) || [];
       let woQcList = directWoQcList;
       if (campaign && Array.isArray(campaign.child_work_orders)) {
-        const childWoIds = new Set(campaign.child_work_orders.map((c: any) => c.work_order_id || c.id));
-        const campaignQcList = qcInspections.filter((q: any) => q.work_order_id === woId || childWoIds.has(q.work_order_id));
+        const campaignQcList: any[] = [...directWoQcList];
+        for (const c of campaign.child_work_orders) {
+          const cId = c.work_order_id || c.id;
+          const childQc = qcByWo.get(cId);
+          if (childQc) campaignQcList.push(...childQc);
+        }
         if (campaignQcList.length > 0) {
           woQcList = campaignQcList;
         }
