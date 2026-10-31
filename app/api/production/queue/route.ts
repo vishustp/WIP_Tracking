@@ -1532,8 +1532,9 @@ export async function GET(req: NextRequest) {
       let finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Universal Rule: Work orders marked Completed / Closed must not show phantom WIP in upstream stations.
-      // Exception: For a master campaign whose child work orders are still active (In Progress / Pending),
+      // Exception: For a master campaign whose child work orders are actively in progress on the floor,
       // the upstream campaign stock (e.g. Draw Bench queue) is real feeding inventory and must remain available.
+      // Unstarted child orders in planning/scheduled status do not keep completed master orders open in the queue.
       const isOrderCompletedRaw = (wo.status || "").toLowerCase() === "completed" || (wo.status || "").toLowerCase() === "closed";
       const hasActiveChildOrders = Boolean(
         campaign &&
@@ -1541,7 +1542,7 @@ export async function GET(req: NextRequest) {
         campaign.child_work_orders.some((c: any) => {
           const childWo = woMap.get(c.work_order_id || c.id);
           const st = (childWo?.status || "").toLowerCase();
-          return st !== "completed" && st !== "closed";
+          return st === "in progress" || st === "in_progress";
         })
       );
       const isOrderCompleted = isOrderCompletedRaw && !hasActiveChildOrders;
