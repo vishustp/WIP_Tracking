@@ -23,7 +23,30 @@ export async function approveDiversion(
     const supabase = client || createClient();
     const { data: { user } } = await (supabase.auth?.getUser?.() || Promise.resolve({ data: { user: null } }));
 
-    // 1. Try stored procedure
+    // 1. Try server-side API endpoint first when running in browser (uses service role client on server, avoiding client RLS)
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch('/api/diversions', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: payload.id,
+            action: 'APPROVE',
+            remarks: payload.remarks?.trim() || null,
+            user_id: user?.id || null,
+          }),
+        });
+        const resJson = await res.json();
+        if (res.ok && resJson.success) {
+          fetch('/api/production/queue?refresh=true').catch(() => {});
+          return { success: true, error: null };
+        }
+      } catch (apiErr) {
+        console.warn('API /api/diversions PUT failed, attempting stored procedure fallback:', apiErr);
+      }
+    }
+
+    // 2. Try stored procedure
     const { error: rpcError } = await supabase.rpc('approve_diversion', {
       p_id: payload.id,
       p_remarks: payload.remarks?.trim() || null,
@@ -71,7 +94,29 @@ export async function rejectDiversion(
 
     const supabase = client || createClient();
 
-    // 1. Try stored procedure
+    // 1. Try server-side API endpoint first when running in browser (uses service role client on server, avoiding client RLS)
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch('/api/diversions', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: payload.id,
+            action: 'REJECT',
+            reason: payload.reason.trim(),
+          }),
+        });
+        const resJson = await res.json();
+        if (res.ok && resJson.success) {
+          fetch('/api/production/queue?refresh=true').catch(() => {});
+          return { success: true, error: null };
+        }
+      } catch (apiErr) {
+        console.warn('API /api/diversions PUT failed, attempting stored procedure fallback:', apiErr);
+      }
+    }
+
+    // 2. Try stored procedure
     const { error: rpcError } = await supabase.rpc('reject_diversion', {
       p_id: payload.id,
       p_reason: payload.reason.trim(),

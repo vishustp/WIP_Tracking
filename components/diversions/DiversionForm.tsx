@@ -1107,20 +1107,34 @@ export default function DiversionForm() {
           insertPayload.ppc_approved_by = approverAuthId;
           insertPayload.ppc_approved_at = new Date().toISOString();
         }
-        let { error: insErr } = await supabase.from('diversion_plans').insert(insertPayload);
-        if (insErr && insErr.message?.includes('status')) {
-          delete insertPayload.status;
-          delete insertPayload.ppc_approved_by;
-          delete insertPayload.ppc_approved_at;
-          const retry = await supabase.from('diversion_plans').insert(insertPayload);
-          insErr = retry.error;
+        // Post via server-side API to bypass client RLS issues
+        try {
+          const res = await fetch('/api/diversions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(insertPayload),
+          });
+          const resJson = await res.json();
+          if (!res.ok || resJson.error) {
+            throw new Error(resJson.error || 'Failed to record diversion split');
+          }
+        } catch (apiErr: any) {
+          // Fallback to direct client insert if API is unavailable
+          let { error: insErr } = await supabase.from('diversion_plans').insert(insertPayload);
+          if (insErr && insErr.message?.includes('status')) {
+            delete insertPayload.status;
+            delete insertPayload.ppc_approved_by;
+            delete insertPayload.ppc_approved_at;
+            const retry = await supabase.from('diversion_plans').insert(insertPayload);
+            insErr = retry.error;
+          }
+          if (insErr && insErr.message?.includes('diversion_plans_approved_by_fkey')) {
+            insertPayload.approved_by = null;
+            const retry = await supabase.from('diversion_plans').insert(insertPayload);
+            insErr = retry.error;
+          }
+          if (insErr) throw new Error(apiErr?.message || insErr.message);
         }
-        if (insErr && insErr.message?.includes('diversion_plans_approved_by_fkey')) {
-          insertPayload.approved_by = null;
-          const retry = await supabase.from('diversion_plans').insert(insertPayload);
-          insErr = retry.error;
-        }
-        if (insErr) throw new Error(insErr.message);
       }
 
       const totalRetainedMtr = Number(sameOrderSplits.reduce((acc, s) => acc + (s.cut_length * payload.motherPcs * (s.cuts_per_pipe || 1)), 0).toFixed(2));
@@ -1213,50 +1227,72 @@ export default function DiversionForm() {
     setBusy(true);
     let success = false;
     try {
-      const { error } = await createClient().rpc('create_diversion', {
-        p_source: source,
-        p_target: target,
-        p_qty: diversionMtr,
-        p_work_center: targetWorkCenter,
-        p_route: route,
-        p_multiple: numMultiple,
-        p_reason: finalReason,
-        p_date: date,
-        p_status: planStatus,
-      });
-      if (error) {
-        console.warn('RPC create_diversion error, attempting direct insert:', error.message);
-        const approverAuthId = user?.auth_user_id || session?.user?.id || null;
-        const insertPayload: any = {
-          source_wo_id: source,
-          target_wo_id: target,
-          diverted_qty: diversionMtr,
-          work_center: targetWorkCenter,
-          process_route_id: route,
-          multiple: numMultiple,
-          reason: finalReason,
-          approved_by: approverAuthId,
-          diversion_date: date,
-          status: planStatus,
-        };
-        if (planStatus === 'APPROVED' && isDrawBenchTarget && approverAuthId) {
-          insertPayload.ppc_approved_by = approverAuthId;
-          insertPayload.ppc_approved_at = new Date().toISOString();
+      const approverAuthId = user?.auth_user_id || session?.user?.id || null;
+      const insertPayload: any = {
+        source_wo_id: source,
+        target_wo_id: target,
+        diverted_qty: diversionMtr,
+        work_center: targetWorkCenter,
+        process_route_id: route,
+        multiple: numMultiple,
+        reason: finalReason,
+        approved_by: approverAuthId,
+        diversion_date: date,
+        status: planStatus,
+      };
+      if (planStatus === 'APPROVED' && isDrawBenchTarget && approverAuthId) {
+        insertPayload.ppc_approved_by = approverAuthId;
+        insertPayload.ppc_approved_at = new Date().toISOString();
+      }
+
+      // 1. Post to server-side API (uses service-role client, bypassing browser RLS and column type mismatch)
+      let apiSuccess = false;
+      try {
+        const apiRes = await fetch('/api/diversions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(insertPayload),
+        });
+        const apiJson = await apiRes.json();
+        if (apiRes.ok && apiJson.success) {
+          apiSuccess = true;
+        } else if (apiJson?.error) {
+          console.warn('API /api/diversions error:', apiJson.error);
         }
-        let { error: insertErr } = await createClient().from('diversion_plans').insert(insertPayload);
-        if (insertErr && insertErr.message?.includes('status')) {
-          delete insertPayload.status;
-          delete insertPayload.ppc_approved_by;
-          delete insertPayload.ppc_approved_at;
-          const retry = await createClient().from('diversion_plans').insert(insertPayload);
-          insertErr = retry.error;
+      } catch (apiErr) {
+        console.warn('API /api/diversions fetch failed, attempting RPC fallback:', apiErr);
+      }
+
+      if (!apiSuccess) {
+        // 2. Fallback to RPC create_diversion
+        const { error } = await createClient().rpc('create_diversion', {
+          p_source: source,
+          p_target: target,
+          p_qty: diversionMtr,
+          p_work_center: targetWorkCenter,
+          p_route: route,
+          p_multiple: numMultiple,
+          p_reason: finalReason,
+          p_date: date,
+          p_status: planStatus,
+        });
+        if (error) {
+          console.warn('RPC create_diversion error, attempting direct insert fallback:', error.message);
+          let { error: insertErr } = await createClient().from('diversion_plans').insert(insertPayload);
+          if (insertErr && insertErr.message?.includes('status')) {
+            delete insertPayload.status;
+            delete insertPayload.ppc_approved_by;
+            delete insertPayload.ppc_approved_at;
+            const retry = await createClient().from('diversion_plans').insert(insertPayload);
+            insertErr = retry.error;
+          }
+          if (insertErr && insertErr.message?.includes('diversion_plans_approved_by_fkey')) {
+            insertPayload.approved_by = null;
+            const retry = await createClient().from('diversion_plans').insert(insertPayload);
+            insertErr = retry.error;
+          }
+          if (insertErr) throw new Error(insertErr.message);
         }
-        if (insertErr && insertErr.message?.includes('diversion_plans_approved_by_fkey')) {
-          insertPayload.approved_by = null;
-          const retry = await createClient().from('diversion_plans').insert(insertPayload);
-          insertErr = retry.error;
-        }
-        if (insertErr) throw new Error(insertErr.message);
       }
       success = true;
     } catch (error) {
