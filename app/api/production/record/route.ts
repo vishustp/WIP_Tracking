@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { attachPcsToRemarks, extractPcsFromRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
-import { requireAuth } from '@/lib/supabase/authGuard';
+import { requireAuth, isAuthorizedForStation } from '@/lib/supabase/authGuard';
 import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function POST(req: NextRequest) {
@@ -70,6 +70,16 @@ export async function POST(req: NextRequest) {
         };
       })
     );
+
+    // Verify station authorization for each entry
+    for (const item of sanitizedEntries) {
+      if (item.stage_code && !isAuthorizedForStation(authCheck.auth, item.stage_code)) {
+        return NextResponse.json(
+          { error: `Forbidden: You do not have recording permissions for work center '${item.stage_code}'.` },
+          { status: 403 }
+        );
+      }
+    }
 
     // Track batch cumulative pieces per plan/WO for batch-level capping
     const batchPcsByPlan = new Map<string, number>();
