@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireAuth } from '@/lib/supabase/authGuard';
+import { requireAuth, isAuthorizedForStation } from '@/lib/supabase/authGuard';
 import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function POST(req: NextRequest) {
@@ -66,31 +66,9 @@ async function handleDelete(req: NextRequest) {
 
     // 2. Permission check for non-admins / non-super-users
     if (!isAdmin && !isSuperUser) {
-      const userWc = appUser?.work_center;
-      const allowedStages: string[] = Array.isArray(appUser?.allowed_stages) ? appUser.allowed_stages : [];
-
-      const isFurnaceStage = stageCode === 'HOLLOW_HEAT_TREATMENT' || stageCode === 'HEAT_TREATMENT';
-      const hasFurnacePrivilege = isFurnaceStage && (
-        userWc === 'HOLLOW_HEAT_TREATMENT' || userWc === 'HEAT_TREATMENT' ||
-        allowedStages.includes('HOLLOW_HEAT_TREATMENT') || allowedStages.includes('HEAT_TREATMENT')
-      );
-
-      const isBandSawOrFinishingStage = stageCode === 'BAND_SAW' || stageCode === 'FINISHING';
-      const hasBandSawOrFinishingPrivilege = isBandSawOrFinishingStage && (
-        userWc === 'BAND_SAW' || userWc === 'FINISHING' ||
-        allowedStages.includes('BAND_SAW') || allowedStages.includes('FINISHING')
-      );
-
-      const isAuthorized =
-        userWc === 'ALL' ||
-        userWc === stageCode ||
-        allowedStages.includes(stageCode) ||
-        hasFurnacePrivilege ||
-        hasBandSawOrFinishingPrivilege;
-
-      if (!isAuthorized) {
+      if (!isAuthorizedForStation(authCheck.auth, stageCode)) {
         return NextResponse.json(
-          { error: `Access Denied: You are only authorized to delete data from your assigned work center (${userWc}).` },
+          { error: `Access Denied: You are not authorized to delete data from work center (${stageCode}).` },
           { status: 403 }
         );
       }

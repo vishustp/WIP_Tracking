@@ -127,13 +127,35 @@ describe('Phase 5: Security Hardening & Edge Middleware RBAC', () => {
     });
 
     it('blocks unauthenticated API mutations with 401 JSON instead of redirect', async () => {
-      const req = new NextRequest('http://localhost:3000/api/production/record', {
+      // POST
+      const postReq = new NextRequest('http://localhost:3000/api/production/record', {
         method: 'POST',
       });
-      const res = await middleware(req);
-      expect(res.status).toBe(401);
-      const json = await res.json();
-      expect(json.error).toContain('Unauthorized');
+      const postRes = await middleware(postReq);
+      expect(postRes.status).toBe(401);
+      const postJson = await postRes.json();
+      expect(postJson.error).toContain('Unauthorized');
+
+      // DELETE
+      const deleteReq = new NextRequest('http://localhost:3000/api/production/delete?id=test-123', {
+        method: 'DELETE',
+      });
+      const deleteRes = await middleware(deleteReq);
+      expect(deleteRes.status).toBe(401);
+
+      // PUT
+      const putReq = new NextRequest('http://localhost:3000/api/diversions', {
+        method: 'PUT',
+      });
+      const putRes = await middleware(putReq);
+      expect(putRes.status).toBe(401);
+    });
+
+    it('permits read-only GET requests on non-admin API routes to pass through to route handler', async () => {
+      const getReq = new NextRequest('http://localhost:3000/api/production/queue');
+      const getRes = await middleware(getReq);
+      // Returns 200 pass-through response (NextResponse.next())
+      expect(getRes.status).toBe(200);
     });
 
     it('blocks unauthenticated access to /api/admin with 401 JSON', async () => {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireAuth } from '@/lib/supabase/authGuard';
+import { requireAuth, isAuthorizedForStation } from '@/lib/supabase/authGuard';
 import { attachPcsToRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
 import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
@@ -60,40 +60,9 @@ export async function POST(req: NextRequest) {
 
     // 2. Permission check for non-admins / non-super-users
     if (!isAdmin && !isSuperUser) {
-      const userWc = appUser?.work_center;
-      const allowedStages: string[] = Array.isArray(appUser?.allowed_stages) ? appUser.allowed_stages : [];
-
-      const isFurnaceStage = stageCode === 'HOLLOW_HEAT_TREATMENT' || stageCode === 'HEAT_TREATMENT';
-      const hasFurnacePrivilege = isFurnaceStage && (
-        userWc === 'HOLLOW_HEAT_TREATMENT' || userWc === 'HEAT_TREATMENT' ||
-        allowedStages.includes('HOLLOW_HEAT_TREATMENT') || allowedStages.includes('HEAT_TREATMENT') ||
-        appUser?.permissions?.production_hollow_ht === 'edit' || appUser?.permissions?.production_ht === 'edit'
-      );
-
-      const isBandSawOrFinishingStage = stageCode === 'BAND_SAW' || stageCode === 'FINISHING';
-      const hasBandSawOrFinishingPrivilege = isBandSawOrFinishingStage && (
-        userWc === 'BAND_SAW' || userWc === 'FINISHING' ||
-        allowedStages.includes('BAND_SAW') || allowedStages.includes('FINISHING') ||
-        appUser?.permissions?.production_band_saw === 'edit' || appUser?.permissions?.production_finishing === 'edit'
-      );
-
-      const isCustomStageAllowed =
-        ((stageCode === 'HOT_ROLLING' || stageCode === 'ROLLING') && (appUser?.permissions?.production_hot_rolling === 'edit' || appUser?.permissions?.production_rolling === 'edit')) ||
-        (stageCode === 'HTC' && appUser?.permissions?.production_htc === 'edit') ||
-        (stageCode === 'DRAW' && appUser?.permissions?.production_draw === 'edit') ||
-        (stageCode === 'VDI' && appUser?.permissions?.production_vdi === 'edit');
-
-      const isAuthorized =
-        userWc === 'ALL' ||
-        userWc === stageCode ||
-        allowedStages.includes(stageCode) ||
-        hasFurnacePrivilege ||
-        hasBandSawOrFinishingPrivilege ||
-        isCustomStageAllowed;
-
-      if (!isAuthorized) {
+      if (!isAuthorizedForStation(authCheck.auth, stageCode)) {
         return NextResponse.json(
-          { error: `Access Denied: You are only authorized to edit data from your assigned work center (${userWc}).` },
+          { error: `Access Denied: You are not authorized to edit data from work center (${stageCode}).` },
           { status: 403 }
         );
       }
