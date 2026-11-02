@@ -829,8 +829,8 @@ export default function SizeGradeWipReportClient() {
       if (isHollowBankOrder(r)) return false;
       // Must have positive physical inventory
       if (Number(r.current_wip_pcs || 0) <= 0 && Number(r.current_wip || 0) <= 0) return false;
-      // Completed orders with 0 balance cannot have active upstream physical WIP (exempt Rolling Production so historical rolled output is still viewable)
-      if ((r.order_status || '').toLowerCase() === 'completed' && Number(r.balance_qty_pcs ?? 0) === 0 && r.stage_code !== 'FINISHING' && r.stage_code !== 'HOT_ROLLING' && r.stage_code !== 'ROLLING') return false;
+      // Completed orders with 0 balance cannot have active upstream physical WIP (eliminate ghost rows across all stages including historical rolling)
+      if ((r.order_status || '').toLowerCase() === 'completed' && Number(r.balance_qty_pcs ?? 0) === 0 && r.stage_code !== 'FINISHING') return false;
       // Order Status filter
       if (selectedStatus === 'COMPLETED') {
         if ((r.order_status || '').toLowerCase() !== 'completed') return false;
@@ -1015,12 +1015,14 @@ export default function SizeGradeWipReportClient() {
       });
     });
 
-    // Sort matrix by OD ascending, then WT ascending
-    return Array.from(map.values()).sort((a, b) => {
-      if (a.od !== b.od) return a.od - b.od;
-      if (a.wt !== b.wt) return a.wt - b.wt;
-      return a.grade.localeCompare(b.grade);
-    });
+    // Sort matrix by OD ascending, then WT ascending (strictly filter out size-grade combinations with 0 active plant WIP)
+    return Array.from(map.values())
+      .filter((g) => g.total_pcs > 0 || g.total_mtr > 0)
+      .sort((a, b) => {
+        if (a.od !== b.od) return a.od - b.od;
+        if (a.wt !== b.wt) return a.wt - b.wt;
+        return a.grade.localeCompare(b.grade);
+      });
   }, [filteredRawRows]);
 
   // Metric summaries across all active combinations

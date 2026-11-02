@@ -3120,8 +3120,12 @@ export async function GET(req: NextRequest) {
           const row = queueRows[st];
           if (row) {
             if (st === "HOT_ROLLING" || st === "ROLLING") {
-              if (Number(row.rolled_pcs || 0) > 0 || Number(row.rolled_mtr || 0) > 0) {
-                selectedRows.push(row);
+              const isCompleted = (row.order_status || "").toLowerCase() === "completed";
+              const balancePcs = Number(row.balance_qty_pcs ?? row.balance_to_make_order_pcs ?? 0);
+              if (!isCompleted || balancePcs > 0) {
+                if (Number(row.rolled_pcs || 0) > 0 || Number(row.rolled_mtr || 0) > 0) {
+                  selectedRows.push(row);
+                }
               }
             } else if (!row.is_feeder_source) {
               const readyPcs = Number(row.ready_pcs ?? 0);
