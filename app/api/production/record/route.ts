@@ -4,6 +4,9 @@ import { attachPcsToRemarks, extractPcsFromRemarks, extractBandSawCutsFromRemark
 import { requireAuth, isAuthorizedForStation } from '@/lib/supabase/authGuard';
 import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
+// Cached detection of native piece columns on production_logs to gracefully fallback if migration 090 hasn't been run
+let hasNativePcsColumns: boolean | null = null;
+
 export async function POST(req: NextRequest) {
   try {
     const authCheck = await requireAuth(req);
@@ -309,15 +312,26 @@ export async function POST(req: NextRequest) {
         };
 
         let insertErr: any = null;
-        const resWithPcs = await admin.from('production_logs').insert(enrichedPayload);
+        const payloadToInsert = hasNativePcsColumns === false ? basePayload : enrichedPayload;
+        const resWithPcs = await admin.from('production_logs').insert(payloadToInsert);
+
         if (resWithPcs.error) {
-          // If the column does not exist yet in DB (code 42703), fallback gracefully to basePayload
-          if (resWithPcs.error.code === '42703') {
+          // If the column does not exist yet in DB (Postgres 42703 or PostgREST schema cache PGRST204), fallback gracefully to basePayload
+          const isMissingCol =
+            resWithPcs.error.code === '42703' ||
+            resWithPcs.error.code === 'PGRST204' ||
+            resWithPcs.error.message?.includes('output_pcs') ||
+            resWithPcs.error.message?.includes('schema cache');
+
+          if (isMissingCol && payloadToInsert !== basePayload) {
+            hasNativePcsColumns = false;
             const fallbackRes = await admin.from('production_logs').insert(basePayload);
             insertErr = fallbackRes.error;
           } else {
             insertErr = resWithPcs.error;
           }
+        } else if (hasNativePcsColumns === null) {
+          hasNativePcsColumns = true;
         }
 
         if (insertErr) {
