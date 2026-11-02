@@ -164,6 +164,8 @@ export interface PrepareCampaignWipParams {
   routeCode?: string;
   productionLogsByWo?: Map<string, any[]>;
   qcInspectionsByWo?: Map<string, any[]>;
+  isOrderCompleted?: boolean;
+  hasActiveChildOrders?: boolean;
 }
 
 export interface PreparedCampaignWipResult {
@@ -320,6 +322,10 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
 
   const isChild = childToMasterMap.has(woId);
   const isMaster = Boolean(campaignMembers && campaignMembers.size > 1);
+
+  const isOrderCompletedRaw = String(wo?.status || '').toLowerCase() === 'completed' || String(wo?.status || '').toLowerCase() === 'closed';
+  const hasActiveChildOrders = Boolean(params.hasActiveChildOrders);
+  const isOrderCompleted = params.isOrderCompleted !== undefined ? params.isOrderCompleted : (isOrderCompletedRaw && !hasActiveChildOrders);
 
   // Ensure finishing stage is present if child order has VDI output
   let stageRows = [...rows];
@@ -495,6 +501,7 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
       mh_avg_length: actualMhLen > 0 ? actualMhLen : undefined,
       final_avg_length: woFinalLen,
       multiple: planMh?.multiple || undefined,
+      is_order_completed: isOrderCompleted,
     }
   );
 

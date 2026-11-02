@@ -704,6 +704,15 @@ export default function WorkOrderTrackingClient() {
                 ? Math.round((bandSawOutPcs + bandSawRejPcs) / planMultiple)
                 : (bandSawOutPcs + bandSawRejPcs)));
 
+      const isOrderCompletedRaw = String(wo.status || '').toLowerCase() === 'completed' || String(wo.status || '').toLowerCase() === 'closed';
+      const hasActiveChildOrders = isMaster && campaignChildWoIds.some((cId: string) => {
+        const childWo = workOrders.find((w) => w.id === cId);
+        if (!childWo) return false;
+        const st = String(childWo.status || '').toLowerCase();
+        return st === 'in progress' || st === 'in_progress' || st === 'scheduled';
+      });
+      const isOrderCompleted = isOrderCompletedRaw && !hasActiveChildOrders;
+
       const stagesData: StageTrackingMetric[] = STAGES_ORDER.map((stageDef): StageTrackingMetric => {
         const stageCode = stageDef.code;
 
@@ -798,14 +807,16 @@ export default function WorkOrderTrackingClient() {
           const htcTestedPcs = Math.max(htcOutPcs + htcRejPcs, downstreamConsumedPcs);
 
           let wipPcs = 0;
-          if (rollingOutPcs > 0 || divInPcs > 0) {
+          if (!isOrderCompleted && (rollingOutPcs > 0 || divInPcs > 0)) {
             wipPcs = Math.max(0, rollingOutPcs - rollingRejPcs + divInPcs - htcTestedPcs - divOutPcs);
           }
-          const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
+          const wipMtr = (!isOrderCompleted && mhAvgLen > 0) ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
           const mhOd = plan?.mh_od || wo.size_od || 0;
           const mhWt = plan?.mh_wt || wo.size_wt || 0;
-          const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
-          const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterRollLogs, []);
+          const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, mhOd, mhWt) : 0;
+          const { dwellDays, agingSeverity } = isOrderCompleted
+            ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
+            : getStageAging(wipMtr, masterRollLogs, []);
 
           const stageOutMtr = mhAvgLen > 0 ? Number((rollingOutPcs * mhAvgLen).toFixed(3)) : rollingOutMtr;
           const stageRejMtr = mhAvgLen > 0 ? Number((rollingRejPcs * mhAvgLen).toFixed(3)) : rollingRejMtr;
@@ -853,18 +864,20 @@ export default function WorkOrderTrackingClient() {
           const htcTestedPcs = Math.max(htcOutPcs + htcRejPcs, downstreamConsumedPcs);
 
           let wipPcs = 0;
-          if (rollingOutPcs > 0 || divInPcs > 0) {
+          if (!isOrderCompleted && (rollingOutPcs > 0 || divInPcs > 0)) {
             wipPcs = Math.max(0, rollingOutPcs - rollingRejPcs + divInPcs - htcTestedPcs - divOutPcs);
           }
-          const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
+          const wipMtr = (!isOrderCompleted && mhAvgLen > 0) ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
           const mhOd = plan?.mh_od || wo.size_od || 0;
           const mhWt = plan?.mh_wt || wo.size_wt || 0;
-          const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
-          const { dwellDays, agingSeverity } = getStageAging(
-            wipMtr,
-            masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs,
-            masterRollLogs
-          );
+          const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, mhOd, mhWt) : 0;
+          const { dwellDays, agingSeverity } = isOrderCompleted
+            ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
+            : getStageAging(
+                wipMtr,
+                masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs,
+                masterRollLogs
+              );
 
           const stageOutMtr = mhAvgLen > 0 ? Number((htcOutPcs * mhAvgLen).toFixed(3)) : htcOutMtr;
           const stageRejMtr = mhAvgLen > 0 ? Number((htcRejPcs * mhAvgLen).toFixed(3)) : htcRejMtr;
@@ -930,24 +943,28 @@ export default function WorkOrderTrackingClient() {
           );
 
           let wipPcs = 0;
-          if (hhtOkPcs > 0 || divInPcs > 0) {
-            wipPcs = Math.max(0, hhtOkPcs + divInPcs - consumedPcs - divOutPcs);
-          } else if (htcOkPcs > 0) {
-            wipPcs = Math.max(0, htcOkPcs + divInPcs - (hhtOutPcs + hhtRejPcs) - divOutPcs);
+          if (!isOrderCompleted) {
+            if (hhtOkPcs > 0 || divInPcs > 0) {
+              wipPcs = Math.max(0, hhtOkPcs + divInPcs - consumedPcs - divOutPcs);
+            } else if (htcOkPcs > 0) {
+              wipPcs = Math.max(0, htcOkPcs + divInPcs - (hhtOutPcs + hhtRejPcs) - divOutPcs);
+            }
           }
-          const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
+          const wipMtr = (!isOrderCompleted && mhAvgLen > 0) ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
           let parsedPlanStatus: any = {};
           try {
             parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
           } catch {}
           const mhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
           const mhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
-          const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
-          const { dwellDays, agingSeverity } = getStageAging(
-            wipMtr,
-            masterHhtLogs,
-            masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs
-          );
+          const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, mhOd, mhWt) : 0;
+          const { dwellDays, agingSeverity } = isOrderCompleted
+            ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
+            : getStageAging(
+                wipMtr,
+                masterHhtLogs,
+                masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs
+              );
 
           const stageOutMtr = mhAvgLen > 0 ? Number((hhtOutPcs * mhAvgLen).toFixed(3)) : hhtOutMtr;
           const stageRejMtr = mhAvgLen > 0 ? Number((hhtRejPcs * mhAvgLen).toFixed(3)) : hhtRejMtr;
@@ -1010,22 +1027,24 @@ export default function WorkOrderTrackingClient() {
           const consumedPcs = drawOutPcs + drawRejPcs;
 
           let wipPcs = 0;
-          if (incomingPcs > 0 || divInPcs > 0) {
+          if (!isOrderCompleted && (incomingPcs > 0 || divInPcs > 0)) {
             wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
           }
-          const wipMtr = effDrawLen > 0 ? Number((wipPcs * effDrawLen).toFixed(3)) : 0;
+          const wipMtr = (!isOrderCompleted && effDrawLen > 0) ? Number((wipPcs * effDrawLen).toFixed(3)) : 0;
           let parsedPlanStatus: any = {};
           try {
             parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
           } catch {}
           const drawMhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
           const drawMhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
-          const wipMt = mtFromMtr(wipMtr, drawMhOd, drawMhWt);
-          const { dwellDays, agingSeverity } = getStageAging(
-            wipMtr,
-            masterDrawLogs,
-            hasHhtInRoute ? (masterHhtLogs.length > 0 ? masterHhtLogs : masterHtcLogs) : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs)
-          );
+          const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, drawMhOd, drawMhWt) : 0;
+          const { dwellDays, agingSeverity } = isOrderCompleted
+            ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
+            : getStageAging(
+                wipMtr,
+                masterDrawLogs,
+                hasHhtInRoute ? (masterHhtLogs.length > 0 ? masterHhtLogs : masterHtcLogs) : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs)
+              );
 
           const stageOutMtr = avgLen > 0 ? Number((drawOutPcs * avgLen).toFixed(3)) : drawOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((drawRejPcs * avgLen).toFixed(3)) : drawRejMtr;
@@ -1091,18 +1110,20 @@ export default function WorkOrderTrackingClient() {
           );
 
           let wipPcs = 0;
-          if (incomingPcs > 0 || divInPcs > 0) {
+          if (!isOrderCompleted && (incomingPcs > 0 || divInPcs > 0)) {
             wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
           }
-          const wipMtr = effPilgerLen > 0 ? Number((wipPcs * effPilgerLen).toFixed(3)) : 0;
+          const wipMtr = (!isOrderCompleted && effPilgerLen > 0) ? Number((wipPcs * effPilgerLen).toFixed(3)) : 0;
           let parsedPlanStatus: any = {};
           try {
             parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
           } catch {}
           const pilgerMhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
           const pilgerMhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
-          const wipMt = mtFromMtr(wipMtr, pilgerMhOd, pilgerMhWt);
-          const { dwellDays, agingSeverity } = getStageAging(wipMtr, masterPilgerLogs, masterRollLogs);
+          const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, pilgerMhOd, pilgerMhWt) : 0;
+          const { dwellDays, agingSeverity } = isOrderCompleted
+            ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
+            : getStageAging(wipMtr, masterPilgerLogs, masterRollLogs);
 
           const stageOutMtr = avgLen > 0 ? Number((pilgerOutPcs * avgLen).toFixed(3)) : pilgerOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((pilgerRejPcs * avgLen).toFixed(3)) : pilgerRejMtr;
@@ -1168,16 +1189,18 @@ export default function WorkOrderTrackingClient() {
           );
 
           let wipPcs = 0;
-          if (incomingNetPcs > 0 || divInPcs > 0) {
+          if (!isOrderCompleted && (incomingNetPcs > 0 || divInPcs > 0)) {
             wipPcs = Math.max(0, incomingNetPcs + divInPcs - consumedPcs - divOutPcs);
           }
-          const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
-          const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
-          const { dwellDays, agingSeverity } = getStageAging(
-            wipMtr,
-            masterHtLogs,
-            hasPilgerInRoute ? masterPilgerLogs : masterDrawLogs
-          );
+          const wipMtr = (!isOrderCompleted && avgLen > 0) ? Number((wipPcs * avgLen).toFixed(3)) : 0;
+          const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)) : 0;
+          const { dwellDays, agingSeverity } = isOrderCompleted
+            ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
+            : getStageAging(
+                wipMtr,
+                masterHtLogs,
+                hasPilgerInRoute ? masterPilgerLogs : masterDrawLogs
+              );
 
           const stageOutMtr = avgLen > 0 ? Number((htOutPcs * avgLen).toFixed(3)) : htOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((htRejPcs * avgLen).toFixed(3)) : htRejMtr;
@@ -1228,19 +1251,23 @@ export default function WorkOrderTrackingClient() {
           const consumedMotherPcs = downstreamMotherPcsFromBandSaw;
 
           let wipPcs = 0;
-          if (incomingMotherPcs > 0 || divInPcs > 0) {
+          if (!isOrderCompleted && (incomingMotherPcs > 0 || divInPcs > 0)) {
             wipPcs = Math.max(0, incomingMotherPcs + divInPcs - consumedMotherPcs - divOutPcs);
           }
-          const wipMtr = mhAvgLen > 0 ? Number((wipPcs * mhAvgLen).toFixed(3)) : (avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0);
+          const wipMtr = (!isOrderCompleted && mhAvgLen > 0)
+            ? Number((wipPcs * mhAvgLen).toFixed(3))
+            : ((!isOrderCompleted && avgLen > 0) ? Number((wipPcs * avgLen).toFixed(3)) : 0);
           const mhOd = plan?.mh_od || wo.size_od || 0;
           const mhWt = plan?.mh_wt || wo.size_wt || 0;
-          const wipMt = mtFromMtr(wipMtr, mhOd, mhWt);
+          const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, mhOd, mhWt) : 0;
 
-          const { dwellDays, agingSeverity } = getStageAging(
-            wipMtr,
-            masterBandSawLogs,
-            masterHtLogs.length > 0 ? masterHtLogs : (masterDrawLogs.length > 0 ? masterDrawLogs : (masterHhtLogs.length > 0 ? masterHhtLogs : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs)))
-          );
+          const { dwellDays, agingSeverity } = isOrderCompleted
+            ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
+            : getStageAging(
+                wipMtr,
+                masterBandSawLogs,
+                masterHtLogs.length > 0 ? masterHtLogs : (masterDrawLogs.length > 0 ? masterDrawLogs : (masterHhtLogs.length > 0 ? masterHhtLogs : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs)))
+              );
 
           const stageOutMtr = avgLen > 0 ? Number((bandSawOutPcs * avgLen).toFixed(3)) : bandSawOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((bandSawRejPcs * avgLen).toFixed(3)) : bandSawRejMtr;
@@ -1286,17 +1313,19 @@ export default function WorkOrderTrackingClient() {
           }
 
           let wipPcs = 0;
-          if (incomingPcs > 0 || divInPcs > 0) {
+          if (!isOrderCompleted && (incomingPcs > 0 || divInPcs > 0)) {
             wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
           }
-          const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
-          const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+          const wipMtr = (!isOrderCompleted && avgLen > 0) ? Number((wipPcs * avgLen).toFixed(3)) : 0;
+          const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)) : 0;
 
-          const { dwellDays, agingSeverity } = getStageAging(
-            wipMtr,
-            masterVdiLogs,
-            masterBandSawLogs.length > 0 ? masterBandSawLogs : masterHtLogs
-          );
+          const { dwellDays, agingSeverity } = isOrderCompleted
+            ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
+            : getStageAging(
+                wipMtr,
+                masterVdiLogs,
+                masterBandSawLogs.length > 0 ? masterBandSawLogs : masterHtLogs
+              );
 
           const stageOutMtr = avgLen > 0 ? Number((vdiOutPcs * avgLen).toFixed(3)) : vdiOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((vdiRejPcs * avgLen).toFixed(3)) : vdiRejMtr;
@@ -1365,16 +1394,20 @@ export default function WorkOrderTrackingClient() {
 
         let wipPcs = 0;
         const consumedPcs = finOutPcs + finRejPcs;
-        if (thisWoQcList.length > 0) {
-          wipPcs = Math.max(0, Math.min(targetPcs, qcPassedPcs) + divInPcs - consumedPcs - divOutPcs);
-        } else if (!childInfo && !isMaster && (precedingOutPcs > 0 || divInPcs > 0)) {
-          wipPcs = Math.max(0, Math.min(targetPcs, precedingOutPcs) + divInPcs - consumedPcs - divOutPcs);
-        } else if (divInPcs > 0) {
-          wipPcs = Math.max(0, divInPcs - consumedPcs - divOutPcs);
+        if (!isOrderCompleted) {
+          if (thisWoQcList.length > 0) {
+            wipPcs = Math.max(0, Math.min(targetPcs, qcPassedPcs) + divInPcs - consumedPcs - divOutPcs);
+          } else if (!childInfo && !isMaster && (precedingOutPcs > 0 || divInPcs > 0)) {
+            wipPcs = Math.max(0, Math.min(targetPcs, precedingOutPcs) + divInPcs - consumedPcs - divOutPcs);
+          } else if (divInPcs > 0) {
+            wipPcs = Math.max(0, divInPcs - consumedPcs - divOutPcs);
+          }
         }
-        const wipMtr = avgLen > 0 ? Number((wipPcs * avgLen).toFixed(3)) : 0;
-        const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
-        const { dwellDays, agingSeverity } = getStageAging(wipMtr, finLogs, masterHtLogs.length > 0 ? masterHtLogs : masterDrawLogs);
+        const wipMtr = (!isOrderCompleted && avgLen > 0) ? Number((wipPcs * avgLen).toFixed(3)) : 0;
+        const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)) : 0;
+        const { dwellDays, agingSeverity } = isOrderCompleted
+          ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
+          : getStageAging(wipMtr, finLogs, masterHtLogs.length > 0 ? masterHtLogs : masterDrawLogs);
 
         const stageFinOutMtr = finOutMtr > 0 ? finOutMtr : (avgLen > 0 ? Number((finOutPcs * avgLen).toFixed(3)) : 0);
         const stageFinRejMtr = finRejMtr > 0 ? finRejMtr : (avgLen > 0 ? Number((finRejPcs * avgLen).toFixed(3)) : 0);
@@ -1446,7 +1479,7 @@ export default function WorkOrderTrackingClient() {
         qcList: woQcList,
       };
     },
-    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip, qcInspections, diversionPlans]
+    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip, qcInspections, diversionPlans, workOrders]
   );
 
   // Toggle single work order details

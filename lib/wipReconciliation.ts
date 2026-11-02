@@ -91,6 +91,7 @@ export function reconcileWorkOrderWip(
     mh_avg_length?: number;
     final_avg_length?: number;
     multiple?: number;
+    is_order_completed?: boolean;
   } = {}
 ): WorkOrderWipSummary {
   const routeCode = (options.route_code || 'CDS').toUpperCase();
@@ -189,9 +190,9 @@ export function reconcileWorkOrderWip(
         }
       }
 
-      const awaitingHtcPcs = Math.max(0, rollHtcPcs - maxDownstreamPcs);
-      const awaitingHtcMtr = Number((awaitingHtcPcs * actualMhLen).toFixed(2));
-      const awaitingHtcMt = mtFromMtr(awaitingHtcMtr, mhOd, mhWt);
+      const awaitingHtcPcs = options.is_order_completed ? 0 : Math.max(0, rollHtcPcs - maxDownstreamPcs);
+      const awaitingHtcMtr = options.is_order_completed ? 0 : Number((awaitingHtcPcs * actualMhLen).toFixed(2));
+      const awaitingHtcMt = options.is_order_completed ? 0 : mtFromMtr(awaitingHtcMtr, mhOd, mhWt);
 
       reconciledStages.push({
         stage_code: 'ROLLING',
@@ -398,14 +399,16 @@ export function reconcileWorkOrderWip(
     // Physical conservation check:
     // If incoming meters are fully cut/processed (rawWipMtr <= 0),
     // no active WIP mother pipes can physically remain at this work center.
-    if (rawWipMtr <= 0) {
+    if (rawWipMtr <= 0 || options.is_order_completed) {
       wipPcs = 0;
     }
 
-    const wipMtr = wipPcs > 0
-      ? (stageLen > 0 ? Number((wipPcs * stageLen).toFixed(2)) : rawWipMtr)
-      : (totalIncomingPcs === 0 && rawWipMtr >= (stageLen > 0 ? stageLen * 0.5 : 1.0) ? rawWipMtr : 0);
-    const wipMt = mtFromMtr(wipMtr, stageOd, stageWt);
+    const wipMtr = options.is_order_completed
+      ? 0
+      : (wipPcs > 0
+          ? (stageLen > 0 ? Number((wipPcs * stageLen).toFixed(2)) : rawWipMtr)
+          : (totalIncomingPcs === 0 && rawWipMtr >= (stageLen > 0 ? stageLen * 0.5 : 1.0) ? rawWipMtr : 0));
+    const wipMt = options.is_order_completed ? 0 : mtFromMtr(wipMtr, stageOd, stageWt);
 
     reconciledStages.push({
       stage_code: sc,

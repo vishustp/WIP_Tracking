@@ -331,6 +331,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
     routeCode,
     stageCodeById,
     finishingStageId,
+    isOrderCompleted,
   });
 
   // Elongation multiple for this work order
@@ -390,6 +391,12 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
       let curWipMtr = Number(recStage?.capped_wip_mtr ?? recStage?.reconciled_wip_mtr ?? 0);
       let curWipMt = Number(recStage?.capped_wip_mt ?? recStage?.reconciled_wip_mt ?? (curWipMtr * mtPerMtr));
 
+      if (isOrderCompleted && sc !== 'VDI') {
+        curWipPcs = 0;
+        curWipMtr = 0;
+        curWipMt = 0;
+      }
+
       // Reconcile VDI WIP under Rule 2 Option B:
       // Rejections/salvage logged by QC inspections remain active WIP and are available for diversion.
       if (sc === 'VDI') {
@@ -415,8 +422,13 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
           ? Math.max(0, Math.round(totalVdiRejPcs * (availableVdiRejMtr / totalVdiRejMtr)))
           : 0;
 
-        // When prime uninspected material has fully passed downstream, active WIP at VDI is strictly the undispositioned salvage pool
-        if (curWipPcs === 0 && availableVdiRejPcs > 0) {
+        // When prime uninspected material has fully passed downstream or order is completed,
+        // active WIP at VDI is strictly the undispositioned salvage pool
+        if (isOrderCompleted) {
+          curWipPcs = availableVdiRejPcs;
+          curWipMtr = availableVdiRejMtr > 0 ? availableVdiRejMtr : (avgLength > 0 ? Number((availableVdiRejPcs * avgLength).toFixed(2)) : 0);
+          curWipMt = curWipMtr * mtPerMtr;
+        } else if (curWipPcs === 0 && availableVdiRejPcs > 0) {
           curWipPcs = availableVdiRejPcs;
           curWipMtr = availableVdiRejMtr > 0 ? availableVdiRejMtr : (avgLength > 0 ? Number((availableVdiRejPcs * avgLength).toFixed(2)) : 0);
           curWipMt = curWipMtr * mtPerMtr;
