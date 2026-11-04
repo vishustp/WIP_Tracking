@@ -27,18 +27,12 @@ describe('WO 6580 & 6581 Meter Calculation Across Campaigns', () => {
       expect(draw6580.ready_mtr).toBeCloseTo(589.7, 1);
     }
 
-    // WO 6581: Rolled 40 pcs (214.0m) in Campaign 20 awaiting HTC
-    const htc6581 = rows.find((r: any) => r.work_order_no === '6581' && r.stage_code === 'HTC');
-    if (htc6581) {
-      expect(htc6581.ready_pcs).toBe(40);
-      expect(htc6581.ready_mtr).toBeCloseTo(214.0, 1);
-    }
-
-    // WO 6581: October 384 pcs were HFS and already cut at Band Saw; must not appear in Draw Bench
+    // WO 6581: 40 pcs rolled and passed HTC in Campaign 20 (CDS); now available in Draw Bench queue
     const draw6581 = rows.find((r: any) => r.work_order_no === '6581' && r.stage_code === 'DRAW');
+    expect(draw6581).toBeDefined();
     if (draw6581) {
-      expect(draw6581.ready_pcs).toBe(0);
-      expect(draw6581.ready_mtr).toBe(0);
+      expect(draw6581.ready_pcs).toBe(40);
+      expect(draw6581.ready_mtr).toBeCloseTo(214.0, 1);
     }
   });
 });

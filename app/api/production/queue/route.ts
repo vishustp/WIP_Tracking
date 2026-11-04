@@ -1424,16 +1424,20 @@ export async function GET(req: NextRequest) {
       // Apply rejection declarations to Draw availability (Rule 1 & Rule 2: Preceding Stage OK - Current Stage OK)
       const drawRejDecl = getStageRejDecl(woId, "DRAW");
       const effDrawRej = Math.max(drawRejPcs, drawRejDecl.pcs);
+      // Deduct downstream consumption for Draw Bench.
+      // If Band Saw has logged cuts, that is the exact mother pipe count cut into downstream;
+      // only estimate from downstream stages (QC / Finishing) if Band Saw has no cut logs.
       const mult = multiple > 0 ? multiple : 1;
       const loggedBsMotherPcs = bsMotherPcsCut > 0
         ? bsMotherPcsCut
         : (mult > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / mult) : (bandSawOutPcs + bandSawRejPcs));
-      const drawDownstreamConsumedPcs = Math.max(
-        loggedHtPcs,
-        loggedBsMotherPcs,
-        mult > 1 ? Math.ceil(qcInspectedPcs / mult) : qcInspectedPcs,
-        mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
-      );
+      const downstreamMotherPcs = loggedBsMotherPcs > 0
+        ? loggedBsMotherPcs
+        : Math.max(
+            mult > 1 ? Math.ceil(qcInspectedPcs / mult) : qcInspectedPcs,
+            mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
+          );
+      const drawDownstreamConsumedPcs = Math.max(loggedHtPcs, downstreamMotherPcs);
       const drawConsumedPcs = Math.max(drawOutPcs + effDrawRej, drawDownstreamConsumedPcs);
       if (isCds) {
         drawAvailPcs = Math.max(0, drawIncomingPcs + drawDivInPcs + drawStockIn.pcs - drawConsumedPcs - drawDivOutPcs);
