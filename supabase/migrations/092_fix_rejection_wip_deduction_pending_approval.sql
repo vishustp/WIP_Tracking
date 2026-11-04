@@ -110,8 +110,13 @@ WITH RECURSIVE route_base AS (
         )::numeric
     END AS rejection_qty,
     COALESCE(
-      (SELECT SUM(pl.pcs) FROM public.production_logs pl
-       WHERE pl.work_order_id = rs.work_order_id AND pl.stage_id = rs.stage_id), 0
+      (SELECT SUM(COALESCE(
+        NULLIF(pl.output_pcs, 0),
+        (substring(pl.remarks from '\[PCS:\s*([0-9]+)\]'))::numeric,
+        public.mtr_to_pcs(rs.work_order_id, pl.output_qty)
+      ))
+      FROM public.production_logs pl
+      WHERE pl.work_order_id = rs.work_order_id AND pl.stage_id = rs.stage_id), 0
     )::numeric AS curr_stage_pcs,
     COALESCE(
       (SELECT SUM(dp.diverted_qty) FROM public.diversion_plans dp
@@ -217,8 +222,8 @@ WITH RECURSIVE route_base AS (
       (SELECT 
          CASE
            WHEN prev.stage_code = 'ROLLING' THEN
-             COALESCE((SELECT SUM(pl.htc_ok_pcs) FROM public.production_logs pl
-                       WHERE pl.work_order_id = dm.work_order_id AND pl.stage_id = prev.stage_id AND pl.htc_ok_pcs > 0),
+             COALESCE((SELECT SUM(COALESCE(NULLIF(pl.htc_ok_pcs, 0), (substring(pl.remarks from '\[HTC_PCS:\s*([0-9]+)\]'))::numeric, NULLIF(pl.output_pcs, 0))) FROM public.production_logs pl
+                       WHERE pl.work_order_id = dm.work_order_id AND pl.stage_id = prev.stage_id AND (pl.htc_ok_pcs > 0 OR pl.output_pcs > 0)),
                       prev.curr_stage_pcs)
            ELSE 
              GREATEST(0, prev.curr_stage_pcs - prev.rejection_qty / NULLIF(public.wo_avg_length(dm.work_order_id), 0))
