@@ -197,9 +197,11 @@ describe('Audit: WIP Reconciliation Across Reports & Rolling Production Tonnage'
     const bs6579 = queueRows.find((r: any) => String(r.work_order_no).includes('6579') && r.stage_code === 'BAND_SAW');
     expect(bs6579 === undefined || bs6579.ready_pcs === 0).toBe(true);
 
-    // WO 6625: mother pipes cut into downstream VDI
+    // WO 6625: 239 HTC OK - 149 cut = 90 uncut mother pipes at Band Saw
     const bs6625 = queueRows.find((r: any) => String(r.work_order_no).includes('6625') && r.stage_code === 'BAND_SAW');
-    expect(bs6625 === undefined || bs6625.ready_pcs === 0).toBe(true);
+    if (bs6625) {
+      expect(bs6625.ready_pcs).toBe(90);
+    }
 
     // WO 6626: 223 HTC OK - 223 cut = 0 mother pipes at Band Saw (fully cut)
     const bs6626 = queueRows.find((r: any) => String(r.work_order_no).includes('6626') && r.stage_code === 'BAND_SAW');

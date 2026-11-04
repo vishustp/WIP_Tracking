@@ -39,7 +39,7 @@ export function WipSummaryCards({
   stage,
   setStage,
 }: WipSummaryCardsProps) {
-  // Production Entry stages in sequential manufacturing flow
+  // Production Entry stages in sequential order (Band Saw and VDI have dedicated forms)
   const orderedStages: StageCode[] = [
     "HOT_ROLLING",
     "HTC",
@@ -47,22 +47,8 @@ export function WipSummaryCards({
     "DRAW",
     "PILGER",
     "HEAT_TREATMENT",
-    "BAND_SAW",
-    "VDI",
     "FINISHING",
   ];
-
-  const handleStageClick = (stgCode: StageCode) => {
-    if (stgCode === "BAND_SAW") {
-      window.location.href = "/bandsaw";
-      return;
-    }
-    if (stgCode === "VDI") {
-      window.location.href = "/vdi";
-      return;
-    }
-    setStage(stgCode);
-  };
 
   return (
     <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-5 shadow-2xs">
@@ -72,7 +58,7 @@ export function WipSummaryCards({
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
         {orderedStages.map((stgCode) => {
           const wc = workCenterSummary.find((x) => x.stage_code === stgCode) || {
             label: STAGE_DISPLAY_NAMES[stgCode] || stgCode,
@@ -85,24 +71,19 @@ export function WipSummaryCards({
 
           const isSelected = wc.stage_code === stage;
           const displayName = STAGE_DISPLAY_NAMES[wc.stage_code] || wc.label;
-          const isDedicatedPortal = stgCode === "BAND_SAW" || stgCode === "VDI";
 
           return (
             <div
               key={wc.stage_code}
-              onClick={() => handleStageClick(wc.stage_code)}
-              title={isDedicatedPortal ? `Open dedicated ${displayName} console` : undefined}
+              onClick={() => setStage(wc.stage_code)}
               className={`cursor-pointer rounded-lg border p-4 transition-all ${
                 isSelected
                   ? "border-2 border-sky-600 bg-[var(--bg-surface,#ffffff)] shadow-xs ring-1 ring-sky-600/20"
                   : "border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] hover:border-[var(--border-strong,#cbd5e1)] hover:bg-[var(--bg-surface-subtle,#f8fafc)]"
               }`}
             >
-              <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted,#64748b)]">
-                <span>{displayName}</span>
-                {isDedicatedPortal && (
-                  <span className="text-[10px] text-sky-600 font-semibold" title="Dedicated workstation">↗</span>
-                )}
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted,#64748b)]">
+                {displayName}
               </div>
 
               <div className="mt-2.5 flex items-baseline gap-1.5">
