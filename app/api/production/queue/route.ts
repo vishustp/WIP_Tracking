@@ -870,7 +870,9 @@ export async function GET(req: NextRequest) {
             existing.plan_nos = combinedPlanNos;
             existing.plan_no = combinedPlanNos.join(', ');
             existing.master_planned_mtr = (existing.master_planned_mtr || 0) + masterPlannedMtr;
+            existing.master_planned_pcs = (existing.master_planned_pcs || 0) + masterPlannedPcs;
             existing.total_campaign_mtr = (existing.total_campaign_mtr || 0) + totalCampaignMtr;
+            existing.total_campaign_pcs = (existing.total_campaign_pcs || 0) + totalCampaignPcs;
             if (isIssued) existing.is_issued = true;
             if (isIpCut) {
               existing.is_ip_cutting = true;
@@ -1057,7 +1059,9 @@ export async function GET(req: NextRequest) {
         ? (Number(campaign.master_planned_pcs) > 0 ? Number(campaign.master_planned_pcs) : (mhAvgLength > 0 ? Math.round(totalCampaignMtr / mhAvgLength) : 0))
         : (storedPlanPcs > 0 ? storedPlanPcs : (mhAvgLength > 0 ? Math.round(totalCampaignMtr / mhAvgLength) : 0));
 
-      const effPlanMhAvg = totalCampaignPcs > 0 && totalCampaignMtr > 0 ? totalCampaignMtr / totalCampaignPcs : mhAvgLength;
+      const activeMhAvg = (plan?.mh_l1 && plan?.mh_l2 ? (plan.mh_l1 + plan.mh_l2) / 2 : plan?.mh_l1) || mhAvgLength;
+      const rawPlanMhAvg = totalCampaignPcs > 0 && totalCampaignMtr > 0 ? totalCampaignMtr / totalCampaignPcs : 0;
+      const effPlanMhAvg = (rawPlanMhAvg > 0 && rawPlanMhAvg <= 20) ? rawPlanMhAvg : (activeMhAvg > 0 ? activeMhAvg : mhAvgLength);
       const effMhAvg = effPlanMhAvg > 0 ? effPlanMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength);
 
       // 1. Rolling Stage Metrics
@@ -1132,7 +1136,8 @@ export async function GET(req: NextRequest) {
       const htcStockOut = getStageStockGenOut(woId, "HTC");
 
       let htcAvailPcs = Math.max(0, incomingHtcPcs + htcDivInPcs + htcStockIn.pcs - htcTestedPcs - htcDivOutPcs);
-      let htcAvailMtr = effMhAvg > 0 ? Number((htcAvailPcs * effMhAvg).toFixed(3)) : Math.max(0, incomingHtcMtr + htcDivIn + htcStockIn.mtr - (sumQty(htcLogs, "output_qty") + sumQty(htcLogs, "rejection_qty")) - htcDivOut);
+      const effHtcLen = activeMhAvg > 0 ? activeMhAvg : (effMhAvg > 0 ? effMhAvg : avgLength);
+      let htcAvailMtr = effHtcLen > 0 ? Number((htcAvailPcs * effHtcLen).toFixed(3)) : Math.max(0, incomingHtcMtr + htcDivIn + htcStockIn.mtr - (sumQty(htcLogs, "output_qty") + sumQty(htcLogs, "rejection_qty")) - htcDivOut);
       let htcAvailMt = mtFromMtr(htcAvailMtr, mhOd, mhWt);
 
       const rollHtcOkPcs = htcOkPcs + htcStockOut.pcs;
@@ -1253,7 +1258,7 @@ export async function GET(req: NextRequest) {
         : 0;
       const effDrawLen = isIpCutting && ipCutLength > 0
         ? ipCutLength
-        : (effMhAvg > 0 ? effMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength));
+        : (activeMhAvg > 0 ? activeMhAvg : (effMhAvg > 0 ? effMhAvg : (mhAvgLength > 0 ? mhAvgLength : avgLength)));
       let drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;
       let drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
@@ -1419,8 +1424,19 @@ export async function GET(req: NextRequest) {
       // Apply rejection declarations to Draw availability (Rule 1 & Rule 2: Preceding Stage OK - Current Stage OK)
       const drawRejDecl = getStageRejDecl(woId, "DRAW");
       const effDrawRej = Math.max(drawRejPcs, drawRejDecl.pcs);
+      const mult = multiple > 0 ? multiple : 1;
+      const loggedBsMotherPcs = bsMotherPcsCut > 0
+        ? bsMotherPcsCut
+        : (mult > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / mult) : (bandSawOutPcs + bandSawRejPcs));
+      const drawDownstreamConsumedPcs = Math.max(
+        loggedHtPcs,
+        loggedBsMotherPcs,
+        mult > 1 ? Math.ceil(qcInspectedPcs / mult) : qcInspectedPcs,
+        mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
+      );
+      const drawConsumedPcs = Math.max(drawOutPcs + effDrawRej, drawDownstreamConsumedPcs);
       if (isCds) {
-        drawAvailPcs = Math.max(0, drawIncomingPcs + drawDivInPcs + drawStockIn.pcs - (drawOutPcs + effDrawRej) - drawDivOutPcs);
+        drawAvailPcs = Math.max(0, drawIncomingPcs + drawDivInPcs + drawStockIn.pcs - drawConsumedPcs - drawDivOutPcs);
         drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;
         drawAvailMt = mtFromMtr(drawAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
       }
@@ -1439,10 +1455,6 @@ export async function GET(req: NextRequest) {
 
       // Deduct mother pipes cut at Band Saw. If Band Saw has logged cuts, use logged cuts;
       // only estimate from downstream stages if Band Saw has no logs.
-      const mult = multiple > 0 ? multiple : 1;
-      const loggedBsMotherPcs = bsMotherPcsCut > 0
-        ? bsMotherPcsCut
-        : (mult > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / mult) : (bandSawOutPcs + bandSawRejPcs));
       const bandSawPassedPcs = loggedBsMotherPcs > 0
         ? loggedBsMotherPcs
         : Math.max(
@@ -2071,7 +2083,7 @@ export async function GET(req: NextRequest) {
 
       // 2. Draw Bench Feeder: Rolling Plan issued quantity (or Hollow HT output for Alloy, or IP Cutting for IP Cutting)
       const drawFeederPcs = isCds
-        ? Math.max(0, isIpCutting ? (ipCutNetPcs - drawOutPcs - drawRejPcs - drawRejDecl.pcs) : (isAlloy ? (hollowHtNetPcs + hollowHtAvailPcs - drawOutPcs - drawRejPcs - drawRejDecl.pcs) : (totalCampaignPcs - drawOutPcs - drawRejPcs - drawRejDecl.pcs)))
+        ? Math.max(0, isIpCutting ? (ipCutNetPcs - drawConsumedPcs - drawRejDecl.pcs) : (isAlloy ? (hollowHtNetPcs + hollowHtAvailPcs - drawConsumedPcs - drawRejDecl.pcs) : (totalCampaignPcs - drawConsumedPcs - drawRejDecl.pcs)))
         : 0;
       const drawFeederMtr = effDrawLen > 0 ? Number((drawFeederPcs * effDrawLen).toFixed(3)) : Math.max(0, totalCampaignMtr - drawOutMtr - drawRejMtr - drawRejDecl.mtr);
       const drawFeederMt = mtFromMtr(drawFeederMtr, mhOd > 0 ? mhOd : woOd, mhWt > 0 ? mhWt : woWt);

@@ -1044,7 +1044,11 @@ export default function WorkOrderTrackingClient() {
           const effDrawLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'DRAW', effDrawLen);
           const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'DRAW', effDrawLen);
-          const consumedPcs = drawOutPcs + drawRejPcs;
+          const consumedPcs = Math.max(
+            drawOutPcs + drawRejPcs,
+            htOutPcs + htRejPcs,
+            downstreamMotherPcsFromBandSaw
+          );
 
           let wipPcs = 0;
           if (!isOrderCompleted && (incomingPcs > 0 || divInPcs > 0)) {
