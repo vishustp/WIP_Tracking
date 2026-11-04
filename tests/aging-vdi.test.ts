@@ -136,9 +136,14 @@ describe('Aging VDI and Zero Nos Integration', () => {
       asOfDate: new Date(),
     });
 
-    // wo-1 and wo-2 should be deducted to 0 and filtered out
+    // wo-1 (APPROVED) should be deducted to 0 and filtered out
     expect(result.find((r: any) => r.work_order_id === 'wo-1')).toBeUndefined();
-    expect(result.find((r: any) => r.work_order_id === 'wo-2')).toBeUndefined();
+
+    // wo-2 (PENDING_QC) must NOT be deducted before Final PPC approval
+    const pendingWo2 = result.find((r: any) => r.work_order_id === 'wo-2');
+    expect(pendingWo2).toBeDefined();
+    expect(pendingWo2!.current_wip_pcs).toBe(1);
+    expect(pendingWo2!.current_wip).toBe(6.1);
 
     // wo-3 should remain active with L1 and L2 preserved
     const remaining = result.find((r: any) => r.work_order_id === 'wo-3');

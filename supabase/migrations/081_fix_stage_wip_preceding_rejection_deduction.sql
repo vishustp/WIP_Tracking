@@ -116,13 +116,22 @@ WITH RECURSIVE route_base AS (
          AND dp.process_route_id = rs.route_id
          AND COALESCE(substring(dp.reason from '\[FROM_STAGE:\s*([A-Z_]+)\]'), dp.work_center) = rs.stage_code), 0
     )::numeric AS diversion_out,
+    -- Approved Rejection Declarations (deducted from stage WIP upon final PPC approval)
+    COALESCE((
+      SELECT SUM(COALESCE(rd.ppc_approved_mtr, rd.qc_verified_mtr, rd.rejected_mtr))
+      FROM public.rejection_declarations rd
+      WHERE rd.work_order_id = rs.work_order_id
+        AND rd.work_center = rs.stage_code
+        AND rd.status = 'APPROVED'
+    ), 0)::numeric AS declared_rej_mtr,
+    -- Pending Rejection Declarations (for operational hold warnings)
     COALESCE((
       SELECT SUM(COALESCE(rd.qc_verified_mtr, rd.rejected_mtr))
       FROM public.rejection_declarations rd
       WHERE rd.work_order_id = rs.work_order_id
         AND rd.work_center = rs.stage_code
         AND rd.status IN ('PENDING_QC', 'PENDING_PPC')
-    ), 0)::numeric AS declared_rej_mtr,
+    ), 0)::numeric AS pending_rej_mtr,
     COALESCE((
       SELECT SUM(COALESCE(rd.qc_verified_pcs, rd.rejected_pcs))
       FROM public.rejection_declarations rd
@@ -360,7 +369,10 @@ SELECT
   public.mtr_to_pcs(sw.work_order_id, sw.rejection_qty) AS rejection_pcs,
   public.mtr_to_mt(sw.work_order_id, sw.rejection_qty) AS rejection_mt,
   public.mtr_to_pcs(sw.work_order_id, sw.net_output_mtr) AS net_output_pcs,
-  public.mtr_to_mt(sw.work_order_id, sw.net_output_mtr) AS net_output_mt
+  public.mtr_to_mt(sw.work_order_id, sw.net_output_mtr) AS net_output_mt,
+  sw.declared_rej_mtr,
+  sw.pending_rej_mtr,
+  sw.pending_rej_pcs
 FROM stage_wip_resolved sw;
 
 GRANT SELECT ON public.vw_route_stage_wip TO anon, authenticated, service_role;

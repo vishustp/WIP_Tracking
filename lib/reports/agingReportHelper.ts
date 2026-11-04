@@ -404,7 +404,8 @@ export function computeAgingReportRows(options: {
 
   const rejMap = new Map<string, { pcs: number; mtr: number }>();
   (rejectionDeclarations || []).forEach((rd) => {
-    if (rd.status === 'REJECTED_BY_QC' || rd.status === 'REJECTED_BY_PPC') return;
+    // Only approved rejection declarations (with final PPC authorization) deduct from active WIP
+    if (rd.status !== 'APPROVED') return;
     const key = `${rd.work_order_id}_${(rd.work_center || '').toUpperCase()}`;
     const cur = rejMap.get(key) || { pcs: 0, mtr: 0 };
     const pcs = Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0);
@@ -1173,8 +1174,7 @@ export function normalizeAgingRow(
     (rd) =>
       rd.work_order_id === raw.work_order_id &&
       (rd.work_center || '').toUpperCase() === sc &&
-      rd.status !== 'REJECTED_BY_QC' &&
-      rd.status !== 'REJECTED_BY_PPC'
+      rd.status === 'APPROVED'
   );
   const rejDeclPcs = matchingRejs.reduce(
     (sum, rd) => sum + Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0),

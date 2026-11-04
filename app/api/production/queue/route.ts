@@ -325,9 +325,13 @@ export async function GET(req: NextRequest) {
       return { pcs, mtr, mt };
     };
 
+    // Approved rejection declarations (strictly require Final PPC Approval before deducting from active WIP)
     const getStageRejDecl = (wId: string, stageCode: string) => {
       const matching = rejectionDeclarations.filter(
-        (rd: any) => rd.work_order_id === wId && (rd.work_center || "").toUpperCase() === stageCode.toUpperCase()
+        (rd: any) =>
+          rd.work_order_id === wId &&
+          (rd.work_center || "").toUpperCase() === stageCode.toUpperCase() &&
+          rd.status === "APPROVED"
       );
       const pcs = matching.reduce(
         (sum: number, rd: any) => sum + Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0),
@@ -335,6 +339,25 @@ export async function GET(req: NextRequest) {
       );
       const mtr = matching.reduce(
         (sum: number, rd: any) => sum + Number(rd.ppc_approved_mtr ?? rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0),
+        0
+      );
+      return { pcs, mtr };
+    };
+
+    // Pending rejection declarations awaiting QC or PPC approval (not deducted from active WIP, flagged for hold warnings)
+    const getStagePendingRejDecl = (wId: string, stageCode: string) => {
+      const matching = rejectionDeclarations.filter(
+        (rd: any) =>
+          rd.work_order_id === wId &&
+          (rd.work_center || "").toUpperCase() === stageCode.toUpperCase() &&
+          (rd.status === "PENDING_QC" || rd.status === "PENDING_PPC")
+      );
+      const pcs = matching.reduce(
+        (sum: number, rd: any) => sum + Number(rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0),
+        0
+      );
+      const mtr = matching.reduce(
+        (sum: number, rd: any) => sum + Number(rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0),
         0
       );
       return { pcs, mtr };
@@ -2157,6 +2180,18 @@ export async function GET(req: NextRequest) {
       const finDivDetails = getStageDivDetails(woId, "FINISHING", avgLength);
       const ipCutDivDetails = getStageDivDetails(woId, "IP_CUTTING", ipCutLength > 0 ? ipCutLength : (effMhAvg > 0 ? effMhAvg : avgLength));
 
+      const rollPendingRej = getStagePendingRejDecl(woId, "ROLLING");
+      const htcPendingRej = getStagePendingRejDecl(woId, "HTC");
+      const hhtPendingRej = getStagePendingRejDecl(woId, "HOLLOW_HEAT_TREATMENT");
+      const drawPendingRej = getStagePendingRejDecl(woId, "DRAW");
+      const pilgerPendingRej = getStagePendingRejDecl(woId, "PILGER");
+      const htPendingRej = getStagePendingRejDecl(woId, "HEAT_TREATMENT");
+      const bsPendingRej = getStagePendingRejDecl(woId, "BAND_SAW");
+      const vdiPendingRej = getStagePendingRejDecl(woId, "VDI");
+      const finPendingRej = getStagePendingRejDecl(woId, "FINISHING");
+      const ipCutPendingRej = getStagePendingRejDecl(woId, "IP_CUTTING");
+      const vdiSalvagePendingRej = getStagePendingRejDecl(woId, "VDI_SALVAGE");
+
       const getStageActivityDate = (
         stageLogs: any[],
         precedingLogs: any[],
@@ -2203,6 +2238,8 @@ export async function GET(req: NextRequest) {
                 avg_length: effMhAvg > 0 ? effMhAvg : avgLength,
                 stage_code: "HOT_ROLLING",
                 stage_name: "Hot Rolling Mill",
+                pending_rejection_pcs: rollPendingRej.pcs,
+                pending_rejection_mtr: rollPendingRej.mtr,
                 balance_to_make_mtr: rollAvailMtr,
                 balance_to_make_pcs: rollAvailPcs,
                 balance_to_make_mt: rollAvailMt,
@@ -2237,6 +2274,8 @@ export async function GET(req: NextRequest) {
                 avg_length: effMhAvg > 0 ? effMhAvg : avgLength,
                 stage_code: "HTC",
                 stage_name: "HTC",
+                pending_rejection_pcs: htcPendingRej.pcs,
+                pending_rejection_mtr: htcPendingRej.mtr,
                 balance_to_make_mtr: htcAvailMtr,
                 balance_to_make_pcs: htcAvailPcs,
                 balance_to_make_mt: htcAvailMt,
@@ -2267,6 +2306,8 @@ export async function GET(req: NextRequest) {
                 l2: mhL2 > 0 ? mhL2 : l2,
                 avg_length: effMhAvg > 0 ? effMhAvg : avgLength,
                 stage_code: "ROLLING",
+                pending_rejection_pcs: rollPendingRej.pcs,
+                pending_rejection_mtr: rollPendingRej.mtr,
                 balance_to_make_mtr: rollAvailMtr,
                 balance_to_make_pcs: rollAvailPcs,
                 balance_to_make_mt: rollAvailMt,
@@ -2297,6 +2338,8 @@ export async function GET(req: NextRequest) {
                 l2: mhL2 > 0 ? mhL2 : l2,
                 avg_length: effHhtAvg > 0 ? effHhtAvg : avgLength,
                 stage_code: "HOLLOW_HEAT_TREATMENT",
+                pending_rejection_pcs: hhtPendingRej.pcs,
+                pending_rejection_mtr: hhtPendingRej.mtr,
                 balance_to_make_mtr: isHhtReady ? hollowHtAvailMtr : hhtFeederMtr,
                 balance_to_make_pcs: isHhtReady ? hollowHtAvailPcs : hhtFeederPcs,
                 balance_to_make_mt: isHhtReady ? hollowHtAvailMt : hhtFeederMt,
@@ -2328,6 +2371,8 @@ export async function GET(req: NextRequest) {
                 l1: ipCutLength > 0 ? ipCutLength : (mhL1 > 0 ? mhL1 : l1),
                 l2: ipCutLength > 0 ? ipCutLength : (mhL2 > 0 ? mhL2 : l2),
                 avg_length: ipCutLength > 0 ? ipCutLength : (effMhAvg > 0 ? effMhAvg : avgLength),
+                pending_rejection_pcs: ipCutPendingRej.pcs,
+                pending_rejection_mtr: ipCutPendingRej.mtr,
                 balance_to_make_mtr: isIpCutReady ? ipCutAvailMtr : ipCutFeederMtr,
                 balance_to_make_pcs: isIpCutReady ? ipCutAvailPcs : ipCutFeederPcs,
                 balance_to_make_mt: isIpCutReady ? ipCutAvailMt : ipCutFeederMt,
@@ -2360,6 +2405,8 @@ export async function GET(req: NextRequest) {
                 wl: woWt,
                 avg_length: effDrawLen > 0 ? effDrawLen : avgLength,
                 stage_code: "DRAW",
+                pending_rejection_pcs: drawPendingRej.pcs,
+                pending_rejection_mtr: drawPendingRej.mtr,
                 balance_to_make_mtr: isDrawReady ? drawAvailMtr : drawFeederMtr,
                 balance_to_make_pcs: isDrawReady ? drawAvailPcs : drawFeederPcs,
                 balance_to_make_mt: isDrawReady ? drawAvailMt : drawFeederMt,
@@ -2392,6 +2439,8 @@ export async function GET(req: NextRequest) {
                 wl: woWt,
                 avg_length: effPilgerLen > 0 ? effPilgerLen : avgLength,
                 stage_code: "PILGER",
+                pending_rejection_pcs: pilgerPendingRej.pcs,
+                pending_rejection_mtr: pilgerPendingRej.mtr,
                 balance_to_make_mtr: isPilgerReady ? pilgerAvailMtr : pilgerFeederMtr,
                 balance_to_make_pcs: isPilgerReady ? pilgerAvailPcs : pilgerFeederPcs,
                 balance_to_make_mt: isPilgerReady ? pilgerAvailMt : pilgerFeederMt,
@@ -2417,6 +2466,8 @@ export async function GET(req: NextRequest) {
                 ...(htDivDetails.has_diversion ? htDivDetails : {}),
                 last_activity_date: getStageActivityDate(htLogs, isSsSteel ? pilgerLogs : drawLogs, htDivDetails),
                 stage_code: "HEAT_TREATMENT",
+                pending_rejection_pcs: htPendingRej.pcs,
+                pending_rejection_mtr: htPendingRej.mtr,
                 balance_to_make_mtr: isHtReady ? htAvailMtr : htFeederMtr,
                 balance_to_make_pcs: isHtReady ? htAvailPcs : htFeederPcs,
                 balance_to_make_mt: isHtReady ? htAvailMt : htFeederMt,
@@ -2444,6 +2495,8 @@ export async function GET(req: NextRequest) {
                 stage_code: "BAND_SAW",
                 heat_lot_no: latestHtLotNo,
                 heat_lots: htLots,
+                pending_rejection_pcs: bsPendingRej.pcs,
+                pending_rejection_mtr: bsPendingRej.mtr,
                 balance_to_make_mtr: isBsReady ? bandSawAvailMtr : bsFeederMtr,
                 balance_to_make_pcs: isBsReady ? bandSawAvailPcs : bsFeederPcs,
                 balance_to_make_mt: isBsReady ? bandSawAvailMt : bsFeederMt,
@@ -2474,6 +2527,8 @@ export async function GET(req: NextRequest) {
                 heat_lots: vdiLots,
                 vdi_salvage_pcs: remSalvagePcs,
                 vdi_salvage_mtr: remSalvageMtr,
+                pending_rejection_pcs: vdiPendingRej.pcs,
+                pending_rejection_mtr: vdiPendingRej.mtr,
                 balance_to_make_mtr: isVdiReady ? vdiAvailMtr : vdiFeederMtr,
                 balance_to_make_pcs: isVdiReady ? vdiAvailPcs : vdiFeederPcs,
                 balance_to_make_mt: isVdiReady ? vdiAvailMt : vdiFeederMt,
@@ -2500,6 +2555,8 @@ export async function GET(req: NextRequest) {
                 ...(finDivDetails.has_diversion ? finDivDetails : {}),
                 last_activity_date: getStageActivityDate(woFinLogs, woQcList, finDivDetails),
                 stage_code: "FINISHING",
+                pending_rejection_pcs: finPendingRej.pcs,
+                pending_rejection_mtr: finPendingRej.mtr,
                 balance_to_make_mtr: isFinReady ? finAvailMtr : finFeederMtr,
                 balance_to_make_pcs: isFinReady ? finAvailPcs : finFeederPcs,
                 balance_to_make_mt: isFinReady ? finAvailMt : finFeederMt,
@@ -2659,6 +2716,8 @@ export async function GET(req: NextRequest) {
               stage_code: "VDI_SALVAGE" as any,
               stage_name: "VDI Salvage",
               heat_lot_no: latestBandSawLotNo,
+              pending_rejection_pcs: vdiSalvagePendingRej.pcs > 0 ? vdiSalvagePendingRej.pcs : vdiPendingRej.pcs,
+              pending_rejection_mtr: vdiSalvagePendingRej.mtr > 0 ? vdiSalvagePendingRej.mtr : vdiPendingRej.mtr,
               balance_to_make_mtr: remSalvageMtr,
               balance_to_make_pcs: remSalvagePcs,
               balance_to_make_mt: remSalvageMt,
@@ -3010,6 +3069,7 @@ export async function GET(req: NextRequest) {
         const childDivDetails = getStageDivDetails(childId, "FINISHING", avgLength);
         const childWoDivDetails = getWoDivDetails(childId);
         const childDivInfo = childDivDetails.has_diversion ? childDivDetails : childWoDivDetails;
+        const childFinPendingRej = getStagePendingRejDecl(childId, "FINISHING");
 
         childFinishingRows.push({
           work_order_id: childId,
@@ -3050,6 +3110,8 @@ export async function GET(req: NextRequest) {
           route_code: masterCalc?.queueRows.FINISHING?.route_code || "CDS",
           route_name: masterCalc?.queueRows.FINISHING?.route_name || "Standard CDS",
           stage_code: "FINISHING",
+          pending_rejection_pcs: childFinPendingRej.pcs,
+          pending_rejection_mtr: childFinPendingRej.mtr,
           balance_to_make_mtr: isChildReady ? childAvailMtr : childFeederMtr,
           balance_to_make_pcs: isChildReady ? childAvailPcs : childFeederPcs,
           balance_to_make_mt: isChildReady ? childAvailMt : childFeederMt,
