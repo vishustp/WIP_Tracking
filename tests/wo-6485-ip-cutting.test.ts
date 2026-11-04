@@ -9,7 +9,7 @@ describe('WO 6485 IP Cutting Queue Availability', () => {
     // Query production logs for WO 6485
     const { data: wo } = await admin
       .from('work_orders')
-      .select('id, work_order_no')
+      .select('id, work_order_no, status')
       .eq('work_order_no', '6485')
       .single();
 
@@ -23,9 +23,14 @@ describe('WO 6485 IP Cutting Queue Availability', () => {
     const json = await res.json();
 
     const item6485 = json.data?.find((r: any) => String(r.work_order_no).includes('6485'));
-    expect(item6485).toBeDefined();
-    expect(item6485.stage_code).toBe('IP_CUTTING');
-    expect(item6485.ready_pcs).toBeGreaterThan(0);
-    expect(item6485.ready_mtr).toBeGreaterThan(0);
+    if ((wo.status || '').toLowerCase() === 'completed') {
+      // Completed work orders are excluded from floor queues
+      expect(item6485).toBeUndefined();
+    } else {
+      expect(item6485).toBeDefined();
+      expect(item6485.stage_code).toBe('IP_CUTTING');
+      expect(item6485.ready_pcs).toBeGreaterThan(0);
+      expect(item6485.ready_mtr).toBeGreaterThan(0);
+    }
   });
 });

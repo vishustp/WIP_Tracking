@@ -1670,6 +1670,15 @@ export async function GET(req: NextRequest) {
       }
       let vdiAvailMt = mtFromMtr(vdiAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
+      const vdiSalvageRejDecl = getStageRejDecl(woId, "VDI_SALVAGE");
+      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - effVdiSalvageDivOut - vdiSalvageRejDecl.mtr).toFixed(3)));
+      let remSalvagePcs = Math.max(0, qcSalvagePcs - effVdiSalvageDivOutPcs - vdiSalvageRejDecl.pcs);
+      if (remSalvagePcs <= 0 || remSalvageMtr <= 0) {
+        remSalvagePcs = 0;
+        remSalvageMtr = 0;
+      }
+      const remSalvageMt = mtFromMtr(remSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
       const finDivIn = getStageDivIn(woId, "FINISHING");
       const finDivOut = getStageDivOut(woId, "FINISHING");
       const totalFinDivOut = finDivOut + vdiPrimeDivOut;
@@ -1918,9 +1927,9 @@ export async function GET(req: NextRequest) {
         gross_output_mtr: qcInspectedMtr,
         gross_output_pcs: qcInspectedPcs,
         gross_output_mt: mtFromMtr(qcInspectedMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
-        rejection_mtr: qcRejMtr + qcSalvageMtr,
-        rejection_pcs: qcRejPcs + qcSalvagePcs,
-        rejection_mt: mtFromMtr(qcRejMtr + qcSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
+        rejection_mtr: qcRejMtr,
+        rejection_pcs: qcRejPcs,
+        rejection_mt: mtFromMtr(qcRejMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
         net_output_mtr: qcOkMtr,
         net_output_pcs: qcOkPcs,
         net_output_mt: mtFromMtr(qcOkMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
@@ -2287,17 +2296,6 @@ export async function GET(req: NextRequest) {
         return dates.sort().reverse()[0] || null;
       };
 
-      const vdiSalvageRejDecl = getStageRejDecl(woId, "VDI_SALVAGE");
-      const totalVdiRejMtr = vdiRejDecl.mtr + vdiSalvageRejDecl.mtr;
-      const totalVdiRejPcs = vdiRejDecl.pcs + vdiSalvageRejDecl.pcs;
-
-      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - effVdiSalvageDivOut - totalVdiRejMtr).toFixed(3)));
-      let remSalvagePcs = Math.max(0, qcSalvagePcs - effVdiSalvageDivOutPcs - totalVdiRejPcs);
-      if (remSalvagePcs <= 0 || remSalvageMtr <= 0) {
-        remSalvagePcs = 0;
-        remSalvageMtr = 0;
-      }
-      const remSalvageMt = mtFromMtr(remSalvageMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       const queueRows: Record<StageCode, Row | null> = {
         HOT_ROLLING:

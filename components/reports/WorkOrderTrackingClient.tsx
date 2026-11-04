@@ -139,6 +139,8 @@ interface StageTrackingMetric {
   agingSeverity?: 'NORMAL' | 'WARNING' | 'CRITICAL';
   divertedInMtr?: number;
   divertedOutMtr?: number;
+  salvagePcs?: number;
+  salvageMtr?: number;
 }
 
 const STAGES_ORDER = [
@@ -641,8 +643,8 @@ export default function WorkOrderTrackingClient() {
       );
       const qcVdiOkMtr = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
       const qcVdiOkPcs = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
-      const qcVdiRejMtr = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0), 0);
-      const qcVdiRejPcs = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0), 0);
+      const qcVdiRejMtr = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
+      const qcVdiRejPcs = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0), 0);
       const qcVdiInspectedPcs = relevantVdiQcList.reduce(
         (sum: number, q: any) => sum + Number(q.inspected_pcs || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0))),
         0
@@ -769,8 +771,8 @@ export default function WorkOrderTrackingClient() {
             const childQcList = qcInspections.filter((q: any) => q.work_order_id === wo.id);
             const childQcOkMtr = childQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_mtr || 0), 0);
             const childQcOkPcs = childQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
-            const childQcRejMtr = childQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0), 0);
-            const childQcRejPcs = childQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0), 0);
+            const childQcRejMtr = childQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
+            const childQcRejPcs = childQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0), 0);
             return {
               ...stageDef,
               isBundled: true,
@@ -1336,14 +1338,30 @@ export default function WorkOrderTrackingClient() {
             divInPcs = Math.min(divInPcs, qcInspectedPcs);
           }
 
-          let wipPcs = 0;
+          let uninspectedPcs = 0;
           if (!isOrderCompleted && (incomingPcs > 0 || divInPcs > 0)) {
-            wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
+            uninspectedPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
           }
-          const wipMtr = (!isOrderCompleted && avgLen > 0) ? Number((wipPcs * avgLen).toFixed(3)) : 0;
-          const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)) : 0;
 
-          const { dwellDays, agingSeverity } = isOrderCompleted
+          // Active VDI Salvage (pipes awaiting disposition: hollow bank, diversion, or commercial declaration)
+          const totalSalvagePcs = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+          const totalSalvageMtr = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+
+          const salvageDivOutPcs = diversionPlans
+            .filter((d: any) => (d.source_wo_id === wo.id || d.source_wo_id === effectiveMasterWoId) && ((d.reason || '').toLowerCase().includes('salvage') || (d.work_center || '').toUpperCase() === 'VDI_SALVAGE'))
+            .reduce((sum: number, d: any) => sum + (avgLen > 0 ? Math.round(Number(d.diverted_qty || 0) / avgLen) : 0), 0);
+          const salvageDivOutMtr = diversionPlans
+            .filter((d: any) => (d.source_wo_id === wo.id || d.source_wo_id === effectiveMasterWoId) && ((d.reason || '').toLowerCase().includes('salvage') || (d.work_center || '').toUpperCase() === 'VDI_SALVAGE'))
+            .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+          const activeSalvagePcs = Math.max(0, totalSalvagePcs - salvageDivOutPcs);
+          const activeSalvageMtr = Math.max(0, Number((totalSalvageMtr - salvageDivOutMtr).toFixed(3)));
+
+          const wipPcs = uninspectedPcs + activeSalvagePcs;
+          const wipMtr = (!isOrderCompleted && avgLen > 0) ? Number(((uninspectedPcs * avgLen) + activeSalvageMtr).toFixed(3)) : activeSalvageMtr;
+          const wipMt = mtFromMtr(wipMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
+          const { dwellDays, agingSeverity } = (isOrderCompleted && wipPcs <= 0)
             ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
             : getStageAging(
                 wipMtr,
@@ -1363,6 +1381,8 @@ export default function WorkOrderTrackingClient() {
             outPcs: vdiOutPcs,
             rejMtr: stageRejMtr,
             rejPcs: vdiRejPcs,
+            salvagePcs: activeSalvagePcs,
+            salvageMtr: activeSalvageMtr,
             htcOkMtr: 0,
             htcOkPcs: 0,
             wipMtr,
@@ -2584,9 +2604,16 @@ export default function WorkOrderTrackingClient() {
                                 <span className="font-mono font-bold text-emerald-700">{fmt(rVdi?.outPcs || 0)} Nos</span>
                               </div>
 
+                              {Number(rVdi?.salvagePcs || 0) > 0 && (
+                                <div className="flex justify-between text-amber-700">
+                                  <span>Salvage:</span>
+                                  <span className="font-mono font-bold text-amber-800">{fmt(rVdi?.salvagePcs || 0)} Nos</span>
+                                </div>
+                              )}
+
                               {Number(rVdi?.rejPcs || 0) > 0 && (
                                 <div className="flex justify-between text-rose-600">
-                                  <span>Rej/Sal:</span>
+                                  <span>Rejection:</span>
                                   <span className="font-mono">{fmt(rVdi?.rejPcs || 0)} Nos</span>
                                 </div>
                               )}
