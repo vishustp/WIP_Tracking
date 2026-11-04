@@ -346,6 +346,7 @@ SELECT
   sw.rejection_qty AS rejection_mtr,
   public.mtr_to_pcs(sw.work_order_id, sw.rejection_qty) AS rejection_pcs,
   public.mtr_to_mt(sw.work_order_id, sw.rejection_qty) AS rejection_mt,
+  sw.net_output_mtr,
   public.mtr_to_pcs(sw.work_order_id, sw.net_output_mtr) AS net_output_pcs,
   public.mtr_to_mt(sw.work_order_id, sw.net_output_mtr) AS net_output_mt,
   sw.declared_rej_mtr,

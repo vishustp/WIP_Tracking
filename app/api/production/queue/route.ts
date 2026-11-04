@@ -1461,7 +1461,82 @@ export async function GET(req: NextRequest) {
             mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
           );
       const drawDownstreamConsumedPcs = Math.max(loggedHtPcs, downstreamMotherPcs);
-      const drawConsumedPcs = Math.max(drawOutPcs + effDrawRej, drawDownstreamConsumedPcs);
+      let drawConsumedPcs = Math.max(drawOutPcs + effDrawRej, drawDownstreamConsumedPcs);
+
+      // For multi-campaign work orders (where multiple rolling plans exist over time):
+      // Calculate previous campaign downstream consumption separately from the current active campaign.
+      // In previous campaigns, if material was cut downstream without Draw Bench, that consumed previous HTC rolling.
+      // In the current campaign, Draw Bench production must deduct from current campaign incoming.
+      const multiWoPlans = plans.filter((p: any) => p.work_order_id === woId);
+      if (multiWoPlans.length > 1) {
+        const sortedWoPlans = [...multiWoPlans].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        const latestPlanTime = new Date(sortedWoPlans[0].created_at).getTime();
+
+        let prevDrawPcs = 0;
+        let prevBsMotherPcs = 0;
+        let prevHtPcs = 0;
+        let prevFinPcs = 0;
+
+        let currDrawPcs = 0;
+        let currBsMotherPcs = 0;
+        let currHtPcs = 0;
+        let currFinPcs = 0;
+
+        for (const l of drawLogs) {
+          const p = getLogPcs(l, avgLength) + getLogRejPcs(l, avgLength);
+          const t = new Date(l.created_at || 0).getTime();
+          if (t < latestPlanTime) prevDrawPcs += p;
+          else currDrawPcs += p;
+        }
+
+        if (campaign && Array.isArray(campaign.child_work_orders)) {
+          for (const child of campaign.child_work_orders) {
+            const cId = child.work_order_id || child.id;
+            for (const l of getStageLogs(cId, drawStageId)) {
+              const p = getLogPcs(l, avgLength) + getLogRejPcs(l, avgLength);
+              const t = new Date(l.created_at || 0).getTime();
+              if (t < latestPlanTime) prevDrawPcs += p;
+              else currDrawPcs += p;
+            }
+          }
+        }
+
+        for (const l of allBandSawLogs) {
+          const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(l.remarks);
+          let p = 0;
+          if (mPcs != null && mPcs > 0) {
+            p = mPcs;
+          } else {
+            const rawP = getLogPcs(l, avgLength);
+            p = mult > 1 ? Math.ceil(rawP / mult) : rawP;
+          }
+          const t = new Date(l.created_at || 0).getTime();
+          if (t < latestPlanTime) prevBsMotherPcs += p;
+          else currBsMotherPcs += p;
+        }
+
+        for (const l of allHtLogsList) {
+          const p = getLogPcs(l, avgLength) + getLogRejPcs(l, avgLength);
+          const t = new Date(l.created_at || 0).getTime();
+          if (t < latestPlanTime) prevHtPcs += p;
+          else currHtPcs += p;
+        }
+
+        for (const l of finLogs) {
+          const p = getLogPcs(l, avgLength);
+          const t = new Date(l.created_at || 0).getTime();
+          if (t < latestPlanTime) prevFinPcs += p;
+          else currFinPcs += p;
+        }
+
+        const prevDownstream = Math.max(prevHtPcs, prevBsMotherPcs, mult > 1 ? Math.ceil(prevFinPcs / mult) : prevFinPcs);
+        const prevConsumed = Math.max(prevDrawPcs, prevDownstream);
+
+        const currDownstream = Math.max(currHtPcs, currBsMotherPcs, mult > 1 ? Math.ceil(currFinPcs / mult) : currFinPcs);
+        const currConsumed = Math.max(currDrawPcs + effDrawRej, currDownstream);
+
+        drawConsumedPcs = prevConsumed + currConsumed;
+      }
       if (isCds) {
         drawAvailPcs = Math.max(0, drawIncomingPcs + drawDivInPcs + drawStockIn.pcs - drawConsumedPcs - drawDivOutPcs);
         drawAvailMtr = effDrawLen > 0 ? Number((drawAvailPcs * effDrawLen).toFixed(3)) : 0;

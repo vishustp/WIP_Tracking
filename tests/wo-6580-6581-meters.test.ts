@@ -20,19 +20,25 @@ describe('WO 6580 & 6581 Meter Calculation Across Campaigns', () => {
     }
 
     // WO 6580: October 616 pcs were HFS (already cut at Band Saw and deducted).
-    // The remaining 108 pcs are from Campaign 20 (CDS) that passed HTC and are legitimately in Draw queue at 5.46m/pipe.
+    // The 108 pcs from Campaign 20 (CDS) were drawn on 2026-11-04, so Draw queue is now 0 and Heat Treatment has 108 pcs ready!
     const draw6580 = rows.find((r: any) => r.work_order_no === '6580' && r.stage_code === 'DRAW');
-    if (draw6580) {
-      expect(draw6580.ready_pcs).toBe(108);
-      expect(draw6580.ready_mtr).toBeCloseTo(589.7, 1);
+    expect(draw6580).toBeUndefined(); // Completed draw is not in draw queue!
+
+    const ht6580 = rows.find((r: any) => r.work_order_no === '6580' && r.stage_code === 'HEAT_TREATMENT');
+    expect(ht6580).toBeDefined();
+    if (ht6580) {
+      expect(ht6580.ready_pcs).toBe(108);
+      expect(ht6580.ready_mtr).toBeCloseTo(691.2, 1);
     }
 
-    // WO 6581: 40 pcs rolled and passed HTC in Campaign 20 (CDS); now available in Draw Bench queue
+    // WO 6581: 40 pcs were drawn on 2026-11-04, so Draw queue is now 0 and Heat Treatment has 39 pcs ready!
     const draw6581 = rows.find((r: any) => r.work_order_no === '6581' && r.stage_code === 'DRAW');
-    expect(draw6581).toBeDefined();
-    if (draw6581) {
-      expect(draw6581.ready_pcs).toBe(40);
-      expect(draw6581.ready_mtr).toBeCloseTo(214.0, 1);
+    expect(draw6581).toBeUndefined(); // Completed draw is not in draw queue!
+
+    const ht6581 = rows.find((r: any) => r.work_order_no === '6581' && r.stage_code === 'HEAT_TREATMENT');
+    expect(ht6581).toBeDefined();
+    if (ht6581) {
+      expect(ht6581.ready_pcs).toBe(39);
     }
   });
 });
