@@ -285,13 +285,13 @@ export default function SizeGradeWipReportClient() {
               const stCode = (r.stage_code || '').toUpperCase() as StageCode;
               const isRolling = stCode === 'HOT_ROLLING' || stCode === 'ROLLING';
               const rawPcs = isRolling
-                ? Math.round(Number(r.rolled_pcs ?? 0))
+                ? Math.round(Number(r.balance_to_make_pcs ?? r.ready_pcs ?? r.rolled_pcs ?? 0))
                 : Math.round(Number(r.ready_pcs ?? r.current_wip_pcs ?? 0));
               const rawMtr = isRolling
-                ? Number(Number(r.rolled_mtr ?? 0).toFixed(2))
+                ? Number(Number(r.balance_to_make_mtr ?? r.ready_mtr ?? r.rolled_mtr ?? 0).toFixed(2))
                 : Number(Number(r.ready_mtr ?? r.current_wip ?? 0).toFixed(2));
               const rawMt = isRolling
-                ? Number(Number(r.rolled_mt ?? 0).toFixed(2))
+                ? Number(Number(r.balance_to_make_mt ?? r.ready_mt ?? r.rolled_mt ?? 0).toFixed(2))
                 : Number(Number(r.ready_mt ?? r.available_mt ?? 0).toFixed(2));
 
               // Physical balance sanity check: if current stage production >= incoming quantity,
@@ -314,7 +314,7 @@ export default function SizeGradeWipReportClient() {
                 work_order_no: r.work_order_no,
                 customer_name: r.customer_name || null,
                 stage_code: stCode,
-                stage_name: isRolling ? 'Rolling Production (Display Only)' :
+                stage_name: isRolling ? 'Hot Rolling Mill' :
                             stCode === 'HTC' ? 'HTC' :
                             stCode === 'HOLLOW_HEAT_TREATMENT' ? 'Hollow Heat Treatment' :
                             stCode === 'IP_CUTTING' ? 'IP Cutting (Band Saw)' :

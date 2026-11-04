@@ -78,8 +78,14 @@ export async function GET(req: NextRequest) {
     if (memoryCache) {
       const selectedRows: Row[] = [];
       if (isAllStages) {
+        // Hot Rolling Mill queue represents active rolling plans awaiting hot rolling
+        selectedRows.push(
+          ...memoryCache.rollingPlanRows.map((r) => ({ ...r, stage_code: "HOT_ROLLING" as StageCode })).filter(
+            (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 && Number(r.balance_to_make_mtr ?? 0) >= 1.0
+          )
+        );
+
         const activeStages: StageCode[] = [
-          "HOT_ROLLING",
           "HTC",
           "HOLLOW_HEAT_TREATMENT",
           "IP_CUTTING",
@@ -93,17 +99,11 @@ export async function GET(req: NextRequest) {
         for (const { queueRows, vdiSalvageRow } of memoryCache.allCalculatedRows.values()) {
           for (const st of activeStages) {
             const row = queueRows[st];
-            if (row) {
-              if (st === "HOT_ROLLING" || st === "ROLLING") {
-                if (Number(row.rolled_pcs || 0) > 0 || Number(row.rolled_mtr || 0) > 0) {
-                  selectedRows.push(row);
-                }
-              } else if (!row.is_feeder_source) {
-                const readyPcs = Number(row.ready_pcs ?? 0);
-                const readyMtr = Number(row.ready_mtr ?? 0);
-                if (readyPcs >= 1 || readyMtr >= 1.0) {
-                  selectedRows.push(row);
-                }
+            if (row && !row.is_feeder_source) {
+              const readyPcs = Number(row.ready_pcs ?? 0);
+              const readyMtr = Number(row.ready_mtr ?? 0);
+              if (readyPcs >= 1 || readyMtr >= 1.0) {
+                selectedRows.push(row);
               }
             }
           }
@@ -3103,8 +3103,14 @@ export async function GET(req: NextRequest) {
     // (Universal Rule: Filter out any work order/plan whose available balance is less than 1 (Qty < 1 Pc or < 1.0 Mtr))
     const selectedRows: Row[] = [];
     if (isAllStages) {
+      // Hot Rolling Mill queue represents active rolling plans awaiting hot rolling
+      selectedRows.push(
+        ...rollingPlanRows.map((r) => ({ ...r, stage_code: "HOT_ROLLING" as StageCode })).filter(
+          (r) => Number(r.balance_to_make_pcs ?? 0) >= 1 && Number(r.balance_to_make_mtr ?? 0) >= 1.0
+        )
+      );
+
       const activeStages: StageCode[] = [
-        "HOT_ROLLING",
         "HTC",
         "HOLLOW_HEAT_TREATMENT",
         "IP_CUTTING",
@@ -3118,21 +3124,11 @@ export async function GET(req: NextRequest) {
       for (const { queueRows, vdiSalvageRow } of allCalculatedRows.values()) {
         for (const st of activeStages) {
           const row = queueRows[st];
-          if (row) {
-            if (st === "HOT_ROLLING" || st === "ROLLING") {
-              const isCompleted = (row.order_status || "").toLowerCase() === "completed";
-              const balancePcs = Number(row.balance_qty_pcs ?? row.balance_to_make_order_pcs ?? 0);
-              if (!isCompleted || balancePcs > 0) {
-                if (Number(row.rolled_pcs || 0) > 0 || Number(row.rolled_mtr || 0) > 0) {
-                  selectedRows.push(row);
-                }
-              }
-            } else if (!row.is_feeder_source) {
-              const readyPcs = Number(row.ready_pcs ?? 0);
-              const readyMtr = Number(row.ready_mtr ?? 0);
-              if (readyPcs >= 1 || readyMtr >= 1.0) {
-                selectedRows.push(row);
-              }
+          if (row && !row.is_feeder_source) {
+            const readyPcs = Number(row.ready_pcs ?? 0);
+            const readyMtr = Number(row.ready_mtr ?? 0);
+            if (readyPcs >= 1 || readyMtr >= 1.0) {
+              selectedRows.push(row);
             }
           }
         }

@@ -196,15 +196,29 @@ export default function WorkOrderTrackingClient() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const fetchAllProductionLogs = async () => {
+        const PAGE_SIZE = 1000;
+        const all: any[] = [];
+        let from = 0;
+        while (true) {
+          const { data, error } = await supabase
+            .from('production_logs')
+            .select('*, process_stages(stage_code, stage_name)')
+            .order('created_at', { ascending: false })
+            .range(from, from + PAGE_SIZE - 1);
+          if (error || !data || data.length === 0) break;
+          all.push(...data);
+          if (data.length < PAGE_SIZE) break;
+          from += PAGE_SIZE;
+        }
+        return { data: all };
+      };
+
       const [woRes, plansRes, wipRes, logsRes, routesRes, qcRes, divsRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('rolling_plans').select('*').not('status', 'is', null).order('created_at', { ascending: false }),
         supabase.from('vw_route_stage_wip').select('*'),
-        supabase
-          .from('production_logs')
-          .select('*, process_stages(stage_code, stage_name)')
-          .order('created_at', { ascending: false })
-          .limit(10000),
+        fetchAllProductionLogs(),
         supabase.from('process_routes').select('id, route_code, route_name'),
         supabase.from('qc_inspections').select('*').order('inspection_date', { ascending: false }),
         supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, reason'),
@@ -629,6 +643,10 @@ export default function WorkOrderTrackingClient() {
       const qcVdiOkPcs = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
       const qcVdiRejMtr = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0), 0);
       const qcVdiRejPcs = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0), 0);
+      const qcVdiInspectedPcs = relevantVdiQcList.reduce(
+        (sum: number, q: any) => sum + Number(q.inspected_pcs || (Number(q.vdi_ok_pcs || 0) + Number(q.vdi_salvage_pcs || 0) + Number(q.vdi_rejection_pcs || 0))),
+        0
+      );
 
       const masterVdiLogs = isMaster
         ? productionLogs.filter((l) => campaignWoIdSet.has(l.work_order_id) && l.stage_code === 'VDI')
@@ -700,16 +718,18 @@ export default function WorkOrderTrackingClient() {
         ? motherPcsCutTotal
         : (mhAvgLen > 0 && (bandSawOutMtr + bandSawRejMtr) > 0
             ? Math.round((bandSawOutMtr + bandSawRejMtr) / mhAvgLen)
-            : (planMultiple > 1
-                ? Math.round((bandSawOutPcs + bandSawRejPcs) / planMultiple)
-                : (bandSawOutPcs + bandSawRejPcs)));
+            : ((bandSawOutPcs + bandSawRejPcs) > 0
+                ? (planMultiple > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / planMultiple) : (bandSawOutPcs + bandSawRejPcs))
+                : (qcVdiInspectedPcs > 0
+                    ? (planMultiple > 1 ? Math.ceil(qcVdiInspectedPcs / planMultiple) : qcVdiInspectedPcs)
+                    : (finOutPcs > 0 ? (planMultiple > 1 ? Math.ceil(finOutPcs / planMultiple) : finOutPcs) : 0))));
 
       const isOrderCompletedRaw = String(wo.status || '').toLowerCase() === 'completed' || String(wo.status || '').toLowerCase() === 'closed';
       const hasActiveChildOrders = isMaster && campaignChildWoIds.some((cId: string) => {
         const childWo = workOrders.find((w) => w.id === cId);
         if (!childWo) return false;
         const st = String(childWo.status || '').toLowerCase();
-        return st === 'in progress' || st === 'in_progress' || st === 'scheduled';
+        return st === 'in progress' || st === 'in_progress';
       });
       const isOrderCompleted = isOrderCompletedRaw && !hasActiveChildOrders;
 
@@ -1397,8 +1417,6 @@ export default function WorkOrderTrackingClient() {
         if (!isOrderCompleted) {
           if (thisWoQcList.length > 0) {
             wipPcs = Math.max(0, Math.min(targetPcs, qcPassedPcs) + divInPcs - consumedPcs - divOutPcs);
-          } else if (!childInfo && !isMaster && (precedingOutPcs > 0 || divInPcs > 0)) {
-            wipPcs = Math.max(0, Math.min(targetPcs, precedingOutPcs) + divInPcs - consumedPcs - divOutPcs);
           } else if (divInPcs > 0) {
             wipPcs = Math.max(0, divInPcs - consumedPcs - divOutPcs);
           }
@@ -1524,6 +1542,9 @@ export default function WorkOrderTrackingClient() {
     let totalRolledStockWipMtr = 0;
     let totalRolledStockWipPcs = 0;
     let totalRolledStockWipMt = 0;
+    let totalActiveMillWipMtr = 0;
+    let totalActiveMillWipPcs = 0;
+    let totalActiveMillWipMt = 0;
     let totalFinishingOutMtr = 0;
     let totalFinishingOutPcs = 0;
     let totalRejMtr = 0;
@@ -1553,6 +1574,15 @@ export default function WorkOrderTrackingClient() {
       totalRolledStockWipMtr += (rollStage?.wipMtr || 0) + (htcStage?.wipMtr || 0);
       totalRolledStockWipPcs += (rollStage?.wipPcs || 0) + (htcStage?.wipPcs || 0);
       totalRolledStockWipMt += (rollStage?.wipMt || 0) + (htcStage?.wipMt || 0);
+
+      // Accumulate Active Mill WIP across all stations matching plant inventory
+      row.stagesData.forEach((s) => {
+        if (row.childInfo && s.code !== 'FINISHING') return;
+        totalActiveMillWipPcs += Number(s.wipPcs || 0);
+        totalActiveMillWipMtr += Number(s.wipMtr || 0);
+        totalActiveMillWipMt += Number(s.wipMt || 0);
+      });
+
       totalFinishingOutMtr += finStage?.outMtr || 0;
       totalFinishingOutPcs += finStage?.outPcs || 0;
       totalRejMtr += row.totalRejMtr;
@@ -1575,6 +1605,9 @@ export default function WorkOrderTrackingClient() {
       totalRolledStockWipMtr,
       totalRolledStockWipPcs,
       totalRolledStockWipMt,
+      totalActiveMillWipMtr,
+      totalActiveMillWipPcs,
+      totalActiveMillWipMt,
       totalFinishingOutMtr,
       totalFinishingOutPcs,
       factoryYield,
@@ -1755,9 +1788,12 @@ export default function WorkOrderTrackingClient() {
 
         <Card className="border-slate-200 bg-slate-50/60">
           <CardContent className="p-4">
-            <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Rolled Stock WIP</div>
-            <div className="mt-1 text-2xl font-bold text-slate-900 font-mono">{fmt(kpis.totalRolledStockWipPcs)} Pcs</div>
-            <div className="text-xs text-slate-500 mt-0.5">{fmt(kpis.totalRolledStockWipMt.toFixed(2), ' MT')} ({fmt(kpis.totalRolledStockWipMtr, 'm')}) inventory</div>
+            <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Total Active Mill WIP</div>
+            <div className="mt-1 text-2xl font-bold text-slate-900 font-mono">{fmt(kpis.totalActiveMillWipPcs)} Pcs</div>
+            <div className="text-xs text-slate-500 mt-0.5">
+              {fmt(kpis.totalActiveMillWipMt.toFixed(2), ' MT')} ({fmt(kpis.totalActiveMillWipMtr, 'm')})
+              {kpis.totalRolledStockWipPcs > 0 ? ` • ${fmt(kpis.totalRolledStockWipPcs)} pcs rolled stock` : ''}
+            </div>
           </CardContent>
         </Card>
 
