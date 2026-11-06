@@ -571,6 +571,42 @@ export function checkCanManagePlans(user: AppUserProfile | null | undefined): {
 }
 
 /**
+ * Checks if the user is authorized to close a rolling plan:
+ * Allowed for PPC/Admin and Hotmill users.
+ */
+export function checkCanCloseRollingPlan(user: AppUserProfile | null | undefined): boolean {
+  if (!user) return false;
+
+  // 1. PPC or Admin authority
+  const group = (user.group || (user.role === 'admin' ? 'admin' : user.role === 'manager' ? 'super_user' : 'user')) as UserGroup;
+  if (isPpcOrAdminUser(user, group)) return true;
+  if (user.permissions?.rolling_plan === 'edit') return true;
+
+  // 2. Hotmill users (assigned to Hot Rolling or with Hot Rolling recording permissions)
+  const wc = String(user.work_center || '').toUpperCase();
+  const defStage = String(user.default_stage || '').toUpperCase();
+  const allowed = Array.isArray(user.allowed_stages)
+    ? user.allowed_stages.map((s: string) => String(s).toUpperCase())
+    : [];
+  const perms = user.permissions || {};
+
+  if (
+    wc === 'HOT_ROLLING' ||
+    wc === 'ROLLING' ||
+    defStage === 'HOT_ROLLING' ||
+    defStage === 'ROLLING' ||
+    allowed.includes('HOT_ROLLING') ||
+    allowed.includes('ROLLING') ||
+    perms.production_hot_rolling === 'edit' ||
+    perms.production_rolling === 'edit'
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Form accessibility descriptors and checking for 3-tier user groups
  */
 export interface FormAccessResult {
@@ -1111,6 +1147,7 @@ export function usePermissions() {
       user?.permissions?.rolling_plan === 'edit' ||
       user?.permissions?.diversion === 'edit' ||
       user?.permissions?.work_order === 'edit',
+    canCloseRollingPlan: checkCanCloseRollingPlan(user),
     canManageStockGeneration: isPpcOrAdminUser(user, group),
     canManageWorkOrders:
       group === 'admin' ||

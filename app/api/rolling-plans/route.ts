@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireAuth } from '@/lib/supabase/authGuard';
+import { requireAuth, isAuthorizedForStation } from '@/lib/supabase/authGuard';
 
 export interface ChildWoPayload {
   id: string;
@@ -1100,6 +1100,43 @@ export async function PUT(req: NextRequest) {
     // LIFECYCLE ACTION: CLOSE PLAN FOR PARTIAL QUANTITY (SHORT-CLOSE)
     // =========================================================================
     if (lifecycle_action === 'CLOSE_PARTIAL') {
+      // Validate authorization: PPC, Admin, and Hotmill users
+      const appUser = authCheck.auth.appUser;
+      const isAdmin = authCheck.auth.isAdmin;
+      const userGroup = String(appUser?.user_group || appUser?.group || '').toLowerCase();
+      const userRole = String(appUser?.role || '').toLowerCase();
+      const userWc = String(appUser?.work_center || '').toUpperCase();
+      const userDef = String(appUser?.default_stage || '').toUpperCase();
+      const userAllowed: string[] = Array.isArray(appUser?.allowed_stages)
+        ? appUser.allowed_stages.map((s: string) => String(s).toUpperCase())
+        : [];
+      const customPerms = appUser?.permissions || {};
+
+      const isPpc =
+        userGroup === 'ppc' ||
+        userRole === 'ppc' ||
+        userWc === 'PPC' ||
+        customPerms?.rolling_plan === 'edit';
+
+      const isHotmill =
+        userWc === 'HOT_ROLLING' ||
+        userWc === 'ROLLING' ||
+        userDef === 'HOT_ROLLING' ||
+        userDef === 'ROLLING' ||
+        userAllowed.includes('HOT_ROLLING') ||
+        userAllowed.includes('ROLLING') ||
+        customPerms?.production_hot_rolling === 'edit' ||
+        customPerms?.production_rolling === 'edit' ||
+        isAuthorizedForStation(authCheck.auth, 'HOT_ROLLING') ||
+        isAuthorizedForStation(authCheck.auth, 'ROLLING');
+
+      if (!isAdmin && !isPpc && !isHotmill) {
+        return NextResponse.json(
+          { error: 'Forbidden: Closing rolling plans is restricted to PPC, Admin, and Hotmill users.' },
+          { status: 403 }
+        );
+      }
+
       const nowIso = new Date().toISOString();
       const actPcs = Math.max(0, Number(actual_pcs || 0));
       const { data: targetWo } = await admin.from('work_orders').select('*').eq('id', targetPlan.work_order_id).single();
@@ -1132,13 +1169,31 @@ export async function PUT(req: NextRequest) {
 
       // Release unrolled balance back to work order!
       if (targetWo && unrolledMtr > 0) {
-        const curBal = Number(targetWo.balance_qty_mtr || 0);
-        const newBal = Number((curBal + unrolledMtr).toFixed(2));
+        const curBalMtr = Number(targetWo.balance_qty_mtr || 0);
+        const newBalMtr = Number((curBalMtr + unrolledMtr).toFixed(2));
+
+        const woL1 = Number(targetWo.l1 || 6.0);
+        const woL2 = Number(targetWo.l2 || woL1);
+        const woAvg = woL1 > 0 && woL2 > 0 ? (woL1 + woL2) / 2 : woL1;
+        const unrolledPcs = woAvg > 0 ? Math.round(unrolledMtr / woAvg) : 0;
+        const curBalPcs = Number(targetWo.balance_qty_pcs || 0);
+        const newBalPcs = Math.max(0, curBalPcs + unrolledPcs);
+
+        const woOd = Number(targetWo.size_od || 0);
+        const woWt = Number(targetWo.size_wt || 0);
+        const unrolledMt = (woOd > 0 && woWt > 0)
+          ? Number(((unrolledMtr * (woOd - woWt) * woWt * 0.0246615) / 1000).toFixed(3))
+          : 0;
+        const curBalMt = Number(targetWo.balance_qty_mt || 0);
+        const newBalMt = Number((curBalMt + unrolledMt).toFixed(3));
+
         await admin
           .from('work_orders')
           .update({
-            balance_qty_mtr: newBal,
-            status: newBal > 0 ? 'Pending Plan' : 'Scheduled',
+            balance_qty_mtr: newBalMtr,
+            balance_qty_pcs: newBalPcs,
+            balance_qty_mt: newBalMt,
+            status: newBalMtr > 0 ? 'Pending Plan' : 'Scheduled',
             updated_at: nowIso,
           })
           .eq('id', targetPlan.work_order_id);

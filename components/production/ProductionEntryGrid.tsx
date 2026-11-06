@@ -39,6 +39,7 @@ const DeleteEntryModal = dynamic(() => import('@/components/production/modals/De
 const BundlingCampaignModal = dynamic(() => import('@/components/production/modals/BundlingCampaignModal'), { ssr: false });
 const BandSawCuttingModal = dynamic(() => import('@/components/production/modals/BandSawCuttingModal'), { ssr: false });
 const DeclareRejectionModal = dynamic(() => import('@/components/rejections/DeclareRejectionModal'), { ssr: false });
+const CloseRollingModal = dynamic(() => import('@/components/production/modals/CloseRollingModal'), { ssr: false });
 
 function getCurrentDateStr(): string {
   const d = new Date();
@@ -63,6 +64,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
     isStageAllowed,
     canDeleteForStage,
     canEditForStage,
+    canCloseRollingPlan,
     isAdmin,
     isSuperUser,
   } = usePermissions();
@@ -124,6 +126,9 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
   // Line rejection modal state
   const [rejectRow, setRejectRow] = useState<Row | null>(null);
+
+  // Close Rolling Plan modal state
+  const [closeRollingRow, setCloseRollingRow] = useState<Row | null>(null);
 
   // --- Data fetching ---
   const { rows, setRows, loading: queueLoading, reload: reloadQueue } = useQueue(stage);
@@ -1263,6 +1268,8 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
         onOpenBundling={openCampaignBundling}
         onOpenBandSawCutting={(r) => setBandSawRow(r)}
         onOpenReject={(r) => setRejectRow(r)}
+        onOpenCloseRolling={(r) => setCloseRollingRow(r)}
+        canCloseRollingPlan={canCloseRollingPlan}
         isAllowed={isAllowed}
         roleTitle={roleTitle || 'Operator'}
         isAuditor={user?.role === 'auditor'}
@@ -1391,6 +1398,18 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
             size_od: Number(rejectRow.od || 0),
             size_wt: Number(rejectRow.wl || 0),
             avg_length: calc(rejectRow).avg,
+          }}
+        />
+      )}
+
+      {/* Close Rolling Plan Modal */}
+      {closeRollingRow && (
+        <CloseRollingModal
+          row={closeRollingRow}
+          onClose={() => setCloseRollingRow(null)}
+          onSuccess={async () => {
+            setCloseRollingRow(null);
+            await Promise.all([reloadQueue(), reloadHistory(), loadFactoryWip()]);
           }}
         />
       )}

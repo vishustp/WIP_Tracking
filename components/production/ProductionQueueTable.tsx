@@ -27,6 +27,8 @@ export interface ProductionQueueTableProps {
   onOpenBundling: (row: Row) => void;
   onOpenBandSawCutting?: (row: Row) => void;
   onOpenReject?: (row: Row) => void;
+  onOpenCloseRolling?: (row: Row) => void;
+  canCloseRollingPlan?: boolean;
   isAllowed: boolean;
   roleTitle?: string;
   isAuditor: boolean;
@@ -47,6 +49,8 @@ export function ProductionQueueTable({
   onOpenBundling,
   onOpenBandSawCutting,
   onOpenReject,
+  onOpenCloseRolling,
+  canCloseRollingPlan = true,
   isAllowed,
   roleTitle,
   isAuditor,
@@ -180,6 +184,8 @@ export function ProductionQueueTable({
                   onOpenBundling={onOpenBundling}
                   onOpenBandSawCutting={onOpenBandSawCutting}
                   onOpenReject={onOpenReject}
+                  onOpenCloseRolling={onOpenCloseRolling}
+                  canCloseRollingPlan={canCloseRollingPlan}
                 />
               ))}
             </tbody>

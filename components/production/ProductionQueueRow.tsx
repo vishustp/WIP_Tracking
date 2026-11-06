@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Package, Crown, AlertTriangle, ArrowRightLeft, ChevronDown, ChevronUp } from 'lucide-react';
+import { Package, Crown, AlertTriangle, ArrowRightLeft, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { Row, StageCode } from '@/types';
 import { calc, fmt, n, mtFromMtr } from '@/lib/productionUtils';
 
@@ -22,6 +22,8 @@ export interface ProductionQueueRowProps {
   onOpenBundling?: (row: Row) => void;
   onOpenBandSawCutting?: (row: Row) => void;
   onOpenReject?: (row: Row) => void;
+  onOpenCloseRolling?: (row: Row) => void;
+  canCloseRollingPlan?: boolean;
 }
 
 export function ProductionQueueRow({
@@ -34,6 +36,8 @@ export function ProductionQueueRow({
   onOpenBundling,
   onOpenBandSawCutting,
   onOpenReject,
+  onOpenCloseRolling,
+  canCloseRollingPlan = true,
 }: ProductionQueueRowProps) {
   const [showAllChildren, setShowAllChildren] = useState(false);
   const key = row.plan_id ? `${row.work_order_id}|${row.route_id}|${row.plan_id}` : `${row.work_order_id}|${row.route_id}`;
@@ -428,6 +432,23 @@ export function ProductionQueueRow({
           >
             WIP Flow
           </button>
+          {isRollingStage && row.plan_id && onOpenCloseRolling && (
+            <button
+              type="button"
+              disabled={!canCloseRollingPlan}
+              onClick={() => onOpenCloseRolling(row)}
+              className="inline-flex items-center gap-1 rounded border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 text-xs font-bold text-amber-800 dark:text-amber-200 shadow-2xs hover:bg-amber-100 dark:hover:bg-amber-900/40 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation min-h-[30px]"
+              title={
+                canCloseRollingPlan
+                  ? `Close Rolling Plan ${row.master_plan_no || row.plan_no} for ${row.work_order_no}`
+                  : 'Closing rolling plan is restricted to PPC, Admin, and Hotmill users'
+              }
+              aria-label={`Close Rolling Plan for order ${row.work_order_no}`}
+            >
+              <Lock size={11} className="text-amber-600 dark:text-amber-400" />
+              <span>Close Rolling</span>
+            </button>
+          )}
           {stage === 'FINISHING' && onOpenBundling && (
             <button
               type="button"
