@@ -1125,7 +1125,7 @@ export async function GET(req: NextRequest) {
       const hotRollNetMtr = Math.max(0, hotRollOutMtr - hotRollRejMtr);
 
       // Legacy rolling logs: under the legacy system, ROLLING already included HTC check
-      const legacyRollLogs = hotRollLogs.length === 0 ? rollLogs : [];
+      const legacyRollLogs = getStageLogs(woId, rollingStageId);
       const legacyHtcOkPcs = sumHtcOkPcs(legacyRollLogs, effMhAvg);
       const rawLegacyHtcOk = sumQty(legacyRollLogs, "htc_ok");
       const legacyRollGrossPcs = sumPcs(legacyRollLogs, effMhAvg);
@@ -1137,12 +1137,12 @@ export async function GET(req: NextRequest) {
       const incomingHtcPcs = hotRollNetPcs;
       const incomingHtcMtr = hotRollNetMtr;
 
-      const rawHtcOk = sumQty(htcLogs, "htc_ok") || rawLegacyHtcOk;
-      const loggedHtcOkPcs = sumHtcOkPcs(htcLogs, effMhAvg) || legacyHtcOkPcs;
+      const rawHtcOk = sumQty(htcLogs, "htc_ok") + rawLegacyHtcOk;
+      const loggedHtcOkPcs = sumHtcOkPcs(htcLogs, effMhAvg) + legacyHtcOkPcs;
       const htcOkPcs = loggedHtcOkPcs > 0
         ? loggedHtcOkPcs
         : (htcTestedPcs > 0
-            ? Math.max(0, htcTestedPcs - htcRejPcs)
+            ? Math.max(0, htcTestedPcs - htcRejPcs) + (hotRollLogs.length === 0 ? legacyRollNetPcs : 0)
             : (hotRollLogs.length === 0 ? legacyRollNetPcs : 0));
       const htcOkMtr = rawHtcOk > 0
         ? rawHtcOk
@@ -1188,9 +1188,14 @@ export async function GET(req: NextRequest) {
       // Hollow HT incoming: strictly from Rolling HTC OK!
       const isHhtRoute = isAlloy || routeCode.includes("ALLOY");
       const hhtRejDecl = getStageRejDecl(woId, "HOLLOW_HEAT_TREATMENT");
-      const hollowHtRemMtr = Math.max(0, rollHtcOkMtr + hhtDivIn + hhtStockIn.mtr - hollowHtOutMtr - hollowHtRejMtr - hhtDivOut - hhtRejDecl.mtr);
-      const hollowHtRemPcs = Math.max(0, (effHhtAvg > 0 ? Math.round(hollowHtRemMtr / effHhtAvg) : (rollHtcOkPcs + hhtDivInPcs + hhtStockIn.pcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs)) - hhtRejDecl.pcs);
-      let hollowHtAvailPcs = isHhtRoute ? (hollowHtRemMtr >= 1.0 ? Math.max(1, hollowHtRemPcs) : 0) : 0;
+      const hollowHtRemPcs = Math.max(
+        0,
+        rollHtcOkPcs + hhtDivInPcs + hhtStockIn.pcs - hollowHtOutPcs - hollowHtRejPcs - hhtDivOutPcs - hhtRejDecl.pcs
+      );
+      const hollowHtRemMtr = effHhtAvg > 0
+        ? Number((hollowHtRemPcs * effHhtAvg).toFixed(3))
+        : Math.max(0, rollHtcOkMtr + hhtDivIn + hhtStockIn.mtr - hollowHtOutMtr - hollowHtRejMtr - hhtDivOut - hhtRejDecl.mtr);
+      let hollowHtAvailPcs = isHhtRoute ? (hollowHtRemPcs >= 1 ? hollowHtRemPcs : (hollowHtRemMtr >= 1.0 ? 1 : 0)) : 0;
       let hollowHtAvailMtr = isHhtRoute ? (hollowHtAvailPcs > 0 ? Number(hollowHtRemMtr.toFixed(3)) : 0) : 0;
       const hollowHtEffOd = mhOd > 0 ? mhOd : Number(wo.size_od || 0);
       const hollowHtEffWt = mhWt > 0 ? mhWt : Number(wo.size_wt || 0);

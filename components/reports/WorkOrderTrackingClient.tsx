@@ -317,7 +317,7 @@ export default function WorkOrderTrackingClient() {
             planned_pcs: Number(parsed.planned_pcs || 0),
           });
         }
-      } catch {}
+      } catch { }
     }
 
     // CRITICAL: Any work order that is a Master in its own campaign must not be treated as a child!
@@ -459,8 +459,8 @@ export default function WorkOrderTrackingClient() {
 
       const campaignChildWoIds: string[] = isMaster && masterInfo?.child_work_orders
         ? masterInfo.child_work_orders
-            .map((c: any) => c.work_order_id || c.id)
-            .filter((cId: string) => Boolean(cId) && !campaignMeta.masterMap.has(cId))
+          .map((c: any) => c.work_order_id || c.id)
+          .filter((cId: string) => Boolean(cId) && !campaignMeta.masterMap.has(cId))
         : [];
       const campaignWoIdSet = new Set<string>([wo.id, ...campaignChildWoIds]);
 
@@ -703,7 +703,7 @@ export default function WorkOrderTrackingClient() {
       try {
         const parsed = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status;
         planMultiple = Number(plan?.multiple || parsed?.multiple || 1);
-      } catch {}
+      } catch { }
 
       let motherPcsCutTotal = 0;
       for (const log of masterBandSawLogs) {
@@ -719,12 +719,12 @@ export default function WorkOrderTrackingClient() {
       const downstreamMotherPcsFromBandSaw = motherPcsCutTotal > 0
         ? motherPcsCutTotal
         : (mhAvgLen > 0 && (bandSawOutMtr + bandSawRejMtr) > 0
-            ? Math.round((bandSawOutMtr + bandSawRejMtr) / mhAvgLen)
-            : ((bandSawOutPcs + bandSawRejPcs) > 0
-                ? (planMultiple > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / planMultiple) : (bandSawOutPcs + bandSawRejPcs))
-                : (qcVdiInspectedPcs > 0
-                    ? (planMultiple > 1 ? Math.ceil(qcVdiInspectedPcs / planMultiple) : qcVdiInspectedPcs)
-                    : (finOutPcs > 0 ? (planMultiple > 1 ? Math.ceil(finOutPcs / planMultiple) : finOutPcs) : 0))));
+          ? Math.round((bandSawOutMtr + bandSawRejMtr) / mhAvgLen)
+          : ((bandSawOutPcs + bandSawRejPcs) > 0
+            ? (planMultiple > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / planMultiple) : (bandSawOutPcs + bandSawRejPcs))
+            : (qcVdiInspectedPcs > 0
+              ? (planMultiple > 1 ? Math.ceil(qcVdiInspectedPcs / planMultiple) : qcVdiInspectedPcs)
+              : (finOutPcs > 0 ? (planMultiple > 1 ? Math.ceil(finOutPcs / planMultiple) : finOutPcs) : 0))));
 
       const isOrderCompletedRaw = String(wo.status || '').toLowerCase() === 'completed' || String(wo.status || '').toLowerCase() === 'closed';
       const hasActiveChildOrders = isMaster && campaignChildWoIds.some((cId: string) => {
@@ -896,10 +896,10 @@ export default function WorkOrderTrackingClient() {
           const { dwellDays, agingSeverity } = isOrderCompleted
             ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
             : getStageAging(
-                wipMtr,
-                masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs,
-                masterRollLogs
-              );
+              wipMtr,
+              masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs,
+              masterRollLogs
+            );
 
           const stageOutMtr = mhAvgLen > 0 ? Number((htcOutPcs * mhAvgLen).toFixed(3)) : htcOutMtr;
           const stageRejMtr = mhAvgLen > 0 ? Number((htcRejPcs * mhAvgLen).toFixed(3)) : htcRejMtr;
@@ -965,28 +965,25 @@ export default function WorkOrderTrackingClient() {
           );
 
           let wipPcs = 0;
-          if (!isOrderCompleted) {
-            if (hhtOkPcs > 0 || divInPcs > 0) {
-              wipPcs = Math.max(0, hhtOkPcs + divInPcs - consumedPcs - divOutPcs);
-            } else if (htcOkPcs > 0) {
-              wipPcs = Math.max(0, htcOkPcs + divInPcs - (hhtOutPcs + hhtRejPcs) - divOutPcs);
-            }
+          if (!isOrderCompleted && (htcOkPcs > 0 || divInPcs > 0)) {
+            // Rule 1: Hollow Heat Treatment Active WIP = Preceding Stage (Rolling HTC) OK - Hollow HT Output
+            wipPcs = Math.max(0, htcOkPcs + divInPcs - (hhtOutPcs + hhtRejPcs) - divOutPcs);
           }
           const wipMtr = (!isOrderCompleted && mhAvgLen > 0) ? Number((wipPcs * mhAvgLen).toFixed(3)) : 0;
           let parsedPlanStatus: any = {};
           try {
             parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
-          } catch {}
+          } catch { }
           const mhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
           const mhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
           const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, mhOd, mhWt) : 0;
           const { dwellDays, agingSeverity } = isOrderCompleted
             ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
             : getStageAging(
-                wipMtr,
-                masterHhtLogs,
-                masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs
-              );
+              wipMtr,
+              masterHhtLogs,
+              masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs
+            );
 
           const stageOutMtr = mhAvgLen > 0 ? Number((hhtOutPcs * mhAvgLen).toFixed(3)) : hhtOutMtr;
           const stageRejMtr = mhAvgLen > 0 ? Number((hhtRejPcs * mhAvgLen).toFixed(3)) : hhtRejMtr;
@@ -1060,17 +1057,17 @@ export default function WorkOrderTrackingClient() {
           let parsedPlanStatus: any = {};
           try {
             parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
-          } catch {}
+          } catch { }
           const drawMhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
           const drawMhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
           const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, drawMhOd, drawMhWt) : 0;
           const { dwellDays, agingSeverity } = isOrderCompleted
             ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
             : getStageAging(
-                wipMtr,
-                masterDrawLogs,
-                hasHhtInRoute ? (masterHhtLogs.length > 0 ? masterHhtLogs : masterHtcLogs) : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs)
-              );
+              wipMtr,
+              masterDrawLogs,
+              hasHhtInRoute ? (masterHhtLogs.length > 0 ? masterHhtLogs : masterHtcLogs) : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs)
+            );
 
           const stageOutMtr = avgLen > 0 ? Number((drawOutPcs * avgLen).toFixed(3)) : drawOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((drawRejPcs * avgLen).toFixed(3)) : drawRejMtr;
@@ -1143,7 +1140,7 @@ export default function WorkOrderTrackingClient() {
           let parsedPlanStatus: any = {};
           try {
             parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
-          } catch {}
+          } catch { }
           const pilgerMhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
           const pilgerMhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
           const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, pilgerMhOd, pilgerMhWt) : 0;
@@ -1223,10 +1220,10 @@ export default function WorkOrderTrackingClient() {
           const { dwellDays, agingSeverity } = isOrderCompleted
             ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
             : getStageAging(
-                wipMtr,
-                masterHtLogs,
-                hasPilgerInRoute ? masterPilgerLogs : masterDrawLogs
-              );
+              wipMtr,
+              masterHtLogs,
+              hasPilgerInRoute ? masterPilgerLogs : masterDrawLogs
+            );
 
           const stageOutMtr = avgLen > 0 ? Number((htOutPcs * avgLen).toFixed(3)) : htOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((htRejPcs * avgLen).toFixed(3)) : htRejMtr;
@@ -1268,10 +1265,10 @@ export default function WorkOrderTrackingClient() {
           const incomingMotherPcs = hasHtInRoute
             ? Math.max(0, htOutPcs - htRejPcs)
             : (hasDrawInRoute
-                ? Math.max(0, drawOutPcs - drawRejPcs)
-                : (hasHhtInRoute
-                    ? Math.max(0, hhtOutPcs - hhtRejPcs)
-                    : htcOkPcs));
+              ? Math.max(0, drawOutPcs - drawRejPcs)
+              : (hasHhtInRoute
+                ? Math.max(0, hhtOutPcs - hhtRejPcs)
+                : htcOkPcs));
 
           // Consumed mother pipes: mother pipes cut at Band Saw
           const consumedMotherPcs = downstreamMotherPcsFromBandSaw;
@@ -1290,10 +1287,10 @@ export default function WorkOrderTrackingClient() {
           const { dwellDays, agingSeverity } = isOrderCompleted
             ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
             : getStageAging(
-                wipMtr,
-                masterBandSawLogs,
-                masterHtLogs.length > 0 ? masterHtLogs : (masterDrawLogs.length > 0 ? masterDrawLogs : (masterHhtLogs.length > 0 ? masterHhtLogs : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs)))
-              );
+              wipMtr,
+              masterBandSawLogs,
+              masterHtLogs.length > 0 ? masterHtLogs : (masterDrawLogs.length > 0 ? masterDrawLogs : (masterHhtLogs.length > 0 ? masterHhtLogs : (masterHtcLogs.length > 0 ? masterHtcLogs : masterRollLogs)))
+            );
 
           const stageOutMtr = avgLen > 0 ? Number((bandSawOutPcs * avgLen).toFixed(3)) : bandSawOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((bandSawRejPcs * avgLen).toFixed(3)) : bandSawRejMtr;
@@ -1364,10 +1361,10 @@ export default function WorkOrderTrackingClient() {
           const { dwellDays, agingSeverity } = (isOrderCompleted && wipPcs <= 0)
             ? { dwellDays: 0, agingSeverity: 'NORMAL' as const }
             : getStageAging(
-                wipMtr,
-                masterVdiLogs,
-                masterBandSawLogs.length > 0 ? masterBandSawLogs : masterHtLogs
-              );
+              wipMtr,
+              masterVdiLogs,
+              masterBandSawLogs.length > 0 ? masterBandSawLogs : masterHtLogs
+            );
 
           const stageOutMtr = avgLen > 0 ? Number((vdiOutPcs * avgLen).toFixed(3)) : vdiOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((vdiRejPcs * avgLen).toFixed(3)) : vdiRejMtr;
@@ -1402,18 +1399,18 @@ export default function WorkOrderTrackingClient() {
         const totalOrderPcs = isUomPcs
           ? Number(wo.ordered_qty || wo.ordered_qty_pcs || 0)
           : Number(wo.ordered_qty_pcs || 0) > 0
-          ? Number(wo.ordered_qty_pcs)
-          : avgLen > 0
-          ? Math.round(Number(wo.ordered_qty || wo.ordered_qty_mtr || 0) / avgLen)
-          : Math.round(Number(wo.ordered_qty || 0));
+            ? Number(wo.ordered_qty_pcs)
+            : avgLen > 0
+              ? Math.round(Number(wo.ordered_qty || wo.ordered_qty_mtr || 0) / avgLen)
+              : Math.round(Number(wo.ordered_qty || 0));
 
         const totalOrderMtr = !isUomPcs
           ? Number(wo.ordered_qty || wo.ordered_qty_mtr || 0)
           : Number(wo.ordered_qty_mtr || 0) > 0
-          ? Number(wo.ordered_qty_mtr)
-          : avgLen > 0
-          ? Number((totalOrderPcs * avgLen).toFixed(2))
-          : totalOrderPcs;
+            ? Number(wo.ordered_qty_mtr)
+            : avgLen > 0
+              ? Number((totalOrderPcs * avgLen).toFixed(2))
+              : totalOrderPcs;
 
         // Target in Finishing is strictly Total Order Qty in the work order's UOM
         const targetPcs = totalOrderPcs;
@@ -2035,13 +2032,12 @@ export default function WorkOrderTrackingClient() {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-bold text-slate-900 font-mono text-sm">{wo.work_order_no}</span>
                             <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold border ${
-                                wo.status === 'Completed'
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold border ${wo.status === 'Completed'
                                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                                   : wo.status === 'In Progress'
-                                  ? 'bg-blue-50 text-blue-800 border-blue-200'
-                                  : 'bg-slate-100 text-slate-700 border-slate-200'
-                              }`}
+                                    ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                                }`}
                             >
                               {wo.status}
                             </span>
@@ -2058,8 +2054,8 @@ export default function WorkOrderTrackingClient() {
                                 ? ` (${wo.l1}m)`
                                 : ` (${wo.l1}-${wo.l2}m)`
                               : wo.l1 != null
-                              ? ` (${wo.l1}m)`
-                              : ''}
+                                ? ` (${wo.l1}m)`
+                                : ''}
                           </div>
 
                           <div className="text-slate-500 text-[11px]">
@@ -2076,11 +2072,10 @@ export default function WorkOrderTrackingClient() {
                                     e.stopPropagation();
                                     toggleMasterChildren(wo.id);
                                   }}
-                                  className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-all cursor-pointer shadow-2xs ${
-                                    expandedMasterChildren[wo.id]
+                                  className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-all cursor-pointer shadow-2xs ${expandedMasterChildren[wo.id]
                                       ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-300'
                                       : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border-indigo-200 hover:border-indigo-300'
-                                  }`}
+                                    }`}
                                   title="Click to view/hide linked Child Work Orders"
                                 >
                                   <Crown size={11} className={expandedMasterChildren[wo.id] ? 'text-amber-300' : 'text-indigo-600'} />
@@ -2120,7 +2115,7 @@ export default function WorkOrderTrackingClient() {
                           {data.childInfo ? (
                             <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2 text-center">
                               <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider block">
-                                Planned in Work Order No 
+                                Planned in Work Order No
                               </span>
                               <span className="font-mono text-xs text-indigo-950 font-bold block mt-0.5">
                                 {data.childInfo.master_wo_no}
@@ -2174,13 +2169,12 @@ export default function WorkOrderTrackingClient() {
 
                               {Number(rRoll?.wipPcs || 0) > 0 && rRoll?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
-                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
-                                    rRoll.agingSeverity === 'CRITICAL'
+                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${rRoll.agingSeverity === 'CRITICAL'
                                       ? 'bg-red-100 text-red-700 border border-red-200'
                                       : rRoll.agingSeverity === 'WARNING'
-                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                                  }`}>
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                    }`}>
                                     <Clock size={9} />
                                     {rRoll.dwellDays}d at station
                                   </span>
@@ -2254,13 +2248,12 @@ export default function WorkOrderTrackingClient() {
 
                               {Number(rHtc?.wipPcs || 0) > 0 && rHtc?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
-                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
-                                    rHtc.agingSeverity === 'CRITICAL'
+                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${rHtc.agingSeverity === 'CRITICAL'
                                       ? 'bg-red-100 text-red-700 border border-red-200'
                                       : rHtc.agingSeverity === 'WARNING'
-                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                                  }`}>
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                    }`}>
                                     <Clock size={9} />
                                     {rHtc.dwellDays}d at station
                                   </span>
@@ -2335,13 +2328,12 @@ export default function WorkOrderTrackingClient() {
 
                               {Number(rHht?.wipPcs || 0) > 0 && rHht?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
-                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
-                                    rHht.agingSeverity === 'CRITICAL'
+                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${rHht.agingSeverity === 'CRITICAL'
                                       ? 'bg-red-100 text-red-700 border border-red-200'
                                       : rHht.agingSeverity === 'WARNING'
-                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                                  }`}>
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                    }`}>
                                     <Clock size={9} />
                                     {rHht.dwellDays}d at station
                                   </span>
@@ -2409,13 +2401,12 @@ export default function WorkOrderTrackingClient() {
 
                               {Number(rDraw?.wipPcs || 0) > 0 && rDraw?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
-                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
-                                    rDraw.agingSeverity === 'CRITICAL'
+                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${rDraw.agingSeverity === 'CRITICAL'
                                       ? 'bg-red-100 text-red-700 border border-red-200'
                                       : rDraw.agingSeverity === 'WARNING'
-                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                                  }`}>
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                    }`}>
                                     <Clock size={9} />
                                     {rDraw.dwellDays}d at station
                                   </span>
@@ -2483,13 +2474,12 @@ export default function WorkOrderTrackingClient() {
 
                               {Number(rHt?.wipPcs || 0) > 0 && rHt?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
-                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
-                                    rHt.agingSeverity === 'CRITICAL'
+                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${rHt.agingSeverity === 'CRITICAL'
                                       ? 'bg-red-100 text-red-700 border border-red-200'
                                       : rHt.agingSeverity === 'WARNING'
-                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                                  }`}>
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                    }`}>
                                     <Clock size={9} />
                                     {rHt.dwellDays}d at station
                                   </span>
@@ -2557,13 +2547,12 @@ export default function WorkOrderTrackingClient() {
 
                               {Number(rBandSaw?.wipPcs || 0) > 0 && rBandSaw?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
-                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
-                                    rBandSaw.agingSeverity === 'CRITICAL'
+                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${rBandSaw.agingSeverity === 'CRITICAL'
                                       ? 'bg-red-100 text-red-700 border border-red-200'
                                       : rBandSaw.agingSeverity === 'WARNING'
-                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                                  }`}>
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                    }`}>
                                     <Clock size={9} />
                                     {rBandSaw.dwellDays}d at station
                                   </span>
@@ -2638,13 +2627,12 @@ export default function WorkOrderTrackingClient() {
 
                               {Number(rVdi?.wipPcs || 0) > 0 && rVdi?.dwellDays !== undefined && (
                                 <div className="mt-1 flex items-center justify-end">
-                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
-                                    rVdi.agingSeverity === 'CRITICAL'
+                                  <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${rVdi.agingSeverity === 'CRITICAL'
                                       ? 'bg-red-100 text-red-700 border border-red-200'
                                       : rVdi.agingSeverity === 'WARNING'
-                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                                  }`}>
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                    }`}>
                                     <Clock size={9} />
                                     {rVdi.dwellDays}d at station
                                   </span>
@@ -2723,13 +2711,12 @@ export default function WorkOrderTrackingClient() {
 
                             {Number(rFin?.wipPcs || 0) > 0 && rFin?.dwellDays !== undefined && (
                               <div className="mt-1 flex items-center justify-end">
-                                <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${
-                                  rFin.agingSeverity === 'CRITICAL'
+                                <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold ${rFin.agingSeverity === 'CRITICAL'
                                     ? 'bg-red-100 text-red-700 border border-red-200'
                                     : rFin.agingSeverity === 'WARNING'
-                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                    : 'bg-slate-100 text-slate-600 border border-slate-200'
-                                }`}>
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                  }`}>
                                   <Clock size={9} />
                                   {rFin.dwellDays}d at station
                                 </span>
@@ -3016,8 +3003,8 @@ export default function WorkOrderTrackingClient() {
                                       const htcPcs = Number(log.htc_ok_pcs || 0) > 0
                                         ? Number(log.htc_ok_pcs)
                                         : (Number(log.htc_ok_qty || log.htc_ok || 0) > 0
-                                            ? (logRemarksPcs ? Math.max(0, logRemarksPcs - (rejPcs || 0)) : (effLen > 0 ? Math.round(Number(log.htc_ok_qty || log.htc_ok || 0) / effLen) : 0))
-                                            : 0);
+                                          ? (logRemarksPcs ? Math.max(0, logRemarksPcs - (rejPcs || 0)) : (effLen > 0 ? Math.round(Number(log.htc_ok_qty || log.htc_ok || 0) / effLen) : 0))
+                                          : 0);
 
                                       return (
                                         <tr key={log.id} className="hover:bg-slate-50/60">
@@ -3316,11 +3303,10 @@ function FinishingQcModal({ data, onClose }: FinishingQcModalProps) {
               </div>
               <div className="flex items-center gap-3">
                 <div className="font-semibold text-slate-700">Remaining Finishing WIP:</div>
-                <div className={`font-mono font-bold px-2.5 py-1 rounded-lg border ${
-                  finishingWipPcs > 0
+                <div className={`font-mono font-bold px-2.5 py-1 rounded-lg border ${finishingWipPcs > 0
                     ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
                     : 'bg-slate-100 text-slate-600 border-slate-200'
-                }`}>
+                  }`}>
                   {fmt(finishingWipPcs)} Nos ({fmt(finishingWipMt)} MT)
                 </div>
               </div>
