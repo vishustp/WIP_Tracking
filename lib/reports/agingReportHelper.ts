@@ -518,7 +518,7 @@ export function computeAgingReportRows(options: {
           }, 0);
           if (totalCutPcs > 0 && totalCutPcs <= totalQcInspected) {
             const salvageDivOutPcs = approvedDiversions
-              .filter((d: any) => (d.source_work_order_id || d.source_wo_id) === r.work_order_id)
+              .filter((d: any) => (d.source_work_order_id || d.source_wo_id) === r.work_order_id && (d.target_wo_id === HOLLOW_BANK_WO_ID || (d.reason || '').toLowerCase().includes('hollow bank') || (d.reason || '').toLowerCase().includes('salvage') || parseDivStages(d).sourceStage === 'VDI' || parseDivStages(d).sourceStage === 'VDI_SALVAGE'))
               .reduce((sum: number, d: any) => {
                 const motherMatch = typeof d.reason === 'string' ? d.reason.match(/(\d+)\s+mother pipes/i) : null;
                 if (motherMatch) return sum + Number(motherMatch[1]);
@@ -527,7 +527,17 @@ export function computeAgingReportRows(options: {
                 if (pcsMatch) return sum + Number(pcsMatch[1]);
                 return sum;
               }, 0);
-            if (salvageDivOutPcs >= totalQcSalvage || totalQcSalvage <= 0) {
+
+            const salvageHbOutPcs = (hollowBankInventory || [])
+              .filter((hb: any) => hb.source_wo_id === r.work_order_id && (!hb.source_stage_code || hb.source_stage_code === 'VDI' || hb.source_stage_code === 'VDI_SALVAGE'))
+              .reduce((sum: number, hb: any) => sum + Number(hb.pcs || 0), 0);
+
+            const salvageRejDeclPcs = (rejectionDeclarations || [])
+              .filter((rd: any) => rd.work_order_id === r.work_order_id && (rd.work_center === 'VDI' || rd.work_center === 'VDI_SALVAGE') && rd.status === 'APPROVED')
+              .reduce((sum: number, rd: any) => sum + Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0), 0);
+
+            const totalSalvageDisposedPcs = Math.max(salvageDivOutPcs, salvageHbOutPcs) + salvageRejDeclPcs;
+            if (totalSalvageDisposedPcs >= totalQcSalvage || totalQcSalvage <= 0) {
               return false;
             }
           }
@@ -725,8 +735,14 @@ export function computeAgingReportRows(options: {
       const effVdiSalvageDivOutMtr = vdiSalvageDivOutMtr + extraHbMtr;
       const effVdiSalvageDivOutPcs = vdiSalvageDivOutPcs + extraHbPcs;
 
-      let vdiSalvagePcs = Math.max(0, rawVdiSalvagePcs - effVdiSalvageDivOutPcs);
-      let vdiSalvageMtr = Math.max(0, Number((rawVdiSalvageMtr - effVdiSalvageDivOutMtr).toFixed(3)));
+      // Approved rejection declarations for VDI Salvage
+      const vdiSalvageApprovedRej = (rejectionDeclarations || [])
+        .filter((rd: any) => rd.work_order_id === r.work_order_id && (rd.work_center === 'VDI' || rd.work_center === 'VDI_SALVAGE') && rd.status === 'APPROVED');
+      const vdiSalvageApprovedRejPcs = vdiSalvageApprovedRej.reduce((sum: number, rd: any) => sum + Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0), 0);
+      const vdiSalvageApprovedRejMtr = vdiSalvageApprovedRej.reduce((sum: number, rd: any) => sum + Number(rd.ppc_approved_mtr ?? rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0), 0);
+
+      let vdiSalvagePcs = Math.max(0, rawVdiSalvagePcs - effVdiSalvageDivOutPcs - vdiSalvageApprovedRejPcs);
+      let vdiSalvageMtr = Math.max(0, Number((rawVdiSalvageMtr - effVdiSalvageDivOutMtr - vdiSalvageApprovedRejMtr).toFixed(3)));
       if (vdiSalvagePcs <= 0 || vdiSalvageMtr <= 0) {
         vdiSalvagePcs = 0;
         vdiSalvageMtr = 0;
@@ -1321,8 +1337,14 @@ export function normalizeAgingRow(
     ? (Number(raw.vdi_salvage_mtr) > 0 ? Number(raw.vdi_salvage_mtr) : (isSalvage ? currentWip : 0))
     : 0;
 
-  let salvagePcs = Math.max(0, rawSalvagePcs - effVdiSalvageDivOutPcs);
-  let salvageMtr = Math.max(0, Number((rawSalvageMtr - effVdiSalvageDivOutMtr).toFixed(3)));
+  // Deduct approved rejection / second declarations from VDI salvage
+  const vdiApprovedRejs = (rejectionDeclarations || [])
+    .filter((rd: any) => rd.work_order_id === raw.work_order_id && (rd.work_center === 'VDI' || rd.work_center === 'VDI_SALVAGE') && rd.status === 'APPROVED');
+  const vdiApprovedRejPcs = vdiApprovedRejs.reduce((sum: number, rd: any) => sum + Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0), 0);
+  const vdiApprovedRejMtr = vdiApprovedRejs.reduce((sum: number, rd: any) => sum + Number(rd.ppc_approved_mtr ?? rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0), 0);
+
+  let salvagePcs = Math.max(0, rawSalvagePcs - effVdiSalvageDivOutPcs - vdiApprovedRejPcs);
+  let salvageMtr = Math.max(0, Number((rawSalvageMtr - effVdiSalvageDivOutMtr - vdiApprovedRejMtr).toFixed(3)));
   if (salvagePcs <= 0 || salvageMtr <= 0) {
     salvagePcs = 0;
     salvageMtr = 0;
@@ -1330,6 +1352,10 @@ export function normalizeAgingRow(
   if (isSalvage && (salvagePcs <= 0 || salvageMtr <= 0)) {
     currentWip = 0;
     currentWipPcs = 0;
+  }
+  if (isVdi && (salvagePcs <= 0 && rawSalvagePcs > 0)) {
+    currentWip = Math.max(0, currentWip - vdiApprovedRejMtr);
+    currentWipPcs = Math.max(0, currentWipPcs - vdiApprovedRejPcs);
   }
 
   const divMtr = targetDivs.reduce((sum, d: any) => sum + Number(d.diverted_mtr ?? d.diverted_qty ?? 0), 0);

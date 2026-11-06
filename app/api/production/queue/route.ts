@@ -344,12 +344,50 @@ export async function GET(req: NextRequest) {
       return { pcs, mtr };
     };
 
+    const getStageRejDeclMatching = (wId: string, stageCodes: string[]) => {
+      const upperCodes = new Set(stageCodes.map((c) => c.toUpperCase()));
+      const matching = rejectionDeclarations.filter(
+        (rd: any) =>
+          rd.work_order_id === wId &&
+          upperCodes.has((rd.work_center || "").toUpperCase()) &&
+          rd.status === "APPROVED"
+      );
+      const pcs = matching.reduce(
+        (sum: number, rd: any) => sum + Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0),
+        0
+      );
+      const mtr = matching.reduce(
+        (sum: number, rd: any) => sum + Number(rd.ppc_approved_mtr ?? rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0),
+        0
+      );
+      return { pcs, mtr };
+    };
+
     // Pending rejection declarations awaiting QC or PPC approval (not deducted from active WIP, flagged for hold warnings)
     const getStagePendingRejDecl = (wId: string, stageCode: string) => {
       const matching = rejectionDeclarations.filter(
         (rd: any) =>
           rd.work_order_id === wId &&
           (rd.work_center || "").toUpperCase() === stageCode.toUpperCase() &&
+          (rd.status === "PENDING_QC" || rd.status === "PENDING_PPC")
+      );
+      const pcs = matching.reduce(
+        (sum: number, rd: any) => sum + Number(rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0),
+        0
+      );
+      const mtr = matching.reduce(
+        (sum: number, rd: any) => sum + Number(rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0),
+        0
+      );
+      return { pcs, mtr };
+    };
+
+    const getStagePendingRejDeclMatching = (wId: string, stageCodes: string[]) => {
+      const upperCodes = new Set(stageCodes.map((c) => c.toUpperCase()));
+      const matching = rejectionDeclarations.filter(
+        (rd: any) =>
+          rd.work_order_id === wId &&
+          upperCodes.has((rd.work_center || "").toUpperCase()) &&
           (rd.status === "PENDING_QC" || rd.status === "PENDING_PPC")
       );
       const pcs = matching.reduce(
@@ -1675,9 +1713,17 @@ export async function GET(req: NextRequest) {
       }
       let vdiAvailMt = mtFromMtr(vdiAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
-      const vdiSalvageRejDecl = getStageRejDecl(woId, "VDI_SALVAGE");
-      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - effVdiSalvageDivOut - vdiSalvageRejDecl.mtr).toFixed(3)));
-      let remSalvagePcs = Math.max(0, qcSalvagePcs - effVdiSalvageDivOutPcs - vdiSalvageRejDecl.pcs);
+      // For VDI Salvage, approved declarations can be entered with work_center = 'VDI_SALVAGE' or 'VDI'.
+      // Deduct uninspected prime rejections first (if any), then all remaining approved declarations deduct from VDI Salvage.
+      const vdiAllApprovedRej = getStageRejDeclMatching(woId, ["VDI", "VDI_SALVAGE"]);
+      const vdiPrimeRejDeclPcs = Math.min(vdiAllApprovedRej.pcs, Math.max(0, vdiIncomingPcs + vdiDivInPcs + vdiStockIn.pcs - qcInspectedPcs - vdiDivOutPcs));
+      const vdiPrimeRejDeclMtr = Math.min(vdiAllApprovedRej.mtr, Math.max(0, vdiIncomingMtr + effVdiDivInMtr + vdiStockIn.mtr - qcInspectedMtr - vdiDivOut));
+
+      const vdiSalvageRejDeclPcs = Math.max(0, vdiAllApprovedRej.pcs - vdiPrimeRejDeclPcs);
+      const vdiSalvageRejDeclMtr = Math.max(0, Number((vdiAllApprovedRej.mtr - vdiPrimeRejDeclMtr).toFixed(3)));
+
+      let remSalvageMtr = Math.max(0, Number((qcSalvageMtr - effVdiSalvageDivOut - vdiSalvageRejDeclMtr).toFixed(3)));
+      let remSalvagePcs = Math.max(0, qcSalvagePcs - effVdiSalvageDivOutPcs - vdiSalvageRejDeclPcs);
       if (remSalvagePcs <= 0 || remSalvageMtr <= 0) {
         remSalvagePcs = 0;
         remSalvageMtr = 0;
@@ -2279,7 +2325,7 @@ export async function GET(req: NextRequest) {
       const vdiPendingRej = getStagePendingRejDecl(woId, "VDI");
       const finPendingRej = getStagePendingRejDecl(woId, "FINISHING");
       const ipCutPendingRej = getStagePendingRejDecl(woId, "IP_CUTTING");
-      const vdiSalvagePendingRej = getStagePendingRejDecl(woId, "VDI_SALVAGE");
+      const vdiSalvagePendingRej = getStagePendingRejDeclMatching(woId, ["VDI", "VDI_SALVAGE"]);
 
       const getStageActivityDate = (
         stageLogs: any[],

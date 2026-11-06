@@ -361,7 +361,7 @@ export default function SizeGradeWipReportClient() {
       }
 
       // 2. Fallback: Query view for live stage physical WIP + rolling logs + plans + qc inspections + diversion plans
-      const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes, qcRes, divRes] = await Promise.all([
+      const [wipRes, woRes, plansRes, routesRes, prodRes, stagesRes, qcRes, divRes, rejDeclRes, hbRes] = await Promise.all([
         supabase.from('vw_route_stage_wip').select('*').limit(5000),
         supabase.from('work_orders').select('id, work_order_no, customer_name, grade, specification, size_od, size_wt, l1, l2, ordered_qty_pcs, ordered_qty_mt, status, balance_qty_pcs, balance_qty_mtr').limit(5000),
         supabase.from('rolling_plans').select('id, work_order_id, plan_no, multiple, planned_qty, status, planned_rolling_date, mh_od, mh_wt, mh_l1, mh_l2, process_route_id, created_at').not('status', 'is', null).limit(5000),
@@ -369,7 +369,9 @@ export default function SizeGradeWipReportClient() {
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at, remarks, output_qty, rejection_qty, htc_ok, process_stages(stage_name, stage_code)').order('process_date', { ascending: false }).limit(5000),
         supabase.from('process_stages').select('id, stage_code, stage_name'),
         supabase.from('qc_inspections').select('work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr').limit(5000),
-        supabase.from('diversion_plans').select('target_wo_id, source_wo_id, diversion_date, created_at').limit(5000),
+        supabase.from('diversion_plans').select('target_wo_id, source_wo_id, diverted_qty, reason, work_center, diversion_date, created_at').limit(5000),
+        supabase.from('rejection_declarations').select('work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status').eq('status', 'APPROVED').limit(5000),
+        supabase.from('hollow_bank_inventory').select('source_wo_id, source_stage_code, pcs, total_meters').limit(5000),
       ]);
 
       if (routesRes.data) {
@@ -747,12 +749,42 @@ export default function SizeGradeWipReportClient() {
             });
           }
 
-          // Also incorporate active VDI Salvage in fallback if positive
+          // Also incorporate active VDI Salvage in fallback if positive (deducting diversions, hollow bank, and approved rejections/seconds)
           const woQcItems = (qcRes.data || []).filter((q: any) => q.work_order_id === woId);
-          const woSalvagePcs = woQcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
-          const woSalvageMtrDirect = woQcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
+          const rawSalvagePcs = woQcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
+          const rawSalvageMtrDirect = woQcItems.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
           const avgLen = Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : wo?.l1 || wo?.l2 || 6.0);
-          const woSalvageMtr = woSalvageMtrDirect > 0 ? woSalvageMtrDirect : Number((woSalvagePcs * avgLen).toFixed(2));
+          const rawSalvageMtr = rawSalvageMtrDirect > 0 ? rawSalvageMtrDirect : Number((rawSalvagePcs * avgLen).toFixed(2));
+
+          // Deduct diversions out from VDI / VDI_SALVAGE
+          const vdiDivOutPcs = (divRes.data || [])
+            .filter((d: any) => d.source_wo_id === woId && (d.work_center === 'VDI' || d.work_center === 'VDI_SALVAGE' || (d.reason || '').toLowerCase().includes('hollow bank') || (d.reason || '').toLowerCase().includes('salvage')))
+            .reduce((sum: number, d: any) => {
+              const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+              return sum + (pcsMatch ? Number(pcsMatch[1]) : (avgLen > 0 ? Math.round(Number(d.diverted_qty || 0) / avgLen) : 0));
+            }, 0);
+          const vdiDivOutMtr = (divRes.data || [])
+            .filter((d: any) => d.source_wo_id === woId && (d.work_center === 'VDI' || d.work_center === 'VDI_SALVAGE' || (d.reason || '').toLowerCase().includes('hollow bank') || (d.reason || '').toLowerCase().includes('salvage')))
+            .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+
+          // Deduct Hollow bank inventory
+          const hbVdiPcs = (hbRes?.data || [])
+            .filter((hb: any) => hb.source_wo_id === woId && (!hb.source_stage_code || hb.source_stage_code === 'VDI' || hb.source_stage_code === 'VDI_SALVAGE'))
+            .reduce((sum: number, hb: any) => sum + Number(hb.pcs || 0), 0);
+          const hbVdiMtr = (hbRes?.data || [])
+            .filter((hb: any) => hb.source_wo_id === woId && (!hb.source_stage_code || hb.source_stage_code === 'VDI' || hb.source_stage_code === 'VDI_SALVAGE'))
+            .reduce((sum: number, hb: any) => sum + Number(hb.total_meters || 0), 0);
+
+          // Deduct approved rejection / second declarations
+          const vdiRejPcs = (rejDeclRes?.data || [])
+            .filter((rd: any) => rd.work_order_id === woId && (rd.work_center === 'VDI' || rd.work_center === 'VDI_SALVAGE') && rd.status === 'APPROVED')
+            .reduce((sum: number, rd: any) => sum + Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0), 0);
+          const vdiRejMtr = (rejDeclRes?.data || [])
+            .filter((rd: any) => rd.work_order_id === woId && (rd.work_center === 'VDI' || rd.work_center === 'VDI_SALVAGE') && rd.status === 'APPROVED')
+            .reduce((sum: number, rd: any) => sum + Number(rd.ppc_approved_mtr ?? rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0), 0);
+
+          const woSalvagePcs = Math.max(0, rawSalvagePcs - Math.max(vdiDivOutPcs, hbVdiPcs) - vdiRejPcs);
+          const woSalvageMtr = Math.max(0, Number((rawSalvageMtr - Math.max(vdiDivOutMtr, hbVdiMtr) - vdiRejMtr).toFixed(2)));
           const targetOd = Number(wo?.size_od || rows[0]?.size_od || 0);
           const targetWt = Number(wo?.size_wt || rows[0]?.size_wt || 0);
           const woSalvageMt = mtFromMtr(woSalvageMtr, targetOd, targetWt);
