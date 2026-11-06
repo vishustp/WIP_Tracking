@@ -183,6 +183,47 @@ type WipViewRow = {
   net_output_mtr?: number | null;
 };
 
+// Helpers to parse stages and active status for diversions
+function getDiversionFromStage(d: any): string {
+  const m = d.reason?.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i);
+  if (m) return m[1].toUpperCase();
+  return (d.source_work_center || d.work_center || 'ROLLING').toUpperCase();
+}
+
+function getDiversionToStage(d: any): string {
+  const m = d.reason?.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i);
+  if (m) return m[1].toUpperCase();
+  return (d.target_work_center || d.work_center || 'ROLLING').toUpperCase();
+}
+
+function isDiversionActive(d: any): boolean {
+  const st = String(d.status || '').toUpperCase();
+  if (st === 'CANCELLED' || st === 'REJECTED_BY_PPC' || st === 'REJECTED') return false;
+  return true;
+}
+
+function getConsumedFromSource(d: any, avgLen: number): { mtr: number; pcs: number; isMultiOrderSplit: boolean } {
+  const reason = d.reason || '';
+  const multiMatch = reason.match(/Cut\s*&\s*Multi-Order\s*Diversion\s*\(#(\d+)\/(\d+)\):\s*Mother\s*(\d+)\s*pcs\s*@\s*([\d.]+)\s*m/i);
+  if (multiMatch) {
+    const motherPcs = parseInt(multiMatch[3], 10);
+    const motherLen = parseFloat(multiMatch[4]);
+    const totalMotherMtr = Number((motherPcs * motherLen).toFixed(2));
+    return { mtr: totalMotherMtr, pcs: motherPcs, isMultiOrderSplit: true };
+  }
+  const singleCutMatch = reason.match(/Cut\s*from\s*Middle\s*&\s*Diverted:\s*(\d+)\s*mother\s*pipes?\s*@\s*([\d.]+)\s*m/i);
+  if (singleCutMatch) {
+    const motherPcs = parseInt(singleCutMatch[1], 10);
+    const motherLen = parseFloat(singleCutMatch[2]);
+    const totalMotherMtr = Number((motherPcs * motherLen).toFixed(2));
+    return { mtr: totalMotherMtr, pcs: motherPcs, isMultiOrderSplit: false };
+  }
+  const pcsMatch = reason.match(/\[PCS:\s*(\d+)\]/i);
+  const divMtr = Number(d.diverted_qty || 0);
+  const divPcs = pcsMatch ? parseInt(pcsMatch[1], 10) : (avgLen > 0 ? Math.round(divMtr / avgLen) : 0);
+  return { mtr: divMtr, pcs: divPcs, isMultiOrderSplit: false };
+}
+
 async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: string, wo: WO): Promise<WoWipSummary> {
   // Query actual production logs, diversion plans, rolling plans, routes, and QC inspections
   const [logsRes, divRes, plansRes, routesRes, qcRes, stageWipRes, stagesRes] = await Promise.all([
@@ -320,11 +361,68 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   const qcSalvageMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
   const qcVdiRejMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0), 0);
 
+  // Group active diversions for this work order by stage
+  const activeDivs = divs.filter(isDiversionActive);
+
+  // Group outbound diversions by stage
+  const outboundDivsByStage = new Map<string, { mtr: number; pcs: number }>();
+  const seenMultiOrderBatches = new Set<string>();
+
+  for (const d of activeDivs) {
+    if (d.source_wo_id !== id) continue;
+    const stage = getDiversionFromStage(d);
+    const consumed = getConsumedFromSource(d, avgLength);
+
+    if (consumed.isMultiOrderSplit) {
+      const batchKey = `${d.source_wo_id}_${stage}_${consumed.pcs}_${consumed.mtr}_${(d.created_at || '').slice(0, 16)}`;
+      if (seenMultiOrderBatches.has(batchKey)) {
+        continue;
+      }
+      seenMultiOrderBatches.add(batchKey);
+    }
+
+    const current = outboundDivsByStage.get(stage) || { mtr: 0, pcs: 0 };
+    outboundDivsByStage.set(stage, {
+      mtr: Number((current.mtr + consumed.mtr).toFixed(2)),
+      pcs: current.pcs + consumed.pcs,
+    });
+  }
+
+  // Group inbound diversions by stage
+  const inboundDivsByStage = new Map<string, { mtr: number; pcs: number }>();
+  for (const d of activeDivs) {
+    if (d.target_wo_id !== id) continue;
+    const stage = getDiversionToStage(d);
+    const pcsMatch = d.reason?.match(/\[PCS:\s*(\d+)\]/i);
+    const divMtr = Number(d.diverted_qty || 0);
+    const divPcs = pcsMatch ? parseInt(pcsMatch[1], 10) : (avgLength > 0 ? Math.round(divMtr / avgLength) : 0);
+
+    const current = inboundDivsByStage.get(stage) || { mtr: 0, pcs: 0 };
+    inboundDivsByStage.set(stage, {
+      mtr: Number((current.mtr + divMtr).toFixed(2)),
+      pcs: current.pcs + divPcs,
+    });
+  }
+
+  // Enrich stageRows with exact diversion_in and diversion_out
+  const enrichedStageRows = stageRows.map((stg: any) => {
+    const sc = (stg.stage_code || '').toUpperCase();
+    const divOut = outboundDivsByStage.get(sc) || { mtr: 0, pcs: 0 };
+    const divIn = inboundDivsByStage.get(sc) || { mtr: 0, pcs: 0 };
+    return {
+      ...stg,
+      diversion_out: divOut.mtr,
+      diversion_out_pcs: divOut.pcs,
+      diversion_in: divIn.mtr,
+      diversion_in_pcs: divIn.pcs,
+    };
+  });
+
   // Reconcile WIP using piece-governed mass-conserving campaign logic
   const reconciled = reconcileCampaignWorkOrderWip({
     woId: id,
     wo,
-    rows: stageRows,
+    rows: enrichedStageRows,
     qcInspections: allQcList,
     productionLogs: effectiveLogs,
     hierarchyMaps,
@@ -353,20 +451,11 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
   );
 
   // Diversions per stage (strictly uses approved diversions for WIP balance)
-  const getDivOut = (stageCode: string) =>
-    approvedDivs.filter((d: any) => d.source_wo_id === id && (d.work_center || 'ROLLING') === stageCode)
-        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+  const getDivOut = (stageCode: string) => outboundDivsByStage.get(stageCode)?.mtr || 0;
+  const getDivIn = (stageCode: string) => inboundDivsByStage.get(stageCode)?.mtr || 0;
 
-  const getDivIn = (stageCode: string) =>
-    approvedDivs.filter((d: any) => d.target_wo_id === id && (d.work_center || 'ROLLING') === stageCode)
-        .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
-
-  const totalDivertedOutMtr = approvedDivs
-    .filter((d: any) => d.source_wo_id === id)
-    .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
-  const totalDivertedInMtr = approvedDivs
-    .filter((d: any) => d.target_wo_id === id)
-    .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+  const totalDivertedOutMtr = Array.from(outboundDivsByStage.values()).reduce((sum, v) => sum + v.mtr, 0);
+  const totalDivertedInMtr = Array.from(inboundDivsByStage.values()).reduce((sum, v) => sum + v.mtr, 0);
 
   const pendingDrawDiversionsMtr = pendingDrawDivs
     .filter((d: any) => d.source_wo_id === id)
@@ -382,8 +471,8 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
 
   let stageBreakdown: any[] = [];
 
-  if (stageRows.length > 0) {
-    stageBreakdown = stageRows.map((stg: any) => {
+  if (enrichedStageRows.length > 0) {
+    stageBreakdown = enrichedStageRows.map((stg: any) => {
       const sc = stg.stage_code;
       const recStage = reconciled.summary.stages.find((s: any) => s.stage_code === sc);
 
@@ -402,25 +491,10 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
       if (sc === 'VDI') {
         const totalVdiRejMtr = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_mtr || 0) + Number(q.vdi_salvage_mtr || 0), 0);
         const totalVdiRejPcs = allQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_rejection_pcs || 0) + Number(q.vdi_salvage_pcs || 0), 0);
-        const vdiDivOutMtr = Number(stg.diversion_out || 0);
+        const vdiDivOut = outboundDivsByStage.get('VDI') || { mtr: 0, pcs: 0 };
 
-        // Distinguish salvage/rejection diversions from prime diversions:
-        // Diversions of prime material reallocate prime queue and do not consume the salvage pool.
-        const vdiSalvageDivOutMtr = divs
-          .filter((d: any) => {
-            if (d.source_wo_id !== id) return false;
-            const fromMatch = d.reason?.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i);
-            const fromStage = fromMatch ? fromMatch[1].toUpperCase() : (d.work_center || '').toUpperCase();
-            if (fromStage !== 'VDI') return false;
-            const r = (d.reason || '').toLowerCase();
-            return r.includes('salvage') || r.includes('rejection') || r.includes('second') || r.includes('scrap');
-          })
-          .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
-
-        const availableVdiRejMtr = Math.max(0, totalVdiRejMtr - vdiSalvageDivOutMtr);
-        const availableVdiRejPcs = totalVdiRejMtr > 0
-          ? Math.max(0, Math.round(totalVdiRejPcs * (availableVdiRejMtr / totalVdiRejMtr)))
-          : 0;
+        const availableVdiRejMtr = Math.max(0, Number((totalVdiRejMtr - vdiDivOut.mtr).toFixed(2)));
+        const availableVdiRejPcs = Math.max(0, totalVdiRejPcs - vdiDivOut.pcs);
 
         // When prime uninspected material has fully passed downstream or order is completed,
         // active WIP at VDI is strictly the undispositioned salvage pool
@@ -432,9 +506,9 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
           curWipPcs = availableVdiRejPcs;
           curWipMtr = availableVdiRejMtr > 0 ? availableVdiRejMtr : (avgLength > 0 ? Number((availableVdiRejPcs * avgLength).toFixed(2)) : 0);
           curWipMt = curWipMtr * mtPerMtr;
-        } else if (availableVdiRejPcs > 0 && curWipPcs < availableVdiRejPcs) {
-          curWipPcs = availableVdiRejPcs;
-          curWipMtr = availableVdiRejMtr > 0 ? availableVdiRejMtr : (avgLength > 0 ? Number((availableVdiRejPcs * avgLength).toFixed(2)) : 0);
+        } else if (availableVdiRejPcs > 0) {
+          curWipPcs = Math.max(curWipPcs, availableVdiRejPcs);
+          curWipMtr = Math.max(curWipMtr, availableVdiRejMtr);
           curWipMt = curWipMtr * mtPerMtr;
         }
       }
@@ -490,7 +564,7 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
         !isOrderCompleted &&
         !(isCampaignMaster && sc === 'FINISHING')
       ) {
-        const downstreamProduced = stageRows
+        const downstreamProduced = enrichedStageRows
           .filter((sr: any) => sr.sequence_no > stg.sequence_no)
           .some((sr: any) => Number(sr.production_qty || 0) > 0);
         if (!downstreamProduced) {
@@ -520,7 +594,9 @@ async function fetchWipSummary(supabase: ReturnType<typeof createClient>, id: st
         available_pcs: curWipPcs,
         available_mt: curWipMt,
         diverted_out_mtr: Number(stg.diversion_out || 0),
+        diverted_out_pcs: Number(stg.diversion_out_pcs || 0),
         diverted_in_mtr: Number(stg.diversion_in || 0),
+        diverted_in_pcs: Number(stg.diversion_in_pcs || 0),
         input_qty: Number(stg.incoming_qty || 0),
         output_qty: Number(stg.production_qty || 0),
         rejection_qty: Number(stg.rejection_qty || 0),

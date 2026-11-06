@@ -1043,14 +1043,11 @@ export default function WorkOrderTrackingClient() {
           const effDrawLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'DRAW', effDrawLen);
           const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'DRAW', effDrawLen);
-          const consumedPcs = Math.max(
-            drawOutPcs + drawRejPcs,
-            htOutPcs + htRejPcs,
-            downstreamMotherPcsFromBandSaw
-          );
+          const consumedPcs = drawOutPcs + drawRejPcs;
 
           let wipPcs = 0;
           if (!isOrderCompleted && (incomingPcs > 0 || divInPcs > 0)) {
+            // Rule 1: Draw Bench Active WIP = Preceding Stage (Hollow HT or HTC) OK - Draw Bench Output
             wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
           }
           const wipMtr = (!isOrderCompleted && effDrawLen > 0) ? Number((wipPcs * effDrawLen).toFixed(3)) : 0;
@@ -1126,14 +1123,11 @@ export default function WorkOrderTrackingClient() {
           const effPilgerLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'PILGER', effPilgerLen);
           const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'PILGER', effPilgerLen);
-          const consumedPcs = Math.max(
-            pilgerOutPcs + pilgerRejPcs,
-            hasHtInRoute ? (htOutPcs + htRejPcs) : 0,
-            downstreamMotherPcsFromBandSaw
-          );
+          const consumedPcs = pilgerOutPcs + pilgerRejPcs;
 
           let wipPcs = 0;
           if (!isOrderCompleted && (incomingPcs > 0 || divInPcs > 0)) {
+            // Rule 1: Pilger Mill Active WIP = Preceding Stage (Rolling HTC) OK - Pilger Output
             wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
           }
           const wipMtr = (!isOrderCompleted && effPilgerLen > 0) ? Number((wipPcs * effPilgerLen).toFixed(3)) : 0;
@@ -1206,13 +1200,11 @@ export default function WorkOrderTrackingClient() {
             : Math.max(0, drawOutPcs - drawRejPcs);
           const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'HEAT_TREATMENT', avgLen);
           const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'HEAT_TREATMENT', avgLen);
-          const consumedPcs = Math.max(
-            htOutPcs + htRejPcs,
-            downstreamMotherPcsFromBandSaw
-          );
+          const consumedPcs = htOutPcs + htRejPcs;
 
           let wipPcs = 0;
           if (!isOrderCompleted && (incomingNetPcs > 0 || divInPcs > 0)) {
+            // Rule 1: Heat Treatment Active WIP = Preceding Stage (Draw or Pilger) OK - HT Output
             wipPcs = Math.max(0, incomingNetPcs + divInPcs - consumedPcs - divOutPcs);
           }
           const wipMtr = (!isOrderCompleted && avgLen > 0) ? Number((wipPcs * avgLen).toFixed(3)) : 0;
