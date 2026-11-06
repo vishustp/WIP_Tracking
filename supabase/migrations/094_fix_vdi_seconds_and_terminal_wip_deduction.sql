@@ -388,15 +388,15 @@ WITH wo_primary_route AS (
             GREATEST(sc.incoming_qty + sc.diversion_in - GREATEST(sc.production_qty + sc.rejection_qty, sc.downstream_passed_qty) - sc.declared_rej_mtr - sc.diversion_out, 0)
         END
 
-      -- HEAT_TREATMENT: Piece-balanced against Draw output and Band Saw mother pipe cuts
+      -- HEAT_TREATMENT: Piece-balanced against Preceding output (Draw / Pilger) minus Heat Treatment output
       WHEN sc.stage_code IN ('HEAT_TREATMENT', 'HOLLOW_HEAT_TREATMENT') THEN
         CASE
-          WHEN (sc.prec_stage_pcs > 0 AND GREATEST(sc.curr_stage_pcs, sc.bs_mother_pieces_cut) >= sc.prec_stage_pcs)
-            OR (sc.incoming_qty > 0 AND GREATEST(sc.production_qty, sc.downstream_passed_qty) >= sc.incoming_qty AND sc.production_qty >= sc.incoming_qty) THEN 0
+          WHEN (sc.prec_stage_pcs > 0 AND sc.curr_stage_pcs >= sc.prec_stage_pcs)
+            OR (sc.incoming_qty > 0 AND sc.production_qty >= sc.incoming_qty) THEN 0
           WHEN sc.prec_stage_pcs > 0 THEN
-            GREATEST(0, sc.prec_stage_pcs - GREATEST(sc.curr_stage_pcs, sc.bs_mother_pieces_cut)) * sc.order_avg_length
+            GREATEST(0, sc.prec_stage_pcs - sc.curr_stage_pcs) * sc.order_avg_length
           ELSE
-            GREATEST(sc.incoming_qty + sc.diversion_in - GREATEST(sc.production_qty + sc.rejection_qty, sc.downstream_passed_qty) - sc.declared_rej_mtr - sc.diversion_out, 0)
+            GREATEST(sc.incoming_qty + sc.diversion_in - (sc.production_qty + sc.rejection_qty) - sc.declared_rej_mtr - sc.diversion_out, 0)
         END
 
       -- BAND_SAW: Piece-balanced against mother pieces cut
@@ -462,8 +462,8 @@ SELECT
       + sw.active_salvage_pcs_val
     WHEN sw.stage_code IN ('DRAW', 'PILGER') AND ((sw.prec_stage_pcs > 0 AND GREATEST(sw.curr_stage_pcs, sw.downstream_passed_pcs) >= sw.prec_stage_pcs) OR sw.current_wip <= 0) THEN 0
     WHEN sw.stage_code IN ('DRAW', 'PILGER') AND sw.prec_stage_pcs > 0 THEN GREATEST(0, sw.prec_stage_pcs - GREATEST(sw.curr_stage_pcs, sw.downstream_passed_pcs))
-    WHEN sw.stage_code IN ('HEAT_TREATMENT', 'HOLLOW_HEAT_TREATMENT') AND ((sw.prec_stage_pcs > 0 AND GREATEST(sw.curr_stage_pcs, sw.bs_mother_pieces_cut) >= sw.prec_stage_pcs) OR sw.current_wip <= 0) THEN 0
-    WHEN sw.stage_code IN ('HEAT_TREATMENT', 'HOLLOW_HEAT_TREATMENT') AND sw.prec_stage_pcs > 0 THEN GREATEST(0, sw.prec_stage_pcs - GREATEST(sw.curr_stage_pcs, sw.bs_mother_pieces_cut))
+    WHEN sw.stage_code IN ('HEAT_TREATMENT', 'HOLLOW_HEAT_TREATMENT') AND ((sw.prec_stage_pcs > 0 AND sw.curr_stage_pcs >= sw.prec_stage_pcs) OR sw.current_wip <= 0) THEN 0
+    WHEN sw.stage_code IN ('HEAT_TREATMENT', 'HOLLOW_HEAT_TREATMENT') AND sw.prec_stage_pcs > 0 THEN GREATEST(0, sw.prec_stage_pcs - sw.curr_stage_pcs)
     WHEN sw.stage_code = 'BAND_SAW' AND sw.prec_stage_pcs > 0 AND (sw.bs_mother_pieces_cut >= sw.prec_stage_pcs OR sw.downstream_passed_pcs >= sw.prec_stage_pcs) THEN 0
     WHEN sw.stage_code = 'BAND_SAW' AND sw.prec_stage_pcs > 0 AND sw.bs_mother_pieces_cut > 0 THEN GREATEST(0, sw.prec_stage_pcs - sw.bs_mother_pieces_cut)
     ELSE public.mtr_to_pcs(sw.work_order_id, sw.current_wip)
