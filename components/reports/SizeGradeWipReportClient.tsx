@@ -369,7 +369,7 @@ export default function SizeGradeWipReportClient() {
         supabase.from('production_logs').select('work_order_id, stage_id, process_date, created_at, remarks, output_qty, rejection_qty, htc_ok, process_stages(stage_name, stage_code)').order('process_date', { ascending: false }).limit(5000),
         supabase.from('process_stages').select('id, stage_code, stage_name'),
         supabase.from('qc_inspections').select('work_order_id, inspected_pcs, inspected_mtr, vdi_ok_pcs, vdi_ok_mtr, vdi_salvage_pcs, vdi_salvage_mtr, vdi_rejection_pcs, vdi_rejection_mtr').limit(5000),
-        supabase.from('diversion_plans').select('target_wo_id, source_wo_id, diverted_qty, reason, work_center, diversion_date, created_at').limit(5000),
+        supabase.from('diversion_plans').select('target_wo_id, source_wo_id, diverted_qty, reason, work_center, diversion_date, created_at, status').limit(5000),
         supabase.from('rejection_declarations').select('work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status').eq('status', 'APPROVED').limit(5000),
         supabase.from('hollow_bank_inventory').select('source_wo_id, source_stage_code, pcs, total_meters').limit(5000),
       ]);
@@ -756,15 +756,25 @@ export default function SizeGradeWipReportClient() {
           const avgLen = Number(wo?.l1 && wo?.l2 ? (Number(wo.l1) + Number(wo.l2)) / 2 : wo?.l1 || wo?.l2 || 6.0);
           const rawSalvageMtr = rawSalvageMtrDirect > 0 ? rawSalvageMtrDirect : Number((rawSalvagePcs * avgLen).toFixed(2));
 
+          const isDivApproved = (d: any) => d.status == null || d.status === 'APPROVED';
+          const isSalvageDiv = (d: any) =>
+            d.work_center === 'VDI_SALVAGE' ||
+            (d.work_center === 'VDI' && !((d.reason || '').toLowerCase().includes('prime'))) ||
+            (d.reason || '').toLowerCase().includes('hollow bank') ||
+            (d.reason || '').toLowerCase().includes('salvage') ||
+            (d.reason || '').toLowerCase().includes('offcut') ||
+            (d.reason || '').toLowerCase().includes('remnant') ||
+            ((d.reason || '').toLowerCase().includes('[from_stage: vdi]') && (d.reason || '').toLowerCase().includes('middle'));
+
           // Deduct diversions out from VDI / VDI_SALVAGE
           const vdiDivOutPcs = (divRes.data || [])
-            .filter((d: any) => d.source_wo_id === woId && (d.work_center === 'VDI' || d.work_center === 'VDI_SALVAGE' || (d.reason || '').toLowerCase().includes('hollow bank') || (d.reason || '').toLowerCase().includes('salvage')))
+            .filter((d: any) => d.source_wo_id === woId && isDivApproved(d) && isSalvageDiv(d))
             .reduce((sum: number, d: any) => {
               const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
               return sum + (pcsMatch ? Number(pcsMatch[1]) : (avgLen > 0 ? Math.round(Number(d.diverted_qty || 0) / avgLen) : 0));
             }, 0);
           const vdiDivOutMtr = (divRes.data || [])
-            .filter((d: any) => d.source_wo_id === woId && (d.work_center === 'VDI' || d.work_center === 'VDI_SALVAGE' || (d.reason || '').toLowerCase().includes('hollow bank') || (d.reason || '').toLowerCase().includes('salvage')))
+            .filter((d: any) => d.source_wo_id === woId && isDivApproved(d) && isSalvageDiv(d))
             .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
           // Deduct Hollow bank inventory

@@ -141,6 +141,8 @@ interface StageTrackingMetric {
   divertedOutMtr?: number;
   salvagePcs?: number;
   salvageMtr?: number;
+  uninspectedPcs?: number;
+  uninspectedMtr?: number;
 }
 
 const STAGES_ORDER = [
@@ -166,6 +168,7 @@ export default function WorkOrderTrackingClient() {
   const [processRoutes, setProcessRoutes] = useState<{ id: string; route_code: string; route_name: string }[]>([]);
   const [qcInspections, setQcInspections] = useState<any[]>([]);
   const [diversionPlans, setDiversionPlans] = useState<any[]>([]);
+  const [rejectionDeclarations, setRejectionDeclarations] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Filters
@@ -216,14 +219,15 @@ export default function WorkOrderTrackingClient() {
         return { data: all };
       };
 
-      const [woRes, plansRes, wipRes, logsRes, routesRes, qcRes, divsRes] = await Promise.all([
+      const [woRes, plansRes, wipRes, logsRes, routesRes, qcRes, divsRes, rejDeclRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('rolling_plans').select('*').not('status', 'is', null).order('created_at', { ascending: false }),
         supabase.from('vw_route_stage_wip').select('*'),
         fetchAllProductionLogs(),
         supabase.from('process_routes').select('id, route_code, route_name'),
         supabase.from('qc_inspections').select('*').order('inspection_date', { ascending: false }),
-        supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, reason'),
+        supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, multiple, reason, status'),
+        supabase.from('rejection_declarations').select('id, work_order_id, work_center, rejected_pcs, rejected_mtr, qc_verified_pcs, qc_verified_mtr, ppc_approved_pcs, ppc_approved_mtr, status').eq('status', 'APPROVED'),
       ]);
 
       if (woRes.data) setWorkOrders(woRes.data);
@@ -232,6 +236,7 @@ export default function WorkOrderTrackingClient() {
       if (routesRes?.data) setProcessRoutes(routesRes.data);
       if (qcRes?.data) setQcInspections(qcRes.data);
       if (divsRes?.data) setDiversionPlans(divsRes.data);
+      if (rejDeclRes?.data) setRejectionDeclarations(rejDeclRes.data);
 
       if (logsRes.data) {
         const mappedLogs: ProductionLog[] = logsRes.data.map((l: any) => {
@@ -465,18 +470,28 @@ export default function WorkOrderTrackingClient() {
       const campaignWoIdSet = new Set<string>([wo.id, ...campaignChildWoIds]);
 
       // Diversions helper for this work order / master
+      const isSalvageDiversion = (d: any) =>
+        (d.work_center || '').toUpperCase() === 'VDI_SALVAGE' ||
+        parseDiversionStages(d).sourceStage === 'VDI_SALVAGE' ||
+        (d.reason || '').toLowerCase().includes('salvage') ||
+        (d.reason || '').toLowerCase().includes('offcut') ||
+        (d.reason || '').toLowerCase().includes('remnant') ||
+        ((d.reason || '').toLowerCase().includes('[from_stage: vdi]') && (d.reason || '').toLowerCase().includes('middle'));
+
+      const isDivApproved = (d: any) => d.status == null || d.status === 'APPROVED';
+
       const getStageDivIn = (wId: string, stageCode: string) =>
         diversionPlans
-          .filter((d: any) => d.target_wo_id === wId && parseDiversionStages(d).targetStage === stageCode)
+          .filter((d: any) => isDivApproved(d) && d.target_wo_id === wId && parseDiversionStages(d).targetStage === stageCode)
           .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
       const getStageDivOut = (wId: string, stageCode: string) =>
         diversionPlans
-          .filter((d: any) => d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode)
+          .filter((d: any) => isDivApproved(d) && d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode && (stageCode !== 'VDI' || !isSalvageDiversion(d)))
           .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
       const getStageDivInPcs = (wId: string, stageCode: string, fallbackTargetAvgLen: number = avgLen) => {
-        const matching = diversionPlans.filter((d: any) => d.target_wo_id === wId && parseDiversionStages(d).targetStage === stageCode);
+        const matching = diversionPlans.filter((d: any) => isDivApproved(d) && d.target_wo_id === wId && parseDiversionStages(d).targetStage === stageCode);
         return matching.reduce((sum: number, d: any) => {
           const dQty = Number(d.diverted_qty || 0);
           if (dQty <= 0) return sum;
@@ -492,11 +507,12 @@ export default function WorkOrderTrackingClient() {
       };
 
       const getStageDivOutPcs = (wId: string, stageCode: string, sourceAvgLen: number = avgLen) => {
-        const matching = diversionPlans.filter((d: any) => d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode);
+        const matching = diversionPlans.filter((d: any) => isDivApproved(d) && d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode && (stageCode !== 'VDI' || !isSalvageDiversion(d)));
         return matching.reduce((sum: number, d: any) => {
           const dQty = Number(d.diverted_qty || 0);
           if (dQty <= 0) return sum;
-          return sum + (sourceAvgLen > 0 ? Math.round(dQty / sourceAvgLen) : 0);
+          const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          return sum + (pcsMatch ? Number(pcsMatch[1]) : (sourceAvgLen > 0 ? Math.round(dQty / sourceAvgLen) : 0));
         }, 0);
       };
 
@@ -549,15 +565,17 @@ export default function WorkOrderTrackingClient() {
       const rollingRejPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogRejPcs(l), 0);
       const rollingRejPcs = rollingRejPcsLogged > 0 ? rollingRejPcsLogged : (mhAvgLen > 0 ? Math.round(rollingRejMtr / mhAvgLen) : 0);
 
+      // HTC (Hot Test Check) stats (from stage_code === 'HTC')
+      const masterHtcLogs = masterLogs.filter((l) => l.stage_code === 'HTC');
+      const hasDedicatedHtcLogs = masterHtcLogs.length > 0;
+
       // Legacy rolling logs might have had htc_ok recorded directly on the rolling log
       const legacyRollingHtcOkMtr = masterRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty ?? l.htc_ok ?? 0), 0);
       const legacyRollingHtcOkPcsLogged = masterRollLogs.reduce((sum, l) => sum + getLogHtcOkPcs(l), 0);
       const legacyRollingHtcOkPcs = legacyRollingHtcOkPcsLogged > 0
         ? legacyRollingHtcOkPcsLogged
-        : (rollingRejPcs === 0 && rollingOutPcs > 0 ? rollingOutPcs : (mhAvgLen > 0 ? Math.round(legacyRollingHtcOkMtr / mhAvgLen) : 0));
+        : (!hasDedicatedHtcLogs && rollingRejPcs === 0 && rollingOutPcs > 0 ? rollingOutPcs : (mhAvgLen > 0 ? Math.round(legacyRollingHtcOkMtr / mhAvgLen) : 0));
 
-      // HTC (Hot Test Check) stats (from stage_code === 'HTC')
-      const masterHtcLogs = masterLogs.filter((l) => l.stage_code === 'HTC');
       const htcLogOutMtr = masterHtcLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
       const htcLogOutPcsLogged = masterHtcLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
       const htcLogOutPcs = htcLogOutPcsLogged > 0 ? htcLogOutPcsLogged : (mhAvgLen > 0 ? Math.round(htcLogOutMtr / mhAvgLen) : 0);
@@ -572,14 +590,12 @@ export default function WorkOrderTrackingClient() {
         ? htcLogOkPcsLogged
         : (htcLogRejPcs === 0 && htcLogOutPcs > 0 ? htcLogOutPcs : (mhAvgLen > 0 ? Math.round(htcLogOkMtr / mhAvgLen) : 0));
 
-      const hasDedicatedHtcLogs = masterHtcLogs.length > 0;
-      const hasAnyHtcActivity = hasDedicatedHtcLogs || legacyRollingHtcOkPcs > 0 || legacyRollingHtcOkMtr > 0;
-      const htcOutMtr = hasAnyHtcActivity ? (legacyRollingHtcOkMtr + htcLogOutMtr) : rollingOutMtr;
-      const htcOutPcs = hasAnyHtcActivity ? (legacyRollingHtcOkPcs + htcLogOutPcs) : rollingOutPcs;
+      const htcOutMtr = hasDedicatedHtcLogs ? htcLogOutMtr : (legacyRollingHtcOkMtr > 0 ? legacyRollingHtcOkMtr : rollingOutMtr);
+      const htcOutPcs = hasDedicatedHtcLogs ? htcLogOutPcs : (legacyRollingHtcOkPcs > 0 ? legacyRollingHtcOkPcs : rollingOutPcs);
       const htcRejMtr = htcLogRejMtr;
       const htcRejPcs = htcLogRejPcs;
-      const htcOkMtr = hasAnyHtcActivity ? (legacyRollingHtcOkMtr + (htcLogOkMtr > 0 ? htcLogOkMtr : htcLogOutMtr)) : rollingOutMtr;
-      const htcOkPcs = hasAnyHtcActivity ? (legacyRollingHtcOkPcs + (htcLogOkPcs > 0 ? htcLogOkPcs : htcLogOutPcs)) : rollingOutPcs;
+      const htcOkMtr = hasDedicatedHtcLogs ? (htcLogOkMtr > 0 ? htcLogOkMtr : htcLogOutMtr) : (legacyRollingHtcOkMtr > 0 ? legacyRollingHtcOkMtr : rollingOutMtr);
+      const htcOkPcs = hasDedicatedHtcLogs ? (htcLogOkPcs > 0 ? htcLogOkPcs : htcLogOutPcs) : (legacyRollingHtcOkPcs > 0 ? legacyRollingHtcOkPcs : rollingOutPcs);
 
       // Hollow Heat Treatment (HHT) stats (from stage_code === 'HOLLOW_HEAT_TREATMENT')
       const masterHhtLogs = masterLogs.filter((l) => l.stage_code === 'HOLLOW_HEAT_TREATMENT');
@@ -1039,7 +1055,17 @@ export default function WorkOrderTrackingClient() {
             };
           }
 
-          const incomingPcs = hasHhtInRoute ? Math.max(0, hhtOutPcs - hhtRejPcs) : htcOkPcs;
+          let parsedPlanStatus: any = {};
+          try {
+            parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
+          } catch { }
+          const isIpCutting = Boolean(plan?.is_ip_cutting || parsedPlanStatus?.is_ip_cutting);
+          const ipLogs = masterLogs.filter((l) => l.stage_code === 'IP_CUTTING');
+          const ipCutOutPcs = ipLogs.reduce((sum, l) => sum + getLogPcs(l), 0);
+
+          const incomingPcs = isIpCutting && ipCutOutPcs > 0
+            ? ipCutOutPcs
+            : (hasHhtInRoute ? Math.max(0, hhtOutPcs - hhtRejPcs) : htcOkPcs);
           const effDrawLen = mhAvgLen > 0 ? mhAvgLen : avgLen;
           const divInPcs = getStageDivInPcs(effectiveMasterWoId, 'DRAW', effDrawLen);
           const divOutPcs = getStageDivOutPcs(effectiveMasterWoId, 'DRAW', effDrawLen);
@@ -1051,10 +1077,6 @@ export default function WorkOrderTrackingClient() {
             wipPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
           }
           const wipMtr = (!isOrderCompleted && effDrawLen > 0) ? Number((wipPcs * effDrawLen).toFixed(3)) : 0;
-          let parsedPlanStatus: any = {};
-          try {
-            parsedPlanStatus = typeof plan?.status === 'string' ? JSON.parse(plan.status) : plan?.status || {};
-          } catch { }
           const drawMhOd = Number(plan?.mh_od || parsedPlanStatus?.mh_od || parsedPlanStatus?.cust_od || parsedPlanStatus?.sm?.cust_od || parsedPlanStatus?.sizing_mill?.cust_od || wo.size_od || 0);
           const drawMhWt = Number(plan?.mh_wt || parsedPlanStatus?.mh_wt || parsedPlanStatus?.cust_wt || parsedPlanStatus?.sm?.rolling_wt || parsedPlanStatus?.sm?.cust_wt || parsedPlanStatus?.sizing_mill?.rolling_wt || wo.size_wt || 0);
           const wipMt = !isOrderCompleted ? mtFromMtr(wipMtr, drawMhOd, drawMhWt) : 0;
@@ -1331,20 +1353,40 @@ export default function WorkOrderTrackingClient() {
           if (!isOrderCompleted && (incomingPcs > 0 || divInPcs > 0)) {
             uninspectedPcs = Math.max(0, incomingPcs + divInPcs - consumedPcs - divOutPcs);
           }
+          const uninspectedMtr = avgLen > 0 ? Number((uninspectedPcs * avgLen).toFixed(3)) : 0;
 
           // Active VDI Salvage (pipes awaiting disposition: hollow bank, diversion, or commercial declaration)
           const totalSalvagePcs = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_pcs || 0), 0);
           const totalSalvageMtr = relevantVdiQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_salvage_mtr || 0), 0);
 
-          const salvageDivOutPcs = diversionPlans
-            .filter((d: any) => (d.source_wo_id === wo.id || d.source_wo_id === effectiveMasterWoId) && ((d.reason || '').toLowerCase().includes('salvage') || (d.work_center || '').toUpperCase() === 'VDI_SALVAGE'))
-            .reduce((sum: number, d: any) => sum + (avgLen > 0 ? Math.round(Number(d.diverted_qty || 0) / avgLen) : 0), 0);
-          const salvageDivOutMtr = diversionPlans
-            .filter((d: any) => (d.source_wo_id === wo.id || d.source_wo_id === effectiveMasterWoId) && ((d.reason || '').toLowerCase().includes('salvage') || (d.work_center || '').toUpperCase() === 'VDI_SALVAGE'))
-            .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
+          // Only approved (or legacy untracked) salvage diversions reduce active salvage
+          const salvageDivOutMatching = diversionPlans.filter(
+            (d: any) => isDivApproved(d) &&
+              (d.source_wo_id === wo.id || d.source_wo_id === effectiveMasterWoId) &&
+              isSalvageDiversion(d)
+          );
+          const salvageDivOutPcs = salvageDivOutMatching.reduce((sum: number, d: any) => {
+            const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+            return sum + (pcsMatch ? Number(pcsMatch[1]) : (avgLen > 0 ? Math.round(Number(d.diverted_qty || 0) / avgLen) : 0));
+          }, 0);
+          const salvageDivOutMtr = salvageDivOutMatching.reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
-          const activeSalvagePcs = Math.max(0, totalSalvagePcs - salvageDivOutPcs);
-          const activeSalvageMtr = Math.max(0, Number((totalSalvageMtr - salvageDivOutMtr).toFixed(3)));
+          // Approved rejection / second declarations from VDI
+          const vdiRejDeclMatching = rejectionDeclarations.filter(
+            (rd: any) => (rd.work_order_id === wo.id || rd.work_order_id === effectiveMasterWoId) &&
+              (rd.work_center === 'VDI' || rd.work_center === 'VDI_SALVAGE')
+          );
+          const vdiRejDeclPcs = vdiRejDeclMatching.reduce(
+            (sum: number, rd: any) => sum + Number(rd.ppc_approved_pcs ?? rd.qc_verified_pcs ?? rd.rejected_pcs ?? 0),
+            0
+          );
+          const vdiRejDeclMtr = vdiRejDeclMatching.reduce(
+            (sum: number, rd: any) => sum + Number(rd.ppc_approved_mtr ?? rd.qc_verified_mtr ?? rd.rejected_mtr ?? 0),
+            0
+          );
+
+          const activeSalvagePcs = Math.max(0, totalSalvagePcs - salvageDivOutPcs - vdiRejDeclPcs);
+          const activeSalvageMtr = Math.max(0, Number((totalSalvageMtr - salvageDivOutMtr - vdiRejDeclMtr).toFixed(3)));
 
           const wipPcs = uninspectedPcs + activeSalvagePcs;
           const wipMtr = (!isOrderCompleted && avgLen > 0) ? Number(((uninspectedPcs * avgLen) + activeSalvageMtr).toFixed(3)) : activeSalvageMtr;
@@ -1372,6 +1414,8 @@ export default function WorkOrderTrackingClient() {
             rejPcs: vdiRejPcs,
             salvagePcs: activeSalvagePcs,
             salvageMtr: activeSalvageMtr,
+            uninspectedPcs,
+            uninspectedMtr,
             htcOkMtr: 0,
             htcOkPcs: 0,
             wipMtr,
@@ -1510,7 +1554,7 @@ export default function WorkOrderTrackingClient() {
         qcList: woQcList,
       };
     },
-    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip, qcInspections, diversionPlans, workOrders]
+    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip, qcInspections, diversionPlans, rejectionDeclarations, workOrders]
   );
 
   // Toggle single work order details
@@ -2589,6 +2633,13 @@ export default function WorkOrderTrackingClient() {
                                 <div className="flex justify-between text-amber-700">
                                   <span>Salvage:</span>
                                   <span className="font-mono font-bold text-amber-800">{fmt(rVdi?.salvagePcs || 0)} Nos</span>
+                                </div>
+                              )}
+
+                              {Number(rVdi?.uninspectedPcs || 0) > 0 && Number(rVdi?.salvagePcs || 0) > 0 && (
+                                <div className="flex justify-between text-slate-500 text-[10px]">
+                                  <span>Uninspected:</span>
+                                  <span className="font-mono">{fmt(rVdi?.uninspectedPcs || 0)} Nos</span>
                                 </div>
                               )}
 

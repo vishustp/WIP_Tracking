@@ -153,22 +153,32 @@ WITH wo_primary_route AS (
     COALESCE((
       SELECT SUM(dp.diverted_qty) FROM public.diversion_plans dp
       WHERE dp.source_wo_id = rs.work_order_id
+        AND (dp.status IS NULL OR dp.status = 'APPROVED')
         AND (
           COALESCE(substring(dp.reason from '\[FROM_STAGE:\s*([A-Z_]+)\]'), dp.work_center) IN ('VDI_SALVAGE')
           OR (
             COALESCE(substring(dp.reason from '\[FROM_STAGE:\s*([A-Z_]+)\]'), dp.work_center) = 'VDI'
-            AND lower(coalesce(dp.reason, '')) LIKE '%salvage%'
+            AND (
+              lower(coalesce(dp.reason, '')) LIKE '%salvage%'
+              OR lower(coalesce(dp.reason, '')) LIKE '%offcut%'
+              OR lower(coalesce(dp.reason, '')) LIKE '%remnant%'
+            )
           )
         )
     ), 0)::numeric AS salvage_div_out_mtr,
     COALESCE((
       SELECT SUM(COALESCE((substring(dp.reason from '\[PCS:\s*([0-9]+)\]'))::numeric, public.mtr_to_pcs(rs.work_order_id, dp.diverted_qty), 0)) FROM public.diversion_plans dp
       WHERE dp.source_wo_id = rs.work_order_id
+        AND (dp.status IS NULL OR dp.status = 'APPROVED')
         AND (
           COALESCE(substring(dp.reason from '\[FROM_STAGE:\s*([A-Z_]+)\]'), dp.work_center) IN ('VDI_SALVAGE')
           OR (
             COALESCE(substring(dp.reason from '\[FROM_STAGE:\s*([A-Z_]+)\]'), dp.work_center) = 'VDI'
-            AND lower(coalesce(dp.reason, '')) LIKE '%salvage%'
+            AND (
+              lower(coalesce(dp.reason, '')) LIKE '%salvage%'
+              OR lower(coalesce(dp.reason, '')) LIKE '%offcut%'
+              OR lower(coalesce(dp.reason, '')) LIKE '%remnant%'
+            )
           )
         )
     ), 0)::numeric AS salvage_div_out_pcs,
@@ -181,6 +191,7 @@ WITH wo_primary_route AS (
     COALESCE((
       SELECT SUM(dp.diverted_qty) FROM public.diversion_plans dp
       WHERE dp.source_wo_id = rs.work_order_id
+        AND (dp.status IS NULL OR dp.status = 'APPROVED')
         AND (dp.target_wo_id = '00000000-0000-0000-0000-00000000000b' OR upper(trim(dp.reason)) LIKE '%HOLLOW BANK%')
         AND COALESCE(substring(dp.reason from '\[FROM_STAGE:\s*([A-Z_]+)\]'), dp.work_center) IN ('VDI', 'VDI_SALVAGE')
         AND NOT EXISTS (
@@ -197,6 +208,7 @@ WITH wo_primary_route AS (
     COALESCE((
       SELECT SUM(COALESCE((substring(dp.reason from '\[PCS:\s*([0-9]+)\]'))::numeric, public.mtr_to_pcs(rs.work_order_id, dp.diverted_qty), 0)) FROM public.diversion_plans dp
       WHERE dp.source_wo_id = rs.work_order_id
+        AND (dp.status IS NULL OR dp.status = 'APPROVED')
         AND (dp.target_wo_id = '00000000-0000-0000-0000-00000000000b' OR upper(trim(dp.reason)) LIKE '%HOLLOW BANK%')
         AND COALESCE(substring(dp.reason from '\[FROM_STAGE:\s*([A-Z_]+)\]'), dp.work_center) IN ('VDI', 'VDI_SALVAGE')
     ), 0)::numeric AS salvage_hb_out_pcs,
@@ -226,12 +238,14 @@ WITH wo_primary_route AS (
     COALESCE(
       (SELECT SUM(dp.diverted_qty) FROM public.diversion_plans dp
        WHERE dp.target_wo_id = rs.work_order_id
+         AND (dp.status IS NULL OR dp.status = 'APPROVED')
          AND dp.process_route_id = rs.route_id
          AND COALESCE(substring(dp.reason from '\[TO_STAGE:\s*([A-Z_]+)\]'), dp.work_center) = rs.stage_code), 0
     )::numeric AS diversion_in,
     COALESCE(
       (SELECT SUM(dp.diverted_qty) FROM public.diversion_plans dp
        WHERE dp.source_wo_id = rs.work_order_id
+         AND (dp.status IS NULL OR dp.status = 'APPROVED')
          AND dp.process_route_id = rs.route_id
          AND COALESCE(substring(dp.reason from '\[FROM_STAGE:\s*([A-Z_]+)\]'), dp.work_center) = rs.stage_code), 0
     )::numeric AS diversion_out,
@@ -411,15 +425,27 @@ WITH wo_primary_route AS (
 
       -- VDI: Active WIP = Uninspected incoming pipes + Active Salvage awaiting disposition
       WHEN sc.stage_code = 'VDI' THEN
-        GREATEST(0,
-          sc.incoming_qty + sc.diversion_in
-          - GREATEST(
-              sc.production_qty + sc.rejection_qty + sc.salvage_mtr,
-              sc.downstream_passed_qty + sc.rejection_qty + sc.salvage_mtr
+        CASE
+          WHEN sc.prec_stage_pcs > 0 THEN
+            GREATEST(0,
+              sc.prec_stage_pcs
+              - COALESCE((SELECT SUM(qi.vdi_ok_pcs + qi.vdi_salvage_pcs + qi.vdi_rejection_pcs)
+                          FROM public.qc_inspections qi
+                          WHERE qi.work_order_id = sc.work_order_id
+                             OR qi.work_order_id IN (SELECT ch.child_wo_id FROM campaign_hierarchy ch WHERE ch.master_wo_id = sc.work_order_id)), 0)
+            ) * sc.order_avg_length
+            + sc.active_salvage_mtr_val
+          ELSE
+            GREATEST(0,
+              sc.incoming_qty + sc.diversion_in
+              - GREATEST(
+                  sc.production_qty + sc.rejection_qty + sc.salvage_mtr,
+                  sc.downstream_passed_qty + sc.rejection_qty + sc.salvage_mtr
+                )
+              - sc.declared_rej_mtr - GREATEST(0, sc.diversion_out - sc.salvage_div_out_mtr)
             )
-          - sc.declared_rej_mtr - GREATEST(0, sc.diversion_out - sc.salvage_div_out_mtr)
-        )
-        + sc.active_salvage_mtr_val
+            + sc.active_salvage_mtr_val
+        END
 
       -- FINISHING: Direct stage balance deducting declared rejections and outbound diversions
       ELSE
@@ -453,14 +479,26 @@ SELECT
     WHEN sw.current_wip <= 0 THEN 0
     WHEN sw.stage_code = 'ROLLING' THEN 0
     WHEN sw.stage_code = 'VDI' THEN
-      GREATEST(0,
-        sw.incoming_qty
-        - GREATEST(
-            sw.production_qty + sw.rejection_qty + sw.salvage_mtr,
-            sw.downstream_passed_qty + sw.rejection_qty + sw.salvage_mtr
+      CASE
+        WHEN sw.prec_stage_pcs > 0 THEN
+          GREATEST(0,
+            sw.prec_stage_pcs
+            - COALESCE((SELECT SUM(qi.vdi_ok_pcs + qi.vdi_salvage_pcs + qi.vdi_rejection_pcs)
+                        FROM public.qc_inspections qi
+                        WHERE qi.work_order_id = sw.work_order_id
+                           OR qi.work_order_id IN (SELECT ch.child_wo_id FROM campaign_hierarchy ch WHERE ch.master_wo_id = sw.work_order_id)), 0)
           )
-      ) / NULLIF(sw.order_avg_length, 0)
-      + sw.active_salvage_pcs_val
+          + sw.active_salvage_pcs_val
+        ELSE
+          GREATEST(0,
+            sw.incoming_qty
+            - GREATEST(
+                sw.production_qty + sw.rejection_qty + sw.salvage_mtr,
+                sw.downstream_passed_qty + sw.rejection_qty + sw.salvage_mtr
+              )
+          ) / NULLIF(sw.order_avg_length, 0)
+          + sw.active_salvage_pcs_val
+      END
     WHEN sw.stage_code IN ('DRAW', 'PILGER') AND ((sw.prec_stage_pcs > 0 AND GREATEST(sw.curr_stage_pcs, sw.downstream_passed_pcs) >= sw.prec_stage_pcs) OR sw.current_wip <= 0) THEN 0
     WHEN sw.stage_code IN ('DRAW', 'PILGER') AND sw.prec_stage_pcs > 0 THEN GREATEST(0, sw.prec_stage_pcs - GREATEST(sw.curr_stage_pcs, sw.downstream_passed_pcs))
     WHEN sw.stage_code IN ('HEAT_TREATMENT', 'HOLLOW_HEAT_TREATMENT') AND ((sw.prec_stage_pcs > 0 AND sw.curr_stage_pcs >= sw.prec_stage_pcs) OR sw.current_wip <= 0) THEN 0

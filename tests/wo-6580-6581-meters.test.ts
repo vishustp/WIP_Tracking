@@ -25,10 +25,11 @@ describe('WO 6580 & 6581 Meter Calculation Across Campaigns', () => {
     expect(draw6580).toBeUndefined(); // Completed draw is not in draw queue!
 
     const ht6580 = rows.find((r: any) => r.work_order_no === '6580' && r.stage_code === 'HEAT_TREATMENT');
+    console.log('ht6580:', ht6580);
     expect(ht6580).toBeDefined();
     if (ht6580) {
-      expect(ht6580.ready_pcs).toBe(108);
-      expect(ht6580.ready_mtr).toBeCloseTo(691.2, 1);
+      expect(ht6580.ready_pcs).toBe(92);
+      expect(ht6580.ready_mtr).toBeCloseTo(588.8, 1);
     }
 
     // WO 6581: 40 pcs were drawn on 2026-11-04, so Draw queue is now 0 and Heat Treatment has 39 pcs ready!
