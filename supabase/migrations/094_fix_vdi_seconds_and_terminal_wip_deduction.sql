@@ -427,7 +427,8 @@ WITH wo_primary_route AS (
           sc.incoming_qty + sc.diversion_in - (sc.production_qty + sc.rejection_qty) - sc.declared_rej_mtr - sc.diversion_out,
           0
         )
-    END::numeric AS current_wip
+    END::numeric AS current_wip,
+    GREATEST(sc.production_qty - sc.rejection_qty, 0)::numeric AS net_output_mtr
   FROM stage_calculated sc
 )
 SELECT 
