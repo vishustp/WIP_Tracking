@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { GET as getQueue } from '@/app/api/production/queue/route';
+import { NextRequest } from 'next/server';
 
 describe('Inspect WO 6485 Data', () => {
   it('prints WO 6485 details and confirms reconciliation between Tracking and WIP Matrix', async () => {
@@ -8,6 +10,17 @@ describe('Inspect WO 6485 Data', () => {
       console.log('No admin client');
       return;
     }
+
+    const qReq = new NextRequest('http://localhost:3000/api/production/queue?all_stages=true&nocache=true');
+    const qRes = await getQueue(qReq);
+    const qJson = await qRes.json();
+    const qRows = (qJson.data || []).filter((r: any) => r.work_order_no === '6485');
+    console.log('Queue rows for 6485:', JSON.stringify(qRows.map((r: any) => ({
+      stage: r.stage_code,
+      ready_pcs: r.ready_pcs,
+      ready_mtr: r.ready_mtr,
+      work_centers_wip: r.work_centers_wip,
+    })), null, 2));
 
     const { data: wo } = await admin.from('work_orders').select('*').eq('work_order_no', '6485').single();
     expect(wo).toBeDefined();

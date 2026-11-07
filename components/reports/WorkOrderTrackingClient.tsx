@@ -169,6 +169,7 @@ export default function WorkOrderTrackingClient() {
   const [qcInspections, setQcInspections] = useState<any[]>([]);
   const [diversionPlans, setDiversionPlans] = useState<any[]>([]);
   const [rejectionDeclarations, setRejectionDeclarations] = useState<any[]>([]);
+  const [canonicalQueueRows, setCanonicalQueueRows] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   // Filters
@@ -237,6 +238,19 @@ export default function WorkOrderTrackingClient() {
       if (qcRes?.data) setQcInspections(qcRes.data);
       if (divsRes?.data) setDiversionPlans(divsRes.data);
       if (rejDeclRes?.data) setRejectionDeclarations(rejDeclRes.data);
+
+      // Fetch canonical Queue API so Work Order Tracking stage WIP is 100% unified with Dashboard, WIP Matrix, and Production Entry
+      try {
+        const qRes = await fetch('/api/production/queue?all_stages=true&refresh=true');
+        if (qRes.ok) {
+          const qJson = await qRes.json();
+          if (qJson?.success && Array.isArray(qJson.data)) {
+            setCanonicalQueueRows(qJson.data);
+          }
+        }
+      } catch (err) {
+        console.warn('[WorkOrderTracking] Could not load canonical queue:', err);
+      }
 
       if (logsRes.data) {
         const mappedLogs: ProductionLog[] = logsRes.data.map((l: any) => {
@@ -751,8 +765,24 @@ export default function WorkOrderTrackingClient() {
       });
       const isOrderCompleted = isOrderCompletedRaw && !hasActiveChildOrders;
 
+      // Canonical Queue lookup for 100% parity across Dashboard, WIP Matrix, Production Entry, and Tracking
+      const woQueueRows = canonicalQueueRows.filter((qr: any) => qr.work_order_id === wo.id);
+      const masterQueueRows = effectiveMasterWoId ? canonicalQueueRows.filter((qr: any) => qr.work_order_id === effectiveMasterWoId) : [];
+      const relevantQueueRows = woQueueRows.length > 0 ? woQueueRows : masterQueueRows;
+      const targetQueueRow = childInfo
+        ? (woQueueRows.find((qr: any) => qr.stage_code === 'FINISHING') || woQueueRows[0] || relevantQueueRows[0])
+        : relevantQueueRows[0];
+      const salvageQueueRow = childInfo
+        ? (woQueueRows.find((qr: any) => qr.stage_code === 'VDI_SALVAGE') || masterQueueRows.find((qr: any) => qr.stage_code === 'VDI_SALVAGE'))
+        : relevantQueueRows.find((qr: any) => qr.stage_code === 'VDI_SALVAGE');
+
       const stagesData: StageTrackingMetric[] = STAGES_ORDER.map((stageDef): StageTrackingMetric => {
         const stageCode = stageDef.code;
+
+        const queueWipInfo = targetQueueRow?.work_centers_wip?.find((w: any) => {
+          if (stageCode === 'ROLLING') return w.stage_code === 'HOT_ROLLING' || w.stage_code === 'ROLLING';
+          return w.stage_code === stageCode;
+        });
 
         // RULE 2: Child work orders in campaigns are bundled under master for pre-finishing stages
         if (childInfo && stageCode !== 'FINISHING') {
@@ -867,15 +897,15 @@ export default function WorkOrderTrackingClient() {
             targetPcs: rollPlanPcs,
             planMtr: rollPlanMtr,
             planPcs: rollPlanPcs,
-            outMtr: stageOutMtr,
-            outPcs: rollingOutPcs,
-            rejMtr: stageRejMtr,
-            rejPcs: rollingRejPcs,
-            htcOkMtr: stageHtcOkMtr,
-            htcOkPcs: htcOkPcs,
-            wipMtr,
-            wipPcs,
-            wipMt,
+            outMtr: queueWipInfo ? Number(queueWipInfo.gross_output_mtr || 0) : stageOutMtr,
+            outPcs: queueWipInfo ? Math.round(Number(queueWipInfo.gross_output_pcs || 0)) : rollingOutPcs,
+            rejMtr: queueWipInfo ? Number(queueWipInfo.rejection_mtr || 0) : stageRejMtr,
+            rejPcs: queueWipInfo ? Math.round(Number(queueWipInfo.rejection_pcs || 0)) : rollingRejPcs,
+            htcOkMtr: queueWipInfo ? Number(queueWipInfo.htc_ok_mtr || 0) : stageHtcOkMtr,
+            htcOkPcs: queueWipInfo ? Math.round(Number(queueWipInfo.htc_ok_pcs || 0)) : htcOkPcs,
+            wipMtr: queueWipInfo ? Number(queueWipInfo.available_mtr || 0) : wipMtr,
+            wipPcs: queueWipInfo ? Math.round(Number(queueWipInfo.available_pcs || 0)) : wipPcs,
+            wipMt: queueWipInfo ? Number(queueWipInfo.available_mt || 0) : wipMt,
             logsCount: masterRollLogs.length,
             dwellDays,
             agingSeverity,
@@ -927,15 +957,15 @@ export default function WorkOrderTrackingClient() {
             isNotInRoute: false,
             planMtr: 0,
             planPcs: 0,
-            outMtr: stageOutMtr,
-            outPcs: htcOutPcs,
-            rejMtr: stageRejMtr,
-            rejPcs: htcRejPcs,
-            htcOkMtr: stageHtcOkMtr,
-            htcOkPcs: htcOkPcs,
-            wipMtr,
-            wipPcs,
-            wipMt,
+            outMtr: queueWipInfo ? Number(queueWipInfo.gross_output_mtr || queueWipInfo.htc_ok_mtr || 0) : stageOutMtr,
+            outPcs: queueWipInfo ? Math.round(Number(queueWipInfo.gross_output_pcs || queueWipInfo.htc_ok_pcs || 0)) : htcOutPcs,
+            rejMtr: queueWipInfo ? Number(queueWipInfo.rejection_mtr || 0) : stageRejMtr,
+            rejPcs: queueWipInfo ? Math.round(Number(queueWipInfo.rejection_pcs || 0)) : htcRejPcs,
+            htcOkMtr: queueWipInfo ? Number(queueWipInfo.htc_ok_mtr || 0) : stageHtcOkMtr,
+            htcOkPcs: queueWipInfo ? Math.round(Number(queueWipInfo.htc_ok_pcs || 0)) : htcOkPcs,
+            wipMtr: queueWipInfo ? Number(queueWipInfo.available_mtr || 0) : wipMtr,
+            wipPcs: queueWipInfo ? Math.round(Number(queueWipInfo.available_pcs || 0)) : wipPcs,
+            wipMt: queueWipInfo ? Number(queueWipInfo.available_mt || 0) : wipMt,
             logsCount: masterHtcLogs.length,
             dwellDays,
             agingSeverity,
@@ -1011,15 +1041,15 @@ export default function WorkOrderTrackingClient() {
             isNotInRoute: false,
             planMtr: 0,
             planPcs: 0,
-            outMtr: stageOutMtr,
-            outPcs: hhtOutPcs,
-            rejMtr: stageRejMtr,
-            rejPcs: hhtRejPcs,
-            htcOkMtr: stageHhtOkMtr,
-            htcOkPcs: hhtOkPcs,
-            wipMtr,
-            wipPcs,
-            wipMt,
+            outMtr: queueWipInfo ? Number(queueWipInfo.gross_output_mtr || 0) : stageOutMtr,
+            outPcs: queueWipInfo ? Math.round(Number(queueWipInfo.gross_output_pcs || 0)) : hhtOutPcs,
+            rejMtr: queueWipInfo ? Number(queueWipInfo.rejection_mtr || 0) : stageRejMtr,
+            rejPcs: queueWipInfo ? Math.round(Number(queueWipInfo.rejection_pcs || 0)) : hhtRejPcs,
+            htcOkMtr: queueWipInfo ? Number(queueWipInfo.htc_ok_mtr || 0) : stageHhtOkMtr,
+            htcOkPcs: queueWipInfo ? Math.round(Number(queueWipInfo.htc_ok_pcs || 0)) : hhtOkPcs,
+            wipMtr: queueWipInfo ? Number(queueWipInfo.available_mtr || 0) : wipMtr,
+            wipPcs: queueWipInfo ? Math.round(Number(queueWipInfo.available_pcs || 0)) : wipPcs,
+            wipMt: queueWipInfo ? Number(queueWipInfo.available_mt || 0) : wipMt,
             logsCount: masterHhtLogs.length,
             dwellDays,
             agingSeverity,
@@ -1097,15 +1127,15 @@ export default function WorkOrderTrackingClient() {
             isNotInRoute: false,
             planMtr: 0,
             planPcs: 0,
-            outMtr: stageOutMtr,
-            outPcs: drawOutPcs,
-            rejMtr: stageRejMtr,
-            rejPcs: drawRejPcs,
+            outMtr: queueWipInfo ? Number(queueWipInfo.gross_output_mtr || 0) : stageOutMtr,
+            outPcs: queueWipInfo ? Math.round(Number(queueWipInfo.gross_output_pcs || 0)) : drawOutPcs,
+            rejMtr: queueWipInfo ? Number(queueWipInfo.rejection_mtr || 0) : stageRejMtr,
+            rejPcs: queueWipInfo ? Math.round(Number(queueWipInfo.rejection_pcs || 0)) : drawRejPcs,
             htcOkMtr: 0,
             htcOkPcs: 0,
-            wipMtr,
-            wipPcs,
-            wipMt,
+            wipMtr: queueWipInfo ? Number(queueWipInfo.available_mtr || 0) : wipMtr,
+            wipPcs: queueWipInfo ? Math.round(Number(queueWipInfo.available_pcs || 0)) : wipPcs,
+            wipMt: queueWipInfo ? Number(queueWipInfo.available_mt || 0) : wipMt,
             logsCount: masterDrawLogs.length,
             dwellDays,
             agingSeverity,
@@ -1173,15 +1203,15 @@ export default function WorkOrderTrackingClient() {
             isNotInRoute: false,
             planMtr: 0,
             planPcs: 0,
-            outMtr: stageOutMtr,
-            outPcs: pilgerOutPcs,
-            rejMtr: stageRejMtr,
-            rejPcs: pilgerRejPcs,
+            outMtr: queueWipInfo ? Number(queueWipInfo.gross_output_mtr || 0) : stageOutMtr,
+            outPcs: queueWipInfo ? Math.round(Number(queueWipInfo.gross_output_pcs || 0)) : pilgerOutPcs,
+            rejMtr: queueWipInfo ? Number(queueWipInfo.rejection_mtr || 0) : stageRejMtr,
+            rejPcs: queueWipInfo ? Math.round(Number(queueWipInfo.rejection_pcs || 0)) : pilgerRejPcs,
             htcOkMtr: 0,
             htcOkPcs: 0,
-            wipMtr,
-            wipPcs,
-            wipMt,
+            wipMtr: queueWipInfo ? Number(queueWipInfo.available_mtr || 0) : wipMtr,
+            wipPcs: queueWipInfo ? Math.round(Number(queueWipInfo.available_pcs || 0)) : wipPcs,
+            wipMt: queueWipInfo ? Number(queueWipInfo.available_mt || 0) : wipMt,
             logsCount: masterPilgerLogs.length,
             dwellDays,
             agingSeverity,
@@ -1248,15 +1278,15 @@ export default function WorkOrderTrackingClient() {
             isNotInRoute: false,
             planMtr: 0,
             planPcs: 0,
-            outMtr: stageOutMtr,
-            outPcs: htOutPcs,
-            rejMtr: stageRejMtr,
-            rejPcs: htRejPcs,
+            outMtr: queueWipInfo ? Number(queueWipInfo.gross_output_mtr || 0) : stageOutMtr,
+            outPcs: queueWipInfo ? Math.round(Number(queueWipInfo.gross_output_pcs || 0)) : htOutPcs,
+            rejMtr: queueWipInfo ? Number(queueWipInfo.rejection_mtr || 0) : stageRejMtr,
+            rejPcs: queueWipInfo ? Math.round(Number(queueWipInfo.rejection_pcs || 0)) : htRejPcs,
             htcOkMtr: 0,
             htcOkPcs: 0,
-            wipMtr,
-            wipPcs,
-            wipMt,
+            wipMtr: queueWipInfo ? Number(queueWipInfo.available_mtr || 0) : wipMtr,
+            wipPcs: queueWipInfo ? Math.round(Number(queueWipInfo.available_pcs || 0)) : wipPcs,
+            wipMt: queueWipInfo ? Number(queueWipInfo.available_mt || 0) : wipMt,
             logsCount: masterHtLogs.length,
             dwellDays,
             agingSeverity,
@@ -1314,15 +1344,15 @@ export default function WorkOrderTrackingClient() {
             isBundled: false,
             planMtr: 0,
             planPcs: 0,
-            outMtr: stageOutMtr,
-            outPcs: bandSawOutPcs,
-            rejMtr: stageRejMtr,
-            rejPcs: bandSawRejPcs,
+            outMtr: queueWipInfo ? Number(queueWipInfo.gross_output_mtr || 0) : stageOutMtr,
+            outPcs: queueWipInfo ? Math.round(Number(queueWipInfo.gross_output_pcs || 0)) : bandSawOutPcs,
+            rejMtr: queueWipInfo ? Number(queueWipInfo.rejection_mtr || 0) : stageRejMtr,
+            rejPcs: queueWipInfo ? Math.round(Number(queueWipInfo.rejection_pcs || 0)) : bandSawRejPcs,
             htcOkMtr: 0,
             htcOkPcs: 0,
-            wipMtr,
-            wipPcs,
-            wipMt,
+            wipMtr: queueWipInfo ? Number(queueWipInfo.available_mtr || 0) : wipMtr,
+            wipPcs: queueWipInfo ? Math.round(Number(queueWipInfo.available_pcs || 0)) : wipPcs,
+            wipMt: queueWipInfo ? Number(queueWipInfo.available_mt || 0) : wipMt,
             logsCount: masterBandSawLogs.length,
             dwellDays,
             agingSeverity,
@@ -1403,24 +1433,38 @@ export default function WorkOrderTrackingClient() {
           const stageOutMtr = avgLen > 0 ? Number((vdiOutPcs * avgLen).toFixed(3)) : vdiOutMtr;
           const stageRejMtr = avgLen > 0 ? Number((vdiRejPcs * avgLen).toFixed(3)) : vdiRejMtr;
 
+          const canonUninspectedPcs = queueWipInfo ? Math.round(Number(queueWipInfo.available_pcs || 0)) : uninspectedPcs;
+          const canonUninspectedMtr = queueWipInfo ? Number(queueWipInfo.available_mtr || 0) : uninspectedMtr;
+          const canonSalvagePcs = salvageQueueRow ? Math.round(Number(salvageQueueRow.ready_pcs || 0)) : activeSalvagePcs;
+          const canonSalvageMtr = salvageQueueRow ? Number(salvageQueueRow.ready_mtr || 0) : activeSalvageMtr;
+
+          const canonWipPcs = canonUninspectedPcs + canonSalvagePcs;
+          const canonWipMtr = Number((canonUninspectedMtr + canonSalvageMtr).toFixed(3));
+          const canonWipMt = queueWipInfo
+            ? Number((Number(queueWipInfo.available_mt || 0) + Number(salvageQueueRow?.ready_mt || 0)).toFixed(3))
+            : wipMt;
+
+          const canonOutMtr = queueWipInfo && Number(queueWipInfo.net_output_mtr || 0) > 0 ? Number(queueWipInfo.net_output_mtr) : stageOutMtr;
+          const canonOutPcs = queueWipInfo && Number(queueWipInfo.net_output_pcs || 0) > 0 ? Math.round(Number(queueWipInfo.net_output_pcs)) : vdiOutPcs;
+
           return {
             ...stageDef,
             isBundled: false,
             planMtr: 0,
             planPcs: 0,
-            outMtr: stageOutMtr,
-            outPcs: vdiOutPcs,
-            rejMtr: stageRejMtr,
-            rejPcs: vdiRejPcs,
-            salvagePcs: activeSalvagePcs,
-            salvageMtr: activeSalvageMtr,
-            uninspectedPcs,
-            uninspectedMtr,
+            outMtr: canonOutMtr,
+            outPcs: canonOutPcs,
+            rejMtr: queueWipInfo ? Number(queueWipInfo.rejection_mtr || 0) : stageRejMtr,
+            rejPcs: queueWipInfo ? Math.round(Number(queueWipInfo.rejection_pcs || 0)) : vdiRejPcs,
+            salvagePcs: canonSalvagePcs,
+            salvageMtr: canonSalvageMtr,
+            uninspectedPcs: canonUninspectedPcs,
+            uninspectedMtr: canonUninspectedMtr,
             htcOkMtr: 0,
             htcOkPcs: 0,
-            wipMtr,
-            wipPcs,
-            wipMt,
+            wipMtr: canonWipMtr,
+            wipPcs: canonWipPcs,
+            wipMt: canonWipMt,
             logsCount: masterVdiLogs.length + relevantVdiQcList.length,
             dwellDays,
             agingSeverity,
@@ -1487,6 +1531,22 @@ export default function WorkOrderTrackingClient() {
         const stageFinOutMtr = finOutMtr > 0 ? finOutMtr : (avgLen > 0 ? Number((finOutPcs * avgLen).toFixed(3)) : 0);
         const stageFinRejMtr = finRejMtr > 0 ? finRejMtr : (avgLen > 0 ? Number((finRejPcs * avgLen).toFixed(3)) : 0);
 
+        const finQueueRow = childInfo
+          ? woQueueRows.find((qr: any) => qr.stage_code === 'FINISHING')
+          : relevantQueueRows.find((qr: any) => qr.stage_code === 'FINISHING');
+        const canonFinWipPcs = finQueueRow
+          ? Math.round(Number(finQueueRow.ready_pcs || 0))
+          : (queueWipInfo ? Math.round(Number(queueWipInfo.available_pcs || 0)) : wipPcs);
+        const canonFinWipMtr = finQueueRow
+          ? Number(finQueueRow.ready_mtr || 0)
+          : (queueWipInfo ? Number(queueWipInfo.available_mtr || 0) : wipMtr);
+        const canonFinWipMt = finQueueRow
+          ? Number(finQueueRow.ready_mt || 0)
+          : (queueWipInfo ? Number(queueWipInfo.available_mt || 0) : wipMt);
+
+        const canonFinOutPcs = queueWipInfo && Number(queueWipInfo.gross_output_pcs || 0) > 0 ? Math.round(Number(queueWipInfo.gross_output_pcs)) : finOutPcs;
+        const canonFinOutMtr = queueWipInfo && Number(queueWipInfo.gross_output_mtr || 0) > 0 ? Number(queueWipInfo.gross_output_mtr) : stageFinOutMtr;
+
         return {
           ...stageDef,
           isBundled: false,
@@ -1494,15 +1554,15 @@ export default function WorkOrderTrackingClient() {
           targetPcs,
           planMtr: targetMtr,
           planPcs: targetPcs,
-          outMtr: stageFinOutMtr,
-          outPcs: finOutPcs,
-          rejMtr: stageFinRejMtr,
-          rejPcs: finRejPcs,
+          outMtr: canonFinOutMtr,
+          outPcs: canonFinOutPcs,
+          rejMtr: queueWipInfo ? Number(queueWipInfo.rejection_mtr || 0) : stageFinRejMtr,
+          rejPcs: queueWipInfo ? Math.round(Number(queueWipInfo.rejection_pcs || 0)) : finRejPcs,
           htcOkMtr: 0,
           htcOkPcs: 0,
-          wipMtr,
-          wipPcs,
-          wipMt,
+          wipMtr: canonFinWipMtr,
+          wipPcs: canonFinWipPcs,
+          wipMt: canonFinWipMt,
           logsCount: finLogs.length,
           dwellDays,
           agingSeverity,
@@ -1521,8 +1581,8 @@ export default function WorkOrderTrackingClient() {
       const targetVolumeMtr = stagesData.find((s) => s.code === 'FINISHING')?.targetMtr || wo.ordered_qty;
       const targetVolumePcs = stagesData.find((s) => s.code === 'FINISHING')?.targetPcs || (avgLen > 0 ? Math.round(wo.ordered_qty / avgLen) : 0);
 
-      const isUomPcs = String(wo.uom || '').toUpperCase() === 'PCS';
-      const completionPct = isUomPcs
+      const isOrderUomPcs = String(wo.uom || '').toUpperCase() === 'PCS';
+      const completionPct = isOrderUomPcs
         ? (targetVolumePcs > 0 ? Math.min(100, Math.round((finishingOutPcs / targetVolumePcs) * 100)) : 0)
         : (targetVolumeMtr > 0 ? Math.min(100, Math.round((finishingOutMtr / targetVolumeMtr) * 100)) : 0);
       const processYieldPct =
@@ -1554,7 +1614,7 @@ export default function WorkOrderTrackingClient() {
         qcList: woQcList,
       };
     },
-    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip, qcInspections, diversionPlans, rejectionDeclarations, workOrders]
+    [campaignMeta, rollingPlans, productionLogs, processRoutes, stageWip, qcInspections, diversionPlans, rejectionDeclarations, workOrders, canonicalQueueRows]
   );
 
   // Toggle single work order details
