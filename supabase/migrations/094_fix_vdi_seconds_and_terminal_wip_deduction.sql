@@ -162,7 +162,7 @@ WITH wo_primary_route AS (
         )
     ), 0)::numeric AS salvage_div_out_mtr,
     COALESCE((
-      SELECT SUM(COALESCE(dp.diverted_pcs, (substring(dp.reason from '\[PCS:\s*([0-9]+)\]'))::numeric, 0)) FROM public.diversion_plans dp
+      SELECT SUM(COALESCE((substring(dp.reason from '\[PCS:\s*([0-9]+)\]'))::numeric, public.mtr_to_pcs(rs.work_order_id, dp.diverted_qty), 0)) FROM public.diversion_plans dp
       WHERE dp.source_wo_id = rs.work_order_id
         AND (
           COALESCE(substring(dp.reason from '\[FROM_STAGE:\s*([A-Z_]+)\]'), dp.work_center) IN ('VDI_SALVAGE')
@@ -195,7 +195,7 @@ WITH wo_primary_route AS (
     ), 0)::numeric
     +
     COALESCE((
-      SELECT SUM(COALESCE(dp.diverted_pcs, (substring(dp.reason from '\[PCS:\s*([0-9]+)\]'))::numeric, 0)) FROM public.diversion_plans dp
+      SELECT SUM(COALESCE((substring(dp.reason from '\[PCS:\s*([0-9]+)\]'))::numeric, public.mtr_to_pcs(rs.work_order_id, dp.diverted_qty), 0)) FROM public.diversion_plans dp
       WHERE dp.source_wo_id = rs.work_order_id
         AND (dp.target_wo_id = '00000000-0000-0000-0000-00000000000b' OR upper(trim(dp.reason)) LIKE '%HOLLOW BANK%')
         AND COALESCE(substring(dp.reason from '\[FROM_STAGE:\s*([A-Z_]+)\]'), dp.work_center) IN ('VDI', 'VDI_SALVAGE')
