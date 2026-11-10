@@ -68,10 +68,10 @@ describe('Phase 0: PPC Master Excel Completion Authority & Bundling Decoupling',
       expect(updatePayload.status).toBe('Completed');
     });
 
-    it('4. Auto-completes work order when balance_to_make_mtr is below 5.0m threshold', () => {
+    it('4. Auto-completes work order when balance_qty_mtr is below 5.0m threshold', () => {
       const smallBalRow = {
         work_order_no: 'WO-6503',
-        balance_to_make_mtr: 2.1,
+        balance_qty_mtr: 2.1,
         current_status: 'In Progress',
         ordered_qty_mtr: 500,
       };

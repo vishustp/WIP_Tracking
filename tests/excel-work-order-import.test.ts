@@ -68,12 +68,12 @@ describe("Excel Work Order Import Rules", () => {
   });
 
   describe("Rule 2: PPC Master Excel Completion Authority", () => {
-    it("identifies order as completed if balance_to_make_mtr < 5", () => {
-      expect(isOrderCompletedForImport({ balance_to_make_mtr: 4.8 })).toBe(true);
-      expect(isOrderCompletedForImport({ balance_to_make_mtr: 0 })).toBe(true);
+    it("identifies order as completed if balance_qty_mtr < 5", () => {
+      expect(isOrderCompletedForImport({ balance_qty_mtr: 4.8 })).toBe(true);
+      expect(isOrderCompletedForImport({ balance_qty_mtr: 0 })).toBe(true);
       expect(isOrderCompletedForImport({ balance_qty_mtr: 2.5 })).toBe(true);
-      expect(isOrderCompletedForImport({ balance_to_make_mtr: 5.0 })).toBe(false);
-      expect(isOrderCompletedForImport({ balance_to_make_mtr: 90 })).toBe(false);
+      expect(isOrderCompletedForImport({ balance_qty_mtr: 5.0 })).toBe(false);
+      expect(isOrderCompletedForImport({ balance_qty_mtr: 90 })).toBe(false);
     });
 
     it("identifies order as completed if current_status in Excel indicates completed", () => {
@@ -88,7 +88,7 @@ describe("Excel Work Order Import Rules", () => {
     it("sets status to Completed in update payload when balance < 5 mtr or status completed", () => {
       const rowUnder5 = {
         work_order_no: "WO-EXISTING-01",
-        balance_to_make_mtr: 3.2,
+        balance_qty_mtr: 3.2,
         current_status: "In Progress",
       };
 

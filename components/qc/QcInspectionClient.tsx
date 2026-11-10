@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import Link from 'next/link';
+import { exportSheetsToExcel } from '@/lib/excelUtils';
 import { createClient } from '@/lib/supabase/client';
 import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, extractPcsFromRemarks, parseDiversionStages, isHollowBankOrder, HOLLOW_BANK_WO_ID } from '@/lib/productionUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
@@ -80,6 +80,7 @@ export default function QcInspectionClient() {
   const [remarks, setRemarks] = useState('');
   const [formHeatLotNo, setFormHeatLotNo] = useState('');
   const [saving, setSaving] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   // Delete modal state
   const [deleteTarget, setDeleteTarget] = useState<QcInspection | null>(null);
@@ -1280,6 +1281,187 @@ export default function QcInspectionClient() {
     }
   };
 
+  // Handle Excel Export for QC & VDI
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
+    try {
+      // 1. Build Queue Export Data
+      const queueExportData: Record<string, any>[] = filteredQueue.map((item, idx) => ({
+        '#': idx + 1,
+        'Work Order No': item.work_order_no,
+        'Order Type': item.is_master ? 'Master Campaign' : item.is_child ? 'Child WO' : 'Standard WO',
+        'Feeder Source': item.feeder_source_label || 'Heat Treatment OK',
+        'HT / Lot No': item.heat_lots && item.heat_lots.length > 0
+          ? item.heat_lots.map((l) => l.lot_no).join(', ')
+          : item.heat_lot_no || '—',
+        'Customer': item.customer_name || '—',
+        'Specification': item.specification || '—',
+        'Size OD (mm)': item.size_od,
+        'Size WT (mm)': item.size_wt,
+        'Pipe Length (m)': item.l1 && item.l2 ? `${item.l1} - ${item.l2}m` : `${item.avg_length}m`,
+        'Total Feeder OK (Pcs)': item.ht_ok_pcs,
+        'Total Feeder OK (Mtr)': Number(item.ht_ok_mtr.toFixed(2)),
+        'Total Feeder OK (MT)': Number(item.ht_ok_mt.toFixed(3)),
+        'Already Inspected (Pcs)': item.already_inspected_pcs,
+        'Available for Inspection (Pcs)': item.available_ht_ok_pcs,
+        'Available for Inspection (Mtr)': Number(item.available_ht_ok_mtr.toFixed(2)),
+        'Available for Inspection (MT)': Number(item.available_ht_ok_mt.toFixed(3)),
+      }));
+
+      if (queueExportData.length > 0) {
+        queueExportData.push({
+          '#': 'TOTAL',
+          'Work Order No': `${filteredQueue.length} Orders`,
+          'Order Type': '—',
+          'Feeder Source': '—',
+          'HT / Lot No': '—',
+          'Customer': '—',
+          'Specification': '—',
+          'Size OD (mm)': '—' as any,
+          'Size WT (mm)': '—' as any,
+          'Pipe Length (m)': '—',
+          'Total Feeder OK (Pcs)': filteredQueue.reduce((s, i) => s + (i.ht_ok_pcs || 0), 0),
+          'Total Feeder OK (Mtr)': Number(filteredQueue.reduce((s, i) => s + (i.ht_ok_mtr || 0), 0).toFixed(2)),
+          'Total Feeder OK (MT)': Number(filteredQueue.reduce((s, i) => s + (i.ht_ok_mt || 0), 0).toFixed(3)),
+          'Already Inspected (Pcs)': filteredQueue.reduce((s, i) => s + (i.already_inspected_pcs || 0), 0),
+          'Available for Inspection (Pcs)': filteredQueue.reduce((s, i) => s + (i.available_ht_ok_pcs || 0), 0),
+          'Available for Inspection (Mtr)': Number(filteredQueue.reduce((s, i) => s + (i.available_ht_ok_mtr || 0), 0).toFixed(2)),
+          'Available for Inspection (MT)': Number(filteredQueue.reduce((s, i) => s + (i.available_ht_ok_mt || 0), 0).toFixed(3)),
+        });
+      }
+
+      // 2. Build Salvage Export Data
+      const salvageExportData: Record<string, any>[] = filteredSalvageQueue.map((item, idx) => ({
+        '#': idx + 1,
+        'Work Order No': item.work_order_no,
+        'Customer': item.customer_name || '—',
+        'Specification': item.specification || '—',
+        'Size OD (mm)': item.size_od,
+        'Size WT (mm)': item.size_wt,
+        'Avg Length (m)': item.avg_length,
+        'Pending Salvage (Pcs)': item.total_salvage_pcs,
+        'Pending Salvage (Mtr)': Number(item.total_salvage_mtr.toFixed(2)),
+        'Pending Salvage (MT)': Number(item.total_salvage_mt.toFixed(3)),
+        'Defects Requiring Rework': item.salvage_reasons && item.salvage_reasons.length > 0
+          ? item.salvage_reasons.map((r) => `${r.reason}: ${r.pcs} Nos${r.remarks ? ` (${r.remarks})` : ''}`).join('; ')
+          : 'General Salvage',
+        'Inspection Logs Count': item.inspections.length,
+        'Latest Inspection Date': item.inspections[0]?.inspection_date || '—',
+      }));
+
+      if (salvageExportData.length > 0) {
+        salvageExportData.push({
+          '#': 'TOTAL',
+          'Work Order No': `${filteredSalvageQueue.length} Orders`,
+          'Customer': '—',
+          'Specification': '—',
+          'Size OD (mm)': '—' as any,
+          'Size WT (mm)': '—' as any,
+          'Avg Length (m)': '—' as any,
+          'Pending Salvage (Pcs)': filteredSalvageQueue.reduce((s, i) => s + (i.total_salvage_pcs || 0), 0),
+          'Pending Salvage (Mtr)': Number(filteredSalvageQueue.reduce((s, i) => s + (i.total_salvage_mtr || 0), 0).toFixed(2)),
+          'Pending Salvage (MT)': Number(filteredSalvageQueue.reduce((s, i) => s + (i.total_salvage_mt || 0), 0).toFixed(3)),
+          'Defects Requiring Rework': '—',
+          'Inspection Logs Count': filteredSalvageQueue.reduce((s, i) => s + (i.inspections?.length || 0), 0),
+          'Latest Inspection Date': '—',
+        });
+      }
+
+      // 3. Build History Export Data
+      const historyExportData: Record<string, any>[] = filteredHistory.map((item, idx) => {
+        const reasons = Array.isArray(item.salvage_reasons) ? item.salvage_reasons : [];
+        const reasonsStr = reasons.length > 0
+          ? reasons.map((r) => `${r.reason}: ${r.pcs} Nos${r.remarks ? ` (${r.remarks})` : ''}`).join('; ')
+          : '—';
+
+        return {
+          '#': idx + 1,
+          'Inspection Date': item.inspection_date,
+          'Work Order No': item.work_order_no,
+          'HT / Lot No': item.heat_lot_no || '—',
+          'Customer': item.customer_name || '—',
+          'Specification': item.specification || '—',
+          'Size OD (mm)': item.size_od || '—',
+          'Size WT (mm)': item.size_wt || '—',
+          'Inspected (Pcs)': item.inspected_pcs,
+          'Inspected (Mtr)': Number((item.inspected_mtr || 0).toFixed(2)),
+          'Inspected (MT)': Number((item.inspected_mt || 0).toFixed(3)),
+          'VDI OK (Pcs)': item.vdi_ok_pcs,
+          'VDI OK (Mtr)': Number((item.vdi_ok_mtr || 0).toFixed(2)),
+          'VDI OK (MT)': Number((item.vdi_ok_mt || 0).toFixed(3)),
+          'VDI Salvage (Pcs)': item.vdi_salvage_pcs,
+          'VDI Salvage (Mtr)': Number((item.vdi_salvage_mtr || 0).toFixed(2)),
+          'VDI Salvage (MT)': Number((item.vdi_salvage_mt || 0).toFixed(3)),
+          'VDI Rejection (Pcs)': item.vdi_rejection_pcs,
+          'VDI Rejection (Mtr)': Number((item.vdi_rejection_mtr || 0).toFixed(2)),
+          'VDI Rejection (MT)': Number((item.vdi_rejection_mt || 0).toFixed(3)),
+          'Salvage Reasons': reasonsStr,
+          'Inspector': item.created_by || '—',
+          'Remarks': item.remarks || '',
+        };
+      });
+
+      if (historyExportData.length > 0) {
+        historyExportData.push({
+          '#': 'TOTAL',
+          'Inspection Date': `${filteredHistory.length} Inspections`,
+          'Work Order No': '—',
+          'HT / Lot No': '—',
+          'Customer': '—',
+          'Specification': '—',
+          'Size OD (mm)': '—' as any,
+          'Size WT (mm)': '—' as any,
+          'Inspected (Pcs)': filteredHistory.reduce((s, i) => s + (i.inspected_pcs || 0), 0),
+          'Inspected (Mtr)': Number(filteredHistory.reduce((s, i) => s + (i.inspected_mtr || 0), 0).toFixed(2)),
+          'Inspected (MT)': Number(filteredHistory.reduce((s, i) => s + (i.inspected_mt || 0), 0).toFixed(3)),
+          'VDI OK (Pcs)': filteredHistory.reduce((s, i) => s + (i.vdi_ok_pcs || 0), 0),
+          'VDI OK (Mtr)': Number(filteredHistory.reduce((s, i) => s + (i.vdi_ok_mtr || 0), 0).toFixed(2)),
+          'VDI OK (MT)': Number(filteredHistory.reduce((s, i) => s + (i.vdi_ok_mt || 0), 0).toFixed(3)),
+          'VDI Salvage (Pcs)': filteredHistory.reduce((s, i) => s + (i.vdi_salvage_pcs || 0), 0),
+          'VDI Salvage (Mtr)': Number(filteredHistory.reduce((s, i) => s + (i.vdi_salvage_mtr || 0), 0).toFixed(2)),
+          'VDI Salvage (MT)': Number(filteredHistory.reduce((s, i) => s + (i.vdi_salvage_mt || 0), 0).toFixed(3)),
+          'VDI Rejection (Pcs)': filteredHistory.reduce((s, i) => s + (i.vdi_rejection_pcs || 0), 0),
+          'VDI Rejection (Mtr)': Number(filteredHistory.reduce((s, i) => s + (i.vdi_rejection_mtr || 0), 0).toFixed(2)),
+          'VDI Rejection (MT)': Number(filteredHistory.reduce((s, i) => s + (i.vdi_rejection_mt || 0), 0).toFixed(3)),
+          'Salvage Reasons': '—',
+          'Inspector': '—',
+          'Remarks': '',
+        });
+      }
+
+      // Prioritize active tab sheet first
+      const allSheets = [
+        { key: 'queue', name: 'Inspection Queue', data: queueExportData },
+        { key: 'salvage', name: 'VDI Salvage', data: salvageExportData },
+        { key: 'history', name: 'Inspection History', data: historyExportData },
+      ];
+
+      const sortedSheets = [
+        ...allSheets.filter((s) => s.key === activeTab),
+        ...allSheets.filter((s) => s.key !== activeTab),
+      ].filter((s) => s.data.length > 0);
+
+      if (sortedSheets.length === 0) {
+        toast.error('No data available to export.');
+        return;
+      }
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const fileName = `QC_VDI_Inspection_Report_${dateStr}.xlsx`;
+
+      await exportSheetsToExcel(
+        sortedSheets.map((s) => ({ name: s.name, data: s.data })),
+        fileName
+      );
+      toast.success(`Exported ${sortedSheets.length} sheet(s) to ${fileName}`);
+    } catch (err: any) {
+      console.error('Failed to export QC data to Excel:', err);
+      toast.error('Export failed: ' + (err?.message || err));
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 p-4 sm:p-6 lg:p-8 space-y-6 text-slate-900 dark:text-slate-100">
       {/* Header Banner */}
@@ -1313,14 +1495,16 @@ export default function QcInspectionClient() {
             </span>
           )}
 
-          <Link
-            href="/excel-import"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all"
-            title="Import QC Inspections from Excel"
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={exportingExcel}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+            title="Export QC Inspection data to Excel (.xlsx)"
           >
             <FileSpreadsheet size={13} className="text-emerald-600 dark:text-emerald-400" />
-            Excel Import
-          </Link>
+            {exportingExcel ? 'Exporting...' : 'Excel Export'}
+          </button>
 
           <button
             type="button"
