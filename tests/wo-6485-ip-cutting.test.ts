@@ -23,7 +23,7 @@ describe('WO 6485 IP Cutting Queue Availability', () => {
     const json = await res.json();
 
     const item6485 = json.data?.find((r: any) => String(r.work_order_no).includes('6485'));
-    if ((wo.status || '').toLowerCase() === 'completed') {
+    if ((wo?.status || '').toLowerCase() === 'completed') {
       // Completed work orders are excluded from floor queues
       expect(item6485).toBeUndefined();
     } else {

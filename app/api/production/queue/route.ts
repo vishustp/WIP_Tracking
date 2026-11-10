@@ -1758,9 +1758,12 @@ export async function GET(req: NextRequest) {
       let finAvailMt = mtFromMtr(finAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
 
       // Universal Rule: Work orders marked Completed / Closed must not show phantom WIP in upstream stations.
-      // Exception: For a master campaign whose child work orders are actively in progress on the floor,
+      // Exception 1: For a master campaign whose child work orders are actively in progress on the floor,
       // the upstream campaign stock (e.g. Draw Bench queue) is real feeding inventory and must remain available.
-      // Unstarted child orders in planning/scheduled status do not keep completed master orders open in the queue.
+      // Exception 2: Real physical in-process material protection:
+      // If an order has real physical material produced upstream (e.g. hot rolled / HTC ok / drawn)
+      // and has NOT finished its commercial order quantity (or finOutPcs === 0),
+      // that in-process material is REAL shop-floor steel inventory and must remain available for processing!
       const isOrderCompletedRaw = (wo.status || "").toLowerCase() === "completed" || (wo.status || "").toLowerCase() === "closed";
       const hasActiveChildOrders = Boolean(
         campaign &&
@@ -1771,7 +1774,26 @@ export async function GET(req: NextRequest) {
           return st === "in progress" || st === "in_progress";
         })
       );
-      const isOrderCompleted = isOrderCompletedRaw && !hasActiveChildOrders;
+
+      const isFinishingComplete = (finOutPcs > 0 || finOutMtr > 0) && (
+        (Number(wo.balance_qty_mtr ?? 0) <= 0 && Number(wo.balance_qty_pcs ?? 0) <= 0) ||
+        (Number(wo.ordered_qty_pcs || 0) > 0 && finOutPcs >= Number(wo.ordered_qty_pcs)) ||
+        (Number(wo.ordered_qty_mtr || 0) > 0 && finOutMtr >= Number(wo.ordered_qty_mtr) * 0.95)
+      );
+      const hasRealUpstreamMaterial = !isFinishingComplete &&
+        (rollNetPcs > 0 || htcOkPcs > 0 || drawNetPcs > 0 || htNetPcs > 0 || bandSawNetPcs > 0);
+
+      const isOrderCompleted = isOrderCompletedRaw && !hasActiveChildOrders && !hasRealUpstreamMaterial;
+
+      // Auto-heal work order status in DB if real material is actively in-process upstream
+      if (isOrderCompletedRaw && hasRealUpstreamMaterial) {
+        admin
+          .from("work_orders")
+          .update({ status: "In Progress", excel_completed: false })
+          .eq("id", woId)
+          .then(() => {});
+      }
+
       if (isOrderCompleted) {
         rollAvailPcs = 0; rollAvailMtr = 0; rollAvailMt = 0;
         hollowHtAvailPcs = 0; hollowHtAvailMtr = 0; hollowHtAvailMt = 0;
@@ -2143,7 +2165,7 @@ export async function GET(req: NextRequest) {
         l1,
         l2,
         avg_length: avgLength,
-        order_status: wo.status || (balanceToMakeOrderPcs === 0 ? "Completed" : "In Progress"),
+        order_status: hasRealUpstreamMaterial ? "In Progress" : (wo.status || (balanceToMakeOrderPcs === 0 ? "Completed" : "In Progress")),
         balance_qty_pcs: wo.balance_qty_pcs != null ? Number(wo.balance_qty_pcs) : balanceToMakeOrderPcs,
         balance_qty_mtr: wo.balance_qty_mtr != null ? Number(wo.balance_qty_mtr) : balanceToMakeOrderMtr,
         rolling_date: rollingDate,

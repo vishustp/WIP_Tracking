@@ -51,7 +51,10 @@ const VALID_WORK_ORDER_STATUSES = new Set([
 
 /**
  * Checks whether an incoming row should be treated as Completed.
- * Matches if balance_to_make < 5 meters or status string indicates completed.
+ * Matches ONLY if customer order balance_qty_mtr < 5 meters or status string indicates completed.
+ * CRITICAL: balance_to_make_mtr is the Hot Rolling Plan balance to roll!
+ * When hot rolling finishes, balance_to_make_mtr is 0, but the order is just beginning
+ * cold drawing/finishing. Never treat balance_to_make_mtr < 5 as order completion.
  */
 export function isOrderCompletedForImport(row: {
   balance_to_make_mtr?: number | null;
@@ -60,11 +63,6 @@ export function isOrderCompletedForImport(row: {
 }): boolean {
   const normStatus = String(row.current_status || '').toLowerCase().trim();
   if (COMPLETED_STATUSES.has(normStatus)) {
-    return true;
-  }
-
-  const bMake = row.balance_to_make_mtr;
-  if (bMake !== undefined && bMake !== null && Number(bMake) < 5 && Number(bMake) >= 0) {
     return true;
   }
 

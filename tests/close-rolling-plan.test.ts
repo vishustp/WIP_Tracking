@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { checkCanCloseRollingPlan } from '@/lib/permissions';
-import { AppUserProfile } from '@/types';
+import { AppUserProfile } from '@/lib/users/types';
 
 describe('Close Rolling Plan Authorization & Permission Logic', () => {
   it('allows Admin users to close rolling plans', () => {

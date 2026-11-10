@@ -373,11 +373,14 @@ export async function POST(req: NextRequest) {
             .update({ status: newStatus })
             .eq('id', item.work_order_id);
         } else {
+          // If production is being recorded at ANY upstream station (Rolling, HTC, Hollow HT, Draw, HT, Band Saw, VDI),
+          // the order is actively in progress on the shop floor. Reopen it to 'In Progress' if it was
+          // Pending Plan, Scheduled, or prematurely marked Completed.
           await admin
             .from('work_orders')
-            .update({ status: 'In Progress' })
+            .update({ status: 'In Progress', excel_completed: false })
             .eq('id', item.work_order_id)
-            .in('status', ['Pending Plan', 'Scheduled']);
+            .in('status', ['Pending Plan', 'Scheduled', 'Completed']);
         }
       })
     );

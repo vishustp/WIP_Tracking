@@ -52,8 +52,8 @@ describe('Inspect WO 6485 Data', () => {
     );
 
     // 1. HTC calculation
-    const legacyRollLogs = (logs || []).filter((l: any) => l.process_stages?.stage_code === 'ROLLING');
-    const legacyRollingHtcOkMtr = legacyRollLogs.reduce((sum, l) => sum + Number(l.htc_ok_qty ?? l.htc_ok ?? 0), 0);
+    const legacyRollLogs = (logs || []).filter((l: any) => l.process_stages?.stage_code === 'ROLLING' || l.process_stages?.stage_code === 'HOT_ROLLING');
+    const legacyRollingHtcOkMtr = legacyRollLogs.reduce((sum, l) => sum + Number((l as any).htc_ok_qty ?? (l as any).htc_ok ?? 0), 0);
     const legacyRollingHtcOkPcsLogged = legacyRollLogs.reduce((sum, l) => sum + (Number(l.htc_ok_pcs || 0)), 0);
     const masterHtcLogs = (logs || []).filter((l: any) => l.process_stages?.stage_code === 'HTC');
     const rollingRejPcs = 0;
@@ -72,8 +72,8 @@ describe('Inspect WO 6485 Data', () => {
     }, 0);
 
     const hasDedicatedHtcLogs = masterHtcLogs.length > 0;
-    const hasAnyHtcActivity = hasDedicatedHtcLogs || legacyRollingHtcOkPcs > 0 || legacyRollingHtcOkMtr > 0;
-    const htcOkPcs = hasAnyHtcActivity ? (legacyRollingHtcOkPcs + htcLogOkPcs) : rollingOutPcs;
+    // When dedicated HTC logs exist, use HTC logs; do not add legacy rolling logs twice
+    const htcOkPcs = hasDedicatedHtcLogs ? htcLogOkPcs : (legacyRollingHtcOkPcs > 0 ? legacyRollingHtcOkPcs : rollingOutPcs);
 
     expect(htcOkPcs).toBe(2831);
 
