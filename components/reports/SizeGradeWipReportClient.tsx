@@ -285,13 +285,13 @@ export default function SizeGradeWipReportClient() {
               const stCode = (r.stage_code || '').toUpperCase() as StageCode;
               const isRolling = stCode === 'HOT_ROLLING' || stCode === 'ROLLING';
               const rawPcs = isRolling
-                ? Math.round(Number(r.balance_to_make_pcs ?? r.ready_pcs ?? r.rolled_pcs ?? 0))
+                ? Math.round(Number(r.rolled_pcs ?? 0))
                 : Math.round(Number(r.ready_pcs ?? r.current_wip_pcs ?? 0));
               const rawMtr = isRolling
-                ? Number(Number(r.balance_to_make_mtr ?? r.ready_mtr ?? r.rolled_mtr ?? 0).toFixed(2))
+                ? Number(Number(r.rolled_mtr ?? 0).toFixed(2))
                 : Number(Number(r.ready_mtr ?? r.current_wip ?? 0).toFixed(2));
               const rawMt = isRolling
-                ? Number(Number(r.balance_to_make_mt ?? r.ready_mt ?? r.rolled_mt ?? 0).toFixed(2))
+                ? Number(Number(r.rolled_mt ?? 0).toFixed(2))
                 : Number(Number(r.ready_mt ?? r.available_mt ?? 0).toFixed(2));
 
               // Physical balance sanity check: if current stage production >= incoming quantity,
@@ -918,6 +918,7 @@ export default function SizeGradeWipReportClient() {
   // Aggregate into Size & Grade Matrix
   const matrixGroups = useMemo(() => {
     const map = new Map<string, SizeGradeGroup>();
+    const seenRollingWoIds = new Map<string, Set<string>>();
 
     filteredRawRows.forEach((r) => {
       const od = Number(r.od || 0);
@@ -969,9 +970,25 @@ export default function SizeGradeWipReportClient() {
           total_mt: 0,
           contributing: [],
         });
+        seenRollingWoIds.set(key, new Set<string>());
       }
 
       const group = map.get(key)!;
+      const seenWoSet = seenRollingWoIds.get(key)!;
+      const woId = String(r.work_order_id || r.work_order_no || r.id || '');
+
+      // Rolling Production (display only): actual Rolling Qty rolled for this work order
+      // Deduplicated per work order so multiple station rows do not multiply rolling quantity
+      if (woId && !seenWoSet.has(woId)) {
+        seenWoSet.add(woId);
+        const rolledPcs = Math.round(Number(r.rolled_pcs ?? 0));
+        const rolledMtr = Number(Number(r.rolled_mtr ?? 0).toFixed(2));
+        const rolledMt = Number(Number(r.rolled_mt ?? 0).toFixed(2));
+        group.hot_rolling_pcs += rolledPcs;
+        group.hot_rolling_mtr += rolledMtr;
+        group.hot_rolling_mt += rolledMt;
+      }
+
       const mtr = Number(r.current_wip || 0);
       const pcs = Number(r.current_wip_pcs || 0);
       const mt = Number(r.current_wip_mt || r.available_mt || 0) > 0
@@ -980,9 +997,11 @@ export default function SizeGradeWipReportClient() {
       const stage = (r.stage_code || '').toUpperCase() as StageCode;
 
       if (stage === 'HOT_ROLLING' || stage === 'ROLLING') {
-        group.hot_rolling_mtr += mtr;
-        group.hot_rolling_pcs += pcs;
-        group.hot_rolling_mt += mt;
+        if (!woId) {
+          group.hot_rolling_mtr += mtr;
+          group.hot_rolling_pcs += pcs;
+          group.hot_rolling_mt += mt;
+        }
       } else if (stage === 'HTC') {
         group.htc_mtr += mtr;
         group.htc_pcs += pcs;
@@ -1059,7 +1078,7 @@ export default function SizeGradeWipReportClient() {
 
     // Sort matrix by OD ascending, then WT ascending (strictly filter out size-grade combinations with 0 active plant WIP)
     return Array.from(map.values())
-      .filter((g) => g.total_pcs > 0 || g.total_mtr > 0)
+      .filter((g) => g.total_pcs > 0 || g.total_mtr > 0 || g.hot_rolling_pcs > 0 || g.hot_rolling_mtr > 0)
       .sort((a, b) => {
         if (a.od !== b.od) return a.od - b.od;
         if (a.wt !== b.wt) return a.wt - b.wt;
