@@ -1764,7 +1764,7 @@ export async function GET(req: NextRequest) {
       // If an order has real physical material produced upstream (e.g. hot rolled / HTC ok / drawn)
       // and has NOT finished its commercial order quantity (or finOutPcs === 0),
       // that in-process material is REAL shop-floor steel inventory and must remain available for processing!
-      const isOrderCompletedRaw = (wo.status || "").toLowerCase() === "completed" || (wo.status || "").toLowerCase() === "closed";
+      const isOrderCompletedRaw = (wo.status || "").toLowerCase() === "completed" || (wo.status || "").toLowerCase() === "closed" || Boolean(wo.excel_completed);
       const hasActiveChildOrders = Boolean(
         campaign &&
         Array.isArray(campaign.child_work_orders) &&
@@ -1780,10 +1780,14 @@ export async function GET(req: NextRequest) {
         (Number(wo.ordered_qty_pcs || 0) > 0 && finOutPcs >= Number(wo.ordered_qty_pcs)) ||
         (Number(wo.ordered_qty_mtr || 0) > 0 && finOutMtr >= Number(wo.ordered_qty_mtr) * 0.95)
       );
-      const hasRealUpstreamMaterial = !isFinishingComplete &&
-        (rollNetPcs > 0 || htcOkPcs > 0 || drawNetPcs > 0 || htNetPcs > 0 || bandSawNetPcs > 0);
 
-      const isOrderCompleted = isOrderCompletedRaw && !hasActiveChildOrders && !hasRealUpstreamMaterial;
+      // A work order has real physical in-process material if:
+      // It has active stock waiting at an upstream stage (Draw, HT, Band Saw, Hollow HT)
+      // and has remaining commercial balance (balance_qty_mtr > 0 or balance_qty_pcs > 0).
+      const hasUpstreamWip = drawAvailPcs > 0 || htAvailPcs > 0 || bandSawAvailPcs > 0 || hollowHtAvailPcs > 0;
+      const hasRealUpstreamMaterial = hasUpstreamWip && (Number(wo.balance_qty_mtr ?? 0) > 0 || Number(wo.balance_qty_pcs ?? 0) > 0);
+
+      const isOrderCompleted = (isOrderCompletedRaw || (isFinishingComplete && !hasRealUpstreamMaterial)) && !hasActiveChildOrders && !hasRealUpstreamMaterial;
 
       // Auto-heal work order status in DB if real material is actively in-process upstream
       if (isOrderCompletedRaw && hasRealUpstreamMaterial) {
@@ -1803,11 +1807,9 @@ export async function GET(req: NextRequest) {
         htAvailPcs = 0; htAvailMtr = 0; htAvailMt = 0;
         bandSawAvailPcs = 0; bandSawAvailMtr = 0; bandSawAvailMt = 0;
         vdiAvailPcs = 0; vdiAvailMtr = 0; vdiAvailMt = 0;
-        if (Number(wo.balance_qty_mtr ?? 0) === 0 && Number(wo.balance_qty_pcs ?? 0) === 0) {
-          finAvailPcs = 0; finAvailMtr = 0; finAvailMt = 0;
-        }
+        finAvailPcs = 0; finAvailMtr = 0; finAvailMt = 0;
       }
-      if (isOrderCompletedRaw && Number(wo.balance_qty_mtr ?? 0) === 0 && Number(wo.balance_qty_pcs ?? 0) === 0) {
+      if (isOrderCompletedRaw || isFinishingComplete || Number(wo.balance_qty_mtr ?? 0) <= 0) {
         finAvailPcs = 0; finAvailMtr = 0; finAvailMt = 0;
       }
 
@@ -2261,26 +2263,26 @@ export async function GET(req: NextRequest) {
       // Feeder WIP metrics for upstream planning (Draw from Rolling Plan, HT from DB Qty, Finishing from HT Qty)
 
       // 1. Hollow HT Feeder: Rolling Plan issued quantity
-      const hhtFeederPcs = isAlloy ? Math.max(0, totalCampaignPcs - hollowHtOutPcs - hollowHtRejPcs - hhtRejDecl.pcs) : 0;
-      const hhtFeederMtr = effHhtAvg > 0 ? Number((hhtFeederPcs * effHhtAvg).toFixed(3)) : Math.max(0, totalCampaignMtr - hollowHtOutMtr - hollowHtRejMtr - hhtRejDecl.mtr);
+      const hhtFeederPcs = (!isOrderCompleted && isAlloy) ? Math.max(0, totalCampaignPcs - hollowHtOutPcs - hollowHtRejPcs - hhtRejDecl.pcs) : 0;
+      const hhtFeederMtr = (!isOrderCompleted && effHhtAvg > 0) ? Number((hhtFeederPcs * effHhtAvg).toFixed(3)) : (!isOrderCompleted ? Math.max(0, totalCampaignMtr - hollowHtOutMtr - hollowHtRejMtr - hhtRejDecl.mtr) : 0);
       const hhtFeederMt = mtFromMtr(hhtFeederMtr, hollowHtEffOd, hollowHtEffWt);
 
       // 2. Draw Bench Feeder: Rolling Plan issued quantity (or Hollow HT output for Alloy, or IP Cutting for IP Cutting)
-      const drawFeederPcs = isCds
+      const drawFeederPcs = (!isOrderCompleted && isCds)
         ? Math.max(0, isIpCutting ? (ipCutNetPcs - drawConsumedPcs - drawRejDecl.pcs) : (isAlloy ? (hollowHtNetPcs + hollowHtAvailPcs - drawConsumedPcs - drawRejDecl.pcs) : (totalCampaignPcs - drawConsumedPcs - drawRejDecl.pcs)))
         : 0;
-      const drawFeederMtr = effDrawLen > 0 ? Number((drawFeederPcs * effDrawLen).toFixed(3)) : Math.max(0, totalCampaignMtr - drawOutMtr - drawRejMtr - drawRejDecl.mtr);
+      const drawFeederMtr = (!isOrderCompleted && effDrawLen > 0) ? Number((drawFeederPcs * effDrawLen).toFixed(3)) : (!isOrderCompleted ? Math.max(0, totalCampaignMtr - drawOutMtr - drawRejMtr - drawRejDecl.mtr) : 0);
       const drawFeederMt = mtFromMtr(drawFeederMtr, mhOd > 0 ? mhOd : woOd, mhWt > 0 ? mhWt : woWt);
 
       // 3. Pilger Mill Feeder: Rolling Plan issued quantity
-      const pilgerFeederPcs = isSsSteel ? Math.max(0, totalCampaignPcs - pilgerOutPcs - pilgerRejPcs - pilgerRejDecl.pcs) : 0;
-      const pilgerFeederMtr = effPilgerLen > 0 ? Number((pilgerFeederPcs * effPilgerLen).toFixed(3)) : Math.max(0, totalCampaignMtr - pilgerOutMtr - pilgerRejMtr - pilgerRejDecl.mtr);
+      const pilgerFeederPcs = (!isOrderCompleted && isSsSteel) ? Math.max(0, totalCampaignPcs - pilgerOutPcs - pilgerRejPcs - pilgerRejDecl.pcs) : 0;
+      const pilgerFeederMtr = (!isOrderCompleted && effPilgerLen > 0) ? Number((pilgerFeederPcs * effPilgerLen).toFixed(3)) : (!isOrderCompleted ? Math.max(0, totalCampaignMtr - pilgerOutMtr - pilgerRejMtr - pilgerRejDecl.mtr) : 0);
       const pilgerFeederMt = mtFromMtr(pilgerFeederMtr, mhOd > 0 ? mhOd : woOd, mhWt > 0 ? mhWt : woWt);
 
       // 4. Heat Treatment Feeder: Draw Bench (DB) QTY (drawn pieces + un-drawn DB WIP)
       const dbWaitingToDraw = drawAvailPcs > 0 ? drawAvailPcs : (totalCampaignPcs > 0 ? Math.max(0, totalCampaignPcs - drawOutPcs - drawRejPcs - drawRejDecl.pcs) : 0);
       const dbTotalPipeline = isSsSteel ? (pilgerAvailPcs + pilgerNetPcs) : (dbWaitingToDraw + drawNetPcs);
-      const htFeederPcs = (isCds || isSsSteel) ? Math.max(0, dbTotalPipeline - htOutPcs - htRejPcs - htRejDecl.pcs) : 0;
+      const htFeederPcs = (!isOrderCompleted && (isCds || isSsSteel)) ? Math.max(0, dbTotalPipeline - htOutPcs - htRejPcs - htRejDecl.pcs) : 0;
       const htFeederMtr = avgLength > 0 ? Number((htFeederPcs * avgLength).toFixed(3)) : 0;
       const htFeederMt = mtFromMtr(htFeederMtr, woOd, woWt);
 
@@ -2288,42 +2290,42 @@ export async function GET(req: NextRequest) {
       const bsRemainingHt = (isCds || isSsSteel)
         ? Math.max(0, (htAvailPcs + htNetPcs) - bandSawOutPcs - bandSawRejPcs - bsRejDecl.pcs)
         : (isAlloy ? Math.max(0, (hollowHtAvailPcs + hollowHtNetPcs) - bandSawOutPcs - bandSawRejPcs - bsRejDecl.pcs) : Math.max(0, rollHtcOkPcs - bandSawOutPcs - bandSawRejPcs - bsRejDecl.pcs));
-      const bsFeederPcs = Math.max(0, bsRemainingHt);
+      const bsFeederPcs = !isOrderCompleted ? Math.max(0, bsRemainingHt) : 0;
       const bsFeederMtr = avgLength > 0 ? Number((bsFeederPcs * avgLength).toFixed(3)) : 0;
       const bsFeederMt = mtFromMtr(bsFeederMtr, woOd, woWt);
 
       // 6. VDI Feeder: Band Saw Cut Qty
       const vdiWaitingCut = Math.round(bandSawAvailPcs * mult);
-      const vdiFeederPcs = Math.max(0, (vdiWaitingCut + bandSawNetPcs) - qcInspectedPcs - vdiRejDecl.pcs);
+      const vdiFeederPcs = !isOrderCompleted ? Math.max(0, (vdiWaitingCut + bandSawNetPcs) - qcInspectedPcs - vdiRejDecl.pcs) : 0;
       const vdiFeederMtr = avgLength > 0 ? Number((vdiFeederPcs * avgLength).toFixed(3)) : 0;
       const vdiFeederMt = mtFromMtr(vdiFeederMtr, woOd, woWt);
 
       // 7. Finishing Feeder: Heat Treatment (HT) QTY (cut piece equivalent) / VDI QC
       const htCutPieces = Math.round((htAvailPcs + htNetPcs) * mult);
-      const finFeederPcs = Math.max(0, htCutPieces - finOutPcs - finRejPcs - finRejDecl.pcs);
-      const finFeederMtr = avgLength > 0 ? Number((finFeederPcs * avgLength).toFixed(3)) : Math.max(0, (htAvailMtr + htNetMtr) - (finOutMtr + finRejMtr) - finRejDecl.mtr);
+      const finFeederPcs = (!isOrderCompleted && !isFinishingComplete) ? Math.max(0, htCutPieces - finOutPcs - finRejPcs - finRejDecl.pcs) : 0;
+      const finFeederMtr = (!isOrderCompleted && !isFinishingComplete && avgLength > 0) ? Number((finFeederPcs * avgLength).toFixed(3)) : ((!isOrderCompleted && !isFinishingComplete) ? Math.max(0, (htAvailMtr + htNetMtr) - (finOutMtr + finRejMtr) - finRejDecl.mtr) : 0);
       const finFeederMt = mtFromMtr(finFeederMtr, woOd, woWt);
 
-      const isHhtReady = hollowHtAvailMtr >= 1.0 || hollowHtAvailPcs >= 1;
-      const isHhtFeeder = !isHhtReady && (hhtFeederMtr >= 1.0 || hhtFeederPcs >= 1);
+      const isHhtReady = !isOrderCompleted && (hollowHtAvailMtr >= 1.0 || hollowHtAvailPcs >= 1);
+      const isHhtFeeder = !isOrderCompleted && !isHhtReady && (hhtFeederMtr >= 1.0 || hhtFeederPcs >= 1);
 
-      const isDrawReady = drawAvailMtr >= 1.0 || drawAvailPcs >= 1;
-      const isDrawFeeder = !isDrawReady && (drawFeederMtr >= 1.0 || drawFeederPcs >= 1);
+      const isDrawReady = !isOrderCompleted && (drawAvailMtr >= 1.0 || drawAvailPcs >= 1);
+      const isDrawFeeder = !isOrderCompleted && !isDrawReady && (drawFeederMtr >= 1.0 || drawFeederPcs >= 1);
 
-      const isPilgerReady = pilgerAvailMtr >= 1.0 || pilgerAvailPcs >= 1;
-      const isPilgerFeeder = !isPilgerReady && (pilgerFeederMtr >= 1.0 || pilgerFeederPcs >= 1);
+      const isPilgerReady = !isOrderCompleted && (pilgerAvailMtr >= 1.0 || pilgerAvailPcs >= 1);
+      const isPilgerFeeder = !isOrderCompleted && !isPilgerReady && (pilgerFeederMtr >= 1.0 || pilgerFeederPcs >= 1);
 
-      const isHtReady = htAvailMtr >= 1.0 || htAvailPcs >= 1;
-      const isHtFeeder = !isHtReady && (htFeederMtr >= 1.0 || htFeederPcs >= 1);
+      const isHtReady = !isOrderCompleted && (htAvailMtr >= 1.0 || htAvailPcs >= 1);
+      const isHtFeeder = !isOrderCompleted && !isHtReady && (htFeederMtr >= 1.0 || htFeederPcs >= 1);
 
-      const isBsReady = bandSawAvailMtr >= 1.0 || bandSawAvailPcs >= 1;
-      const isBsFeeder = !isBsReady && (bsFeederMtr >= 1.0 || bsFeederPcs >= 1);
+      const isBsReady = !isOrderCompleted && (bandSawAvailMtr >= 1.0 || bandSawAvailPcs >= 1);
+      const isBsFeeder = !isOrderCompleted && !isBsReady && (bsFeederMtr >= 1.0 || bsFeederPcs >= 1);
 
-      const isVdiReady = vdiAvailPcs >= 1 && vdiAvailMtr >= 0.5;
-      const isVdiFeeder = !isVdiReady && (vdiFeederMtr >= 1.0 || vdiFeederPcs >= 1);
+      const isVdiReady = !isOrderCompleted && vdiAvailPcs >= 1 && vdiAvailMtr >= 0.5;
+      const isVdiFeeder = !isOrderCompleted && !isVdiReady && (vdiFeederMtr >= 1.0 || vdiFeederPcs >= 1);
 
-      const isFinReady = finAvailPcs >= 1 && finAvailMtr >= 0.5;
-      const isFinFeeder = !isFinReady && (finFeederMtr >= 1.0 || finFeederPcs >= 1);
+      const isFinReady = !isOrderCompleted && !isFinishingComplete && finAvailPcs >= 1 && finAvailMtr >= 0.5;
+      const isFinFeeder = !isOrderCompleted && !isFinishingComplete && !isFinReady && (finFeederMtr >= 1.0 || finFeederPcs >= 1);
 
       const rollDivDetails = getStageDivDetails(woId, "HOT_ROLLING", effMhAvg > 0 ? effMhAvg : avgLength);
       const htcDivDetails = getStageDivDetails(woId, "HTC", effMhAvg > 0 ? effMhAvg : avgLength);

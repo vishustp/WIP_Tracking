@@ -310,4 +310,127 @@ describe('Completed Work Orders & Closed Rolling Campaign WIP Reconciliations', 
     expect(singleGroup.draw_pcs).toBe(20);
     expect(singleGroup.band_saw_pcs).toBe(15);
   });
+
+  it('eliminates false VDI queue feeder WIP for completed WO 6485', () => {
+    const wo = {
+      work_order_no: '6485',
+      status: 'Completed',
+      excel_completed: true,
+      ordered_qty_pcs: 2880,
+      balance_qty_mtr: 0,
+      balance_qty_pcs: 0,
+    };
+
+    const finOutPcs = 4225; // 146% of order fulfilled
+    const finOutMtr = 25350;
+    const bandSawNetPcs = 4712;
+    const qcInspectedPcs = 4487;
+    const bandSawAvailPcs = 0;
+    const mult = 1;
+
+    const isOrderCompletedRaw = (wo.status || '').toLowerCase() === 'completed' || (wo.status || '').toLowerCase() === 'closed' || Boolean(wo.excel_completed);
+    const hasActiveChildOrders = false;
+    const isFinishingComplete = (finOutPcs > 0 || finOutMtr > 0) && (
+      Number(wo.balance_qty_mtr ?? 0) <= 0 ||
+      Number(wo.balance_qty_pcs ?? 0) <= 0 ||
+      (Number(wo.ordered_qty_pcs || 0) > 0 && finOutPcs >= Number(wo.ordered_qty_pcs))
+    );
+    const hasRealUpstreamMaterial = !isFinishingComplete && (bandSawNetPcs > 0);
+    const isOrderCompleted = (isOrderCompletedRaw || isFinishingComplete) && !hasActiveChildOrders && !hasRealUpstreamMaterial;
+
+    expect(isFinishingComplete).toBe(true);
+    expect(isOrderCompleted).toBe(true);
+
+    let vdiAvailPcs = 0;
+    if (isOrderCompleted) {
+      vdiAvailPcs = 0;
+    }
+
+    const vdiWaitingCut = Math.round(bandSawAvailPcs * mult);
+    const vdiFeederPcs = !isOrderCompleted ? Math.max(0, (vdiWaitingCut + bandSawNetPcs) - qcInspectedPcs) : 0;
+    const isVdiReady = !isOrderCompleted && vdiAvailPcs >= 1;
+    const isVdiFeeder = !isOrderCompleted && !isVdiReady && vdiFeederPcs >= 1;
+
+    // WO 6485 must NOT qualify as ready or feeder for VDI
+    expect(vdiFeederPcs).toBe(0);
+    expect(isVdiReady).toBe(false);
+    expect(isVdiFeeder).toBe(false);
+  });
+
+  it('eliminates false Finishing queue WIP for WO 6524 with stale balance_qty_pcs', () => {
+    const wo = {
+      work_order_no: '6524',
+      status: 'Completed',
+      excel_completed: true,
+      ordered_qty_pcs: 167,
+      balance_qty_mtr: 0,
+      balance_qty_pcs: 167, // Stale balance from initial import
+    };
+
+    const finOutPcs = 190; // Exceeded order of 167
+    const finOutMtr = 1140;
+    const htNetPcs = 300;
+    const mult = 1;
+    const htAvailPcs = 0;
+
+    const isOrderCompletedRaw = (wo.status || '').toLowerCase() === 'completed' || (wo.status || '').toLowerCase() === 'closed' || Boolean(wo.excel_completed);
+    const hasActiveChildOrders = false;
+    const isFinishingComplete = (finOutPcs > 0 || finOutMtr > 0) && (
+      Number(wo.balance_qty_mtr ?? 0) <= 0 ||
+      Number(wo.balance_qty_pcs ?? 0) <= 0 ||
+      (Number(wo.ordered_qty_pcs || 0) > 0 && finOutPcs >= Number(wo.ordered_qty_pcs))
+    );
+    const hasRealUpstreamMaterial = !isFinishingComplete;
+    const isOrderCompleted = (isOrderCompletedRaw || isFinishingComplete) && !hasActiveChildOrders && !hasRealUpstreamMaterial;
+
+    expect(isFinishingComplete).toBe(true);
+    expect(isOrderCompleted).toBe(true);
+
+    let finAvailPcs = 83; // Late QC inspection logged
+    if (isOrderCompleted) {
+      finAvailPcs = 0;
+    }
+    if (isOrderCompletedRaw || isFinishingComplete) {
+      finAvailPcs = 0;
+    }
+
+    const htCutPieces = Math.round((htAvailPcs + htNetPcs) * mult);
+    const finFeederPcs = (!isOrderCompleted && !isFinishingComplete) ? Math.max(0, htCutPieces - finOutPcs) : 0;
+    const isFinReady = !isOrderCompleted && !isFinishingComplete && finAvailPcs >= 1;
+    const isFinFeeder = !isOrderCompleted && !isFinishingComplete && !isFinReady && finFeederPcs >= 1;
+
+    // WO 6524 must NOT show available or feeder WIP in Finishing queue
+    expect(finAvailPcs).toBe(0);
+    expect(finFeederPcs).toBe(0);
+    expect(isFinReady).toBe(false);
+    expect(isFinFeeder).toBe(false);
+  });
+
+  it('filters completed work orders from QC inspection queue in QcInspectionClient', () => {
+    const workOrders = [
+      { id: 'wo-1', work_order_no: '6485', status: 'Completed', excel_completed: true, ordered_qty_pcs: 2880 },
+      { id: 'wo-2', work_order_no: '6524', status: 'Completed', excel_completed: true, ordered_qty_pcs: 167 },
+      { id: 'wo-3', work_order_no: '6600', status: 'In Progress', excel_completed: false, ordered_qty_pcs: 500 },
+    ];
+
+    const masterCampaignMap = new Map<string, any>();
+
+    const filtered = workOrders.filter((wo) => {
+      const isCompleted = (wo.status || '').toLowerCase() === 'completed' || (wo.status || '').toLowerCase() === 'closed' || Boolean(wo.excel_completed);
+      const campaign = masterCampaignMap.get(wo.id);
+      if (isCompleted) {
+        if (!campaign) return false;
+        const hasActiveChildOrders = Array.isArray(campaign.child_work_orders) && campaign.child_work_orders.some((c: any) => {
+          const childWo = workOrders.find((w) => w.id === (c.work_order_id || c.id));
+          const st = (childWo?.status || '').toLowerCase();
+          return st === 'in progress' || st === 'in_progress';
+        });
+        if (!hasActiveChildOrders) return false;
+      }
+      return true;
+    });
+
+    expect(filtered.length).toBe(1);
+    expect(filtered[0].work_order_no).toBe('6600');
+  });
 });

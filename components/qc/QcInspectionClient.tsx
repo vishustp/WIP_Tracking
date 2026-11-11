@@ -274,6 +274,17 @@ export default function QcInspectionClient() {
       const campaign = masterCampaignMap.get(wo.id);
       const childInfo = campaign ? null : childWoMap.get(wo.id);
 
+      const isCompleted = (wo.status || '').toLowerCase() === 'completed' || (wo.status || '').toLowerCase() === 'closed' || Boolean((wo as any).excel_completed);
+      if (isCompleted) {
+        if (!campaign) return;
+        const hasActiveChildOrders = Array.isArray(campaign.child_work_orders) && campaign.child_work_orders.some((c: any) => {
+          const childWo = workOrders.find((w) => w.id === (c.work_order_id || c.id));
+          const st = (childWo?.status || '').toLowerCase();
+          return st === 'in progress' || st === 'in_progress';
+        });
+        if (!hasActiveChildOrders) return;
+      }
+
       // Work order dimensions & average length
       const od = Number(wo.size_od || 0);
       const wt = Number(wo.size_wt || 0);
@@ -428,6 +439,22 @@ export default function QcInspectionClient() {
         );
 
         const { cutPcs: bandSawCutPcs, cutMtr: bandSawCutMtr } = getBandSawCutStats(woBandSawLogs, avgLen);
+
+        // Skip order if finishing is already complete (no more pieces to inspect for finished order)
+        const finStage = stages.find((s) => s.stage_code === 'FINISHING');
+        const woFinLogs = woLogs.filter((l) => finStage && l.stage_id === finStage.id);
+        const finOutPcs = woFinLogs.reduce((sum, l) => {
+          const { pcs } = extractPcsFromRemarks(l.remarks);
+          return sum + (pcs !== null && pcs > 0 ? pcs : (avgLen > 0 && l.output_qty ? Math.round(Number(l.output_qty) / avgLen) : 0));
+        }, 0);
+        const finOutMtr = woFinLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+        const isFinishingComplete = woFinLogs.length > 0 && (
+          Number(wo.balance_qty_mtr ?? 0) <= 0 ||
+          Number(wo.balance_qty_pcs ?? 0) <= 0 ||
+          (Number(wo.ordered_qty_pcs || 0) > 0 && finOutPcs >= Number(wo.ordered_qty_pcs)) ||
+          (Number(wo.ordered_qty_mtr || 0) > 0 && finOutMtr >= Number(wo.ordered_qty_mtr) * 0.95)
+        );
+        if (isFinishingComplete) return;
 
         // Skip order only if it has neither Band Saw cut output nor diverted incoming material
         if (bandSawCutPcs <= 0 && bandSawCutMtr <= 0 && vdiDivIn <= 0) return;

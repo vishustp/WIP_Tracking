@@ -340,6 +340,7 @@ export interface WorkOrder {
   purchase_order_date?: string | null;
   material_code?: string | null;
   destination?: string | null;
+  excel_completed?: boolean | null;
   created_at?: string;
 }
 
