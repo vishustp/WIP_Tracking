@@ -695,7 +695,7 @@ export function BandSawCuttingModal({
             work_order_id: row.work_order_id,
             route_id: row.route_id,
             rolling_plan_id: row.plan_id || null,
-            stage_code: row.stage_code === 'IP_CUTTING' ? 'IP_CUTTING' : 'BAND_SAW',
+            stage_code: (row.stage_code === 'IP_CUTTING' || Boolean(row.is_ip_cutting)) ? 'IP_CUTTING' : 'BAND_SAW',
             input_qty: totalMotherMtr,
             output_qty: totalPrimeCutMtr,
             rejection_qty: nRejMtr,

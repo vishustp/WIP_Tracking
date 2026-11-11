@@ -197,6 +197,11 @@ export function validateProductionEntry(
     else if (currentStage === "PILGER") feederName = "Rolling HTC OK";
     else if (currentStage === "DRAW") feederName = route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK";
     else if (currentStage === "HEAT_TREATMENT") feederName = route.includes("SS") ? "Cold Pilger Mill Net OK" : "Draw Bench Net OK";
+    else if (currentStage === "IP_CUTTING") {
+      const hasDiv = row.has_diversion || Number(row.diversion_in_pcs) > 0 || (typeof row.feeder_source_label === "string" && row.feeder_source_label.toLowerCase().includes("divert"));
+      const baseFeeder = route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK";
+      feederName = hasDiv ? (row.feeder_source_label || `${baseFeeder} / Diversion`) : baseFeeder;
+    }
     else if (currentStage === "BAND_SAW") {
       const hasDiv = row.has_diversion || Number(row.diversion_in_pcs) > 0 || (typeof row.feeder_source_label === "string" && row.feeder_source_label.toLowerCase().includes("divert"));
       const baseFeeder = route.includes("SS") ? "Heat Treatment Net OK" : (route.includes("HFS") ? (route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK") : "Heat Treatment Net OK");
@@ -243,6 +248,18 @@ export function validateProductionEntry(
         workOrder: row.work_order_no,
         message: `Heat Treatment Production (${d.pcs} PCS) exceeds available ${htFeeder} feeder balance (${fmt(allowedPcs)} PCS).`,
       });
+    } else if (currentStage === "IP_CUTTING") {
+      const hasDiv = row.has_diversion || Number(row.diversion_in_pcs) > 0 || (typeof row.feeder_source_label === "string" && row.feeder_source_label.toLowerCase().includes("divert"));
+      const baseFeeder = route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK";
+      const ipFeeder = (typeof row.feeder_source_label === "string" && row.feeder_source_label) ? row.feeder_source_label : (hasDiv ? `${baseFeeder} / Diversion` : baseFeeder);
+      const { motherPcs: ipMotherPcs } = extractBandSawCutsFromRemarks(row.remarks);
+      const inMotherPcs = ipMotherPcs !== null && ipMotherPcs > 0 ? ipMotherPcs : (n(row.multiple) > 1 ? Math.ceil(d.pcs / n(row.multiple)) : d.pcs);
+      if (inMotherPcs > allowedPcs) {
+        errors.push({
+          workOrder: row.work_order_no,
+          message: `IP Cutting input quantity (${inMotherPcs} PCS) cannot be greater than available ${ipFeeder} (${fmt(allowedPcs, 0)} PCS).`,
+        });
+      }
     } else if (currentStage === "BAND_SAW") {
       const hasDiv = row.has_diversion || Number(row.diversion_in_pcs) > 0 || (typeof row.feeder_source_label === "string" && row.feeder_source_label.toLowerCase().includes("divert"));
       const baseFeeder = route.includes("SS") ? "Heat Treatment Net OK" : (route.includes("HFS") ? (route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "HTC OK") : "Heat Treatment Net OK");

@@ -195,10 +195,108 @@ export function computeFeederBalanceForWorkOrder(params: {
     };
   }
 
+  // Parse diversions into / out of work centers
+  const parseDivStages = (d: DiversionPlanRecord) => {
+    const fromMatch = typeof d.reason === 'string' ? d.reason.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i) : null;
+    const toMatch = typeof d.reason === 'string' ? d.reason.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i) : null;
+    const sourceStage = fromMatch ? fromMatch[1].toUpperCase() : (d.work_center || 'ROLLING');
+    const targetStage = toMatch ? toMatch[1].toUpperCase() : (d.work_center || 'ROLLING');
+    return { sourceStage, targetStage };
+  };
+
+  const isApprovedDiv = (d: DiversionPlanRecord) => {
+    if (d.status === 'APPROVED') return true;
+    if (d.status === 'PENDING_PPC' || d.status === 'REJECTED_BY_PPC' || d.status === 'CANCELLED') return false;
+    if (d.ppc_approved_at) return true;
+    return true;
+  };
+
+  const approvedDiversions = (diversions || []).filter(isApprovedDiv);
+  const bsDivInLogs = approvedDiversions.filter(
+    (d) => d.target_wo_id === workOrder.id && (parseDivStages(d).targetStage === 'BAND_SAW' || parseDivStages(d).targetStage === 'IP_CUTTING')
+  );
+  const bsDivOutLogs = approvedDiversions.filter(
+    (d) => d.source_wo_id === workOrder.id && (parseDivStages(d).sourceStage === 'BAND_SAW' || parseDivStages(d).sourceStage === 'IP_CUTTING')
+  );
+
+  const bsDivInMtr = bsDivInLogs.reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0) + Number(workOrder.diversion_in_mtr || 0);
+  const bsDivInPcs = bsDivInLogs.reduce((sum, d) => {
+    if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+    const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+    if (pcsMatch) return sum + Number(pcsMatch[1]);
+    const dQty = Number(d.diverted_qty || 0);
+    return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+  }, 0) + Number(workOrder.diversion_in_pcs || 0);
+
+  const bsDivOutMtr = bsDivOutLogs.reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0);
+  const bsDivOutPcs = bsDivOutLogs.reduce((sum, d) => {
+    if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+    const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+    if (pcsMatch) return sum + Number(pcsMatch[1]);
+    const dQty = Number(d.diverted_qty || 0);
+    return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+  }, 0);
+
+  // 3.5 IP_CUTTING (Intermediate Pipe Cutting - Pre-Draw Band Saw station)
+  const ipCutLogs = getStageLogs('IP_CUTTING');
+  const ipCutOutPcs = sumStagePcs(ipCutLogs);
+  const ipCutRejPcs = sumStageRejPcs(ipCutLogs);
+  const ipCutNetPcs = Math.max(0, ipCutOutPcs - ipCutRejPcs);
+  const ipCutOutMtr = sumStageOutMtr(ipCutLogs);
+  const ipCutRejMtr = sumStageRejMtr(ipCutLogs);
+  const ipCutNetMtr = Math.max(0, Number((ipCutOutMtr - ipCutRejMtr).toFixed(2)));
+
+  const ipCutMotherPcs = ipCutLogs.reduce((sum, l) => {
+    const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
+    if (motherPcs && motherPcs > 0) return sum + motherPcs;
+    const { pcs } = extractPcsFromRemarks(l.remarks);
+    if (pcs && pcs > 0) return sum + pcs;
+    const inMtr = Number(l.input_qty || l.output_qty || 0);
+    return sum + (avgLen > 0 ? Math.round(inMtr / avgLen) : 0);
+  }, 0);
+  const ipCutInputMtr = ipCutLogs.reduce((sum, l) => sum + Number(l.input_qty || l.output_qty || 0), 0);
+
+  if (targetStage === 'IP_CUTTING') {
+    const ipFeederStageCode = isAlloy ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING';
+    const ipFeederLabel = isAlloy ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK';
+    const ipIncomingPcs = isAlloy ? hhtNetPcs : rollHtcOkPcs;
+    const ipIncomingMtr = isAlloy ? hhtNetMtr : rollHtcOkMtr;
+
+    const totalIpIncomingPcs = Math.max(0, ipIncomingPcs + bsDivInPcs - bsDivOutPcs);
+    const totalIpIncomingMtr = Math.max(0, Number((ipIncomingMtr + bsDivInMtr - bsDivOutMtr).toFixed(2)));
+
+    let dynamicIpLabel = ipFeederLabel;
+    let dynamicIpFeederCode = ipFeederStageCode;
+    if (bsDivInPcs > 0 && ipIncomingPcs === 0) {
+      dynamicIpLabel = 'Diverted Material In';
+      dynamicIpFeederCode = 'DIVERSION';
+    } else if (bsDivInPcs > 0 && ipIncomingPcs > 0) {
+      dynamicIpLabel = `${ipFeederLabel} + Diversion`;
+    }
+
+    const availPcs = Math.max(0, totalIpIncomingPcs - ipCutMotherPcs);
+    const availMtr = Math.max(0, Number((totalIpIncomingMtr - ipCutInputMtr).toFixed(2)));
+    return {
+      feederStageCode: dynamicIpFeederCode,
+      feederLabel: dynamicIpLabel,
+      availPcs,
+      availMtr,
+      routeCode,
+    };
+  }
+
   // 4. DRAW
-  const drawIncomingPcs = isAlloy ? (hhtNetPcs > 0 ? hhtNetPcs : rollHtcOkPcs) : rollHtcOkPcs;
-  const drawIncomingMtr = isAlloy ? (hhtNetMtr > 0 ? hhtNetMtr : rollHtcOkMtr) : rollHtcOkMtr;
-  const drawFeederLabel = isAlloy && hhtNetPcs > 0 ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK';
+  // If work order underwent IP Cutting, Cold Draw Bench receives the net cut pieces from IP Cutting!
+  const hasIpCutLogs = ipCutOutPcs > 0;
+  const drawIncomingPcs = hasIpCutLogs
+    ? ipCutNetPcs
+    : (isAlloy ? (hhtNetPcs > 0 ? hhtNetPcs : rollHtcOkPcs) : rollHtcOkPcs);
+  const drawIncomingMtr = hasIpCutLogs
+    ? ipCutNetMtr
+    : (isAlloy ? (hhtNetMtr > 0 ? hhtNetMtr : rollHtcOkMtr) : rollHtcOkMtr);
+  const drawFeederLabel = hasIpCutLogs
+    ? 'IP Cutting (Band Saw) OK'
+    : (isAlloy && hhtNetPcs > 0 ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK');
 
   const drawLogs = getStageLogs('DRAW');
   const drawOutPcs = sumStagePcs(drawLogs);
@@ -212,7 +310,7 @@ export function computeFeederBalanceForWorkOrder(params: {
     const availPcs = Math.max(0, drawIncomingPcs - drawOutPcs);
     const availMtr = Math.max(0, Number((drawIncomingMtr - drawOutMtr).toFixed(2)));
     return {
-      feederStageCode: isAlloy && hhtNetPcs > 0 ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING',
+      feederStageCode: hasIpCutLogs ? 'IP_CUTTING' : (isAlloy && hhtNetPcs > 0 ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING'),
       feederLabel: drawFeederLabel,
       availPcs,
       availMtr,
@@ -261,48 +359,6 @@ export function computeFeederBalanceForWorkOrder(params: {
   const bsFeederLabel = (isSsSteel || isCds) ? 'Heat Treatment Net OK' : (isAlloyHfs ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK');
   const bsIncomingPcs = (isSsSteel || isCds) ? htNetPcs : (isAlloyHfs ? hhtNetPcs : rollHtcOkPcs);
   const bsIncomingMtr = (isSsSteel || isCds) ? htNetMtr : (isAlloyHfs ? hhtNetMtr : rollHtcOkMtr);
-
-  // Parse diversions into / out of Band Saw
-  const parseDivStages = (d: DiversionPlanRecord) => {
-    const fromMatch = typeof d.reason === 'string' ? d.reason.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i) : null;
-    const toMatch = typeof d.reason === 'string' ? d.reason.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i) : null;
-    const sourceStage = fromMatch ? fromMatch[1].toUpperCase() : (d.work_center || 'ROLLING');
-    const targetStage = toMatch ? toMatch[1].toUpperCase() : (d.work_center || 'ROLLING');
-    return { sourceStage, targetStage };
-  };
-
-  const isApprovedDiv = (d: DiversionPlanRecord) => {
-    if (d.status === 'APPROVED') return true;
-    if (d.status === 'PENDING_PPC' || d.status === 'REJECTED_BY_PPC' || d.status === 'CANCELLED') return false;
-    if (d.ppc_approved_at) return true;
-    return true;
-  };
-
-  const approvedDiversions = (diversions || []).filter(isApprovedDiv);
-  const bsDivInLogs = approvedDiversions.filter(
-    (d) => d.target_wo_id === workOrder.id && (parseDivStages(d).targetStage === 'BAND_SAW' || parseDivStages(d).targetStage === 'IP_CUTTING')
-  );
-  const bsDivOutLogs = approvedDiversions.filter(
-    (d) => d.source_wo_id === workOrder.id && (parseDivStages(d).sourceStage === 'BAND_SAW' || parseDivStages(d).sourceStage === 'IP_CUTTING')
-  );
-
-  const bsDivInMtr = bsDivInLogs.reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0) + Number(workOrder.diversion_in_mtr || 0);
-  const bsDivInPcs = bsDivInLogs.reduce((sum, d) => {
-    if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
-    const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
-    if (pcsMatch) return sum + Number(pcsMatch[1]);
-    const dQty = Number(d.diverted_qty || 0);
-    return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
-  }, 0) + Number(workOrder.diversion_in_pcs || 0);
-
-  const bsDivOutMtr = bsDivOutLogs.reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0);
-  const bsDivOutPcs = bsDivOutLogs.reduce((sum, d) => {
-    if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
-    const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
-    if (pcsMatch) return sum + Number(pcsMatch[1]);
-    const dQty = Number(d.diverted_qty || 0);
-    return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
-  }, 0);
 
   const totalBsIncomingPcs = Math.max(0, bsIncomingPcs + bsDivInPcs - bsDivOutPcs);
   const totalBsIncomingMtr = Math.max(0, Number((bsIncomingMtr + bsDivInMtr - bsDivOutMtr).toFixed(2)));

@@ -162,14 +162,26 @@ export async function POST(req: NextRequest) {
           const isCds = route.includes('CDS');
           const isAlloy = route.includes('ALLOY');
           const isAlloyHfs = isAlloy && !isCds;
+          const isIpCutting = item.stage_code === 'IP_CUTTING';
+          const stationName = isIpCutting ? 'IP Cutting' : 'Band Saw';
 
-          // Feeder stage determines available mother pipes
-          // CDS / SS_STEEL -> HEAT_TREATMENT
-          // ALLOY_HFS -> HOLLOW_HEAT_TREATMENT
-          // HFS -> HTC or ROLLING
+          // Feeder stage determines available mother pipes:
+          // IP_CUTTING -> Pre-draw cut: feeds from Rolling HTC OK (or Hollow HT for ALLOY)
+          // BAND_SAW:
+          //   CDS / SS_STEEL -> HEAT_TREATMENT
+          //   ALLOY_HFS -> HOLLOW_HEAT_TREATMENT
+          //   HFS -> HTC or ROLLING
           let feederStageCodes: string[] = [];
           let feederLabel = 'Heat Treatment (HT) Qty';
-          if (isSsSteel || isCds) {
+          if (isIpCutting) {
+            if (isAlloy) {
+              feederStageCodes = ['HOLLOW_HEAT_TREATMENT'];
+              feederLabel = 'Hollow Heat Treatment Qty';
+            } else {
+              feederStageCodes = ['HTC', 'ROLLING', 'HOT_ROLLING'];
+              feederLabel = 'Rolling HTC OK';
+            }
+          } else if (isSsSteel || isCds) {
             feederStageCodes = ['HEAT_TREATMENT'];
             feederLabel = 'Heat Treatment (HT) Qty';
           } else if (isAlloyHfs) {
@@ -181,16 +193,16 @@ export async function POST(req: NextRequest) {
           }
 
           const feederStageIds = feederStageCodes.map((sc) => stageMap.get(sc)).filter(Boolean) as string[];
-          const bandSawStageIds = ['BAND_SAW', 'IP_CUTTING'].map((sc) => stageMap.get(sc)).filter(Boolean) as string[];
+          const targetStageIds = [item.stage_code].map((sc) => stageMap.get(sc)).filter(Boolean) as string[];
 
-          // Fetch feeder logs & existing Band Saw logs for this work order
+          // Fetch feeder logs & existing stage logs for this work order
           const { data: woLogs } = await admin
             .from('production_logs')
             .select('stage_id, input_qty, output_qty, rejection_qty, htc_ok, remarks')
             .eq('work_order_id', item.work_order_id);
 
           const feederLogs = (woLogs || []).filter((l) => feederStageIds.includes(l.stage_id));
-          const existingBsLogs = (woLogs || []).filter((l) => bandSawStageIds.includes(l.stage_id));
+          const existingBsLogs = (woLogs || []).filter((l) => targetStageIds.includes(l.stage_id));
 
           // Compute feeder incoming pieces & meters
           const avgLen = Number(woData.l1 && woData.l2 ? (woData.l1 + woData.l2) / 2 : woData.l1 || woData.l2 || woData.avg_length || 6.0);
@@ -291,21 +303,21 @@ export async function POST(req: NextRequest) {
 
           if (totalFeederPcs <= 0 && totalFeederMtr <= 0) {
             return NextResponse.json(
-              { error: `No available ${feederLabel} in queue for Band Saw cutting (Work Order ${woData.work_order_no}). Material must come from Heat Treatment (HT), Rolling HTC, or Diversion.` },
+              { error: `No available ${feederLabel} in queue for ${stationName} cutting (Work Order ${woData.work_order_no}). Material must come from ${isIpCutting ? 'Rolling HTC OK or Diversion' : 'Heat Treatment (HT), Rolling HTC, or Diversion'}.` },
               { status: 400 }
             );
           }
 
           if (availFeederPcs > 0 && motherPcsNum > availFeederPcs) {
             return NextResponse.json(
-              { error: `Band Saw input quantity (${motherPcsNum} PCS) cannot be greater than available ${feederLabel} (${availFeederPcs} PCS) for Work Order ${woData.work_order_no}.` },
+              { error: `${stationName} input quantity (${motherPcsNum} PCS) cannot be greater than available ${feederLabel} (${availFeederPcs} PCS) for Work Order ${woData.work_order_no}.` },
               { status: 400 }
             );
           }
 
           if (availFeederMtr > 0 && inputMtrNum > availFeederMtr + 0.5) {
             return NextResponse.json(
-              { error: `Band Saw input length (${inputMtrNum.toFixed(2)} MTR) cannot be greater than available ${feederLabel} (${availFeederMtr.toFixed(2)} MTR) for Work Order ${woData.work_order_no}.` },
+              { error: `${stationName} input length (${inputMtrNum.toFixed(2)} MTR) cannot be greater than available ${feederLabel} (${availFeederMtr.toFixed(2)} MTR) for Work Order ${woData.work_order_no}.` },
               { status: 400 }
             );
           }

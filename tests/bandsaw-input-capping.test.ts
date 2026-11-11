@@ -302,4 +302,86 @@ describe('Band Saw Input Quantity vs HT Quantity Capping', () => {
     expect(balance.availMtr).toBe(270);
     expect(balance.feederLabel).toContain('Diversion');
   });
+
+  it('rejects IP Cutting entry when input mother pipes exceed available Rolling HTC balance', () => {
+    const row: any = {
+      id: 'wo-ip-1',
+      work_order_no: 'WO-IP-501',
+      stage_code: 'IP_CUTTING',
+      route_code: 'CDS',
+      available_pcs: 12,
+      balance_to_make_pcs: 12,
+      l1: 6,
+      l2: 6,
+      avg_length: 6,
+      od: 60.3,
+      wl: 5.5,
+      pcs: '18',
+      mtr: '108',
+      input_pcs: 18,
+      input_mtr: 108,
+      output_pcs: 18,
+      output_mtr: 108,
+      remarks: '[CUTS:{"m_pcs":18,"yield":95,"items":[{"len":6,"pcs":18,"cat":"PRIME"}]}] [PCS:18]',
+    };
+
+    const errors = validateProductionEntry(row, 'IP_CUTTING');
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0].message).toContain('IP Cutting input quantity (18 PCS) cannot be greater than available');
+    expect(errors[0].message).toContain('Rolling HTC OK');
+    expect(errors[0].message).toContain('12 PCS');
+  });
+
+  it('calculates IP Cutting balance from Rolling HTC OK and routes IP Cut output to Cold Draw queue', () => {
+    const stageMap = new Map<string, string>([
+      ['ROLLING', 'stage-rolling'],
+      ['IP_CUTTING', 'stage-ip-cut'],
+      ['DRAW', 'stage-draw'],
+    ]);
+
+    const logs = [
+      // 50 Rolling HTC mother pipes produced
+      {
+        work_order_id: 'wo-ip-601',
+        stage_id: 'stage-rolling',
+        output_qty: 300,
+        remarks: '[PCS:50]',
+      },
+      // 20 mother pipes cut at IP Cutting into 40 draw-length pieces (multiple = 2)
+      {
+        work_order_id: 'wo-ip-601',
+        stage_id: 'stage-ip-cut',
+        input_qty: 120,
+        output_qty: 120,
+        remarks: '[CUTS:{"m_pcs":20,"yield":98,"items":[{"len":3,"pcs":40,"cat":"PRIME"}]}] [PCS:40]',
+      },
+    ];
+
+    // 1. Check IP Cutting available feeder balance:
+    // 50 HTC mother pipes - 20 mother pipes cut = 30 mother pipes available
+    const ipBalance = computeFeederBalanceForWorkOrder({
+      workOrder: { id: 'wo-ip-601', work_order_no: 'WO-IP-601', l1: 3, l2: 3, avg_length: 6 },
+      targetStage: 'IP_CUTTING',
+      routeCode: 'CDS',
+      logs,
+      stageCodeToId: stageMap,
+    });
+    expect(ipBalance.availPcs).toBe(30);
+    expect(ipBalance.availMtr).toBe(180);
+    expect(ipBalance.feederLabel).toBe('Rolling HTC OK');
+
+    // 2. Check Cold Draw Bench feeder balance:
+    // Cold Draw Bench receives the 40 net cut pieces from IP Cutting!
+    const drawBalance = computeFeederBalanceForWorkOrder({
+      workOrder: { id: 'wo-ip-601', work_order_no: 'WO-IP-601', l1: 3, l2: 3, avg_length: 3 },
+      targetStage: 'DRAW',
+      routeCode: 'CDS',
+      logs,
+      stageCodeToId: stageMap,
+    });
+    expect(drawBalance.availPcs).toBe(40);
+    expect(drawBalance.availMtr).toBe(120);
+    expect(drawBalance.feederLabel).toBe('IP Cutting (Band Saw) OK');
+    expect(drawBalance.feederStageCode).toBe('IP_CUTTING');
+  });
 });
