@@ -241,10 +241,14 @@ export function validateProductionEntry(
       });
     } else if (currentStage === "BAND_SAW") {
       const bsFeeder = route.includes("SS") ? "Heat Treatment Net OK" : (route.includes("HFS") ? (route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "HTC OK") : "Heat Treatment Net OK");
-      errors.push({
-        workOrder: row.work_order_no,
-        message: `Band Saw Cutting (${d.pcs} PCS) exceeds available ${bsFeeder} feeder balance (${fmt(allowedPcs)} PCS).`,
-      });
+      const { motherPcs: bsMotherPcs } = extractBandSawCutsFromRemarks(row.remarks);
+      const inMotherPcs = bsMotherPcs !== null && bsMotherPcs > 0 ? bsMotherPcs : (n(row.multiple) > 1 ? Math.ceil(d.pcs / n(row.multiple)) : d.pcs);
+      if (inMotherPcs > allowedPcs) {
+        errors.push({
+          workOrder: row.work_order_no,
+          message: `Band Saw input quantity (${inMotherPcs} PCS) cannot be greater than available ${bsFeeder} (${fmt(allowedPcs, 0)} PCS).`,
+        });
+      }
     } else if (currentStage === "VDI") {
       const vdiFeeder = route.includes("SS") ? "Heat Treatment Net OK" : (route.includes("HFS") ? (route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "HTC OK") : "Heat Treatment Net OK");
       errors.push({

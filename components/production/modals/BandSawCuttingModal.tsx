@@ -531,6 +531,10 @@ export function BandSawCuttingModal({
       toast.error('Please enter valid mother pipe quantities for batch split.');
       return;
     }
+    if (availMotherPcs > 0 && totalProcMotherPcs > availMotherPcs) {
+      toast.error(`Total batch split mother pipes (${totalProcMotherPcs} PCS) cannot be greater than available HT Quantity (${availMotherPcs} PCS).`);
+      return;
+    }
     if (gA_len > 15 || gB_len > 15) {
       toast.error('Maximum allowable pipe length at Band Saw is 15.00 MTR.');
       return;
@@ -604,8 +608,21 @@ export function BandSawCuttingModal({
       setError('Hollow Bank is dedicated yard buffer inventory and not available for production entry.');
       return;
     }
+    const feederLabel = row.feeder_source_label || 'Heat Treatment (HT) Qty';
+    if (availMotherPcs <= 0 && availMotherMtr <= 0) {
+      setError(`No available ${feederLabel} in queue for Band Saw cutting. Input quantity cannot be recorded.`);
+      return;
+    }
     if (motherPcsNum <= 0) {
       setError('Please enter valid Mother Pipes Processed (≥ 1).');
+      return;
+    }
+    if (availMotherPcs > 0 && motherPcsNum > availMotherPcs) {
+      setError(`Band Saw input quantity (${motherPcsNum} PCS) cannot be greater than available ${feederLabel} (${availMotherPcs} PCS).`);
+      return;
+    }
+    if (availMotherMtr > 0 && totalMotherMtr > availMotherMtr + 0.5) {
+      setError(`Band Saw input length (${fmt(totalMotherMtr, 'm')}) cannot be greater than available ${feederLabel} (${fmt(availMotherMtr, 'm')}).`);
       return;
     }
     if (totalPrimeCutPcs <= 0 || totalPrimeCutMtr <= 0 || totalPrimeCutMt <= 0) {
@@ -888,10 +905,14 @@ export function BandSawCuttingModal({
               <Input
                 type="number"
                 min="1"
-                max={availMotherPcs > 0 ? availMotherPcs * 2 : 9999}
+                max={availMotherPcs > 0 ? availMotherPcs : 1}
                 value={motherPcsInput}
                 onChange={(e) => setMotherPcsInput(e.target.value)}
-                className="h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500 bg-[var(--bg-surface,#ffffff)]"
+                className={`h-9 font-mono text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500 bg-[var(--bg-surface,#ffffff)] ${
+                  remainingMotherPcs < 0
+                    ? 'border-rose-500 text-rose-700 bg-rose-50/40 focus:border-rose-500 focus:ring-rose-500'
+                    : ''
+                }`}
                 placeholder="e.g. 10"
               />
             </div>
@@ -949,9 +970,9 @@ export function BandSawCuttingModal({
                     100% Mother Pipes Processed in Batch
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">
                     <AlertCircle size={11} />
-                    Processing {Math.abs(remainingMotherPcs)} Pcs &gt; Available Queue
+                    Input Exceeds Available HT Qty ({Math.abs(remainingMotherPcs)} PCS over limit)
                   </span>
                 )}
               </div>
@@ -1813,7 +1834,20 @@ export function BandSawCuttingModal({
             type="button"
             size="md"
             onClick={handleSubmit}
-            disabled={saving || totalPrimeCutPcs <= 0}
+            disabled={
+              saving ||
+              totalPrimeCutPcs <= 0 ||
+              remainingMotherPcs < 0 ||
+              (availMotherMtr > 0 && remainingMotherMtr < -0.5) ||
+              (availMotherPcs <= 0 && availMotherMtr <= 0)
+            }
+            title={
+              remainingMotherPcs < 0
+                ? 'Band Saw input quantity cannot be greater than available HT Quantity'
+                : availMotherPcs <= 0 && availMotherMtr <= 0
+                ? 'No available HT Quantity in queue'
+                : undefined
+            }
             className="min-h-[40px] gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs font-bold text-xs px-5"
           >
             {saving ? (

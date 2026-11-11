@@ -117,6 +117,10 @@ export function BandSawEditModal({
   const totalMotherMtr = Number((motherPcs * motherAvgLenNum).toFixed(2));
   const totalMotherMt = mtFromMtr(totalMotherMtr, pipeOd, pipeWt);
 
+  // Maximum allowable mother pipes and meters when editing (available queue + entry's original input)
+  const maxAllowedPcs = queueRow ? Math.max(0, Math.round(Number(queueRow.balance_to_make_pcs || 0))) + initialMotherPcs : null;
+  const maxAllowedMtr = queueRow ? Math.max(0, Number(queueRow.balance_to_make_mtr || 0)) + originalInputMtr : null;
+
   // Form State: Cut Items
   const [cutItems, setCutItems] = useState<CutRowItem[]>(() => {
     if (parsed.cuts && parsed.cuts.length > 0) {
@@ -274,6 +278,21 @@ export function BandSawEditModal({
   };
 
   const handleSave = async () => {
+    if (motherPcs <= 0) {
+      setError('Please specify valid mother pipes processed (≥ 1).');
+      return;
+    }
+
+    const feederLabel = queueRow?.feeder_source_label || 'Heat Treatment (HT) Qty';
+    if (maxAllowedPcs !== null && motherPcs > maxAllowedPcs) {
+      setError(`Band Saw input quantity (${motherPcs} PCS) cannot be greater than available ${feederLabel} (${maxAllowedPcs} PCS).`);
+      return;
+    }
+    if (maxAllowedMtr !== null && totalMotherMtr > maxAllowedMtr + 0.5) {
+      setError(`Band Saw input length (${fmt(totalMotherMtr, 'm')}) cannot be greater than available ${feederLabel} (${fmt(maxAllowedMtr, 'm')}).`);
+      return;
+    }
+
     if (totalPrimeCutPcs <= 0 || totalPrimeCutMtr <= 0 || totalPrimeCutMt <= 0) {
       setError('Production output must be greater than 0.00 m, 0 PCS, and 0.000 MT.');
       return;
@@ -513,15 +532,27 @@ export function BandSawEditModal({
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                Mother Pipes Consumed (Nos) <span className="text-rose-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Mother Pipes Consumed (Nos) <span className="text-rose-500">*</span>
+                </label>
+                {maxAllowedPcs !== null && (
+                  <span className={`text-[10px] font-mono font-bold ${motherPcs > maxAllowedPcs ? 'text-rose-600' : 'text-slate-500'}`}>
+                    Max: {maxAllowedPcs} PCS
+                  </span>
+                )}
+              </div>
               <Input
                 type="number"
                 min="1"
+                max={maxAllowedPcs !== null ? maxAllowedPcs : undefined}
                 value={motherPcs}
                 onChange={(e) => setMotherPcs(Math.max(1, Number(e.target.value) || 1))}
-                className="h-9 text-xs font-mono font-bold"
+                className={`h-9 text-xs font-mono font-bold ${
+                  maxAllowedPcs !== null && motherPcs > maxAllowedPcs
+                    ? 'border-rose-500 text-rose-700 bg-rose-50/40 focus:border-rose-500 focus:ring-rose-500'
+                    : ''
+                }`}
                 placeholder="e.g. 5"
               />
             </div>
@@ -861,7 +892,16 @@ export function BandSawEditModal({
             type="button"
             size="sm"
             onClick={handleSave}
-            disabled={saving}
+            disabled={
+              saving ||
+              (maxAllowedPcs !== null && motherPcs > maxAllowedPcs) ||
+              (maxAllowedMtr !== null && totalMotherMtr > maxAllowedMtr + 0.5)
+            }
+            title={
+              maxAllowedPcs !== null && motherPcs > maxAllowedPcs
+                ? 'Band Saw input quantity cannot be greater than available HT Quantity'
+                : undefined
+            }
             className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm"
           >
             {saving ? 'Saving Changes...' : 'Save Cut Corrections'}

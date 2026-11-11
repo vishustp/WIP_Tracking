@@ -93,8 +93,8 @@ describe('QC & VDI Excel Export Functionality', () => {
         total_salvage_mtr: 2270,
         total_salvage_mt: 3.97,
         salvage_reasons: [
-          { reason: 'OD, WT, Length Variation', pcs: 120, remarks: 'WT oversize' },
-          { reason: 'Crack Detected', pcs: 107 },
+          { id: 'sr-1', reason: 'OD, WT, Length Variation', pcs: 120, remarks: 'WT oversize' },
+          { id: 'sr-2', reason: 'Crack Detected', pcs: 107 },
         ],
         inspections: [
           {
@@ -168,7 +168,7 @@ describe('QC & VDI Excel Export Functionality', () => {
         vdi_rejection_pcs: 0,
         vdi_rejection_mtr: 0,
         vdi_rejection_mt: 0,
-        salvage_reasons: [{ reason: 'Bend', pcs: 227 }],
+        salvage_reasons: [{ id: 'sr-3', reason: 'Bend', pcs: 227 }],
         created_by: 'QC Inspector A',
         remarks: 'Batch inspected clean',
         created_at: '2026-11-07T12:00:00Z',

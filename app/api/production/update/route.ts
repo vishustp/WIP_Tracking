@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAuth, isAuthorizedForStation } from '@/lib/supabase/authGuard';
-import { attachPcsToRemarks, extractBandSawCutsFromRemarks } from '@/lib/productionUtils';
+import { attachPcsToRemarks, extractBandSawCutsFromRemarks, extractPcsFromRemarks } from '@/lib/productionUtils';
 import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function POST(req: NextRequest) {
@@ -120,6 +120,112 @@ export async function POST(req: NextRequest) {
           { error: `Maximum allowable pipe length at Band Saw is 15.00 MTR (received average ${(oMtr / oPcs).toFixed(2)} MTR).` },
           { status: 400 }
         );
+      }
+    }
+
+    // Rule: Band Saw input quantity cannot be greater than HT Quantity (or preceding feeder balance) on update
+    if (stageCode === 'BAND_SAW' || stageCode === 'IP_CUTTING') {
+      const newMotherPcs = remarks ? (extractBandSawCutsFromRemarks(remarks).motherPcs || extractPcsFromRemarks(remarks).pcs) : null;
+      const newInputMtr = input_qty !== undefined ? Number(input_qty) : null;
+
+      const origMotherPcs = extractBandSawCutsFromRemarks(targetLog.remarks).motherPcs || extractPcsFromRemarks(targetLog.remarks).pcs || 0;
+      const origInputMtr = Number(targetLog.input_qty || 0);
+
+      // Load work order details
+      const { data: woData } = await admin
+        .from('work_orders')
+        .select('id, work_order_no, route_code, process_route, l1, l2, avg_length')
+        .eq('id', targetLog.work_order_id)
+        .maybeSingle();
+
+      if (woData) {
+        const route = (woData.process_route || woData.route_code || 'CDS').toUpperCase();
+        const isSsSteel = route.includes('SS') || route.includes('STAINLESS');
+        const isCds = route.includes('CDS');
+        const isAlloy = route.includes('ALLOY');
+
+        let feederStageCodes: string[] = [];
+        let feederLabel = 'Heat Treatment (HT) Qty';
+        if (isSsSteel || isCds) {
+          feederStageCodes = ['HEAT_TREATMENT'];
+          feederLabel = 'Heat Treatment (HT) Qty';
+        } else if (isAlloy) {
+          feederStageCodes = ['HOLLOW_HEAT_TREATMENT'];
+          feederLabel = 'Hollow Heat Treatment Qty';
+        } else {
+          feederStageCodes = ['HTC', 'ROLLING', 'HOT_ROLLING'];
+          feederLabel = 'HTC OK Qty';
+        }
+
+        const { data: stages } = await admin.from('process_stages').select('id, stage_code');
+        const sMap = new Map<string, string>();
+        (stages || []).forEach((s) => sMap.set(s.stage_code, s.id));
+
+        const feederStageIds = feederStageCodes.map((sc) => sMap.get(sc)).filter(Boolean) as string[];
+        const bandSawStageIds = ['BAND_SAW', 'IP_CUTTING'].map((sc) => sMap.get(sc)).filter(Boolean) as string[];
+
+        const { data: woLogs } = await admin
+          .from('production_logs')
+          .select('id, stage_id, input_qty, output_qty, rejection_qty, htc_ok, remarks')
+          .eq('work_order_id', targetLog.work_order_id);
+
+        const feederLogs = (woLogs || []).filter((l) => feederStageIds.includes(l.stage_id));
+        const otherBsLogs = (woLogs || []).filter((l) => bandSawStageIds.includes(l.stage_id) && l.id !== targetLog.id);
+
+        const avgLen = Number(woData.l1 && woData.l2 ? (woData.l1 + woData.l2) / 2 : woData.l1 || woData.l2 || woData.avg_length || 6.0);
+
+        let feederPcs = 0;
+        let feederMtr = 0;
+        if (feederStageCodes.includes('HTC') || feederStageCodes.includes('ROLLING')) {
+          feederMtr = feederLogs.reduce((sum, l) => {
+            const htc = Number(l.htc_ok || 0);
+            return sum + (htc > 0 ? htc : Math.max(0, Number(l.output_qty || 0) - Number(l.rejection_qty || 0)));
+          }, 0);
+          feederPcs = feederLogs.reduce((sum, l) => {
+            const p = extractPcsFromRemarks(l.remarks).pcs;
+            const rp = extractPcsFromRemarks(l.remarks).rejPcs || 0;
+            if (p !== null) return sum + Math.max(0, p - rp);
+            const netMtr = Math.max(0, Number(l.output_qty || 0) - Number(l.rejection_qty || 0));
+            return sum + (avgLen > 0 ? Math.round(netMtr / avgLen) : 0);
+          }, 0);
+        } else {
+          feederMtr = feederLogs.reduce((sum, l) => sum + Math.max(0, Number(l.output_qty || 0) - Number(l.rejection_qty || 0)), 0);
+          feederPcs = feederLogs.reduce((sum, l) => {
+            const p = extractPcsFromRemarks(l.remarks).pcs;
+            const rp = extractPcsFromRemarks(l.remarks).rejPcs || 0;
+            if (p !== null && p > 0) return sum + Math.max(0, p - rp);
+            const netMtr = Math.max(0, Number(l.output_qty || 0) - Number(l.rejection_qty || 0));
+            return sum + (avgLen > 0 ? Math.round(netMtr / avgLen) : 0);
+          }, 0);
+        }
+
+        const otherCutMotherPcs = otherBsLogs.reduce((sum, l) => {
+          const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
+          if (motherPcs && motherPcs > 0) return sum + motherPcs;
+          const p = extractPcsFromRemarks(l.remarks).pcs;
+          if (p && p > 0) return sum + p;
+          const inMtr = Number(l.input_qty || l.output_qty || 0);
+          return sum + (avgLen > 0 ? Math.round(inMtr / avgLen) : 0);
+        }, 0);
+
+        const otherCutMtr = otherBsLogs.reduce((sum, l) => sum + Number(l.input_qty || l.output_qty || 0), 0);
+
+        const maxAllowedPcs = Math.max(0, feederPcs - otherCutMotherPcs);
+        const maxAllowedMtr = Math.max(0, Number((feederMtr - otherCutMtr).toFixed(2)));
+
+        if (newMotherPcs !== null && newMotherPcs > maxAllowedPcs) {
+          return NextResponse.json(
+            { error: `Band Saw input quantity (${newMotherPcs} PCS) cannot be greater than available ${feederLabel} (${maxAllowedPcs} PCS).` },
+            { status: 400 }
+          );
+        }
+
+        if (newInputMtr !== null && newInputMtr > maxAllowedMtr + 0.5) {
+          return NextResponse.json(
+            { error: `Band Saw input length (${newInputMtr.toFixed(2)} MTR) cannot be greater than available ${feederLabel} (${maxAllowedMtr.toFixed(2)} MTR).` },
+            { status: 400 }
+          );
+        }
       }
     }
 

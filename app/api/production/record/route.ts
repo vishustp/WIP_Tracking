@@ -86,6 +86,8 @@ export async function POST(req: NextRequest) {
 
     // Track batch cumulative pieces per plan/WO for batch-level capping
     const batchPcsByPlan = new Map<string, number>();
+    const batchMotherPcsByWo = new Map<string, number>();
+    const batchInputMtrByWo = new Map<string, number>();
 
     // Validate server-side business rules
     for (const item of sanitizedEntries) {
@@ -137,6 +139,128 @@ export async function POST(req: NextRequest) {
           { error: `Maximum allowable pipe length at Band Saw is 15.00 MTR (received average ${(outMtr / outPcs).toFixed(2)} MTR).` },
           { status: 400 }
         );
+      }
+
+      // Rule: Band Saw input quantity cannot be greater than HT Quantity (or preceding feeder balance)
+      if (item.stage_code === 'BAND_SAW' || item.stage_code === 'IP_CUTTING') {
+        const { motherPcs: parsedMotherPcs } = extractBandSawCutsFromRemarks(item.remarks);
+        const motherPcsNum = parsedMotherPcs && parsedMotherPcs > 0
+          ? parsedMotherPcs
+          : (extractPcsFromRemarks(item.remarks).pcs || (outPcs > 0 ? outPcs : 0));
+        const inputMtrNum = Number(item.input_qty || (outMtr > 0 ? outMtr : 0));
+
+        // Load work order details to check route and dimensions
+        const { data: woData } = await admin
+          .from('work_orders')
+          .select('id, work_order_no, route_code, process_route, l1, l2, avg_length')
+          .eq('id', item.work_order_id)
+          .maybeSingle();
+
+        if (woData) {
+          const route = (woData.process_route || woData.route_code || 'CDS').toUpperCase();
+          const isSsSteel = route.includes('SS') || route.includes('STAINLESS');
+          const isCds = route.includes('CDS');
+          const isAlloy = route.includes('ALLOY');
+
+          // Feeder stage determines available mother pipes
+          // CDS / SS_STEEL -> HEAT_TREATMENT
+          // ALLOY_HFS -> HOLLOW_HEAT_TREATMENT
+          // HFS -> HTC or ROLLING
+          let feederStageCodes: string[] = [];
+          let feederLabel = 'Heat Treatment (HT) Qty';
+          if (isSsSteel || isCds) {
+            feederStageCodes = ['HEAT_TREATMENT'];
+            feederLabel = 'Heat Treatment (HT) Qty';
+          } else if (isAlloy) {
+            feederStageCodes = ['HOLLOW_HEAT_TREATMENT'];
+            feederLabel = 'Hollow Heat Treatment Qty';
+          } else {
+            feederStageCodes = ['HTC', 'ROLLING', 'HOT_ROLLING'];
+            feederLabel = 'HTC OK Qty';
+          }
+
+          const feederStageIds = feederStageCodes.map((sc) => stageMap.get(sc)).filter(Boolean) as string[];
+          const bandSawStageIds = ['BAND_SAW', 'IP_CUTTING'].map((sc) => stageMap.get(sc)).filter(Boolean) as string[];
+
+          // Fetch feeder logs & existing Band Saw logs for this work order
+          const { data: woLogs } = await admin
+            .from('production_logs')
+            .select('stage_id, input_qty, output_qty, rejection_qty, htc_ok, remarks')
+            .eq('work_order_id', item.work_order_id);
+
+          const feederLogs = (woLogs || []).filter((l) => feederStageIds.includes(l.stage_id));
+          const existingBsLogs = (woLogs || []).filter((l) => bandSawStageIds.includes(l.stage_id));
+
+          // Compute feeder incoming pieces & meters
+          const avgLen = Number(woData.l1 && woData.l2 ? (woData.l1 + woData.l2) / 2 : woData.l1 || woData.l2 || woData.avg_length || 6.0);
+
+          let feederPcs = 0;
+          let feederMtr = 0;
+          if (feederStageCodes.includes('HTC') || feederStageCodes.includes('ROLLING')) {
+            feederMtr = feederLogs.reduce((sum, l) => {
+              const htc = Number(l.htc_ok || 0);
+              return sum + (htc > 0 ? htc : Math.max(0, Number(l.output_qty || 0) - Number(l.rejection_qty || 0)));
+            }, 0);
+            feederPcs = feederLogs.reduce((sum, l) => {
+              const p = extractPcsFromRemarks(l.remarks).pcs;
+              const rp = extractPcsFromRemarks(l.remarks).rejPcs || 0;
+              if (p !== null) return sum + Math.max(0, p - rp);
+              const netMtr = Math.max(0, Number(l.output_qty || 0) - Number(l.rejection_qty || 0));
+              return sum + (avgLen > 0 ? Math.round(netMtr / avgLen) : 0);
+            }, 0);
+          } else {
+            feederMtr = feederLogs.reduce((sum, l) => sum + Math.max(0, Number(l.output_qty || 0) - Number(l.rejection_qty || 0)), 0);
+            feederPcs = feederLogs.reduce((sum, l) => {
+              const p = extractPcsFromRemarks(l.remarks).pcs;
+              const rp = extractPcsFromRemarks(l.remarks).rejPcs || 0;
+              if (p !== null && p > 0) return sum + Math.max(0, p - rp);
+              const netMtr = Math.max(0, Number(l.output_qty || 0) - Number(l.rejection_qty || 0));
+              return sum + (avgLen > 0 ? Math.round(netMtr / avgLen) : 0);
+            }, 0);
+          }
+
+          // Compute already processed Band Saw mother pipes & meters
+          const alreadyCutMotherPcs = existingBsLogs.reduce((sum, l) => {
+            const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
+            if (motherPcs && motherPcs > 0) return sum + motherPcs;
+            const p = extractPcsFromRemarks(l.remarks).pcs;
+            if (p && p > 0) return sum + p;
+            const inMtr = Number(l.input_qty || l.output_qty || 0);
+            return sum + (avgLen > 0 ? Math.round(inMtr / avgLen) : 0);
+          }, 0);
+
+          const alreadyCutMtr = existingBsLogs.reduce((sum, l) => sum + Number(l.input_qty || l.output_qty || 0), 0);
+
+          const batchPcsAdded = batchMotherPcsByWo.get(item.work_order_id) || 0;
+          const batchMtrAdded = batchInputMtrByWo.get(item.work_order_id) || 0;
+
+          const availFeederPcs = Math.max(0, feederPcs - alreadyCutMotherPcs - batchPcsAdded);
+          const availFeederMtr = Math.max(0, Number((feederMtr - alreadyCutMtr - batchMtrAdded).toFixed(2)));
+
+          if (feederPcs <= 0 && feederMtr <= 0) {
+            return NextResponse.json(
+              { error: `No available ${feederLabel} in queue for Band Saw cutting (Work Order ${woData.work_order_no}). Please record ${feederLabel} first.` },
+              { status: 400 }
+            );
+          }
+
+          if (availFeederPcs > 0 && motherPcsNum > availFeederPcs) {
+            return NextResponse.json(
+              { error: `Band Saw input quantity (${motherPcsNum} PCS) cannot be greater than available ${feederLabel} (${availFeederPcs} PCS) for Work Order ${woData.work_order_no}.` },
+              { status: 400 }
+            );
+          }
+
+          if (availFeederMtr > 0 && inputMtrNum > availFeederMtr + 0.5) {
+            return NextResponse.json(
+              { error: `Band Saw input length (${inputMtrNum.toFixed(2)} MTR) cannot be greater than available ${feederLabel} (${availFeederMtr.toFixed(2)} MTR) for Work Order ${woData.work_order_no}.` },
+              { status: 400 }
+            );
+          }
+
+          batchMotherPcsByWo.set(item.work_order_id, batchPcsAdded + motherPcsNum);
+          batchInputMtrByWo.set(item.work_order_id, batchMtrAdded + inputMtrNum);
+        }
       }
 
       // Rule: Rolling piece count requirement and plan balance capping

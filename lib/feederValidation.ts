@@ -1,5 +1,5 @@
 import { StageCode } from '@/types';
-import { extractPcsFromRemarks } from './productionUtils';
+import { extractPcsFromRemarks, extractBandSawCutsFromRemarks } from './productionUtils';
 
 export interface FeederBalance {
   feederStageCode: string;
@@ -250,9 +250,19 @@ export function computeFeederBalanceForWorkOrder(params: {
   const bandSawRejMtr = sumStageRejMtr(bandSawLogs);
   const bandSawNetMtr = Math.max(0, Number((bandSawOutMtr - bandSawRejMtr).toFixed(2)));
 
+  const bandSawMotherPcs = bandSawLogs.reduce((sum, l) => {
+    const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
+    if (motherPcs && motherPcs > 0) return sum + motherPcs;
+    const { pcs } = extractPcsFromRemarks(l.remarks);
+    if (pcs && pcs > 0) return sum + pcs;
+    const inMtr = Number(l.input_qty || l.output_qty || 0);
+    return sum + (avgLen > 0 ? Math.round(inMtr / avgLen) : 0);
+  }, 0);
+  const bandSawInputMtr = bandSawLogs.reduce((sum, l) => sum + Number(l.input_qty || l.output_qty || 0), 0);
+
   if (targetStage === 'BAND_SAW') {
-    const availPcs = Math.max(0, bsIncomingPcs - bandSawOutPcs);
-    const availMtr = Math.max(0, Number((bsIncomingMtr - bandSawOutMtr).toFixed(2)));
+    const availPcs = Math.max(0, bsIncomingPcs - bandSawMotherPcs);
+    const availMtr = Math.max(0, Number((bsIncomingMtr - bandSawInputMtr).toFixed(2)));
     return {
       feederStageCode: (isSsSteel || isCds) ? 'HEAT_TREATMENT' : (isAlloy ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING'),
       feederLabel: bsFeederLabel,

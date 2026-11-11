@@ -365,19 +365,27 @@ export async function POST(req: NextRequest) {
         const feederBal = feederBalanceMap.get(wo.id);
         if (feederBal && work_center !== 'ROLLING') {
           const avgLen = rowL1 && rowL2 ? (rowL1 + rowL2) / 2 : rowL1 || rowL2 || (wo.l1 && wo.l2 ? (wo.l1 + wo.l2) / 2 : 6.0);
-          const reqPcs = effectiveOutPcs || (avgLen > 0 && outMtr > 0 ? Math.round(outMtr / avgLen) : 0);
-          const reqMtr = outMtr;
+          const reqPcs = (work_center === 'BAND_SAW' && inPcs)
+            ? inPcs
+            : (effectiveOutPcs || (avgLen > 0 && outMtr > 0 ? Math.round(outMtr / avgLen) : 0));
+          const reqMtr = (work_center === 'BAND_SAW' && inMtr > 0) ? inMtr : outMtr;
 
           if (feederBal.availPcs <= 0 && feederBal.availMtr <= 0) {
             errors.push(`Row ${index + 1} (${woNo}): No available feeder WIP for ${stageObj?.stage_name || work_center}. Please record and pass ${feederBal.feederLabel} first.`);
             continue;
           }
           if (reqPcs > 0 && feederBal.availPcs > 0 && reqPcs > feederBal.availPcs) {
-            errors.push(`Row ${index + 1} (${woNo}): ${stageObj?.stage_name || work_center} (${reqPcs} PCS) exceeds available ${feederBal.feederLabel} feeder balance (${feederBal.availPcs} PCS).`);
+            const stageMsg = work_center === 'BAND_SAW'
+              ? `Band Saw input quantity (${reqPcs} PCS) exceeds available ${feederBal.feederLabel} (${feederBal.availPcs} PCS)`
+              : `${stageObj?.stage_name || work_center} (${reqPcs} PCS) exceeds available ${feederBal.feederLabel} feeder balance (${feederBal.availPcs} PCS)`;
+            errors.push(`Row ${index + 1} (${woNo}): ${stageMsg}.`);
             continue;
           }
           if (reqPcs <= 0 && reqMtr > feederBal.availMtr + 0.5) {
-            errors.push(`Row ${index + 1} (${woNo}): ${stageObj?.stage_name || work_center} (${reqMtr.toFixed(2)} MTR) exceeds available ${feederBal.feederLabel} feeder balance (${feederBal.availMtr.toFixed(2)} MTR).`);
+            const stageMsg = work_center === 'BAND_SAW'
+              ? `Band Saw input length (${reqMtr.toFixed(2)} MTR) exceeds available ${feederBal.feederLabel} (${feederBal.availMtr.toFixed(2)} MTR)`
+              : `${stageObj?.stage_name || work_center} (${reqMtr.toFixed(2)} MTR) exceeds available ${feederBal.feederLabel} feeder balance (${feederBal.availMtr.toFixed(2)} MTR)`;
+            errors.push(`Row ${index + 1} (${woNo}): ${stageMsg}.`);
             continue;
           }
           feederBal.availPcs = Math.max(0, feederBal.availPcs - reqPcs);
