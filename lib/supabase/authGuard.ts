@@ -189,15 +189,16 @@ export function isAuthorizedForStation(auth: AuthContext | null | undefined, sta
       PILGER: 'production_pilger',
       HEAT_TREATMENT: 'production_ht',
       BAND_SAW: 'production_band_saw',
+      IP_CUTTING: 'production_band_saw',
       VDI: 'production_vdi',
       FINISHING: 'production_finishing',
     };
     const permKey = STAGE_PERM_MAP[stageCode];
     if (permKey && customPerms[permKey] === 'edit') return true;
 
-    // Joint Band Saw & Finishing Line Rule
+    // Joint Band Saw & Finishing Line Rule (including IP Cutting)
     if (
-      (stageCode === 'BAND_SAW' || stageCode === 'FINISHING') &&
+      (stageCode === 'BAND_SAW' || stageCode === 'IP_CUTTING' || stageCode === 'FINISHING') &&
       (customPerms.production_band_saw === 'edit' || customPerms.production_finishing === 'edit')
     ) {
       return true;
@@ -241,14 +242,17 @@ export function isAuthorizedForStation(auth: AuthContext | null | undefined, sta
     }
   }
 
-  // Joint Band Saw & Finishing Line Rule
-  if (target === 'BAND_SAW' || target === 'FINISHING') {
+  // Joint Band Saw & Finishing Line Rule (including IP Cutting)
+  if (target === 'BAND_SAW' || target === 'IP_CUTTING' || target === 'FINISHING') {
     if (
       userWc === 'BAND_SAW' ||
+      userWc === 'IP_CUTTING' ||
       userWc === 'FINISHING' ||
       userDef === 'BAND_SAW' ||
+      userDef === 'IP_CUTTING' ||
       userDef === 'FINISHING' ||
       userAllowed.includes('BAND_SAW') ||
+      userAllowed.includes('IP_CUTTING') ||
       userAllowed.includes('FINISHING')
     ) {
       return true;

@@ -232,12 +232,26 @@ export function reconcileWorkOrderWip(
       stageLen = actualMhLen;
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
-    } else if (sc === 'DRAW') {
-      // CDS: Feeder is Hollow Heat Treatment OK (if alloy) or directly Rolling HTC OK (if carbon CDS)
+    } else if (sc === 'IP_CUTTING') {
+      // Pre-Draw Band Saw Cut: Feeder is Hollow Heat Treatment OK (if alloy) or Rolling HTC OK
       const hhtProd = stageProdMap.get('HOLLOW_HEAT_TREATMENT');
       const hhtOkPcs = Math.max(0, (hhtProd?.prodPcs || 0) - (hhtProd?.rejPcs || 0));
       incomingPcs = isAlloy ? hhtOkPcs : rollHtcPcs;
-      stageLen = actualMhLen; // Mother hollow pieces waiting to be drawn
+      stageLen = actualMhLen;
+      stageOd = mhOd > 0 ? mhOd : stageOd;
+      stageWt = mhWt > 0 ? mhWt : stageWt;
+    } else if (sc === 'DRAW') {
+      // CDS: Feeder is IP Cutting OK (if order underwent pre-draw IP cutting),
+      // Hollow Heat Treatment OK (if alloy), or directly Rolling HTC OK (if carbon CDS)
+      const ipProd = stageProdMap.get('IP_CUTTING');
+      const ipOkPcs = Math.max(0, (ipProd?.prodPcs || 0) - (ipProd?.rejPcs || 0));
+      const hasIpCut = ipOkPcs > 0;
+
+      const hhtProd = stageProdMap.get('HOLLOW_HEAT_TREATMENT');
+      const hhtOkPcs = Math.max(0, (hhtProd?.prodPcs || 0) - (hhtProd?.rejPcs || 0));
+
+      incomingPcs = hasIpCut ? ipOkPcs : (isAlloy ? hhtOkPcs : rollHtcPcs);
+      stageLen = hasIpCut && (cur.avg_length || (cur as any).ip_cut_length) ? Number(cur.avg_length || (cur as any).ip_cut_length) : actualMhLen;
       stageOd = mhOd > 0 ? mhOd : stageOd;
       stageWt = mhWt > 0 ? mhWt : stageWt;
     } else if (sc === 'PILGER') {

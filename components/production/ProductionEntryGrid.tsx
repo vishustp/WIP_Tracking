@@ -322,7 +322,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
 
       return false;
     });
-  }, [rows, woFilter, campaignChildOrdersMap]);
+  }, [rows, woFilter, campaignChildOrdersMap, stage]);
 
   // Toggle all rows expansion
   // Toggle all rows expansion

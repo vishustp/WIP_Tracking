@@ -143,10 +143,20 @@ export async function POST(req: NextRequest) {
         const isSsSteel = route.includes('SS') || route.includes('STAINLESS');
         const isCds = route.includes('CDS');
         const isAlloy = route.includes('ALLOY');
+        const isIpCutting = stageCode === 'IP_CUTTING';
+        const stationName = isIpCutting ? 'IP Cutting' : 'Band Saw';
 
         let feederStageCodes: string[] = [];
         let feederLabel = 'Heat Treatment (HT) Qty';
-        if (isSsSteel || isCds) {
+        if (isIpCutting) {
+          if (isAlloy) {
+            feederStageCodes = ['HOLLOW_HEAT_TREATMENT'];
+            feederLabel = 'Hollow Heat Treatment Qty';
+          } else {
+            feederStageCodes = ['HTC', 'ROLLING', 'HOT_ROLLING'];
+            feederLabel = 'Rolling HTC OK';
+          }
+        } else if (isSsSteel || isCds) {
           feederStageCodes = ['HEAT_TREATMENT'];
           feederLabel = 'Heat Treatment (HT) Qty';
         } else if (isAlloy) {
@@ -154,7 +164,7 @@ export async function POST(req: NextRequest) {
           feederLabel = 'Hollow Heat Treatment Qty';
         } else {
           feederStageCodes = ['HTC', 'ROLLING', 'HOT_ROLLING'];
-          feederLabel = 'HTC OK Qty';
+          feederLabel = 'Rolling HTC OK';
         }
 
         const { data: stages } = await admin.from('process_stages').select('id, stage_code');
@@ -162,7 +172,7 @@ export async function POST(req: NextRequest) {
         (stages || []).forEach((s) => sMap.set(s.stage_code, s.id));
 
         const feederStageIds = feederStageCodes.map((sc) => sMap.get(sc)).filter(Boolean) as string[];
-        const bandSawStageIds = ['BAND_SAW', 'IP_CUTTING'].map((sc) => sMap.get(sc)).filter(Boolean) as string[];
+        const targetStageIds = [stageCode].map((sc) => sMap.get(sc)).filter(Boolean) as string[];
 
         const { data: woLogs } = await admin
           .from('production_logs')
@@ -170,7 +180,7 @@ export async function POST(req: NextRequest) {
           .eq('work_order_id', targetLog.work_order_id);
 
         const feederLogs = (woLogs || []).filter((l) => feederStageIds.includes(l.stage_id));
-        const otherBsLogs = (woLogs || []).filter((l) => bandSawStageIds.includes(l.stage_id) && l.id !== targetLog.id);
+        const otherBsLogs = (woLogs || []).filter((l) => targetStageIds.includes(l.stage_id) && l.id !== targetLog.id);
 
         const avgLen = Number(woData.l1 && woData.l2 ? (woData.l1 + woData.l2) / 2 : woData.l1 || woData.l2 || woData.avg_length || 6.0);
 
@@ -199,6 +209,62 @@ export async function POST(req: NextRequest) {
           }, 0);
         }
 
+        // Query approved diversions for this work order at Band Saw / IP Cutting
+        const { data: rawDivs } = await admin
+          .from('diversion_plans')
+          .select('source_wo_id, target_wo_id, diverted_qty, diverted_pcs, work_center, reason, status, ppc_approved_at')
+          .or(`target_wo_id.eq.${targetLog.work_order_id},source_wo_id.eq.${targetLog.work_order_id}`);
+
+        const parseDivStages = (d: any) => {
+          const fromMatch = typeof d.reason === 'string' ? d.reason.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i) : null;
+          const toMatch = typeof d.reason === 'string' ? d.reason.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i) : null;
+          const sourceStage = fromMatch ? fromMatch[1].toUpperCase() : (d.work_center || 'ROLLING');
+          const targetStage = toMatch ? toMatch[1].toUpperCase() : (d.work_center || 'ROLLING');
+          return { sourceStage, targetStage };
+        };
+
+        const isApprovedDiv = (d: any) => {
+          if (d.status === 'APPROVED') return true;
+          if (d.status === 'PENDING_PPC' || d.status === 'REJECTED_BY_PPC' || d.status === 'CANCELLED') return false;
+          if (d.ppc_approved_at) return true;
+          return true;
+        };
+
+        const approvedDivs = (rawDivs || []).filter(isApprovedDiv);
+        const divInLogs = approvedDivs.filter(
+          (d) => d.target_wo_id === targetLog.work_order_id && (parseDivStages(d).targetStage === 'BAND_SAW' || parseDivStages(d).targetStage === 'IP_CUTTING')
+        );
+        const divOutLogs = approvedDivs.filter(
+          (d) => d.source_wo_id === targetLog.work_order_id && (parseDivStages(d).sourceStage === 'BAND_SAW' || parseDivStages(d).sourceStage === 'IP_CUTTING')
+        );
+
+        const divInMtr = divInLogs.reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0);
+        const divInPcs = divInLogs.reduce((sum, d) => {
+          if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+          const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          const dQty = Number(d.diverted_qty || 0);
+          return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+        }, 0);
+
+        const divOutMtr = divOutLogs.reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0);
+        const divOutPcs = divOutLogs.reduce((sum, d) => {
+          if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+          const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          const dQty = Number(d.diverted_qty || 0);
+          return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+        }, 0);
+
+        const totalFeederPcs = Math.max(0, feederPcs + divInPcs - divOutPcs);
+        const totalFeederMtr = Math.max(0, Number((feederMtr + divInMtr - divOutMtr).toFixed(2)));
+
+        if (divInPcs > 0 && feederPcs === 0) {
+          feederLabel = 'Diverted Material In';
+        } else if (divInPcs > 0 && feederPcs > 0) {
+          feederLabel = `${feederLabel} / Diversion`;
+        }
+
         const otherCutMotherPcs = otherBsLogs.reduce((sum, l) => {
           const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
           if (motherPcs && motherPcs > 0) return sum + motherPcs;
@@ -210,19 +276,19 @@ export async function POST(req: NextRequest) {
 
         const otherCutMtr = otherBsLogs.reduce((sum, l) => sum + Number(l.input_qty || l.output_qty || 0), 0);
 
-        const maxAllowedPcs = Math.max(0, feederPcs - otherCutMotherPcs);
-        const maxAllowedMtr = Math.max(0, Number((feederMtr - otherCutMtr).toFixed(2)));
+        const maxAllowedPcs = Math.max(0, totalFeederPcs - otherCutMotherPcs);
+        const maxAllowedMtr = Math.max(0, Number((totalFeederMtr - otherCutMtr).toFixed(2)));
 
         if (newMotherPcs !== null && newMotherPcs > maxAllowedPcs) {
           return NextResponse.json(
-            { error: `Band Saw input quantity (${newMotherPcs} PCS) cannot be greater than available ${feederLabel} (${maxAllowedPcs} PCS).` },
+            { error: `${stationName} input quantity (${newMotherPcs} PCS) cannot be greater than available ${feederLabel} (${maxAllowedPcs} PCS).` },
             { status: 400 }
           );
         }
 
         if (newInputMtr !== null && newInputMtr > maxAllowedMtr + 0.5) {
           return NextResponse.json(
-            { error: `Band Saw input length (${newInputMtr.toFixed(2)} MTR) cannot be greater than available ${feederLabel} (${maxAllowedMtr.toFixed(2)} MTR).` },
+            { error: `${stationName} input length (${newInputMtr.toFixed(2)} MTR) cannot be greater than available ${feederLabel} (${maxAllowedMtr.toFixed(2)} MTR).` },
             { status: 400 }
           );
         }

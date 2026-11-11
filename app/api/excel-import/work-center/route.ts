@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAuth } from '@/lib/supabase/authGuard';
 import { attachPcsToRemarks } from '@/lib/productionUtils';
 import { computeFeederBalanceForWorkOrder, FeederBalance } from '@/lib/feederValidation';
+import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function POST(req: NextRequest) {
   try {
@@ -456,6 +457,10 @@ export async function POST(req: NextRequest) {
 
     if (importedCount === 0 && skippedDuplicatesCount === 0 && errors.length > 0) {
       return NextResponse.json({ error: errors.join('; ') }, { status: 400 });
+    }
+
+    if (importedCount > 0) {
+      invalidateQueueCache();
     }
 
     return NextResponse.json({

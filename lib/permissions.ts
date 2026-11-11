@@ -16,6 +16,7 @@ export const STAGE_TO_PERMISSION_KEY: Record<string, keyof FormPermissions> = {
   PILGER: 'production_pilger',
   HEAT_TREATMENT: 'production_ht',
   BAND_SAW: 'production_band_saw',
+  IP_CUTTING: 'production_band_saw',
   VDI: 'production_vdi',
   FINISHING: 'production_finishing',
 };
@@ -193,6 +194,7 @@ export const WORK_CENTER_LABELS: Record<string, string> = {
   PILGER: 'Cold Pilger Mill',
   HEAT_TREATMENT: 'Final Heat Treatment & QA Lab',
   BAND_SAW: 'Band Saw Cutting Station',
+  IP_CUTTING: 'IP Cutting (Band Saw)',
   VDI: 'Visual Dimension Inspection (VDI / QC)',
   FINISHING: 'Finishing, Straightening & Dispatch',
 };
@@ -403,15 +405,18 @@ export function isUserAuthorizedForStage(user: AppUserProfile | null | undefined
   }
 
   // Joint Band Saw & Finishing Work Centers Rule:
-  // Band Saw (BAND_SAW) & Finishing (FINISHING) operators have mutual permissions to work on BOTH work centers
-  const isTargetBandSawOrFinishing = stageCode === 'BAND_SAW' || stageCode === 'FINISHING';
+  // Band Saw (BAND_SAW, IP_CUTTING) & Finishing (FINISHING) operators have mutual permissions to work on BOTH work centers
+  const isTargetBandSawOrFinishing = stageCode === 'BAND_SAW' || stageCode === 'IP_CUTTING' || stageCode === 'FINISHING';
   if (isTargetBandSawOrFinishing) {
     const hasBandSawOrFinishingPrivilege =
       userWc === 'BAND_SAW' ||
+      userWc === 'IP_CUTTING' ||
       userWc === 'FINISHING' ||
       userDef === 'BAND_SAW' ||
+      userDef === 'IP_CUTTING' ||
       userDef === 'FINISHING' ||
       userAllowed.includes('BAND_SAW') ||
+      userAllowed.includes('IP_CUTTING') ||
       userAllowed.includes('FINISHING');
     if (hasBandSawOrFinishingPrivilege) return true;
   }
@@ -441,7 +446,7 @@ export function checkCanDelete(user: AppUserProfile | null | undefined, stageCod
     if (isAssigned) {
       const isJointFurnace = (stageCode === 'HOLLOW_HEAT_TREATMENT' || stageCode === 'HEAT_TREATMENT') &&
         user.work_center !== stageCode;
-      const isJointBandSawFinishing = (stageCode === 'BAND_SAW' || stageCode === 'FINISHING') &&
+      const isJointBandSawFinishing = (stageCode === 'BAND_SAW' || stageCode === 'IP_CUTTING' || stageCode === 'FINISHING') &&
         user.work_center !== stageCode;
       return {
         allowed: true,
@@ -649,7 +654,7 @@ export function getFormAccess(
     let customAccess = customPerms ? customPerms[stagePermKey] : undefined;
 
     // Joint Band Saw & Finishing Rule: If one has 'edit' permission, both get 'edit'
-    if (targetStage === 'BAND_SAW' || targetStage === 'FINISHING') {
+    if (targetStage === 'BAND_SAW' || targetStage === 'IP_CUTTING' || targetStage === 'FINISHING') {
       const bandSawAccess = customPerms?.production_band_saw;
       const finishingAccess = customPerms?.production_finishing;
       if (bandSawAccess === 'edit' || finishingAccess === 'edit') {
@@ -700,9 +705,9 @@ export function getFormAccess(
     const isJointFurnace = (targetStage === 'HOLLOW_HEAT_TREATMENT' || targetStage === 'HEAT_TREATMENT') &&
       user?.work_center !== targetStage &&
       (user?.work_center === 'HOLLOW_HEAT_TREATMENT' || user?.work_center === 'HEAT_TREATMENT');
-    const isJointBandSawFinishing = (targetStage === 'BAND_SAW' || targetStage === 'FINISHING') &&
+    const isJointBandSawFinishing = (targetStage === 'BAND_SAW' || targetStage === 'IP_CUTTING' || targetStage === 'FINISHING') &&
       user?.work_center !== targetStage &&
-      (user?.work_center === 'BAND_SAW' || user?.work_center === 'FINISHING');
+      (user?.work_center === 'BAND_SAW' || user?.work_center === 'IP_CUTTING' || user?.work_center === 'FINISHING');
 
     return {
       formKey,

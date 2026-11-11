@@ -14,6 +14,7 @@ export interface WorkOrderSummary {
   work_order_no: string;
   l1?: number | null;
   l2?: number | null;
+  avg_length?: number | null;
 }
 
 export interface ProductionLogRecord {

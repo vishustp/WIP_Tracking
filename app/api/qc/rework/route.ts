@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { mtFromMtr, isHollowBankOrder, HOLLOW_BANK_WO_ID } from '@/lib/productionUtils';
 import { requireAuth } from '@/lib/supabase/authGuard';
+import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function POST(req: NextRequest) {
   try {
@@ -268,6 +269,8 @@ export async function POST(req: NextRequest) {
         diversionRecord = divData;
       }
     }
+
+    invalidateQueueCache();
 
     return NextResponse.json({
       success: true,

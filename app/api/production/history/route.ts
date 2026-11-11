@@ -18,19 +18,52 @@ export async function GET(req: NextRequest) {
     const limit = Number(searchParams.get('limit')) || 500;
 
     // 1. Fetch entries via RPC
-    const { data: entries, error: rpcErr } = await admin.rpc('get_production_entries', {
-      p_search: search,
-      p_stage_code: stageCode,
-      p_route_code: routeCode,
-      p_from_date: fromDate,
-      p_to_date: toDate,
-      p_limit: limit,
-      p_offset: 0,
-    });
+    // If stageCode === 'BAND_SAW', fetch both BAND_SAW and IP_CUTTING so Band Saw operators can view and track IP Cutting history
+    let entries: any[] = [];
+    if (stageCode === 'BAND_SAW') {
+      const [{ data: bsEntries, error: bsErr }, { data: ipEntries, error: ipErr }] = await Promise.all([
+        admin.rpc('get_production_entries', {
+          p_search: search,
+          p_stage_code: 'BAND_SAW',
+          p_route_code: routeCode,
+          p_from_date: fromDate,
+          p_to_date: toDate,
+          p_limit: limit,
+          p_offset: 0,
+        }),
+        admin.rpc('get_production_entries', {
+          p_search: search,
+          p_stage_code: 'IP_CUTTING',
+          p_route_code: routeCode,
+          p_from_date: fromDate,
+          p_to_date: toDate,
+          p_limit: limit,
+          p_offset: 0,
+        }),
+      ]);
+      if (bsErr) {
+        console.error('Error in get_production_entries RPC for BAND_SAW:', bsErr);
+        return NextResponse.json({ error: bsErr.message }, { status: 500 });
+      }
+      const combined = [...(bsEntries || []), ...(ipEntries || [])];
+      combined.sort((a, b) => new Date(b.created_at || b.process_date).getTime() - new Date(a.created_at || a.process_date).getTime());
+      entries = combined.slice(0, limit);
+    } else {
+      const { data: standardEntries, error: rpcErr } = await admin.rpc('get_production_entries', {
+        p_search: search,
+        p_stage_code: stageCode,
+        p_route_code: routeCode,
+        p_from_date: fromDate,
+        p_to_date: toDate,
+        p_limit: limit,
+        p_offset: 0,
+      });
 
-    if (rpcErr) {
-      console.error('Error in get_production_entries RPC:', rpcErr);
-      return NextResponse.json({ error: rpcErr.message }, { status: 500 });
+      if (rpcErr) {
+        console.error('Error in get_production_entries RPC:', rpcErr);
+        return NextResponse.json({ error: rpcErr.message }, { status: 500 });
+      }
+      entries = standardEntries || [];
     }
 
     const entryIds = (entries || []).map((e: any) => e.id).filter(Boolean);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAuth, isAuthorizedForStation } from '@/lib/supabase/authGuard';
+import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export interface ChildWoPayload {
   id: string;
@@ -631,6 +632,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    invalidateQueueCache();
+
     return NextResponse.json({
       success: true,
       plan_no: basePlanNo,
@@ -840,6 +843,8 @@ export async function DELETE(req: NextRequest) {
       ? `Master plan ${targetPlan.plan_no} and all ${childPlanIds.size} linked child plans deleted successfully. All ${affectedWoIds.size} work orders returned to 'Pending Plan'.`
       : `Rolling plan ${targetPlan.plan_no} deleted successfully. Work order returned to 'Pending Plan'.`;
 
+    invalidateQueueCache();
+
     return NextResponse.json({ success: true, message });
   } catch (error: any) {
     console.error('Delete plan error:', error);
@@ -975,6 +980,8 @@ export async function PUT(req: NextRequest) {
         issuedCount++;
       }
 
+      invalidateQueueCache();
+
       return NextResponse.json({
         success: true,
         message: `Successfully issued ${issuedCount} rolling plan(s) in batch to Hot Rolling.`,
@@ -1087,6 +1094,8 @@ export async function PUT(req: NextRequest) {
           await admin.from('rolling_plans').update({ status: JSON.stringify(cpSt), updated_at: nowIso }).eq('id', cp.id);
         }
       }
+
+      invalidateQueueCache();
 
       return NextResponse.json({
         success: true,
@@ -1215,6 +1224,8 @@ export async function PUT(req: NextRequest) {
           await admin.from('rolling_plans').update({ status: JSON.stringify(cpSt), updated_at: nowIso }).eq('id', cp.id);
         }
       }
+
+      invalidateQueueCache();
 
       return NextResponse.json({
         success: true,
@@ -1597,6 +1608,8 @@ export async function PUT(req: NextRequest) {
       masterUpdateObj.status = JSON.stringify(parsedStatus);
       await admin.from('rolling_plans').update(masterUpdateObj).eq('id', targetPlan.id);
 
+      invalidateQueueCache();
+
       return NextResponse.json({
         success: true,
         message: `Master plan and ${updatedChildMetadata.length} linked child plan(s) updated successfully.`,
@@ -1681,6 +1694,8 @@ export async function PUT(req: NextRequest) {
             .eq('id', masterPlan.id);
         }
       }
+
+      invalidateQueueCache();
 
       return NextResponse.json({
         success: true,
@@ -1787,6 +1802,8 @@ export async function PUT(req: NextRequest) {
     standaloneUpdateObj.status = JSON.stringify(parsedStatus);
 
     await admin.from('rolling_plans').update(standaloneUpdateObj).eq('id', targetPlan.id);
+
+    invalidateQueueCache();
 
     return NextResponse.json({
       success: true,

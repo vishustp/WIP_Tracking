@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function GET(req: NextRequest) {
   try {
@@ -84,6 +85,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Diverted quantity must be greater than zero.' }, { status: 400 });
       }
 
+      const { data: woPair, error: woPairErr } = await supabase
+        .from('work_orders')
+        .select('id, work_order_no')
+        .in('id', [source_wo_id, target_wo_id]);
+
+      if (woPairErr || !woPair || woPair.length < 2) {
+        return NextResponse.json(
+          { error: 'Source or Target Work Order was not found in the system.' },
+          { status: 404 }
+        );
+      }
+
       // Check if approved_by is a valid UUID, otherwise null
       const isValidUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
       const safeApprovedBy = isValidUuid(approved_by) ? approved_by : null;
@@ -120,6 +133,8 @@ export async function POST(req: NextRequest) {
 
       insertedRows.push(data);
     }
+
+    invalidateQueueCache();
 
     return NextResponse.json({
       success: true,
@@ -159,6 +174,7 @@ export async function PUT(req: NextRequest) {
         .single();
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      invalidateQueueCache();
       return NextResponse.json({ success: true, data });
     }
 
@@ -179,6 +195,7 @@ export async function PUT(req: NextRequest) {
         .single();
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      invalidateQueueCache();
       return NextResponse.json({ success: true, data });
     }
 
@@ -194,6 +211,7 @@ export async function PUT(req: NextRequest) {
         .single();
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      invalidateQueueCache();
       return NextResponse.json({ success: true, data });
     }
 

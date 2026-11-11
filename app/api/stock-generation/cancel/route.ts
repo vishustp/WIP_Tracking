@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,6 +27,8 @@ export async function POST(req: NextRequest) {
       console.error('[API /api/stock-generation/cancel] error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    invalidateQueueCache();
 
     return NextResponse.json({ success: true, data });
   } catch (err: any) {

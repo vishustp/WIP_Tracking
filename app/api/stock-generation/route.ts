@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { calculatePipeWeightMt } from '@/lib/productionUtils';
+import { invalidateQueueCache } from '@/lib/cache/queueCache';
 
 export async function GET(req: NextRequest) {
   try {
@@ -107,6 +108,8 @@ export async function POST(req: NextRequest) {
       console.error('[API /api/stock-generation] POST insert error:', insErr);
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
+
+    invalidateQueueCache();
 
     return NextResponse.json({ success: true, data: inserted });
   } catch (err: any) {
