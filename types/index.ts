@@ -9,6 +9,7 @@ export const STAGE_CODES = [
   "HEAT_TREATMENT",
   "BAND_SAW",
   "VDI",
+  "VDI_SALVAGE",
   "FINISHING",
 ] as const;
 
@@ -263,6 +264,7 @@ export const STAGES: { code: StageCode; label: string }[] = [
   { code: "HEAT_TREATMENT", label: "Heat Treatment" },
   { code: "BAND_SAW", label: "Band Saw" },
   { code: "VDI", label: "VDI / QC" },
+  { code: "VDI_SALVAGE", label: "VDI Salvage" },
   { code: "FINISHING", label: "Finishing" },
 ];
 

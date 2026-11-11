@@ -187,6 +187,7 @@ const CANONICAL_WIP_WORK_CENTERS = [
   { code: 'HEAT_TREATMENT', name: 'Heat Treatment', fullName: 'Final Heat Treatment', icon: Flame, color: '#10b981', badgeBg: 'bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200' },
   { code: 'BAND_SAW', name: 'Bandsaw', fullName: 'Band Saw Cutting', icon: Disc, color: '#eab308', badgeBg: 'bg-yellow-50/90 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800 text-yellow-900 dark:text-yellow-200' },
   { code: 'VDI', name: 'VDI', fullName: 'VDI / QC Inspection', icon: Package, color: '#8b5cf6', badgeBg: 'bg-purple-50/90 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800 text-purple-900 dark:text-purple-200' },
+  { code: 'VDI_SALVAGE', name: 'VDI Salvage', fullName: 'VDI Salvage', icon: AlertTriangle, color: '#f59e0b', badgeBg: 'bg-amber-50/90 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200' },
   { code: 'FINISHING', name: 'Finishing', fullName: 'Finishing & Dispatch', icon: CheckCircle2, color: '#06b6d4', badgeBg: 'bg-cyan-50/90 dark:bg-cyan-950/30 border-cyan-200 dark:border-cyan-800 text-cyan-900 dark:text-cyan-200' },
 ];
 
@@ -234,6 +235,7 @@ export default function DashboardClient({
       HEAT_TREATMENT: { mt: 0, pcs: 0, mtr: 0 },
       BAND_SAW: { mt: 0, pcs: 0, mtr: 0 },
       VDI: { mt: 0, pcs: 0, mtr: 0 },
+      VDI_SALVAGE: { mt: 0, pcs: 0, mtr: 0 },
       FINISHING: { mt: 0, pcs: 0, mtr: 0 },
     };
 
@@ -246,6 +248,7 @@ export default function DashboardClient({
       else if (rawCode.includes('DRAW') || rawCode.includes('PILGER') || rawCode === 'IP_CUTTING') key = 'DRAW';
       else if (rawCode === 'HEAT_TREATMENT' || rawCode === 'HT') key = 'HEAT_TREATMENT';
       else if (rawCode.includes('SAW') || rawCode.includes('CUT')) key = 'BAND_SAW';
+      else if (rawCode === 'VDI_SALVAGE' || rawCode.includes('SALVAGE')) key = 'VDI_SALVAGE';
       else if (rawCode.includes('VDI') || rawCode.includes('QC')) key = 'VDI';
       else if (rawCode.includes('FINISH')) key = 'FINISHING';
 

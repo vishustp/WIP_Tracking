@@ -519,6 +519,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       HEAT_TREATMENT: { label: 'Heat Treatment', stage_code: 'HEAT_TREATMENT', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       BAND_SAW: { label: 'Band Saw', stage_code: 'BAND_SAW', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       VDI: { label: 'VDI / QC Inspection', stage_code: 'VDI', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      VDI_SALVAGE: { label: 'VDI Salvage', stage_code: 'VDI_SALVAGE', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       FINISHING: { label: 'Finishing Line', stage_code: 'FINISHING', availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
     };
 
@@ -534,6 +535,7 @@ export default function ProductionEntryGrid({ initialStage }: ProductionEntryGri
       if (raw === 'PILGER' || raw.includes('PILGER')) return 'PILGER';
       if (raw === 'HEAT_TREATMENT' || raw.includes('HEAT')) return 'HEAT_TREATMENT';
       if (raw === 'BAND_SAW' || raw.includes('BAND') || raw.includes('SAW') || raw.includes('CUT')) return 'BAND_SAW';
+      if (raw === 'VDI_SALVAGE' || raw.includes('SALVAGE')) return 'VDI_SALVAGE';
       if (raw === 'VDI' || raw.includes('VDI') || raw.includes('INSPECT')) return 'VDI';
       if (raw === 'FINISHING' || raw.includes('FINISH')) return 'FINISHING';
       return null;

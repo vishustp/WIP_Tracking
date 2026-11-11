@@ -37,6 +37,7 @@ export default function BandSawCuttingClient() {
   const [currentUser, setCurrentUser] = useState<AppUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   const [queueRows, setQueueRows] = useState<Row[]>([]);
   const [historyEntries, setHistoryEntries] = useState<ProductionEntry[]>([]);
@@ -79,7 +80,7 @@ export default function BandSawCuttingClient() {
       setRefreshing(true);
 
       // Fetch queue
-      const queueRes = await fetch('/api/production/queue?stage=BAND_SAW', {
+      const queueRes = await fetch('/api/production/queue?stage=BAND_SAW&include_ip_cutting=true', {
         cache: 'no-store',
       });
       const queueData = await queueRes.json();

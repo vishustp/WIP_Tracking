@@ -1,5 +1,6 @@
 import React from "react";
 import { fmt } from "@/lib/productionUtils";
+import { ExternalLink } from "lucide-react";
 import type { StageCode } from "@/types";
 
 interface WorkCenterSummaryItem {
@@ -31,6 +32,7 @@ const STAGE_DISPLAY_NAMES: Record<StageCode, string> = {
   HEAT_TREATMENT: "HEAT TREATMENT",
   BAND_SAW: "BAND SAW",
   VDI: "VDI / QC",
+  VDI_SALVAGE: "VDI SALVAGE",
   FINISHING: "FINISHING",
 };
 
@@ -47,8 +49,23 @@ export function WipSummaryCards({
     "DRAW",
     "PILGER",
     "HEAT_TREATMENT",
+    "BAND_SAW",
+    "VDI",
+    "VDI_SALVAGE",
     "FINISHING",
   ];
+
+  const handleStageClick = (stgCode: StageCode) => {
+    if (stgCode === "BAND_SAW") {
+      window.location.href = "/band-saw";
+    } else if (stgCode === "VDI") {
+      window.location.href = "/vdi";
+    } else if (stgCode === "VDI_SALVAGE") {
+      window.location.href = "/vdi?tab=salvage";
+    } else {
+      setStage(stgCode);
+    }
+  };
 
   return (
     <div className="rounded-xl border border-[var(--border-subtle,#e2e8f0)] bg-[var(--bg-surface,#ffffff)] p-5 shadow-2xs">
@@ -58,7 +75,7 @@ export function WipSummaryCards({
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10">
         {orderedStages.map((stgCode) => {
           const wc = workCenterSummary.find((x) => x.stage_code === stgCode) || {
             label: STAGE_DISPLAY_NAMES[stgCode] || stgCode,
@@ -75,7 +92,7 @@ export function WipSummaryCards({
           return (
             <div
               key={wc.stage_code}
-              onClick={() => setStage(wc.stage_code)}
+              onClick={() => handleStageClick(wc.stage_code)}
               className={`cursor-pointer rounded-lg border p-4 transition-all ${
                 isSelected
                   ? "border-2 border-sky-600 bg-[var(--bg-surface,#ffffff)] shadow-xs ring-1 ring-sky-600/20"

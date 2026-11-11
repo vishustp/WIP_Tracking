@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
       : [(searchParams.get("stage")?.toUpperCase() || "ROLLING") as StageCode];
     const targetStage = targetStages[0];
     const includeFeeder = searchParams.get("include_feeder") === "true" || searchParams.get("for_planning") === "true";
+    const includeIpCutting = searchParams.get("include_ip_cutting") === "true";
     const forceFresh = searchParams.has("nocache") || searchParams.has("refresh") || searchParams.has("_t");
 
     if (forceFresh) {
@@ -146,6 +147,52 @@ export async function GET(req: NextRequest) {
                 if (readyPcs >= 1 || readyMtr >= 1.0) {
                   selectedRows.push(vdiSalvageRow);
                 }
+              }
+            }
+          } else if (st === "BAND_SAW") {
+            for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
+              const bsRow = queueRows.BAND_SAW;
+              const ipRow = queueRows.IP_CUTTING;
+              if (bsRow) {
+                if (includeFeeder) {
+                  if (Number(bsRow.balance_to_make_pcs ?? 0) >= 1 || Number(bsRow.balance_to_make_mtr ?? 0) >= 1.0 || Number(bsRow.feeder_pcs ?? 0) >= 1) {
+                    selectedRows.push(bsRow);
+                  }
+                } else {
+                  if (!bsRow.is_feeder_source && (Number(bsRow.ready_pcs ?? bsRow.balance_to_make_pcs ?? 0) >= 1 || Number(bsRow.ready_mtr ?? bsRow.balance_to_make_mtr ?? 0) >= 1.0)) {
+                    selectedRows.push(bsRow);
+                  }
+                }
+              }
+              if (ipRow && includeIpCutting) {
+                if (includeFeeder) {
+                  if (Number(ipRow.balance_to_make_pcs ?? 0) >= 1 || Number(ipRow.balance_to_make_mtr ?? 0) >= 1.0 || Number(ipRow.feeder_pcs ?? 0) >= 1) {
+                    selectedRows.push(ipRow);
+                  }
+                } else {
+                  if (!ipRow.is_feeder_source && (Number(ipRow.ready_pcs ?? ipRow.balance_to_make_pcs ?? 0) >= 1 || Number(ipRow.ready_mtr ?? ipRow.balance_to_make_mtr ?? 0) >= 1.0)) {
+                    selectedRows.push(ipRow);
+                  }
+                }
+              }
+            }
+          } else if (st === "DRAW") {
+            for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
+              const drawRow = queueRows.DRAW;
+              const ipRow = queueRows.IP_CUTTING;
+              if (drawRow) {
+                if (includeFeeder) {
+                  if (Number(drawRow.balance_to_make_pcs ?? 0) >= 1 || Number(drawRow.balance_to_make_mtr ?? 0) >= 1.0 || Number(drawRow.feeder_pcs ?? 0) >= 1) {
+                    selectedRows.push(drawRow);
+                  }
+                } else {
+                  if (!drawRow.is_feeder_source && (Number(drawRow.ready_pcs ?? drawRow.balance_to_make_pcs ?? 0) >= 1 || Number(drawRow.ready_mtr ?? drawRow.balance_to_make_mtr ?? 0) >= 1.0)) {
+                    selectedRows.push(drawRow);
+                  }
+                }
+              }
+              if (ipRow && (Number(ipRow.ready_pcs ?? 0) >= 1 || Number(ipRow.ready_mtr ?? 0) >= 1.0)) {
+                selectedRows.push(ipRow);
               }
             }
           } else {
@@ -735,6 +782,7 @@ export async function GET(req: NextRequest) {
       HEAT_TREATMENT: { label: "Heat Treatment", stage_code: "HEAT_TREATMENT", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       BAND_SAW: { label: "Band Saw", stage_code: "BAND_SAW", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       VDI: { label: "VDI / QC Inspection", stage_code: "VDI", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
+      VDI_SALVAGE: { label: "VDI Salvage", stage_code: "VDI_SALVAGE" as StageCode, availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
       FINISHING: { label: "Finishing Line", stage_code: "FINISHING", availMtr: 0, availPcs: 0, availMt: 0, count: 0 },
     };
 
@@ -2010,6 +2058,26 @@ export async function GET(req: NextRequest) {
         net_output_mt: mtFromMtr(qcOkMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0)),
       });
 
+      if (remSalvagePcs >= 1 || remSalvageMtr >= 1.0) {
+        pipeline.push({
+          stage_code: "VDI_SALVAGE" as StageCode,
+          stage_name: "VDI Salvage",
+          sequence_no: pipeline.length + 1,
+          available_mtr: remSalvageMtr,
+          available_pcs: remSalvagePcs,
+          available_mt: remSalvageMt,
+          gross_output_mtr: 0,
+          gross_output_pcs: 0,
+          gross_output_mt: 0,
+          rejection_mtr: 0,
+          rejection_pcs: 0,
+          rejection_mt: 0,
+          net_output_mtr: 0,
+          net_output_pcs: 0,
+          net_output_mt: 0,
+        });
+      }
+
       pipeline.push({
         stage_code: "FINISHING",
         stage_name: "Finishing",
@@ -2058,6 +2126,13 @@ export async function GET(req: NextRequest) {
         workCenterSummary.IP_CUTTING.availPcs += ipCutAvailPcs;
         workCenterSummary.IP_CUTTING.availMt += ipCutAvailMt;
         workCenterSummary.IP_CUTTING.count += 1;
+        // WIP Ledger Consistency: Cold Reduction rollup incorporates preparatory IP cutting
+        workCenterSummary.DRAW.availMtr += ipCutAvailMtr;
+        workCenterSummary.DRAW.availPcs += ipCutAvailPcs;
+        workCenterSummary.DRAW.availMt += ipCutAvailMt;
+        if (drawAvailPcs < 1 && drawAvailMtr < 1.0) {
+          workCenterSummary.DRAW.count += 1;
+        }
       }
       if (isCds && (drawAvailMtr >= 1.0 || drawAvailPcs >= 1)) {
         workCenterSummary.DRAW.availMtr += drawAvailMtr;
@@ -2088,6 +2163,12 @@ export async function GET(req: NextRequest) {
         workCenterSummary.VDI.availPcs += vdiAvailPcs;
         workCenterSummary.VDI.availMt += vdiAvailMt;
         workCenterSummary.VDI.count += 1;
+      }
+      if (remSalvageMtr >= 1.0 || remSalvagePcs >= 1) {
+        workCenterSummary.VDI_SALVAGE.availMtr += remSalvageMtr;
+        workCenterSummary.VDI_SALVAGE.availPcs += remSalvagePcs;
+        workCenterSummary.VDI_SALVAGE.availMt += remSalvageMt;
+        workCenterSummary.VDI_SALVAGE.count += 1;
       }
       if (finAvailMtr >= 1.0 || finAvailPcs >= 1) {
         workCenterSummary.FINISHING.availMtr += finAvailMtr;
@@ -2696,6 +2777,7 @@ export async function GET(req: NextRequest) {
                 feeder_stage_code: "BAND_SAW",
               }
             : null,
+        VDI_SALVAGE: null,
         FINISHING:
           (isFinReady || isFinFeeder)
             ? {
@@ -2887,6 +2969,7 @@ export async function GET(req: NextRequest) {
             }
           : null;
 
+      queueRows.VDI_SALVAGE = vdiSalvageRow;
       allCalculatedRows.set(woId, { queueRows, pipeline, bandSawLotRows, vdiLotRows, vdiSalvageRow });
 
       // Generate individual plan rows for ROLLING stage queue
@@ -3414,7 +3497,7 @@ export async function GET(req: NextRequest) {
                 }
               }
             }
-            if (ipRow) {
+            if (ipRow && includeIpCutting) {
               if (includeFeeder) {
                 if (Number(ipRow.balance_to_make_pcs ?? 0) >= 1 || Number(ipRow.balance_to_make_mtr ?? 0) >= 1.0 || Number(ipRow.feeder_pcs ?? 0) >= 1) {
                   selectedRows.push(ipRow);
@@ -3424,6 +3507,25 @@ export async function GET(req: NextRequest) {
                   selectedRows.push(ipRow);
                 }
               }
+            }
+          }
+        } else if (st === "DRAW") {
+          for (const { queueRows } of allCalculatedRows.values()) {
+            const drawRow = queueRows.DRAW;
+            const ipRow = queueRows.IP_CUTTING;
+            if (drawRow) {
+              if (includeFeeder) {
+                if (Number(drawRow.balance_to_make_pcs ?? 0) >= 1 || Number(drawRow.balance_to_make_mtr ?? 0) >= 1.0 || Number(drawRow.feeder_pcs ?? 0) >= 1) {
+                  selectedRows.push(drawRow);
+                }
+              } else {
+                if (!drawRow.is_feeder_source && (Number(drawRow.ready_pcs ?? drawRow.balance_to_make_pcs ?? 0) >= 1 || Number(drawRow.ready_mtr ?? drawRow.balance_to_make_mtr ?? 0) >= 1.0)) {
+                  selectedRows.push(drawRow);
+                }
+              }
+            }
+            if (ipRow && (Number(ipRow.ready_pcs ?? 0) >= 1 || Number(ipRow.ready_mtr ?? 0) >= 1.0)) {
+              selectedRows.push(ipRow);
             }
           }
         } else {
