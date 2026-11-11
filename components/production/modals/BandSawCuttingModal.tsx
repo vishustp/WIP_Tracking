@@ -59,6 +59,15 @@ export function BandSawCuttingModal({
   const availMotherMtr = Math.max(0, Number(row.balance_to_make_mtr || 0));
   const availMotherMt = mtFromMtr(availMotherMtr, pipeOd, pipeWt);
 
+  // Feeder source label: Heat Treatment (HT), Rolling HTC, Hollow HT, or Diversion
+  const routeUpper = (row.route_code || (row as any).process_route || '').toUpperCase();
+  const isHfsRoute = routeUpper.includes('HFS');
+  const isAlloyHfsRoute = routeUpper.includes('ALLOY') && !routeUpper.includes('CDS');
+  const defaultFeederLabel = isAlloyHfsRoute
+    ? 'Hollow HT Qty'
+    : (isHfsRoute ? 'Rolling HTC OK' : 'Heat Treatment (HT) Qty');
+  const feederLabel = row.feeder_source_label || defaultFeederLabel;
+
   // Order Length specifications from Work Order
   const l1 = Number(row.l1 || 0);
   const l2 = Number(row.l2 || 0);
@@ -532,7 +541,7 @@ export function BandSawCuttingModal({
       return;
     }
     if (availMotherPcs > 0 && totalProcMotherPcs > availMotherPcs) {
-      toast.error(`Total batch split mother pipes (${totalProcMotherPcs} PCS) cannot be greater than available HT Quantity (${availMotherPcs} PCS).`);
+      toast.error(`Total batch split mother pipes (${totalProcMotherPcs} PCS) cannot be greater than available ${feederLabel} (${availMotherPcs} PCS).`);
       return;
     }
     if (gA_len > 15 || gB_len > 15) {
@@ -608,7 +617,6 @@ export function BandSawCuttingModal({
       setError('Hollow Bank is dedicated yard buffer inventory and not available for production entry.');
       return;
     }
-    const feederLabel = row.feeder_source_label || 'Heat Treatment (HT) Qty';
     if (availMotherPcs <= 0 && availMotherMtr <= 0) {
       setError(`No available ${feederLabel} in queue for Band Saw cutting. Input quantity cannot be recorded.`);
       return;
@@ -1843,9 +1851,9 @@ export function BandSawCuttingModal({
             }
             title={
               remainingMotherPcs < 0
-                ? 'Band Saw input quantity cannot be greater than available HT Quantity'
+                ? `Band Saw input quantity cannot be greater than available ${feederLabel}`
                 : availMotherPcs <= 0 && availMotherMtr <= 0
-                ? 'No available HT Quantity in queue'
+                ? `No available ${feederLabel} in queue`
                 : undefined
             }
             className="min-h-[40px] gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs font-bold text-xs px-5"

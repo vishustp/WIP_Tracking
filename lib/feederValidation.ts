@@ -47,16 +47,30 @@ export interface QcInspectionRecord {
   vdi_rejection_pcs?: number | null;
 }
 
+export interface DiversionPlanRecord {
+  id?: string;
+  source_wo_id: string;
+  target_wo_id: string;
+  diverted_qty?: number | null;
+  diverted_pcs?: number | null;
+  work_center?: string | null;
+  multiple?: number | null;
+  reason?: string | null;
+  status?: string | null;
+  ppc_approved_at?: string | null;
+}
+
 export function computeFeederBalanceForWorkOrder(params: {
-  workOrder: WorkOrderSummary;
+  workOrder: WorkOrderSummary & { diversion_in_pcs?: number; diversion_in_mtr?: number };
   targetStage: StageCode;
   routeCode: string;
   logs: ProductionLogRecord[];
   stageCodeToId: Map<string, string>;
   rollingPlans?: RollingPlanRecord[];
   qcInspections?: QcInspectionRecord[];
+  diversions?: DiversionPlanRecord[];
 }): FeederBalance {
-  const { workOrder, targetStage, routeCode, logs, stageCodeToId, rollingPlans = [], qcInspections = [] } = params;
+  const { workOrder, targetStage, routeCode, logs, stageCodeToId, rollingPlans = [], qcInspections = [], diversions = [] } = params;
 
   const rowL1 = workOrder.l1;
   const rowL2 = workOrder.l2;
@@ -238,9 +252,69 @@ export function computeFeederBalanceForWorkOrder(params: {
   }
 
   // 6. BAND_SAW
-  const bsIncomingPcs = (isSsSteel || isCds) ? htNetPcs : (isAlloy ? hhtNetPcs : rollHtcOkPcs);
-  const bsIncomingMtr = (isSsSteel || isCds) ? htNetMtr : (isAlloy ? hhtNetMtr : rollHtcOkMtr);
-  const bsFeederLabel = (isSsSteel || isCds) ? 'Heat Treatment Net OK' : (isAlloy ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK');
+  // Incoming material comes from 3 routes:
+  // 1. Heat Treatment (HT) for CDS / SS_STEEL
+  // 2. Rolling HTC for HFS (or Hollow HT for ALLOY_HFS)
+  // 3. Diversion Work Center (incoming approved diverted material to Band Saw)
+  const isAlloyHfs = isAlloy && !isCds;
+  const bsFeederStageCode = (isSsSteel || isCds) ? 'HEAT_TREATMENT' : (isAlloyHfs ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING');
+  const bsFeederLabel = (isSsSteel || isCds) ? 'Heat Treatment Net OK' : (isAlloyHfs ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK');
+  const bsIncomingPcs = (isSsSteel || isCds) ? htNetPcs : (isAlloyHfs ? hhtNetPcs : rollHtcOkPcs);
+  const bsIncomingMtr = (isSsSteel || isCds) ? htNetMtr : (isAlloyHfs ? hhtNetMtr : rollHtcOkMtr);
+
+  // Parse diversions into / out of Band Saw
+  const parseDivStages = (d: DiversionPlanRecord) => {
+    const fromMatch = typeof d.reason === 'string' ? d.reason.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i) : null;
+    const toMatch = typeof d.reason === 'string' ? d.reason.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i) : null;
+    const sourceStage = fromMatch ? fromMatch[1].toUpperCase() : (d.work_center || 'ROLLING');
+    const targetStage = toMatch ? toMatch[1].toUpperCase() : (d.work_center || 'ROLLING');
+    return { sourceStage, targetStage };
+  };
+
+  const isApprovedDiv = (d: DiversionPlanRecord) => {
+    if (d.status === 'APPROVED') return true;
+    if (d.status === 'PENDING_PPC' || d.status === 'REJECTED_BY_PPC' || d.status === 'CANCELLED') return false;
+    if (d.ppc_approved_at) return true;
+    return true;
+  };
+
+  const approvedDiversions = (diversions || []).filter(isApprovedDiv);
+  const bsDivInLogs = approvedDiversions.filter(
+    (d) => d.target_wo_id === workOrder.id && (parseDivStages(d).targetStage === 'BAND_SAW' || parseDivStages(d).targetStage === 'IP_CUTTING')
+  );
+  const bsDivOutLogs = approvedDiversions.filter(
+    (d) => d.source_wo_id === workOrder.id && (parseDivStages(d).sourceStage === 'BAND_SAW' || parseDivStages(d).sourceStage === 'IP_CUTTING')
+  );
+
+  const bsDivInMtr = bsDivInLogs.reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0) + Number(workOrder.diversion_in_mtr || 0);
+  const bsDivInPcs = bsDivInLogs.reduce((sum, d) => {
+    if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+    const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+    if (pcsMatch) return sum + Number(pcsMatch[1]);
+    const dQty = Number(d.diverted_qty || 0);
+    return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+  }, 0) + Number(workOrder.diversion_in_pcs || 0);
+
+  const bsDivOutMtr = bsDivOutLogs.reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0);
+  const bsDivOutPcs = bsDivOutLogs.reduce((sum, d) => {
+    if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+    const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+    if (pcsMatch) return sum + Number(pcsMatch[1]);
+    const dQty = Number(d.diverted_qty || 0);
+    return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+  }, 0);
+
+  const totalBsIncomingPcs = Math.max(0, bsIncomingPcs + bsDivInPcs - bsDivOutPcs);
+  const totalBsIncomingMtr = Math.max(0, Number((bsIncomingMtr + bsDivInMtr - bsDivOutMtr).toFixed(2)));
+
+  let dynamicBsFeederLabel = bsFeederLabel;
+  let dynamicBsFeederCode = bsFeederStageCode;
+  if (bsDivInPcs > 0 && bsIncomingPcs === 0) {
+    dynamicBsFeederLabel = 'Diverted Material In';
+    dynamicBsFeederCode = 'DIVERSION';
+  } else if (bsDivInPcs > 0 && bsIncomingPcs > 0) {
+    dynamicBsFeederLabel = `${bsFeederLabel} + Diversion`;
+  }
 
   const bandSawLogs = getStageLogs('BAND_SAW');
   const bandSawOutPcs = sumStagePcs(bandSawLogs);
@@ -261,11 +335,11 @@ export function computeFeederBalanceForWorkOrder(params: {
   const bandSawInputMtr = bandSawLogs.reduce((sum, l) => sum + Number(l.input_qty || l.output_qty || 0), 0);
 
   if (targetStage === 'BAND_SAW') {
-    const availPcs = Math.max(0, bsIncomingPcs - bandSawMotherPcs);
-    const availMtr = Math.max(0, Number((bsIncomingMtr - bandSawInputMtr).toFixed(2)));
+    const availPcs = Math.max(0, totalBsIncomingPcs - bandSawMotherPcs);
+    const availMtr = Math.max(0, Number((totalBsIncomingMtr - bandSawInputMtr).toFixed(2)));
     return {
-      feederStageCode: (isSsSteel || isCds) ? 'HEAT_TREATMENT' : (isAlloy ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING'),
-      feederLabel: bsFeederLabel,
+      feederStageCode: dynamicBsFeederCode,
+      feederLabel: dynamicBsFeederLabel,
       availPcs,
       availMtr,
       routeCode,

@@ -126,4 +126,180 @@ describe('Band Saw Input Quantity vs HT Quantity Capping', () => {
     expect(balance.availMtr).toBe(360);
     expect(balance.feederStageCode).toBe('HEAT_TREATMENT');
   });
+
+  it('validates HFS route where input mother pipes are capped against Rolling HTC OK', () => {
+    // For HFS route, mother pipes feed directly from Rolling HTC OK
+    const row: any = {
+      id: 'wo-hfs-1',
+      work_order_no: 'WO-HFS-101',
+      stage_code: 'BAND_SAW',
+      route_code: 'HFS',
+      available_pcs: 25,
+      balance_to_make_pcs: 25,
+      l1: 6,
+      l2: 6,
+      avg_length: 6,
+      od: 88.9,
+      wl: 6.45,
+      pcs: '30',
+      mtr: '180',
+      input_pcs: 30, // 30 mother pipes entered
+      input_mtr: 180,
+      output_pcs: 30,
+      output_mtr: 180,
+      remarks: '[CUTS:{"m_pcs":30,"yield":95,"items":[{"len":6,"pcs":30,"cat":"PRIME"}]}] [PCS:30]',
+    };
+
+    const errors = validateProductionEntry(row, 'BAND_SAW');
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0].message).toContain('Band Saw input quantity (30 PCS) cannot be greater than available');
+    expect(errors[0].message).toContain('HTC OK');
+    expect(errors[0].message).toContain('25 PCS');
+  });
+
+  it('accepts Band Saw entry when incoming material is supplied via Diversion Work Center', () => {
+    // Work order with 0 HT logs but 20 mother pipes diverted in from another WO
+    const row: any = {
+      id: 'wo-div-1',
+      work_order_no: 'WO-DIV-201',
+      stage_code: 'BAND_SAW',
+      route_code: 'CDS',
+      has_diversion: true,
+      diversion_in_pcs: 20,
+      diversion_in_mtr: 120,
+      feeder_source_label: 'Diverted Material In',
+      available_pcs: 20,
+      balance_to_make_pcs: 20,
+      l1: 6,
+      l2: 6,
+      avg_length: 6,
+      od: 60.3,
+      wl: 4.5,
+      pcs: '15',
+      mtr: '90',
+      input_pcs: 15, // 15 mother pipes entered <= 20 available from diversion
+      input_mtr: 90,
+      output_pcs: 15,
+      output_mtr: 90,
+      remarks: '[CUTS:{"m_pcs":15,"yield":95,"items":[{"len":6,"pcs":15,"cat":"PRIME"}]}] [PCS:15]',
+    };
+
+    const errors = validateProductionEntry(row, 'BAND_SAW');
+    expect(errors.filter((e) => e.message.includes('Band Saw input quantity')).length).toBe(0);
+  });
+
+  it('rejects Band Saw entry when exceeding available combined Feeder + Diversion quantity', () => {
+    // Work order with 10 HT pipes + 10 Diverted pipes = 20 available total
+    const row: any = {
+      id: 'wo-div-2',
+      work_order_no: 'WO-DIV-202',
+      stage_code: 'BAND_SAW',
+      route_code: 'CDS',
+      has_diversion: true,
+      diversion_in_pcs: 10,
+      diversion_in_mtr: 60,
+      feeder_source_label: 'Heat Treatment (HT) + Diversion',
+      available_pcs: 20,
+      balance_to_make_pcs: 20,
+      l1: 6,
+      l2: 6,
+      avg_length: 6,
+      od: 60.3,
+      wl: 4.5,
+      pcs: '25',
+      mtr: '150',
+      input_pcs: 25, // 25 entered > 20 available
+      input_mtr: 150,
+      output_pcs: 25,
+      output_mtr: 150,
+      remarks: '[CUTS:{"m_pcs":25,"yield":95,"items":[{"len":6,"pcs":25,"cat":"PRIME"}]}] [PCS:25]',
+    };
+
+    const errors = validateProductionEntry(row, 'BAND_SAW');
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0].message).toContain('Band Saw input quantity (25 PCS) cannot be greater than available Heat Treatment (HT) + Diversion (20 PCS)');
+  });
+
+  it('computeFeederBalanceForWorkOrder calculates Band Saw balance for HFS route from Rolling HTC logs', () => {
+    const stageMap = new Map<string, string>([
+      ['ROLLING', 'stage-roll'],
+      ['BAND_SAW', 'stage-bs'],
+    ]);
+
+    const logs = [
+      // 50 HTC mother pipes rolled for HFS route
+      {
+        work_order_id: 'wo-hfs',
+        stage_id: 'stage-roll',
+        htc_ok: 300,
+        remarks: '[PCS:50]',
+      },
+      // 10 mother pipes cut at Band Saw
+      {
+        work_order_id: 'wo-hfs',
+        stage_id: 'stage-bs',
+        input_qty: 60,
+        output_qty: 60,
+        remarks: '[CUTS:{"m_pcs":10,"items":[{"len":6,"pcs":10,"cat":"PRIME"}]}] [PCS:10]',
+      },
+    ];
+
+    const balance = computeFeederBalanceForWorkOrder({
+      workOrder: { id: 'wo-hfs', work_order_no: 'WO-HFS', l1: 6, l2: 6 },
+      targetStage: 'BAND_SAW',
+      routeCode: 'HFS',
+      logs,
+      stageCodeToId: stageMap,
+    });
+
+    // 50 HTC pipes - 10 cut = 40 pipes available
+    expect(balance.availPcs).toBe(40);
+    expect(balance.availMtr).toBe(240);
+    expect(balance.feederStageCode).toBe('ROLLING');
+    expect(balance.feederLabel).toBe('Rolling HTC OK');
+  });
+
+  it('computeFeederBalanceForWorkOrder adds approved Diversions to Band Saw available balance', () => {
+    const stageMap = new Map<string, string>([
+      ['HEAT_TREATMENT', 'stage-ht'],
+      ['BAND_SAW', 'stage-bs'],
+    ]);
+
+    const logs = [
+      // 30 HT pipes produced
+      {
+        work_order_id: 'wo-target',
+        stage_id: 'stage-ht',
+        output_qty: 180,
+        remarks: '[PCS:30]',
+      },
+    ];
+
+    const diversions = [
+      // 15 pipes diverted from source WO into target WO at Band Saw
+      {
+        source_wo_id: 'wo-source',
+        target_wo_id: 'wo-target',
+        diverted_qty: 90,
+        diverted_pcs: 15,
+        work_center: 'BAND_SAW',
+        reason: '[FROM_STAGE:HEAT_TREATMENT] [TO_STAGE:BAND_SAW] [PCS:15] Off-cut diversion',
+        status: 'APPROVED',
+      },
+    ];
+
+    const balance = computeFeederBalanceForWorkOrder({
+      workOrder: { id: 'wo-target', work_order_no: 'WO-TARGET', l1: 6, l2: 6 },
+      targetStage: 'BAND_SAW',
+      routeCode: 'CDS',
+      logs,
+      stageCodeToId: stageMap,
+      diversions,
+    });
+
+    // 30 HT + 15 Diverted = 45 available mother pipes
+    expect(balance.availPcs).toBe(45);
+    expect(balance.availMtr).toBe(270);
+    expect(balance.feederLabel).toContain('Diversion');
+  });
 });

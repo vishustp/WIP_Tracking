@@ -2741,8 +2741,12 @@ export async function GET(req: NextRequest) {
                 prev_stage_code: (isCds || isSsSteel) ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
                 prev_htc_ok: !isCds && !isAlloy && !isSsSteel ? rollHtcOkMtr : undefined,
                 prev_net_output: (isCds || isSsSteel) ? htNetMtr : (isAlloy ? hollowHtNetMtr : undefined),
-                feeder_source_label: (isCds || isSsSteel) ? "Heat Treatment (HT) Qty" : (isAlloy ? "Hollow HT Qty" : "Rolling HTC OK"),
-                feeder_stage_code: (isCds || isSsSteel) ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING"),
+                feeder_source_label: bsDivDetails.has_diversion
+                  ? (bandSawIncomingPcs === 0 ? "Diverted Material In" : `${(isCds || isSsSteel) ? "Heat Treatment (HT)" : (isAlloy ? "Hollow HT" : "Rolling HTC")} + Diversion`)
+                  : ((isCds || isSsSteel) ? "Heat Treatment (HT) Qty" : (isAlloy ? "Hollow HT Qty" : "Rolling HTC OK")),
+                feeder_stage_code: (bsDivDetails.has_diversion && bandSawIncomingPcs === 0)
+                  ? "DIVERSION"
+                  : ((isCds || isSsSteel) ? "HEAT_TREATMENT" : (isAlloy ? "HOLLOW_HEAT_TREATMENT" : "ROLLING")),
               }
             : null,
         VDI:

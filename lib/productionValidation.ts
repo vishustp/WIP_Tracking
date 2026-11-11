@@ -197,7 +197,11 @@ export function validateProductionEntry(
     else if (currentStage === "PILGER") feederName = "Rolling HTC OK";
     else if (currentStage === "DRAW") feederName = route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK";
     else if (currentStage === "HEAT_TREATMENT") feederName = route.includes("SS") ? "Cold Pilger Mill Net OK" : "Draw Bench Net OK";
-    else if (currentStage === "BAND_SAW") feederName = route.includes("SS") ? "Heat Treatment Net OK" : (route.includes("HFS") ? (route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK") : "Heat Treatment Net OK");
+    else if (currentStage === "BAND_SAW") {
+      const hasDiv = row.has_diversion || Number(row.diversion_in_pcs) > 0 || (typeof row.feeder_source_label === "string" && row.feeder_source_label.toLowerCase().includes("divert"));
+      const baseFeeder = route.includes("SS") ? "Heat Treatment Net OK" : (route.includes("HFS") ? (route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "Rolling HTC OK") : "Heat Treatment Net OK");
+      feederName = hasDiv ? (row.feeder_source_label || `${baseFeeder} / Diversion`) : baseFeeder;
+    }
     else if (currentStage === "VDI") feederName = "Band Saw Net Output";
     else if (currentStage === "FINISHING") feederName = "VDI Inspection (QC Passed)";
 
@@ -240,7 +244,9 @@ export function validateProductionEntry(
         message: `Heat Treatment Production (${d.pcs} PCS) exceeds available ${htFeeder} feeder balance (${fmt(allowedPcs)} PCS).`,
       });
     } else if (currentStage === "BAND_SAW") {
-      const bsFeeder = route.includes("SS") ? "Heat Treatment Net OK" : (route.includes("HFS") ? (route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "HTC OK") : "Heat Treatment Net OK");
+      const hasDiv = row.has_diversion || Number(row.diversion_in_pcs) > 0 || (typeof row.feeder_source_label === "string" && row.feeder_source_label.toLowerCase().includes("divert"));
+      const baseFeeder = route.includes("SS") ? "Heat Treatment Net OK" : (route.includes("HFS") ? (route.includes("ALLOY") ? "Hollow Heat Treatment Net OK" : "HTC OK") : "Heat Treatment Net OK");
+      const bsFeeder = (typeof row.feeder_source_label === "string" && row.feeder_source_label) ? row.feeder_source_label : (hasDiv ? `${baseFeeder} / Diversion` : baseFeeder);
       const { motherPcs: bsMotherPcs } = extractBandSawCutsFromRemarks(row.remarks);
       const inMotherPcs = bsMotherPcs !== null && bsMotherPcs > 0 ? bsMotherPcs : (n(row.multiple) > 1 ? Math.ceil(d.pcs / n(row.multiple)) : d.pcs);
       if (inMotherPcs > allowedPcs) {

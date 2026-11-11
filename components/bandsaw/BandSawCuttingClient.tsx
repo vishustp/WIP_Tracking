@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, normalizeGrade, isHollowBankOrder } from '@/lib/productionUtils';
+import { fmt, n, mtFromMtr, extractBandSawCutsFromRemarks, extractPcsFromRemarks, normalizeGrade, isHollowBankOrder } from '@/lib/productionUtils';
+import { exportSheetsToExcel } from '@/lib/excelUtils';
 import { getCurrentAppUser } from '@/lib/users/client';
 import type { AppUserProfile } from '@/lib/users/types';
 import type { Row, ProductionEntry } from '@/types';
@@ -245,6 +246,68 @@ export default function BandSawCuttingClient() {
     }
   };
 
+  const handleExportExcel = async () => {
+    try {
+      setExportingExcel(true);
+      const queueExportData = filteredQueue.map((r, idx) => ({
+        '#': idx + 1,
+        'Work Order': r.work_order_no,
+        'Customer': r.customer_name || '—',
+        'Size (OD x WT)': `${r.od || '—'} × ${r.wl || '—'} mm`,
+        'Grade': r.grade || '—',
+        'Process Route': r.route_code || '—',
+        'Cutting Type': r.stage_code === 'IP_CUTTING' ? 'Intermediate (IP Cut)' : 'Final Cut',
+        'Feeder Source': r.feeder_source_label || (r.route_code?.includes('HFS') ? 'Rolling HTC OK' : 'Heat Treatment (HT) Qty'),
+        'Mother Pipes Available (Pcs)': Number(r.balance_to_make_pcs || 0),
+        'Mother Pipes Length (Mtr)': Number(r.balance_to_make_mtr || 0),
+        'Tonnage (MT)': Number(r.balance_to_make_mt || 0),
+        'Target Cut Length (L1)': Number(r.l1 || 0),
+        'Multiple': Number(r.multiple || 1),
+        'Heat / Lot No': r.heat_lot_no || '—',
+      }));
+
+      const historyExportData = historyEntries.map((h, idx) => {
+        const { motherPcs, cuts, scrapMtr } = extractBandSawCutsFromRemarks(h.remarks);
+        return {
+          '#': idx + 1,
+          'Date': h.process_date || (h.created_at ? new Date(h.created_at).toLocaleDateString() : '—'),
+          'Shift': (h as any).shift || '—',
+          'Work Order': h.work_order_no || '—',
+          'Customer': h.customer_name || '—',
+          'Stage': h.stage_code === 'IP_CUTTING' ? 'IP Cutting' : 'Band Saw Cutting',
+          'Mother Pipes (Pcs)': motherPcs || h.input_pcs || '—',
+          'Mother Pipe Length (Mtr)': Number(h.input_mtr || 0),
+          'Cut Pieces (Pcs)': Number(h.output_pcs || 0) || extractPcsFromRemarks(h.remarks).pcs || '—',
+          'Cut Meters (Mtr)': Number(h.output_mtr || 0),
+          'Scrap Meters (Mtr)': scrapMtr || Number(h.rejection_mtr || 0),
+          'Heat / Lot No': h.heat_lot_no || '—',
+          'Operator': h.operator_name || h.created_by || '—',
+          'Remarks': h.remarks || '',
+        };
+      });
+
+      const sheets = [
+        { name: 'Cutting Queue', data: queueExportData },
+        { name: 'Cutting History', data: historyExportData },
+      ].filter((s) => s.data.length > 0);
+
+      if (sheets.length === 0) {
+        toast.error('No data available to export.');
+        return;
+      }
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const fileName = `Band_Saw_Cutting_Report_${dateStr}.xlsx`;
+
+      await exportSheetsToExcel(sheets, fileName);
+      toast.success(`Exported ${sheets.length} sheet(s) to ${fileName}`);
+    } catch (err: any) {
+      console.error('Failed to export Band Saw data to Excel:', err);
+      toast.error('Export failed: ' + (err?.message || err));
+    } finally {
+      setExportingExcel(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
@@ -272,13 +335,16 @@ export default function BandSawCuttingClient() {
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            <Link
-              href="/excel-import"
-              className="inline-flex items-center gap-1.5 h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition active:scale-95"
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={exportingExcel}
+              className="inline-flex items-center gap-1.5 h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+              title="Export Band Saw data to Excel (.xlsx)"
             >
               <FileSpreadsheet size={14} className="text-emerald-600" />
-              Excel Import
-            </Link>
+              {exportingExcel ? 'Exporting...' : 'Excel Export'}
+            </button>
 
             <Button
               onClick={fetchData}

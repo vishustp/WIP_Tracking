@@ -161,6 +161,7 @@ export async function POST(req: NextRequest) {
           const isSsSteel = route.includes('SS') || route.includes('STAINLESS');
           const isCds = route.includes('CDS');
           const isAlloy = route.includes('ALLOY');
+          const isAlloyHfs = isAlloy && !isCds;
 
           // Feeder stage determines available mother pipes
           // CDS / SS_STEEL -> HEAT_TREATMENT
@@ -171,12 +172,12 @@ export async function POST(req: NextRequest) {
           if (isSsSteel || isCds) {
             feederStageCodes = ['HEAT_TREATMENT'];
             feederLabel = 'Heat Treatment (HT) Qty';
-          } else if (isAlloy) {
+          } else if (isAlloyHfs) {
             feederStageCodes = ['HOLLOW_HEAT_TREATMENT'];
             feederLabel = 'Hollow Heat Treatment Qty';
           } else {
             feederStageCodes = ['HTC', 'ROLLING', 'HOT_ROLLING'];
-            feederLabel = 'HTC OK Qty';
+            feederLabel = 'Rolling HTC OK';
           }
 
           const feederStageIds = feederStageCodes.map((sc) => stageMap.get(sc)).filter(Boolean) as string[];
@@ -219,6 +220,57 @@ export async function POST(req: NextRequest) {
             }, 0);
           }
 
+          // Also fetch approved diversions involving Band Saw for this work order
+          const { data: woDivs } = await admin
+            .from('diversion_plans')
+            .select('source_wo_id, target_wo_id, diverted_qty, work_center, multiple, reason, status, ppc_approved_at')
+            .or(`target_wo_id.eq.${item.work_order_id},source_wo_id.eq.${item.work_order_id}`);
+
+          const parseDivStages = (d: any) => {
+            const fromMatch = typeof d.reason === 'string' ? d.reason.match(/\[FROM_STAGE:\s*([A-Z_]+)\]/i) : null;
+            const toMatch = typeof d.reason === 'string' ? d.reason.match(/\[TO_STAGE:\s*([A-Z_]+)\]/i) : null;
+            const sourceStage = fromMatch ? fromMatch[1].toUpperCase() : (d.work_center || 'ROLLING');
+            const targetStage = toMatch ? toMatch[1].toUpperCase() : (d.work_center || 'ROLLING');
+            return { sourceStage, targetStage };
+          };
+
+          const isApprovedDiv = (d: any) => {
+            if (d.status === 'APPROVED') return true;
+            if (d.status === 'PENDING_PPC' || d.status === 'REJECTED_BY_PPC' || d.status === 'CANCELLED') return false;
+            if (d.ppc_approved_at) return true;
+            return true;
+          };
+
+          const approvedDivs = (woDivs || []).filter(isApprovedDiv);
+          const divInLogs = approvedDivs.filter((d) => d.target_wo_id === item.work_order_id && (parseDivStages(d).targetStage === 'BAND_SAW' || parseDivStages(d).targetStage === 'IP_CUTTING'));
+          const divOutLogs = approvedDivs.filter((d) => d.source_wo_id === item.work_order_id && (parseDivStages(d).sourceStage === 'BAND_SAW' || parseDivStages(d).sourceStage === 'IP_CUTTING'));
+
+          const divInMtr = divInLogs.reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0);
+          const divInPcs = divInLogs.reduce((sum, d) => {
+            const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+            if (pcsMatch) return sum + Number(pcsMatch[1]);
+            const dQty = Number(d.diverted_qty || 0);
+            return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+          }, 0);
+
+          const divOutMtr = divOutLogs.reduce((sum, d) => sum + Number(d.diverted_qty || 0), 0);
+          const divOutPcs = divOutLogs.reduce((sum, d) => {
+            const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+            if (pcsMatch) return sum + Number(pcsMatch[1]);
+            const dQty = Number(d.diverted_qty || 0);
+            return sum + (avgLen > 0 ? Math.round(dQty / avgLen) : 0);
+          }, 0);
+
+          const totalFeederPcs = Math.max(0, feederPcs + divInPcs - divOutPcs);
+          const totalFeederMtr = Math.max(0, Number((feederMtr + divInMtr - divOutMtr).toFixed(2)));
+
+          // Dynamic feeder label reflecting actual incoming source (HT, HTC, or Diversion)
+          if (divInPcs > 0 && feederPcs === 0) {
+            feederLabel = 'Diverted Material In';
+          } else if (divInPcs > 0 && feederPcs > 0) {
+            feederLabel = `${feederLabel} / Diversion`;
+          }
+
           // Compute already processed Band Saw mother pipes & meters
           const alreadyCutMotherPcs = existingBsLogs.reduce((sum, l) => {
             const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
@@ -234,12 +286,12 @@ export async function POST(req: NextRequest) {
           const batchPcsAdded = batchMotherPcsByWo.get(item.work_order_id) || 0;
           const batchMtrAdded = batchInputMtrByWo.get(item.work_order_id) || 0;
 
-          const availFeederPcs = Math.max(0, feederPcs - alreadyCutMotherPcs - batchPcsAdded);
-          const availFeederMtr = Math.max(0, Number((feederMtr - alreadyCutMtr - batchMtrAdded).toFixed(2)));
+          const availFeederPcs = Math.max(0, totalFeederPcs - alreadyCutMotherPcs - batchPcsAdded);
+          const availFeederMtr = Math.max(0, Number((totalFeederMtr - alreadyCutMtr - batchMtrAdded).toFixed(2)));
 
-          if (feederPcs <= 0 && feederMtr <= 0) {
+          if (totalFeederPcs <= 0 && totalFeederMtr <= 0) {
             return NextResponse.json(
-              { error: `No available ${feederLabel} in queue for Band Saw cutting (Work Order ${woData.work_order_no}). Please record ${feederLabel} first.` },
+              { error: `No available ${feederLabel} in queue for Band Saw cutting (Work Order ${woData.work_order_no}). Material must come from Heat Treatment (HT), Rolling HTC, or Diversion.` },
               { status: 400 }
             );
           }
