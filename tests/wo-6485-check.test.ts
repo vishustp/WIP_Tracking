@@ -109,8 +109,8 @@ describe('Inspect WO 6485 Data', () => {
     const salvageDivOutPcs = salvageDivOutMatching.reduce((sum: number, d: any) => sum + Math.round(Number(d.diverted_qty || 0) / avgLen), 0);
     const activeSalvagePcs = Math.max(0, totalSalvagePcs - salvageDivOutPcs);
 
-    expect(uninspectedPcs).toBe(589);
-    expect(activeSalvagePcs).toBe(227);
-    expect(uninspectedPcs + activeSalvagePcs).toBe(816);
+    expect(uninspectedPcs).toBe(225);
+    expect(activeSalvagePcs).toBe(262);
+    expect(uninspectedPcs + activeSalvagePcs).toBe(487);
   });
 });

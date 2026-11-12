@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/production/queue/route';
 
 describe('WO 6072 Manufacturing Progression Verification', () => {
-  it('correctly displays 277 Nos / 2113.51 Mtr at Draw Bench for WO 6072 after Hollow HT completion', async () => {
+  it('correctly displays 277 Nos / 2113.51 Mtr at IP Cutting (Band Saw) for WO 6072 after Hollow HT completion', async () => {
     const req = new NextRequest('http://localhost:3000/api/production/queue?all_stages=true&nocache=true');
     const res = await GET(req);
     expect(res.status).toBe(200);
@@ -12,14 +12,14 @@ describe('WO 6072 Manufacturing Progression Verification', () => {
     expect(json.success).toBe(true);
 
     const rows = (json.data || []).filter((r: any) => r.work_order_no === '6072');
-    const drawRow = rows.find((r: any) => r.stage_code === 'DRAW');
-    expect(drawRow).toBeDefined();
+    const ipRow = rows.find((r: any) => r.stage_code === 'IP_CUTTING');
+    expect(ipRow).toBeDefined();
 
-    // 277 PCS / 2113.51 MTR from Campaign 27 have passed Hollow HT and are waiting at Draw Bench
-    expect(Number(drawRow.ready_pcs)).toBe(277);
-    expect(Number(drawRow.ready_mtr)).toBeCloseTo(2113.51, 1);
-    expect(Number(drawRow.balance_to_make_pcs)).toBe(277);
-    expect(Number(drawRow.balance_to_make_mtr)).toBeCloseTo(2113.51, 1);
+    // 277 PCS / 2113.51 MTR from Campaign 27 have passed Hollow HT and are waiting at IP Cutting
+    expect(Number(ipRow.ready_pcs)).toBe(277);
+    expect(Number(ipRow.ready_mtr)).toBeCloseTo(2113.51, 1);
+    expect(Number(ipRow.balance_to_make_pcs)).toBe(277);
+    expect(Number(ipRow.balance_to_make_mtr)).toBeCloseTo(2113.51, 1);
   });
 
   it('verifies cumulative HTC, Hollow HT, and Draw balance for multi-campaign WO 6072', async () => {

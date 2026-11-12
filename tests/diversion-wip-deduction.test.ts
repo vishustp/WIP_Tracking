@@ -4,12 +4,12 @@ import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/production/queue/route';
 
 describe('Diversion WIP Deduction & Queue Verification', () => {
-  it('verifies WO 6072 displays 277 Nos / 2113.51 Mtr at Draw Bench', async () => {
-    const req = new NextRequest('http://localhost:3000/api/production/queue?stage=DRAW&nocache=1');
+  it('verifies WO 6072 displays 277 Nos / 2113.51 Mtr at IP Cutting (Band Saw)', async () => {
+    const req = new NextRequest('http://localhost:3000/api/production/queue?stage=BAND_SAW&include_ip_cutting=true&nocache=1');
     const res = await GET(req);
     expect(res.status).toBe(200);
     const json = await res.json();
-    const row6072 = json.data?.find((r: any) => r.work_order_no === '6072');
+    const row6072 = json.data?.find((r: any) => r.work_order_no === '6072' && r.stage_code === 'IP_CUTTING');
     expect(row6072).toBeDefined();
     expect(Number(row6072.balance_to_make_pcs)).toBe(277);
     expect(Number(row6072.balance_to_make_mtr)).toBeCloseTo(2113.51, 1);

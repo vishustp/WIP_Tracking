@@ -834,9 +834,11 @@ export async function GET(req: NextRequest) {
           const updatedPlanNos = Array.from(new Set([...(existingPlan.plan_nos || []), planNoStr].filter(Boolean)));
           existingPlan.plan_nos = updatedPlanNos;
           existingPlan.plan_no = updatedPlanNos.join(', ');
-          existingPlan.planned_qty_sum = (existingPlan.planned_qty_sum || 0) + Number(p.planned_qty || 0);
-          existingPlan.planned_pcs_sum = (existingPlan.planned_pcs_sum || 0) + storedPlanPcs;
-          if (isIssued) existingPlan.is_issued = true;
+          if (isIssued) {
+            existingPlan.planned_qty_sum = (existingPlan.planned_qty_sum || 0) + Number(p.planned_qty || 0);
+            existingPlan.planned_pcs_sum = (existingPlan.planned_pcs_sum || 0) + storedPlanPcs;
+            existingPlan.is_issued = true;
+          }
           if (!existingPlan.mh_od && mhOdVal) existingPlan.mh_od = mhOdVal;
           if (!existingPlan.mh_wt && mhWtVal) existingPlan.mh_wt = mhWtVal;
           if (!existingPlan.mh_l1 && mhL1Val) existingPlan.mh_l1 = mhL1Val;
@@ -1336,13 +1338,186 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      const htLogs = getStageLogs(woId, htStageId);
+      const allHtLogsList = [...htLogs];
+      if (campaign && Array.isArray(campaign.child_work_orders)) {
+        for (const child of campaign.child_work_orders) {
+          const cId = child.work_order_id || child.id;
+          allHtLogsList.push(...getStageLogs(cId, htStageId));
+        }
+      }
+
+      const bandSawLogs = getStageLogs(woId, bandSawStageId);
+      const allBandSawLogs = [...bandSawLogs];
+      if (campaign && Array.isArray(campaign.child_work_orders)) {
+        for (const child of campaign.child_work_orders) {
+          const cId = child.work_order_id || child.id;
+          allBandSawLogs.push(...getStageLogs(cId, bandSawStageId));
+        }
+      }
+
+      const finLogs = getStageLogs(woId, finStageId);
+      const directFinOutPcs = sumPcs(finLogs, avgLength);
+      const directFinRejPcs = sumRejPcs(finLogs, avgLength);
+      let finOutPcs = directFinOutPcs;
+      let finRejPcs = directFinRejPcs;
+      if (campaign && Array.isArray(campaign.child_work_orders)) {
+        for (const child of campaign.child_work_orders) {
+          const cId = child.work_order_id || child.id;
+          const childFinLogs = getStageLogs(cId, finStageId);
+          const childWo = woMap.get(cId);
+          const childL1 = Number(child.l1 || childWo?.l1 || 0);
+          const childL2 = Number(child.l2 || childWo?.l2 || 0);
+          const childAvg = childL1 > 0 && childL2 > 0 ? (childL1 + childL2) / 2 : childL1 || avgLength;
+
+          finOutPcs += sumPcs(childFinLogs, childAvg);
+          finRejPcs += sumRejPcs(childFinLogs, childAvg);
+        }
+      }
+
+      const mult = multiple > 0 ? multiple : 1;
+
+      // For multi-campaign work orders (where multiple rolling plans exist over time):
+      // Calculate previous campaign downstream consumption separately from the current active campaign.
+      const multiWoPlans = plans.filter((p: any) => p.work_order_id === woId);
+      const isMultiCampaign = multiWoPlans.length > 1;
+
+      let prevConsumed = 0;
+      let currConsumed = 0;
+      let currDrawPcs = 0;
+      let prevFeederPcs = 0;
+      let prevFeederMtr = 0;
+      let currFeederPcs = 0;
+      let currFeederMtr = 0;
+      let currIpMotherPcsCut = 0;
+
+      if (isMultiCampaign) {
+        const sortedWoPlans = [...multiWoPlans].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        const latestPlanTime = new Date(sortedWoPlans[0].created_at).getTime();
+
+        let prevDrawPcs = 0;
+        let prevBsMotherPcs = 0;
+        let prevHtPcs = 0;
+        let prevFinPcs = 0;
+        let prevIpMotherPcs = 0;
+
+        let currBsMotherPcs = 0;
+        let currHtPcs = 0;
+        let currFinPcs = 0;
+
+        for (const l of drawLogs) {
+          const p = getLogPcs(l, avgLength) + getLogRejPcs(l, avgLength);
+          const t = new Date(l.created_at || 0).getTime();
+          if (t < latestPlanTime) prevDrawPcs += p;
+          else currDrawPcs += p;
+        }
+
+        if (campaign && Array.isArray(campaign.child_work_orders)) {
+          for (const child of campaign.child_work_orders) {
+            const cId = child.work_order_id || child.id;
+            for (const l of getStageLogs(cId, drawStageId)) {
+              const p = getLogPcs(l, avgLength) + getLogRejPcs(l, avgLength);
+              const t = new Date(l.created_at || 0).getTime();
+              if (t < latestPlanTime) prevDrawPcs += p;
+              else currDrawPcs += p;
+            }
+          }
+        }
+
+        for (const l of allBandSawLogs) {
+          const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(l.remarks);
+          let p = 0;
+          if (mPcs != null && mPcs > 0) {
+            p = mPcs;
+          } else {
+            const rawP = getLogPcs(l, avgLength);
+            p = mult > 1 ? Math.ceil(rawP / mult) : rawP;
+          }
+          const t = new Date(l.created_at || 0).getTime();
+          if (t < latestPlanTime) prevBsMotherPcs += p;
+          else currBsMotherPcs += p;
+        }
+
+        for (const l of allHtLogsList) {
+          const p = getLogPcs(l, avgLength) + getLogRejPcs(l, avgLength);
+          const t = new Date(l.created_at || 0).getTime();
+          if (t < latestPlanTime) prevHtPcs += p;
+          else currHtPcs += p;
+        }
+
+        for (const l of finLogs) {
+          const p = getLogPcs(l, avgLength);
+          const t = new Date(l.created_at || 0).getTime();
+          if (t < latestPlanTime) prevFinPcs += p;
+          else currFinPcs += p;
+        }
+
+        for (const l of allIpCutLogs) {
+          const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(l.remarks);
+          let p = 0;
+          if (mPcs != null && mPcs > 0) {
+            p = mPcs;
+          } else {
+            const rawP = getLogPcs(l, ipCutLength > 0 ? ipCutLength : effMhAvg);
+            p = ipMultiple > 1 ? Math.ceil(rawP / ipMultiple) : rawP;
+          }
+          const t = new Date(l.created_at || 0).getTime();
+          if (t < latestPlanTime) prevIpMotherPcs += p;
+          else currIpMotherPcsCut += p;
+        }
+
+        // Feeder logs (Hollow HT for alloy, HTC for carbon)
+        const feederLogsList = isAlloy ? hollowHtLogs : htcLogs;
+        for (const l of feederLogsList) {
+          const p = isAlloy
+            ? getLogPcs(l, effHhtAvg) - getLogRejPcs(l, effHhtAvg)
+            : getLogHtcOkPcs(l, effMhAvg);
+          const m = isAlloy
+            ? Math.max(0, Number(l.output_qty || 0) - Number(l.rejection_qty || 0))
+            : (Number(l.htc_ok || 0) > 0 ? Number(l.htc_ok) : Math.max(0, Number(l.output_qty || 0) - Number(l.rejection_qty || 0)));
+          const t = new Date(l.created_at || 0).getTime();
+          if (t < latestPlanTime) {
+            prevFeederPcs += p;
+            prevFeederMtr += m;
+          } else {
+            currFeederPcs += p;
+            currFeederMtr += m;
+          }
+        }
+
+        const prevDownstream = Math.max(prevHtPcs, prevBsMotherPcs, mult > 1 ? Math.ceil(prevFinPcs / mult) : prevFinPcs, prevIpMotherPcs);
+        prevConsumed = prevDrawPcs > 0 ? prevDrawPcs : prevDownstream;
+
+        const currDownstream = Math.max(currHtPcs, currBsMotherPcs, mult > 1 ? Math.ceil(currFinPcs / mult) : currFinPcs, currIpMotherPcsCut);
+        currConsumed = Math.max(currDrawPcs, currDownstream);
+      } else {
+        currIpMotherPcsCut = ipMotherPcsCut;
+      }
+
       // Material feeding IP Cutting: HTC OK (for CDS) or Hollow HT OK (for ALLOY_CDS)
-      const ipCutFeederPcs = isAlloy ? hollowHtNetPcs : rollHtcOkPcs;
-      const ipCutFeederMtr = isAlloy ? hollowHtNetMtr : rollHtcOkMtr;
+      let ipCutFeederPcs = isAlloy ? hollowHtNetPcs : rollHtcOkPcs;
+      let ipCutFeederMtr = isAlloy ? hollowHtNetMtr : rollHtcOkMtr;
+
+      if (isMultiCampaign) {
+        const prevFeederRemainingPcs = Math.max(0, prevFeederPcs - prevConsumed);
+        const prevFeederRemainingMtr = prevFeederPcs > 0 && prevConsumed >= prevFeederPcs
+          ? 0
+          : Math.max(0, Number((prevFeederMtr - (prevConsumed * (effMhAvg > 0 ? effMhAvg : avgLength))).toFixed(3)));
+
+        ipCutFeederPcs = currFeederPcs + prevFeederRemainingPcs;
+        ipCutFeederMtr = currFeederMtr + prevFeederRemainingMtr;
+      }
+
       const ipCutFeederMt = mtFromMtr(ipCutFeederMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
-      let ipCutAvailPcs = isIpCutting ? Math.max(0, ipCutFeederPcs + ipCutStockIn.pcs - ipMotherPcsCut) : 0;
-      let ipCutAvailMtr = effMhAvg > 0 ? Number((ipCutAvailPcs * effMhAvg).toFixed(3)) : 0;
+      let ipCutAvailPcs = isIpCutting ? Math.max(0, ipCutFeederPcs + ipCutStockIn.pcs - currIpMotherPcsCut) : 0;
+      let ipCutAvailMtr = isIpCutting
+        ? (ipCutAvailPcs === ipCutFeederPcs && ipCutFeederMtr > 0
+            ? Number(ipCutFeederMtr.toFixed(3))
+            : (effMhAvg > 0 ? Number((ipCutAvailPcs * effMhAvg).toFixed(3)) : 0))
+        : 0;
       let ipCutAvailMt = mtFromMtr(ipCutAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
       const isIpCutReady = ipCutAvailMtr >= 1.0 || ipCutAvailPcs >= 1;
@@ -1399,14 +1574,6 @@ export async function GET(req: NextRequest) {
       let pilgerAvailMt = mtFromMtr(pilgerAvailMtr, mhOd > 0 ? mhOd : Number(wo.size_od || 0), mhWt > 0 ? mhWt : Number(wo.size_wt || 0));
 
       // 4. Heat Treatment Stage Metrics (adjusted for HT Diversions & Downstream Consumption)
-      const htLogs = getStageLogs(woId, htStageId);
-      const allHtLogsList = [...htLogs];
-      if (campaign && Array.isArray(campaign.child_work_orders)) {
-        for (const child of campaign.child_work_orders) {
-          const cId = child.work_order_id || child.id;
-          allHtLogsList.push(...getStageLogs(cId, htStageId));
-        }
-      }
       const htStockIn = getStageStockGenIn(woId, "HEAT_TREATMENT");
       const htStockOut = getStageStockGenOut(woId, "HEAT_TREATMENT");
       const htOutPcs = sumPcs(allHtLogsList, avgLength);
@@ -1459,14 +1626,6 @@ export async function GET(req: NextRequest) {
       const directQcOkPcs = directWoQcList.reduce((sum: number, q: any) => sum + Number(q.vdi_ok_pcs || 0), 0);
 
       // 4.5 Band Saw Stage Metrics (between HT / Hollow HT / Rolling and VDI)
-      const bandSawLogs = getStageLogs(woId, bandSawStageId);
-      const allBandSawLogs = [...bandSawLogs];
-      if (campaign && Array.isArray(campaign.child_work_orders)) {
-        for (const child of campaign.child_work_orders) {
-          const cId = child.work_order_id || child.id;
-          allBandSawLogs.push(...getStageLogs(cId, bandSawStageId));
-        }
-      }
       const bsStockIn = getStageStockGenIn(woId, "BAND_SAW");
       const bsStockOut = getStageStockGenOut(woId, "BAND_SAW");
       const bandSawOutPcs = sumPcs(allBandSawLogs, avgLength);
@@ -1495,26 +1654,6 @@ export async function GET(req: NextRequest) {
       const bandSawDivOutPcs = getStageDivOutPcs(woId, "BAND_SAW", avgLength);
 
       // 5. Finishing Stage Metrics (adjusted for Finishing Diversions)
-      const finLogs = getStageLogs(woId, finStageId);
-      const directFinOutPcs = sumPcs(finLogs, avgLength);
-      const directFinRejPcs = sumRejPcs(finLogs, avgLength);
-      let finOutPcs = directFinOutPcs;
-      let finRejPcs = directFinRejPcs;
-
-      // If this is a master campaign with child orders, also include child finishing production in consumed stock
-      if (campaign && Array.isArray(campaign.child_work_orders)) {
-        for (const child of campaign.child_work_orders) {
-          const cId = child.work_order_id || child.id;
-          const childFinLogs = getStageLogs(cId, finStageId);
-          const childWo = woMap.get(cId);
-          const childL1 = Number(child.l1 || childWo?.l1 || 0);
-          const childL2 = Number(child.l2 || childWo?.l2 || 0);
-          const childAvg = childL1 > 0 && childL2 > 0 ? (childL1 + childL2) / 2 : childL1 || avgLength;
-
-          finOutPcs += sumPcs(childFinLogs, childAvg);
-          finRejPcs += sumRejPcs(childFinLogs, childAvg);
-        }
-      }
       const finNetPcs = Math.max(0, finOutPcs - finRejPcs);
       const finOutMtr = avgLength > 0 ? Number((finOutPcs * avgLength).toFixed(3)) : 0;
       const finRejMtr = avgLength > 0 ? Number((finRejPcs * avgLength).toFixed(3)) : 0;
@@ -1537,7 +1676,6 @@ export async function GET(req: NextRequest) {
       // Deduct downstream consumption for Draw Bench.
       // If Band Saw has logged cuts, that is the exact mother pipe count cut into downstream;
       // only estimate from downstream stages (QC / Finishing) if Band Saw has no cut logs.
-      const mult = multiple > 0 ? multiple : 1;
       const loggedBsMotherPcs = bsMotherPcsCut > 0
         ? bsMotherPcsCut
         : (mult > 1 ? Math.ceil((bandSawOutPcs + bandSawRejPcs) / mult) : (bandSawOutPcs + bandSawRejPcs));
@@ -1550,79 +1688,8 @@ export async function GET(req: NextRequest) {
       const drawDownstreamConsumedPcs = Math.max(loggedHtPcs, downstreamMotherPcs);
       let drawConsumedPcs = Math.max(drawOutPcs + effDrawRej, drawDownstreamConsumedPcs);
 
-      // For multi-campaign work orders (where multiple rolling plans exist over time):
-      // Calculate previous campaign downstream consumption separately from the current active campaign.
-      // In previous campaigns, if material was cut downstream without Draw Bench, that consumed previous HTC rolling.
-      // In the current campaign, Draw Bench production must deduct from current campaign incoming.
-      const multiWoPlans = plans.filter((p: any) => p.work_order_id === woId);
-      if (multiWoPlans.length > 1) {
-        const sortedWoPlans = [...multiWoPlans].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        const latestPlanTime = new Date(sortedWoPlans[0].created_at).getTime();
-
-        let prevDrawPcs = 0;
-        let prevBsMotherPcs = 0;
-        let prevHtPcs = 0;
-        let prevFinPcs = 0;
-
-        let currDrawPcs = 0;
-        let currBsMotherPcs = 0;
-        let currHtPcs = 0;
-        let currFinPcs = 0;
-
-        for (const l of drawLogs) {
-          const p = getLogPcs(l, avgLength) + getLogRejPcs(l, avgLength);
-          const t = new Date(l.created_at || 0).getTime();
-          if (t < latestPlanTime) prevDrawPcs += p;
-          else currDrawPcs += p;
-        }
-
-        if (campaign && Array.isArray(campaign.child_work_orders)) {
-          for (const child of campaign.child_work_orders) {
-            const cId = child.work_order_id || child.id;
-            for (const l of getStageLogs(cId, drawStageId)) {
-              const p = getLogPcs(l, avgLength) + getLogRejPcs(l, avgLength);
-              const t = new Date(l.created_at || 0).getTime();
-              if (t < latestPlanTime) prevDrawPcs += p;
-              else currDrawPcs += p;
-            }
-          }
-        }
-
-        for (const l of allBandSawLogs) {
-          const { motherPcs: mPcs } = extractBandSawCutsFromRemarks(l.remarks);
-          let p = 0;
-          if (mPcs != null && mPcs > 0) {
-            p = mPcs;
-          } else {
-            const rawP = getLogPcs(l, avgLength);
-            p = mult > 1 ? Math.ceil(rawP / mult) : rawP;
-          }
-          const t = new Date(l.created_at || 0).getTime();
-          if (t < latestPlanTime) prevBsMotherPcs += p;
-          else currBsMotherPcs += p;
-        }
-
-        for (const l of allHtLogsList) {
-          const p = getLogPcs(l, avgLength) + getLogRejPcs(l, avgLength);
-          const t = new Date(l.created_at || 0).getTime();
-          if (t < latestPlanTime) prevHtPcs += p;
-          else currHtPcs += p;
-        }
-
-        for (const l of finLogs) {
-          const p = getLogPcs(l, avgLength);
-          const t = new Date(l.created_at || 0).getTime();
-          if (t < latestPlanTime) prevFinPcs += p;
-          else currFinPcs += p;
-        }
-
-        const prevDownstream = Math.max(prevHtPcs, prevBsMotherPcs, mult > 1 ? Math.ceil(prevFinPcs / mult) : prevFinPcs);
-        const prevConsumed = prevDrawPcs > 0 ? prevDrawPcs : prevDownstream;
-
-        const currDownstream = Math.max(currHtPcs, currBsMotherPcs, mult > 1 ? Math.ceil(currFinPcs / mult) : currFinPcs);
-        const currConsumed = Math.max(currDrawPcs + effDrawRej, currDownstream);
-
-        drawConsumedPcs = prevConsumed + currConsumed;
+      if (isMultiCampaign) {
+        drawConsumedPcs = prevConsumed + Math.max(currConsumed, currDrawPcs + effDrawRej);
       }
       if (isCds) {
         drawAvailPcs = Math.max(0, drawIncomingPcs + drawDivInPcs + drawStockIn.pcs - drawConsumedPcs - drawDivOutPcs);

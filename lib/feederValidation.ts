@@ -22,6 +22,7 @@ export interface ProductionLogRecord {
   work_order_id: string;
   stage_id: string;
   process_date?: string;
+  created_at?: string | null;
   input_qty?: number | null;
   output_qty?: number | null;
   rejection_qty?: number | null;
@@ -35,6 +36,7 @@ export interface RollingPlanRecord {
   work_order_id: string;
   planned_qty?: number | null;
   status?: string | null;
+  created_at?: string | null;
 }
 
 export interface QcInspectionRecord {
@@ -260,8 +262,70 @@ export function computeFeederBalanceForWorkOrder(params: {
   if (targetStage === 'IP_CUTTING') {
     const ipFeederStageCode = isAlloy ? 'HOLLOW_HEAT_TREATMENT' : 'ROLLING';
     const ipFeederLabel = isAlloy ? 'Hollow Heat Treatment Net OK' : 'Rolling HTC OK';
-    const ipIncomingPcs = isAlloy ? hhtNetPcs : rollHtcOkPcs;
-    const ipIncomingMtr = isAlloy ? hhtNetMtr : rollHtcOkMtr;
+    let ipIncomingPcs = isAlloy ? hhtNetPcs : rollHtcOkPcs;
+    let ipIncomingMtr = isAlloy ? hhtNetMtr : rollHtcOkMtr;
+
+    if (rollingPlans.length > 1) {
+      const sortedPlans = [...rollingPlans].sort(
+        (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+      const latestPlanTime = new Date(sortedPlans[0].created_at || 0).getTime();
+
+      let prevDraw = 0;
+      let prevBs = 0;
+      let prevHt = 0;
+      let prevFin = 0;
+      let prevIpCut = 0;
+      let prevFeederP = 0;
+      let prevFeederM = 0;
+      let currFeederP = 0;
+      let currFeederM = 0;
+
+      for (const l of logs) {
+        if (l.work_order_id !== workOrder.id) continue;
+        const t = new Date(l.created_at || 0).getTime();
+        const sCode = [...stageCodeToId.entries()].find(([_, id]) => id === l.stage_id)?.[0];
+        const p = extractPcsFromRemarks(l.remarks).pcs || (avgLen > 0 ? Math.round(Number(l.output_qty || 0) / avgLen) : 0);
+        const m = Number(l.output_qty || 0);
+
+        if (t < latestPlanTime) {
+          if (sCode === 'DRAW') prevDraw += p;
+          else if (sCode === 'BAND_SAW') {
+            const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
+            prevBs += motherPcs || p;
+          } else if (sCode === 'HEAT_TREATMENT') prevHt += p;
+          else if (sCode === 'FINISHING') prevFin += p;
+          else if (sCode === 'IP_CUTTING') {
+            const { motherPcs } = extractBandSawCutsFromRemarks(l.remarks);
+            prevIpCut += motherPcs || p;
+          }
+
+          if (isAlloy && sCode === 'HOLLOW_HEAT_TREATMENT') {
+            prevFeederP += p;
+            prevFeederM += m;
+          } else if (!isAlloy && (sCode === 'HTC' || sCode === 'ROLLING')) {
+            prevFeederP += p;
+            prevFeederM += m;
+          }
+        } else {
+          if (isAlloy && sCode === 'HOLLOW_HEAT_TREATMENT') {
+            currFeederP += p;
+            currFeederM += m;
+          } else if (!isAlloy && (sCode === 'HTC' || sCode === 'ROLLING')) {
+            currFeederP += p;
+            currFeederM += m;
+          }
+        }
+      }
+
+      const prevDownstream = Math.max(prevHt, prevBs, prevFin, prevIpCut);
+      const prevConsumed = prevDraw > 0 ? prevDraw : prevDownstream;
+      const prevRemainingP = Math.max(0, prevFeederP - prevConsumed);
+      const prevRemainingM = prevFeederP > 0 && prevConsumed >= prevFeederP ? 0 : Math.max(0, Number((prevFeederM - (prevConsumed * avgLen)).toFixed(2)));
+
+      ipIncomingPcs = currFeederP + prevRemainingP;
+      ipIncomingMtr = currFeederM + prevRemainingM;
+    }
 
     const totalIpIncomingPcs = Math.max(0, ipIncomingPcs + bsDivInPcs - bsDivOutPcs);
     const totalIpIncomingMtr = Math.max(0, Number((ipIncomingMtr + bsDivInMtr - bsDivOutMtr).toFixed(2)));

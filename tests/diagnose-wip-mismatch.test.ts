@@ -69,6 +69,13 @@ describe('Detailed audit of WIP mismatch between Production Entry, Matrix, and T
       matrixStageTotals[stCode].pcs += pcs;
       matrixStageTotals[stCode].mtr += mtr;
       matrixStageTotals[stCode].mt += mt;
+
+      if (stCode === 'IP_CUTTING' || stCode === 'PILGER') {
+        if (!matrixStageTotals['DRAW']) matrixStageTotals['DRAW'] = { pcs: 0, mtr: 0, mt: 0 };
+        matrixStageTotals['DRAW'].pcs += pcs;
+        matrixStageTotals['DRAW'].mtr += mtr;
+        matrixStageTotals['DRAW'].mt += mt;
+      }
     });
 
     // Helper to fetch all logs with pagination
