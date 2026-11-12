@@ -179,7 +179,6 @@ export async function GET(req: NextRequest) {
           } else if (st === "DRAW") {
             for (const { queueRows } of memoryCache.allCalculatedRows.values()) {
               const drawRow = queueRows.DRAW;
-              const ipRow = queueRows.IP_CUTTING;
               if (drawRow) {
                 if (includeFeeder) {
                   if (Number(drawRow.balance_to_make_pcs ?? 0) >= 1 || Number(drawRow.balance_to_make_mtr ?? 0) >= 1.0 || Number(drawRow.feeder_pcs ?? 0) >= 1) {
@@ -190,9 +189,6 @@ export async function GET(req: NextRequest) {
                     selectedRows.push(drawRow);
                   }
                 }
-              }
-              if (ipRow && (Number(ipRow.ready_pcs ?? 0) >= 1 || Number(ipRow.ready_mtr ?? 0) >= 1.0)) {
-                selectedRows.push(ipRow);
               }
             }
           } else {
@@ -1621,7 +1617,7 @@ export async function GET(req: NextRequest) {
         }
 
         const prevDownstream = Math.max(prevHtPcs, prevBsMotherPcs, mult > 1 ? Math.ceil(prevFinPcs / mult) : prevFinPcs);
-        const prevConsumed = Math.max(prevDrawPcs, prevDownstream);
+        const prevConsumed = prevDrawPcs > 0 ? prevDrawPcs : prevDownstream;
 
         const currDownstream = Math.max(currHtPcs, currBsMotherPcs, mult > 1 ? Math.ceil(currFinPcs / mult) : currFinPcs);
         const currConsumed = Math.max(currDrawPcs + effDrawRej, currDownstream);
@@ -3516,7 +3512,6 @@ export async function GET(req: NextRequest) {
         } else if (st === "DRAW") {
           for (const { queueRows } of allCalculatedRows.values()) {
             const drawRow = queueRows.DRAW;
-            const ipRow = queueRows.IP_CUTTING;
             if (drawRow) {
               if (includeFeeder) {
                 if (Number(drawRow.balance_to_make_pcs ?? 0) >= 1 || Number(drawRow.balance_to_make_mtr ?? 0) >= 1.0 || Number(drawRow.feeder_pcs ?? 0) >= 1) {
@@ -3527,9 +3522,6 @@ export async function GET(req: NextRequest) {
                   selectedRows.push(drawRow);
                 }
               }
-            }
-            if (ipRow && (Number(ipRow.ready_pcs ?? 0) >= 1 || Number(ipRow.ready_mtr ?? 0) >= 1.0)) {
-              selectedRows.push(ipRow);
             }
           }
         } else {

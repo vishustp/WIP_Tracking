@@ -3,8 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/production/queue/route';
 
-describe('WO 6072 Hollow Heat Treatment Queue Verification', () => {
-  it('correctly displays 277 Nos / 2113.51 Mtr at Hollow Heat Treatment for WO 6072', async () => {
+describe('WO 6072 Manufacturing Progression Verification', () => {
+  it('correctly displays 277 Nos / 2113.51 Mtr at Draw Bench for WO 6072 after Hollow HT completion', async () => {
     const req = new NextRequest('http://localhost:3000/api/production/queue?all_stages=true&nocache=true');
     const res = await GET(req);
     expect(res.status).toBe(200);
@@ -12,17 +12,17 @@ describe('WO 6072 Hollow Heat Treatment Queue Verification', () => {
     expect(json.success).toBe(true);
 
     const rows = (json.data || []).filter((r: any) => r.work_order_no === '6072');
-    const hhtRow = rows.find((r: any) => r.stage_code === 'HOLLOW_HEAT_TREATMENT');
-    expect(hhtRow).toBeDefined();
+    const drawRow = rows.find((r: any) => r.stage_code === 'DRAW');
+    expect(drawRow).toBeDefined();
 
-    // Must be exactly 277 PCS / 2113.51 MTR from today's HTC production
-    expect(Number(hhtRow.ready_pcs)).toBe(277);
-    expect(Number(hhtRow.ready_mtr)).toBeCloseTo(2113.51, 1);
-    expect(Number(hhtRow.balance_to_make_pcs)).toBe(277);
-    expect(Number(hhtRow.balance_to_make_mtr)).toBeCloseTo(2113.51, 1);
+    // 277 PCS / 2113.51 MTR from Campaign 27 have passed Hollow HT and are waiting at Draw Bench
+    expect(Number(drawRow.ready_pcs)).toBe(277);
+    expect(Number(drawRow.ready_mtr)).toBeCloseTo(2113.51, 1);
+    expect(Number(drawRow.balance_to_make_pcs)).toBe(277);
+    expect(Number(drawRow.balance_to_make_mtr)).toBeCloseTo(2113.51, 1);
   });
 
-  it('verifies cumulative HTC and Hollow HT balance for multi-campaign WO 6072', async () => {
+  it('verifies cumulative HTC, Hollow HT, and Draw balance for multi-campaign WO 6072', async () => {
     const admin = createAdminClient();
     if (!admin) return;
 
@@ -54,16 +54,28 @@ describe('WO 6072 Hollow Heat Treatment Queue Verification', () => {
     const totalHtcOkPcs = legacyHtcOkPcs + newHtcOkPcs;
     expect(totalHtcOkPcs).toBe(378);
 
-    // Sum Hollow HT output logs across campaigns
+    // Sum Hollow HT output logs across campaigns (101 in Oct + 277 in Nov = 378 total)
     const hhtLogs = logs?.filter((l: any) => l.process_stages?.stage_code === 'HOLLOW_HEAT_TREATMENT') || [];
     const totalHhtOutPcs = hhtLogs.reduce((sum: number, l: any) => {
       const match = l.remarks?.match(/\[PCS:\s*([0-9]+)\]/i);
       return sum + (match ? Number(match[1]) : Number(l.output_pcs || 0));
     }, 0);
-    expect(totalHhtOutPcs).toBe(101); // Only October campaign has been hollow-heat-treated so far
+    expect(totalHhtOutPcs).toBe(378);
 
-    // Hollow HT Queue = Total HTC OK (378) - Total Hollow HT Out (101) = 277 PCS
+    // Hollow HT Queue = Total HTC OK (378) - Total Hollow HT Out (378) = 0 PCS
     const expectedHhtQueuePcs = totalHtcOkPcs - totalHhtOutPcs;
-    expect(expectedHhtQueuePcs).toBe(277);
+    expect(expectedHhtQueuePcs).toBe(0);
+
+    // Sum Draw Bench logs (101 in Oct)
+    const drawLogs = logs?.filter((l: any) => l.process_stages?.stage_code === 'DRAW') || [];
+    const totalDrawOutPcs = drawLogs.reduce((sum: number, l: any) => {
+      const match = l.remarks?.match(/\[PCS:\s*([0-9]+)\]/i);
+      return sum + (match ? Number(match[1]) : Number(l.output_pcs || 0));
+    }, 0);
+    expect(totalDrawOutPcs).toBe(101);
+
+    // Draw Bench Queue = Total Hollow HT Out (378) - Total Draw Out (101) = 277 PCS
+    const expectedDrawQueuePcs = totalHhtOutPcs - totalDrawOutPcs;
+    expect(expectedDrawQueuePcs).toBe(277);
   });
 });

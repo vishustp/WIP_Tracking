@@ -1,6 +1,5 @@
 import React from "react";
 import { fmt } from "@/lib/productionUtils";
-import { ExternalLink } from "lucide-react";
 import type { StageCode } from "@/types";
 
 interface WorkCenterSummaryItem {
@@ -41,7 +40,7 @@ export function WipSummaryCards({
   stage,
   setStage,
 }: WipSummaryCardsProps) {
-  // Production Entry stages in sequential order (Band Saw and VDI have dedicated forms)
+  // Production Entry stages in sequential manufacturing flow (Band Saw and VDI have dedicated portals at /band-saw and /vdi)
   const orderedStages: StageCode[] = [
     "HOT_ROLLING",
     "HTC",
@@ -49,22 +48,11 @@ export function WipSummaryCards({
     "DRAW",
     "PILGER",
     "HEAT_TREATMENT",
-    "BAND_SAW",
-    "VDI",
-    "VDI_SALVAGE",
     "FINISHING",
   ];
 
   const handleStageClick = (stgCode: StageCode) => {
-    if (stgCode === "BAND_SAW") {
-      window.location.href = "/band-saw";
-    } else if (stgCode === "VDI") {
-      window.location.href = "/vdi";
-    } else if (stgCode === "VDI_SALVAGE") {
-      window.location.href = "/vdi?tab=salvage";
-    } else {
-      setStage(stgCode);
-    }
+    setStage(stgCode);
   };
 
   return (
@@ -75,7 +63,7 @@ export function WipSummaryCards({
         </h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
         {orderedStages.map((stgCode) => {
           const wc = workCenterSummary.find((x) => x.stage_code === stgCode) || {
             label: STAGE_DISPLAY_NAMES[stgCode] || stgCode,

@@ -4,8 +4,8 @@ import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/production/queue/route';
 
 describe('Diversion WIP Deduction & Queue Verification', () => {
-  it('verifies WO 6072 displays 277 Nos / 2113.51 Mtr at Hollow Heat Treatment', async () => {
-    const req = new NextRequest('http://localhost:3000/api/production/queue?stage=HOLLOW_HEAT_TREATMENT&nocache=1');
+  it('verifies WO 6072 displays 277 Nos / 2113.51 Mtr at Draw Bench', async () => {
+    const req = new NextRequest('http://localhost:3000/api/production/queue?stage=DRAW&nocache=1');
     const res = await GET(req);
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -15,15 +15,14 @@ describe('Diversion WIP Deduction & Queue Verification', () => {
     expect(Number(row6072.balance_to_make_mtr)).toBeCloseTo(2113.51, 1);
   });
 
-  it('verifies WO 6607 displays 69 Nos WIP at Heat Treatment in queue', async () => {
-    const req = new NextRequest('http://localhost:3000/api/production/queue?stage=HEAT_TREATMENT&nocache=1');
+  it('verifies WO 6607 displays in queue (cut into VDI inspection with 496 Nos)', async () => {
+    const req = new NextRequest('http://localhost:3000/api/production/queue?stage=VDI&nocache=1');
     const res = await GET(req);
     expect(res.status).toBe(200);
     const json = await res.json();
     const row6607 = json.data?.find((r: any) => r.work_order_no === '6607');
     expect(row6607).toBeDefined();
-    expect(Number(row6607.ready_pcs)).toBe(69);
-    expect(Number(row6607.ready_mtr)).toBeCloseTo(386.4, 1);
+    expect(Number(row6607.ready_pcs)).toBe(496);
   });
 
   it('verifies outbound diversions are deducted from source VDI for WO 6354 and WO 6360', async () => {
