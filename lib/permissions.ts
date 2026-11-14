@@ -107,7 +107,7 @@ export function getDefaultPermissions(group: UserGroup, workCenter: string): For
     production_finishing: workCenter === 'ALL' || workCenter === 'FINISHING' || workCenter === 'BAND_SAW' ? 'edit' : 'view',
     work_order: 'view',
     rolling_plan: 'view',
-    diversion: 'view',
+    diversion: (workCenter === 'ALL' || workCenter === 'DRAW' || workCenter === 'PILGER') ? 'edit' : 'view',
     excel_import: 'none',
     reports: 'view',
     admin_panel: 'none',
@@ -178,6 +178,7 @@ export const GROUP_CONFIGS: Record<UserGroup, GroupConfig> = {
       'Create production entries for assigned work center',
       'Edit production logs for assigned work center only',
       'Delete unfinalized entries in assigned work center only',
+      'Execute same-work-center pipe diversions (Cold Draw Bench & Pilger Mill operators)',
       'Cannot delete or edit data from other work centers',
       'No user management or system settings access',
     ],
@@ -303,7 +304,9 @@ export function isRouteVisible(user: AppUserProfile | null | undefined, href: st
     return perms.rolling_plan === 'edit' || perms.rolling_plan === 'view';
   }
   if (href === '/diversions' || href.startsWith('/diversions/') || href === '/hollow-bank' || href.startsWith('/hollow-bank/')) {
-    return perms.diversion === 'edit' || perms.diversion === 'view' || isPpcOrAdminUser(user, group);
+    const userWcCode = (user?.work_center || user?.default_stage || '').toUpperCase();
+    const isOperatorWc = userWcCode === 'DRAW' || userWcCode === 'PILGER';
+    return perms.diversion === 'edit' || perms.diversion === 'view' || isPpcOrAdminUser(user, group) || isOperatorWc;
   }
   if (href === '/excel-import' || href.startsWith('/excel-import/')) {
     return perms.excel_import === 'edit' || perms.excel_import === 'view';
@@ -818,6 +821,28 @@ export function getFormAccess(
       };
     }
 
+    const userWcCode = (user?.work_center || user?.default_stage || '').toUpperCase();
+    const isDrawOrPilgerOperator = !isAuditor && (userWcCode === 'DRAW' || userWcCode === 'PILGER');
+
+    if (isDrawOrPilgerOperator && group !== 'admin' && group !== 'super_user') {
+      return {
+        formKey,
+        formTitle: 'Physical WIP Pipe Diversion Planning',
+        isAllowed: true,
+        mode: 'full',
+        canSubmit: true,
+        canEdit: true,
+        canDelete: false,
+        group,
+        groupName: groupCfg.name,
+        userWorkCenter: wc,
+        userWorkCenterLabel: wcLabel,
+        authorizedGroups: ['Admin Group', 'Super User Group', 'Cold Draw Operator', 'Cold Pilger Operator'],
+        bannerTitle: `Diversion Authorization Active (${wcLabel})`,
+        bannerMessage: `Authorized to perform same-work-center material diversions within ${wcLabel}.`,
+      };
+    }
+
     const isAllowed = (group === 'admin' || group === 'super_user') && !isAuditor;
     return {
       formKey,
@@ -1031,6 +1056,68 @@ export function getFormAccess(
   };
 }
 
+export function checkCanPerformAction(
+  user: AppUserProfile | null | undefined,
+  action: PermissionAction,
+  stageCode?: string
+): { allowed: boolean; reason?: string } {
+  const group = (user?.group || (user?.role === 'admin' ? 'admin' : user?.role === 'manager' ? 'super_user' : 'user')) as UserGroup;
+  switch (action) {
+    case 'delete_production_entry': return checkCanDelete(user, stageCode || user?.default_stage || 'ROLLING');
+    case 'edit_production_entry': return checkCanEdit(user, stageCode || user?.default_stage || 'ROLLING');
+    case 'create_production_entry': return checkCanCreate(user, stageCode || user?.default_stage || 'ROLLING');
+    case 'manage_users': return checkCanManageUsers(user);
+    case 'modify_settings':
+    case 'system_reset': return checkCanModifySettings(user);
+    case 'access_admin_panel':
+      return group === 'admin' ? { allowed: true } : { allowed: false, reason: 'Admin panel is restricted to Admin Group' };
+    case 'create_rolling_plan':
+    case 'edit_rolling_plan':
+    case 'delete_rolling_plan': {
+      const custom = user?.permissions?.rolling_plan;
+      if (custom !== undefined) {
+        return custom === 'edit'
+          ? { allowed: true }
+          : { allowed: false, reason: 'Rolling plans permission is view-only or restricted by Admin' };
+      }
+      return checkCanManagePlans(user);
+    }
+    case 'create_diversion': {
+      const custom = user?.permissions?.diversion;
+      if (custom !== undefined) {
+        return custom === 'edit'
+          ? { allowed: true }
+          : { allowed: false, reason: 'Diversion permission is view-only or restricted by Admin' };
+      }
+      const userWcCode = (user?.work_center || user?.default_stage || '').toUpperCase();
+      if (userWcCode === 'DRAW' || userWcCode === 'PILGER') {
+        return { allowed: true };
+      }
+      return checkCanManagePlans(user);
+    }
+    case 'delete_diversion': {
+      const custom = user?.permissions?.diversion;
+      if (custom !== undefined) {
+        return custom === 'edit'
+          ? { allowed: true }
+          : { allowed: false, reason: 'Diversion permission is view-only or restricted by Admin' };
+      }
+      return checkCanManagePlans(user);
+    }
+    case 'import_work_orders': {
+      const custom = user?.permissions?.excel_import || user?.permissions?.work_order;
+      if (custom !== undefined) {
+        return custom === 'edit'
+          ? { allowed: true }
+          : { allowed: false, reason: 'Import work orders permission is restricted by Admin' };
+      }
+      return checkCanManagePlans(user);
+    }
+    case 'view_audit_logs': return { allowed: true };
+    default: return { allowed: false, reason: 'Action not allowed' };
+  }
+}
+
 export function usePermissions() {
   const session = useOptionalUserSession();
 
@@ -1072,50 +1159,9 @@ export function usePermissions() {
 
   const can = useCallback(
     (action: PermissionAction, stageCode?: string): { allowed: boolean; reason?: string } => {
-      switch (action) {
-        case 'delete_production_entry': return checkCanDelete(user, stageCode || user?.default_stage || 'ROLLING');
-        case 'edit_production_entry': return checkCanEdit(user, stageCode || user?.default_stage || 'ROLLING');
-        case 'create_production_entry': return checkCanCreate(user, stageCode || user?.default_stage || 'ROLLING');
-        case 'manage_users': return checkCanManageUsers(user);
-        case 'modify_settings':
-        case 'system_reset': return checkCanModifySettings(user);
-        case 'access_admin_panel':
-          return group === 'admin' ? { allowed: true } : { allowed: false, reason: 'Admin panel is restricted to Admin Group' };
-        case 'create_rolling_plan':
-        case 'edit_rolling_plan':
-        case 'delete_rolling_plan': {
-          const custom = user?.permissions?.rolling_plan;
-          if (custom !== undefined) {
-            return custom === 'edit'
-              ? { allowed: true }
-              : { allowed: false, reason: 'Rolling plans permission is view-only or restricted by Admin' };
-          }
-          return checkCanManagePlans(user);
-        }
-        case 'create_diversion':
-        case 'delete_diversion': {
-          const custom = user?.permissions?.diversion;
-          if (custom !== undefined) {
-            return custom === 'edit'
-              ? { allowed: true }
-              : { allowed: false, reason: 'Diversion permission is view-only or restricted by Admin' };
-          }
-          return checkCanManagePlans(user);
-        }
-        case 'import_work_orders': {
-          const custom = user?.permissions?.excel_import || user?.permissions?.work_order;
-          if (custom !== undefined) {
-            return custom === 'edit'
-              ? { allowed: true }
-              : { allowed: false, reason: 'Import work orders permission is restricted by Admin' };
-          }
-          return checkCanManagePlans(user);
-        }
-        case 'view_audit_logs': return { allowed: true };
-        default: return { allowed: false, reason: 'Action not allowed' };
-      }
+      return checkCanPerformAction(user, action, stageCode);
     },
-    [user, group]
+    [user]
   );
 
   const isStageAllowed = useCallback(

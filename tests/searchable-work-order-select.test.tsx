@@ -105,4 +105,59 @@ describe("SearchableSelect & WorkOrderSelect Component", () => {
     expect(screen.getByText(/WO-7001 · Chevron/i)).not.toBeNull();
     expect(screen.getByText(/A106-B · 60\.3×5\.54mm · 6m/i)).not.toBeNull();
   });
+
+  it("finds work orders of size 76.1 x 4.5 when searching by '76.10', '76.10 X 4.50', 'size 76.10 x 4.50'", () => {
+    const workOrders = [
+      {
+        id: "wo-6397",
+        work_order_no: "6397",
+        customer_name: "Bharat Heavy Electrical Limited",
+        grade: "ASME SA 192",
+        size_od: 76.1,
+        size_wt: 4.5,
+        avg_length: 7.5,
+      },
+      {
+        id: "wo-6034",
+        work_order_no: "6034",
+        customer_name: "Apex Pipe",
+        grade: "ASTM A106",
+        size_od: 48.3,
+        size_wt: 3.68,
+        avg_length: 6.0,
+      },
+    ];
+
+    const { rerender } = render(
+      <WorkOrderSelect
+        value=""
+        onChange={vi.fn()}
+        workOrders={workOrders}
+        placeholder="Select Source Order..."
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: /Select Source Order\.\.\./i });
+    fireEvent.click(trigger);
+
+    const searchInput = screen.getByPlaceholderText(/Search by WO#, customer, grade, size\.\.\./i);
+
+    // 1. Search '76.10'
+    fireEvent.change(searchInput, { target: { value: "76.10" } });
+    expect(screen.getByText(/6397 · Bharat Heavy Electrical Limited/i)).not.toBeNull();
+    expect(screen.queryByText(/6034 · Apex Pipe/i)).toBeNull();
+
+    // 2. Search '76.10 X 4.50'
+    fireEvent.change(searchInput, { target: { value: "76.10 X 4.50" } });
+    expect(screen.getByText(/6397 · Bharat Heavy Electrical Limited/i)).not.toBeNull();
+
+    // 3. Search 'size 76.10 x 4.50'
+    fireEvent.change(searchInput, { target: { value: "size 76.10 x 4.50" } });
+    expect(screen.getByText(/6397 · Bharat Heavy Electrical Limited/i)).not.toBeNull();
+
+    // 4. Search '4.50'
+    fireEvent.change(searchInput, { target: { value: "4.50" } });
+    expect(screen.getByText(/6397 · Bharat Heavy Electrical Limited/i)).not.toBeNull();
+    expect(screen.queryByText(/6034 · Apex Pipe/i)).toBeNull();
+  });
 });

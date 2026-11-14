@@ -31,7 +31,7 @@ import {
   XCircle,
   ShieldCheck,
 } from 'lucide-react';
-import { usePermissions, getFormAccess } from '@/lib/permissions';
+import { usePermissions, getFormAccess, WORK_CENTER_LABELS } from '@/lib/permissions';
 import { useOptionalUserSession } from '@/contexts/UserSessionContext';
 import FormAccessBanner from '@/components/common/FormAccessBanner';
 import { buildCampaignHierarchyMaps, reconcileCampaignWorkOrderWip } from '@/lib/campaignWipUtils';
@@ -739,6 +739,20 @@ export default function DiversionForm() {
     );
   }, [user]);
 
+  const userWcCode = useMemo(() => (user?.work_center || user?.default_stage || '').toUpperCase(), [user]);
+  const isDrawOrPilgerOperator = useMemo(() => {
+    if (!user || isPpcUser) return false;
+    return userWcCode === 'DRAW' || userWcCode === 'PILGER';
+  }, [user, isPpcUser, userWcCode]);
+
+  // Enforce same-work-center default for Draw Bench and Pilger Mill operators
+  useEffect(() => {
+    if (isDrawOrPilgerOperator && userWcCode) {
+      setSourceWorkCenter(userWcCode);
+      setTargetWorkCenter(userWcCode);
+    }
+  }, [isDrawOrPilgerOperator, userWcCode]);
+
   // WIP summaries for Source and Target
   const [sourceWip, setSourceWip] = useState<WoWipSummary | null>(null);
   const [targetWip, setTargetWip] = useState<WoWipSummary | null>(null);
@@ -843,11 +857,11 @@ export default function DiversionForm() {
           source_wo_no: d.source_wo?.work_order_no,
           source_customer: d.source_wo?.customer_name,
           source_grade: d.source_wo?.grade || d.source_wo?.specification,
-          source_size: `${d.source_wo?.size_od || 0}×${d.source_wo?.size_wt || 0} mm`,
+          source_size: d.source_wo?.size_od && d.source_wo?.size_wt ? `${Number(d.source_wo.size_od).toFixed(2)}×${Number(d.source_wo.size_wt).toFixed(2)} mm` : `${d.source_wo?.size_od || 0}×${d.source_wo?.size_wt || 0} mm`,
           target_wo_no: d.target_wo?.work_order_no,
           target_customer: d.target_wo?.customer_name,
           target_grade: d.target_wo?.grade || d.target_wo?.specification,
-          target_size: `${d.target_wo?.size_od || 0}×${d.target_wo?.size_wt || 0} mm`,
+          target_size: d.target_wo?.size_od && d.target_wo?.size_wt ? `${Number(d.target_wo.size_od).toFixed(2)}×${Number(d.target_wo.size_wt).toFixed(2)} mm` : `${d.target_wo?.size_od || 0}×${d.target_wo?.size_wt || 0} mm`,
           route_code: d.route?.route_code,
           route_name: d.route?.route_name,
         }));
@@ -976,15 +990,24 @@ export default function DiversionForm() {
 
   // Work centers available for the selected Source Work Order (only active stages in its route)
   const availableWorkCenters = useMemo(() => {
+    if (isDrawOrPilgerOperator) {
+      const match = WORK_CENTERS.find(wc => wc.code === userWcCode);
+      return match ? [match] : WORK_CENTERS;
+    }
     if (!sourceWip?.stageBreakdown?.length) return WORK_CENTERS;
     return WORK_CENTERS.filter((wc) => {
       const stg = sourceWip.stageBreakdown.find((s) => s.stage_code === wc.code);
       return stg ? (stg as any).is_in_route !== false : true;
     });
-  }, [sourceWip]);
+  }, [sourceWip, isDrawOrPilgerOperator, userWcCode]);
 
   // If current sourceWorkCenter is not valid or has 0 WIP, default to the first stage with active WIP
   useEffect(() => {
+    if (isDrawOrPilgerOperator) {
+      setSourceWorkCenter(userWcCode);
+      setTargetWorkCenter(userWcCode);
+      return;
+    }
     if (sourceWip?.stageBreakdown?.length) {
       const currentValid = sourceWip.stageBreakdown.some((s) => s.stage_code === sourceWorkCenter && s.available_mtr > 0);
       if (!currentValid) {
@@ -999,7 +1022,7 @@ export default function DiversionForm() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceWip]);
+  }, [sourceWip, isDrawOrPilgerOperator, userWcCode]);
 
   // Selected Work Center WIP for Source (where material will be deducted)
   const sourceStageWip = useMemo(() => {
@@ -1135,6 +1158,18 @@ export default function DiversionForm() {
       toast.error('Permission denied: Diversion planning requires Admin or Super User group');
       return;
     }
+    if (isDrawOrPilgerOperator) {
+      if (sourceWorkCenter !== userWcCode) {
+        toast.error(`Operators assigned to ${WORK_CENTER_LABELS[userWcCode] || userWcCode} can only divert from their assigned work center.`);
+        return;
+      }
+      for (const s of payload.splits) {
+        if (s.target_stage_code && s.target_stage_code !== userWcCode) {
+          toast.error(`Operators assigned to ${WORK_CENTER_LABELS[userWcCode] || userWcCode} can only divert within their assigned work center.`);
+          return;
+        }
+      }
+    }
     setBusy(true);
     try {
       const supabase = createClient();
@@ -1174,7 +1209,10 @@ export default function DiversionForm() {
         }
 
         const isDrawTarget = split.target_stage_code === 'DRAW';
-        const planStatus = isDrawTarget
+        const isSameWcFloorDiversion = isDrawOrPilgerOperator && sourceWorkCenter === userWcCode && split.target_stage_code === userWcCode;
+        const planStatus = isSameWcFloorDiversion
+          ? 'APPROVED'
+          : isDrawTarget
           ? (isPpcUser && ppcAutoApprove ? 'APPROVED' : 'PENDING_PPC')
           : 'APPROVED';
 
@@ -1280,6 +1318,12 @@ export default function DiversionForm() {
       toast.error('Permission denied: Diversion planning requires Admin or Super User group');
       return;
     }
+    if (isDrawOrPilgerOperator) {
+      if (sourceWorkCenter !== userWcCode || targetWorkCenter !== userWcCode) {
+        toast.error(`Operators assigned to ${WORK_CENTER_LABELS[userWcCode] || userWcCode} can only divert material within their assigned work center.`);
+        return;
+      }
+    }
     if (!source || !target || !route) return toast.error('Select source WO, target WO and route');
     if (source === target) return toast.error('Source and target WO must be different');
     
@@ -1308,7 +1352,10 @@ export default function DiversionForm() {
     const finalReason = `${cleanedUserReason}${numMultiple > 1 ? ` [MULTIPLE: ${numMultiple}]` : ''} [FROM_STAGE: ${sourceWorkCenter}] [TO_STAGE: ${targetWorkCenter}]${pcsTag}`.trim();
 
     const isDrawBenchTarget = targetWorkCenter === 'DRAW';
-    const planStatus = isDrawBenchTarget
+    const isSameWcFloorDiversion = isDrawOrPilgerOperator && sourceWorkCenter === userWcCode && targetWorkCenter === userWcCode;
+    const planStatus = isSameWcFloorDiversion
+      ? 'APPROVED'
+      : isDrawBenchTarget
       ? (isPpcUser && ppcAutoApprove ? 'APPROVED' : 'PENDING_PPC')
       : 'APPROVED';
 
@@ -1555,9 +1602,51 @@ export default function DiversionForm() {
           if (p.status !== filterStatus) return false;
         }
       }
+      if (debouncedSearch.trim()) {
+        const q = debouncedSearch.trim().toLowerCase();
+        const terms = q.split(/\s+/).filter(Boolean);
+        const combined = [
+          p.id,
+          p.source_wo_no,
+          p.target_wo_no,
+          p.source_customer,
+          p.target_customer,
+          p.source_grade,
+          p.target_grade,
+          p.source_size,
+          p.target_size,
+          p.reason,
+          p.approved_by,
+          p.route_code,
+          p.route_name,
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        const matches = terms.every((term) => {
+          if (combined.includes(term)) return true;
+          if (term === 'x' || term === '×' || term === '*') {
+            return combined.includes('x') || combined.includes('×') || combined.includes('*');
+          }
+          const parsed = parseFloat(term);
+          if (!isNaN(parsed) && /^\d+(\.\d+)?$/.test(term)) {
+            const raw = String(parsed);
+            const fixed2 = parsed.toFixed(2);
+            const fixed1 = parsed.toFixed(1);
+            if (combined.includes(raw) || combined.includes(fixed2) || combined.includes(fixed1)) {
+              return true;
+            }
+          }
+          if (terms.length > 1 && (term === 'size' || term === 'od' || term === 'wt' || term === 'dia' || term === 'mm')) {
+            return true;
+          }
+          return false;
+        });
+        if (!matches) return false;
+      }
       return true;
     });
-  }, [plans, filterStatus]);
+  }, [plans, filterStatus, debouncedSearch]);
 
   return (
     <div className="space-y-6 pb-20 sm:pb-6">
@@ -1707,7 +1796,7 @@ export default function DiversionForm() {
                     value={sourceWorkCenter}
                     onChange={(e) => setSourceWorkCenter(e.target.value)}
                     required
-                    disabled={!canManagePlans}
+                    disabled={!canManagePlans || isDrawOrPilgerOperator}
                     className="font-semibold text-slate-900 border-amber-400 bg-amber-50/20 min-h-[44px]"
                   >
                     {availableWorkCenters.map((wc) => {
@@ -1755,6 +1844,11 @@ export default function DiversionForm() {
                 {!canManagePlans && (
                   <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
                     <Lock size={12} /> View-Only Access
+                  </span>
+                )}
+                {isDrawOrPilgerOperator && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1">
+                    <CheckCircle2 size={12} className="text-blue-600" /> {getWcShortName(userWcCode)} Same Work Center Diversion
                   </span>
                 )}
               </div>
@@ -1805,7 +1899,7 @@ export default function DiversionForm() {
                     value={sourceWorkCenter}
                     onChange={(e) => setSourceWorkCenter(e.target.value)}
                     required
-                    disabled={!canManagePlans}
+                    disabled={!canManagePlans || isDrawOrPilgerOperator}
                     className="font-semibold text-slate-900 border-amber-400 bg-amber-50/20 min-h-[44px]"
                   >
                     {availableWorkCenters.map((wc) => {
@@ -1832,17 +1926,19 @@ export default function DiversionForm() {
                     value={targetWorkCenter}
                     onChange={(e) => setTargetWorkCenter(e.target.value)}
                     required
-                    disabled={!canManagePlans}
+                    disabled={!canManagePlans || isDrawOrPilgerOperator}
                     className="font-semibold text-slate-900 border-emerald-400 bg-emerald-50/20 min-h-[44px]"
                   >
-                    {WORK_CENTERS.map((wc) => (
+                    {(isDrawOrPilgerOperator ? WORK_CENTERS.filter((wc) => wc.code === userWcCode) : WORK_CENTERS).map((wc) => (
                       <option key={wc.code} value={wc.code}>
                         {wc.name}
                       </option>
                     ))}
                   </Select>
                   <span className="text-[11px] text-slate-500 mt-1 block">
-                    Stage credited on target WO
+                    {isDrawOrPilgerOperator
+                      ? `Locked to same work center (${WORK_CENTERS.find(w => w.code === userWcCode)?.name || userWcCode})`
+                      : 'Stage credited on target WO'}
                   </span>
                 </div>
 

@@ -78,7 +78,34 @@ export function SearchableSelect({
         .join(' ')
         .toLowerCase();
 
-      return terms.every((term) => combined.includes(term));
+      return terms.every((term) => {
+        if (combined.includes(term)) return true;
+
+        // Dimension separators (e.g. 'x', 'X', '×', '*')
+        if (term === 'x' || term === '×' || term === '*') {
+          return combined.includes('x') || combined.includes('×') || combined.includes('*');
+        }
+
+        // Numeric equivalence for mill pipe dimensions (e.g. "76.10" matches "76.1" or vice-versa)
+        const parsed = parseFloat(term);
+        if (!isNaN(parsed) && /^\d+(\.\d+)?$/.test(term)) {
+          const raw = String(parsed);
+          const fixed2 = parsed.toFixed(2);
+          const fixed1 = parsed.toFixed(1);
+          if (combined.includes(raw) || combined.includes(fixed2) || combined.includes(fixed1)) {
+            return true;
+          }
+        }
+
+        // Qualitative keywords if part of a multi-word query (e.g. "size 76.10 x 4.50")
+        if (terms.length > 1 && (term === 'size' || term === 'od' || term === 'wt' || term === 'dia' || term === 'mm')) {
+          if (combined.includes('mm') || combined.includes('×') || combined.includes('x') || combined.includes('size')) {
+            return true;
+          }
+        }
+
+        return false;
+      });
     });
   }, [options, search]);
 

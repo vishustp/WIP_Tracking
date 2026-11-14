@@ -69,6 +69,14 @@ export function WorkOrderSelect({
         const grade = wo.specification?.trim() || wo.grade?.trim() || 'Grade N/A';
         const od = wo.size_od ?? wo.od;
         const wt = wo.size_wt ?? wo.wt;
+        const odNum = od != null && !isNaN(Number(od)) ? Number(od) : null;
+        const wtNum = wt != null && !isNaN(Number(wt)) ? Number(wt) : null;
+
+        const odFixed = odNum != null ? odNum.toFixed(2) : '';
+        const wtFixed = wtNum != null ? wtNum.toFixed(2) : '';
+        const odRaw = odNum != null ? `${odNum}` : '';
+        const wtRaw = wtNum != null ? `${wtNum}` : '';
+
         const sizeStr = od && wt ? `${od}×${wt}mm` : '';
 
         let lengthStr = '';
@@ -94,10 +102,34 @@ export function WorkOrderSelect({
           customer,
           grade,
           wo.specification || '',
-          od != null ? `${od}` : '',
-          wt != null ? `${wt}` : '',
-          od != null && wt != null ? `${od}x${wt}` : '',
-          od != null && wt != null ? `${od}×${wt}` : '',
+          odRaw,
+          odFixed,
+          wtRaw,
+          wtFixed,
+          odNum != null ? 'size' : '',
+          odNum != null ? 'od' : '',
+          wtNum != null ? 'wt' : '',
+          // Raw combinations
+          odRaw && wtRaw ? `${odRaw}x${wtRaw}` : '',
+          odRaw && wtRaw ? `${odRaw}×${wtRaw}` : '',
+          odRaw && wtRaw ? `${odRaw}*${wtRaw}` : '',
+          odRaw && wtRaw ? `${odRaw} x ${wtRaw}` : '',
+          odRaw && wtRaw ? `${odRaw} × ${wtRaw}` : '',
+          // Fixed 2-decimal combinations (e.g. "76.10x4.50", "76.10 x 4.50", "76.10×4.50", "76.10 × 4.50")
+          odFixed && wtFixed ? `${odFixed}x${wtFixed}` : '',
+          odFixed && wtFixed ? `${odFixed}×${wtFixed}` : '',
+          odFixed && wtFixed ? `${odFixed}*${wtFixed}` : '',
+          odFixed && wtFixed ? `${odFixed} x ${wtFixed}` : '',
+          odFixed && wtFixed ? `${odFixed} × ${wtFixed}` : '',
+          // Cross-combinations (e.g. "76.10x4.5", "76.1x4.50")
+          odFixed && wtRaw ? `${odFixed}x${wtRaw}` : '',
+          odFixed && wtRaw ? `${odFixed}×${wtRaw}` : '',
+          odRaw && wtFixed ? `${odRaw}x${wtFixed}` : '',
+          odRaw && wtFixed ? `${odRaw}×${wtFixed}` : '',
+          odFixed ? `${odFixed}mm` : '',
+          odFixed ? `${odFixed} mm` : '',
+          odRaw ? `${odRaw}mm` : '',
+          odRaw ? `${odRaw} mm` : '',
           isSameOrder ? 'same current internal order' : '',
         ].filter(Boolean);
 
