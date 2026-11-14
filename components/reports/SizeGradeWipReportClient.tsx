@@ -624,6 +624,46 @@ export default function SizeGradeWipReportClient() {
           }
         });
 
+        // Pre-group active approved diversions by work order and stage
+        const outboundDivsByWoAndStage = new Map<string, Map<string, { mtr: number; pcs: number }>>();
+        const inboundDivsByWoAndStage = new Map<string, Map<string, { mtr: number; pcs: number }>>();
+
+        (divRes.data || []).forEach((d: any) => {
+          const st = String(d.status || '').toUpperCase();
+          if (st === 'CANCELLED' || st === 'REJECTED_BY_PPC' || st === 'REJECTED') return;
+
+          const srcWo = d.source_wo_id;
+          const tgtWo = d.target_wo_id;
+          const woSrc = woDetailsMap.get(srcWo);
+          const avgLen = Number(woSrc?.l1 && woSrc?.l2 ? (Number(woSrc.l1) + Number(woSrc.l2)) / 2 : woSrc?.l1 || woSrc?.l2 || 6.0);
+
+          const pcsMatch = (d.reason || '').match(/\[PCS:\s*(\d+)\]/i);
+          const divMtr = Number(d.diverted_qty || 0);
+          const divPcs = pcsMatch ? parseInt(pcsMatch[1], 10) : (avgLen > 0 ? Math.round(divMtr / avgLen) : 0);
+
+          if (srcWo) {
+            const reason = d.reason || '';
+            const m = reason.match(/\[FROM_STAGE:\s*([A-Za-z0-9_]+)\]/i);
+            const fromStage = m ? m[1].toUpperCase() : (d.work_center || d.source_work_center || 'ROLLING').toUpperCase();
+
+            if (!outboundDivsByWoAndStage.has(srcWo)) outboundDivsByWoAndStage.set(srcWo, new Map());
+            const stageMap = outboundDivsByWoAndStage.get(srcWo)!;
+            const cur = stageMap.get(fromStage) || { mtr: 0, pcs: 0 };
+            stageMap.set(fromStage, { mtr: Number((cur.mtr + divMtr).toFixed(2)), pcs: cur.pcs + divPcs });
+          }
+
+          if (tgtWo) {
+            const reason = d.reason || '';
+            const m = reason.match(/\[TO_STAGE:\s*([A-Za-z0-9_]+)\]/i);
+            const toStage = m ? m[1].toUpperCase() : (d.target_work_center || d.work_center || 'ROLLING').toUpperCase();
+
+            if (!inboundDivsByWoAndStage.has(tgtWo)) inboundDivsByWoAndStage.set(tgtWo, new Map());
+            const stageMap = inboundDivsByWoAndStage.get(tgtWo)!;
+            const cur = stageMap.get(toStage) || { mtr: 0, pcs: 0 };
+            stageMap.set(toStage, { mtr: Number((cur.mtr + divMtr).toFixed(2)), pcs: cur.pcs + divPcs });
+          }
+        });
+
         // Group raw WIP by work order
         const wipByWo = new Map<string, any[]>();
         for (const r of (wipRes.data || [])) {
@@ -684,11 +724,24 @@ export default function SizeGradeWipReportClient() {
           const mhOd = Number(planMh?.mh_od || rollStage?.mh_od || wo?.size_od || rows[0]?.size_od || 0);
           const mhWt = Number(planMh?.mh_wt || rollStage?.mh_wt || wo?.size_wt || rows[0]?.size_wt || 0);
 
+          const enrichedRows = rows.map((stg: any) => {
+            const sc = (stg.stage_code || '').toUpperCase();
+            const divOut = outboundDivsByWoAndStage.get(woId)?.get(sc) || { mtr: 0, pcs: 0 };
+            const divIn = inboundDivsByWoAndStage.get(woId)?.get(sc) || { mtr: 0, pcs: 0 };
+            return {
+              ...stg,
+              diversion_out: divOut.mtr,
+              diversion_out_pcs: divOut.pcs,
+              diversion_in: divIn.mtr,
+              diversion_in_pcs: divIn.pcs,
+            };
+          });
+
           const finStageId = (stagesRes.data || []).find((s: any) => (s.stage_code || '').toUpperCase() === 'FINISHING')?.id;
           const { summary } = reconcileCampaignWorkOrderWip({
             woId,
             wo,
-            rows,
+            rows: enrichedRows,
             qcInspections: qcRes.data || [],
             productionLogs: prodRes.data || [],
             hierarchyMaps: {
