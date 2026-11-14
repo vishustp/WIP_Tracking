@@ -278,13 +278,22 @@ export function reconcileWorkOrderWip(
         const drawProd = stageProdMap.get('DRAW');
         const drawOkPcs = Math.max(0, (drawProd?.prodPcs || 0) - (drawProd?.rejPcs || 0));
         incomingPcs = drawOkPcs;
-        // Actual physical elongated drawn length conserving full mass:
-        const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
-        const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
-        if (finUnitWeight > 0 && mhUnitWeight > 0) {
-          stageLen = Number((actualMhLen * (mhUnitWeight / finUnitWeight)).toFixed(3));
+        const actualDrawnLen = (drawProd && drawProd.prodPcs > 0 && drawProd.prodMtr > 0)
+          ? Number((drawProd.prodMtr / drawProd.prodPcs).toFixed(3))
+          : (cur.incoming_mtr && incomingPcs > 0 ? Number((Number(cur.incoming_mtr) / incomingPcs).toFixed(3)) : 0);
+        if (actualDrawnLen > 0) {
+          stageLen = actualDrawnLen;
+        } else if (cur.avg_length && Number(cur.avg_length) > 0) {
+          stageLen = Number(cur.avg_length);
         } else {
-          stageLen = finalAvgLen;
+          // Actual physical elongated drawn length conserving full mass:
+          const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
+          const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
+          if (finUnitWeight > 0 && mhUnitWeight > 0) {
+            stageLen = Number((actualMhLen * (mhUnitWeight / finUnitWeight)).toFixed(3));
+          } else {
+            stageLen = finalAvgLen;
+          }
         }
       } else {
         incomingPcs = 0;
@@ -308,12 +317,22 @@ export function reconcileWorkOrderWip(
         const htProd = stageProdMap.get('HEAT_TREATMENT');
         const htOkPcs = Math.max(0, (htProd?.prodPcs || 0) - (htProd?.rejPcs || 0));
         incomingPcs = htOkPcs;
-        const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
-        const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
-        if (finUnitWeight > 0 && mhUnitWeight > 0) {
-          stageLen = Number((actualMhLen * (mhUnitWeight / finUnitWeight)).toFixed(3));
+        const drawProd = stageProdMap.get('DRAW');
+        const actualDrawnLen = (drawProd && drawProd.prodPcs > 0 && drawProd.prodMtr > 0)
+          ? Number((drawProd.prodMtr / drawProd.prodPcs).toFixed(3))
+          : (cur.incoming_mtr && incomingPcs > 0 ? Number((Number(cur.incoming_mtr) / incomingPcs).toFixed(3)) : 0);
+        if (actualDrawnLen > 0) {
+          stageLen = actualDrawnLen;
+        } else if (cur.avg_length && Number(cur.avg_length) > 0) {
+          stageLen = Number(cur.avg_length);
         } else {
-          stageLen = finalAvgLen;
+          const finUnitWeight = stageOd > stageWt && stageWt > 0 ? (stageOd - stageWt) * stageWt * 0.0246615 * 0.001 : 0;
+          const mhUnitWeight = mhOd > mhWt && mhWt > 0 ? (mhOd - mhWt) * mhWt * 0.0246615 * 0.001 : 0;
+          if (finUnitWeight > 0 && mhUnitWeight > 0) {
+            stageLen = Number((actualMhLen * (mhUnitWeight / finUnitWeight)).toFixed(3));
+          } else {
+            stageLen = finalAvgLen;
+          }
         }
       }
     } else if (sc === 'VDI') {
