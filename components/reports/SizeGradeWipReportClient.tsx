@@ -295,10 +295,13 @@ export default function SizeGradeWipReportClient() {
                 : Number(Number(r.ready_mt ?? r.available_mt ?? 0).toFixed(2));
 
               // Physical balance sanity check: if current stage production >= incoming quantity,
-              // no active physical WIP can remain at this station (eliminates phantom DB/HT WIP)
+              // or if the order's balance to make is 0 (already fulfilled at finishing),
+              // no active physical WIP can remain at this upstream station (eliminates phantom DB/HT WIP)
               const prodQty = Number(r.production_qty ?? r.gross_output_mtr ?? 0);
               const incQty = Number(r.incoming_qty ?? 0);
-              const isFullyProcessed = !isRolling && incQty > 0 && prodQty >= incQty && (stCode === 'DRAW' || stCode === 'HEAT_TREATMENT' || stCode === 'HOLLOW_HEAT_TREATMENT');
+              const isOrderFulfilled = (r.order_status === 'Completed' || (Number(r.balance_to_make_order_pcs ?? 1) <= 0 && Number(r.finished_output_pcs ?? 0) >= Number(r.total_order_pcs ?? 1))) && !r.has_active_child_orders;
+              const isFullyProcessed = (!isRolling && incQty > 0 && prodQty >= incQty && (stCode === 'DRAW' || stCode === 'HEAT_TREATMENT' || stCode === 'HOLLOW_HEAT_TREATMENT'))
+                || (isOrderFulfilled && (stCode === 'DRAW' || stCode === 'HEAT_TREATMENT' || stCode === 'HOLLOW_HEAT_TREATMENT' || stCode === 'BAND_SAW'));
               
               const od = Number(r.final_od || r.size_od || r.wo_od || r.target_od || r.od || 0);
               const wt = Number(r.final_wt || r.size_wt || r.wo_wt || r.target_wt || r.wl || r.wt || 0);

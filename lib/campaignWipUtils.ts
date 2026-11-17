@@ -325,7 +325,10 @@ export function reconcileCampaignWorkOrderWip(params: PrepareCampaignWipParams):
 
   const isOrderCompletedRaw = String(wo?.status || '').toLowerCase() === 'completed' || String(wo?.status || '').toLowerCase() === 'closed';
   const hasActiveChildOrders = Boolean(params.hasActiveChildOrders);
-  const isOrderCompleted = params.isOrderCompleted !== undefined ? params.isOrderCompleted : (isOrderCompletedRaw && !hasActiveChildOrders);
+  const isDirectOrderFinished = Number(wo?.ordered_qty_pcs || 0) > 0 && directFinPcs >= Number(wo?.ordered_qty_pcs || 0);
+  const isOrderCompleted = params.isOrderCompleted !== undefined
+    ? params.isOrderCompleted
+    : ((isOrderCompletedRaw || ((!isMaster || !hasActiveChildOrders) && isDirectOrderFinished)) && !hasActiveChildOrders);
 
   // Ensure finishing stage is present if child order has VDI output
   let stageRows = [...rows];

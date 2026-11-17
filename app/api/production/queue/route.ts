@@ -1659,21 +1659,7 @@ export async function GET(req: NextRequest) {
       const finRejMtr = avgLength > 0 ? Number((finRejPcs * avgLength).toFixed(3)) : 0;
       const finNetMtr = avgLength > 0 ? Number((finNetPcs * avgLength).toFixed(3)) : 0;
 
-      // Heat treatment incoming: strictly from Draw (or Pilger) net output pieces
-      // Rule 1 & Rule 2 (Option B): Direct stage balancing
-      // Heat Treatment Active WIP = Preceding Stage OK (Draw / Pilger) - Heat Treatment Logged Production
-      const loggedHtPcs = htOutPcs + htRejPcs;
-      const htRejDecl = getStageRejDecl(woId, "HEAT_TREATMENT");
-      let htAvailPcs = (isCds || isSsSteel)
-        ? Math.max(0, htIncomingPcs + htDivInPcs + htStockIn.pcs - loggedHtPcs - htDivOutPcs - htRejDecl.pcs)
-        : 0;
-      let htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
-      let htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
-
-      // Apply rejection declarations to Draw availability (Rule 1 & Rule 2: Preceding Stage OK - Current Stage OK)
-      const drawRejDecl = getStageRejDecl(woId, "DRAW");
-      const effDrawRej = Math.max(drawRejPcs, drawRejDecl.pcs);
-      // Deduct downstream consumption for Draw Bench.
+      // Deduct downstream consumption for upstream stations (HT, Draw Bench).
       // If Band Saw has logged cuts, that is the exact mother pipe count cut into downstream;
       // only estimate from downstream stages (QC / Finishing) if Band Saw has no cut logs.
       const loggedBsMotherPcs = bsMotherPcsCut > 0
@@ -1685,6 +1671,22 @@ export async function GET(req: NextRequest) {
             mult > 1 ? Math.ceil(qcInspectedPcs / mult) : qcInspectedPcs,
             mult > 1 ? Math.ceil((finOutPcs + finRejPcs) / mult) : (finOutPcs + finRejPcs)
           );
+
+      // Heat treatment incoming: strictly from Draw (or Pilger) net output pieces
+      // Rule 1 & Rule 2 (Option B): Direct stage balancing
+      // Heat Treatment Active WIP = Preceding Stage OK (Draw / Pilger) - Heat Treatment Consumed / Downstream OK
+      const loggedHtPcs = htOutPcs + htRejPcs;
+      const htRejDecl = getStageRejDecl(woId, "HEAT_TREATMENT");
+      const htDownstreamConsumedPcs = Math.max(loggedHtPcs, downstreamMotherPcs);
+      let htAvailPcs = (isCds || isSsSteel)
+        ? Math.max(0, htIncomingPcs + htDivInPcs + htStockIn.pcs - htDownstreamConsumedPcs - htDivOutPcs - htRejDecl.pcs)
+        : 0;
+      let htAvailMtr = avgLength > 0 ? Number((htAvailPcs * avgLength).toFixed(3)) : 0;
+      let htAvailMt = mtFromMtr(htAvailMtr, Number(wo.size_od || 0), Number(wo.size_wt || 0));
+
+      // Apply rejection declarations to Draw availability (Rule 1 & Rule 2: Preceding Stage OK - Current Stage OK)
+      const drawRejDecl = getStageRejDecl(woId, "DRAW");
+      const effDrawRej = Math.max(drawRejPcs, drawRejDecl.pcs);
       const drawDownstreamConsumedPcs = Math.max(loggedHtPcs, downstreamMotherPcs);
       let drawConsumedPcs = Math.max(drawOutPcs + effDrawRej, drawDownstreamConsumedPcs);
 
@@ -1886,10 +1888,15 @@ export async function GET(req: NextRequest) {
         })
       );
 
+      const directFinOutMtr = sumQty(finLogs, "output_qty");
+      const isOrderFinished = (
+        (Number(wo.ordered_qty_pcs || 0) > 0 && directFinOutPcs >= Number(wo.ordered_qty_pcs)) ||
+        (Number(wo.ordered_qty_mtr || 0) > 0 && directFinOutMtr >= Number(wo.ordered_qty_mtr) * 0.95)
+      );
+
       const isFinishingComplete = (finOutPcs > 0 || finOutMtr > 0) && (
         (Number(wo.balance_qty_mtr ?? 0) <= 0 && Number(wo.balance_qty_pcs ?? 0) <= 0) ||
-        (Number(wo.ordered_qty_pcs || 0) > 0 && finOutPcs >= Number(wo.ordered_qty_pcs)) ||
-        (Number(wo.ordered_qty_mtr || 0) > 0 && finOutMtr >= Number(wo.ordered_qty_mtr) * 0.95)
+        isOrderFinished
       );
 
       // A work order has real physical in-process material if:
@@ -1919,6 +1926,17 @@ export async function GET(req: NextRequest) {
         bandSawAvailPcs = 0; bandSawAvailMtr = 0; bandSawAvailMt = 0;
         vdiAvailPcs = 0; vdiAvailMtr = 0; vdiAvailMt = 0;
         finAvailPcs = 0; finAvailMtr = 0; finAvailMt = 0;
+      } else if ((!isCampaignMaster || !hasActiveChildOrders) && isOrderFinished) {
+        // If the order requirement has been fulfilled at finishing and no active child orders remain,
+        // all upstream feeding stages (Hot Rolling, Hollow HT, IP Cutting, Draw, Pilger, Final HT, Band Saw)
+        // have completed feeding, eliminating phantom upstream queues while preserving genuine downstream VDI inspection pieces.
+        rollAvailPcs = 0; rollAvailMtr = 0; rollAvailMt = 0;
+        hollowHtAvailPcs = 0; hollowHtAvailMtr = 0; hollowHtAvailMt = 0;
+        ipCutAvailPcs = 0; ipCutAvailMtr = 0; ipCutAvailMt = 0;
+        drawAvailPcs = 0; drawAvailMtr = 0; drawAvailMt = 0;
+        pilgerAvailPcs = 0; pilgerAvailMtr = 0; pilgerAvailMt = 0;
+        htAvailPcs = 0; htAvailMtr = 0; htAvailMt = 0;
+        bandSawAvailPcs = 0; bandSawAvailMtr = 0; bandSawAvailMt = 0;
       }
       if (isOrderCompletedRaw || isFinishingComplete || Number(wo.balance_qty_mtr ?? 0) <= 0) {
         finAvailPcs = 0; finAvailMtr = 0; finAvailMt = 0;
