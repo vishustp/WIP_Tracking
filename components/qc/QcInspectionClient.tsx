@@ -120,14 +120,32 @@ export default function QcInspectionClient() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const fetchAllLogs = async () => {
+        const all: ProductionLog[] = [];
+        let from = 0;
+        const PAGE_SIZE = 1000;
+        while (true) {
+          const { data, error } = await supabase
+            .from('production_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .range(from, from + PAGE_SIZE - 1);
+          if (error || !data || data.length === 0) break;
+          all.push(...(data as ProductionLog[]));
+          if (data.length < PAGE_SIZE) break;
+          from += PAGE_SIZE;
+        }
+        return { data: all };
+      };
+
       const [woRes, logsRes, qcRes, stagesRes, routesRes, plansRes, divsRes, hbRes] = await Promise.all([
         supabase.from('work_orders').select('*').order('created_at', { ascending: false }),
-        supabase.from('production_logs').select('*').order('created_at', { ascending: false }).limit(20000),
+        fetchAllLogs(),
         supabase.from('qc_inspections').select('*').order('created_at', { ascending: false }),
         supabase.from('process_stages').select('*'),
         supabase.from('process_routes').select('id, route_code, route_name'),
         supabase.from('rolling_plans').select('*').not('status', 'is', null),
-        supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, reason'),
+        supabase.from('diversion_plans').select('id, source_wo_id, target_wo_id, diverted_qty, work_center, reason, status'),
         supabase.from('hollow_bank_inventory').select('id, source_wo_id, source_stage_code, pcs, total_meters'),
       ]);
 
@@ -267,6 +285,30 @@ export default function QcInspectionClient() {
         .filter((d: any) => d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode)
         .reduce((sum: number, d: any) => sum + Number(d.diverted_qty || 0), 0);
 
+    const getStageDivInPcs = (wId: string, stageCode: string, fallbackAvgLen: number) =>
+      diversionPlans
+        .filter((d: any) => d.target_wo_id === wId && parseDiversionStages(d).targetStage === stageCode)
+        .reduce((sum: number, d: any) => {
+          const dQty = Number(d.diverted_qty || 0);
+          if (dQty <= 0) return sum;
+          if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+          const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          return sum + (fallbackAvgLen > 0 ? Math.round(dQty / fallbackAvgLen) : 0);
+        }, 0);
+
+    const getStageDivOutPcs = (wId: string, stageCode: string, fallbackAvgLen: number) =>
+      diversionPlans
+        .filter((d: any) => d.source_wo_id === wId && parseDiversionStages(d).sourceStage === stageCode)
+        .reduce((sum: number, d: any) => {
+          const dQty = Number(d.diverted_qty || 0);
+          if (dQty <= 0) return sum;
+          if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+          const pcsMatch = typeof d.reason === 'string' ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+          if (pcsMatch) return sum + Number(pcsMatch[1]);
+          return sum + (fallbackAvgLen > 0 ? Math.round(dQty / fallbackAvgLen) : 0);
+        }, 0);
+
     workOrders.forEach((wo) => {
       if (isHollowBankOrder(wo) || wo.id === HOLLOW_BANK_WO_ID) return;
       if (processedWoIds.has(wo.id)) return;
@@ -275,7 +317,8 @@ export default function QcInspectionClient() {
       const childInfo = campaign ? null : childWoMap.get(wo.id);
 
       const isCompleted = (wo.status || '').toLowerCase() === 'completed' || (wo.status || '').toLowerCase() === 'closed' || Boolean((wo as any).excel_completed);
-      if (isCompleted) {
+      const vdiDivInRaw = getStageDivIn(wo.id, 'VDI');
+      if (isCompleted && vdiDivInRaw <= 0) {
         if (!campaign) return;
         const hasActiveChildOrders = Array.isArray(campaign.child_work_orders) && campaign.child_work_orders.some((c: any) => {
           const childWo = workOrders.find((w) => w.id === (c.work_order_id || c.id));
@@ -342,10 +385,13 @@ export default function QcInspectionClient() {
           ...campaign.child_work_orders.map((c: any) => c.work_order_id || c.id).filter(Boolean),
         ]);
 
-        // Mark all child orders as processed so they are not duplicated as standalone rows with duplicate balance
+        // Mark all child orders as processed so they are not duplicated as standalone rows with duplicate balance,
+        // EXCEPT if a child order received a direct standalone VDI diversion
         for (const child of campaign.child_work_orders) {
           const childId = child.work_order_id || child.id;
-          if (childId) processedWoIds.add(childId);
+          if (childId && getStageDivIn(childId, 'VDI') <= 0) {
+            processedWoIds.add(childId);
+          }
         }
 
         const campaignBandSawLogs = productionLogs.filter(
@@ -375,13 +421,16 @@ export default function QcInspectionClient() {
         const { cutPcs: totalCampaignCutPcs, cutMtr: totalCampaignCutMtr } = getBandSawCutStats(campaignBandSawLogs, avgLen);
 
         let campaignDivIn = 0;
+        let campaignDivInPcs = 0;
         let campaignDivOut = 0;
+        let campaignDivOutPcs = 0;
         for (const cWoId of allCampaignWoIds) {
+          if (cWoId !== wo.id && getStageDivIn(cWoId, 'VDI') > 0) continue;
           campaignDivIn += getStageDivIn(cWoId, 'VDI');
+          campaignDivInPcs += getStageDivInPcs(cWoId, 'VDI', avgLen);
           campaignDivOut += getStageDivOut(cWoId, 'VDI');
+          campaignDivOutPcs += getStageDivOutPcs(cWoId, 'VDI', avgLen);
         }
-        const campaignDivInPcs = avgLen > 0 ? Math.round(campaignDivIn / avgLen) : 0;
-        const campaignDivOutPcs = avgLen > 0 ? Math.round(campaignDivOut / avgLen) : 0;
 
         const totalCampaignIncomingPcs = totalCampaignCutPcs + campaignDivInPcs;
         const totalCampaignIncomingMtr = Number((totalCampaignCutMtr + campaignDivIn).toFixed(2));
@@ -431,8 +480,8 @@ export default function QcInspectionClient() {
 
         const vdiDivIn = getStageDivIn(wo.id, 'VDI');
         const vdiDivOut = getStageDivOut(wo.id, 'VDI');
-        const vdiDivInPcs = avgLen > 0 ? Math.round(vdiDivIn / avgLen) : 0;
-        const vdiDivOutPcs = avgLen > 0 ? Math.round(vdiDivOut / avgLen) : 0;
+        const vdiDivInPcs = getStageDivInPcs(wo.id, 'VDI', avgLen);
+        const vdiDivOutPcs = getStageDivOutPcs(wo.id, 'VDI', avgLen);
 
         const woBandSawLogs = woLogs.filter(
           (l) => bandSawStage && l.stage_id === bandSawStage.id
@@ -440,21 +489,31 @@ export default function QcInspectionClient() {
 
         const { cutPcs: bandSawCutPcs, cutMtr: bandSawCutMtr } = getBandSawCutStats(woBandSawLogs, avgLen);
 
-        // Skip order if finishing is already complete (no more pieces to inspect for finished order)
-        const finStage = stages.find((s) => s.stage_code === 'FINISHING');
         const woFinLogs = woLogs.filter((l) => finStage && l.stage_id === finStage.id);
         const finOutPcs = woFinLogs.reduce((sum, l) => {
           const { pcs } = extractPcsFromRemarks(l.remarks);
           return sum + (pcs !== null && pcs > 0 ? pcs : (avgLen > 0 && l.output_qty ? Math.round(Number(l.output_qty) / avgLen) : 0));
         }, 0);
         const finOutMtr = woFinLogs.reduce((sum, l) => sum + Number(l.output_qty || 0), 0);
+
+        const totalIncomingPcs = bandSawCutPcs + vdiDivInPcs;
+        const totalIncomingMtr = Number((bandSawCutMtr + vdiDivIn).toFixed(2));
+
+        const woQcList = qcInspections.filter((q) => q.work_order_id === wo.id);
+        const alreadyInspectedPcs = woQcList.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
+        const alreadyInspectedMtr = Number(woQcList.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0).toFixed(2));
+
+        // Skip order if finishing is already complete (no more pieces to inspect for finished order),
+        // unless uninspected incoming VDI diversions exist
+        const finStage = stages.find((s) => s.stage_code === 'FINISHING');
         const isFinishingComplete = woFinLogs.length > 0 && (
           Number(wo.balance_qty_mtr ?? 0) <= 0 ||
           Number(wo.balance_qty_pcs ?? 0) <= 0 ||
           (Number(wo.ordered_qty_pcs || 0) > 0 && finOutPcs >= Number(wo.ordered_qty_pcs)) ||
           (Number(wo.ordered_qty_mtr || 0) > 0 && finOutMtr >= Number(wo.ordered_qty_mtr) * 0.95)
         );
-        if (isFinishingComplete) return;
+        const hasUninspectedDiv = vdiDivInPcs > 0 && (totalIncomingPcs > alreadyInspectedPcs);
+        if (isFinishingComplete && !hasUninspectedDiv) return;
 
         // Skip order only if it has neither Band Saw cut output nor diverted incoming material
         if (bandSawCutPcs <= 0 && bandSawCutMtr <= 0 && vdiDivIn <= 0) return;
@@ -476,13 +535,7 @@ export default function QcInspectionClient() {
           }
         });
 
-        const totalIncomingPcs = bandSawCutPcs + vdiDivInPcs;
-        const totalIncomingMtr = Number((bandSawCutMtr + vdiDivIn).toFixed(2));
         const effectiveCutMt = mtFromMtr(totalIncomingMtr, od, wt);
-
-        const woInspections = qcInspections.filter((q) => q.work_order_id === wo.id);
-        const alreadyInspectedPcs = woInspections.reduce((sum, q) => sum + Number(q.inspected_pcs || 0), 0);
-        const alreadyInspectedMtr = Number(woInspections.reduce((sum, q) => sum + Number(q.inspected_mtr || 0), 0).toFixed(2));
 
         const availablePcs = Math.max(0, totalIncomingPcs - alreadyInspectedPcs - vdiDivOutPcs);
         const availableMtr = Number(Math.max(0, totalIncomingMtr - alreadyInspectedMtr - vdiDivOut).toFixed(2));

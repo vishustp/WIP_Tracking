@@ -506,6 +506,9 @@ export async function GET(req: NextRequest) {
       return matching.reduce((sum: number, d: any) => {
         const dQty = Number(d.diverted_qty || 0);
         if (dQty <= 0) return sum;
+        if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+        const pcsMatch = typeof d.reason === "string" ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+        if (pcsMatch) return sum + Number(pcsMatch[1]);
         const multMatch = typeof d.reason === "string" ? d.reason.match(/\[MULTIPLE:\s*([0-9.]+)\]/i) : null;
         const mult = Math.max(1, Number(multMatch ? multMatch[1] : (d.multiple || 1)));
         const srcWo = woMap.get(d.source_wo_id);
@@ -548,6 +551,9 @@ export async function GET(req: NextRequest) {
       const totalPcs = matching.reduce((sum: number, d: any) => {
         const dQty = Number(d.diverted_qty || 0);
         if (dQty <= 0) return sum;
+        if (d.diverted_pcs != null && Number(d.diverted_pcs) > 0) return sum + Number(d.diverted_pcs);
+        const pcsMatch = typeof d.reason === "string" ? d.reason.match(/\[PCS:\s*([0-9]+)\]/i) : null;
+        if (pcsMatch) return sum + Number(pcsMatch[1]);
         const multMatch = typeof d.reason === "string" ? d.reason.match(/\[MULTIPLE:\s*([0-9.]+)\]/i) : null;
         const mult = Math.max(1, Number(multMatch ? multMatch[1] : (d.multiple || 1)));
         const srcWo = woMap.get(d.source_wo_id);
@@ -1075,7 +1081,7 @@ export async function GET(req: NextRequest) {
       if (!childWoMap.has(l.work_order_id)) candidateWoIds.add(l.work_order_id);
     });
     diversions.forEach((d: any) => {
-      if (d.target_wo_id && !childWoMap.has(d.target_wo_id)) candidateWoIds.add(d.target_wo_id);
+      if (d.target_wo_id) candidateWoIds.add(d.target_wo_id);
       if (d.source_wo_id && !childWoMap.has(d.source_wo_id)) candidateWoIds.add(d.source_wo_id);
     });
 
@@ -1900,15 +1906,19 @@ export async function GET(req: NextRequest) {
       );
 
       // A work order has real physical in-process material if:
-      // It has active stock waiting at an upstream stage (Draw, HT, Band Saw, Hollow HT)
-      // and has remaining commercial balance (balance_qty_mtr > 0 or balance_qty_pcs > 0).
+      // 1. It has active stock waiting at an upstream stage (Draw, HT, Band Saw, Hollow HT) and has remaining commercial balance
+      // 2. OR it has actively received an approved diversion into VDI or Finishing with uninspected / unbundled material remaining
       const hasUpstreamWip = drawAvailPcs > 0 || htAvailPcs > 0 || bandSawAvailPcs > 0 || hollowHtAvailPcs > 0;
       const hasRealUpstreamMaterial = hasUpstreamWip && (Number(wo.balance_qty_mtr ?? 0) > 0 || Number(wo.balance_qty_pcs ?? 0) > 0);
+      const hasVdiMaterial = vdiAvailPcs > 0 && vdiDivInPcs > 0;
+      const hasFinMaterial = finAvailPcs > 0 && finDivInPcs > 0;
+      const hasActiveDiversionMaterial = hasVdiMaterial || hasFinMaterial;
+      const hasRealMaterial = hasRealUpstreamMaterial || hasActiveDiversionMaterial;
 
-      const isOrderCompleted = (isOrderCompletedRaw || (isFinishingComplete && !hasRealUpstreamMaterial)) && !hasActiveChildOrders && !hasRealUpstreamMaterial;
+      const isOrderCompleted = (isOrderCompletedRaw || (isFinishingComplete && !hasRealMaterial)) && !hasActiveChildOrders && !hasRealMaterial;
 
-      // Auto-heal work order status in DB if real material is actively in-process upstream
-      if (isOrderCompletedRaw && hasRealUpstreamMaterial) {
+      // Auto-heal work order status in DB if real material is actively in-process upstream or received via diversion
+      if (isOrderCompletedRaw && hasRealMaterial) {
         admin
           .from("work_orders")
           .update({ status: "In Progress", excel_completed: false })
@@ -1924,8 +1934,12 @@ export async function GET(req: NextRequest) {
         pilgerAvailPcs = 0; pilgerAvailMtr = 0; pilgerAvailMt = 0;
         htAvailPcs = 0; htAvailMtr = 0; htAvailMt = 0;
         bandSawAvailPcs = 0; bandSawAvailMtr = 0; bandSawAvailMt = 0;
-        vdiAvailPcs = 0; vdiAvailMtr = 0; vdiAvailMt = 0;
-        finAvailPcs = 0; finAvailMtr = 0; finAvailMt = 0;
+        if (!hasVdiMaterial) {
+          vdiAvailPcs = 0; vdiAvailMtr = 0; vdiAvailMt = 0;
+        }
+        if (!hasFinMaterial) {
+          finAvailPcs = 0; finAvailMtr = 0; finAvailMt = 0;
+        }
       } else if ((!isCampaignMaster || !hasActiveChildOrders) && isOrderFinished) {
         // If the order requirement has been fulfilled at finishing and no active child orders remain,
         // all upstream feeding stages (Hot Rolling, Hollow HT, IP Cutting, Draw, Pilger, Final HT, Band Saw)
@@ -2483,11 +2497,11 @@ export async function GET(req: NextRequest) {
       const isBsReady = !isOrderCompleted && (bandSawAvailMtr >= 1.0 || bandSawAvailPcs >= 1);
       const isBsFeeder = !isOrderCompleted && !isBsReady && (bsFeederMtr >= 1.0 || bsFeederPcs >= 1);
 
-      const isVdiReady = !isOrderCompleted && vdiAvailPcs >= 1 && vdiAvailMtr >= 0.5;
-      const isVdiFeeder = !isOrderCompleted && !isVdiReady && (vdiFeederMtr >= 1.0 || vdiFeederPcs >= 1);
+      const isVdiReady = (!isOrderCompleted || hasVdiMaterial) && vdiAvailPcs >= 1 && vdiAvailMtr >= 0.5;
+      const isVdiFeeder = (!isOrderCompleted || hasVdiMaterial) && !isVdiReady && (vdiFeederMtr >= 1.0 || vdiFeederPcs >= 1);
 
-      const isFinReady = !isOrderCompleted && !isFinishingComplete && finAvailPcs >= 1 && finAvailMtr >= 0.5;
-      const isFinFeeder = !isOrderCompleted && !isFinishingComplete && !isFinReady && (finFeederMtr >= 1.0 || finFeederPcs >= 1);
+      const isFinReady = (!isOrderCompleted || hasFinMaterial) && !isFinishingComplete && finAvailPcs >= 1 && finAvailMtr >= 0.5;
+      const isFinFeeder = (!isOrderCompleted || hasFinMaterial) && !isFinishingComplete && !isFinReady && (finFeederMtr >= 1.0 || finFeederPcs >= 1);
 
       const rollDivDetails = getStageDivDetails(woId, "HOT_ROLLING", effMhAvg > 0 ? effMhAvg : avgLength);
       const htcDivDetails = getStageDivDetails(woId, "HTC", effMhAvg > 0 ? effMhAvg : avgLength);

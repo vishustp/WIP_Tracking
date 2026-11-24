@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
         // Query approved diversions for this work order at Band Saw / IP Cutting
         const { data: rawDivs } = await admin
           .from('diversion_plans')
-          .select('source_wo_id, target_wo_id, diverted_qty, diverted_pcs, work_center, reason, status, ppc_approved_at')
+          .select('source_wo_id, target_wo_id, diverted_qty, work_center, reason, status, ppc_approved_at')
           .or(`target_wo_id.eq.${targetLog.work_order_id},source_wo_id.eq.${targetLog.work_order_id}`);
 
         const parseDivStages = (d: any) => {
